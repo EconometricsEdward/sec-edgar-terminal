@@ -1,6 +1,9 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent, Link as LinkIcon, GitCompare } from 'lucide-react';
+import {
+  BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
+  Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink,
+} from 'lucide-react';
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import { MetricChart } from '../components/MetricChart.jsx';
 import { TickerContext } from '../App.jsx';
@@ -14,6 +17,7 @@ import {
   buildRatios,
   formatValue,
   periodLabel,
+  buildSourceUrl,
 } from '../utils/xbrlParser.js';
 
 const STATEMENTS = [
@@ -32,6 +36,7 @@ export default function AnalysisPage() {
   const navigate = useNavigate();
   const { company, setCompany } = useContext(TickerContext);
   const [facts, setFacts] = useState(null);
+  const [sicCode, setSicCode] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -43,7 +48,6 @@ export default function AnalysisPage() {
     setError(null);
     setFacts(null);
 
-    // Update URL to the ticker (deep link)
     if (urlTicker !== entry.ticker) {
       navigate(`/analysis/${entry.ticker}`, { replace: false });
     }
@@ -69,6 +73,7 @@ export default function AnalysisPage() {
         name: submissions.name,
         cik: entry.cik,
         sic: submissions.sicDescription,
+        sicNumber: submissions.sic,
         exchanges: submissions.exchanges?.join(', ') || 'N/A',
         tickers: submissions.tickers?.join(', ') || entry.name,
         fiscalYearEnd: submissions.fiscalYearEnd,
@@ -76,6 +81,7 @@ export default function AnalysisPage() {
         ein: submissions.ein,
       });
 
+      setSicCode(submissions.sic);
       setFacts(factsData.facts || {});
     } catch (err) {
       setError(`Failed to fetch financial data: ${err.message}`);
@@ -86,14 +92,14 @@ export default function AnalysisPage() {
 
   const periods = facts
     ? periodType === 'annual'
-      ? extractAnnualPeriods(facts).slice(0, 10).map((fy) => ({ fy, fp: 'FY' }))
+      ? extractAnnualPeriods(facts).slice(0, 10)
       : extractQuarterlyPeriods(facts).slice(0, 12)
     : [];
 
   const statementDef = STATEMENTS.find((s) => s.id === statement);
   const rows = useMemo(
-    () => (facts && periods.length > 0 ? statementDef.build(facts, periods) : []),
-    [facts, periods, statementDef]
+    () => (facts && periods.length > 0 ? statementDef.build(facts, periods, sicCode) : []),
+    [facts, periods, statementDef, sicCode]
   );
 
   const featuredRows = useMemo(
@@ -129,6 +135,11 @@ export default function AnalysisPage() {
     else navigate('/compare');
   };
 
+  // Detect industry for UI hint
+  const sic = parseInt(sicCode, 10) || 0;
+  const isBank = sic >= 6000 && sic <= 6299;
+  const isInsurance = sic >= 6300 && sic <= 6411;
+
   return (
     <>
       <TickerSearchBar
@@ -138,6 +149,31 @@ export default function AnalysisPage() {
         setError={setError}
         initialTicker={urlTicker}
       />
+
+      {/* Experimental banner — shown whenever data is loaded */}
+      {facts && (
+        <div className="mb-6 border-2 border-amber-700/40 bg-amber-950/20 p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-100/90 leading-relaxed">
+            <span className="font-bold text-amber-300">Experimental — verify before relying on these numbers.</span>{' '}
+            Financial data is parsed from SEC's XBRL API. Different companies tag the same concepts differently,
+            especially in finance, insurance, and REITs. Click any value to see the exact SEC source tag and filing.
+            Numbers should match official filings, but edge cases exist — always cross-check material figures against the 10-K.
+            {isBank && (
+              <div className="mt-2 text-amber-200/80">
+                <strong>Banking company detected (SIC {sic}).</strong> Revenue uses interest + non-interest income
+                tags rather than generic "Revenues". Cost of Revenue and Gross Profit are typically not applicable.
+              </div>
+            )}
+            {isInsurance && (
+              <div className="mt-2 text-amber-200/80">
+                <strong>Insurance company detected (SIC {sic}).</strong> Revenue is primarily premium income.
+                Traditional cost/margin concepts do not apply.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {facts && periods.length > 0 && (
         <>
@@ -239,7 +275,7 @@ export default function AnalysisPage() {
                   </th>
                   {periods.map((p) => (
                     <th
-                      key={`${p.fy}-${p.fp}`}
+                      key={`${p.fy}-${p.fp}-${p.end}`}
                       className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[90px]"
                     >
                       {periodLabel(p)}
@@ -267,18 +303,15 @@ export default function AnalysisPage() {
                         {row.label}
                       </td>
                       {row.values.map((v, i) => (
-                        <td
+                        <ValueCell
                           key={i}
-                          className={`px-4 py-2.5 text-right tabular-nums ${
-                            v.value == null
-                              ? 'text-stone-700'
-                              : isHeader
-                              ? 'text-stone-100 font-bold'
-                              : 'text-stone-300'
-                          }`}
-                        >
-                          {formatValue(v.value, row.format)}
-                        </td>
+                          value={v.value}
+                          source={v.source}
+                          cik={company?.cik}
+                          format={row.format}
+                          isHeader={isHeader}
+                          period={v.period}
+                        />
                       ))}
                     </tr>
                   );
@@ -288,9 +321,9 @@ export default function AnalysisPage() {
           </div>
 
           <p className="mt-4 text-[11px] text-stone-500 leading-relaxed">
-            Source: SEC XBRL Company Facts. Values are as originally reported in 10-K / 10-Q filings.
-            Empty cells (—) indicate the company did not report that specific concept for that period,
-            or used a non-standard XBRL tag not yet mapped. Ratios computed from reported values.
+            Source: SEC XBRL Company Facts. Hover any value for the source XBRL tag; click to open SEC's concept endpoint
+            showing every value reported for that tag across all filings. Empty cells (—) indicate the company did not
+            report that specific concept, or used a non-standard tag not yet mapped. Ratios are computed from reported values.
           </p>
         </>
       )}
@@ -300,11 +333,52 @@ export default function AnalysisPage() {
           <BarChart3 className="w-12 h-12 text-stone-700 mx-auto mb-4" />
           <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">Financial Analysis</p>
           <p className="text-stone-600 text-xs max-w-md mx-auto">
-            Enter a ticker symbol above to load structured financial data (Income Statement, Balance Sheet,
-            Cash Flow, Ratios) across all historical 10-K and 10-Q filings — with charts and CSV export.
+            Enter a ticker symbol above to load structured financial data across all historical 10-K and 10-Q filings.
           </p>
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Individual cell with hover tooltip + click-to-source link.
+ */
+function ValueCell({ value, source, cik, format, isHeader, period }) {
+  const sourceUrl = source && cik ? buildSourceUrl(cik, source) : null;
+  const tooltip = source
+    ? `Tag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}\nClick to open SEC source`
+    : value == null
+    ? 'No data reported for this concept'
+    : 'Computed value';
+
+  const cellClasses = `px-4 py-2.5 text-right tabular-nums group ${
+    value == null
+      ? 'text-stone-700'
+      : isHeader
+      ? 'text-stone-100 font-bold'
+      : 'text-stone-300'
+  }`;
+
+  if (!sourceUrl || value == null) {
+    return (
+      <td className={cellClasses} title={tooltip}>
+        {formatValue(value, format)}
+      </td>
+    );
+  }
+
+  return (
+    <td className={cellClasses} title={tooltip}>
+      <a
+        href={sourceUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors"
+      >
+        {formatValue(value, format)}
+        <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+      </a>
+    </td>
   );
 }

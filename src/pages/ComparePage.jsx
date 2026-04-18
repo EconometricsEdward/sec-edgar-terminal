@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { GitCompare, X, Plus, Loader2, AlertCircle, Search, Link as LinkIcon } from 'lucide-react';
+import { GitCompare, X, Plus, Loader2, AlertCircle, Search, Link as LinkIcon, AlertTriangle } from 'lucide-react';
 import { TickerContext } from '../App.jsx';
 import { ComparisonChart } from '../components/MetricChart.jsx';
 import { secDataUrl, secFilesUrl } from '../utils/secApi.js';
@@ -9,7 +9,6 @@ import {
   buildMetricRow,
 } from '../utils/xbrlParser.js';
 
-// Metrics we render as comparison charts. Each gets its own chart panel.
 const COMPARE_METRICS = [
   { key: 'revenue', label: 'Revenue', format: 'currency' },
   { key: 'netIncome', label: 'Net Income', format: 'currency' },
@@ -26,14 +25,13 @@ export default function ComparePage() {
   const navigate = useNavigate();
   const { tickerMap, setTickerMap } = useContext(TickerContext);
 
-  const [companies, setCompanies] = useState([]); // [{ ticker, name, cik, facts, loading, error }]
+  const [companies, setCompanies] = useState([]);
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIdx, setHighlightedIdx] = useState(0);
   const [globalError, setGlobalError] = useState(null);
   const [initialized, setInitialized] = useState(false);
 
-  // Load ticker map if not loaded yet
   useEffect(() => {
     if (tickerMap) return;
     (async () => {
@@ -56,7 +54,6 @@ export default function ComparePage() {
     })();
   }, [tickerMap, setTickerMap]);
 
-  // On first load, seed companies from URL
   useEffect(() => {
     if (initialized || !tickerMap) return;
     setInitialized(true);
@@ -77,13 +74,13 @@ export default function ComparePage() {
   };
 
   const addCompany = async (entry, updateUrlAfter = true) => {
-    if (companies.find((c) => c.ticker === entry.ticker)) return; // already added
+    if (companies.find((c) => c.ticker === entry.ticker)) return;
     if (companies.length >= MAX_COMPANIES) {
       setGlobalError(`Maximum of ${MAX_COMPANIES} companies at once.`);
       return;
     }
 
-    const newCompany = { ticker: entry.ticker, name: entry.name, cik: entry.cik, facts: null, loading: true, error: null };
+    const newCompany = { ticker: entry.ticker, name: entry.name, cik: entry.cik, facts: null, sicCode: null, loading: true, error: null };
     setCompanies((prev) => {
       const next = [...prev, newCompany];
       if (updateUrlAfter) updateUrl(next);
@@ -91,14 +88,24 @@ export default function ComparePage() {
     });
 
     try {
-      const res = await fetch(secDataUrl(`/api/xbrl/companyfacts/CIK${entry.cik}.json`));
-      if (!res.ok) {
-        if (res.status === 404) throw new Error('No XBRL financial data available');
-        throw new Error(`SEC API ${res.status}`);
+      // Need both submissions (for SIC) and facts
+      const [submissionsRes, factsRes] = await Promise.all([
+        fetch(secDataUrl(`/submissions/CIK${entry.cik}.json`)),
+        fetch(secDataUrl(`/api/xbrl/companyfacts/CIK${entry.cik}.json`)),
+      ]);
+
+      if (!factsRes.ok) {
+        if (factsRes.status === 404) throw new Error('No XBRL financial data available');
+        throw new Error(`SEC API ${factsRes.status}`);
       }
-      const data = await res.json();
+      const factsData = await factsRes.json();
+      let sicCode = null;
+      if (submissionsRes.ok) {
+        const sub = await submissionsRes.json();
+        sicCode = sub.sic;
+      }
       setCompanies((prev) => prev.map((c) =>
-        c.ticker === entry.ticker ? { ...c, facts: data.facts || {}, loading: false } : c
+        c.ticker === entry.ticker ? { ...c, facts: factsData.facts || {}, sicCode, loading: false } : c
       ));
     } catch (err) {
       setCompanies((prev) => prev.map((c) =>
@@ -121,13 +128,12 @@ export default function ComparePage() {
     navigator.clipboard.writeText(url);
   };
 
-  // Autocomplete suggestions
   const suggestions = useMemo(() => {
     if (!tickerMap || !input.trim()) return [];
     const q = input.trim().toUpperCase();
     const scored = [];
     for (const e of Object.values(tickerMap)) {
-      if (companies.find((c) => c.ticker === e.ticker)) continue; // skip already-added
+      if (companies.find((c) => c.ticker === e.ticker)) continue;
       let score = 0;
       if (e.ticker === q) score = 1000;
       else if (e.ticker.startsWith(q)) score = 500 - (e.ticker.length - q.length);
@@ -147,27 +153,43 @@ export default function ComparePage() {
     setHighlightedIdx(0);
   };
 
-  // Build comparison data for charts
   const annualPeriods = useMemo(() => {
-    // Union of annual periods across all companies (intersect for cleaner charts)
-    const allYears = new Set();
+    const allYears = new Map();
     companies.forEach((c) => {
-      if (c.facts) extractAnnualPeriods(c.facts).forEach((y) => allYears.add(y));
+      if (c.facts) {
+        extractAnnualPeriods(c.facts).forEach((p) => {
+          if (!allYears.has(p.fy)) allYears.set(p.fy, p);
+        });
+      }
     });
-    return Array.from(allYears).sort((a, b) => b - a).slice(0, 10).map((fy) => ({ fy, fp: 'FY' }));
+    return Array.from(allYears.values()).sort((a, b) => b.fy - a.fy).slice(0, 10);
   }, [companies]);
 
   const buildSeries = (metricKey) => {
     return companies
       .filter((c) => c.facts && !c.error)
-      .map((c) => ({
-        name: c.name,
-        ticker: c.ticker,
-        data: buildMetricRow(c.facts, metricKey, '', annualPeriods.map((p) => ({ ...p, form: '10-K' }))).values,
-      }));
+      .map((c) => {
+        // Build periods matched to each company's own data
+        const companyPeriods = extractAnnualPeriods(c.facts).slice(0, 10);
+        const data = buildMetricRow(c.facts, metricKey, '', companyPeriods, 'currency', c.sicCode).values;
+        return { name: c.name, ticker: c.ticker, data };
+      });
   };
 
   const allLoaded = companies.length > 0 && companies.every((c) => !c.loading);
+
+  // Detect mixed industries — warn user
+  const industryGroups = new Set(
+    companies
+      .filter((c) => c.sicCode)
+      .map((c) => {
+        const sic = parseInt(c.sicCode, 10) || 0;
+        if (sic >= 6000 && sic <= 6299) return 'banking';
+        if (sic >= 6300 && sic <= 6411) return 'insurance';
+        return 'general';
+      })
+  );
+  const mixedIndustries = industryGroups.size > 1;
 
   return (
     <>
@@ -182,7 +204,6 @@ export default function ComparePage() {
         </p>
       </div>
 
-      {/* Selected companies */}
       {companies.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
           {companies.map((c) => (
@@ -211,7 +232,6 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* Add-company input */}
       {companies.length < MAX_COMPANIES && (
         <div className="mb-6 relative">
           <div className="flex gap-2">
@@ -286,7 +306,19 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* Charts */}
+      {/* Mixed-industry warning */}
+      {mixedIndustries && (
+        <div className="mb-6 border-2 border-amber-700/40 bg-amber-950/20 p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-100/90 leading-relaxed">
+            <span className="font-bold text-amber-300">Comparing across industries.</span>{' '}
+            You've added companies from different industry groups (e.g. banks, insurance, general corporations).
+            "Revenue" means different things — bank revenue is interest + fee income, while a retailer's is net sales.
+            Interpret comparisons accordingly.
+          </div>
+        </div>
+      )}
+
       {allLoaded && companies.filter((c) => c.facts).length >= 1 && annualPeriods.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {COMPARE_METRICS.map((m) => (
