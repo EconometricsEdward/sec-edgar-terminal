@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import { MetricChart } from '../components/MetricChart.jsx';
+import SummaryDashboard from '../components/SummaryDashboard.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
 import {
@@ -16,6 +17,8 @@ import {
   buildCashFlow,
   buildRatios,
   formatValue,
+  formatGrowth,
+  computeGrowth,
   periodLabel,
   buildSourceUrl,
 } from '../utils/xbrlParser.js';
@@ -42,6 +45,7 @@ export default function AnalysisPage() {
 
   const [statement, setStatement] = useState('income');
   const [periodType, setPeriodType] = useState('annual');
+  const [showGrowth, setShowGrowth] = useState(true);
 
   const fetchFacts = async (entry) => {
     setLoading(true);
@@ -61,7 +65,7 @@ export default function AnalysisPage() {
       if (!submissionsRes.ok) throw new Error(`Submissions API returned ${submissionsRes.status}`);
       if (!factsRes.ok) {
         if (factsRes.status === 404) {
-          throw new Error('This company has no XBRL financial data available. Most likely a non-US entity or trust that does not file full financial statements.');
+          throw new Error('This company has no XBRL financial data available.');
         }
         throw new Error(`XBRL API returned ${factsRes.status}`);
       }
@@ -107,12 +111,22 @@ export default function AnalysisPage() {
     [rows, statementDef]
   );
 
+  // Show growth columns only for annual view + when toggle is on
+  const growthVisible = showGrowth && periodType === 'annual';
+
   const exportCsv = () => {
     if (!rows.length || !periods.length) return;
-    const header = ['Metric', ...periods.map(periodLabel)].join(',');
+    const header = ['Metric', ...periods.map(periodLabel), 'YoY %', '5Y CAGR %', '10Y CAGR %'].join(',');
     const lines = rows.map((r) => {
+      const g = computeGrowth(r);
       const vals = r.values.map((v) => (v.value == null ? '' : v.value));
-      return [`"${r.label}"`, ...vals].join(',');
+      return [
+        `"${r.label}"`,
+        ...vals,
+        g.yoy != null ? g.yoy.toFixed(2) : '',
+        g.cagr5y != null ? g.cagr5y.toFixed(2) : '',
+        g.cagr10y != null ? g.cagr10y.toFixed(2) : '',
+      ].join(',');
     });
     const csv = [header, ...lines].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -135,7 +149,6 @@ export default function AnalysisPage() {
     else navigate('/compare');
   };
 
-  // Detect industry for UI hint
   const sic = parseInt(sicCode, 10) || 0;
   const isBank = sic >= 6000 && sic <= 6299;
   const isInsurance = sic >= 6300 && sic <= 6411;
@@ -150,29 +163,29 @@ export default function AnalysisPage() {
         initialTicker={urlTicker}
       />
 
-      {/* Experimental banner — shown whenever data is loaded */}
       {facts && (
         <div className="mb-6 border-2 border-amber-700/40 bg-amber-950/20 p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <div className="text-xs text-amber-100/90 leading-relaxed">
             <span className="font-bold text-amber-300">Experimental — verify before relying on these numbers.</span>{' '}
-            Financial data is parsed from SEC's XBRL API. Different companies tag the same concepts differently,
-            especially in finance, insurance, and REITs. Click any value to see the exact SEC source tag and filing.
-            Numbers should match official filings, but edge cases exist — always cross-check material figures against the 10-K.
+            Financial data is parsed from SEC's XBRL API. Click any value to see the exact SEC source tag and filing.
             {isBank && (
               <div className="mt-2 text-amber-200/80">
-                <strong>Banking company detected (SIC {sic}).</strong> Revenue uses interest + non-interest income
-                tags rather than generic "Revenues". Cost of Revenue and Gross Profit are typically not applicable.
+                <strong>Banking company (SIC {sic}).</strong> Revenue uses interest + non-interest income tags.
+                Cost of Revenue and Gross Profit are not applicable.
               </div>
             )}
             {isInsurance && (
               <div className="mt-2 text-amber-200/80">
-                <strong>Insurance company detected (SIC {sic}).</strong> Revenue is primarily premium income.
-                Traditional cost/margin concepts do not apply.
+                <strong>Insurance company (SIC {sic}).</strong> Revenue is primarily premium income.
               </div>
             )}
           </div>
         </div>
+      )}
+
+      {facts && periods.length > 0 && periodType === 'annual' && (
+        <SummaryDashboard facts={facts} periods={periods} sicCode={sicCode} />
       )}
 
       {facts && periods.length > 0 && (
@@ -222,6 +235,20 @@ export default function AnalysisPage() {
               </button>
             </div>
 
+            {periodType === 'annual' && (
+              <button
+                onClick={() => setShowGrowth((s) => !s)}
+                className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
+                  showGrowth
+                    ? 'bg-emerald-500 text-stone-950 border-emerald-500'
+                    : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
+                }`}
+                title={showGrowth ? 'Hide growth columns' : 'Show growth columns'}
+              >
+                Growth {showGrowth ? 'ON' : 'OFF'}
+              </button>
+            )}
+
             <button
               onClick={copyShareLink}
               className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
@@ -250,7 +277,6 @@ export default function AnalysisPage() {
             </button>
           </div>
 
-          {/* Key metric charts */}
           {featuredRows.length > 0 && (
             <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
               {featuredRows.map((row) => (
@@ -265,12 +291,11 @@ export default function AnalysisPage() {
             </div>
           )}
 
-          {/* Full data table */}
           <div className="border-2 border-stone-800 bg-stone-900/30 overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-stone-900 border-b-2 border-stone-800">
                 <tr>
-                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 z-10 min-w-[220px]">
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 z-20 min-w-[220px]">
                     Metric
                   </th>
                   {periods.map((p) => (
@@ -281,11 +306,25 @@ export default function AnalysisPage() {
                       {periodLabel(p)}
                     </th>
                   ))}
+                  {growthVisible && (
+                    <>
+                      <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-black min-w-[80px] sticky right-[160px] bg-stone-900 z-20 border-l-2 border-stone-800">
+                        YoY
+                      </th>
+                      <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-black min-w-[80px] sticky right-[80px] bg-stone-900 z-20">
+                        5Y CAGR
+                      </th>
+                      <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-black min-w-[80px] sticky right-0 bg-stone-900 z-20">
+                        10Y CAGR
+                      </th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => {
                   const isHeader = ['Revenue', 'Gross Profit', 'Operating Income', 'Net Income', 'Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Operating Cash Flow'].includes(row.label);
+                  const growth = computeGrowth(row);
                   return (
                     <tr
                       key={row.label}
@@ -296,8 +335,8 @@ export default function AnalysisPage() {
                       <td
                         className={`px-4 py-2.5 sticky left-0 z-10 ${
                           isHeader
-                            ? 'bg-stone-900/80 text-stone-100 font-bold'
-                            : 'bg-stone-950/80 text-stone-300'
+                            ? 'bg-stone-900/95 text-stone-100 font-bold'
+                            : 'bg-stone-950/95 text-stone-300'
                         }`}
                       >
                         {row.label}
@@ -310,9 +349,15 @@ export default function AnalysisPage() {
                           cik={company?.cik}
                           format={row.format}
                           isHeader={isHeader}
-                          period={v.period}
                         />
                       ))}
+                      {growthVisible && (
+                        <>
+                          <GrowthCell pct={growth.yoy} isHeader={isHeader} stickyRight={160} borderLeft />
+                          <GrowthCell pct={growth.cagr5y} isHeader={isHeader} stickyRight={80} />
+                          <GrowthCell pct={growth.cagr10y} isHeader={isHeader} stickyRight={0} />
+                        </>
+                      )}
                     </tr>
                   );
                 })}
@@ -321,9 +366,9 @@ export default function AnalysisPage() {
           </div>
 
           <p className="mt-4 text-[11px] text-stone-500 leading-relaxed">
-            Source: SEC XBRL Company Facts. Hover any value for the source XBRL tag; click to open SEC's concept endpoint
-            showing every value reported for that tag across all filings. Empty cells (—) indicate the company did not
-            report that specific concept, or used a non-standard tag not yet mapped. Ratios are computed from reported values.
+            Source: SEC XBRL Company Facts. Hover any value for the source XBRL tag; click to open SEC's concept endpoint.
+            Growth columns: YoY = latest vs. prior year. CAGR = compounded annual growth.
+            Empty cells indicate missing data or values where growth is not meaningful (e.g., sign changes).
           </p>
         </>
       )}
@@ -341,10 +386,7 @@ export default function AnalysisPage() {
   );
 }
 
-/**
- * Individual cell with hover tooltip + click-to-source link.
- */
-function ValueCell({ value, source, cik, format, isHeader, period }) {
+function ValueCell({ value, source, cik, format, isHeader }) {
   const sourceUrl = source && cik ? buildSourceUrl(cik, source) : null;
   const tooltip = source
     ? `Tag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}\nClick to open SEC source`
@@ -379,6 +421,30 @@ function ValueCell({ value, source, cik, format, isHeader, period }) {
         {formatValue(value, format)}
         <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
       </a>
+    </td>
+  );
+}
+
+function GrowthCell({ pct, isHeader, borderLeft, stickyRight }) {
+  const g = formatGrowth(pct);
+  const colorClass =
+    g.color === 'positive'
+      ? 'text-emerald-400'
+      : g.color === 'negative'
+      ? 'text-rose-400'
+      : 'text-stone-600';
+  const bg = isHeader ? 'bg-stone-900/95' : 'bg-stone-950/95';
+  const sticky = stickyRight !== undefined ? `sticky z-10` : '';
+  const styleObj = stickyRight !== undefined ? { right: `${stickyRight}px` } : undefined;
+
+  return (
+    <td
+      style={styleObj}
+      className={`px-3 py-2.5 text-right tabular-nums ${bg} ${sticky} ${colorClass} ${
+        isHeader ? 'font-bold' : ''
+      } ${borderLeft ? 'border-l-2 border-stone-800' : ''}`}
+    >
+      {g.text}
     </td>
   );
 }

@@ -1,23 +1,17 @@
 /**
- * XBRL Company Facts parser — v2.
+ * XBRL Company Facts parser — v3.
  *
- * Key improvements over v1:
- *   1. Uses period-end dates (not fy field) to identify fiscal years — avoids the bug
- *      where multiple `fy` values for the same calendar year gave wrong results.
- *   2. When multiple entries exist for the same period (e.g. original + restatement),
- *      picks the most recently filed value (latest `filed` date).
- *   3. Industry-aware tag priorities — banks report revenue differently from tech companies.
- *      Pass SIC code to buildMetricRow/buildIncomeStatement to get the right priority.
- *   4. Returns the source tag name and filing accession with each value so the UI can
- *      link to the exact SEC endpoint for verification.
+ * v3 additions:
+ *   - Growth math helpers: yoyGrowth, cagr
+ *   - Summary extractor: latest value + growth rates for headline metrics
+ *   - Same correctness fixes from v2 preserved (period-end dates, latest-filed, industry-aware)
  */
 
 // ============================================================================
-// Tag priorities: generic + industry-specific overrides
+// Tag priorities
 // ============================================================================
 
 const DEFAULT_TAGS = {
-  // Income Statement
   revenue: [
     'Revenues',
     'RevenueFromContractWithCustomerExcludingAssessedTax',
@@ -25,12 +19,7 @@ const DEFAULT_TAGS = {
     'SalesRevenueNet',
     'SalesRevenueGoodsNet',
   ],
-  costOfRevenue: [
-    'CostOfRevenue',
-    'CostOfGoodsAndServicesSold',
-    'CostOfGoodsSold',
-    'CostOfServices',
-  ],
+  costOfRevenue: ['CostOfRevenue', 'CostOfGoodsAndServicesSold', 'CostOfGoodsSold', 'CostOfServices'],
   grossProfit: ['GrossProfit'],
   operatingExpenses: ['OperatingExpenses'],
   rnd: ['ResearchAndDevelopmentExpense'],
@@ -47,8 +36,6 @@ const DEFAULT_TAGS = {
   epsDiluted: ['EarningsPerShareDiluted'],
   sharesBasic: ['WeightedAverageNumberOfSharesOutstandingBasic'],
   sharesDiluted: ['WeightedAverageNumberOfDilutedSharesOutstanding'],
-
-  // Balance Sheet
   cash: ['CashAndCashEquivalentsAtCarryingValue', 'Cash'],
   shortTermInvestments: ['ShortTermInvestments', 'MarketableSecuritiesCurrent'],
   receivables: ['AccountsReceivableNetCurrent', 'ReceivablesNetCurrent'],
@@ -64,12 +51,7 @@ const DEFAULT_TAGS = {
   longTermDebt: ['LongTermDebtNoncurrent', 'LongTermDebt'],
   totalLiabilities: ['Liabilities'],
   retainedEarnings: ['RetainedEarningsAccumulatedDeficit'],
-  stockholdersEquity: [
-    'StockholdersEquity',
-    'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
-  ],
-
-  // Cash Flow
+  stockholdersEquity: ['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'],
   operatingCashFlow: ['NetCashProvidedByUsedInOperatingActivities'],
   investingCashFlow: ['NetCashProvidedByUsedInInvestingActivities'],
   financingCashFlow: ['NetCashProvidedByUsedInFinancingActivities'],
@@ -80,69 +62,42 @@ const DEFAULT_TAGS = {
   debtRepaid: ['RepaymentsOfLongTermDebt'],
 };
 
-// Banking industry (SIC 6000-6999): revenue = interest income + non-interest income
-// Banks typically don't report "Revenues", "CostOfRevenue", or "GrossProfit" at all.
 const BANK_TAGS = {
-  revenue: [
-    // Net revenues (interest + non-interest)
-    'Revenues',
-    'InterestAndDividendIncomeOperating',
-    'InterestIncomeOperating',
-  ],
-  // Bank-specific interest revenue (additional metric)
-  netInterestIncome: ['InterestIncomeExpenseNet'],
-  noninterestIncome: ['NoninterestIncome'],
-  // Banks don't report these — leave empty to avoid confusion
+  revenue: ['Revenues', 'InterestAndDividendIncomeOperating', 'InterestIncomeOperating'],
+  cash: ['CashAndDueFromBanks', 'Cash', 'CashAndCashEquivalentsAtCarryingValue'],
   costOfRevenue: [],
   grossProfit: [],
   rnd: [],
 };
 
-// Insurance industry (SIC 6300-6411): premiums + investment income
 const INSURANCE_TAGS = {
-  revenue: [
-    'Revenues',
-    'PremiumsEarnedNet',
-  ],
+  revenue: ['Revenues', 'PremiumsEarnedNet'],
   costOfRevenue: [],
   grossProfit: [],
 };
 
-/**
- * Get the effective tag list for a metric, given industry.
- */
 function getTags(metricKey, sicCode) {
   const sic = parseInt(sicCode, 10) || 0;
   let industryTags = {};
-
   if (sic >= 6000 && sic <= 6299) industryTags = BANK_TAGS;
   else if (sic >= 6300 && sic <= 6411) industryTags = INSURANCE_TAGS;
-
-  // Industry override takes precedence; falls back to default.
   if (industryTags[metricKey] !== undefined) return industryTags[metricKey];
   return DEFAULT_TAGS[metricKey] || [];
 }
 
 // ============================================================================
-// Period extraction (using period-end dates, not fy field)
+// Period extraction
 // ============================================================================
 
-/**
- * From a companyfacts object, extract all distinct annual fiscal years by looking
- * at 10-K filings with fp="FY". Uses the end date to determine which calendar year
- * the fiscal year maps to.
- */
 export function extractAnnualPeriods(facts) {
-  const years = new Map(); // endYear -> { fy, fp, end }
+  const years = new Map();
   const scanTags = ['Assets', 'NetIncomeLoss', 'StockholdersEquity', 'Revenues', 'Liabilities'];
-
   for (const tag of scanTags) {
     const concept = facts['us-gaap']?.[tag];
     if (!concept?.units) continue;
     for (const entries of Object.values(concept.units)) {
       for (const e of entries) {
         if (e.form === '10-K' && e.fp === 'FY' && e.end) {
-          // Parse end date to get the calendar year
           const endYear = parseInt(e.end.slice(0, 4), 10);
           if (!years.has(endYear) || e.filed > years.get(endYear).filed) {
             years.set(endYear, { fy: endYear, fp: 'FY', end: e.end, filed: e.filed });
@@ -151,17 +106,12 @@ export function extractAnnualPeriods(facts) {
       }
     }
   }
-
   return Array.from(years.values()).sort((a, b) => b.fy - a.fy);
 }
 
-/**
- * Extract quarterly periods. We key by end-date quarter for robustness.
- */
 export function extractQuarterlyPeriods(facts) {
-  const periods = new Map(); // "YYYY-Q" -> { fy, fp, end }
+  const periods = new Map();
   const scanTags = ['Assets', 'NetIncomeLoss', 'Revenues'];
-
   for (const tag of scanTags) {
     const concept = facts['us-gaap']?.[tag];
     if (!concept?.units) continue;
@@ -177,7 +127,6 @@ export function extractQuarterlyPeriods(facts) {
       }
     }
   }
-
   return Array.from(periods.values()).sort((a, b) => {
     if (a.fy !== b.fy) return b.fy - a.fy;
     return b.fp.localeCompare(a.fp);
@@ -185,55 +134,37 @@ export function extractQuarterlyPeriods(facts) {
 }
 
 // ============================================================================
-// Value lookup — match by period END DATE, pick latest-filed
+// Value lookup
 // ============================================================================
 
-/**
- * Find the best value for a metric at a given period.
- * Matches using period end date (more reliable than fy field).
- * Returns { value, tag, unit, accession, filed, end } for transparency.
- */
 function findFactByEnd(facts, tags, periodEnd, form, scope = 'USD') {
   const expectedEndYear = periodEnd.slice(0, 4);
-
   for (const tag of tags) {
     const concept = facts['us-gaap']?.[tag] || facts['ifrs-full']?.[tag];
     if (!concept?.units) continue;
-
-    // Preferred units first, then any available
     const preferred = scope === 'USD' ? ['USD'] : scope === 'shares' ? ['shares'] : ['USD/shares'];
     const allUnits = [...preferred, ...Object.keys(concept.units).filter((u) => !preferred.includes(u))];
-
-    // Collect all matching entries, then pick latest-filed
     const matches = [];
     for (const unit of allUnits) {
       const entries = concept.units[unit];
       if (!entries) continue;
-
       for (const e of entries) {
-        // Match by end date: exact match, or same end year (for small filing-date drift)
         const sameEnd = e.end === periodEnd;
         const sameEndYear = e.end && e.end.slice(0, 4) === expectedEndYear;
         const formMatch = !form || e.form === form;
-
         if (formMatch && (sameEnd || sameEndYear)) {
-          // For annual (FY), require fp=FY. For quarterly, require fp starts with Q.
           if (form === '10-K' && e.fp !== 'FY') continue;
           if (form === '10-Q' && !e.fp?.startsWith('Q')) continue;
           matches.push({ ...e, tag, unit });
         }
       }
-
-      if (matches.length > 0) break; // Stop at first unit with any matches
+      if (matches.length > 0) break;
     }
-
     if (matches.length > 0) {
-      // Prefer exact end-date match over same-year match
       matches.sort((a, b) => {
         const aExact = a.end === periodEnd ? 1 : 0;
         const bExact = b.end === periodEnd ? 1 : 0;
         if (aExact !== bExact) return bExact - aExact;
-        // Then by latest filing date
         return (b.filed || '').localeCompare(a.filed || '');
       });
       const best = matches[0];
@@ -248,7 +179,6 @@ function findFactByEnd(facts, tags, periodEnd, form, scope = 'USD') {
       };
     }
   }
-
   return null;
 }
 
@@ -256,10 +186,6 @@ function findFactByEnd(facts, tags, periodEnd, form, scope = 'USD') {
 // Row builders
 // ============================================================================
 
-/**
- * Build a metric row across multiple periods.
- * Each value is { value, source: { tag, unit, accession, filed, end } }
- */
 export function buildMetricRow(facts, metricKey, label, periods, format = 'currency', sicCode = null) {
   const tags = getTags(metricKey, sicCode);
   const scope = format === 'eps' ? 'USD/shares' : format === 'shares' ? 'shares' : 'USD';
@@ -407,7 +333,61 @@ export function buildRatios(facts, periods, sicCode = null) {
 }
 
 // ============================================================================
-// Formatting helpers
+// NEW: Growth calculations
+// ============================================================================
+
+/**
+ * Year-over-year percentage change. Handles null/zero/negative edge cases safely.
+ * Returns null if not computable, a number (not string) otherwise.
+ */
+export function yoyGrowth(current, previous) {
+  if (current == null || previous == null) return null;
+  if (previous === 0) return null;
+  // If previous was negative, YoY % is misleading — flag it by returning null
+  // (alternative: return Math.sign(current) * Math.abs((current - previous) / previous) * 100,
+  //  but that's confusing. Null is more honest.)
+  if (previous < 0 && current < 0) return null;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+/**
+ * Compound annual growth rate over N years.
+ * CAGR = (end/start)^(1/years) - 1
+ * Returns percentage as a number, or null if not computable (needs positive values).
+ */
+export function cagr(startValue, endValue, years) {
+  if (startValue == null || endValue == null || years <= 0) return null;
+  if (startValue <= 0 || endValue <= 0) return null; // CAGR undefined for negative/zero
+  return (Math.pow(endValue / startValue, 1 / years) - 1) * 100;
+}
+
+/**
+ * Given a metric row's values array (newest first), compute:
+ *   - latest: most recent non-null value
+ *   - prior: second most recent non-null value
+ *   - yoy: percent change latest vs prior
+ *   - cagr5y: 5-year CAGR if possible
+ *   - cagr10y: 10-year CAGR if possible
+ */
+export function computeGrowth(row) {
+  const values = row.values.filter((v) => v.value != null);
+  if (values.length === 0) return { latest: null, prior: null, yoy: null, cagr5y: null, cagr10y: null };
+
+  const latest = values[0].value;
+  const prior = values[1]?.value ?? null;
+  const yoy = prior != null ? yoyGrowth(latest, prior) : null;
+
+  // For CAGR, find the value 5 and 10 periods back if available
+  const fiveBack = values[5]?.value ?? null;
+  const tenBack = values[10]?.value ?? null;
+  const cagr5y = fiveBack != null ? cagr(fiveBack, latest, 5) : null;
+  const cagr10y = tenBack != null ? cagr(tenBack, latest, 10) : null;
+
+  return { latest, prior, yoy, cagr5y, cagr10y };
+}
+
+// ============================================================================
+// Formatting
 // ============================================================================
 
 export function formatValue(value, format) {
@@ -428,24 +408,28 @@ export function formatValue(value, format) {
   return `${sign}$${abs.toFixed(0)}`;
 }
 
+/**
+ * Format a growth percentage with sign and color hint.
+ * Returns { text, color } — color is 'positive' | 'negative' | 'neutral'
+ */
+export function formatGrowth(pct) {
+  if (pct == null || !Number.isFinite(pct)) return { text: '—', color: 'neutral' };
+  const sign = pct > 0 ? '+' : '';
+  const text = `${sign}${pct.toFixed(1)}%`;
+  const color = pct > 0.1 ? 'positive' : pct < -0.1 ? 'negative' : 'neutral';
+  return { text, color };
+}
+
 export function periodLabel(period) {
   if (period.fp === 'FY') return `FY${String(period.fy).slice(-2)}`;
   return `${period.fp} ${String(period.fy).slice(-2)}`;
 }
 
-/**
- * Build the SEC URL for verifying a specific metric value.
- * If we have a source tag, link to the companyconcept endpoint. Otherwise the accession.
- */
 export function buildSourceUrl(cik, source) {
   if (!source) return null;
   const paddedCik = String(cik).padStart(10, '0');
   if (source.tag) {
     return `https://data.sec.gov/api/xbrl/companyconcept/CIK${paddedCik}/us-gaap/${source.tag}.json`;
-  }
-  if (source.accession) {
-    const clean = source.accession.replace(/-/g, '');
-    return `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${paddedCik}&type=&dateb=&owner=include&count=40`;
   }
   return null;
 }
