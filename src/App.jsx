@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { TrendingUp, FileText, BarChart3, Info } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import FilingsPage from './pages/FilingsPage.jsx';
 import AnalysisPage from './pages/AnalysisPage.jsx';
 import AboutPage from './pages/AboutPage.jsx';
@@ -68,6 +70,8 @@ export default function App() {
             </footer>
           </div>
         </div>
+        <Analytics />
+        <SpeedInsights />
       </HashRouter>
     </TickerContext.Provider>
   );
