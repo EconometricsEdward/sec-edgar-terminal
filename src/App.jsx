@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
-import { TrendingUp, FileText, BarChart3, Info } from 'lucide-react';
+import { TrendingUp, FileText, BarChart3, Info, GitCompare } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import FilingsPage from './pages/FilingsPage.jsx';
 import AnalysisPage from './pages/AnalysisPage.jsx';
+import ComparePage from './pages/ComparePage.jsx';
 import AboutPage from './pages/AboutPage.jsx';
 
 export const TickerContext = React.createContext(null);
@@ -52,6 +53,7 @@ export default function App() {
               <nav className="mt-6 flex gap-1 flex-wrap">
                 <TabLink to="/filings" icon={<FileText className="w-4 h-4" />}>Filings</TabLink>
                 <TabLink to="/analysis" icon={<BarChart3 className="w-4 h-4" />}>Analysis</TabLink>
+                <TabLink to="/compare" icon={<GitCompare className="w-4 h-4" />}>Compare</TabLink>
                 <TabLink to="/about" icon={<Info className="w-4 h-4" />}>About</TabLink>
               </nav>
             </header>
@@ -59,7 +61,11 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/filings" replace />} />
               <Route path="/filings" element={<FilingsPage />} />
+              <Route path="/filings/:ticker" element={<FilingsPage />} />
               <Route path="/analysis" element={<AnalysisPage />} />
+              <Route path="/analysis/:ticker" element={<AnalysisPage />} />
+              <Route path="/compare" element={<ComparePage />} />
+              <Route path="/compare/:tickers" element={<ComparePage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="*" element={<Navigate to="/filings" replace />} />
             </Routes>

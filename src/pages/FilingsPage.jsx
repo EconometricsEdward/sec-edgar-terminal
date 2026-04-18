@@ -1,12 +1,15 @@
 import React, { useState, useContext, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
-  FileText, ExternalLink, Calendar, Hash, Filter, ChevronDown, ChevronRight,
+  FileText, ExternalLink, Calendar, Hash, Filter, ChevronDown, ChevronRight, Link as LinkIcon, GitCompare,
 } from 'lucide-react';
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
 
 export default function FilingsPage() {
+  const { ticker: urlTicker } = useParams();
+  const navigate = useNavigate();
   const { company, setCompany } = useContext(TickerContext);
   const [filings, setFilings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -21,6 +24,10 @@ export default function FilingsPage() {
     setFilings([]);
     setExpandedYears({});
     setExpandedQuarters({});
+
+    if (urlTicker !== entry.ticker) {
+      navigate(`/filings/${entry.ticker}`, { replace: false });
+    }
 
     try {
       const res = await fetch(secDataUrl(`/submissions/CIK${entry.cik}.json`));
@@ -94,6 +101,17 @@ export default function FilingsPage() {
   const toggleYear = (y) => setExpandedYears((p) => ({ ...p, [y]: !p[y] }));
   const toggleQuarter = (k) => setExpandedQuarters((p) => ({ ...p, [k]: !p[k] }));
 
+  const copyShareLink = () => {
+    const t = urlTicker || company?.tickers?.split(',')[0]?.trim();
+    const url = `${window.location.origin}/#/filings/${t}`;
+    navigator.clipboard.writeText(url);
+  };
+
+  const goToAnalysis = () => {
+    const t = urlTicker || company?.tickers?.split(',')[0]?.trim();
+    if (t) navigate(`/analysis/${t}`);
+  };
+
   const formColor = (form) => {
     if (form.startsWith('10-K')) return 'bg-amber-900/40 text-amber-200 border-amber-700/50';
     if (form.startsWith('10-Q')) return 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
@@ -114,7 +132,13 @@ export default function FilingsPage() {
 
   return (
     <>
-      <TickerSearchBar onFetch={fetchFilings} loading={loading} error={error} setError={setError} />
+      <TickerSearchBar
+        onFetch={fetchFilings}
+        loading={loading}
+        error={error}
+        setError={setError}
+        initialTicker={urlTicker}
+      />
 
       {filings.length > 0 && (
         <div className="mb-6 flex flex-wrap items-center gap-4">
@@ -134,9 +158,26 @@ export default function FilingsPage() {
               </option>
             ))}
           </select>
-          <div className="text-xs text-stone-500 ml-auto">
+          <div className="text-xs text-stone-500">
             Showing {filterType === 'ALL' ? filings.length : filings.filter((f) => f.form === filterType).length} of{' '}
             {filings.length}
+          </div>
+          <div className="ml-auto flex gap-1">
+            <button
+              onClick={copyShareLink}
+              className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+              title="Copy shareable link"
+            >
+              <LinkIcon className="w-3.5 h-3.5" />
+              Share
+            </button>
+            <button
+              onClick={goToAnalysis}
+              className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+              title="View financial analysis"
+            >
+              View Financials
+            </button>
           </div>
         </div>
       )}

@@ -1,6 +1,8 @@
-import React, { useState, useContext } from 'react';
-import { BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent } from 'lucide-react';
+import React, { useState, useContext, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent, Link as LinkIcon, GitCompare } from 'lucide-react';
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
+import { MetricChart } from '../components/MetricChart.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
 import {
@@ -15,13 +17,19 @@ import {
 } from '../utils/xbrlParser.js';
 
 const STATEMENTS = [
-  { id: 'income', label: 'Income Statement', icon: TrendingUp, build: buildIncomeStatement },
-  { id: 'balance', label: 'Balance Sheet', icon: Wallet, build: buildBalanceSheet },
-  { id: 'cashflow', label: 'Cash Flow', icon: ArrowRightLeft, build: buildCashFlow },
-  { id: 'ratios', label: 'Ratios', icon: Percent, build: buildRatios },
+  { id: 'income', label: 'Income Statement', icon: TrendingUp, build: buildIncomeStatement,
+    featuredRows: ['Revenue', 'Net Income', 'Operating Income', 'Gross Profit'] },
+  { id: 'balance', label: 'Balance Sheet', icon: Wallet, build: buildBalanceSheet,
+    featuredRows: ['Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Cash & Equivalents'] },
+  { id: 'cashflow', label: 'Cash Flow', icon: ArrowRightLeft, build: buildCashFlow,
+    featuredRows: ['Operating Cash Flow', 'Capital Expenditures', 'Financing Cash Flow', 'Investing Cash Flow'] },
+  { id: 'ratios', label: 'Ratios', icon: Percent, build: buildRatios,
+    featuredRows: ['Gross Margin', 'Operating Margin', 'Net Margin', 'Return on Equity (ROE)'] },
 ];
 
 export default function AnalysisPage() {
+  const { ticker: urlTicker } = useParams();
+  const navigate = useNavigate();
   const { company, setCompany } = useContext(TickerContext);
   const [facts, setFacts] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -34,6 +42,11 @@ export default function AnalysisPage() {
     setLoading(true);
     setError(null);
     setFacts(null);
+
+    // Update URL to the ticker (deep link)
+    if (urlTicker !== entry.ticker) {
+      navigate(`/analysis/${entry.ticker}`, { replace: false });
+    }
 
     try {
       const [submissionsRes, factsRes] = await Promise.all([
@@ -78,7 +91,15 @@ export default function AnalysisPage() {
     : [];
 
   const statementDef = STATEMENTS.find((s) => s.id === statement);
-  const rows = facts && periods.length > 0 ? statementDef.build(facts, periods) : [];
+  const rows = useMemo(
+    () => (facts && periods.length > 0 ? statementDef.build(facts, periods) : []),
+    [facts, periods, statementDef]
+  );
+
+  const featuredRows = useMemo(
+    () => rows.filter((r) => statementDef.featuredRows.includes(r.label)),
+    [rows, statementDef]
+  );
 
   const exportCsv = () => {
     if (!rows.length || !periods.length) return;
@@ -97,9 +118,26 @@ export default function AnalysisPage() {
     URL.revokeObjectURL(url);
   };
 
+  const copyShareLink = () => {
+    const url = `${window.location.origin}/#/analysis/${company?.tickers?.split(',')[0]?.trim() || urlTicker}`;
+    navigator.clipboard.writeText(url);
+  };
+
+  const goToCompare = () => {
+    const t = urlTicker || company?.tickers?.split(',')[0]?.trim();
+    if (t) navigate(`/compare/${t}`);
+    else navigate('/compare');
+  };
+
   return (
     <>
-      <TickerSearchBar onFetch={fetchFacts} loading={loading} error={error} setError={setError} />
+      <TickerSearchBar
+        onFetch={fetchFacts}
+        loading={loading}
+        error={error}
+        setError={setError}
+        initialTicker={urlTicker}
+      />
 
       {facts && periods.length > 0 && (
         <>
@@ -149,6 +187,24 @@ export default function AnalysisPage() {
             </div>
 
             <button
+              onClick={copyShareLink}
+              className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+              title="Copy shareable link"
+            >
+              <LinkIcon className="w-3.5 h-3.5" />
+              Share
+            </button>
+
+            <button
+              onClick={goToCompare}
+              className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+              title="Compare with peers"
+            >
+              <GitCompare className="w-3.5 h-3.5" />
+              Compare
+            </button>
+
+            <button
               onClick={exportCsv}
               className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
               title="Download current view as CSV"
@@ -158,6 +214,22 @@ export default function AnalysisPage() {
             </button>
           </div>
 
+          {/* Key metric charts */}
+          {featuredRows.length > 0 && (
+            <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {featuredRows.map((row) => (
+                <MetricChart
+                  key={row.label}
+                  title={row.label}
+                  data={row.values}
+                  format={row.format}
+                  chartType={row.format === 'percent' || row.format === 'decimal' ? 'line' : 'bar'}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Full data table */}
           <div className="border-2 border-stone-800 bg-stone-900/30 overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-stone-900 border-b-2 border-stone-800">
@@ -229,7 +301,7 @@ export default function AnalysisPage() {
           <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">Financial Analysis</p>
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Enter a ticker symbol above to load structured financial data (Income Statement, Balance Sheet,
-            Cash Flow, Ratios) across all historical 10-K and 10-Q filings.
+            Cash Flow, Ratios) across all historical 10-K and 10-Q filings — with charts and CSV export.
           </p>
         </div>
       )}
