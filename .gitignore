@@ -23,3 +23,7 @@ yarn-error.log*
 
 # Vercel
 .vercel
+
+# Next.js
+.next/
+next-env.d.ts
