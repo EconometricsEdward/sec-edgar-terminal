@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
-import { TrendingUp, FileText, BarChart3, Info, GitCompare, Home } from 'lucide-react';
+import { TrendingUp, FileText, BarChart3, Info, GitCompare, Home, Wallet } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import LandingPage from './pages/LandingPage.jsx';
 import FilingsPage from './pages/FilingsPage.jsx';
 import AnalysisPage from './pages/AnalysisPage.jsx';
 import ComparePage from './pages/ComparePage.jsx';
+import FundPage from './pages/FundPage.jsx';
 import AboutPage from './pages/AboutPage.jsx';
 
 export const TickerContext = React.createContext(null);
@@ -32,7 +33,6 @@ export default function App() {
           <div className="relative max-w-6xl mx-auto px-6 py-10">
             <header className="border-b-2 border-stone-800 pb-6 mb-8">
               <div className="flex items-center justify-between flex-wrap gap-4">
-                {/* Logo now links to landing page ("/") */}
                 <NavLink to="/" className="group">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-amber-500 flex items-center justify-center group-hover:bg-amber-400 transition-colors">
@@ -57,6 +57,7 @@ export default function App() {
                 <TabLink to="/filings" icon={<FileText className="w-4 h-4" />}>Filings</TabLink>
                 <TabLink to="/analysis" icon={<BarChart3 className="w-4 h-4" />}>Analysis</TabLink>
                 <TabLink to="/compare" icon={<GitCompare className="w-4 h-4" />}>Compare</TabLink>
+                <TabLink to="/fund" icon={<Wallet className="w-4 h-4" />}>Funds</TabLink>
                 <TabLink to="/about" icon={<Info className="w-4 h-4" />}>About</TabLink>
               </nav>
             </header>
@@ -69,6 +70,8 @@ export default function App() {
               <Route path="/analysis/:ticker" element={<AnalysisPage />} />
               <Route path="/compare" element={<ComparePage />} />
               <Route path="/compare/:tickers" element={<ComparePage />} />
+              <Route path="/fund" element={<FundPage />} />
+              <Route path="/fund/:ticker" element={<FundPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="*" element={<LandingPage />} />
             </Routes>
