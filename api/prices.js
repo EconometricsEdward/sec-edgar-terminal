@@ -1,26 +1,17 @@
 /**
- * Stock price proxy with waterfall fallback: Yahoo → Stooq → Finnhub.
+ * Stock price proxy — Yahoo v8 chart endpoint.
  *
- * Architecture:
- *   Client calls /api/prices?ticker=X&from=YYYY-MM-DD
- *   This function tries each source in order; first with valid data wins.
- *   Each attempt has a 6-second timeout so one slow source can't stall the response.
- *   Response includes { source } so the UI can show which feed served the data.
+ * Why this endpoint: Yahoo's legacy /v7/finance/download/ endpoint started returning
+ * 401 Unauthorized sometime in 2024 for unauthenticated requests. The /v8/finance/chart/
+ * endpoint still works without authentication and returns richer data (adjusted close,
+ * splits, dividends) as JSON instead of CSV.
  *
- * Data sources and why we try in this order:
- *   1. Yahoo Finance — most reliable, best coverage, includes split/dividend adjustments,
- *      no API key needed. Suitable for personal/non-commercial/educational use.
- *   2. Stooq — free, no key, good fallback when Yahoo rate-limits or blocks.
- *   3. Finnhub — paid service with free tier (60 req/min). Requires FINNHUB_API_KEY
- *      environment variable. Used as the last-resort safety net.
+ * Fallback strategy: If Yahoo v8 fails, we try Stooq as a secondary. Stooq sometimes
+ * works from cloud IPs, sometimes doesn't (shared-quota issues with Vercel). That's
+ * fine as a best-effort backup.
  *
- * Environment variables:
- *   FINNHUB_API_KEY — set in Vercel dashboard, never in code or git.
+ * No Finnhub: Finnhub moved /stock/candle behind a paywall in 2024. Not usable.
  */
-
-// ---------------------------------------------------------------------------
-// Rate limiting (per-IP, in-memory, best-effort)
-// ---------------------------------------------------------------------------
 
 const RATE = { windowMs: 60_000, max: 30 };
 const buckets = new Map();
@@ -28,87 +19,84 @@ const buckets = new Map();
 function checkRate(ip) {
   const now = Date.now();
   const b = buckets.get(ip) || { count: 0, resetAt: now + RATE.windowMs };
-  if (now > b.resetAt) {
-    b.count = 0;
-    b.resetAt = now + RATE.windowMs;
-  }
+  if (now > b.resetAt) { b.count = 0; b.resetAt = now + RATE.windowMs; }
   b.count += 1;
   buckets.set(ip, b);
   return b.count <= RATE.max;
 }
 
-// ---------------------------------------------------------------------------
-// Fetch with timeout
-// ---------------------------------------------------------------------------
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } finally {
-    clearTimeout(timer);
+    clearTimeout(t);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Source 1: Yahoo Finance (unofficial CSV endpoint)
+// Source 1: Yahoo v8 chart endpoint (JSON)
 // ---------------------------------------------------------------------------
 
 async function tryYahoo(ticker, fromEpoch, toEpoch) {
-  // Yahoo uses uppercase tickers; class shares use a dash (BRK-B, not BRK.B)
+  // Class shares: Yahoo uses dash, not dot (BRK-B, not BRK.B)
   const yahooTicker = ticker.toUpperCase().replace(/\./g, '-');
   const url =
-    `https://query1.finance.yahoo.com/v7/finance/download/${yahooTicker}` +
+    `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}` +
     `?period1=${fromEpoch}&period2=${toEpoch}&interval=1d&events=history&includeAdjustedClose=true`;
 
   const r = await fetchWithTimeout(url, {
     headers: {
-      // Browser-like UA — Yahoo is less likely to rate-limit requests that look human
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-      Accept: 'text/csv,text/plain,*/*',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+      Accept: 'application/json,text/plain,*/*',
     },
   });
 
   if (!r.ok) throw new Error(`Yahoo HTTP ${r.status}`);
 
-  const text = await r.text();
-  if (text.startsWith('<') || text.length < 100) {
-    throw new Error(`Yahoo returned unexpected response (${text.length} chars)`);
+  const data = await r.json();
+
+  // Response shape: { chart: { result: [{ timestamp, indicators: { quote, adjclose }}], error } }
+  if (data.chart?.error) {
+    throw new Error(`Yahoo error: ${data.chart.error.description || data.chart.error.code}`);
   }
 
-  // Expected CSV: Date,Open,High,Low,Close,Adj Close,Volume
-  const lines = text.trim().split('\n');
-  const header = lines[0]?.toLowerCase() || '';
-  if (!header.includes('date') || !header.includes('close')) {
-    throw new Error('Yahoo response not in expected CSV format');
-  }
+  const result = data.chart?.result?.[0];
+  if (!result) throw new Error('Yahoo returned no result');
+
+  const timestamps = result.timestamp || [];
+  const quote = result.indicators?.quote?.[0] || {};
+  const adjClose = result.indicators?.adjclose?.[0]?.adjclose || [];
+  const opens = quote.open || [];
+  const highs = quote.high || [];
+  const lows = quote.low || [];
+  const closes = quote.close || [];
+  const volumes = quote.volume || [];
+
+  if (timestamps.length === 0) throw new Error('Yahoo returned empty price series');
 
   const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',');
-    if (cols.length < 6) continue;
-    const [date, open, high, low, close, adjClose, volume] = cols;
-    // Prefer adjusted close (splits/dividends) when available
-    const closeNum = parseFloat(adjClose || close);
-    if (!Number.isFinite(closeNum)) continue;
+  for (let i = 0; i < timestamps.length; i++) {
+    const close = adjClose[i] ?? closes[i];
+    if (!Number.isFinite(close)) continue;
+    const date = new Date(timestamps[i] * 1000).toISOString().slice(0, 10);
     rows.push({
       date,
-      open: parseFloat(open),
-      high: parseFloat(high),
-      low: parseFloat(low),
-      close: closeNum,
-      volume: volume ? parseInt(volume, 10) : null,
+      open: opens[i],
+      high: highs[i],
+      low: lows[i],
+      close,
+      volume: volumes[i] ?? null,
     });
   }
 
-  if (rows.length === 0) throw new Error('Yahoo CSV had no parseable rows');
+  if (rows.length === 0) throw new Error('Yahoo series had no valid rows');
   return rows;
 }
 
 // ---------------------------------------------------------------------------
-// Source 2: Stooq
+// Source 2: Stooq (best-effort backup)
 // ---------------------------------------------------------------------------
 
 async function tryStooq(ticker, fromIso) {
@@ -117,8 +105,7 @@ async function tryStooq(ticker, fromIso) {
 
   const r = await fetchWithTimeout(url, {
     headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
       Accept: 'text/csv,text/plain,*/*',
     },
   });
@@ -126,17 +113,21 @@ async function tryStooq(ticker, fromIso) {
   if (!r.ok) throw new Error(`Stooq HTTP ${r.status}`);
 
   const text = await r.text();
-  if (text.startsWith('<') || text.trim().length < 50) {
-    throw new Error('Stooq returned HTML or empty response');
-  }
-  if (text.startsWith('No data')) {
-    throw new Error('Stooq has no data for this ticker');
+  // Tolerate leading BOM or whitespace
+  const cleaned = text.replace(/^\uFEFF/, '').trim();
+
+  if (!cleaned || cleaned.length < 50) throw new Error('Stooq empty response');
+  if (cleaned.startsWith('<')) throw new Error('Stooq returned HTML');
+  if (cleaned.startsWith('No data')) throw new Error('Stooq has no data for ticker');
+  if (cleaned.toLowerCase().includes('exceeded') && cleaned.length < 500) {
+    throw new Error('Stooq rate limit hit');
   }
 
-  const lines = text.trim().split('\n');
-  const header = lines[0]?.toLowerCase() || '';
+  const lines = cleaned.split(/\r?\n/);
+  const header = (lines[0] || '').toLowerCase();
   if (!header.includes('date') || !header.includes('close')) {
-    throw new Error('Stooq response not in CSV format');
+    // Log first line for diagnosis
+    throw new Error(`Stooq not CSV: "${lines[0]?.slice(0, 80)}"`);
   }
 
   const rows = [];
@@ -157,51 +148,7 @@ async function tryStooq(ticker, fromIso) {
   }
 
   if (rows.length === 0) throw new Error('Stooq CSV had no parseable rows');
-  // Stooq doesn't support date range params; filter client-side
-  return fromIso ? rows.filter((row) => row.date >= fromIso) : rows;
-}
-
-// ---------------------------------------------------------------------------
-// Source 3: Finnhub (requires FINNHUB_API_KEY)
-// ---------------------------------------------------------------------------
-
-async function tryFinnhub(ticker, fromEpoch, toEpoch) {
-  const apiKey = process.env.FINNHUB_API_KEY;
-  if (!apiKey) throw new Error('FINNHUB_API_KEY not configured');
-
-  const finnhubTicker = ticker.toUpperCase();
-  const url =
-    `https://finnhub.io/api/v1/stock/candle` +
-    `?symbol=${finnhubTicker}&resolution=D&from=${fromEpoch}&to=${toEpoch}&token=${apiKey}`;
-
-  const r = await fetchWithTimeout(url);
-  if (!r.ok) throw new Error(`Finnhub HTTP ${r.status}`);
-
-  const data = await r.json();
-
-  // Finnhub format: { s: 'ok'|'no_data', c: [closes], h, l, o, t: [timestamps], v: [volumes] }
-  if (data.s !== 'ok') throw new Error(`Finnhub status: ${data.s || 'unknown'}`);
-  if (!Array.isArray(data.c) || data.c.length === 0) {
-    throw new Error('Finnhub returned empty price array');
-  }
-
-  const rows = [];
-  for (let i = 0; i < data.c.length; i++) {
-    const ts = data.t[i];
-    if (!ts || !Number.isFinite(data.c[i])) continue;
-    const date = new Date(ts * 1000).toISOString().slice(0, 10);
-    rows.push({
-      date,
-      open: data.o[i],
-      high: data.h[i],
-      low: data.l[i],
-      close: data.c[i],
-      volume: data.v[i] ?? null,
-    });
-  }
-
-  if (rows.length === 0) throw new Error('Finnhub data had no parseable rows');
-  return rows;
+  return fromIso ? rows.filter((r) => r.date >= fromIso) : rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,30 +165,26 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid ticker format' });
   }
 
-  const ip =
-    req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-    req.headers['x-real-ip'] ||
-    'unknown';
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim()
+    || req.headers['x-real-ip'] || 'unknown';
   if (!checkRate(ip)) {
     return res.status(429).json({ error: 'Rate limit exceeded (30 req/min per IP)' });
   }
 
-  // Default range: last 10 years
+  // Default: 10 years of history
   const now = new Date();
   const defaultFrom = new Date(now);
   defaultFrom.setFullYear(defaultFrom.getFullYear() - 10);
-
-  const fromIso =
-    from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : defaultFrom.toISOString().slice(0, 10);
+  const fromIso = from && /^\d{4}-\d{2}-\d{2}$/.test(from)
+    ? from
+    : defaultFrom.toISOString().slice(0, 10);
   const fromEpoch = Math.floor(new Date(fromIso).getTime() / 1000);
   const toEpoch = Math.floor(now.getTime() / 1000);
 
-  // Waterfall
   const attempts = [];
   const sources = [
     { name: 'yahoo', fn: () => tryYahoo(ticker, fromEpoch, toEpoch) },
     { name: 'stooq', fn: () => tryStooq(ticker, fromIso) },
-    { name: 'finnhub', fn: () => tryFinnhub(ticker, fromEpoch, toEpoch) },
   ];
 
   for (const { name, fn } of sources) {
@@ -249,10 +192,7 @@ export default async function handler(req, res) {
       const rows = await fn();
       if (rows && rows.length > 0) {
         attempts.push({ source: name, status: 'success', rowCount: rows.length });
-        res.setHeader(
-          'Cache-Control',
-          'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400'
-        );
+        res.setHeader('Cache-Control', 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400');
         res.setHeader('Content-Type', 'application/json');
         return res.status(200).json({
           ticker,
@@ -270,10 +210,10 @@ export default async function handler(req, res) {
     }
   }
 
-  // All three sources failed — return diagnostic details
   return res.status(502).json({
-    error: `All price sources failed for ticker "${ticker}"`,
+    error: `Price sources unavailable for ticker "${ticker}"`,
     ticker,
     attempts,
+    note: 'Yahoo Finance is the primary source; Stooq is a backup. Both may occasionally be unreachable from cloud hosting IPs.',
   });
 }
