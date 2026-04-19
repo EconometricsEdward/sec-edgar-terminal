@@ -5,10 +5,6 @@ import {
   AlertTriangle, Download, Sparkles, TrendingUp, Percent, BarChart3,
   Trophy, LayoutGrid, ExternalLink,
 } from 'lucide-react';
-import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
-  Tooltip, CartesianGrid, ReferenceLine, Cell,
-} from 'recharts';
 import { TickerContext } from '../App.jsx';
 import { ComparisonChart } from '../components/MetricChart.jsx';
 import { secDataUrl, secFilesUrl } from '../utils/secApi.js';
@@ -79,12 +75,8 @@ export default function ComparePage() {
   const [autoSuggestFor, setAutoSuggestFor] = useState(null);
   const [autoSuggestions, setAutoSuggestions] = useState([]);
 
-  // Fix React warning: defer URL updates so they happen AFTER render, not during.
-  // Previously updateUrl was called inside setCompanies updater, causing
-  // "Cannot update HashRouter while rendering ComparePage" warning.
   const updateUrl = useCallback((cmps) => {
     const tickers = cmps.map((c) => c.ticker).join(',');
-    // Defer navigation to next tick so React finishes the render first
     setTimeout(() => {
       if (tickers) navigate(`/compare/${tickers}`, { replace: true });
       else navigate('/compare', { replace: true });
@@ -151,14 +143,12 @@ export default function ComparePage() {
         fetch(secDataUrl(`/submissions/CIK${entry.cik}.json`)),
         fetch(secDataUrl(`/api/xbrl/companyfacts/CIK${entry.cik}.json`)),
       ]);
-
       if (!factsRes.ok) {
         if (factsRes.status === 404) throw new Error('No XBRL financial data available');
         throw new Error(`SEC API ${factsRes.status}`);
       }
       const factsData = await factsRes.json();
-      let sicCode = null;
-      let sicDescription = null;
+      let sicCode = null, sicDescription = null;
       if (submissionsRes.ok) {
         const sub = await submissionsRes.json();
         sicCode = sub.sic;
@@ -207,7 +197,6 @@ export default function ComparePage() {
     if (!anchor.sicCode || anchor.loading || anchor.error) return;
     if (autoSuggestFor === anchor.ticker) return;
     setAutoSuggestFor(anchor.ticker);
-
     const suggestions = [];
     for (const entry of Object.values(tickerMap || {})) {
       if (entry.ticker === anchor.ticker) continue;
@@ -421,30 +410,22 @@ export default function ComparePage() {
     });
   }, [companies]);
 
-  // ==========================================================================
-  // Growth bars: ONE bar per data point, each with its own Cell fill.
-  // This is the ONLY pattern Recharts respects for per-bar coloring.
-  // ==========================================================================
-  const buildGrowthBarRows = useCallback((field) => {
+  // Build growth bar data: grouped [{ metric, bars: [{ticker, color, value}, ...] }, ...]
+  const buildGrowthGroups = useCallback((field) => {
     const loadedCompanies = companies.filter((c) => c.facts && !c.error);
-    const rows = [];
-    GROWTH_BAR_METRICS.forEach((m) => {
-      loadedCompanies.forEach((c) => {
+    return GROWTH_BAR_METRICS.map((m) => {
+      const bars = loadedCompanies.map((c) => {
         const periods = extractAnnualPeriods(c.facts).slice(0, 10);
         const metricRow = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode);
         const growth = computeGrowth(metricRow);
-        const val = field === '5y' ? growth.cagr5y : growth.cagr10y;
-        rows.push({
-          // Flat shape: each row IS one bar
-          label: `${m.label} — ${c.ticker}`,
-          metric: m.label,
+        return {
           ticker: c.ticker,
           color: c.color,
-          value: val,
-        });
+          value: field === '5y' ? growth.cagr5y : growth.cagr10y,
+        };
       });
+      return { metric: m.label, bars };
     });
-    return rows;
   }, [companies]);
 
   const exportFullCsv = () => {
@@ -693,8 +674,8 @@ export default function ComparePage() {
         <>
           <SectionTitle icon={BarChart3} title="Growth Rates (CAGR)" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-            <GrowthBarChart title="5-Year CAGR" rows={buildGrowthBarRows('5y')} companies={companies} />
-            <GrowthBarChart title="10-Year CAGR" rows={buildGrowthBarRows('10y')} companies={companies} />
+            <GrowthBarChart title="5-Year CAGR" groups={buildGrowthGroups('5y')} companies={companies} />
+            <GrowthBarChart title="10-Year CAGR" groups={buildGrowthGroups('10y')} companies={companies} />
           </div>
         </>
       )}
@@ -818,26 +799,94 @@ function SnapshotCell({ value, row, isBest, isWorst }) {
 }
 
 // ============================================================================
-// Growth bar chart — ONE Bar series with per-Cell colors.
-// The DOM inspection revealed Recharts renders bars as <path> elements and
-// when multiple <Bar> components share the chart, the fill is broadcast from
-// the first one. The fix: flatten to a single Bar with 20 data points (4 metrics
-// × 5 companies), each with its own Cell fill. Colors are guaranteed unique
-// because each Cell is a separate SVG element.
+// GrowthBarChart — hand-rolled SVG, no Recharts.
+//
+// Given the three failed attempts with Recharts color APIs, this chart directly
+// renders <rect> elements with inline fill attributes that the library cannot
+// interfere with. Layout math is simple: divide available width into N metric
+// groups, then M bars per group, with padding between.
+//
+// Props:
+//   title:     chart heading
+//   groups:    [{ metric: 'Revenue', bars: [{ ticker, color, value }, ...] }, ...]
+//   companies: full companies list (used for legend)
 // ============================================================================
 
-function GrowthBarChart({ title, rows, companies }) {
+function GrowthBarChart({ title, groups, companies }) {
   const loadedCompanies = companies.filter((c) => c.facts && !c.error);
 
-  // Find boundaries between metric groups for visual separation
-  const metricGroups = [];
-  let currentMetric = null;
-  rows.forEach((row, i) => {
-    if (row.metric !== currentMetric) {
-      metricGroups.push({ startIdx: i, metric: row.metric });
-      currentMetric = row.metric;
-    }
-  });
+  // SVG viewport
+  const width = 600;
+  const height = 220;
+  const padTop = 15;
+  const padBottom = 50;
+  const padLeft = 45;
+  const padRight = 10;
+  const plotWidth = width - padLeft - padRight;
+  const plotHeight = height - padTop - padBottom;
+
+  // Compute Y-axis scale
+  const allValues = groups.flatMap((g) =>
+    g.bars.map((b) => b.value).filter((v) => v != null && Number.isFinite(v))
+  );
+  let maxY = Math.max(0, ...allValues);
+  let minY = Math.min(0, ...allValues);
+  // Add 10% padding
+  const yRange = maxY - minY;
+  if (yRange > 0) {
+    maxY += yRange * 0.1;
+    if (minY < 0) minY -= yRange * 0.05;
+  } else {
+    maxY = 10;
+    minY = -5;
+  }
+
+  // Handle empty (no 10Y data case)
+  const hasData = allValues.length > 0;
+  if (!hasData) {
+    return (
+      <div className="border-2 border-stone-800 bg-stone-900/30 p-4">
+        <div className="flex items-center justify-between mb-3 px-2">
+          <span className="text-xs uppercase tracking-[0.2em] text-amber-400 font-bold">{title}</span>
+        </div>
+        <div className="flex flex-wrap gap-3 mb-3 px-2">
+          {loadedCompanies.map((c) => (
+            <div key={c.ticker} className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider">
+              <span className="inline-block w-3 h-3" style={{ backgroundColor: c.color }} />
+              <span style={{ color: c.color }}>{c.ticker}</span>
+            </div>
+          ))}
+        </div>
+        <div className="h-[180px] flex items-center justify-center text-stone-600 text-xs">
+          Not enough historical data for 10-year CAGR
+        </div>
+      </div>
+    );
+  }
+
+  // Scale value to Y pixel
+  const yScale = (v) => {
+    if (v == null || !Number.isFinite(v)) return null;
+    return padTop + plotHeight - ((v - minY) / (maxY - minY)) * plotHeight;
+  };
+  const zeroY = yScale(0);
+
+  // Layout: each group gets equal width, bars within a group are side-by-side with small gap
+  const groupCount = groups.length;
+  const groupWidth = plotWidth / groupCount;
+  const groupPadding = groupWidth * 0.1; // 10% padding between groups
+  const innerGroupWidth = groupWidth - groupPadding * 2;
+  const barsPerGroup = loadedCompanies.length;
+  const barGap = 2;
+  const barWidth = Math.max(4, (innerGroupWidth - barGap * (barsPerGroup - 1)) / barsPerGroup);
+
+  // Y-axis grid lines — compute nice round values
+  const gridLines = [];
+  const step = (maxY - minY) / 4;
+  for (let i = 0; i <= 4; i++) {
+    const v = minY + step * i;
+    gridLines.push({ value: v, y: yScale(v) });
+  }
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900/30 p-4">
@@ -845,7 +894,7 @@ function GrowthBarChart({ title, rows, companies }) {
         <span className="text-xs uppercase tracking-[0.2em] text-amber-400 font-bold">{title}</span>
       </div>
 
-      {/* Custom legend — all company colors shown as swatches */}
+      {/* Legend — plain HTML, no library involvement */}
       <div className="flex flex-wrap gap-3 mb-3 px-2">
         {loadedCompanies.map((c) => (
           <div key={c.ticker} className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider">
@@ -855,54 +904,121 @@ function GrowthBarChart({ title, rows, companies }) {
         ))}
       </div>
 
-      {/* Metric group labels above the bars */}
-      <div className="grid gap-1 px-[45px] mb-1" style={{ gridTemplateColumns: `repeat(${metricGroups.length}, 1fr)` }}>
-        {metricGroups.map((g) => (
-          <div key={g.metric} className="text-center text-[10px] text-stone-500 uppercase tracking-wider truncate">
-            {g.metric}
-          </div>
+      {/* Hand-rolled SVG */}
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        height="auto"
+        style={{ fontFamily: 'ui-monospace, monospace' }}
+      >
+        {/* Y-axis grid lines with labels */}
+        {gridLines.map((line, i) => (
+          <g key={i}>
+            <line
+              x1={padLeft}
+              y1={line.y}
+              x2={width - padRight}
+              y2={line.y}
+              stroke="#44403c"
+              strokeDasharray="3 3"
+              strokeWidth="1"
+            />
+            <text
+              x={padLeft - 5}
+              y={line.y + 3}
+              textAnchor="end"
+              fontSize="10"
+              fill="#a8a29e"
+            >
+              {line.value.toFixed(0)}%
+            </text>
+          </g>
         ))}
-      </div>
 
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={rows} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#44403c" vertical={false} />
-          <XAxis
-            dataKey="ticker"
+        {/* Zero line (solid, bolder) */}
+        {minY < 0 && (
+          <line
+            x1={padLeft}
+            y1={zeroY}
+            x2={width - padRight}
+            y2={zeroY}
             stroke="#78716c"
-            tick={{ fontSize: 9, fill: '#a8a29e', fontFamily: 'ui-monospace, monospace' }}
-            interval={0}
+            strokeWidth="1.5"
           />
-          <YAxis
-            stroke="#78716c"
-            tick={{ fontSize: 10, fill: '#a8a29e', fontFamily: 'ui-monospace, monospace' }}
-            tickFormatter={(v) => `${v.toFixed(0)}%`}
-            width={45}
-          />
-          <ReferenceLine y={0} stroke="#57534e" />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#1c1917',
-              border: '2px solid #44403c',
-              fontFamily: 'ui-monospace, monospace',
-              fontSize: '12px',
-              color: '#f5f5f4',
-            }}
-            formatter={(value, _name, item) => {
-              const label = item?.payload?.label || item?.payload?.ticker;
-              if (value == null) return ['—', label];
-              return [`${Number(value).toFixed(1)}%`, label];
-            }}
-            cursor={{ fill: '#f59e0b10' }}
-          />
-          {/* Single Bar, 20 data points, each Cell colored per-row */}
-          <Bar dataKey="value" isAnimationActive={false}>
-            {rows.map((row, i) => (
-              <Cell key={`cell-${i}`} fill={row.color} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+        )}
+
+        {/* Bars + group labels */}
+        {groups.map((group, gIdx) => {
+          const groupX = padLeft + gIdx * groupWidth + groupPadding;
+          const labelY = height - padBottom + 30;
+
+          return (
+            <g key={group.metric}>
+              {/* Metric group label */}
+              <text
+                x={groupX + innerGroupWidth / 2}
+                y={labelY}
+                textAnchor="middle"
+                fontSize="10"
+                fill="#a8a29e"
+                fontWeight="bold"
+                style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}
+              >
+                {group.metric}
+              </text>
+
+              {/* Bars in this group */}
+              {group.bars.map((bar, bIdx) => {
+                const x = groupX + bIdx * (barWidth + barGap);
+                const barY = yScale(bar.value);
+                if (barY == null) return null;
+
+                const barTop = Math.min(barY, zeroY);
+                const barHeight = Math.abs(barY - zeroY);
+
+                return (
+                  <g key={`${group.metric}-${bar.ticker}`}>
+                    {/* The bar itself — inline fill, no library to override it */}
+                    <rect
+                      x={x}
+                      y={barTop}
+                      width={barWidth}
+                      height={Math.max(1, barHeight)}
+                      fill={bar.color}
+                      stroke={bar.color}
+                      strokeWidth="0.5"
+                    >
+                      <title>{`${group.metric} — ${bar.ticker}: ${bar.value != null ? bar.value.toFixed(1) + '%' : 'N/A'}`}</title>
+                    </rect>
+
+                    {/* Ticker label under the bar */}
+                    <text
+                      x={x + barWidth / 2}
+                      y={height - padBottom + 12}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fill={bar.color}
+                      fontWeight="bold"
+                    >
+                      {bar.ticker}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })}
+
+        {/* X-axis baseline */}
+        <line
+          x1={padLeft}
+          y1={height - padBottom}
+          x2={width - padRight}
+          y2={height - padBottom}
+          stroke="#57534e"
+          strokeWidth="1"
+        />
+      </svg>
     </div>
   );
 }
