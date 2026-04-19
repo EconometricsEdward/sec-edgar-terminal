@@ -3,13 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
   Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink, Info,
-  LayoutDashboard, LineChart, Users, DollarSign,
+  LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
 } from 'lucide-react';
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import { MetricChart } from '../components/MetricChart.jsx';
 import SummaryDashboard from '../components/SummaryDashboard.jsx';
 import StockPriceChart from '../components/StockPriceChart.jsx';
 import InsiderActivity from '../components/InsiderActivity.jsx';
+import HoldersSection from '../components/HoldersSection.jsx';
+import ConceptHistoryModal from '../components/ConceptHistoryModal.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
 import {
@@ -35,6 +37,7 @@ const SECTIONS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'stock-chart', label: 'Stock Chart', icon: LineChart },
   { id: 'insiders', label: 'Insiders', icon: Users },
+  { id: 'holders', label: 'Holders', icon: Building2 },
   { id: 'financials', label: 'Financials', icon: DollarSign },
   { id: 'ratios', label: 'Ratios', icon: Percent },
 ];
@@ -71,6 +74,9 @@ export default function AnalysisPage() {
   const handleInsiderMarkers = useCallback((markers) => {
     setInsiderMarkers(markers || []);
   }, []);
+
+  // Concept history modal state — holds { tag, taxonomy, unit } for active trace
+  const [conceptToTrace, setConceptToTrace] = useState(null);
 
   const sectionRefs = useRef({});
 
@@ -238,6 +244,19 @@ export default function AnalysisPage() {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  // Handler for the concept history trigger.
+  // Looks at a row's values to find the first non-null XBRL source, then
+  // opens the modal with that tag. Rows without source data do nothing.
+  const traceRowHistory = useCallback((row) => {
+    const firstSourced = row.values.find((v) => v.source && v.source.tag);
+    if (!firstSourced) return;
+    setConceptToTrace({
+      tag: firstSourced.source.tag,
+      taxonomy: firstSourced.source.taxonomy || 'us-gaap',
+      unit: firstSourced.source.unit || 'USD',
+    });
+  }, []);
 
   const group = classifyIndustry(sicCode);
   const disclosure = industryDisclosure(group);
@@ -424,6 +443,15 @@ export default function AnalysisPage() {
               )}
             </section>
 
+            {/* =============== Holders (13F Institutional) =============== */}
+            {chartTicker && (
+              <HoldersSection
+                ticker={chartTicker}
+                cik={company?.cik}
+                companyName={company?.name}
+              />
+            )}
+
             {/* =============== Financials =============== */}
             <section id="financials" className="scroll-mt-4">
               <SectionHeader icon={DollarSign} title="Financial Statements" />
@@ -508,11 +536,13 @@ export default function AnalysisPage() {
                 periods={periods}
                 growthVisible={growthVisible}
                 cik={company?.cik}
+                onTraceRow={traceRowHistory}
                 isHeaderRow={(label) => ['Revenue', 'Gross Profit', 'Operating Income', 'Net Income', 'Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Operating Cash Flow'].includes(label)}
               />
 
               <p className="mt-4 text-[11px] text-stone-500 leading-relaxed">
                 Source: SEC XBRL Company Facts. Hover any value for the source XBRL tag; click to open SEC's concept endpoint.
+                Click the <History className="inline w-3 h-3 text-amber-400" /> icon next to any metric to trace its full reporting history including restatements.
                 Industry group: <span className="text-amber-400 font-bold">{industryLabel(group)}</span>
                 {sicCode ? <span> · SIC {sicCode}</span> : null}
               </p>
@@ -561,6 +591,7 @@ export default function AnalysisPage() {
                 periods={periods}
                 growthVisible={growthVisible}
                 cik={company?.cik}
+                onTraceRow={traceRowHistory}
                 isHeaderRow={() => false}
               />
 
@@ -572,6 +603,18 @@ export default function AnalysisPage() {
             </section>
           </main>
         </div>
+      )}
+
+      {/* Concept history modal — rendered at root level so it overlays everything */}
+      {conceptToTrace && company?.cik && (
+        <ConceptHistoryModal
+          cik={company.cik}
+          companyName={company?.name || chartTicker}
+          tag={conceptToTrace.tag}
+          taxonomy={conceptToTrace.taxonomy}
+          unit={conceptToTrace.unit}
+          onClose={() => setConceptToTrace(null)}
+        />
       )}
     </>
   );
@@ -590,13 +633,13 @@ function SectionHeader({ icon: Icon, title }) {
   );
 }
 
-function FinancialTable({ rows, periods, growthVisible, cik, isHeaderRow }) {
+function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeaderRow }) {
   return (
     <div className="border-2 border-stone-800 bg-stone-900/30 overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-stone-900 border-b-2 border-stone-800">
           <tr>
-            <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 z-20 min-w-[220px]">
+            <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 z-20 min-w-[240px]">
               Metric
             </th>
             {periods.map((p) => (
@@ -626,10 +669,24 @@ function FinancialTable({ rows, periods, growthVisible, cik, isHeaderRow }) {
           {rows.map((row) => {
             const header = isHeaderRow(row.label);
             const growth = computeGrowth(row);
+            // Check if this row has any XBRL source data — only show history icon if so
+            const hasSource = row.values.some((v) => v.source && v.source.tag);
             return (
-              <tr key={row.label} className={`border-b border-stone-800/60 hover:bg-amber-500/5 transition-colors ${header ? 'bg-stone-900/40' : ''}`}>
+              <tr key={row.label} className={`border-b border-stone-800/60 hover:bg-amber-500/5 transition-colors group ${header ? 'bg-stone-900/40' : ''}`}>
                 <td className={`px-4 py-2.5 sticky left-0 z-10 ${header ? 'bg-stone-900/95 text-stone-100 font-bold' : 'bg-stone-950/95 text-stone-300'}`}>
-                  {row.label}
+                  <span className="inline-flex items-center gap-1.5">
+                    {row.label}
+                    {hasSource && onTraceRow && (
+                      <button
+                        onClick={() => onTraceRow(row)}
+                        className="text-stone-600 hover:text-amber-400 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Trace full history of this concept (detects restatements)"
+                        aria-label={`Trace history of ${row.label}`}
+                      >
+                        <History className="w-3 h-3" />
+                      </button>
+                    )}
+                  </span>
                 </td>
                 {row.values.map((v, i) => (
                   <ValueCell key={i} value={v.value} source={v.source} cik={cik} format={row.format} isHeader={header} />
@@ -655,7 +712,7 @@ function ValueCell({ value, source, cik, format, isHeader }) {
   const tooltip = source
     ? `Tag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}\nClick to open SEC source`
     : value == null ? 'No data reported for this concept' : 'Computed value';
-  const cellClasses = `px-4 py-2.5 text-right tabular-nums group ${
+  const cellClasses = `px-4 py-2.5 text-right tabular-nums group/cell ${
     value == null ? 'text-stone-700' : isHeader ? 'text-stone-100 font-bold' : 'text-stone-300'
   }`;
   if (!sourceUrl || value == null) {
@@ -665,7 +722,7 @@ function ValueCell({ value, source, cik, format, isHeader }) {
     <td className={cellClasses} title={tooltip}>
       <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors">
         {formatValue(value, format)}
-        <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+        <ExternalLink className="w-3 h-3 opacity-0 group-hover/cell:opacity-50 transition-opacity" />
       </a>
     </td>
   );

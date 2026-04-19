@@ -6,6 +6,7 @@ import {
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
+import { getItemsInfo } from '../utils/formItems.js';
 
 export default function FilingsPage() {
   const { ticker: urlTicker } = useParams();
@@ -64,6 +65,10 @@ export default function FilingsPage() {
           primaryDoc,
           primaryDescription: recent.primaryDocDescription?.[i] || '',
           size: recent.size?.[i],
+          // Items field — a comma-separated string of 8-K item codes (e.g. "2.02,9.01").
+          // SEC only populates this for 8-K filings; empty string for other form types.
+          // Some older 8-Ks may have no items data at all.
+          items: recent.items?.[i] || '',
           documentUrl: `https://www.sec.gov/Archives/edgar/data/${parseInt(entry.cik, 10)}/${accessionClean}/${primaryDoc}`,
         };
       });
@@ -238,43 +243,62 @@ export default function FilingsPage() {
 
                           {qOpen && (
                             <div className="divide-y divide-stone-800/60">
-                              {qFilings.map((f) => (
-                                <a
-                                  key={f.accession}
-                                  href={f.documentUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-start gap-4 px-5 py-3.5 hover:bg-amber-500/5 transition-colors group"
-                                >
-                                  <div
-                                    className={`shrink-0 px-2.5 py-1 text-[11px] font-black border tracking-wider ${formColor(
-                                      f.form
-                                    )} min-w-[80px] text-center`}
+                              {qFilings.map((f) => {
+                                // Parse 8-K items if present. For non-8-K filings or 8-Ks with no
+                                // item data, this returns an empty array and no badges render.
+                                const items = f.form === '8-K' ? getItemsInfo(f.items) : [];
+                                return (
+                                  <a
+                                    key={f.accession}
+                                    href={f.documentUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-start gap-4 px-5 py-3.5 hover:bg-amber-500/5 transition-colors group"
                                   >
-                                    {f.form}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-0.5">
-                                      <span className="text-sm font-bold text-stone-100 truncate">
-                                        {f.primaryDescription || f.primaryDoc || 'Filing Document'}
-                                      </span>
-                                      <ExternalLink className="w-3.5 h-3.5 text-stone-500 group-hover:text-amber-500 transition-colors shrink-0" />
+                                    <div
+                                      className={`shrink-0 px-2.5 py-1 text-[11px] font-black border tracking-wider ${formColor(
+                                        f.form
+                                      )} min-w-[80px] text-center`}
+                                    >
+                                      {f.form}
                                     </div>
-                                    <div className="flex items-center gap-4 text-[11px] text-stone-500 uppercase tracking-wider">
-                                      <span className="flex items-center gap-1">
-                                        <Calendar className="w-3 h-3" />
-                                        Filed {f.filingDate}
-                                      </span>
-                                      {f.reportDate && <span>Period {f.reportDate}</span>}
-                                      {f.size && <span>{formatSize(f.size)}</span>}
-                                      <span className="flex items-center gap-1 truncate">
-                                        <Hash className="w-3 h-3" />
-                                        {f.accession}
-                                      </span>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-0.5">
+                                        <span className="text-sm font-bold text-stone-100 truncate">
+                                          {f.primaryDescription || f.primaryDoc || 'Filing Document'}
+                                        </span>
+                                        <ExternalLink className="w-3.5 h-3.5 text-stone-500 group-hover:text-amber-500 transition-colors shrink-0" />
+                                      </div>
+                                      <div className="flex items-center gap-4 text-[11px] text-stone-500 uppercase tracking-wider">
+                                        <span className="flex items-center gap-1">
+                                          <Calendar className="w-3 h-3" />
+                                          Filed {f.filingDate}
+                                        </span>
+                                        {f.reportDate && <span>Period {f.reportDate}</span>}
+                                        {f.size && <span>{formatSize(f.size)}</span>}
+                                        <span className="flex items-center gap-1 truncate">
+                                          <Hash className="w-3 h-3" />
+                                          {f.accession}
+                                        </span>
+                                      </div>
+                                      {/* 8-K item badges — one per disclosed item */}
+                                      {items.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                          {items.map(({ code, label }) => (
+                                            <span
+                                              key={code}
+                                              className="px-1.5 py-0.5 bg-rose-950/40 border border-rose-800/40 text-rose-200 text-[9px] font-bold uppercase tracking-wider"
+                                              title={`8-K Item ${code}`}
+                                            >
+                                              {code} · {label}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
-                                  </div>
-                                </a>
-                              ))}
+                                  </a>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
