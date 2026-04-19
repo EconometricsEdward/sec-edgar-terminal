@@ -1,5 +1,5 @@
 // ============================================================================
-// api/holders.js — 13F Institutional Holders (v2)
+// api/holders — 13F Institutional Holders (Next.js route handler)
 //
 // v1 relied on SEC's full-text search, which doesn't rank results by holder
 // size. Result: we got small family offices instead of Vanguard / BlackRock.
@@ -20,6 +20,9 @@
 // Performance: controlled-concurrency batches respect SEC's 10 req/sec limit.
 // Typical response time: 5-10 seconds for a mega-cap ticker.
 // ============================================================================
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 // ----------------------------------------------------------------------------
 // Known institutional 13F filers, ranked roughly by AUM / 13F visibility.
@@ -141,17 +144,19 @@ const KNOWN_CUSIPS = {
 // Main handler
 // ============================================================================
 
-export default async function handler(req, res) {
-  const { ticker } = req.query;
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const ticker = searchParams.get('ticker');
+
   if (!ticker) {
-    return res.status(400).json({ error: 'ticker parameter required' });
+    return Response.json({ error: 'ticker parameter required' }, { status: 400 });
   }
 
   const tickerUpper = ticker.toUpperCase();
   const cusip = KNOWN_CUSIPS[tickerUpper];
 
   if (!cusip) {
-    return res.status(200).json({
+    return Response.json({
       holders: [],
       meta: {
         ticker: tickerUpper,
@@ -195,7 +200,7 @@ export default async function handler(req, res) {
       return bv - av;
     });
 
-    return res.status(200).json({
+    return Response.json({
       holders: allHolders.slice(0, 30),
       meta: {
         ticker: tickerUpper,
@@ -207,10 +212,10 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error('Holders API error:', err);
-    return res.status(500).json({
-      error: 'Failed to fetch 13F data',
-      detail: err.message,
-    });
+    return Response.json(
+      { error: 'Failed to fetch 13F data', detail: err.message },
+      { status: 500 }
+    );
   }
 }
 

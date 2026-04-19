@@ -4,12 +4,12 @@ import { HelmetProvider } from 'react-helmet-async';
 import { TrendingUp, FileText, BarChart3, Info, GitCompare, Home, Wallet } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
-import LandingPage from './pages/LandingPage.jsx';
-import FilingsPage from './pages/FilingsPage.jsx';
-import AnalysisPage from './pages/AnalysisPage.jsx';
-import ComparePage from './pages/ComparePage.jsx';
-import FundPage from './pages/FundPage.jsx';
-import AboutPage from './pages/AboutPage.jsx';
+import LandingPage from './page-components/LandingPage.jsx';
+import FilingsPage from './page-components/FilingsPage.jsx';
+import AnalysisPage from './page-components/AnalysisPage.jsx';
+import ComparePage from './page-components/ComparePage.jsx';
+import FundPage from './page-components/FundPage.jsx';
+import AboutPage from './page-components/AboutPage.jsx';
 
 export const TickerContext = React.createContext(null);
 

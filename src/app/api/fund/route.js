@@ -1,5 +1,5 @@
 // ============================================================================
-// api/fund.js — Mutual Fund / ETF Data
+// api/fund — Mutual Fund / ETF Data (Next.js route handler)
 //
 // Handles ticker lookups for investment funds (mutual funds + ETFs). Returns:
 //   - Fund metadata (name, family, CIK)
@@ -18,10 +18,15 @@
 // fund-level metadata and AUM.
 // ============================================================================
 
-export default async function handler(req, res) {
-  const { ticker } = req.query;
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const ticker = searchParams.get('ticker');
+
   if (!ticker) {
-    return res.status(400).json({ error: 'ticker parameter required' });
+    return Response.json({ error: 'ticker parameter required' }, { status: 400 });
   }
 
   const userAgent = process.env.SEC_USER_AGENT || 'EDGAR Terminal research-tool@example.com';
@@ -31,7 +36,7 @@ export default async function handler(req, res) {
     // Step 1: Look up ticker → CIK from SEC's official mapping
     const cik = await lookupCikForTicker(tickerUpper, userAgent);
     if (!cik) {
-      return res.status(200).json({
+      return Response.json({
         isFund: false,
         ticker: tickerUpper,
         reason: 'Ticker not found in SEC database',
@@ -41,7 +46,7 @@ export default async function handler(req, res) {
     // Step 2: Fetch submissions to determine if this is a fund
     const submissions = await fetchSubmissions(cik, userAgent);
     if (!submissions) {
-      return res.status(200).json({
+      return Response.json({
         isFund: false,
         ticker: tickerUpper,
         cik,
@@ -52,7 +57,7 @@ export default async function handler(req, res) {
     // Step 3: Detect fund by looking for N-PORT filings in recent history
     const recent = submissions?.filings?.recent;
     if (!recent) {
-      return res.status(200).json({
+      return Response.json({
         isFund: false,
         ticker: tickerUpper,
         cik,
@@ -79,7 +84,7 @@ export default async function handler(req, res) {
     }
 
     if (nportFilings.length === 0) {
-      return res.status(200).json({
+      return Response.json({
         isFund: false,
         ticker: tickerUpper,
         cik,
@@ -116,7 +121,7 @@ export default async function handler(req, res) {
       console.warn('N-PORT parse error:', err.message);
     }
 
-    return res.status(200).json({
+    return Response.json({
       isFund: true,
       ticker: tickerUpper,
       cik,
@@ -133,10 +138,10 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error('Fund API error:', err);
-    return res.status(500).json({
-      error: 'Failed to process fund data',
-      detail: err.message,
-    });
+    return Response.json(
+      { error: 'Failed to process fund data', detail: err.message },
+      { status: 500 }
+    );
   }
 }
 

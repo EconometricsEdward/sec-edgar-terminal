@@ -1,5 +1,8 @@
 /**
- * Stock price proxy — Yahoo v8 chart endpoint.
+ * Stock price proxy — Next.js route handler.
+ *
+ * Primary source: Yahoo v8 chart endpoint (JSON).
+ * Fallback source: Stooq (CSV).
  *
  * Why this endpoint: Yahoo's legacy /v7/finance/download/ endpoint started returning
  * 401 Unauthorized sometime in 2024 for unauthenticated requests. The /v8/finance/chart/
@@ -12,6 +15,9 @@
  *
  * No Finnhub: Finnhub moved /stock/candle behind a paywall in 2024. Not usable.
  */
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const RATE = { windowMs: 60_000, max: 30 };
 const buckets = new Map();
@@ -155,20 +161,22 @@ async function tryStooq(ticker, fromIso) {
 // Main handler
 // ---------------------------------------------------------------------------
 
-export default async function handler(req, res) {
-  const { ticker, from } = req.query;
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const ticker = searchParams.get('ticker');
+  const from = searchParams.get('from');
 
   if (!ticker || typeof ticker !== 'string') {
-    return res.status(400).json({ error: 'Missing ticker parameter' });
+    return Response.json({ error: 'Missing ticker parameter' }, { status: 400 });
   }
   if (!/^[A-Za-z0-9.\-]{1,10}$/.test(ticker)) {
-    return res.status(400).json({ error: 'Invalid ticker format' });
+    return Response.json({ error: 'Invalid ticker format' }, { status: 400 });
   }
 
-  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim()
-    || req.headers['x-real-ip'] || 'unknown';
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim()
+    || request.headers.get('x-real-ip') || 'unknown';
   if (!checkRate(ip)) {
-    return res.status(429).json({ error: 'Rate limit exceeded (30 req/min per IP)' });
+    return Response.json({ error: 'Rate limit exceeded (30 req/min per IP)' }, { status: 429 });
   }
 
   // Default: 10 years of history
@@ -192,17 +200,23 @@ export default async function handler(req, res) {
       const rows = await fn();
       if (rows && rows.length > 0) {
         attempts.push({ source: name, status: 'success', rowCount: rows.length });
-        res.setHeader('Cache-Control', 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400');
-        res.setHeader('Content-Type', 'application/json');
-        return res.status(200).json({
-          ticker,
-          source: name,
-          from: rows[0].date,
-          to: rows[rows.length - 1].date,
-          count: rows.length,
-          prices: rows,
-          attempts,
-        });
+        return Response.json(
+          {
+            ticker,
+            source: name,
+            from: rows[0].date,
+            to: rows[rows.length - 1].date,
+            count: rows.length,
+            prices: rows,
+            attempts,
+          },
+          {
+            status: 200,
+            headers: {
+              'Cache-Control': 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400',
+            },
+          }
+        );
       }
       attempts.push({ source: name, status: 'empty' });
     } catch (err) {
@@ -210,10 +224,13 @@ export default async function handler(req, res) {
     }
   }
 
-  return res.status(502).json({
-    error: `Price sources unavailable for ticker "${ticker}"`,
-    ticker,
-    attempts,
-    note: 'Yahoo Finance is the primary source; Stooq is a backup. Both may occasionally be unreachable from cloud hosting IPs.',
-  });
+  return Response.json(
+    {
+      error: `Price sources unavailable for ticker "${ticker}"`,
+      ticker,
+      attempts,
+      note: 'Yahoo Finance is the primary source; Stooq is a backup. Both may occasionally be unreachable from cloud hosting IPs.',
+    },
+    { status: 502 }
+  );
 }

@@ -1,5 +1,5 @@
 /**
- * Form 4 insider trading parser — SEC XML endpoint.
+ * Form 4 insider trading parser — Next.js route handler.
  *
  * Takes a CIK and a list of accession numbers, fetches the Form 4 primary XML
  * document for each, parses out the insider transaction details, and returns JSON.
@@ -51,6 +51,9 @@
  *   A = acquired (buying or receiving shares)
  *   D = disposed (selling or giving away shares)
  */
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const RATE = { windowMs: 60_000, max: 20 };
 const buckets = new Map();
@@ -240,28 +243,30 @@ async function fetchForm4(cik, accession, userAgent) {
   };
 }
 
-export default async function handler(req, res) {
-  const { cik, accessions } = req.query;
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const cik = searchParams.get('cik');
+  const accessions = searchParams.get('accessions');
 
   if (!cik || !/^\d{1,10}$/.test(String(cik).replace(/^0+/, ''))) {
-    return res.status(400).json({ error: 'Invalid or missing cik parameter' });
+    return Response.json({ error: 'Invalid or missing cik parameter' }, { status: 400 });
   }
   if (!accessions || typeof accessions !== 'string') {
-    return res.status(400).json({ error: 'Missing accessions parameter' });
+    return Response.json({ error: 'Missing accessions parameter' }, { status: 400 });
   }
 
-  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim()
-    || req.headers['x-real-ip'] || 'unknown';
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim()
+    || request.headers.get('x-real-ip') || 'unknown';
   if (!checkRate(ip)) {
-    return res.status(429).json({ error: 'Rate limit exceeded' });
+    return Response.json({ error: 'Rate limit exceeded' }, { status: 429 });
   }
 
   const accessionList = accessions.split(',').map((a) => a.trim()).filter(Boolean);
   if (accessionList.length === 0) {
-    return res.status(400).json({ error: 'No valid accessions provided' });
+    return Response.json({ error: 'No valid accessions provided' }, { status: 400 });
   }
   if (accessionList.length > 30) {
-    return res.status(400).json({ error: 'Too many accessions (max 30 per request)' });
+    return Response.json({ error: 'Too many accessions (max 30 per request)' }, { status: 400 });
   }
 
   const userAgent = process.env.SEC_USER_AGENT
@@ -273,7 +278,6 @@ export default async function handler(req, res) {
   const CONCURRENCY = 5;
 
   const work = [...accessionList];
-  const inflight = [];
 
   async function next() {
     if (work.length === 0) return;
@@ -315,12 +319,18 @@ export default async function handler(req, res) {
   // Sort by date, newest first
   allTransactions.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
-  res.setHeader('Content-Type', 'application/json');
-  return res.status(200).json({
-    cik,
-    filings: results,
-    transactions: allTransactions,
-    errors: errors.length > 0 ? errors : undefined,
-  });
+  return Response.json(
+    {
+      cik,
+      filings: results,
+      transactions: allTransactions,
+      errors: errors.length > 0 ? errors : undefined,
+    },
+    {
+      status: 200,
+      headers: {
+        'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800',
+      },
+    }
+  );
 }
