@@ -1,0 +1,9 @@
+# EDGAR Terminal robots.txt
+# This is a public tool; allow all crawlers to index everything.
+
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://secedgarterminal.com/sitemap.xml
