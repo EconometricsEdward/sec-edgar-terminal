@@ -3,23 +3,23 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   GitCompare, X, Plus, Loader2, AlertCircle, Search, Link as LinkIcon,
   AlertTriangle, Download, Sparkles, TrendingUp, Percent, BarChart3,
-  Trophy, LayoutGrid,
+  Trophy, LayoutGrid, ExternalLink,
 } from 'lucide-react';
 import {
-  ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis,
-  Tooltip, CartesianGrid, Legend, ReferenceLine,
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
+  Tooltip, CartesianGrid, Legend, ReferenceLine, Cell,
 } from 'recharts';
 import { TickerContext } from '../App.jsx';
 import { ComparisonChart } from '../components/MetricChart.jsx';
 import { secDataUrl, secFilesUrl } from '../utils/secApi.js';
 import {
-  extractAnnualPeriods, buildMetricRow, formatValue, periodLabel, computeGrowth,
+  extractAnnualPeriods, buildMetricRow, computeGrowth, buildSourceUrl,
 } from '../utils/xbrlParser.js';
-import { classifyIndustry, industryLabel } from '../utils/industry.js';
+import { classifyIndustry } from '../utils/industry.js';
 import { PEER_GROUPS, COMPANY_COLORS } from '../utils/peerGroups.js';
 
 // ============================================================================
-// Metric definitions — driving the 3 chart sections
+// Metric definitions
 // ============================================================================
 
 const ABSOLUTE_METRICS = [
@@ -33,13 +33,26 @@ const ABSOLUTE_METRICS = [
 
 const RATIO_METRICS = [
   { key: 'roe', label: 'Return on Equity (ROE)', format: 'percent',
-    compute: (vals) => safeDiv(vals.netIncome, vals.stockholdersEquity) * 100 },
+    compute: (vals) => safeDiv(vals.netIncome, vals.stockholdersEquity) * 100,
+    // For "source" links: which raw metric is the numerator (the thing that makes this ratio interesting)
+    sourceMetricKey: 'netIncome',
+    formulaLabel: 'Net Income ÷ Stockholders\' Equity',
+  },
   { key: 'roa', label: 'Return on Assets (ROA)', format: 'percent',
-    compute: (vals) => safeDiv(vals.netIncome, vals.totalAssets) * 100 },
+    compute: (vals) => safeDiv(vals.netIncome, vals.totalAssets) * 100,
+    sourceMetricKey: 'netIncome',
+    formulaLabel: 'Net Income ÷ Total Assets',
+  },
   { key: 'netMargin', label: 'Net Margin', format: 'percent',
-    compute: (vals) => safeDiv(vals.netIncome, vals.revenue) * 100 },
+    compute: (vals) => safeDiv(vals.netIncome, vals.revenue) * 100,
+    sourceMetricKey: 'netIncome',
+    formulaLabel: 'Net Income ÷ Revenue',
+  },
   { key: 'operatingMargin', label: 'Operating Margin', format: 'percent',
-    compute: (vals) => safeDiv(vals.operatingIncome, vals.revenue) * 100 },
+    compute: (vals) => safeDiv(vals.operatingIncome, vals.revenue) * 100,
+    sourceMetricKey: 'operatingIncome',
+    formulaLabel: 'Operating Income ÷ Revenue',
+  },
 ];
 
 const GROWTH_BAR_METRICS = [
@@ -80,10 +93,9 @@ export default function ComparePage() {
   const [globalError, setGlobalError] = useState(null);
   const [initialized, setInitialized] = useState(false);
   const [normalization, setNormalization] = useState('absolute');
-  const [autoSuggestFor, setAutoSuggestFor] = useState(null); // ticker that triggered suggestions
+  const [autoSuggestFor, setAutoSuggestFor] = useState(null);
   const [autoSuggestions, setAutoSuggestions] = useState([]);
 
-  // Load ticker database
   useEffect(() => {
     if (tickerMap) return;
     (async () => {
@@ -106,7 +118,6 @@ export default function ComparePage() {
     })();
   }, [tickerMap, setTickerMap]);
 
-  // Parse URL tickers on mount
   useEffect(() => {
     if (initialized || !tickerMap) return;
     setInitialized(true);
@@ -127,7 +138,6 @@ export default function ComparePage() {
   }, [navigate]);
 
   const addCompany = useCallback(async (entry, updateUrlAfter = true) => {
-    // Guard against re-adding
     if (companies.find((c) => c.ticker === entry.ticker)) return;
     if (companies.length >= MAX_COMPANIES) {
       setGlobalError(`Maximum of ${MAX_COMPANIES} companies at once.`);
@@ -135,7 +145,6 @@ export default function ComparePage() {
     }
     setGlobalError(null);
 
-    // Assign a consistent color based on current count
     const color = COMPANY_COLORS[companies.length % COMPANY_COLORS.length];
     const newCompany = {
       ticker: entry.ticker, name: entry.name, cik: entry.cik, color,
@@ -182,7 +191,6 @@ export default function ComparePage() {
   const removeCompany = useCallback((ticker) => {
     setCompanies((prev) => {
       const next = prev.filter((c) => c.ticker !== ticker);
-      // Reassign colors so removal doesn't leave gaps
       const recolored = next.map((c, i) => ({ ...c, color: COMPANY_COLORS[i % COMPANY_COLORS.length] }));
       updateUrl(recolored);
       return recolored;
@@ -190,7 +198,6 @@ export default function ComparePage() {
   }, [updateUrl]);
 
   const loadPeerGroup = useCallback((group) => {
-    // Replace current set with the peer group
     setCompanies([]);
     setAutoSuggestFor(null);
     setAutoSuggestions([]);
@@ -204,7 +211,6 @@ export default function ComparePage() {
     }, 100);
   }, [tickerMap, addCompany]);
 
-  // When first company loads, auto-suggest peers (same SIC, similar-sized entries from ticker db)
   useEffect(() => {
     if (companies.length !== 1) {
       setAutoSuggestions([]);
@@ -213,17 +219,12 @@ export default function ComparePage() {
     }
     const anchor = companies[0];
     if (!anchor.sicCode || anchor.loading || anchor.error) return;
-    if (autoSuggestFor === anchor.ticker) return; // already suggested for this one
+    if (autoSuggestFor === anchor.ticker) return;
     setAutoSuggestFor(anchor.ticker);
 
-    // Find other tickers with same SIC
-    const anchorSic = String(anchor.sicCode);
     const suggestions = [];
     for (const entry of Object.values(tickerMap || {})) {
       if (entry.ticker === anchor.ticker) continue;
-      // We don't have SIC in tickerMap directly, so use industry-group proxy via name matching
-      // For a real implementation, we'd need to augment ticker database. For now, use a
-      // practical fallback: if the anchor is in a well-known peer group, suggest the rest.
       for (const group of PEER_GROUPS) {
         if (group.tickers.includes(anchor.ticker) && group.tickers.includes(entry.ticker)) {
           if (!suggestions.find((s) => s.ticker === entry.ticker)) {
@@ -243,7 +244,6 @@ export default function ComparePage() {
     navigator.clipboard.writeText(url);
   };
 
-  // Text search suggestions (existing autocomplete)
   const suggestions = useMemo(() => {
     if (!tickerMap || !input.trim()) return [];
     const q = input.trim().toUpperCase();
@@ -269,7 +269,6 @@ export default function ComparePage() {
     setHighlightedIdx(0);
   };
 
-  // Compute shared period set for alignment across companies
   const alignedPeriods = useMemo(() => {
     const allYears = new Set();
     companies.forEach((c) => {
@@ -282,7 +281,6 @@ export default function ComparePage() {
 
   const allLoaded = companies.length > 0 && companies.every((c) => !c.loading);
 
-  // Build per-company data for a metric across aligned periods
   const buildSeriesForMetric = useCallback((metricKey, format = 'currency') => {
     return companies
       .filter((c) => c.facts && !c.error)
@@ -299,13 +297,11 @@ export default function ComparePage() {
       });
   }, [companies]);
 
-  // Apply normalization to a series
   const normalizeSeries = useCallback((series, mode, metricKey) => {
     if (mode === 'absolute') return series;
 
     if (mode === 'indexed') {
       return series.map((s) => {
-        // Find earliest non-null value
         const sorted = [...s.data].sort((a, b) => (a.period?.fy || 0) - (b.period?.fy || 0));
         const baseline = sorted.find((v) => v.value != null)?.value;
         if (!baseline || baseline === 0) return s;
@@ -320,7 +316,6 @@ export default function ComparePage() {
     }
 
     if (mode === 'perShare') {
-      // Need diluted shares outstanding per period per company
       return series.map((s) => {
         const company = companies.find((c) => c.ticker === s.ticker);
         if (!company?.facts) return s;
@@ -341,7 +336,6 @@ export default function ComparePage() {
 
     if (mode === 'pctRevenue') {
       if (metricKey === 'revenue') {
-        // Revenue divided by revenue is always 100%, so skip
         return series.map((s) => ({
           ...s,
           data: s.data.map((v) => ({ ...v, value: v.value != null ? 100 : null })),
@@ -368,7 +362,6 @@ export default function ComparePage() {
     return series;
   }, [companies]);
 
-  // Format depends on normalization mode
   const effectiveFormat = (originalFormat) => {
     if (normalization === 'indexed') return 'indexed';
     if (normalization === 'pctRevenue') return 'percent';
@@ -376,7 +369,6 @@ export default function ComparePage() {
     return originalFormat;
   };
 
-  // Build ratio series — these ignore normalization since ratios are already normalized
   const buildRatioSeries = useCallback((ratioMetric) => {
     return companies
       .filter((c) => c.facts && !c.error)
@@ -403,7 +395,6 @@ export default function ComparePage() {
       });
   }, [companies]);
 
-  // Growth bar data
   const growthBarData = useMemo(() => {
     return GROWTH_BAR_METRICS.map((m) => {
       const bars5y = { metric: m.label };
@@ -419,30 +410,41 @@ export default function ComparePage() {
     });
   }, [companies]);
 
-  // Snapshot table data — most recent year per metric per company
+  // ==========================================================================
+  // Snapshot data — now with source info for each cell
+  // ==========================================================================
   const snapshotData = useMemo(() => {
     const allMetrics = [
-      { key: 'revenue', label: 'Revenue', format: 'currency', higherIsBetter: true },
-      { key: 'netIncome', label: 'Net Income', format: 'currency', higherIsBetter: true },
-      { key: 'operatingIncome', label: 'Operating Income', format: 'currency', higherIsBetter: true },
-      { key: 'totalAssets', label: 'Total Assets', format: 'currency', higherIsBetter: null },
-      { key: 'stockholdersEquity', label: "Stockholders' Equity", format: 'currency', higherIsBetter: true },
-      { key: 'operatingCashFlow', label: 'Operating Cash Flow', format: 'currency', higherIsBetter: true },
-      { key: 'roe', label: 'ROE', format: 'percent', higherIsBetter: true, computed: true },
-      { key: 'roa', label: 'ROA', format: 'percent', higherIsBetter: true, computed: true },
-      { key: 'netMargin', label: 'Net Margin', format: 'percent', higherIsBetter: true, computed: true },
-      { key: 'operatingMargin', label: 'Operating Margin', format: 'percent', higherIsBetter: true, computed: true },
+      { key: 'revenue', label: 'Revenue', format: 'currency', higherIsBetter: true, tooltip: 'Total revenue as reported' },
+      { key: 'netIncome', label: 'Net Income', format: 'currency', higherIsBetter: true, tooltip: 'Net income as reported' },
+      { key: 'operatingIncome', label: 'Operating Income', format: 'currency', higherIsBetter: true, tooltip: 'Operating income as reported' },
+      { key: 'totalAssets', label: 'Total Assets', format: 'currency', higherIsBetter: null, tooltip: 'Total assets as reported (neutral — bigger is not always better)' },
+      { key: 'stockholdersEquity', label: "Stockholders' Equity", format: 'currency', higherIsBetter: true, tooltip: "Total stockholders' equity as reported" },
+      { key: 'operatingCashFlow', label: 'Operating Cash Flow', format: 'currency', higherIsBetter: true, tooltip: 'Cash from operations' },
+      { key: 'roe', label: 'ROE', format: 'percent', higherIsBetter: true, computed: true, tooltip: 'Return on Equity = Net Income ÷ Stockholders\' Equity' },
+      { key: 'roa', label: 'ROA', format: 'percent', higherIsBetter: true, computed: true, tooltip: 'Return on Assets = Net Income ÷ Total Assets' },
+      { key: 'netMargin', label: 'Net Margin', format: 'percent', higherIsBetter: true, computed: true, tooltip: 'Net Margin = Net Income ÷ Revenue' },
+      { key: 'operatingMargin', label: 'Operating Margin', format: 'percent', higherIsBetter: true, computed: true, tooltip: 'Operating Margin = Operating Income ÷ Revenue' },
     ];
 
     return allMetrics.map((m) => {
-      const row = { metric: m.label, format: m.format, higherIsBetter: m.higherIsBetter, values: [] };
+      const row = {
+        metric: m.label,
+        metricKey: m.key,
+        format: m.format,
+        higherIsBetter: m.higherIsBetter,
+        isComputed: !!m.computed,
+        tooltip: m.tooltip,
+        values: [],
+      };
       companies.filter((c) => c.facts && !c.error).forEach((c) => {
         const periods = extractAnnualPeriods(c.facts).slice(0, 10);
         if (!periods.length) {
-          row.values.push({ ticker: c.ticker, value: null });
+          row.values.push({ ticker: c.ticker, cik: c.cik, value: null, source: null, period: null });
           return;
         }
         if (m.computed) {
+          // For computed ratios: compute the value, but track the NUMERATOR's source for linking
           const revenue = buildMetricRow(c.facts, 'revenue', '', periods, 'currency', c.sicCode);
           const netIncome = buildMetricRow(c.facts, 'netIncome', '', periods, 'currency', c.sicCode);
           const opIncome = buildMetricRow(c.facts, 'operatingIncome', '', periods, 'currency', c.sicCode);
@@ -456,16 +458,24 @@ export default function ComparePage() {
             stockholdersEquity: equity.values[0]?.value,
           };
           const ratioMetric = RATIO_METRICS.find((r) => r.key === m.key);
+          const value = ratioMetric ? ratioMetric.compute(vals) : null;
+          // Link to the numerator's source (Net Income for most ratios, Operating Income for op margin)
+          const numeratorRow = ratioMetric?.sourceMetricKey === 'operatingIncome' ? opIncome : netIncome;
           row.values.push({
             ticker: c.ticker,
-            value: ratioMetric ? ratioMetric.compute(vals) : null,
+            cik: c.cik,
+            value,
+            source: numeratorRow.values[0]?.source || null,
             period: periods[0],
+            formulaLabel: ratioMetric?.formulaLabel,
           });
         } else {
           const r = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode);
           row.values.push({
             ticker: c.ticker,
+            cik: c.cik,
             value: r.values[0]?.value ?? null,
+            source: r.values[0]?.source || null,
             period: periods[0],
           });
         }
@@ -474,17 +484,14 @@ export default function ComparePage() {
     });
   }, [companies]);
 
-  // Full CSV export
   const exportFullCsv = () => {
     if (!companies.length || !allLoaded) return;
     const loadedCompanies = companies.filter((c) => c.facts && !c.error);
     if (!loadedCompanies.length) return;
 
     const rows = [];
-    // Header
     rows.push(['Metric', 'Company', 'Ticker', ...alignedPeriods.map((y) => `FY${String(y).slice(2)}`), 'YoY %', '5Y CAGR %', '10Y CAGR %'].join(','));
 
-    // Absolute metrics
     for (const metric of ABSOLUTE_METRICS) {
       for (const c of loadedCompanies) {
         const periods = extractAnnualPeriods(c.facts).slice(0, 10);
@@ -517,7 +524,6 @@ export default function ComparePage() {
     URL.revokeObjectURL(url);
   };
 
-  // Industry mismatch warning
   const industryGroups = new Set(
     companies.filter((c) => c.sicCode).map((c) => classifyIndustry(c.sicCode))
   );
@@ -670,7 +676,7 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* ============= Auto-suggestions (when 1 company loaded) ============= */}
+      {/* ============= Auto-suggestions ============= */}
       {autoSuggestions.length > 0 && companies.length === 1 && (
         <div className="mb-6 border-2 border-sky-900/50 bg-sky-950/20 p-3">
           <div className="flex items-center gap-2 mb-2">
@@ -696,7 +702,6 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* ============= Error banners ============= */}
       {globalError && (
         <div className="mb-6 border-2 border-rose-800/60 bg-rose-950/30 p-4 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
@@ -753,7 +758,7 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* ============= Absolute-value charts (normalized per toggle) ============= */}
+      {/* ============= Financial charts ============= */}
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
         <>
           <SectionTitle icon={TrendingUp} title="Financials" />
@@ -771,7 +776,7 @@ export default function ComparePage() {
         </>
       )}
 
-      {/* ============= Ratios charts ============= */}
+      {/* ============= Ratios ============= */}
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
         <>
           <SectionTitle icon={Percent} title="Ratios & Margins" />
@@ -789,7 +794,7 @@ export default function ComparePage() {
         </>
       )}
 
-      {/* ============= Growth rate bars ============= */}
+      {/* ============= Growth bars ============= */}
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
         <>
           <SectionTitle icon={BarChart3} title="Growth Rates (CAGR)" />
@@ -800,7 +805,6 @@ export default function ComparePage() {
         </>
       )}
 
-      {/* ============= Empty state ============= */}
       {companies.length === 0 && (
         <div className="border-2 border-dashed border-stone-800 p-12 text-center">
           <GitCompare className="w-12 h-12 text-stone-700 mx-auto mb-4" />
@@ -816,7 +820,8 @@ export default function ComparePage() {
         <p className="mt-6 text-[11px] text-stone-500 leading-relaxed">
           Source: SEC XBRL Company Facts. Values are as originally reported in 10-K filings.
           Gaps in lines indicate missing data. Ratios are computed from reported values and may
-          differ slightly from company-published non-GAAP versions.
+          differ slightly from company-published non-GAAP versions. Click any snapshot value
+          to open the source filing on SEC.gov.
         </p>
       )}
     </>
@@ -835,6 +840,10 @@ function SectionTitle({ icon: Icon, title }) {
     </div>
   );
 }
+
+// ============================================================================
+// Snapshot table — with source links per cell
+// ============================================================================
 
 function SnapshotTable({ data, companies }) {
   const loadedCompanies = companies.filter((c) => c.facts && !c.error);
@@ -862,7 +871,6 @@ function SnapshotTable({ data, companies }) {
           </thead>
           <tbody>
             {data.map((row) => {
-              // Determine which value is "best" for color-coding
               const numericValues = row.values
                 .map((v, i) => ({ idx: i, value: v.value }))
                 .filter((v) => v.value != null && Number.isFinite(v.value));
@@ -877,46 +885,108 @@ function SnapshotTable({ data, companies }) {
 
               return (
                 <tr key={row.metric} className="border-b border-stone-800/60 hover:bg-amber-500/5">
-                  <td className="px-4 py-2.5 text-stone-300 font-bold sticky left-0 bg-stone-950/95">
+                  <td
+                    className="px-4 py-2.5 text-stone-300 font-bold sticky left-0 bg-stone-950/95"
+                    title={row.tooltip}
+                  >
                     {row.metric}
+                    {row.isComputed && (
+                      <span className="ml-1.5 text-[9px] text-stone-600 font-normal italic tracking-normal">
+                        (computed)
+                      </span>
+                    )}
                   </td>
-                  {row.values.map((v, i) => {
-                    const isBest = i === bestIdx;
-                    const isWorst = i === worstIdx;
-                    const textClass = isBest
-                      ? 'text-emerald-400 font-black'
-                      : isWorst
-                        ? 'text-rose-400'
-                        : v.value == null
-                          ? 'text-stone-700'
-                          : 'text-stone-300';
-                    return (
-                      <td key={i} className={`px-4 py-2.5 text-right tabular-nums ${textClass}`}>
-                        {formatSnapshotValue(v.value, row.format)}
-                      </td>
-                    );
-                  })}
+                  {row.values.map((v, i) => (
+                    <SnapshotCell
+                      key={i}
+                      value={v}
+                      row={row}
+                      isBest={i === bestIdx}
+                      isWorst={i === worstIdx}
+                    />
+                  ))}
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-[10px] text-stone-600">
+      <p className="mt-2 text-[10px] text-stone-600 leading-relaxed">
         Most recent fiscal year for each company. <span className="text-emerald-400">Green</span> = best,{' '}
         <span className="text-rose-400">Red</span> = worst where applicable. Total Assets is neutral
-        (bigger isn't always better).
+        (bigger isn't always better). Hover any value for the source XBRL tag; click to open SEC's
+        concept endpoint. Computed ratios link to their numerator (e.g. ROE links to Net Income).
       </p>
     </div>
   );
 }
 
+function SnapshotCell({ value, row, isBest, isWorst }) {
+  const formatted = formatSnapshotValue(value.value, row.format);
+  const textClass = isBest
+    ? 'text-emerald-400 font-black'
+    : isWorst
+      ? 'text-rose-400'
+      : value.value == null
+        ? 'text-stone-700'
+        : 'text-stone-300';
+
+  // Build tooltip with source info or formula
+  let tooltip;
+  if (value.source) {
+    if (row.isComputed) {
+      tooltip = `Formula: ${value.formulaLabel || row.tooltip}\nNumerator tag: ${value.source.tag}\nPeriod: ${value.source.end}\nFiled: ${value.source.filed}\nAccession: ${value.source.accession}\nClick to open SEC source for numerator`;
+    } else {
+      tooltip = `Tag: ${value.source.tag}\nUnit: ${value.source.unit}\nPeriod: ${value.source.end}\nFiled: ${value.source.filed}\nAccession: ${value.source.accession}\nClick to open SEC source`;
+    }
+  } else if (row.tooltip) {
+    tooltip = row.tooltip;
+  } else {
+    tooltip = value.value == null ? 'No data reported' : 'Computed value';
+  }
+
+  const sourceUrl = value.source && value.cik ? buildSourceUrl(value.cik, value.source) : null;
+
+  if (!sourceUrl || value.value == null) {
+    return (
+      <td className={`px-4 py-2.5 text-right tabular-nums ${textClass}`} title={tooltip}>
+        {formatted}
+      </td>
+    );
+  }
+
+  return (
+    <td className={`px-4 py-2.5 text-right tabular-nums group ${textClass}`} title={tooltip}>
+      <a
+        href={sourceUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors"
+      >
+        {formatted}
+        <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+      </a>
+    </td>
+  );
+}
+
+// ============================================================================
+// Growth bar chart — fixed colors using individual <Bar> per company
+// ============================================================================
+
 function GrowthBarChart({ title, data, companies, which }) {
+  const loadedCompanies = companies.filter((c) => c.facts && !c.error);
+
   const chartData = data.map((d) => ({
     metric: d.metric,
     ...d[which],
   }));
-  const loadedCompanies = companies.filter((c) => c.facts && !c.error);
+
+  // Recharts normally honors the `fill` prop on <Bar>, but when multiple Bars
+  // are children of a single BarChart with shared data keys, the color can
+  // sometimes fall back to a default palette depending on how the chart
+  // receives the color prop. To guarantee per-company colors, we render one
+  // <Bar> per company and explicitly set fill AND stroke to their color.
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900/30 p-4">
@@ -947,13 +1017,31 @@ function GrowthBarChart({ title, data, companies, which }) {
               fontSize: '12px',
               color: '#f5f5f4',
             }}
-            formatter={(value) => value == null ? '—' : `${Number(value).toFixed(1)}%`}
+            formatter={(value, name) => {
+              if (value == null) return ['—', name];
+              return [`${Number(value).toFixed(1)}%`, name];
+            }}
+            cursor={{ fill: '#f59e0b10' }}
           />
           <Legend
-            wrapperStyle={{ fontSize: '10px', fontFamily: 'ui-monospace, monospace', color: '#a8a29e' }}
+            wrapperStyle={{ fontSize: '10px', fontFamily: 'ui-monospace, monospace' }}
+            iconType="square"
+            formatter={(value) => {
+              const company = loadedCompanies.find((c) => c.ticker === value);
+              return (
+                <span style={{ color: company?.color || '#a8a29e' }}>{value}</span>
+              );
+            }}
           />
           {loadedCompanies.map((c) => (
-            <Bar key={c.ticker} dataKey={c.ticker} fill={c.color} />
+            <Bar
+              key={c.ticker}
+              dataKey={c.ticker}
+              fill={c.color}
+              stroke={c.color}
+              name={c.ticker}
+              isAnimationActive={false}
+            />
           ))}
         </BarChart>
       </ResponsiveContainer>
