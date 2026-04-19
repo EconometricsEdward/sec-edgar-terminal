@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
-  Tooltip, CartesianGrid, Legend, ReferenceLine, Cell,
+  Tooltip, CartesianGrid, ReferenceLine, Cell,
 } from 'recharts';
 import { TickerContext } from '../App.jsx';
 import { ComparisonChart } from '../components/MetricChart.jsx';
@@ -79,6 +79,18 @@ export default function ComparePage() {
   const [autoSuggestFor, setAutoSuggestFor] = useState(null);
   const [autoSuggestions, setAutoSuggestions] = useState([]);
 
+  // Fix React warning: defer URL updates so they happen AFTER render, not during.
+  // Previously updateUrl was called inside setCompanies updater, causing
+  // "Cannot update HashRouter while rendering ComparePage" warning.
+  const updateUrl = useCallback((cmps) => {
+    const tickers = cmps.map((c) => c.ticker).join(',');
+    // Defer navigation to next tick so React finishes the render first
+    setTimeout(() => {
+      if (tickers) navigate(`/compare/${tickers}`, { replace: true });
+      else navigate('/compare', { replace: true });
+    }, 0);
+  }, [navigate]);
+
   useEffect(() => {
     if (tickerMap) return;
     (async () => {
@@ -114,12 +126,6 @@ export default function ComparePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tickerMap, initialized]);
 
-  const updateUrl = useCallback((cmps) => {
-    const tickers = cmps.map((c) => c.ticker).join(',');
-    if (tickers) navigate(`/compare/${tickers}`, { replace: true });
-    else navigate('/compare', { replace: true });
-  }, [navigate]);
-
   const addCompany = useCallback(async (entry, updateUrlAfter = true) => {
     if (companies.find((c) => c.ticker === entry.ticker)) return;
     if (companies.length >= MAX_COMPANIES) {
@@ -135,11 +141,10 @@ export default function ComparePage() {
       loading: true, error: null,
     };
 
-    setCompanies((prev) => {
-      const next = [...prev, newCompany];
-      if (updateUrlAfter) updateUrl(next);
-      return next;
-    });
+    setCompanies((prev) => [...prev, newCompany]);
+    if (updateUrlAfter) {
+      updateUrl([...companies, newCompany]);
+    }
 
     try {
       const [submissionsRes, factsRes] = await Promise.all([
@@ -172,13 +177,11 @@ export default function ComparePage() {
   }, [companies, updateUrl]);
 
   const removeCompany = useCallback((ticker) => {
-    setCompanies((prev) => {
-      const next = prev.filter((c) => c.ticker !== ticker);
-      const recolored = next.map((c, i) => ({ ...c, color: COMPANY_COLORS[i % COMPANY_COLORS.length] }));
-      updateUrl(recolored);
-      return recolored;
-    });
-  }, [updateUrl]);
+    const next = companies.filter((c) => c.ticker !== ticker);
+    const recolored = next.map((c, i) => ({ ...c, color: COMPANY_COLORS[i % COMPANY_COLORS.length] }));
+    setCompanies(recolored);
+    updateUrl(recolored);
+  }, [companies, updateUrl]);
 
   const loadPeerGroup = useCallback((group) => {
     setCompanies([]);
@@ -270,10 +273,7 @@ export default function ComparePage() {
       .map((c) => {
         const companyPeriods = extractAnnualPeriods(c.facts).slice(0, 10);
         const row = buildMetricRow(c.facts, metricKey, '', companyPeriods, format, c.sicCode);
-        return {
-          name: c.name, ticker: c.ticker, color: c.color,
-          data: row.values, sicCode: c.sicCode,
-        };
+        return { name: c.name, ticker: c.ticker, color: c.color, data: row.values, sicCode: c.sicCode };
       });
   }, [companies]);
 
@@ -362,32 +362,6 @@ export default function ComparePage() {
       });
   }, [companies]);
 
-  // ==========================================================================
-  // Growth bar chart — refactored to use per-company rows with Cell coloring
-  //
-  // Data structure transformation: instead of [{metric: 'Revenue', CFG: 12, MTB: 8}],
-  // we pivot to one row per (metric, company) pair, but keep it structured so each
-  // company is a separate <Bar> but we use <Cell> inside to force colors.
-  // ==========================================================================
-  const growthBarData = useMemo(() => {
-    // Output shape: { '5y': [rows], '10y': [rows] }
-    // Each row has one data point per company, for use with grouped bars
-    const loadedCompanies = companies.filter((c) => c.facts && !c.error);
-    const buildGrowthRows = (field) => {
-      return GROWTH_BAR_METRICS.map((m) => {
-        const row = { metric: m.label };
-        loadedCompanies.forEach((c) => {
-          const periods = extractAnnualPeriods(c.facts).slice(0, 10);
-          const metricRow = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode);
-          const growth = computeGrowth(metricRow);
-          row[c.ticker] = field === '5y' ? growth.cagr5y : growth.cagr10y;
-        });
-        return row;
-      });
-    };
-    return { '5y': buildGrowthRows('5y'), '10y': buildGrowthRows('10y') };
-  }, [companies]);
-
   const snapshotData = useMemo(() => {
     const allMetrics = [
       { key: 'revenue', label: 'Revenue', format: 'currency', higherIsBetter: true, tooltip: 'Total revenue as reported' },
@@ -401,12 +375,10 @@ export default function ComparePage() {
       { key: 'netMargin', label: 'Net Margin', format: 'percent', higherIsBetter: true, computed: true, tooltip: 'Net Margin = Net Income ÷ Revenue' },
       { key: 'operatingMargin', label: 'Operating Margin', format: 'percent', higherIsBetter: true, computed: true, tooltip: 'Operating Margin = Operating Income ÷ Revenue' },
     ];
-
     return allMetrics.map((m) => {
       const row = {
         metric: m.label, metricKey: m.key, format: m.format,
-        higherIsBetter: m.higherIsBetter, isComputed: !!m.computed,
-        tooltip: m.tooltip, values: [],
+        higherIsBetter: m.higherIsBetter, isComputed: !!m.computed, tooltip: m.tooltip, values: [],
       };
       companies.filter((c) => c.facts && !c.error).forEach((c) => {
         const periods = extractAnnualPeriods(c.facts).slice(0, 10);
@@ -449,14 +421,38 @@ export default function ComparePage() {
     });
   }, [companies]);
 
+  // ==========================================================================
+  // Growth bars: ONE bar per data point, each with its own Cell fill.
+  // This is the ONLY pattern Recharts respects for per-bar coloring.
+  // ==========================================================================
+  const buildGrowthBarRows = useCallback((field) => {
+    const loadedCompanies = companies.filter((c) => c.facts && !c.error);
+    const rows = [];
+    GROWTH_BAR_METRICS.forEach((m) => {
+      loadedCompanies.forEach((c) => {
+        const periods = extractAnnualPeriods(c.facts).slice(0, 10);
+        const metricRow = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode);
+        const growth = computeGrowth(metricRow);
+        const val = field === '5y' ? growth.cagr5y : growth.cagr10y;
+        rows.push({
+          // Flat shape: each row IS one bar
+          label: `${m.label} — ${c.ticker}`,
+          metric: m.label,
+          ticker: c.ticker,
+          color: c.color,
+          value: val,
+        });
+      });
+    });
+    return rows;
+  }, [companies]);
+
   const exportFullCsv = () => {
     if (!companies.length || !allLoaded) return;
     const loadedCompanies = companies.filter((c) => c.facts && !c.error);
     if (!loadedCompanies.length) return;
-
     const rows = [];
     rows.push(['Metric', 'Company', 'Ticker', ...alignedPeriods.map((y) => `FY${String(y).slice(2)}`), 'YoY %', '5Y CAGR %', '10Y CAGR %'].join(','));
-
     for (const metric of ABSOLUTE_METRICS) {
       for (const c of loadedCompanies) {
         const periods = extractAnnualPeriods(c.facts).slice(0, 10);
@@ -476,7 +472,6 @@ export default function ComparePage() {
         ].join(','));
       }
     }
-
     const csv = rows.join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -509,23 +504,16 @@ export default function ComparePage() {
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <span className="text-[11px] uppercase tracking-[0.2em] text-stone-300 font-bold">
-              Common peer groups
-            </span>
+            <span className="text-[11px] uppercase tracking-[0.2em] text-stone-300 font-bold">Common peer groups</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {PEER_GROUPS.map((group) => (
-              <button
-                key={group.id}
-                onClick={() => loadPeerGroup(group)}
+              <button key={group.id} onClick={() => loadPeerGroup(group)}
                 className="flex items-center gap-2 px-3 py-2 bg-stone-900 border-2 border-stone-800 hover:border-amber-500 hover:bg-amber-500/5 text-stone-300 hover:text-amber-300 text-xs uppercase tracking-wider font-bold transition-colors group"
-                title={group.description}
-              >
+                title={group.description}>
                 <span>{group.icon}</span>
                 <span>{group.label}</span>
-                <span className="text-[10px] text-stone-600 group-hover:text-amber-600 ml-1">
-                  ({group.tickers.length})
-                </span>
+                <span className="text-[10px] text-stone-600 group-hover:text-amber-600 ml-1">({group.tickers.length})</span>
               </button>
             ))}
           </div>
@@ -535,15 +523,12 @@ export default function ComparePage() {
       {companies.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
           {companies.map((c) => (
-            <div
-              key={c.ticker}
-              className="flex items-center gap-2 px-3 py-2 border-2"
+            <div key={c.ticker} className="flex items-center gap-2 px-3 py-2 border-2"
               style={{
                 borderColor: c.error ? '#7f1d1d' : c.loading ? '#44403c' : c.color + '80',
                 backgroundColor: c.error ? '#450a0a40' : c.loading ? '#1c1917' : c.color + '1a',
                 color: c.error ? '#fca5a5' : c.loading ? '#a8a29e' : c.color,
-              }}
-            >
+              }}>
               <span className="text-xs font-black tracking-wider">{c.ticker}</span>
               <span className="text-[11px] text-stone-400 truncate max-w-[180px]">{c.name}</span>
               {c.loading && <Loader2 className="w-3 h-3 animate-spin" />}
@@ -561,8 +546,7 @@ export default function ComparePage() {
           <div className="flex gap-2">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
-              <input
-                type="text" value={input}
+              <input type="text" value={input}
                 onChange={(e) => { setInput(e.target.value.toUpperCase()); setShowSuggestions(true); setHighlightedIdx(0); }}
                 onFocus={() => setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
@@ -579,14 +563,11 @@ export default function ComparePage() {
               {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-stone-900 border-2 border-stone-700 z-50 max-h-80 overflow-y-auto shadow-2xl">
                   {suggestions.map((s, i) => (
-                    <button
-                      key={s.cik}
-                      onMouseEnter={() => setHighlightedIdx(i)}
+                    <button key={s.cik} onMouseEnter={() => setHighlightedIdx(i)}
                       onClick={() => { addCompany(s); setInput(''); setShowSuggestions(false); }}
                       className={`w-full flex items-center justify-between px-3 py-2.5 text-left border-b border-stone-800 last:border-b-0 transition-colors ${
                         i === highlightedIdx ? 'bg-amber-500/10 border-l-2 border-l-amber-500' : 'hover:bg-stone-800/50'
-                      }`}
-                    >
+                      }`}>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-bold text-stone-100 truncate">{s.name}</div>
                       </div>
@@ -602,14 +583,10 @@ export default function ComparePage() {
             </button>
             {companies.length > 0 && (
               <>
-                <button onClick={copyShareLink}
-                  className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
-                  title="Copy shareable link">
+                <button onClick={copyShareLink} className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors" title="Copy shareable link">
                   <LinkIcon className="w-4 h-4" />
                 </button>
-                <button onClick={exportFullCsv} disabled={!allLoaded}
-                  className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors"
-                  title="Download full comparison as CSV">
+                <button onClick={exportFullCsv} disabled={!allLoaded} className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors" title="Download full comparison as CSV">
                   <Download className="w-4 h-4" />
                 </button>
               </>
@@ -622,9 +599,7 @@ export default function ComparePage() {
         <div className="mb-6 border-2 border-sky-900/50 bg-sky-950/20 p-3">
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-            <span className="text-[11px] uppercase tracking-[0.2em] text-sky-300 font-bold">
-              Suggested peers for {companies[0].ticker}
-            </span>
+            <span className="text-[11px] uppercase tracking-[0.2em] text-sky-300 font-bold">Suggested peers for {companies[0].ticker}</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {autoSuggestions.map((s) => (
@@ -708,9 +683,7 @@ export default function ComparePage() {
           <SectionTitle icon={Percent} title="Ratios & Margins" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
             {RATIO_METRICS.map((m) => (
-              <ComparisonChart key={m.key} title={m.label}
-                series={buildRatioSeries(m)} format="percent" height={260}
-              />
+              <ComparisonChart key={m.key} title={m.label} series={buildRatioSeries(m)} format="percent" height={260} />
             ))}
           </div>
         </>
@@ -720,8 +693,8 @@ export default function ComparePage() {
         <>
           <SectionTitle icon={BarChart3} title="Growth Rates (CAGR)" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-            <GrowthBarChart title="5-Year CAGR" rows={growthBarData['5y']} companies={companies} />
-            <GrowthBarChart title="10-Year CAGR" rows={growthBarData['10y']} companies={companies} />
+            <GrowthBarChart title="5-Year CAGR" rows={buildGrowthBarRows('5y')} companies={companies} />
+            <GrowthBarChart title="10-Year CAGR" rows={buildGrowthBarRows('10y')} companies={companies} />
           </div>
         </>
       )}
@@ -790,9 +763,7 @@ function SnapshotTable({ data, companies }) {
                 <tr key={row.metric} className="border-b border-stone-800/60 hover:bg-amber-500/5">
                   <td className="px-4 py-2.5 text-stone-300 font-bold sticky left-0 bg-stone-950/95" title={row.tooltip}>
                     {row.metric}
-                    {row.isComputed && (
-                      <span className="ml-1.5 text-[9px] text-stone-600 font-normal italic tracking-normal">(computed)</span>
-                    )}
+                    {row.isComputed && <span className="ml-1.5 text-[9px] text-stone-600 font-normal italic tracking-normal">(computed)</span>}
                   </td>
                   {row.values.map((v, i) => (
                     <SnapshotCell key={i} value={v} row={row} isBest={i === bestIdx} isWorst={i === worstIdx} />
@@ -833,11 +804,9 @@ function SnapshotCell({ value, row, isBest, isWorst }) {
   }
 
   const sourceUrl = value.source && value.cik ? buildSourceUrl(value.cik, value.source) : null;
-
   if (!sourceUrl || value.value == null) {
     return <td className={`px-4 py-2.5 text-right tabular-nums ${textClass}`} title={tooltip}>{formatted}</td>;
   }
-
   return (
     <td className={`px-4 py-2.5 text-right tabular-nums group ${textClass}`} title={tooltip}>
       <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors">
@@ -849,48 +818,59 @@ function SnapshotCell({ value, row, isBest, isWorst }) {
 }
 
 // ============================================================================
-// Growth bar chart — now using <Cell> inside each <Bar> to force colors
-//
-// Why this works: Recharts' Bar component lets you pass <Cell> children that
-// override the fill color per data point. By mapping each Cell to its company's
-// color, we guarantee the color is applied at the SVG rendering level rather
-// than being inferred by Recharts' series logic.
+// Growth bar chart — ONE Bar series with per-Cell colors.
+// The DOM inspection revealed Recharts renders bars as <path> elements and
+// when multiple <Bar> components share the chart, the fill is broadcast from
+// the first one. The fix: flatten to a single Bar with 20 data points (4 metrics
+// × 5 companies), each with its own Cell fill. Colors are guaranteed unique
+// because each Cell is a separate SVG element.
 // ============================================================================
 
 function GrowthBarChart({ title, rows, companies }) {
   const loadedCompanies = companies.filter((c) => c.facts && !c.error);
 
-  // Build a color lookup: { ticker: color }
-  const colorByTicker = {};
-  loadedCompanies.forEach((c) => { colorByTicker[c.ticker] = c.color; });
+  // Find boundaries between metric groups for visual separation
+  const metricGroups = [];
+  let currentMetric = null;
+  rows.forEach((row, i) => {
+    if (row.metric !== currentMetric) {
+      metricGroups.push({ startIdx: i, metric: row.metric });
+      currentMetric = row.metric;
+    }
+  });
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900/30 p-4">
-      {/* Chart title */}
       <div className="flex items-center justify-between mb-3 px-2">
         <span className="text-xs uppercase tracking-[0.2em] text-amber-400 font-bold">{title}</span>
       </div>
 
-      {/* Custom legend with proper company colors */}
-      <div className="flex flex-wrap gap-3 mb-2 px-2">
+      {/* Custom legend — all company colors shown as swatches */}
+      <div className="flex flex-wrap gap-3 mb-3 px-2">
         {loadedCompanies.map((c) => (
           <div key={c.ticker} className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider">
-            <span
-              className="inline-block w-3 h-3"
-              style={{ backgroundColor: c.color }}
-            />
+            <span className="inline-block w-3 h-3" style={{ backgroundColor: c.color }} />
             <span style={{ color: c.color }}>{c.ticker}</span>
           </div>
         ))}
       </div>
 
-      <ResponsiveContainer width="100%" height={240}>
+      {/* Metric group labels above the bars */}
+      <div className="grid gap-1 px-[45px] mb-1" style={{ gridTemplateColumns: `repeat(${metricGroups.length}, 1fr)` }}>
+        {metricGroups.map((g) => (
+          <div key={g.metric} className="text-center text-[10px] text-stone-500 uppercase tracking-wider truncate">
+            {g.metric}
+          </div>
+        ))}
+      </div>
+
+      <ResponsiveContainer width="100%" height={220}>
         <BarChart data={rows} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#44403c" vertical={false} />
           <XAxis
-            dataKey="metric"
+            dataKey="ticker"
             stroke="#78716c"
-            tick={{ fontSize: 10, fill: '#a8a29e', fontFamily: 'ui-monospace, monospace' }}
+            tick={{ fontSize: 9, fill: '#a8a29e', fontFamily: 'ui-monospace, monospace' }}
             interval={0}
           />
           <YAxis
@@ -908,28 +888,19 @@ function GrowthBarChart({ title, rows, companies }) {
               fontSize: '12px',
               color: '#f5f5f4',
             }}
-            formatter={(value, name) => {
-              if (value == null) return ['—', name];
-              return [`${Number(value).toFixed(1)}%`, name];
+            formatter={(value, _name, item) => {
+              const label = item?.payload?.label || item?.payload?.ticker;
+              if (value == null) return ['—', label];
+              return [`${Number(value).toFixed(1)}%`, label];
             }}
             cursor={{ fill: '#f59e0b10' }}
           />
-          {/* One Bar per company — each with explicit fill color on both the Bar AND its Cells. */}
-          {loadedCompanies.map((c) => (
-            <Bar
-              key={c.ticker}
-              dataKey={c.ticker}
-              name={c.ticker}
-              fill={c.color}
-              isAnimationActive={false}
-            >
-              {/* Force fill via <Cell> for every data point in this bar series.
-                  Belt-and-suspenders: both Bar.fill and each Cell.fill are set to c.color. */}
-              {rows.map((_, idx) => (
-                <Cell key={`cell-${c.ticker}-${idx}`} fill={c.color} />
-              ))}
-            </Bar>
-          ))}
+          {/* Single Bar, 20 data points, each Cell colored per-row */}
+          <Bar dataKey="value" isAnimationActive={false}>
+            {rows.map((row, i) => (
+              <Cell key={`cell-${i}`} fill={row.color} />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
