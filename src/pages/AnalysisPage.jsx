@@ -1,12 +1,13 @@
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
-  Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink,
+  Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink, Info,
 } from 'lucide-react';
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import { MetricChart } from '../components/MetricChart.jsx';
 import SummaryDashboard from '../components/SummaryDashboard.jsx';
+import StockPriceChart from '../components/StockPriceChart.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
 import {
@@ -22,6 +23,7 @@ import {
   periodLabel,
   buildSourceUrl,
 } from '../utils/xbrlParser.js';
+import { classifyIndustry, industryLabel, industryDisclosure, INDUSTRY_GROUPS } from '../utils/industry.js';
 
 const STATEMENTS = [
   { id: 'income', label: 'Income Statement', icon: TrendingUp, build: buildIncomeStatement,
@@ -31,7 +33,8 @@ const STATEMENTS = [
   { id: 'cashflow', label: 'Cash Flow', icon: ArrowRightLeft, build: buildCashFlow,
     featuredRows: ['Operating Cash Flow', 'Capital Expenditures', 'Financing Cash Flow', 'Investing Cash Flow'] },
   { id: 'ratios', label: 'Ratios', icon: Percent, build: buildRatios,
-    featuredRows: ['Gross Margin', 'Operating Margin', 'Net Margin', 'Return on Equity (ROE)'] },
+    // featured rows vary by industry — picked dynamically below
+    featuredRows: null },
 ];
 
 export default function AnalysisPage() {
@@ -40,6 +43,7 @@ export default function AnalysisPage() {
   const { company, setCompany } = useContext(TickerContext);
   const [facts, setFacts] = useState(null);
   const [sicCode, setSicCode] = useState(null);
+  const [filings, setFilings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -51,6 +55,7 @@ export default function AnalysisPage() {
     setLoading(true);
     setError(null);
     setFacts(null);
+    setFilings([]);
 
     if (urlTicker !== entry.ticker) {
       navigate(`/analysis/${entry.ticker}`, { replace: false });
@@ -87,6 +92,21 @@ export default function AnalysisPage() {
 
       setSicCode(submissions.sic);
       setFacts(factsData.facts || {});
+
+      // Build filings list for the stock price chart markers
+      const recent = submissions.filings?.recent;
+      if (recent) {
+        const allFilings = recent.accessionNumber.map((acc, i) => {
+          const accessionClean = acc.replace(/-/g, '');
+          const primaryDoc = recent.primaryDocument[i];
+          return {
+            form: recent.form[i],
+            filingDate: recent.filingDate[i],
+            documentUrl: `https://www.sec.gov/Archives/edgar/data/${parseInt(entry.cik, 10)}/${accessionClean}/${primaryDoc}`,
+          };
+        });
+        setFilings(allFilings);
+      }
     } catch (err) {
       setError(`Failed to fetch financial data: ${err.message}`);
     } finally {
@@ -106,12 +126,16 @@ export default function AnalysisPage() {
     [facts, periods, statementDef, sicCode]
   );
 
-  const featuredRows = useMemo(
-    () => rows.filter((r) => statementDef.featuredRows.includes(r.label)),
-    [rows, statementDef]
-  );
+  // Dynamic featured rows — different for each statement, and different for Ratios by industry
+  const featuredRows = useMemo(() => {
+    if (!rows.length) return [];
+    if (statementDef.featuredRows) {
+      return rows.filter((r) => statementDef.featuredRows.includes(r.label));
+    }
+    // Ratios: pick the first 4 non-empty rows for the chart preview
+    return rows.filter((r) => r.values.some((v) => v.value != null)).slice(0, 4);
+  }, [rows, statementDef]);
 
-  // Show growth columns only for annual view + when toggle is on
   const growthVisible = showGrowth && periodType === 'annual';
 
   const exportCsv = () => {
@@ -149,9 +173,9 @@ export default function AnalysisPage() {
     else navigate('/compare');
   };
 
-  const sic = parseInt(sicCode, 10) || 0;
-  const isBank = sic >= 6000 && sic <= 6299;
-  const isInsurance = sic >= 6300 && sic <= 6411;
+  const group = classifyIndustry(sicCode);
+  const disclosure = industryDisclosure(group);
+  const chartTicker = company?.tickers?.split(',')[0]?.trim() || urlTicker;
 
   return (
     <>
@@ -164,23 +188,49 @@ export default function AnalysisPage() {
       />
 
       {facts && (
-        <div className="mb-6 border-2 border-amber-700/40 bg-amber-950/20 p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-100/90 leading-relaxed">
-            <span className="font-bold text-amber-300">Experimental — verify before relying on these numbers.</span>{' '}
-            Financial data is parsed from SEC's XBRL API. Click any value to see the exact SEC source tag and filing.
-            {isBank && (
-              <div className="mt-2 text-amber-200/80">
-                <strong>Banking company (SIC {sic}).</strong> Revenue uses interest + non-interest income tags.
-                Cost of Revenue and Gross Profit are not applicable.
-              </div>
-            )}
-            {isInsurance && (
-              <div className="mt-2 text-amber-200/80">
-                <strong>Insurance company (SIC {sic}).</strong> Revenue is primarily premium income.
-              </div>
-            )}
+        <>
+          {/* Base experimental banner */}
+          <div className="mb-4 border-2 border-amber-700/40 bg-amber-950/20 p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-100/90 leading-relaxed">
+              <span className="font-bold text-amber-300">Experimental — verify before relying on these numbers.</span>{' '}
+              Financial data is parsed from SEC's XBRL API. Click any value to see the exact SEC source tag and filing.
+            </div>
           </div>
+
+          {/* Industry-specific disclosure */}
+          {disclosure && (
+            <div
+              className={`mb-6 border-2 p-4 flex items-start gap-3 ${
+                disclosure.tone === 'warn'
+                  ? 'border-rose-700/40 bg-rose-950/20'
+                  : 'border-sky-700/40 bg-sky-950/20'
+              }`}
+            >
+              <Info
+                className={`w-5 h-5 shrink-0 mt-0.5 ${
+                  disclosure.tone === 'warn' ? 'text-rose-400' : 'text-sky-400'
+                }`}
+              />
+              <div className="text-xs leading-relaxed">
+                <span
+                  className={`font-bold ${
+                    disclosure.tone === 'warn' ? 'text-rose-300' : 'text-sky-300'
+                  }`}
+                >
+                  {disclosure.title}
+                </span>{' '}
+                <span className="text-stone-200">{disclosure.body}</span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Stock price chart at the top (after banners, before summary) */}
+      {facts && chartTicker && filings.length > 0 && (
+        <div className="mb-6">
+          <StockPriceChart ticker={chartTicker} filings={filings} />
         </div>
       )}
 
@@ -367,8 +417,8 @@ export default function AnalysisPage() {
 
           <p className="mt-4 text-[11px] text-stone-500 leading-relaxed">
             Source: SEC XBRL Company Facts. Hover any value for the source XBRL tag; click to open SEC's concept endpoint.
-            Growth columns: YoY = latest vs. prior year. CAGR = compounded annual growth.
-            Empty cells indicate missing data or values where growth is not meaningful (e.g., sign changes).
+            Industry group: <span className="text-amber-400 font-bold">{industryLabel(group)}</span>
+            {sicCode ? <span> · SIC {sicCode}</span> : null}
           </p>
         </>
       )}
@@ -378,7 +428,8 @@ export default function AnalysisPage() {
           <BarChart3 className="w-12 h-12 text-stone-700 mx-auto mb-4" />
           <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">Financial Analysis</p>
           <p className="text-stone-600 text-xs max-w-md mx-auto">
-            Enter a ticker symbol above to load structured financial data across all historical 10-K and 10-Q filings.
+            Enter a ticker symbol above to load financial data, industry-specific ratios,
+            and a stock price chart with filing date markers.
           </p>
         </div>
       )}
@@ -403,11 +454,7 @@ function ValueCell({ value, source, cik, format, isHeader }) {
   }`;
 
   if (!sourceUrl || value == null) {
-    return (
-      <td className={cellClasses} title={tooltip}>
-        {formatValue(value, format)}
-      </td>
-    );
+    return <td className={cellClasses} title={tooltip}>{formatValue(value, format)}</td>;
   }
 
   return (
@@ -428,11 +475,9 @@ function ValueCell({ value, source, cik, format, isHeader }) {
 function GrowthCell({ pct, isHeader, borderLeft, stickyRight }) {
   const g = formatGrowth(pct);
   const colorClass =
-    g.color === 'positive'
-      ? 'text-emerald-400'
-      : g.color === 'negative'
-      ? 'text-rose-400'
-      : 'text-stone-600';
+    g.color === 'positive' ? 'text-emerald-400'
+    : g.color === 'negative' ? 'text-rose-400'
+    : 'text-stone-600';
   const bg = isHeader ? 'bg-stone-900/95' : 'bg-stone-950/95';
   const sticky = stickyRight !== undefined ? `sticky z-10` : '';
   const styleObj = stickyRight !== undefined ? { right: `${stickyRight}px` } : undefined;
