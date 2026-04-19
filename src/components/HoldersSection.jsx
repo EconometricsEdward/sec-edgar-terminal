@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Building2, Loader2, AlertCircle, ExternalLink, Info, TrendingUp, Award,
+  Building2, Loader2, AlertCircle, ExternalLink, Info, TrendingUp, Award, CheckCircle2,
 } from 'lucide-react';
 
 /**
  * HoldersSection — shows top 13F institutional holders of a given company.
+ *
+ * Data comes from /api/holders which uses a hybrid strategy:
+ *   - Checks ~50 known institutional filer CIKs directly (Vanguard, BlackRock, etc.)
+ *   - Supplements with full-text search for additional holders
  *
  * Props:
  *   ticker: ticker symbol (string)
@@ -43,9 +47,9 @@ export default function HoldersSection({ ticker, cik, companyName }) {
         <h3 className="text-sm uppercase tracking-[0.25em] font-black text-stone-200">
           Institutional Holders
         </h3>
-        {data?.meta?.totalFilings != null && (
+        {data?.meta && (
           <span className="text-[10px] text-stone-500 ml-2">
-            From {data.meta.totalFilings} recent 13F filings
+            {data.meta.knownFilersWithHolding} major + {data.meta.searchFilersAdded} other filers
           </span>
         )}
       </div>
@@ -54,7 +58,7 @@ export default function HoldersSection({ ticker, cik, companyName }) {
         <div className="flex items-center justify-center py-8 border-2 border-stone-800 bg-stone-900/30">
           <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
           <span className="ml-3 text-sm text-stone-400">
-            Searching 13F filings for {ticker} holders...
+            Scanning {ticker} across ~50 major 13F filers and recent filings...
           </span>
         </div>
       )}
@@ -128,12 +132,29 @@ export default function HoldersSection({ ticker, cik, companyName }) {
                   <tbody>
                     {data.holders.map((h, i) => {
                       const filingUrl = buildFilingUrl(h.filerCik, h.accession);
+                      const isKnown = h.source === 'known';
                       return (
                         <tr key={`${h.filerCik}-${h.accession}`} className="border-b border-stone-800/60 hover:bg-amber-500/5">
                           <td className="px-4 py-2.5 text-stone-500 tabular-nums">{i + 1}</td>
                           <td className="px-4 py-2.5">
-                            <div className="text-stone-100 font-bold text-xs">
-                              {shortenFilerName(h.filerName)}
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-stone-100 font-bold text-xs">
+                                {shortenFilerName(h.filerName)}
+                              </span>
+                              {isKnown && (
+                                <CheckCircle2
+                                  className="w-3 h-3 text-emerald-500 shrink-0"
+                                  title="Verified major institutional filer"
+                                />
+                              )}
+                              {h.rowCount > 1 && (
+                                <span
+                                  className="text-[9px] text-stone-500 bg-stone-800 px-1 py-0.5 rounded"
+                                  title={`${h.rowCount} separate position entries aggregated (different funds or share classes)`}
+                                >
+                                  {h.rowCount} positions
+                                </span>
+                              )}
                             </div>
                             <div className="text-[10px] text-stone-500 font-mono">CIK {h.filerCik}</div>
                           </td>
@@ -165,10 +186,12 @@ export default function HoldersSection({ ticker, cik, companyName }) {
               </div>
 
               <p className="mt-3 text-[10px] text-stone-500 leading-relaxed">
-                Top 13F-HR institutional holders reporting in the past 6 months. Data parsed
-                from SEC-filed information tables. Value reflects market value at report date.
-                Click any filing icon to open the original 13F-HR on SEC.gov.
-                This is a subset of all holders — 13F filers report quarterly with a 45-day delay.
+                Top 13F-HR institutional holders from the past 4 months. Checked against ~50 major
+                filers (Vanguard, BlackRock, Berkshire, etc.) plus recent SEC search results.
+                <CheckCircle2 className="inline w-2.5 h-2.5 text-emerald-500 mx-0.5" /> marks
+                verified large institutional filers. Values reflect market value at the 13F report
+                date. 13F filings are submitted quarterly with a 45-day delay, so data may lag
+                current holdings by 1-2 quarters.
               </p>
             </>
           )}
@@ -200,19 +223,12 @@ function StatCard({ icon: Icon, label, value, tone = 'stone', isMono = false }) 
   );
 }
 
-/**
- * Shorten long institutional names. "BERKSHIRE HATHAWAY INC" → "Berkshire Hathaway".
- * Handles ALL CAPS names common in SEC filings.
- */
 function shortenFilerName(name) {
   if (!name) return 'Unknown';
-  // Title-case if all uppercase
   if (name === name.toUpperCase() && name.length > 4) {
     name = name.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
   }
-  // Remove common suffixes that add noise
   name = name.replace(/\s+(Inc|LLC|LP|LTD|Corp|Corporation|Company|Co|Trust|Group|Holdings|Mgmt|Management)\.?$/i, '');
-  // Truncate if still very long
   if (name.length > 40) return name.slice(0, 37) + '...';
   return name;
 }
@@ -237,6 +253,5 @@ function formatCurrency(val) {
 
 function buildFilingUrl(cik, accession) {
   const cikStripped = String(cik).replace(/^0+/, '');
-  const accnStripped = accession.replace(/-/g, '');
   return `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cikStripped}&type=13F-HR&dateb=&owner=include&count=10`;
 }
