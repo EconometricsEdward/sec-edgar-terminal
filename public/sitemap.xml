@@ -7,121 +7,148 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/about</loc>
+    <loc>https://secedgarterminal.com/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/filings</loc>
+    <loc>https://secedgarterminal.com/filings</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis</loc>
+    <loc>https://secedgarterminal.com/analysis</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/compare</loc>
+    <loc>https://secedgarterminal.com/compare</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://secedgarterminal.com/fund</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <!-- Featured ticker analysis pages -->
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/AAPL</loc>
+    <loc>https://secedgarterminal.com/analysis/AAPL</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/MSFT</loc>
+    <loc>https://secedgarterminal.com/analysis/MSFT</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/GOOGL</loc>
+    <loc>https://secedgarterminal.com/analysis/GOOGL</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/AMZN</loc>
+    <loc>https://secedgarterminal.com/analysis/AMZN</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/META</loc>
+    <loc>https://secedgarterminal.com/analysis/META</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/NVDA</loc>
+    <loc>https://secedgarterminal.com/analysis/NVDA</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/TSLA</loc>
+    <loc>https://secedgarterminal.com/analysis/TSLA</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/JPM</loc>
+    <loc>https://secedgarterminal.com/analysis/JPM</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/BAC</loc>
+    <loc>https://secedgarterminal.com/analysis/BAC</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/C</loc>
+    <loc>https://secedgarterminal.com/analysis/C</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/WFC</loc>
+    <loc>https://secedgarterminal.com/analysis/WFC</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/GS</loc>
+    <loc>https://secedgarterminal.com/analysis/GS</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/XOM</loc>
+    <loc>https://secedgarterminal.com/analysis/XOM</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/CVX</loc>
+    <loc>https://secedgarterminal.com/analysis/CVX</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/WMT</loc>
+    <loc>https://secedgarterminal.com/analysis/WMT</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/analysis/TGT</loc>
+    <loc>https://secedgarterminal.com/analysis/TGT</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
 
+  <!-- Featured fund pages -->
+  <url>
+    <loc>https://secedgarterminal.com/fund/SPY</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://secedgarterminal.com/fund/VOO</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://secedgarterminal.com/fund/QQQ</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://secedgarterminal.com/fund/VTI</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
   <!-- Pre-made peer comparison pages -->
   <url>
-    <loc>https://secedgarterminal.com/#/compare/AAPL,MSFT,GOOGL,META,AMZN</loc>
+    <loc>https://secedgarterminal.com/compare/AAPL,MSFT,GOOGL,META,AMZN</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/compare/JPM,BAC,WFC,C,GS</loc>
+    <loc>https://secedgarterminal.com/compare/JPM,BAC,WFC,C,GS</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://secedgarterminal.com/#/compare/NVDA,AMD,INTC,AVGO,QCOM</loc>
+    <loc>https://secedgarterminal.com/compare/NVDA,AMD,INTC,AVGO,QCOM</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>

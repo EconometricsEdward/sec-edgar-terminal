@@ -216,7 +216,7 @@ export default function ComparePage() {
 
   const copyShareLink = () => {
     if (!companies.length) return;
-    const url = `${window.location.origin}/#/compare/${companies.map((c) => c.ticker).join(',')}`;
+    const url = `${window.location.origin}/compare/${companies.map((c) => c.ticker).join(',')}`;
     navigator.clipboard.writeText(url);
   };
 

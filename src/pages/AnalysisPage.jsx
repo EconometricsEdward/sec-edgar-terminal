@@ -248,7 +248,7 @@ export default function AnalysisPage() {
   };
 
   const copyShareLink = () => {
-    const url = `${window.location.origin}/#/analysis/${company?.tickers?.split(',')[0]?.trim() || urlTicker}`;
+    const url = `${window.location.origin}/analysis/${company?.tickers?.split(',')[0]?.trim() || urlTicker}`;
     navigator.clipboard.writeText(url);
   };
 

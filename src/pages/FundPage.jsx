@@ -92,7 +92,7 @@ export default function FundPage() {
   };
 
   const copyShareLink = () => {
-    const url = `${window.location.origin}/#/fund/${urlTicker}`;
+    const url = `${window.location.origin}/fund/${urlTicker}`;
     navigator.clipboard.writeText(url);
   };
 
@@ -230,7 +230,7 @@ function FundsLanding() {
           return (
             <a
               key={f.ticker}
-              href={`/#/fund/${f.ticker}`}
+              href={`/fund/${f.ticker}`}
               className={`group block border-2 border-stone-800 bg-stone-900/30 p-4 transition-colors ${accentClass}`}
             >
               <div className="flex items-start justify-between mb-2">

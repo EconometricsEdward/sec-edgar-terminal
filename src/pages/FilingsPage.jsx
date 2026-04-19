@@ -130,7 +130,7 @@ export default function FilingsPage() {
 
   const copyShareLink = () => {
     const t = urlTicker || company?.tickers?.split(',')[0]?.trim();
-    const url = `${window.location.origin}/#/filings/${t}`;
+    const url = `${window.location.origin}/filings/${t}`;
     navigator.clipboard.writeText(url);
   };
 
