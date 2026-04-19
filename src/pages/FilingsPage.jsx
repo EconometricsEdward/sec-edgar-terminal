@@ -7,6 +7,7 @@ import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
 import { getItemsInfo } from '../utils/formItems.js';
+import { checkIsFund } from '../utils/fundCheck.js';
 
 export default function FilingsPage() {
   const { ticker: urlTicker } = useParams();
@@ -20,8 +21,31 @@ export default function FilingsPage() {
   const [expandedQuarters, setExpandedQuarters] = useState({});
 
   const fetchFilings = async (entry) => {
+    // Two-layer fund detection (see AnalysisPage.jsx for full rationale):
+    //   Layer 1: TickerSearchBar heuristic via entry.type
+    //   Layer 2: On-demand authoritative check for entries tagged as company
+
+    if (entry.type === 'fund') {
+      navigate(`/fund/${entry.ticker}`);
+      return;
+    }
+
     setLoading(true);
     setError(null);
+
+    try {
+      const authoritativeIsFund = await checkIsFund(entry.cik, 3000);
+      if (authoritativeIsFund === true) {
+        console.log(`Authoritative check: ${entry.ticker} is a fund (heuristic missed)`);
+        setLoading(false);
+        navigate(`/fund/${entry.ticker}`);
+        return;
+      }
+    } catch (err) {
+      console.warn('Fund check unexpected error:', err);
+    }
+
+    // Proceed with normal filings fetch
     setFilings([]);
     setExpandedYears({});
     setExpandedQuarters({});
@@ -65,9 +89,6 @@ export default function FilingsPage() {
           primaryDoc,
           primaryDescription: recent.primaryDocDescription?.[i] || '',
           size: recent.size?.[i],
-          // Items field — a comma-separated string of 8-K item codes (e.g. "2.02,9.01").
-          // SEC only populates this for 8-K filings; empty string for other form types.
-          // Some older 8-Ks may have no items data at all.
           items: recent.items?.[i] || '',
           documentUrl: `https://www.sec.gov/Archives/edgar/data/${parseInt(entry.cik, 10)}/${accessionClean}/${primaryDoc}`,
         };
@@ -244,8 +265,6 @@ export default function FilingsPage() {
                           {qOpen && (
                             <div className="divide-y divide-stone-800/60">
                               {qFilings.map((f) => {
-                                // Parse 8-K items if present. For non-8-K filings or 8-Ks with no
-                                // item data, this returns an empty array and no badges render.
                                 const items = f.form === '8-K' ? getItemsInfo(f.items) : [];
                                 return (
                                   <a
@@ -281,7 +300,6 @@ export default function FilingsPage() {
                                           {f.accession}
                                         </span>
                                       </div>
-                                      {/* 8-K item badges — one per disclosed item */}
                                       {items.length > 0 && (
                                         <div className="flex flex-wrap gap-1 mt-1.5">
                                           {items.map(({ code, label }) => (
@@ -318,6 +336,9 @@ export default function FilingsPage() {
           <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">Awaiting Query</p>
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Enter a publicly traded ticker symbol above to retrieve filings directly from SEC EDGAR.
+          </p>
+          <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
+            Mutual fund and ETF tickers are automatically routed to the Funds page.
           </p>
         </div>
       )}

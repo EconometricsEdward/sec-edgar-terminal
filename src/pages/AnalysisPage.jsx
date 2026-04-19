@@ -14,6 +14,7 @@ import HoldersSection from '../components/HoldersSection.jsx';
 import ConceptHistoryModal from '../components/ConceptHistoryModal.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
+import { checkIsFund } from '../utils/fundCheck.js';
 import {
   extractAnnualPeriods,
   extractQuarterlyPeriods,
@@ -28,10 +29,6 @@ import {
   buildSourceUrl,
 } from '../utils/xbrlParser.js';
 import { classifyIndustry, industryLabel, industryDisclosure } from '../utils/industry.js';
-
-// ============================================================================
-// Section definitions
-// ============================================================================
 
 const SECTIONS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -50,10 +47,6 @@ const STATEMENTS = [
   { id: 'cashflow', label: 'Cash Flow', icon: ArrowRightLeft, build: buildCashFlow,
     featuredRows: ['Operating Cash Flow', 'Capital Expenditures', 'Financing Cash Flow', 'Investing Cash Flow'] },
 ];
-
-// ============================================================================
-// Main component
-// ============================================================================
 
 export default function AnalysisPage() {
   const { ticker: urlTicker } = useParams();
@@ -75,18 +68,13 @@ export default function AnalysisPage() {
     setInsiderMarkers(markers || []);
   }, []);
 
-  // Concept history modal state — holds { tag, taxonomy, unit } for active trace
   const [conceptToTrace, setConceptToTrace] = useState(null);
-
   const sectionRefs = useRef({});
 
-  // Scroll-spy: update active section as user scrolls
   useEffect(() => {
     if (!facts) return;
-
     const observer = new IntersectionObserver(
       (entries) => {
-        // Find the section closest to the top of the viewport
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
@@ -94,23 +82,54 @@ export default function AnalysisPage() {
           setActiveSection(visible[0].target.id);
         }
       },
-      {
-        rootMargin: '-100px 0px -60% 0px',
-        threshold: 0,
-      }
+      { rootMargin: '-100px 0px -60% 0px', threshold: 0 }
     );
-
     SECTIONS.forEach(({ id }) => {
       const el = document.getElementById(id);
       if (el) observer.observe(el);
     });
-
     return () => observer.disconnect();
   }, [facts]);
 
   const fetchFacts = async (entry) => {
+    // ========================================================================
+    // FUND ROUTING — two-layer detection
+    //
+    // Layer 1: TickerSearchBar's name-heuristic tag. Fast, runs during
+    // autocomplete. Catches the obvious funds (ETF, TRUST, FUND in name).
+    //
+    // Layer 2: On-demand authoritative check via SEC submissions API. Runs
+    // only for entries the heuristic flagged as 'company'. Catches funds the
+    // heuristic missed (rare, but safer). 3-second timeout — on failure,
+    // falls through to normal company flow so we never block forever.
+    // ========================================================================
+
+    if (entry.type === 'fund') {
+      // Heuristic says fund — trust it, redirect immediately
+      navigate(`/fund/${entry.ticker}`);
+      return;
+    }
+
+    // Heuristic says company — verify before proceeding
     setLoading(true);
     setError(null);
+
+    try {
+      const authoritativeIsFund = await checkIsFund(entry.cik, 3000);
+      if (authoritativeIsFund === true) {
+        // Heuristic missed this one — it's actually a fund
+        console.log(`Authoritative check: ${entry.ticker} is a fund (heuristic missed)`);
+        setLoading(false);
+        navigate(`/fund/${entry.ticker}`);
+        return;
+      }
+      // null (timeout/error) or false — proceed as company
+    } catch (err) {
+      // Defensive — checkIsFund shouldn't throw but just in case
+      console.warn('Fund check unexpected error:', err);
+    }
+
+    // Proceed with normal company analysis flow
     setFacts(null);
     setFilings([]);
     setInsiderMarkers([]);
@@ -240,14 +259,9 @@ export default function AnalysisPage() {
 
   const scrollToSection = (id) => {
     const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  // Handler for the concept history trigger.
-  // Looks at a row's values to find the first non-null XBRL source, then
-  // opens the modal with that tag. Rows without source data do nothing.
   const traceRowHistory = useCallback((row) => {
     const firstSourced = row.values.find((v) => v.source && v.source.tag);
     if (!firstSourced) return;
@@ -261,8 +275,6 @@ export default function AnalysisPage() {
   const group = classifyIndustry(sicCode);
   const disclosure = industryDisclosure(group);
   const chartTicker = company?.tickers?.split(',')[0]?.trim() || urlTicker;
-
-  // Count insiders for sidebar badge
   const form4Count = filings.filter((f) => f.form === '4').length;
 
   return (
@@ -283,14 +295,15 @@ export default function AnalysisPage() {
             Enter a ticker symbol above to load financial data, industry-specific ratios,
             stock prices with filing markers, and insider trading activity.
           </p>
+          <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
+            Mutual fund and ETF tickers are automatically routed to the Funds page.
+          </p>
         </div>
       )}
 
       {facts && (
         <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-6">
-          {/* ========================= Sidebar ========================= */}
           <aside className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-            {/* Mobile: horizontal pill nav */}
             <div className="lg:hidden flex gap-1 overflow-x-auto pb-2 -mx-2 px-2 mb-4 border-b-2 border-stone-800">
               {SECTIONS.map((s) => {
                 const Icon = s.icon;
@@ -312,7 +325,6 @@ export default function AnalysisPage() {
               })}
             </div>
 
-            {/* Desktop: vertical sidebar */}
             <nav className="hidden lg:block space-y-1">
               <div className="text-[10px] uppercase tracking-[0.2em] text-stone-600 mb-2 px-3">
                 Sections
@@ -345,7 +357,6 @@ export default function AnalysisPage() {
               })}
             </nav>
 
-            {/* Quick action buttons below nav on desktop */}
             <div className="hidden lg:flex flex-col gap-1 mt-6 pt-4 border-t border-stone-800">
               <div className="text-[10px] uppercase tracking-[0.2em] text-stone-600 mb-2 px-3">
                 Actions
@@ -367,13 +378,10 @@ export default function AnalysisPage() {
             </div>
           </aside>
 
-          {/* ========================= Main content ========================= */}
           <main className="min-w-0 space-y-12">
-            {/* =============== Overview =============== */}
             <section id="overview" className="scroll-mt-4">
               <SectionHeader icon={LayoutDashboard} title="Overview" />
 
-              {/* Banners */}
               <div className="mb-4 border-2 border-amber-700/40 bg-amber-950/20 p-4 flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                 <div className="text-xs text-amber-100/90 leading-relaxed">
@@ -407,7 +415,6 @@ export default function AnalysisPage() {
               )}
             </section>
 
-            {/* =============== Stock Chart =============== */}
             <section id="stock-chart" className="scroll-mt-4">
               <SectionHeader icon={LineChart} title="Stock Chart" />
               {chartTicker && filings.length > 0 ? (
@@ -425,7 +432,6 @@ export default function AnalysisPage() {
               )}
             </section>
 
-            {/* =============== Insiders =============== */}
             <section id="insiders" className="scroll-mt-4">
               <SectionHeader icon={Users} title="Insider Activity" />
               {company?.cik ? (
@@ -443,7 +449,6 @@ export default function AnalysisPage() {
               )}
             </section>
 
-            {/* =============== Holders (13F Institutional) =============== */}
             {chartTicker && (
               <HoldersSection
                 ticker={chartTicker}
@@ -452,7 +457,6 @@ export default function AnalysisPage() {
               />
             )}
 
-            {/* =============== Financials =============== */}
             <section id="financials" className="scroll-mt-4">
               <SectionHeader icon={DollarSign} title="Financial Statements" />
 
@@ -548,7 +552,6 @@ export default function AnalysisPage() {
               </p>
             </section>
 
-            {/* =============== Ratios =============== */}
             <section id="ratios" className="scroll-mt-4">
               <SectionHeader icon={Percent} title="Ratios" />
 
@@ -605,7 +608,6 @@ export default function AnalysisPage() {
         </div>
       )}
 
-      {/* Concept history modal — rendered at root level so it overlays everything */}
       {conceptToTrace && company?.cik && (
         <ConceptHistoryModal
           cik={company.cik}
@@ -619,10 +621,6 @@ export default function AnalysisPage() {
     </>
   );
 }
-
-// ============================================================================
-// Subcomponents
-// ============================================================================
 
 function SectionHeader({ icon: Icon, title }) {
   return (
@@ -669,7 +667,6 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
           {rows.map((row) => {
             const header = isHeaderRow(row.label);
             const growth = computeGrowth(row);
-            // Check if this row has any XBRL source data — only show history icon if so
             const hasSource = row.values.some((v) => v.source && v.source.tag);
             return (
               <tr key={row.label} className={`border-b border-stone-800/60 hover:bg-amber-500/5 transition-colors group ${header ? 'bg-stone-900/40' : ''}`}>
