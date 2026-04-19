@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import {
   Info, FileText, BarChart3, GitCompare, Users, Percent, LineChart,
-  AlertTriangle, ExternalLink, Code, Database, Mail,
+  AlertTriangle, ExternalLink, Code, Database,
 } from 'lucide-react';
 
 export default function AboutPage() {
@@ -105,10 +105,10 @@ export default function AboutPage() {
               <div>
                 <h4 className="text-stone-100 font-bold mb-1">Industry classification</h4>
                 <p className="text-stone-400">
-                  SIC (Standard Industrial Classification) codes drive industry-specific logic.
-                  For example, SIC 6020-6299 triggers banking ratios; SIC 7370-7379 triggers
-                  tech-oriented ratios like Rule of 40. The classification is automatic but not
-                  always precise for conglomerates.
+                  SIC (Standard Industrial Classification) codes drive industry-specific logic. For
+                  example, SIC 6020-6299 triggers banking ratios; SIC 7370-7379 triggers tech-oriented
+                  ratios like Rule of 40. The classification is automatic but not always precise for
+                  conglomerates.
                 </p>
               </div>
 
@@ -222,50 +222,6 @@ export default function AboutPage() {
               />
             </ul>
           </div>
-
-          {/* What's not here */}
-          <div className="border-2 border-stone-800 bg-stone-900/40 p-4">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-amber-400 font-bold mb-3">
-              What's Not Here (Yet)
-            </div>
-            <ul className="space-y-2 text-xs text-stone-400">
-              <NotHereItem>Segment breakdowns (e.g. iPhone vs Services)</NotHereItem>
-              <NotHereItem>Analyst estimates / consensus</NotHereItem>
-              <NotHereItem>Real-time quotes or intraday data</NotHereItem>
-              <NotHereItem>Options flow or derivatives</NotHereItem>
-              <NotHereItem>Earnings call transcripts</NotHereItem>
-              <NotHereItem>13F holdings (institutions)</NotHereItem>
-              <NotHereItem>Private companies or pre-IPO</NotHereItem>
-            </ul>
-          </div>
-
-          {/* Credits */}
-          <div className="border-2 border-stone-800 bg-stone-900/40 p-4">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-amber-400 font-bold mb-3">
-              Built With
-            </div>
-            <ul className="space-y-1.5 text-xs text-stone-400">
-              <li>React + Vite</li>
-              <li>Tailwind CSS</li>
-              <li>Recharts + hand-rolled SVG</li>
-              <li>Vercel (hosting + edge functions)</li>
-              <li>lucide-react (icons)</li>
-            </ul>
-          </div>
-
-          {/* Feedback */}
-          <div className="border-2 border-amber-700/30 bg-amber-950/10 p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Mail className="w-4 h-4 text-amber-400" />
-              <span className="text-[10px] uppercase tracking-[0.2em] text-amber-400 font-bold">
-                Feedback
-              </span>
-            </div>
-            <p className="text-xs text-stone-300 leading-relaxed">
-              Found a bug? Have a data quality issue? Suggestion for a new feature?
-              Open an issue on GitHub or reach out directly.
-            </p>
-          </div>
         </aside>
       </div>
     </>
@@ -324,15 +280,6 @@ function SourceLink({ href, title, desc }) {
         </div>
         <div className="text-[10px] text-stone-500">{desc}</div>
       </a>
-    </li>
-  );
-}
-
-function NotHereItem({ children }) {
-  return (
-    <li className="flex items-start gap-1.5">
-      <span className="text-stone-600 shrink-0">·</span>
-      <span>{children}</span>
     </li>
   );
 }
