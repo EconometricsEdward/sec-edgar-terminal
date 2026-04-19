@@ -18,10 +18,6 @@ import {
 import { classifyIndustry } from '../utils/industry.js';
 import { PEER_GROUPS, COMPANY_COLORS } from '../utils/peerGroups.js';
 
-// ============================================================================
-// Metric definitions
-// ============================================================================
-
 const ABSOLUTE_METRICS = [
   { key: 'revenue', label: 'Revenue', format: 'currency' },
   { key: 'netIncome', label: 'Net Income', format: 'currency' },
@@ -34,25 +30,16 @@ const ABSOLUTE_METRICS = [
 const RATIO_METRICS = [
   { key: 'roe', label: 'Return on Equity (ROE)', format: 'percent',
     compute: (vals) => safeDiv(vals.netIncome, vals.stockholdersEquity) * 100,
-    // For "source" links: which raw metric is the numerator (the thing that makes this ratio interesting)
-    sourceMetricKey: 'netIncome',
-    formulaLabel: 'Net Income ÷ Stockholders\' Equity',
-  },
+    sourceMetricKey: 'netIncome', formulaLabel: 'Net Income ÷ Stockholders\' Equity' },
   { key: 'roa', label: 'Return on Assets (ROA)', format: 'percent',
     compute: (vals) => safeDiv(vals.netIncome, vals.totalAssets) * 100,
-    sourceMetricKey: 'netIncome',
-    formulaLabel: 'Net Income ÷ Total Assets',
-  },
+    sourceMetricKey: 'netIncome', formulaLabel: 'Net Income ÷ Total Assets' },
   { key: 'netMargin', label: 'Net Margin', format: 'percent',
     compute: (vals) => safeDiv(vals.netIncome, vals.revenue) * 100,
-    sourceMetricKey: 'netIncome',
-    formulaLabel: 'Net Income ÷ Revenue',
-  },
+    sourceMetricKey: 'netIncome', formulaLabel: 'Net Income ÷ Revenue' },
   { key: 'operatingMargin', label: 'Operating Margin', format: 'percent',
     compute: (vals) => safeDiv(vals.operatingIncome, vals.revenue) * 100,
-    sourceMetricKey: 'operatingIncome',
-    formulaLabel: 'Operating Income ÷ Revenue',
-  },
+    sourceMetricKey: 'operatingIncome', formulaLabel: 'Operating Income ÷ Revenue' },
 ];
 
 const GROWTH_BAR_METRICS = [
@@ -76,10 +63,6 @@ function safeDiv(a, b) {
   const r = a / b;
   return Number.isFinite(r) ? r : null;
 }
-
-// ============================================================================
-// Main component
-// ============================================================================
 
 export default function ComparePage() {
   const { tickers: urlTickers } = useParams();
@@ -288,18 +271,14 @@ export default function ComparePage() {
         const companyPeriods = extractAnnualPeriods(c.facts).slice(0, 10);
         const row = buildMetricRow(c.facts, metricKey, '', companyPeriods, format, c.sicCode);
         return {
-          name: c.name,
-          ticker: c.ticker,
-          color: c.color,
-          data: row.values,
-          sicCode: c.sicCode,
+          name: c.name, ticker: c.ticker, color: c.color,
+          data: row.values, sicCode: c.sicCode,
         };
       });
   }, [companies]);
 
   const normalizeSeries = useCallback((series, mode, metricKey) => {
     if (mode === 'absolute') return series;
-
     if (mode === 'indexed') {
       return series.map((s) => {
         const sorted = [...s.data].sort((a, b) => (a.period?.fy || 0) - (b.period?.fy || 0));
@@ -307,22 +286,16 @@ export default function ComparePage() {
         if (!baseline || baseline === 0) return s;
         return {
           ...s,
-          data: s.data.map((v) => ({
-            ...v,
-            value: v.value != null ? (v.value / baseline) * 100 : null,
-          })),
+          data: s.data.map((v) => ({ ...v, value: v.value != null ? (v.value / baseline) * 100 : null })),
         };
       });
     }
-
     if (mode === 'perShare') {
       return series.map((s) => {
         const company = companies.find((c) => c.ticker === s.ticker);
         if (!company?.facts) return s;
         const periods = extractAnnualPeriods(company.facts).slice(0, 10);
-        const sharesRow = buildMetricRow(
-          company.facts, 'dilutedShares', '', periods, 'decimal', company.sicCode
-        );
+        const sharesRow = buildMetricRow(company.facts, 'dilutedShares', '', periods, 'decimal', company.sicCode);
         return {
           ...s,
           data: s.data.map((v, i) => {
@@ -333,7 +306,6 @@ export default function ComparePage() {
         };
       });
     }
-
     if (mode === 'pctRevenue') {
       if (metricKey === 'revenue') {
         return series.map((s) => ({
@@ -345,9 +317,7 @@ export default function ComparePage() {
         const company = companies.find((c) => c.ticker === s.ticker);
         if (!company?.facts) return s;
         const periods = extractAnnualPeriods(company.facts).slice(0, 10);
-        const revRow = buildMetricRow(
-          company.facts, 'revenue', '', periods, 'currency', company.sicCode
-        );
+        const revRow = buildMetricRow(company.facts, 'revenue', '', periods, 'currency', company.sicCode);
         return {
           ...s,
           data: s.data.map((v, i) => {
@@ -358,7 +328,6 @@ export default function ComparePage() {
         };
       });
     }
-
     return series;
   }, [companies]);
 
@@ -379,7 +348,6 @@ export default function ComparePage() {
         const operatingIncome = buildMetricRow(c.facts, 'operatingIncome', '', periods, 'currency', c.sicCode);
         const totalAssets = buildMetricRow(c.facts, 'totalAssets', '', periods, 'currency', c.sicCode);
         const equity = buildMetricRow(c.facts, 'stockholdersEquity', '', periods, 'currency', c.sicCode);
-
         const data = periods.map((p, i) => ({
           period: p,
           value: ratioMetric.compute({
@@ -390,29 +358,36 @@ export default function ComparePage() {
             stockholdersEquity: equity.values[i]?.value,
           }),
         }));
-
         return { name: c.name, ticker: c.ticker, color: c.color, data };
       });
   }, [companies]);
 
+  // ==========================================================================
+  // Growth bar chart — refactored to use per-company rows with Cell coloring
+  //
+  // Data structure transformation: instead of [{metric: 'Revenue', CFG: 12, MTB: 8}],
+  // we pivot to one row per (metric, company) pair, but keep it structured so each
+  // company is a separate <Bar> but we use <Cell> inside to force colors.
+  // ==========================================================================
   const growthBarData = useMemo(() => {
-    return GROWTH_BAR_METRICS.map((m) => {
-      const bars5y = { metric: m.label };
-      const bars10y = { metric: m.label };
-      companies.filter((c) => c.facts && !c.error).forEach((c) => {
-        const periods = extractAnnualPeriods(c.facts).slice(0, 10);
-        const row = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode);
-        const growth = computeGrowth(row);
-        bars5y[c.ticker] = growth.cagr5y;
-        bars10y[c.ticker] = growth.cagr10y;
+    // Output shape: { '5y': [rows], '10y': [rows] }
+    // Each row has one data point per company, for use with grouped bars
+    const loadedCompanies = companies.filter((c) => c.facts && !c.error);
+    const buildGrowthRows = (field) => {
+      return GROWTH_BAR_METRICS.map((m) => {
+        const row = { metric: m.label };
+        loadedCompanies.forEach((c) => {
+          const periods = extractAnnualPeriods(c.facts).slice(0, 10);
+          const metricRow = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode);
+          const growth = computeGrowth(metricRow);
+          row[c.ticker] = field === '5y' ? growth.cagr5y : growth.cagr10y;
+        });
+        return row;
       });
-      return { metric: m.label, bars5y, bars10y };
-    });
+    };
+    return { '5y': buildGrowthRows('5y'), '10y': buildGrowthRows('10y') };
   }, [companies]);
 
-  // ==========================================================================
-  // Snapshot data — now with source info for each cell
-  // ==========================================================================
   const snapshotData = useMemo(() => {
     const allMetrics = [
       { key: 'revenue', label: 'Revenue', format: 'currency', higherIsBetter: true, tooltip: 'Total revenue as reported' },
@@ -429,13 +404,9 @@ export default function ComparePage() {
 
     return allMetrics.map((m) => {
       const row = {
-        metric: m.label,
-        metricKey: m.key,
-        format: m.format,
-        higherIsBetter: m.higherIsBetter,
-        isComputed: !!m.computed,
-        tooltip: m.tooltip,
-        values: [],
+        metric: m.label, metricKey: m.key, format: m.format,
+        higherIsBetter: m.higherIsBetter, isComputed: !!m.computed,
+        tooltip: m.tooltip, values: [],
       };
       companies.filter((c) => c.facts && !c.error).forEach((c) => {
         const periods = extractAnnualPeriods(c.facts).slice(0, 10);
@@ -444,7 +415,6 @@ export default function ComparePage() {
           return;
         }
         if (m.computed) {
-          // For computed ratios: compute the value, but track the NUMERATOR's source for linking
           const revenue = buildMetricRow(c.facts, 'revenue', '', periods, 'currency', c.sicCode);
           const netIncome = buildMetricRow(c.facts, 'netIncome', '', periods, 'currency', c.sicCode);
           const opIncome = buildMetricRow(c.facts, 'operatingIncome', '', periods, 'currency', c.sicCode);
@@ -459,21 +429,16 @@ export default function ComparePage() {
           };
           const ratioMetric = RATIO_METRICS.find((r) => r.key === m.key);
           const value = ratioMetric ? ratioMetric.compute(vals) : null;
-          // Link to the numerator's source (Net Income for most ratios, Operating Income for op margin)
           const numeratorRow = ratioMetric?.sourceMetricKey === 'operatingIncome' ? opIncome : netIncome;
           row.values.push({
-            ticker: c.ticker,
-            cik: c.cik,
-            value,
+            ticker: c.ticker, cik: c.cik, value,
             source: numeratorRow.values[0]?.source || null,
-            period: periods[0],
-            formulaLabel: ratioMetric?.formulaLabel,
+            period: periods[0], formulaLabel: ratioMetric?.formulaLabel,
           });
         } else {
           const r = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode);
           row.values.push({
-            ticker: c.ticker,
-            cik: c.cik,
+            ticker: c.ticker, cik: c.cik,
             value: r.values[0]?.value ?? null,
             source: r.values[0]?.source || null,
             period: periods[0],
@@ -498,9 +463,7 @@ export default function ComparePage() {
         const row = buildMetricRow(c.facts, metric.key, '', periods, metric.format, c.sicCode);
         const growth = computeGrowth(row);
         const valsByYear = new Map();
-        row.values.forEach((v) => {
-          if (v.period?.fy) valsByYear.set(v.period.fy, v.value);
-        });
+        row.values.forEach((v) => { if (v.period?.fy) valsByYear.set(v.period.fy, v.value); });
         const vals = alignedPeriods.map((y) => {
           const val = valsByYear.get(y);
           return val == null ? '' : val;
@@ -531,7 +494,6 @@ export default function ComparePage() {
 
   return (
     <>
-      {/* ============= Header ============= */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">
           <GitCompare className="w-5 h-5 text-amber-500" />
@@ -543,7 +505,6 @@ export default function ComparePage() {
         </p>
       </div>
 
-      {/* ============= Peer group preset chips ============= */}
       {companies.length === 0 && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
@@ -571,7 +532,6 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* ============= Company chips ============= */}
       {companies.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
           {companies.map((c) => (
@@ -588,10 +548,7 @@ export default function ComparePage() {
               <span className="text-[11px] text-stone-400 truncate max-w-[180px]">{c.name}</span>
               {c.loading && <Loader2 className="w-3 h-3 animate-spin" />}
               {c.error && <AlertCircle className="w-3 h-3" title={c.error} />}
-              <button
-                onClick={() => removeCompany(c.ticker)}
-                className="text-stone-500 hover:text-rose-400 ml-1"
-              >
+              <button onClick={() => removeCompany(c.ticker)} className="text-stone-500 hover:text-rose-400 ml-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -599,20 +556,14 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* ============= Search bar ============= */}
       {companies.length < MAX_COMPANIES && (
         <div className="mb-6 relative">
           <div className="flex gap-2">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
               <input
-                type="text"
-                value={input}
-                onChange={(e) => {
-                  setInput(e.target.value.toUpperCase());
-                  setShowSuggestions(true);
-                  setHighlightedIdx(0);
-                }}
+                type="text" value={input}
+                onChange={(e) => { setInput(e.target.value.toUpperCase()); setShowSuggestions(true); setHighlightedIdx(0); }}
                 onFocus={() => setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                 onKeyDown={(e) => {
@@ -645,29 +596,20 @@ export default function ComparePage() {
                 </div>
               )}
             </div>
-            <button
-              onClick={handleSubmit}
-              disabled={!suggestions.length}
-              className="px-5 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-stone-800 disabled:text-stone-600 text-stone-950 font-black uppercase tracking-widest text-xs transition-colors flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Add
+            <button onClick={handleSubmit} disabled={!suggestions.length}
+              className="px-5 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-stone-800 disabled:text-stone-600 text-stone-950 font-black uppercase tracking-widest text-xs transition-colors flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Add
             </button>
             {companies.length > 0 && (
               <>
-                <button
-                  onClick={copyShareLink}
+                <button onClick={copyShareLink}
                   className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
-                  title="Copy shareable link"
-                >
+                  title="Copy shareable link">
                   <LinkIcon className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={exportFullCsv}
-                  disabled={!allLoaded}
+                <button onClick={exportFullCsv} disabled={!allLoaded}
                   className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors"
-                  title="Download full comparison as CSV"
-                >
+                  title="Download full comparison as CSV">
                   <Download className="w-4 h-4" />
                 </button>
               </>
@@ -676,7 +618,6 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* ============= Auto-suggestions ============= */}
       {autoSuggestions.length > 0 && companies.length === 1 && (
         <div className="mb-6 border-2 border-sky-900/50 bg-sky-950/20 p-3">
           <div className="flex items-center gap-2 mb-2">
@@ -687,12 +628,9 @@ export default function ComparePage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {autoSuggestions.map((s) => (
-              <button
-                key={s.ticker}
-                onClick={() => addCompany(s)}
+              <button key={s.ticker} onClick={() => addCompany(s)}
                 className="flex items-center gap-2 px-3 py-1.5 bg-stone-900 border border-sky-800/50 hover:border-sky-500 text-stone-300 hover:text-sky-300 text-xs font-bold transition-colors"
-                title={`${s.name} · ${s.groupLabel}`}
-              >
+                title={`${s.name} · ${s.groupLabel}`}>
                 <Plus className="w-3 h-3" />
                 {s.ticker}
                 <span className="text-[10px] text-stone-500">{s.name.split(' ').slice(0, 2).join(' ')}</span>
@@ -722,32 +660,25 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* ============= Snapshot table ============= */}
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
         <SnapshotTable data={snapshotData} companies={companies} />
       )}
 
-      {/* ============= Normalization toggle ============= */}
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-2">
             <LayoutGrid className="w-4 h-4 text-stone-400" />
-            <span className="text-[10px] uppercase tracking-[0.25em] text-stone-400 font-bold">
-              View Mode
-            </span>
+            <span className="text-[10px] uppercase tracking-[0.25em] text-stone-400 font-bold">View Mode</span>
           </div>
           <div className="flex flex-wrap gap-1">
             {NORMALIZATION_MODES.map((mode) => (
-              <button
-                key={mode.id}
-                onClick={() => setNormalization(mode.id)}
+              <button key={mode.id} onClick={() => setNormalization(mode.id)}
                 className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
                   normalization === mode.id
                     ? 'bg-stone-100 text-stone-950 border-stone-100'
                     : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700 hover:text-stone-200'
                 }`}
-                title={mode.desc}
-              >
+                title={mode.desc}>
                 {mode.label}
               </button>
             ))}
@@ -758,49 +689,39 @@ export default function ComparePage() {
         </div>
       )}
 
-      {/* ============= Financial charts ============= */}
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
         <>
           <SectionTitle icon={TrendingUp} title="Financials" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
             {ABSOLUTE_METRICS.map((m) => (
-              <ComparisonChart
-                key={m.key}
-                title={m.label}
+              <ComparisonChart key={m.key} title={m.label}
                 series={normalizeSeries(buildSeriesForMetric(m.key, m.format), normalization, m.key)}
-                format={effectiveFormat(m.format)}
-                height={280}
+                format={effectiveFormat(m.format)} height={280}
               />
             ))}
           </div>
         </>
       )}
 
-      {/* ============= Ratios ============= */}
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
         <>
           <SectionTitle icon={Percent} title="Ratios & Margins" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
             {RATIO_METRICS.map((m) => (
-              <ComparisonChart
-                key={m.key}
-                title={m.label}
-                series={buildRatioSeries(m)}
-                format="percent"
-                height={260}
+              <ComparisonChart key={m.key} title={m.label}
+                series={buildRatioSeries(m)} format="percent" height={260}
               />
             ))}
           </div>
         </>
       )}
 
-      {/* ============= Growth bars ============= */}
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
         <>
           <SectionTitle icon={BarChart3} title="Growth Rates (CAGR)" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-            <GrowthBarChart title="5-Year CAGR" data={growthBarData} companies={companies} which="bars5y" />
-            <GrowthBarChart title="10-Year CAGR" data={growthBarData} companies={companies} which="bars10y" />
+            <GrowthBarChart title="5-Year CAGR" rows={growthBarData['5y']} companies={companies} />
+            <GrowthBarChart title="10-Year CAGR" rows={growthBarData['10y']} companies={companies} />
           </div>
         </>
       )}
@@ -828,10 +749,6 @@ export default function ComparePage() {
   );
 }
 
-// ============================================================================
-// Subcomponents
-// ============================================================================
-
 function SectionTitle({ icon: Icon, title }) {
   return (
     <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-stone-800">
@@ -841,13 +758,8 @@ function SectionTitle({ icon: Icon, title }) {
   );
 }
 
-// ============================================================================
-// Snapshot table — with source links per cell
-// ============================================================================
-
 function SnapshotTable({ data, companies }) {
   const loadedCompanies = companies.filter((c) => c.facts && !c.error);
-
   return (
     <div className="mb-8">
       <SectionTitle icon={Trophy} title="Head-to-Head Snapshot" />
@@ -855,15 +767,9 @@ function SnapshotTable({ data, companies }) {
         <table className="w-full text-sm">
           <thead className="bg-stone-900 border-b-2 border-stone-800">
             <tr>
-              <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 min-w-[180px]">
-                Metric
-              </th>
+              <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 min-w-[180px]">Metric</th>
               {loadedCompanies.map((c) => (
-                <th
-                  key={c.ticker}
-                  className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] font-black min-w-[120px]"
-                  style={{ color: c.color }}
-                >
+                <th key={c.ticker} className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] font-black min-w-[120px]" style={{ color: c.color }}>
                   {c.ticker}
                 </th>
               ))}
@@ -874,36 +780,22 @@ function SnapshotTable({ data, companies }) {
               const numericValues = row.values
                 .map((v, i) => ({ idx: i, value: v.value }))
                 .filter((v) => v.value != null && Number.isFinite(v.value));
-
-              let bestIdx = -1;
-              let worstIdx = -1;
+              let bestIdx = -1, worstIdx = -1;
               if (numericValues.length > 1 && row.higherIsBetter !== null) {
                 const sorted = [...numericValues].sort((a, b) => b.value - a.value);
                 bestIdx = row.higherIsBetter ? sorted[0].idx : sorted[sorted.length - 1].idx;
                 worstIdx = row.higherIsBetter ? sorted[sorted.length - 1].idx : sorted[0].idx;
               }
-
               return (
                 <tr key={row.metric} className="border-b border-stone-800/60 hover:bg-amber-500/5">
-                  <td
-                    className="px-4 py-2.5 text-stone-300 font-bold sticky left-0 bg-stone-950/95"
-                    title={row.tooltip}
-                  >
+                  <td className="px-4 py-2.5 text-stone-300 font-bold sticky left-0 bg-stone-950/95" title={row.tooltip}>
                     {row.metric}
                     {row.isComputed && (
-                      <span className="ml-1.5 text-[9px] text-stone-600 font-normal italic tracking-normal">
-                        (computed)
-                      </span>
+                      <span className="ml-1.5 text-[9px] text-stone-600 font-normal italic tracking-normal">(computed)</span>
                     )}
                   </td>
                   {row.values.map((v, i) => (
-                    <SnapshotCell
-                      key={i}
-                      value={v}
-                      row={row}
-                      isBest={i === bestIdx}
-                      isWorst={i === worstIdx}
-                    />
+                    <SnapshotCell key={i} value={v} row={row} isBest={i === bestIdx} isWorst={i === worstIdx} />
                   ))}
                 </tr>
               );
@@ -923,15 +815,10 @@ function SnapshotTable({ data, companies }) {
 
 function SnapshotCell({ value, row, isBest, isWorst }) {
   const formatted = formatSnapshotValue(value.value, row.format);
-  const textClass = isBest
-    ? 'text-emerald-400 font-black'
-    : isWorst
-      ? 'text-rose-400'
-      : value.value == null
-        ? 'text-stone-700'
-        : 'text-stone-300';
+  const textClass = isBest ? 'text-emerald-400 font-black'
+    : isWorst ? 'text-rose-400'
+    : value.value == null ? 'text-stone-700' : 'text-stone-300';
 
-  // Build tooltip with source info or formula
   let tooltip;
   if (value.source) {
     if (row.isComputed) {
@@ -948,21 +835,12 @@ function SnapshotCell({ value, row, isBest, isWorst }) {
   const sourceUrl = value.source && value.cik ? buildSourceUrl(value.cik, value.source) : null;
 
   if (!sourceUrl || value.value == null) {
-    return (
-      <td className={`px-4 py-2.5 text-right tabular-nums ${textClass}`} title={tooltip}>
-        {formatted}
-      </td>
-    );
+    return <td className={`px-4 py-2.5 text-right tabular-nums ${textClass}`} title={tooltip}>{formatted}</td>;
   }
 
   return (
     <td className={`px-4 py-2.5 text-right tabular-nums group ${textClass}`} title={tooltip}>
-      <a
-        href={sourceUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors"
-      >
+      <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors">
         {formatted}
         <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
       </a>
@@ -971,30 +849,43 @@ function SnapshotCell({ value, row, isBest, isWorst }) {
 }
 
 // ============================================================================
-// Growth bar chart — fixed colors using individual <Bar> per company
+// Growth bar chart — now using <Cell> inside each <Bar> to force colors
+//
+// Why this works: Recharts' Bar component lets you pass <Cell> children that
+// override the fill color per data point. By mapping each Cell to its company's
+// color, we guarantee the color is applied at the SVG rendering level rather
+// than being inferred by Recharts' series logic.
 // ============================================================================
 
-function GrowthBarChart({ title, data, companies, which }) {
+function GrowthBarChart({ title, rows, companies }) {
   const loadedCompanies = companies.filter((c) => c.facts && !c.error);
 
-  const chartData = data.map((d) => ({
-    metric: d.metric,
-    ...d[which],
-  }));
-
-  // Recharts normally honors the `fill` prop on <Bar>, but when multiple Bars
-  // are children of a single BarChart with shared data keys, the color can
-  // sometimes fall back to a default palette depending on how the chart
-  // receives the color prop. To guarantee per-company colors, we render one
-  // <Bar> per company and explicitly set fill AND stroke to their color.
+  // Build a color lookup: { ticker: color }
+  const colorByTicker = {};
+  loadedCompanies.forEach((c) => { colorByTicker[c.ticker] = c.color; });
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900/30 p-4">
+      {/* Chart title */}
       <div className="flex items-center justify-between mb-3 px-2">
         <span className="text-xs uppercase tracking-[0.2em] text-amber-400 font-bold">{title}</span>
       </div>
-      <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+
+      {/* Custom legend with proper company colors */}
+      <div className="flex flex-wrap gap-3 mb-2 px-2">
+        {loadedCompanies.map((c) => (
+          <div key={c.ticker} className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider">
+            <span
+              className="inline-block w-3 h-3"
+              style={{ backgroundColor: c.color }}
+            />
+            <span style={{ color: c.color }}>{c.ticker}</span>
+          </div>
+        ))}
+      </div>
+
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={rows} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#44403c" vertical={false} />
           <XAxis
             dataKey="metric"
@@ -1023,25 +914,21 @@ function GrowthBarChart({ title, data, companies, which }) {
             }}
             cursor={{ fill: '#f59e0b10' }}
           />
-          <Legend
-            wrapperStyle={{ fontSize: '10px', fontFamily: 'ui-monospace, monospace' }}
-            iconType="square"
-            formatter={(value) => {
-              const company = loadedCompanies.find((c) => c.ticker === value);
-              return (
-                <span style={{ color: company?.color || '#a8a29e' }}>{value}</span>
-              );
-            }}
-          />
+          {/* One Bar per company — each with explicit fill color on both the Bar AND its Cells. */}
           {loadedCompanies.map((c) => (
             <Bar
               key={c.ticker}
               dataKey={c.ticker}
-              fill={c.color}
-              stroke={c.color}
               name={c.ticker}
+              fill={c.color}
               isAnimationActive={false}
-            />
+            >
+              {/* Force fill via <Cell> for every data point in this bar series.
+                  Belt-and-suspenders: both Bar.fill and each Cell.fill are set to c.color. */}
+              {rows.map((_, idx) => (
+                <Cell key={`cell-${c.ticker}-${idx}`} fill={c.color} />
+              ))}
+            </Bar>
           ))}
         </BarChart>
       </ResponsiveContainer>
