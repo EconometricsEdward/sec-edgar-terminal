@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { TrendingUp, FileText, BarChart3, Info, GitCompare, Home, Wallet } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -19,7 +19,7 @@ export default function App() {
 
   return (
     <TickerContext.Provider value={{ ticker, setTicker, tickerMap, setTickerMap, company, setCompany }}>
-      <HashRouter>
+      <BrowserRouter>
         <div className="min-h-screen bg-stone-950 text-stone-100 font-mono">
           <div
             className="fixed inset-0 opacity-[0.03] pointer-events-none"
@@ -84,7 +84,7 @@ export default function App() {
         </div>
         <Analytics />
         <SpeedInsights />
-      </HashRouter>
+      </BrowserRouter>
     </TickerContext.Provider>
   );
 }
