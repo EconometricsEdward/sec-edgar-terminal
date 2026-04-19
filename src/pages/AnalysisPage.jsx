@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo, useEffect } from 'react';
+import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
@@ -8,6 +8,7 @@ import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import { MetricChart } from '../components/MetricChart.jsx';
 import SummaryDashboard from '../components/SummaryDashboard.jsx';
 import StockPriceChart from '../components/StockPriceChart.jsx';
+import InsiderActivity from '../components/InsiderActivity.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
 import {
@@ -23,7 +24,7 @@ import {
   periodLabel,
   buildSourceUrl,
 } from '../utils/xbrlParser.js';
-import { classifyIndustry, industryLabel, industryDisclosure, INDUSTRY_GROUPS } from '../utils/industry.js';
+import { classifyIndustry, industryLabel, industryDisclosure } from '../utils/industry.js';
 
 const STATEMENTS = [
   { id: 'income', label: 'Income Statement', icon: TrendingUp, build: buildIncomeStatement,
@@ -32,9 +33,7 @@ const STATEMENTS = [
     featuredRows: ['Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Cash & Equivalents'] },
   { id: 'cashflow', label: 'Cash Flow', icon: ArrowRightLeft, build: buildCashFlow,
     featuredRows: ['Operating Cash Flow', 'Capital Expenditures', 'Financing Cash Flow', 'Investing Cash Flow'] },
-  { id: 'ratios', label: 'Ratios', icon: Percent, build: buildRatios,
-    // featured rows vary by industry — picked dynamically below
-    featuredRows: null },
+  { id: 'ratios', label: 'Ratios', icon: Percent, build: buildRatios, featuredRows: null },
 ];
 
 export default function AnalysisPage() {
@@ -51,11 +50,18 @@ export default function AnalysisPage() {
   const [periodType, setPeriodType] = useState('annual');
   const [showGrowth, setShowGrowth] = useState(true);
 
+  // Insider markers flow from InsiderActivity component → up to here → down to StockPriceChart
+  const [insiderMarkers, setInsiderMarkers] = useState([]);
+  const handleInsiderMarkers = useCallback((markers) => {
+    setInsiderMarkers(markers || []);
+  }, []);
+
   const fetchFacts = async (entry) => {
     setLoading(true);
     setError(null);
     setFacts(null);
     setFilings([]);
+    setInsiderMarkers([]);
 
     if (urlTicker !== entry.ticker) {
       navigate(`/analysis/${entry.ticker}`, { replace: false });
@@ -93,7 +99,7 @@ export default function AnalysisPage() {
       setSicCode(submissions.sic);
       setFacts(factsData.facts || {});
 
-      // Build filings list for the stock price chart markers
+      // Build full filings list (including Form 4s) for chart markers and insider component
       const recent = submissions.filings?.recent;
       if (recent) {
         const allFilings = recent.accessionNumber.map((acc, i) => {
@@ -102,6 +108,8 @@ export default function AnalysisPage() {
           return {
             form: recent.form[i],
             filingDate: recent.filingDate[i],
+            accession: acc,
+            accessionNumber: acc,
             documentUrl: `https://www.sec.gov/Archives/edgar/data/${parseInt(entry.cik, 10)}/${accessionClean}/${primaryDoc}`,
           };
         });
@@ -126,13 +134,11 @@ export default function AnalysisPage() {
     [facts, periods, statementDef, sicCode]
   );
 
-  // Dynamic featured rows — different for each statement, and different for Ratios by industry
   const featuredRows = useMemo(() => {
     if (!rows.length) return [];
     if (statementDef.featuredRows) {
       return rows.filter((r) => statementDef.featuredRows.includes(r.label));
     }
-    // Ratios: pick the first 4 non-empty rows for the chart preview
     return rows.filter((r) => r.values.some((v) => v.value != null)).slice(0, 4);
   }, [rows, statementDef]);
 
@@ -189,7 +195,6 @@ export default function AnalysisPage() {
 
       {facts && (
         <>
-          {/* Base experimental banner */}
           <div className="mb-4 border-2 border-amber-700/40 bg-amber-950/20 p-4 flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
             <div className="text-xs text-amber-100/90 leading-relaxed">
@@ -198,7 +203,6 @@ export default function AnalysisPage() {
             </div>
           </div>
 
-          {/* Industry-specific disclosure */}
           {disclosure && (
             <div
               className={`mb-6 border-2 p-4 flex items-start gap-3 ${
@@ -227,10 +231,25 @@ export default function AnalysisPage() {
         </>
       )}
 
-      {/* Stock price chart at the top (after banners, before summary) */}
+      {/* Stock price chart with filing + insider markers */}
       {facts && chartTicker && filings.length > 0 && (
         <div className="mb-6">
-          <StockPriceChart ticker={chartTicker} filings={filings} />
+          <StockPriceChart
+            ticker={chartTicker}
+            filings={filings}
+            insiderMarkers={insiderMarkers}
+          />
+        </div>
+      )}
+
+      {/* Insider Activity (Form 4 parsed data) */}
+      {facts && filings.length > 0 && company?.cik && (
+        <div className="mb-6">
+          <InsiderActivity
+            cik={company.cik}
+            filings={filings}
+            onMarkersReady={handleInsiderMarkers}
+          />
         </div>
       )}
 
@@ -293,37 +312,19 @@ export default function AnalysisPage() {
                     ? 'bg-emerald-500 text-stone-950 border-emerald-500'
                     : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
                 }`}
-                title={showGrowth ? 'Hide growth columns' : 'Show growth columns'}
               >
                 Growth {showGrowth ? 'ON' : 'OFF'}
               </button>
             )}
 
-            <button
-              onClick={copyShareLink}
-              className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
-              title="Copy shareable link"
-            >
-              <LinkIcon className="w-3.5 h-3.5" />
-              Share
+            <button onClick={copyShareLink} className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors">
+              <LinkIcon className="w-3.5 h-3.5" /> Share
             </button>
-
-            <button
-              onClick={goToCompare}
-              className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
-              title="Compare with peers"
-            >
-              <GitCompare className="w-3.5 h-3.5" />
-              Compare
+            <button onClick={goToCompare} className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors">
+              <GitCompare className="w-3.5 h-3.5" /> Compare
             </button>
-
-            <button
-              onClick={exportCsv}
-              className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
-              title="Download current view as CSV"
-            >
-              <Download className="w-3.5 h-3.5" />
-              CSV
+            <button onClick={exportCsv} className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors">
+              <Download className="w-3.5 h-3.5" /> CSV
             </button>
           </div>
 
@@ -345,28 +346,17 @@ export default function AnalysisPage() {
             <table className="w-full text-sm">
               <thead className="bg-stone-900 border-b-2 border-stone-800">
                 <tr>
-                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 z-20 min-w-[220px]">
-                    Metric
-                  </th>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 z-20 min-w-[220px]">Metric</th>
                   {periods.map((p) => (
-                    <th
-                      key={`${p.fy}-${p.fp}-${p.end}`}
-                      className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[90px]"
-                    >
+                    <th key={`${p.fy}-${p.fp}-${p.end}`} className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[90px]">
                       {periodLabel(p)}
                     </th>
                   ))}
                   {growthVisible && (
                     <>
-                      <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-black min-w-[80px] sticky right-[160px] bg-stone-900 z-20 border-l-2 border-stone-800">
-                        YoY
-                      </th>
-                      <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-black min-w-[80px] sticky right-[80px] bg-stone-900 z-20">
-                        5Y CAGR
-                      </th>
-                      <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-black min-w-[80px] sticky right-0 bg-stone-900 z-20">
-                        10Y CAGR
-                      </th>
+                      <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-black min-w-[80px] sticky right-[160px] bg-stone-900 z-20 border-l-2 border-stone-800">YoY</th>
+                      <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-black min-w-[80px] sticky right-[80px] bg-stone-900 z-20">5Y CAGR</th>
+                      <th className="text-right px-3 py-3 text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-black min-w-[80px] sticky right-0 bg-stone-900 z-20">10Y CAGR</th>
                     </>
                   )}
                 </tr>
@@ -376,30 +366,12 @@ export default function AnalysisPage() {
                   const isHeader = ['Revenue', 'Gross Profit', 'Operating Income', 'Net Income', 'Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Operating Cash Flow'].includes(row.label);
                   const growth = computeGrowth(row);
                   return (
-                    <tr
-                      key={row.label}
-                      className={`border-b border-stone-800/60 hover:bg-amber-500/5 transition-colors ${
-                        isHeader ? 'bg-stone-900/40' : ''
-                      }`}
-                    >
-                      <td
-                        className={`px-4 py-2.5 sticky left-0 z-10 ${
-                          isHeader
-                            ? 'bg-stone-900/95 text-stone-100 font-bold'
-                            : 'bg-stone-950/95 text-stone-300'
-                        }`}
-                      >
+                    <tr key={row.label} className={`border-b border-stone-800/60 hover:bg-amber-500/5 transition-colors ${isHeader ? 'bg-stone-900/40' : ''}`}>
+                      <td className={`px-4 py-2.5 sticky left-0 z-10 ${isHeader ? 'bg-stone-900/95 text-stone-100 font-bold' : 'bg-stone-950/95 text-stone-300'}`}>
                         {row.label}
                       </td>
                       {row.values.map((v, i) => (
-                        <ValueCell
-                          key={i}
-                          value={v.value}
-                          source={v.source}
-                          cik={company?.cik}
-                          format={row.format}
-                          isHeader={isHeader}
-                        />
+                        <ValueCell key={i} value={v.value} source={v.source} cik={company?.cik} format={row.format} isHeader={isHeader} />
                       ))}
                       {growthVisible && (
                         <>
@@ -429,7 +401,7 @@ export default function AnalysisPage() {
           <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">Financial Analysis</p>
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Enter a ticker symbol above to load financial data, industry-specific ratios,
-            and a stock price chart with filing date markers.
+            stock prices with filing markers, and insider trading activity.
           </p>
         </div>
       )}
@@ -441,30 +413,16 @@ function ValueCell({ value, source, cik, format, isHeader }) {
   const sourceUrl = source && cik ? buildSourceUrl(cik, source) : null;
   const tooltip = source
     ? `Tag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}\nClick to open SEC source`
-    : value == null
-    ? 'No data reported for this concept'
-    : 'Computed value';
-
+    : value == null ? 'No data reported for this concept' : 'Computed value';
   const cellClasses = `px-4 py-2.5 text-right tabular-nums group ${
-    value == null
-      ? 'text-stone-700'
-      : isHeader
-      ? 'text-stone-100 font-bold'
-      : 'text-stone-300'
+    value == null ? 'text-stone-700' : isHeader ? 'text-stone-100 font-bold' : 'text-stone-300'
   }`;
-
   if (!sourceUrl || value == null) {
     return <td className={cellClasses} title={tooltip}>{formatValue(value, format)}</td>;
   }
-
   return (
     <td className={cellClasses} title={tooltip}>
-      <a
-        href={sourceUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors"
-      >
+      <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors">
         {formatValue(value, format)}
         <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
       </a>
@@ -474,21 +432,12 @@ function ValueCell({ value, source, cik, format, isHeader }) {
 
 function GrowthCell({ pct, isHeader, borderLeft, stickyRight }) {
   const g = formatGrowth(pct);
-  const colorClass =
-    g.color === 'positive' ? 'text-emerald-400'
-    : g.color === 'negative' ? 'text-rose-400'
-    : 'text-stone-600';
+  const colorClass = g.color === 'positive' ? 'text-emerald-400' : g.color === 'negative' ? 'text-rose-400' : 'text-stone-600';
   const bg = isHeader ? 'bg-stone-900/95' : 'bg-stone-950/95';
   const sticky = stickyRight !== undefined ? `sticky z-10` : '';
   const styleObj = stickyRight !== undefined ? { right: `${stickyRight}px` } : undefined;
-
   return (
-    <td
-      style={styleObj}
-      className={`px-3 py-2.5 text-right tabular-nums ${bg} ${sticky} ${colorClass} ${
-        isHeader ? 'font-bold' : ''
-      } ${borderLeft ? 'border-l-2 border-stone-800' : ''}`}
-    >
+    <td style={styleObj} className={`px-3 py-2.5 text-right tabular-nums ${bg} ${sticky} ${colorClass} ${isHeader ? 'font-bold' : ''} ${borderLeft ? 'border-l-2 border-stone-800' : ''}`}>
       {g.text}
     </td>
   );
