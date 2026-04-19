@@ -4,10 +4,17 @@ import {
   Info, FileText, BarChart3, GitCompare, Users, Percent, LineChart,
   AlertTriangle, ExternalLink, Code, Database,
 } from 'lucide-react';
+import SEO from '../components/SEO.jsx';
 
 export default function AboutPage() {
   return (
     <>
+      <SEO
+        title="About & Methodology"
+        description="How EDGAR Terminal works, where the data comes from, and what you can trust. All data is sourced directly from SEC.gov public APIs — no scraping, no tracking, no accounts."
+        path="/about"
+      />
+
       {/* Header */}
       <div className="mb-8 pb-4 border-b-2 border-stone-800">
         <h1 className="text-3xl md:text-4xl font-black tracking-tight text-stone-100 mb-2">

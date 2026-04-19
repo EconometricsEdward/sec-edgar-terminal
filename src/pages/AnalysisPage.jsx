@@ -6,6 +6,7 @@ import {
   LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
 } from 'lucide-react';
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
+import SEO from '../components/SEO.jsx';
 import { MetricChart } from '../components/MetricChart.jsx';
 import SummaryDashboard from '../components/SummaryDashboard.jsx';
 import StockPriceChart from '../components/StockPriceChart.jsx';
@@ -277,8 +278,28 @@ export default function AnalysisPage() {
   const chartTicker = company?.tickers?.split(',')[0]?.trim() || urlTicker;
   const form4Count = filings.filter((f) => f.form === '4').length;
 
+  // ============================================================================
+  // SEO — dynamic per ticker/company
+  // ============================================================================
+  const displayTicker = urlTicker ? urlTicker.toUpperCase() : null;
+  const companyName = company?.name;
+
+  const seoTitle = displayTicker && companyName
+    ? `${companyName} (${displayTicker}) — Financial Analysis & Ratios`
+    : displayTicker
+      ? `${displayTicker} — Financial Analysis`
+      : 'Financial Analysis — SEC XBRL Data';
+
+  const seoDescription = displayTicker && companyName
+    ? `10-year financial analysis for ${companyName} (${displayTicker}). Revenue, net income, operating margin, ROE, ROA, and industry-specific ratios sourced directly from SEC XBRL filings.`
+    : 'Structured financial analysis for every U.S. public company. Income statement, balance sheet, cash flow, and industry-aware ratios from SEC XBRL data.';
+
+  const seoPath = displayTicker ? `/analysis/${displayTicker}` : '/analysis';
+
   return (
     <>
+      <SEO title={seoTitle} description={seoDescription} path={seoPath} />
+
       <TickerSearchBar
         onFetch={fetchFacts}
         loading={loading}

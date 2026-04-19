@@ -6,6 +6,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
+import SEO from '../components/SEO.jsx';
 
 // ============================================================================
 // Featured funds for the landing view
@@ -129,8 +130,29 @@ export default function FundPage() {
     return result;
   }, [data]);
 
+  // ============================================================================
+  // SEO — dynamic per fund
+  // ============================================================================
+  const displayTicker = urlTicker ? urlTicker.toUpperCase() : null;
+  const fundName = data?.isFund ? data?.meta?.name : null;
+  const fundFamily = data?.isFund ? data?.meta?.family : null;
+
+  const seoTitle = displayTicker && fundName
+    ? `${fundName} (${displayTicker}) — Holdings & Net Assets`
+    : displayTicker
+      ? `${displayTicker} — Fund Holdings`
+      : 'Mutual Funds & ETFs — Holdings, AUM, and N-PORT Filings';
+
+  const seoDescription = displayTicker && fundName
+    ? `Latest holdings, net assets (AUM), and SEC N-PORT filings for ${fundName} (${displayTicker})${fundFamily ? ` from ${fundFamily}` : ''}. Top positions, asset class breakdown, and fund family data.`
+    : 'Explore holdings, assets, and filings for every U.S. mutual fund and ETF. Data directly from SEC N-PORT monthly portfolio disclosures.';
+
+  const seoPath = displayTicker ? `/fund/${displayTicker}` : '/fund';
+
   return (
     <>
+      <SEO title={seoTitle} description={seoDescription} path={seoPath} />
+
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">
           <Wallet className="w-5 h-5 text-amber-500" />

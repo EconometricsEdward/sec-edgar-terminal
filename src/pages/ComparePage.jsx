@@ -5,6 +5,7 @@ import {
   AlertTriangle, Download, Sparkles, TrendingUp, Percent, BarChart3,
   Trophy, LayoutGrid, ExternalLink,
 } from 'lucide-react';
+import SEO from '../components/SEO.jsx';
 import { TickerContext } from '../App.jsx';
 import { ComparisonChart } from '../components/MetricChart.jsx';
 import { secDataUrl, secFilesUrl } from '../utils/secApi.js';
@@ -468,8 +469,29 @@ export default function ComparePage() {
   );
   const mixedIndustries = industryGroups.size > 1;
 
+  // ============================================================================
+  // SEO — dynamic based on tickers in URL
+  // ============================================================================
+  const displayTickers = urlTickers
+    ? urlTickers.toUpperCase().split(',').map((t) => t.trim()).filter(Boolean)
+    : [];
+  const tickersVsLabel = displayTickers.length > 0 ? displayTickers.join(' vs ') : null;
+  const tickersPath = displayTickers.length > 0 ? displayTickers.join(',') : null;
+
+  const seoTitle = tickersVsLabel
+    ? `${tickersVsLabel} — Side-by-Side Financial Comparison`
+    : 'Peer Comparison — Compare SEC Filings & Financials';
+
+  const seoDescription = tickersVsLabel
+    ? `Compare ${tickersVsLabel} side-by-side across 10 fiscal years. Revenue, net income, margins, ROE, ROA, and growth rates from SEC XBRL filings.`
+    : 'Compare up to 5 public companies side-by-side. 10 years of financial data, head-to-head snapshot tables, industry-aware ratios from SEC XBRL filings.';
+
+  const seoPath = tickersPath ? `/compare/${tickersPath}` : '/compare';
+
   return (
     <>
+      <SEO title={seoTitle} description={seoDescription} path={seoPath} />
+
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">
           <GitCompare className="w-5 h-5 text-amber-500" />

@@ -4,6 +4,7 @@ import {
   FileText, ExternalLink, Calendar, Hash, Filter, ChevronDown, ChevronRight, Link as LinkIcon, GitCompare,
 } from 'lucide-react';
 import TickerSearchBar from '../components/TickerSearchBar.jsx';
+import SEO from '../components/SEO.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
 import { getItemsInfo } from '../utils/formItems.js';
@@ -156,8 +157,28 @@ export default function FilingsPage() {
     return `${(bytes / 1048576).toFixed(1)} MB`;
   };
 
+  // ============================================================================
+  // SEO — dynamic per ticker/company
+  // ============================================================================
+  const displayTicker = urlTicker ? urlTicker.toUpperCase() : null;
+  const companyName = company?.name;
+
+  const seoTitle = displayTicker && companyName
+    ? `${companyName} (${displayTicker}) — SEC Filings`
+    : displayTicker
+      ? `${displayTicker} — SEC Filings`
+      : 'SEC Filings Browser — 10-K, 10-Q, 8-K, Form 4';
+
+  const seoDescription = displayTicker && companyName
+    ? `Complete SEC filing history for ${companyName} (${displayTicker}). Browse 10-Ks, 10-Qs, 8-Ks, Form 4s, and proxy statements. Direct links to original documents on SEC.gov.`
+    : 'Search and browse SEC filings for every publicly traded U.S. company. Filter by form type, year, and quarter. Direct source links to data.sec.gov.';
+
+  const seoPath = displayTicker ? `/filings/${displayTicker}` : '/filings';
+
   return (
     <>
+      <SEO title={seoTitle} description={seoDescription} path={seoPath} />
+
       <TickerSearchBar
         onFetch={fetchFilings}
         loading={loading}

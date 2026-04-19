@@ -4,6 +4,7 @@ import {
   ArrowRight, FileText, BarChart3, GitCompare, Users, LineChart, Percent,
   Search, TrendingUp, Database, Shield, Zap, ExternalLink, Info,
 } from 'lucide-react';
+import SEO from '../components/SEO.jsx';
 import { TickerContext } from '../App.jsx';
 import { secFilesUrl } from '../utils/secApi.js';
 
@@ -105,6 +106,12 @@ export default function LandingPage() {
 
   return (
     <>
+      <SEO
+        title=""
+        description="Free, source-linked SEC filings explorer for every publicly traded U.S. company. Read actual 10-Ks, 10-Qs, 8-Ks, and Form 4s. Every financial value cites its XBRL source on SEC.gov."
+        path="/"
+      />
+
       {/* ============= Hero Section ============= */}
       <section className="py-8 md:py-12 border-b-2 border-stone-800 mb-8">
         <div className="max-w-4xl">
