@@ -1,54 +1,46 @@
 /**
  * SEC EDGAR proxy — Next.js route handler.
  *
+ * Request flow with all caching layers:
+ *
+ *   User request
+ *     → Vercel edge CDN (Cache-Control, 6h)
+ *     → this function
+ *       → warm cache (Upstash, populated by /api/cron/prewarm)
+ *       → upstream data.sec.gov / www.sec.gov
+ *
  * The browser cannot call SEC.gov directly because:
  *   (1) SEC requires a descriptive User-Agent header identifying the requester.
  *       Browsers don't let JavaScript override this header.
  *   (2) SEC doesn't send CORS headers, so cross-origin browser requests are blocked.
  *
- * This function runs on Vercel's Node runtime and acts as a server-side proxy:
- *   - Client calls /api/sec?path=/submissions/CIK0001318605.json
- *   - Server forwards to data.sec.gov/submissions/CIK0001318605.json with proper UA
- *   - Response is cached for 1 hour to reduce load on SEC servers.
- *
- * Two endpoints are supported:
- *   /api/sec?host=data&path=/submissions/CIK...   -> data.sec.gov
- *   /api/sec?host=www&path=/files/company_tickers.json -> www.sec.gov
- *
- * In-memory rate limiting protects against a single abusive client eating our
- * global SEC quota. For a production-hardened setup you'd move this to a
- * durable store like Upstash Redis, but in-memory is sufficient at this scale.
+ * Rate limiting is done via shared Upstash Redis so it works correctly across
+ * serverless instances (the old in-memory Map pattern was per-instance and
+ * easily bypassed — see utils/rateLimit.js).
  */
 
+import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
+import { warmGet } from '../../../utils/warmCache.js';
+
 export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
 
 const SEC_USER_AGENT = process.env.SEC_USER_AGENT;
 
-// ---------- In-memory rate limiter ----------
-// Keyed by client IP. Resets every minute. Tuned to stay well under SEC's 10 req/sec.
-const RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 }; // 60 req/min per IP = 1 rps avg, bursts allowed
-const buckets = new Map();
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 60;
 
-function checkRate(ip) {
-  const now = Date.now();
-  const bucket = buckets.get(ip) || { count: 0, resetAt: now + RATE_LIMIT.windowMs };
-  if (now > bucket.resetAt) {
-    bucket.count = 0;
-    bucket.resetAt = now + RATE_LIMIT.windowMs;
-  }
-  bucket.count += 1;
-  buckets.set(ip, bucket);
-  return bucket.count <= RATE_LIMIT.maxRequests;
+/**
+ * Extract CIK from a submissions-style path. Returns null if not a submissions
+ * request, so we know whether the warm cache might have a hit.
+ *
+ * Examples that match: "/submissions/CIK0000320193.json"
+ * Example that doesn't: "/files/company_tickers.json"
+ */
+function extractSubmissionsCik(path) {
+  const m = path.match(/^\/submissions\/CIK(\d{10})\.json$/);
+  return m ? m[1] : null;
 }
 
-// Clean up stale buckets occasionally so the Map doesn't grow unbounded
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, b] of buckets) if (now > b.resetAt + 60_000) buckets.delete(ip);
-}, 300_000).unref?.();
-
-// ---------- Main handler ----------
 export async function GET(request) {
   if (!SEC_USER_AGENT) {
     return Response.json(
@@ -65,30 +57,42 @@ export async function GET(request) {
     return Response.json({ error: 'Missing "path" query parameter.' }, { status: 400 });
   }
 
-  // Whitelist host options
   const hostMap = { data: 'https://data.sec.gov', www: 'https://www.sec.gov' };
   const baseUrl = hostMap[host];
   if (!baseUrl) {
     return Response.json({ error: 'Invalid "host". Must be "data" or "www".' }, { status: 400 });
   }
 
-  // Sanitize path — only allow SEC-style paths, no traversal or query injection beyond ? params
   if (!/^\/[\w./\-]+(\?[\w=&.\-]+)?$/.test(path)) {
     return Response.json({ error: 'Invalid path format.' }, { status: 400 });
   }
 
-  // Rate limit per IP
-  const ip =
-    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-    request.headers.get('x-real-ip') ||
-    'unknown';
-  if (!checkRate(ip)) {
-    return Response.json(
-      { error: 'Rate limit exceeded. Please wait a minute before retrying.' },
-      { status: 429 }
-    );
+  const ip = getClientIp(request);
+  const limit = await checkRateLimit({
+    key: `rl:sec:${ip}`,
+    windowMs: RATE_WINDOW_MS,
+    max: RATE_MAX,
+  });
+  if (!limit.allowed) return rateLimitedResponse(limit);
+
+  // ------- Warm cache check (only for paths we actually pre-warm) ----------
+  // The pre-warmer stores submissions by CIK under 'submissions-cik:<CIK>'.
+  // If this request is a submissions lookup and we have a warm hit, we skip
+  // the SEC call entirely — big win during rate-limit-tight moments.
+  const cik = host === 'data' ? extractSubmissionsCik(path) : null;
+  if (cik) {
+    const warm = await warmGet('submissions-cik', cik);
+    if (warm) {
+      return Response.json(warm, {
+        headers: {
+          'Cache-Control': 'public, max-age=3600, s-maxage=21600, stale-while-revalidate=86400',
+          'X-Cache-Source': 'warm',
+        },
+      });
+    }
   }
 
+  // ------- Fall through to upstream ----------------------------------------
   const targetUrl = baseUrl + path;
 
   try {
@@ -99,6 +103,7 @@ export async function GET(request) {
         'Accept-Encoding': 'gzip, deflate',
         Host: new URL(baseUrl).host,
       },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!secRes.ok) {
@@ -110,13 +115,12 @@ export async function GET(request) {
 
     const body = await secRes.text();
 
-    // Cache aggressively — filings and financial facts change at most once a day per company.
-    // 1 hour client cache, 6 hour CDN cache, 24 hour stale-while-revalidate.
     return new Response(body, {
       status: 200,
       headers: {
         'Cache-Control': 'public, max-age=3600, s-maxage=21600, stale-while-revalidate=86400',
         'Content-Type': secRes.headers.get('content-type') || 'application/json',
+        'X-Cache-Source': 'upstream',
       },
     });
   } catch (err) {

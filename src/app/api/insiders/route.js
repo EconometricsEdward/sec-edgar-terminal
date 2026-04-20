@@ -52,20 +52,14 @@
  *   D = disposed (selling or giving away shares)
  */
 
+import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
+
 export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+// Removed force-dynamic — Form 4 XML is immutable once filed, so we want the
+// CDN to serve these essentially forever.
 
-const RATE = { windowMs: 60_000, max: 20 };
-const buckets = new Map();
-
-function checkRate(ip) {
-  const now = Date.now();
-  const b = buckets.get(ip) || { count: 0, resetAt: now + RATE.windowMs };
-  if (now > b.resetAt) { b.count = 0; b.resetAt = now + RATE.windowMs; }
-  b.count += 1;
-  buckets.set(ip, b);
-  return b.count <= RATE.max;
-}
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 20;
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
@@ -207,11 +201,7 @@ async function fetchForm4(cik, accession, userAgent) {
   const accNoDash = accession.replace(/-/g, '');
   const paddedCik = String(parseInt(cik, 10));
 
-  // First fetch the filing index to find the XML document name
-  const indexUrl = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=4&dateb=&owner=include&count=40&action=getcompany`;
-
-  // Actually, simpler: Form 4 XML is almost always named "doc1.xml", "form4.xml", or "primary_doc.xml"
-  // The most reliable method is to fetch the index.json for the filing
+  // Form 4 XML filename varies by filer, so we hit the filing's index.json to discover it
   const indexJsonUrl = `https://www.sec.gov/Archives/edgar/data/${paddedCik}/${accNoDash}/index.json`;
 
   const indexRes = await fetchWithTimeout(indexJsonUrl, {
@@ -255,11 +245,13 @@ export async function GET(request) {
     return Response.json({ error: 'Missing accessions parameter' }, { status: 400 });
   }
 
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim()
-    || request.headers.get('x-real-ip') || 'unknown';
-  if (!checkRate(ip)) {
-    return Response.json({ error: 'Rate limit exceeded' }, { status: 429 });
-  }
+  const ip = getClientIp(request);
+  const limit = await checkRateLimit({
+    key: `rl:form4:${ip}`,
+    windowMs: RATE_WINDOW_MS,
+    max: RATE_MAX,
+  });
+  if (!limit.allowed) return rateLimitedResponse(limit);
 
   const accessionList = accessions.split(',').map((a) => a.trim()).filter(Boolean);
   if (accessionList.length === 0) {
@@ -328,6 +320,9 @@ export async function GET(request) {
     },
     {
       status: 200,
+      // Form 4 filings are immutable once filed, so we can cache aggressively.
+      // The CDN will serve these essentially forever — which is exactly what
+      // we want for protecting the SEC rate limit.
       headers: {
         'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800',
       },

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchRecentFilings, fetchFilingText } from '../../../utils/filingTextParser.js';
 import { findMatches, extractParagraph, CATEGORIES } from '../../../utils/cryptoKeywords.js';
 import { getCachedScan, setCachedScan, invalidateScan, getBackendType } from '../../../utils/scannerCache.js';
+import { getOperatingTickers } from '../../../utils/tickerMap.js';
 
 // Runtime must be nodejs (not edge) because we use dynamic imports and longer timeouts
 export const runtime = 'nodejs';
@@ -212,25 +213,17 @@ export async function GET(request) {
   if (!Number.isFinite(depth) || depth < 1) depth = DEFAULT_DEPTH;
   if (depth > MAX_DEPTH) depth = MAX_DEPTH;
 
-  // We need CIKs for each ticker. Fetch the SEC ticker file.
-  const tickerMapRes = await fetch('https://www.sec.gov/files/company_tickers.json', {
-    headers: {
-      'User-Agent': process.env.SEC_USER_AGENT || 'SEC EDGAR Terminal research@secedgarterminal.com',
-    },
-  });
-  if (!tickerMapRes.ok) {
+  // Look up CIKs using the shared in-memory cache. Previously we fetched
+  // company_tickers.json (~1.5MB) from SEC on every single request — now it's
+  // cached for 6h per instance and deduped via in-flight-promise memoization.
+  let cikByTicker;
+  try {
+    cikByTicker = await getOperatingTickers(tickers);
+  } catch (err) {
     return NextResponse.json(
-      { error: 'Could not load SEC ticker database' },
+      { error: `Could not load SEC ticker database: ${err.message}` },
       { status: 502 }
     );
-  }
-  const tickerData = await tickerMapRes.json();
-  const cikByTicker = {};
-  for (const entry of Object.values(tickerData)) {
-    cikByTicker[entry.ticker.toUpperCase()] = {
-      cik: String(entry.cik_str).padStart(10, '0'),
-      name: entry.title,
-    };
   }
 
   const errors = [];
@@ -278,13 +271,33 @@ export async function GET(request) {
 
   const backend = await getBackendType();
 
-  return NextResponse.json({
-    scannedAt: new Date().toISOString(),
-    cacheBackend: backend,
-    depth,
-    results,
-    errors,
-  });
+  // CDN caching: scan results are keyed by (tickers, depth). For a popular
+  // scan like "MSTR", the first user triggers the work and the next 1000
+  // users within 5 minutes get served from Vercel's edge cache without
+  // invoking this function at all.
+  //
+  // We don't include fresh=true responses in the CDN cache — those are
+  // explicit cache-busts and should not be shared.
+  //
+  // Note: the stale-while-revalidate window is generous because these scans
+  // are expensive (up to 5 min) and filings don't change retroactively.
+  const headers = fresh
+    ? { 'Cache-Control': 'private, no-store' }
+    : {
+        // 5 min edge cache, 1 hour stale-while-revalidate
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
+      };
+
+  return NextResponse.json(
+    {
+      scannedAt: new Date().toISOString(),
+      cacheBackend: backend,
+      depth,
+      results,
+      errors,
+    },
+    { headers }
+  );
 }
 
 /**

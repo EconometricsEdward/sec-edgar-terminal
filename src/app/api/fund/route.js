@@ -18,8 +18,12 @@
 // fund-level metadata and AUM.
 // ============================================================================
 
+import { getAnyTicker } from '../../../utils/tickerMap.js';
+
 export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+// Removed force-dynamic so Next.js / the CDN can serve repeated ticker
+// lookups from cache. Responses are still generated per request when not
+// in cache — see Cache-Control header at the bottom of the handler.
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -33,21 +37,22 @@ export async function GET(request) {
   const tickerUpper = ticker.toUpperCase();
 
   try {
-    // Step 1: Look up ticker → CIK from SEC's official mapping
-    const cik = await lookupCikForTicker(tickerUpper, userAgent);
-    if (!cik) {
-      return Response.json({
-        isFund: false,
+    // Step 1: Look up ticker → CIK via shared cache (operating + fund file,
+    // cached 6h per instance instead of re-fetching SEC's ticker files on
+    // every request)
+    const lookup = await getAnyTicker(tickerUpper);
+    if (!lookup) {
+      return notFoundResponse({
         ticker: tickerUpper,
         reason: 'Ticker not found in SEC database',
       });
     }
+    const cik = lookup.cik;
 
     // Step 2: Fetch submissions to determine if this is a fund
     const submissions = await fetchSubmissions(cik, userAgent);
     if (!submissions) {
-      return Response.json({
-        isFund: false,
+      return notFoundResponse({
         ticker: tickerUpper,
         cik,
         reason: 'Could not fetch filer submissions',
@@ -57,8 +62,7 @@ export async function GET(request) {
     // Step 3: Detect fund by looking for N-PORT filings in recent history
     const recent = submissions?.filings?.recent;
     if (!recent) {
-      return Response.json({
-        isFund: false,
+      return notFoundResponse({
         ticker: tickerUpper,
         cik,
         reason: 'No recent filings',
@@ -84,8 +88,7 @@ export async function GET(request) {
     }
 
     if (nportFilings.length === 0) {
-      return Response.json({
-        isFund: false,
+      return notFoundResponse({
         ticker: tickerUpper,
         cik,
         name: submissions.name,
@@ -121,21 +124,31 @@ export async function GET(request) {
       console.warn('N-PORT parse error:', err.message);
     }
 
-    return Response.json({
-      isFund: true,
-      ticker: tickerUpper,
-      cik,
-      name: submissions.name,
-      meta: fundMeta,
-      fundInfo, // totAssets, totLiabs, etc.
-      holdings: holdings || [],
-      holdingsAsOf: mostRecentNport.reportDate,
-      holdingsFiledDate: mostRecentNport.filingDate,
-      holdingsAccession: mostRecentNport.accession,
-      filings: fundFilings.slice(0, 20), // top 20 recent fund filings
-      filingCount: fundFilings.length,
-      nportCount: nportFilings.length,
-    });
+    return Response.json(
+      {
+        isFund: true,
+        ticker: tickerUpper,
+        cik,
+        name: submissions.name,
+        meta: fundMeta,
+        fundInfo, // totAssets, totLiabs, etc.
+        holdings: holdings || [],
+        holdingsAsOf: mostRecentNport.reportDate,
+        holdingsFiledDate: mostRecentNport.filingDate,
+        holdingsAccession: mostRecentNport.accession,
+        filings: fundFilings.slice(0, 20), // top 20 recent fund filings
+        filingCount: fundFilings.length,
+        nportCount: nportFilings.length,
+      },
+      {
+        headers: {
+          // N-PORT data updates monthly, so 1 hour edge cache is plenty.
+          // Stale-while-revalidate keeps things fast even when the edge
+          // entry expires.
+          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=21600',
+        },
+      }
+    );
   } catch (err) {
     console.error('Fund API error:', err);
     return Response.json(
@@ -143,6 +156,22 @@ export async function GET(request) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * "Not a fund" responses are cacheable too — a ticker that isn't a fund
+ * today won't suddenly become one. Short-ish TTL so we re-check periodically
+ * in case a new ticker gets added.
+ */
+function notFoundResponse(payload) {
+  return Response.json(
+    { isFund: false, ...payload },
+    {
+      headers: {
+        'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=7200',
+      },
+    }
+  );
 }
 
 // ============================================================================
@@ -213,50 +242,6 @@ function detectFundFamily(name) {
 // ============================================================================
 // SEC lookups
 // ============================================================================
-
-/**
- * Find CIK for a ticker. Uses SEC's company_tickers.json for operating
- * companies and company_tickers_mf.json for funds.
- */
-async function lookupCikForTicker(ticker, userAgent) {
-  // Try operating companies first
-  try {
-    const res = await fetch('https://www.sec.gov/files/company_tickers.json', {
-      headers: { 'User-Agent': userAgent },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      for (const entry of Object.values(data)) {
-        if (entry.ticker?.toUpperCase() === ticker) {
-          return String(entry.cik_str).padStart(10, '0');
-        }
-      }
-    }
-  } catch {}
-
-  // Try mutual fund / ETF file
-  try {
-    const res = await fetch('https://www.sec.gov/files/company_tickers_mf.json', {
-      headers: { 'User-Agent': userAgent },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      // Mutual fund ticker file has structure:
-      //   { "fields": ["cik","seriesId","classId","symbol"],
-      //     "data": [[1234567, "S000012345", "C000012345", "SPY"], ...] }
-      if (data?.data) {
-        for (const row of data.data) {
-          const symbol = row[3];
-          if (symbol?.toUpperCase() === ticker) {
-            return String(row[0]).padStart(10, '0');
-          }
-        }
-      }
-    }
-  } catch {}
-
-  return null;
-}
 
 async function fetchSubmissions(cik, userAgent) {
   try {
