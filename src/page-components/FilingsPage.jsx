@@ -1,19 +1,18 @@
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  FileText, ExternalLink, Calendar, Hash, Filter, ChevronDown, ChevronRight, Link as LinkIcon, GitCompare,
+  FileText, ExternalLink, Calendar, Hash, Filter, ChevronDown, ChevronRight,
+  Link as LinkIcon, GitCompare, Loader2, AlertCircle, BarChart3,
 } from 'lucide-react';
-import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import SEO from '../components/SEO.jsx';
 import { TickerContext } from '../App.jsx';
 import { secDataUrl } from '../utils/secApi.js';
 import { getItemsInfo } from '../utils/formItems.js';
-import { checkIsFund } from '../utils/fundCheck.js';
 
 export default function FilingsPage() {
   const { ticker: urlTicker } = useParams();
   const navigate = useNavigate();
-  const { company, setCompany } = useContext(TickerContext);
+  const { company, setCompany, tickerMap } = useContext(TickerContext);
   const [filings, setFilings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -21,39 +20,12 @@ export default function FilingsPage() {
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedQuarters, setExpandedQuarters] = useState({});
 
-  const fetchFilings = async (entry) => {
-    // Two-layer fund detection (see AnalysisPage.jsx for full rationale):
-    //   Layer 1: TickerSearchBar heuristic via entry.type
-    //   Layer 2: On-demand authoritative check for entries tagged as company
-
-    if (entry.type === 'fund') {
-      navigate(`/fund/${entry.ticker}`);
-      return;
-    }
-
+  const fetchFilings = useCallback(async (entry) => {
     setLoading(true);
     setError(null);
-
-    try {
-      const authoritativeIsFund = await checkIsFund(entry.cik, 3000);
-      if (authoritativeIsFund === true) {
-        console.log(`Authoritative check: ${entry.ticker} is a fund (heuristic missed)`);
-        setLoading(false);
-        navigate(`/fund/${entry.ticker}`);
-        return;
-      }
-    } catch (err) {
-      console.warn('Fund check unexpected error:', err);
-    }
-
-    // Proceed with normal filings fetch
     setFilings([]);
     setExpandedYears({});
     setExpandedQuarters({});
-
-    if (urlTicker !== entry.ticker) {
-      navigate(`/filings/${entry.ticker}`, { replace: false });
-    }
 
     try {
       const res = await fetch(secDataUrl(`/submissions/CIK${entry.cik}.json`));
@@ -102,7 +74,33 @@ export default function FilingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setCompany]);
+
+  // Auto-fetch when URL has ticker
+  useEffect(() => {
+    if (!urlTicker) {
+      setFilings([]);
+      setError(null);
+      return;
+    }
+    if (!tickerMap) return;
+
+    const upper = urlTicker.toUpperCase();
+    const entry = tickerMap[upper];
+    if (!entry) {
+      setError(`No SEC registrant found for "${urlTicker}".`);
+      setFilings([]);
+      return;
+    }
+
+    fetchFilings({
+      ticker: upper,
+      cik: entry.cik,
+      name: entry.name,
+      type: entry.isFund ? 'fund' : 'company',
+      isFund: entry.isFund,
+    });
+  }, [urlTicker, tickerMap, fetchFilings]);
 
   const formTypes = useMemo(() => {
     const set = new Set(filings.map((f) => f.form));
@@ -157,9 +155,6 @@ export default function FilingsPage() {
     return `${(bytes / 1048576).toFixed(1)} MB`;
   };
 
-  // ============================================================================
-  // SEO — dynamic per ticker/company
-  // ============================================================================
   const displayTicker = urlTicker ? urlTicker.toUpperCase() : null;
   const companyName = company?.name;
 
@@ -179,13 +174,19 @@ export default function FilingsPage() {
     <>
       <SEO title={seoTitle} description={seoDescription} path={seoPath} />
 
-      <TickerSearchBar
-        onFetch={fetchFilings}
-        loading={loading}
-        error={error}
-        setError={setError}
-        initialTicker={urlTicker}
-      />
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-stone-400 mb-4 uppercase tracking-widest">
+          <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
+          Loading {urlTicker?.toUpperCase()}...
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-rose-950/30 border-2 border-rose-900/60 px-4 py-3 mb-4 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          <span className="text-sm text-rose-200">{error}</span>
+        </div>
+      )}
 
       {filings.length > 0 && (
         <div className="mb-6 flex flex-wrap items-center gap-4">
@@ -223,6 +224,7 @@ export default function FilingsPage() {
               className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
               title="View financial analysis"
             >
+              <BarChart3 className="w-3.5 h-3.5" />
               View Financials
             </button>
           </div>
@@ -351,12 +353,12 @@ export default function FilingsPage() {
         </div>
       )}
 
-      {!loading && !company && !error && (
+      {!loading && filings.length === 0 && !error && (
         <div className="border-2 border-dashed border-stone-800 p-12 text-center">
           <FileText className="w-12 h-12 text-stone-700 mx-auto mb-4" />
           <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">Awaiting Query</p>
           <p className="text-stone-600 text-xs max-w-md mx-auto">
-            Enter a publicly traded ticker symbol above to retrieve filings directly from SEC EDGAR.
+            Use the search bar above to retrieve filings directly from SEC EDGAR.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
             Mutual fund and ETF tickers are automatically routed to the Funds page.

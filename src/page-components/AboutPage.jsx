@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import {
   Info, FileText, BarChart3, GitCompare, Users, Percent, LineChart,
-  AlertTriangle, ExternalLink, Code, Database,
+  AlertTriangle, ExternalLink, Code, Database, FileSearch,
 } from 'lucide-react';
 import SEO from '../components/SEO.jsx';
 
@@ -92,6 +92,12 @@ export default function AboutPage() {
                 path="/compare/:tickers"
                 text="Up to 5 companies side-by-side across 10 fiscal years. Head-to-head snapshot table with color-coded best/worst per metric. Normalization modes: Absolute, Indexed to 100, Per Share, % of Revenue. Ratio overlays (ROE, ROA, margins). Growth rate bar charts. 12 pre-defined peer groups for one-click comparison."
               />
+              <FeatureBlock
+                icon={FileSearch}
+                title="Crypto Disclosure Scanner"
+                path="/crypto"
+                text="Scans any public company's recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) for mentions of bitcoin, cryptocurrency, digital assets, and related terms. Returns paragraph-level excerpts with matched keywords highlighted, categorized into nine buckets (Bitcoin, Ethereum, altcoins, infrastructure, accounting, etc.). Supports up to 5 tickers side-by-side. Scanning is depth-limited to the 50 most recent filings per ticker. Results cache for 24 hours in Redis. Plus live coin prices from Kraken with Coinbase fallback."
+              />
             </div>
           </section>
 
@@ -148,6 +154,20 @@ export default function AboutPage() {
                   marked differently.
                 </p>
               </div>
+
+              <div>
+                <h4 className="text-stone-100 font-bold mb-1">Crypto disclosure scanner</h4>
+                <p className="text-stone-400">
+                  The scanner fetches up to 50 recent filings per ticker from SEC EDGAR, strips HTML
+                  to plain text, and matches against a curated library of ~50 crypto-related keyword
+                  patterns using word-boundary regex. For each match, the surrounding paragraph is
+                  extracted as context. Rate-limited to 8 requests per second to respect SEC fair
+                  access policy. Results are cached in Upstash Redis for 24 hours. Live coin prices
+                  refresh every 60 seconds from Kraken's public ticker endpoint, with Coinbase as
+                  fallback. Keyword matching is intentionally broad for recall — some matches (e.g.
+                  "Ripple" as a proper noun) may be false positives.
+                </p>
+              </div>
             </div>
           </section>
 
@@ -187,9 +207,11 @@ export default function AboutPage() {
             <dl className="space-y-2.5 text-xs">
               <FactRow term="Data source" def="SEC.gov public APIs" />
               <FactRow term="Update frequency" def="Live (cached ≤6hr)" />
-              <FactRow term="Rate limit" def="10 req/sec to SEC" />
+              <FactRow term="Rate limit" def="8 req/sec to SEC" />
               <FactRow term="Companies covered" def="~10,000 U.S. public" />
               <FactRow term="History depth" def="10 fiscal years" />
+              <FactRow term="Scanner depth" def="50 recent filings" />
+              <FactRow term="Scanner cache" def="24 hours (Redis)" />
               <FactRow term="Cost" def="Free forever" />
               <FactRow term="Account required" def="No" />
               <FactRow term="Tracking" def="None" />
@@ -226,6 +248,21 @@ export default function AboutPage() {
                 href="https://stooq.com"
                 title="Stooq"
                 desc="Price data fallback"
+              />
+              <SourceLink
+                href="https://www.kraken.com"
+                title="Kraken Public API"
+                desc="Crypto spot prices (primary)"
+              />
+              <SourceLink
+                href="https://www.coinbase.com"
+                title="Coinbase Public API"
+                desc="Crypto prices (fallback)"
+              />
+              <SourceLink
+                href="https://upstash.com"
+                title="Upstash Redis"
+                desc="Scanner result cache (24hr TTL)"
               />
             </ul>
           </div>

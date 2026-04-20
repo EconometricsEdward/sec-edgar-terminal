@@ -4,8 +4,8 @@ import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
   Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink, Info,
   LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
+  Loader2, AlertCircle,
 } from 'lucide-react';
-import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import SEO from '../components/SEO.jsx';
 import { MetricChart } from '../components/MetricChart.jsx';
 import SummaryDashboard from '../components/SummaryDashboard.jsx';
@@ -52,7 +52,7 @@ const STATEMENTS = [
 export default function AnalysisPage() {
   const { ticker: urlTicker } = useParams();
   const navigate = useNavigate();
-  const { company, setCompany } = useContext(TickerContext);
+  const { company, setCompany, tickerMap } = useContext(TickerContext);
   const [facts, setFacts] = useState(null);
   const [sicCode, setSicCode] = useState(null);
   const [filings, setFilings] = useState([]);
@@ -92,53 +92,31 @@ export default function AnalysisPage() {
     return () => observer.disconnect();
   }, [facts]);
 
-  const fetchFacts = async (entry) => {
-    // ========================================================================
-    // FUND ROUTING — two-layer detection
-    //
-    // Layer 1: TickerSearchBar's name-heuristic tag. Fast, runs during
-    // autocomplete. Catches the obvious funds (ETF, TRUST, FUND in name).
-    //
-    // Layer 2: On-demand authoritative check via SEC submissions API. Runs
-    // only for entries the heuristic flagged as 'company'. Catches funds the
-    // heuristic missed (rare, but safer). 3-second timeout — on failure,
-    // falls through to normal company flow so we never block forever.
-    // ========================================================================
-
-    if (entry.type === 'fund') {
-      // Heuristic says fund — trust it, redirect immediately
+  const fetchFacts = useCallback(async (entry) => {
+    // Fund detection — if already known to be a fund, redirect
+    if (entry.type === 'fund' || entry.isFund) {
       navigate(`/fund/${entry.ticker}`);
       return;
     }
 
-    // Heuristic says company — verify before proceeding
     setLoading(true);
     setError(null);
 
     try {
       const authoritativeIsFund = await checkIsFund(entry.cik, 3000);
       if (authoritativeIsFund === true) {
-        // Heuristic missed this one — it's actually a fund
-        console.log(`Authoritative check: ${entry.ticker} is a fund (heuristic missed)`);
         setLoading(false);
         navigate(`/fund/${entry.ticker}`);
         return;
       }
-      // null (timeout/error) or false — proceed as company
     } catch (err) {
-      // Defensive — checkIsFund shouldn't throw but just in case
       console.warn('Fund check unexpected error:', err);
     }
 
-    // Proceed with normal company analysis flow
     setFacts(null);
     setFilings([]);
     setInsiderMarkers([]);
     setActiveSection('overview');
-
-    if (urlTicker !== entry.ticker) {
-      navigate(`/analysis/${entry.ticker}`, { replace: false });
-    }
 
     try {
       const [submissionsRes, factsRes] = await Promise.all([
@@ -192,7 +170,42 @@ export default function AnalysisPage() {
     } finally {
       setLoading(false);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate, setCompany]);
+
+  // ==========================================================================
+  // AUTO-FETCH when URL has a ticker parameter.
+  // This replaces the old pattern where TickerSearchBar's internal state
+  // triggered the fetch. Now, changing URL (via GlobalSearchBar or direct
+  // link) immediately triggers data load.
+  // ==========================================================================
+  useEffect(() => {
+    if (!urlTicker) {
+      // No ticker in URL → clear state
+      setFacts(null);
+      setFilings([]);
+      setError(null);
+      return;
+    }
+    if (!tickerMap) return;  // wait for ticker map
+
+    const upper = urlTicker.toUpperCase();
+    const entry = tickerMap[upper];
+    if (!entry) {
+      setError(`No SEC registrant found for "${urlTicker}". Try a valid ticker, CIK, or company name.`);
+      setFacts(null);
+      setFilings([]);
+      return;
+    }
+
+    fetchFacts({
+      ticker: upper,
+      cik: entry.cik,
+      name: entry.name,
+      type: entry.isFund ? 'fund' : 'company',
+      isFund: entry.isFund,
+    });
+  }, [urlTicker, tickerMap, fetchFacts]);
 
   const periods = facts
     ? periodType === 'annual'
@@ -278,9 +291,6 @@ export default function AnalysisPage() {
   const chartTicker = company?.tickers?.split(',')[0]?.trim() || urlTicker;
   const form4Count = filings.filter((f) => f.form === '4').length;
 
-  // ============================================================================
-  // SEO — dynamic per ticker/company
-  // ============================================================================
   const displayTicker = urlTicker ? urlTicker.toUpperCase() : null;
   const companyName = company?.name;
 
@@ -300,21 +310,28 @@ export default function AnalysisPage() {
     <>
       <SEO title={seoTitle} description={seoDescription} path={seoPath} />
 
-      <TickerSearchBar
-        onFetch={fetchFacts}
-        loading={loading}
-        error={error}
-        setError={setError}
-        initialTicker={urlTicker}
-      />
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-stone-400 mb-4 uppercase tracking-widest">
+          <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
+          Loading {urlTicker?.toUpperCase()}...
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-rose-950/30 border-2 border-rose-900/60 px-4 py-3 mb-4 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          <span className="text-sm text-rose-200">{error}</span>
+        </div>
+      )}
 
       {!loading && !facts && !error && (
         <div className="border-2 border-dashed border-stone-800 p-12 text-center">
           <BarChart3 className="w-12 h-12 text-stone-700 mx-auto mb-4" />
           <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">Financial Analysis</p>
           <p className="text-stone-600 text-xs max-w-md mx-auto">
-            Enter a ticker symbol above to load financial data, industry-specific ratios,
-            stock prices with filing markers, and insider trading activity.
+            Use the search bar above to look up any company by ticker or name.
+            You'll see financial data, industry-specific ratios, stock prices with filing markers,
+            and insider trading activity.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
             Mutual fund and ETF tickers are automatically routed to the Funds page.
@@ -439,11 +456,7 @@ export default function AnalysisPage() {
             <section id="stock-chart" className="scroll-mt-4">
               <SectionHeader icon={LineChart} title="Stock Chart" />
               {chartTicker && filings.length > 0 ? (
-                <StockPriceChart
-                  ticker={chartTicker}
-                  filings={filings}
-                  insiderMarkers={insiderMarkers}
-                />
+                <StockPriceChart ticker={chartTicker} filings={filings} insiderMarkers={insiderMarkers} />
               ) : (
                 <div className="border-2 border-stone-800 bg-stone-900/30 p-6 text-center">
                   <p className="text-stone-500 text-xs uppercase tracking-widest">
@@ -456,26 +469,16 @@ export default function AnalysisPage() {
             <section id="insiders" className="scroll-mt-4">
               <SectionHeader icon={Users} title="Insider Activity" />
               {company?.cik ? (
-                <InsiderActivity
-                  cik={company.cik}
-                  filings={filings}
-                  onMarkersReady={handleInsiderMarkers}
-                />
+                <InsiderActivity cik={company.cik} filings={filings} onMarkersReady={handleInsiderMarkers} />
               ) : (
                 <div className="border-2 border-stone-800 bg-stone-900/30 p-6 text-center">
-                  <p className="text-stone-500 text-xs uppercase tracking-widest">
-                    Loading insider data...
-                  </p>
+                  <p className="text-stone-500 text-xs uppercase tracking-widest">Loading insider data...</p>
                 </div>
               )}
             </section>
 
             {chartTicker && (
-              <HoldersSection
-                ticker={chartTicker}
-                cik={company?.cik}
-                companyName={company?.name}
-              />
+              <HoldersSection ticker={chartTicker} cik={company?.cik} companyName={company?.name} />
             )}
 
             <section id="financials" className="scroll-mt-4">

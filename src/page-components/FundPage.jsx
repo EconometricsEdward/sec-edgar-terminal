@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Wallet, Loader2, AlertCircle, ExternalLink, Info, TrendingUp,
   Building2, Landmark, Calendar, FileText, PieChart, Link as LinkIcon,
   ArrowRight,
 } from 'lucide-react';
-import TickerSearchBar from '../components/TickerSearchBar.jsx';
 import SEO from '../components/SEO.jsx';
+import { TickerContext } from '../App.jsx';
 
 // ============================================================================
 // Featured funds for the landing view
@@ -23,7 +23,6 @@ const FEATURED_FUNDS = [
   { ticker: 'VXUS', name: 'Vanguard Total International', family: 'Vanguard', aum: 'Ex-US equities', accent: 'emerald' },
 ];
 
-// Asset category labels from N-PORT schema
 const ASSET_CAT_LABELS = {
   'EC': 'Equity — Common',
   'EP': 'Equity — Preferred',
@@ -45,22 +44,21 @@ const ASSET_CAT_LABELS = {
   'OTH': 'Other',
 };
 
-// ============================================================================
-// Main Component
-// ============================================================================
-
 export default function FundPage() {
   const { ticker: urlTicker } = useParams();
   const navigate = useNavigate();
+  const { tickerMap } = useContext(TickerContext);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Auto-fetch when URL has a ticker — no more waiting for user to press Enter
   useEffect(() => {
     if (urlTicker) {
       loadFund(urlTicker);
     } else {
       setData(null);
+      setError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlTicker]);
@@ -79,15 +77,6 @@ export default function FundPage() {
       setError(err.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSearchFetch = (entry) => {
-    if (!entry?.ticker) return;
-    if (urlTicker !== entry.ticker) {
-      navigate(`/fund/${entry.ticker}`);
-    } else {
-      loadFund(entry.ticker);
     }
   };
 
@@ -130,9 +119,7 @@ export default function FundPage() {
     return result;
   }, [data]);
 
-  // ============================================================================
-  // SEO — dynamic per fund
-  // ============================================================================
+  // SEO
   const displayTicker = urlTicker ? urlTicker.toUpperCase() : null;
   const fundName = data?.isFund ? data?.meta?.name : null;
   const fundFamily = data?.isFund ? data?.meta?.family : null;
@@ -160,31 +147,36 @@ export default function FundPage() {
         </div>
         <p className="text-xs text-stone-400 leading-relaxed max-w-3xl">
           Holdings, assets, and filings for mutual funds and exchange-traded funds. Data comes
-          directly from SEC's N-PORT monthly portfolio filings. Search any fund by ticker symbol —
-          autocomplete shows fund tickers with a Fund badge.
+          directly from SEC's N-PORT monthly portfolio filings. Use the search bar above to find any fund.
         </p>
       </div>
 
-      <TickerSearchBar
-        onFetch={handleSearchFetch}
-        loading={loading}
-        error={error}
-        setError={setError}
-        initialTicker={urlTicker}
-        showProfile={false}
-      />
-
-      {loading && (
-        <div className="flex items-center justify-center py-16 border-2 border-stone-800 bg-stone-900/30">
-          <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
-          <span className="ml-3 text-sm text-stone-400">Fetching fund data from SEC...</span>
+      {/* Error state — shown when loadFund fails or validation rejects */}
+      {error && (
+        <div className="mb-6 border-2 border-rose-800/60 bg-rose-950/30 p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-rose-200">
+            Failed to load fund data for {urlTicker?.toUpperCase()}: {error}
+          </div>
         </div>
       )}
 
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center justify-center py-16 border-2 border-stone-800 bg-stone-900/30">
+          <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
+          <span className="ml-3 text-sm text-stone-400">
+            Fetching fund data from SEC for {urlTicker?.toUpperCase()}...
+          </span>
+        </div>
+      )}
+
+      {/* Not a fund — redirect suggestion */}
       {data && !data.isFund && !loading && (
         <NotAFundMessage data={data} navigate={navigate} />
       )}
 
+      {/* Fund data */}
       {data?.isFund && !loading && (
         <FundDisplay
           data={data}
@@ -194,6 +186,7 @@ export default function FundPage() {
         />
       )}
 
+      {/* Landing (no ticker in URL) */}
       {!urlTicker && !loading && !data && !error && (
         <FundsLanding />
       )}
@@ -202,7 +195,7 @@ export default function FundPage() {
 }
 
 // ============================================================================
-// Subcomponents
+// Subcomponents (unchanged from original)
 // ============================================================================
 
 function FundsLanding() {
@@ -347,31 +340,10 @@ function FundDisplay({ data, aum, assetBreakdown, onShareLink }) {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard
-            icon={TrendingUp}
-            label="Net Assets (AUM)"
-            value={formatLargeCurrency(aum)}
-            tone="amber"
-          />
-          <StatCard
-            icon={Building2}
-            label="Holdings Shown"
-            value={`${data.holdings.length}`}
-            tone="emerald"
-          />
-          <StatCard
-            icon={FileText}
-            label="Fund Filings"
-            value={`${data.filingCount}`}
-            tone="sky"
-          />
-          <StatCard
-            icon={Calendar}
-            label="Holdings As Of"
-            value={data.holdingsAsOf || '—'}
-            tone="stone"
-            small
-          />
+          <StatCard icon={TrendingUp} label="Net Assets (AUM)" value={formatLargeCurrency(aum)} tone="amber" />
+          <StatCard icon={Building2} label="Holdings Shown" value={`${data.holdings.length}`} tone="emerald" />
+          <StatCard icon={FileText} label="Fund Filings" value={`${data.filingCount}`} tone="sky" />
+          <StatCard icon={Calendar} label="Holdings As Of" value={data.holdingsAsOf || '—'} tone="stone" small />
         </div>
       </div>
 
@@ -417,12 +389,9 @@ function FundDisplay({ data, aum, assetBreakdown, onShareLink }) {
         <SectionHeader icon={Landmark} title="Top Holdings" subtitle={holdingsAsOfLabel} />
         {data.holdings.length === 0 ? (
           <div className="border-2 border-stone-800 bg-stone-900/30 p-6 text-center">
-            <p className="text-sm text-stone-400 mb-1">
-              Could not parse holdings from N-PORT filing
-            </p>
+            <p className="text-sm text-stone-400 mb-1">Could not parse holdings from N-PORT filing</p>
             <p className="text-[11px] text-stone-600">
-              The N-PORT XML may be in a non-standard format or the filing is too large
-              to process. Try browsing the original filing directly.
+              The N-PORT XML may be in a non-standard format or the filing is too large to process.
             </p>
           </div>
         ) : (
@@ -532,12 +501,7 @@ function FundFilingsTable({ filings, cik }) {
                 <td className="px-4 py-2.5 text-stone-400 tabular-nums text-xs">{f.reportDate || '—'}</td>
                 <td className="px-4 py-2.5 text-stone-500 font-mono text-[10px]">{f.accession}</td>
                 <td className="px-4 py-2.5 text-center">
-                  <a
-                    href={docUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-amber-400 hover:text-amber-300"
-                  >
+                  <a href={docUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-amber-400 hover:text-amber-300">
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </td>
@@ -556,9 +520,7 @@ function SectionHeader({ icon: Icon, title, subtitle }) {
       <Icon className="w-5 h-5 text-amber-400" />
       <h3 className="text-sm uppercase tracking-[0.25em] font-black text-stone-200">{title}</h3>
       {subtitle && (
-        <span className="text-[10px] text-stone-500 ml-2 lowercase tracking-widest">
-          {subtitle}
-        </span>
+        <span className="text-[10px] text-stone-500 ml-2 lowercase tracking-widest">{subtitle}</span>
       )}
     </div>
   );
@@ -575,9 +537,7 @@ function StatCard({ icon: Icon, label, value, tone = 'stone', small = false }) {
     <div className="border-2 border-stone-800 bg-stone-900/30 p-3">
       <div className="flex items-center gap-1.5 mb-1.5">
         <Icon className={`w-3.5 h-3.5 ${toneClasses[tone]}`} />
-        <span className="text-[9px] uppercase tracking-widest text-stone-500 font-bold">
-          {label}
-        </span>
+        <span className="text-[9px] uppercase tracking-widest text-stone-500 font-bold">{label}</span>
       </div>
       <div className={`${small ? 'text-xs' : 'text-sm'} font-black truncate ${toneClasses[tone]}`} title={value}>
         {value}
@@ -585,10 +545,6 @@ function StatCard({ icon: Icon, label, value, tone = 'stone', small = false }) {
     </div>
   );
 }
-
-// ============================================================================
-// Formatters
-// ============================================================================
 
 function formatLargeCurrency(val) {
   if (val == null || !Number.isFinite(val)) return '—';
