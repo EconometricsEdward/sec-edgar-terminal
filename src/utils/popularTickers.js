@@ -2,20 +2,27 @@
  * Popular tickers manager.
  *
  * The pre-warmer needs to know which tickers to refresh on a schedule. We
- * support two sources:
+ * support THREE sources, in order of priority:
  *
  *   1. A hardcoded seed list (below) — always included, survives any KV
  *      outage, and guarantees the top-traffic tickers stay warm even if
  *      the override is unset.
  *
- *   2. A Vercel KV override list — lets you add/remove tickers without
+ *   2. Auto-warm "hot" tickers — any ticker that hit 3+ distinct-IP views
+ *      in 24h gets promoted automatically, via utils/viewTracker.js. The
+ *      tracker maintains this list in KV; we just merge it in here. Entries
+ *      age out 3 days after the last view. This lets trending tickers get
+ *      pre-warmed by the next cron run without manual intervention.
+ *
+ *   3. A Vercel KV manual override list — lets you add/remove tickers without
  *      redeploying. Set it by running (from any KV console or redis-cli):
  *
  *         SADD popular_tickers NVDA AMD ORCL
  *         SREM popular_tickers SOME_TICKER
  *
- * The merged list is deduped and capped at MAX_* so a runaway override
- * can't blow past the cron's time budget.
+ * Merge order: seed first, then hot, then manual override. Deduped and
+ * capped at MAX_* so a runaway hot list or override can't blow past the
+ * cron's time budget.
  *
  * Seed list sizing — Vercel Hobby vs Pro:
  *   Vercel Hobby caps functions at 60 seconds. Pre-warming is roughly:
@@ -26,11 +33,14 @@
  *
  *   With 3 concurrent Yahoo workers and 5 concurrent SEC workers, ~15
  *   stocks × 3 stages ≈ 20-30s, leaving room for ~3 crypto-heavy tickers
- *   within the 60s budget.
+ *   within the 60s budget. MAX_STOCKS is set to 25 to give hot tickers
+ *   10 extra slots beyond the 15 seed stocks.
  *
  *   On Pro (300s cap), we'd want ~50 stocks + 10 crypto-heavy. When you
  *   upgrade, grow the two seed lists below and widen MAX_* accordingly.
  */
+
+import { getHotTickers } from './viewTracker.js';
 
 // Hardcoded seed — sized for Hobby's 60s cap.
 // TO EXPAND WHEN YOU UPGRADE TO PRO: uncomment the second batch below.
@@ -62,8 +72,9 @@ const SEED_CRYPTO_HEAVY = [
 ];
 
 // Absolute caps — keep the pre-warm bounded even if someone adds too many
-// tickers to the KV override. On Pro, raise these to 60 / 15.
-const MAX_STOCKS = 20;
+// tickers to the KV override or the hot list. 25 stocks leaves ~10 slots for
+// hot tickers beyond the 15 seed stocks. On Pro, raise these to 60 / 15.
+const MAX_STOCKS = 25;
 const MAX_CRYPTO_HEAVY = 5;
 
 const REST_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -104,11 +115,26 @@ function cleanList(tickers) {
 }
 
 /**
- * Returns the merged stock list (seed + KV override), deduped and capped.
+ * Returns the merged stock list (seed + hot tickers + manual override),
+ * deduped and capped. This is what the pre-warmer reads on each cron run.
+ *
+ * Order matters: seed first (guaranteed coverage), then auto-warm hot
+ * tickers (dynamic based on traffic), then manual override (admin choices).
+ * After MAX_STOCKS entries, additional hot or override tickers are dropped.
+ * In practice this means seed always wins — if you ever need to bump a
+ * trending ticker out of the seed, remove it from SEED_STOCKS above.
  */
 export async function getPopularStocks() {
-  const override = (await kvSetMembers('popular_tickers')) || [];
-  const merged = cleanList([...SEED_STOCKS, ...override]);
+  // Run hot-list and override lookups in parallel to save round-trips
+  const [hot, override] = await Promise.all([
+    getHotTickers().catch((err) => {
+      console.warn(`[popularTickers] hot-list read failed: ${err.message}`);
+      return [];
+    }),
+    kvSetMembers('popular_tickers').then((v) => v || []),
+  ]);
+
+  const merged = cleanList([...SEED_STOCKS, ...hot, ...override]);
   return merged.slice(0, MAX_STOCKS);
 }
 

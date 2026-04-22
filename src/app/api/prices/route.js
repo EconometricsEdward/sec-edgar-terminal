@@ -24,6 +24,7 @@
 
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
 import { warmGet } from '../../../utils/warmCache.js';
+import { recordView } from '../../../utils/viewTracker.js';
 
 export const runtime = 'nodejs';
 
@@ -186,6 +187,13 @@ export async function GET(request) {
     max: RATE_MAX,
   });
   if (!limit.allowed) return rateLimitedResponse(limit);
+
+  // Track this ticker view for the auto-warm list. Fire-and-forget — this
+  // does NOT block the response. If KV is slow or down, we silently drop
+  // the tracking event. Placed AFTER rate-limit check so abusers don't
+  // inflate view counts, but BEFORE warm cache read so even cache hits
+  // contribute to popularity signals.
+  recordView(ticker, ip);
 
   // Default: 10 years of history
   const now = new Date();
