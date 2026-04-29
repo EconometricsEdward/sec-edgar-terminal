@@ -8,12 +8,12 @@ import {
   LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
   Loader2, AlertCircle,
 } from 'lucide-react';
-import { MetricChart } from '../../../components/MetricChart.jsx';
-import SummaryDashboard from '../../../components/SummaryDashboard.jsx';
-import StockPriceChart from '../../../components/StockPriceChart.jsx';
-import InsiderActivity from '../../../components/InsiderActivity.jsx';
-import HoldersSection from '../../../components/HoldersSection.jsx';
-import ConceptHistoryModal from '../../../components/ConceptHistoryModal.jsx';
+import { MetricChart as MetricChartImpl } from '../../../components/MetricChart.jsx';
+import SummaryDashboardImpl from '../../../components/SummaryDashboard.jsx';
+import StockPriceChartImpl from '../../../components/StockPriceChart.jsx';
+import InsiderActivityImpl from '../../../components/InsiderActivity.jsx';
+import HoldersSectionImpl from '../../../components/HoldersSection.jsx';
+import ConceptHistoryModalImpl from '../../../components/ConceptHistoryModal.jsx';
 import { TickerContext } from '../../../contexts/TickerContext';
 import { secDataUrl } from '../../../utils/secApi.js';
 import { checkIsFund } from '../../../utils/fundCheck.js';
@@ -31,6 +31,26 @@ import {
   buildSourceUrl,
 } from '../../../utils/xbrlParser.js';
 import { classifyIndustry, industryLabel, industryDisclosure } from '../../../utils/industry.js';
+
+// ============================================================================
+// JS-component prop interop
+//
+// The components below are plain .jsx files with no TypeScript prop types.
+// When a JS component is imported into a TS file, TypeScript can infer prop
+// types in surprising (and often wrong) ways — for example narrowing array
+// props to `never[]` based on incidental JSX usage. Casting each component
+// to `any` at the import boundary tells TS "trust the runtime here" and
+// matches how the rest of this codebase treats JS-utility interop. The
+// runtime behavior is unchanged.
+// ============================================================================
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const MetricChart = MetricChartImpl as any;
+const SummaryDashboard = SummaryDashboardImpl as any;
+const StockPriceChart = StockPriceChartImpl as any;
+const InsiderActivity = InsiderActivityImpl as any;
+const HoldersSection = HoldersSectionImpl as any;
+const ConceptHistoryModal = ConceptHistoryModalImpl as any;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ============================================================================
 // Types
@@ -320,12 +340,14 @@ export default function AnalysisClient({
 
   const statementDef = STATEMENTS.find((s) => s.id === statement) || STATEMENTS[0];
   const rows = useMemo(
-    () => (facts && periods.length > 0 ? statementDef.build(facts, periods, sicCode) : []),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    () => (facts && periods.length > 0 ? statementDef.build(facts, periods, sicCode as any) : []),
     [facts, periods, statementDef, sicCode]
   );
 
   const ratioRows = useMemo(
-    () => (facts && periods.length > 0 ? buildRatios(facts, periods, sicCode) : []),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    () => (facts && periods.length > 0 ? buildRatios(facts, periods, sicCode as any) : []),
     [facts, periods, sicCode]
   );
 
