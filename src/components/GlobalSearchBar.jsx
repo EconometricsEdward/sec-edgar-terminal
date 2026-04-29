@@ -1,10 +1,12 @@
+'use client';
+
 import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useRouter, usePathname } from 'next/navigation';
 import {
   Search, X, AlertCircle, Bitcoin, Building2, Wallet as WalletIcon,
   ArrowRight, Clock, Command, GitCompare, FileText, BarChart3,
 } from 'lucide-react';
-import { TickerContext } from '../App.jsx';
+import { TickerContext } from '../contexts/TickerContext';
 import { loadClassifiedTickerMap } from '../utils/tickerMapLoader.js';
 import {
   routeSearch,
@@ -19,9 +21,10 @@ import {
 } from '../utils/searchRouter.js';
 
 export default function GlobalSearchBar() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { tickerMap, setTickerMap } = useContext(TickerContext);
+  const router = useRouter();
+  const pathname = usePathname() || '/';
+  const ctx = useContext(TickerContext);
+  const { tickerMap, setTickerMap } = ctx || { tickerMap: null, setTickerMap: () => {} };
 
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -86,7 +89,7 @@ export default function GlobalSearchBar() {
     setShowSuggestions(false);
     setDisambiguation(null);
     setShowRecent(false);
-  }, [location.pathname]);
+  }, [pathname]);
 
   const { suggestions, active, completed } = getSuggestions(input, tickerMap, 10);
 
@@ -99,9 +102,9 @@ export default function GlobalSearchBar() {
       setDisambiguation(null);
       pushRecentSearch({ query: originalQuery, path });
       setRecentSearches(loadRecentSearches());
-      navigate(path);
+      router.push(path);
     },
-    [navigate]
+    [router]
   );
 
   // When a user picks a suggestion with a specific destination button
@@ -229,7 +232,7 @@ export default function GlobalSearchBar() {
     pushRecentSearch({ query: input, path });
     setRecentSearches(loadRecentSearches());
     setInput('');
-    navigate(path);
+    router.push(path);
   };
 
   const clearInput = () => {
