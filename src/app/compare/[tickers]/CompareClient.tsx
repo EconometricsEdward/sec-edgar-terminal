@@ -1051,7 +1051,6 @@ function GrowthBarChart({ title, groups, companies }: GrowthBarChartProps) {
       <svg
         viewBox={`0 0 ${width} ${height}`}
         width="100%"
-        height="auto"
         style={{ fontFamily: 'ui-monospace, monospace' }}
       >
         {gridLines.map((line, i) => (
