@@ -1,37 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
-import FundPage from './page-components/FundPage.jsx';
-import AboutPage from './page-components/AboutPage.jsx';
-import CryptoPage from './page-components/CryptoPage.jsx';
 import { loadClassifiedTickerMap } from './utils/tickerMapLoader.js';
 
 // ============================================================================
-// TickerContext — kept here during the migration because some unmigrated
-// pages (Fund) still import it from '../App.jsx'. Once those pages are
-// migrated, this context moves to src/contexts/ (there's already a
-// duplicate there for the Next.js layout to use).
+// TickerContext — kept here for backwards compatibility with any code that
+// still imports it from '../App.jsx'. The Next.js layer also has its own
+// TickerProvider in src/contexts/TickerContext.tsx; that's the one used by
+// migrated pages. Once all imports of THIS context are confirmed gone, this
+// file can be deleted entirely.
 // ============================================================================
 export const TickerContext = React.createContext(null);
 
 // ============================================================================
-// Legacy catch-all root
+// Legacy catch-all root — final reduced state
 //
 // Phase 1: chrome moved to layout.tsx
 // Phase 2a: /filings migrated
 // Phase 2b: /analysis migrated
 // Phase 2c: /compare migrated
-// Phase 2d: / (Landing) migrated — LandingPage.jsx deleted
+// Phase 2d: / (Landing) migrated
+// Phase 2e: /about, /crypto, /fund migrated
 //
-// Remaining pages still served by this React Router shell: Fund, Crypto,
-// About. As each migrates, its Route entry disappears. When all pages
-// are migrated, this file is deleted entirely.
-//
-// The `*` fallback (typo'd URLs) now redirects to /. Previously this
-// rendered LandingPage inline, but that file is gone after Phase 2d,
-// and rendering the Next.js-served landing inside React Router would be
-// nonsensical anyway. A redirect to / lets Next.js's app/page.tsx
-// handle the destination correctly.
+// At this point ALL pages are served by Next.js App Router. This file
+// remains only because the [...slug] catch-all in src/app/[...slug]/page.tsx
+// still mounts App.jsx for any unmatched URL — a safety net that redirects
+// typo'd URLs to the homepage. Once confirmed safe to remove (see cleanup
+// pass after Phase 2e), this entire file plus the [...slug] catch-all
+// directory will be deleted, along with the react-router-dom dependency.
 // ============================================================================
 export default function App() {
   const [ticker, setTicker] = useState('');
@@ -53,14 +49,7 @@ export default function App() {
       <TickerContext.Provider value={{ ticker, setTicker, tickerMap, setTickerMap, company, setCompany }}>
         <BrowserRouter>
           <Routes>
-            {/* / moved to Next.js App Router (src/app/page.tsx) */}
-            {/* /filings and /filings/:ticker moved to Next.js App Router (src/app/filings/) */}
-            {/* /analysis and /analysis/:ticker moved to Next.js App Router (src/app/analysis/) */}
-            {/* /compare and /compare/:tickers moved to Next.js App Router (src/app/compare/) */}
-            <Route path="/fund" element={<FundPage />} />
-            <Route path="/fund/:ticker" element={<FundPage />} />
-            <Route path="/crypto" element={<CryptoPage />} />
-            <Route path="/about" element={<AboutPage />} />
+            {/* All page routes now served by Next.js App Router (src/app/) */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

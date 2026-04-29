@@ -10,20 +10,10 @@ import {
 // ============================================================================
 // Nav item descriptor
 //
-// `legacy: true` means the target route still renders through App.jsx
-// (src/App.jsx + react-router-dom + BrowserRouter). For those routes we use
-// a plain <a> tag so the browser does a full page load — this causes
-// BrowserRouter to re-initialize with the correct URL, avoiding a stale-
-// location bug where clicking "About" would render "Landing" because
-// BrowserRouter hadn't noticed the URL changed.
-//
-// `legacy: false` means the route has its own App Router page under
-// src/app/<route>/. For those we can use Next.js's <Link> for fast client-
-// side navigation.
-//
-// As each page migrates in Phase 2, flip its `legacy` from true to false.
-// When all pages are migrated and App.jsx is deleted, every entry should
-// be `legacy: false` (and we can drop the flag entirely).
+// All routes are now App Router routes — every entry is `legacy: false`.
+// The legacy flag is preserved for now because the type system still uses
+// it, and there's a non-zero chance we'd want to roll something back.
+// In a future cleanup pass we can drop the flag entirely and simplify.
 // ============================================================================
 interface NavItem {
   href: string;
@@ -67,21 +57,21 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Funds',
     icon: Wallet,
     matchPath: (p) => p === '/fund' || p.startsWith('/fund/'),
-    legacy: true,
+    legacy: false, // Migrated to App Router in Phase 2e
   },
   {
     href: '/crypto',
     label: 'Crypto',
     icon: Bitcoin,
     matchPath: (p) => p === '/crypto',
-    legacy: true,
+    legacy: false, // Migrated to App Router in Phase 2e
   },
   {
     href: '/about',
     label: 'About',
     icon: Info,
     matchPath: (p) => p === '/about',
-    legacy: true,
+    legacy: false, // Migrated to App Router in Phase 2e
   },
 ];
 
@@ -103,9 +93,10 @@ export default function NavTabs() {
         const Icon = item.icon;
         const className = tabClasses(isActive);
 
-        // Legacy routes use <a> to force full page reload so App.jsx's
-        // BrowserRouter re-initializes from the current URL. Migrated
-        // routes use Next.js <Link> for soft navigation.
+        // Legacy routes use <a> to force full page reload; migrated routes
+        // use Next.js <Link> for soft navigation. After Phase 2e all entries
+        // are non-legacy, so this branch is preserved only for safety while
+        // the App.jsx catch-all transition settles.
         if (item.legacy) {
           return (
             <a key={item.href} href={item.href} className={className}>

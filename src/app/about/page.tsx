@@ -1,33 +1,44 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import type { Metadata } from 'next';
 import {
   Info, FileText, BarChart3, GitCompare, Users, Percent, LineChart,
   AlertTriangle, ExternalLink, Code, Database, FileSearch,
+  type LucideIcon,
 } from 'lucide-react';
-import SEO from '../components/SEO.jsx';
 
+// ============================================================================
+// Metadata — static, this page is fully prerendered
+// ============================================================================
+export const metadata: Metadata = {
+  title: 'About & Methodology',
+  description:
+    "How EDGAR Terminal works, where the data comes from, and what you can trust. All data is sourced directly from SEC.gov public APIs — no scraping, no tracking, no accounts.",
+  alternates: {
+    canonical: 'https://secedgarterminal.com/about',
+  },
+};
+
+// ============================================================================
+// Page — pure server component, zero client JS needed
+//
+// This page is entirely static content explaining methodology, data sources,
+// and disclaimers. Perfect candidate for static prerendering: Googlebot
+// gets the full text in one shot, page loads instantly from CDN.
+// ============================================================================
 export default function AboutPage() {
   return (
     <>
-      <SEO
-        title="About & Methodology"
-        description="How EDGAR Terminal works, where the data comes from, and what you can trust. All data is sourced directly from SEC.gov public APIs — no scraping, no tracking, no accounts."
-        path="/about"
-      />
-
       {/* Header */}
       <div className="mb-8 pb-4 border-b-2 border-stone-800">
         <h1 className="text-3xl md:text-4xl font-black tracking-tight text-stone-100 mb-2">
           About <span className="text-amber-400">/ Methodology</span>
         </h1>
         <p className="text-sm text-stone-400">
-          How this site works, where the data comes from, and what you can (and can't) trust.
+          How this site works, where the data comes from, and what you can (and can&apos;t) trust.
         </p>
       </div>
 
-      {/* Use full-width two-column grid on desktop for dense info */}
+      {/* Two-column grid on desktop */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
         {/* LEFT: main content (2 columns) */}
         <div className="lg:col-span-2 space-y-6">
 
@@ -37,11 +48,11 @@ export default function AboutPage() {
             <div className="space-y-3 text-sm text-stone-300 leading-relaxed">
               <p>
                 EDGAR Terminal is a free, open tool for exploring U.S. SEC filings and financial data.
-                It's built for people who want to check the footnotes — students, analysts, journalists,
+                It&apos;s built for people who want to check the footnotes — students, analysts, journalists,
                 curious investors — not for high-frequency traders or institutional users.
               </p>
               <p>
-                <span className="text-amber-400 font-bold">All data comes directly from the SEC's
+                <span className="text-amber-400 font-bold">All data comes directly from the SEC&apos;s
                 official public APIs.</span> Nothing is scraped, manipulated, or interpreted through
                 a third-party layer. What you see is what the company filed.
               </p>
@@ -108,7 +119,7 @@ export default function AboutPage() {
               <div>
                 <h4 className="text-stone-100 font-bold mb-1">Source of financial data</h4>
                 <p className="text-stone-400">
-                  Financial values come from SEC's XBRL Company Facts API
+                  Financial values come from SEC&apos;s XBRL Company Facts API
                   (<code className="text-amber-400 text-xs">data.sec.gov/api/xbrl/companyfacts/CIKxxxxxxxxxx.json</code>).
                   The XBRL parser uses period-end date matching and a latest-filed priority
                   to select the correct value when the same fiscal period has been reported multiple times.
@@ -137,7 +148,7 @@ export default function AboutPage() {
               <div>
                 <h4 className="text-stone-100 font-bold mb-1">Stock price data</h4>
                 <p className="text-stone-400">
-                  Stock prices use Yahoo Finance's public chart endpoint as primary source, Stooq as
+                  Stock prices use Yahoo Finance&apos;s public chart endpoint as primary source, Stooq as
                   fallback. Prices are adjusted for splits and dividends. Some tickers (especially
                   recent IPOs or foreign listings) may have incomplete history or fail to load.
                   Financial data from SEC is unaffected when price data is unavailable.
@@ -149,7 +160,7 @@ export default function AboutPage() {
                 <p className="text-stone-400">
                   The most recent 20 Form 4 XML documents per company are parsed on demand.
                   Transaction codes follow SEC convention: P=purchase, S=sale, A=award, M=exercise,
-                  F=tax withholding, G=gift, D=dispose. Only "open-market" buys (P) and sells (S)
+                  F=tax withholding, G=gift, D=dispose. Only &quot;open-market&quot; buys (P) and sells (S)
                   are highlighted on the chart; compensation-related transactions are shown but
                   marked differently.
                 </p>
@@ -163,9 +174,9 @@ export default function AboutPage() {
                   patterns using word-boundary regex. For each match, the surrounding paragraph is
                   extracted as context. Rate-limited to 8 requests per second to respect SEC fair
                   access policy. Results are cached in Upstash Redis for 24 hours. Live coin prices
-                  refresh every 60 seconds from Kraken's public ticker endpoint, with Coinbase as
+                  refresh every 60 seconds from Kraken&apos;s public ticker endpoint, with Coinbase as
                   fallback. Keyword matching is intentionally broad for recall — some matches (e.g.
-                  "Ripple" as a proper noun) may be false positives.
+                  &quot;Ripple&quot; as a proper noun) may be false positives.
                 </p>
               </div>
             </div>
@@ -273,10 +284,16 @@ export default function AboutPage() {
 }
 
 // ============================================================================
-// Subcomponents
+// Subcomponents — preserved from original AboutPage.jsx with TypeScript types
 // ============================================================================
 
-function SectionHeader({ icon: Icon, title, accentClass = 'text-amber-400' }) {
+interface SectionHeaderProps {
+  icon: LucideIcon;
+  title: string;
+  accentClass?: string;
+}
+
+function SectionHeader({ icon: Icon, title, accentClass = 'text-amber-400' }: SectionHeaderProps) {
   return (
     <div className="flex items-center gap-2 mb-3 pb-2 border-b border-stone-800">
       <Icon className={`w-4 h-4 ${accentClass}`} />
@@ -285,7 +302,14 @@ function SectionHeader({ icon: Icon, title, accentClass = 'text-amber-400' }) {
   );
 }
 
-function FeatureBlock({ icon: Icon, title, path, text }) {
+interface FeatureBlockProps {
+  icon: LucideIcon;
+  title: string;
+  path: string;
+  text: string;
+}
+
+function FeatureBlock({ icon: Icon, title, path, text }: FeatureBlockProps) {
   return (
     <div className="flex gap-3">
       <Icon className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
@@ -300,7 +324,7 @@ function FeatureBlock({ icon: Icon, title, path, text }) {
   );
 }
 
-function FactRow({ term, def }) {
+function FactRow({ term, def }: { term: string; def: string }) {
   return (
     <div className="flex justify-between gap-2">
       <dt className="text-stone-500">{term}</dt>
@@ -309,7 +333,13 @@ function FactRow({ term, def }) {
   );
 }
 
-function SourceLink({ href, title, desc }) {
+interface SourceLinkProps {
+  href: string;
+  title: string;
+  desc: string;
+}
+
+function SourceLink({ href, title, desc }: SourceLinkProps) {
   return (
     <li>
       <a

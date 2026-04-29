@@ -1,29 +1,60 @@
-import React, { useState, useEffect, useCallback } from 'react';
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
 import {
   Bitcoin, TrendingUp, TrendingDown, Building2, Wallet as WalletIcon,
-  ExternalLink, Info, AlertTriangle, Loader2, FileSearch,
+  ExternalLink, Info, AlertTriangle, Loader2,
+  type LucideIcon,
 } from 'lucide-react';
-import SEO from '../components/SEO.jsx';
-import CryptoScanner from '../components/CryptoScanner.jsx';
-import ScanResults from '../components/ScanResults.jsx';
+import CryptoScannerImpl from '../../components/CryptoScanner.jsx';
+import ScanResultsImpl from '../../components/ScanResults.jsx';
 
 // ============================================================================
-// Main CryptoPage
+// JS-component prop interop (same pattern as AnalysisClient/CompareClient)
 // ============================================================================
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const CryptoScanner = CryptoScannerImpl as any;
+const ScanResults = ScanResultsImpl as any;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
-export default function CryptoPage() {
-  const [scanData, setScanData] = useState(null);
+// ============================================================================
+// Types
+// ============================================================================
+interface Coin {
+  ticker: string;
+  name: string;
+  price: number | null;
+  change24h: number | null;
+  high24h: number | null;
+  low24h: number | null;
+  source?: string;
+  sourceUrl?: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyValue = any;
+
+// ============================================================================
+// CryptoClient — full page logic ported from CryptoPage.jsx
+//
+// Manages scan results state (returned from CryptoScanner) and live coin
+// price data (refreshed every 60 seconds). The 60s interval is the reason
+// this needs to be a client component — server components can't run
+// intervals.
+// ============================================================================
+export default function CryptoClient() {
+  const [scanData, setScanData] = useState<AnyValue>(null);
 
   // Coin prices state
-  const [coins, setCoins] = useState([]);
+  const [coins, setCoins] = useState<Coin[]>([]);
   const [coinsLoading, setCoinsLoading] = useState(true);
-  const [coinsError, setCoinsError] = useState(null);
-  const [coinsUpdatedAt, setCoinsUpdatedAt] = useState(null);
+  const [coinsError, setCoinsError] = useState<string | null>(null);
+  const [coinsUpdatedAt, setCoinsUpdatedAt] = useState<Date | null>(null);
 
-  // Load coin prices on mount
+  // Load coin prices on mount + every 60s
   useEffect(() => {
     let cancelled = false;
-    let intervalId = null;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
     async function loadCoins() {
       try {
@@ -35,14 +66,15 @@ export default function CryptoPage() {
         setCoinsUpdatedAt(new Date());
         setCoinsError(null);
       } catch (err) {
-        if (!cancelled) setCoinsError(err.message);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!cancelled) setCoinsError(msg);
       } finally {
         if (!cancelled) setCoinsLoading(false);
       }
     }
 
     loadCoins();
-    intervalId = setInterval(loadCoins, 60000);  // Refresh every 60s
+    intervalId = setInterval(loadCoins, 60000);
 
     return () => {
       cancelled = true;
@@ -50,15 +82,14 @@ export default function CryptoPage() {
     };
   }, []);
 
-  const handleScanComplete = useCallback((data) => {
+  const handleScanComplete = useCallback((data: AnyValue) => {
     setScanData(data);
-    // Scroll to results
     setTimeout(() => {
       document.getElementById('scan-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
   }, []);
 
-  const handleRescan = useCallback(async (ticker, options = {}) => {
+  const handleRescan = useCallback(async (ticker: string, options: { fresh?: boolean } = {}) => {
     try {
       const params = new URLSearchParams({
         tickers: ticker,
@@ -68,10 +99,9 @@ export default function CryptoPage() {
       const res = await fetch(`/api/crypto-scan?${params}`);
       if (!res.ok) return;
       const newData = await res.json();
-      // Merge: replace the specific ticker's result in existing scanData
-      setScanData((prev) => {
+      setScanData((prev: AnyValue) => {
         if (!prev) return newData;
-        const updatedResults = prev.results.map((r) =>
+        const updatedResults = prev.results.map((r: AnyValue) =>
           r.ticker === ticker && newData.results[0] ? newData.results[0] : r
         );
         return { ...prev, results: updatedResults, scannedAt: newData.scannedAt };
@@ -83,12 +113,6 @@ export default function CryptoPage() {
 
   return (
     <>
-      <SEO
-        title="Crypto Filings Scanner & SEC Crypto Disclosures"
-        description="Scan any public company's SEC filings (10-K, 10-Q, 8-K) for mentions of bitcoin, cryptocurrency, and digital assets. Every match links to the source filing. Compare multiple companies side-by-side. Plus live coin prices."
-        path="/crypto"
-      />
-
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">
@@ -98,21 +122,18 @@ export default function CryptoPage() {
           </h1>
         </div>
         <p className="text-xs text-stone-400 leading-relaxed max-w-3xl">
-          Scan any public company's SEC filings for mentions of bitcoin, cryptocurrency, digital
+          Scan any public company&apos;s SEC filings for mentions of bitcoin, cryptocurrency, digital
           assets, and related terms. Results cached for 24 hours. Every match links to the
           original filing on SEC.gov. Plus live coin prices from Kraken.
         </p>
       </div>
 
-      {/* Scanner — the main feature */}
       <CryptoScanner onScanComplete={handleScanComplete} />
 
-      {/* Scan results */}
       <div id="scan-results">
         {scanData && <ScanResults data={scanData} onRescan={handleRescan} />}
       </div>
 
-      {/* Top Coins reference section */}
       <CoinsSection
         coins={coins}
         loading={coinsLoading}
@@ -120,7 +141,6 @@ export default function CryptoPage() {
         updatedAt={coinsUpdatedAt}
       />
 
-      {/* Coming soon sections — ETFs + Companies curated lists */}
       <ComingSoonSection
         icon={WalletIcon}
         title="Spot Crypto ETFs"
@@ -135,7 +155,6 @@ export default function CryptoPage() {
         body="Curated list of treasury holders, miners, and exchanges with live Bitcoin holdings. Launching in the next update."
       />
 
-      {/* About footer */}
       <div className="border-2 border-stone-800 bg-stone-900/30 p-4 flex items-start gap-3">
         <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
         <div className="text-[11px] text-stone-400 leading-relaxed">
@@ -154,7 +173,14 @@ export default function CryptoPage() {
 // CoinsSection — reference table of top coin prices
 // ============================================================================
 
-function CoinsSection({ coins, loading, error, updatedAt }) {
+interface CoinsSectionProps {
+  coins: Coin[];
+  loading: boolean;
+  error: string | null;
+  updatedAt: Date | null;
+}
+
+function CoinsSection({ coins, loading, error, updatedAt }: CoinsSectionProps) {
   const secondsAgo = updatedAt ? Math.floor((Date.now() - updatedAt.getTime()) / 1000) : null;
 
   return (
@@ -164,7 +190,7 @@ function CoinsSection({ coins, loading, error, updatedAt }) {
         <h2 className="text-sm uppercase tracking-[0.25em] font-black text-stone-200">
           Top Coins
         </h2>
-        {updatedAt && !loading && (
+        {updatedAt && !loading && secondsAgo !== null && (
           <span className="text-[10px] text-stone-500 lowercase tracking-widest ml-2">
             updated {secondsAgo < 5 ? 'just now' : secondsAgo < 60 ? `${secondsAgo}s ago` : `${Math.floor(secondsAgo / 60)}m ago`}
           </span>
@@ -218,8 +244,8 @@ function CoinsSection({ coins, loading, error, updatedAt }) {
   );
 }
 
-function CoinRow({ coin, idx }) {
-  const isUp = coin.change24h >= 0;
+function CoinRow({ coin, idx }: { coin: Coin; idx: number }) {
+  const isUp = (coin.change24h ?? 0) >= 0;
   const colorClass = isUp ? 'text-emerald-400' : 'text-rose-400';
   const Arrow = isUp ? TrendingUp : TrendingDown;
 
@@ -264,7 +290,7 @@ function CoinRow({ coin, idx }) {
   );
 }
 
-function formatPrice(p) {
+function formatPrice(p: number | null | undefined): string {
   if (p == null || !Number.isFinite(p)) return '—';
   if (p >= 1000) return `$${p.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
   if (p >= 1) return `$${p.toFixed(2)}`;
@@ -273,10 +299,17 @@ function formatPrice(p) {
 }
 
 // ============================================================================
-// ComingSoonSection — placeholder for ETFs + Companies
+// ComingSoonSection
 // ============================================================================
 
-function ComingSoonSection({ icon: Icon, title, subtitle, body }) {
+interface ComingSoonSectionProps {
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+  body: string;
+}
+
+function ComingSoonSection({ icon: Icon, title, subtitle, body }: ComingSoonSectionProps) {
   return (
     <section className="mb-8">
       <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-stone-800">
