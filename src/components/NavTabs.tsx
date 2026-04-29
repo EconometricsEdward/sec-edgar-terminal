@@ -53,7 +53,7 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Analysis',
     icon: BarChart3,
     matchPath: (p) => p === '/analysis' || p.startsWith('/analysis/'),
-    legacy: true,
+    legacy: false, // Migrated to App Router in Phase 2b
   },
   {
     href: '/compare',

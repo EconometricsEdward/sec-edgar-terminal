@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import LandingPage from './page-components/LandingPage.jsx';
-import AnalysisPage from './page-components/AnalysisPage.jsx';
 import ComparePage from './page-components/ComparePage.jsx';
 import FundPage from './page-components/FundPage.jsx';
 import AboutPage from './page-components/AboutPage.jsx';
@@ -11,7 +10,7 @@ import { loadClassifiedTickerMap } from './utils/tickerMapLoader.js';
 
 // ============================================================================
 // TickerContext — kept here during the migration because some unmigrated
-// pages (Analysis, Compare, Fund) still import it from '../App.jsx'. Once
+// pages (Compare, Fund) still import it from '../App.jsx'. Once
 // those pages are migrated, this context moves to src/contexts/ (there's
 // already a duplicate there for the Next.js layout to use).
 // ============================================================================
@@ -30,11 +29,14 @@ export const TickerContext = React.createContext(null);
 // Phase 2a moved /filings and /filings/[ticker] into dedicated App Router
 // routes (src/app/filings/).
 //
+// Phase 2b moved /analysis and /analysis/[ticker] into dedicated App
+// Router routes (src/app/analysis/).
+//
 // What remains here: a minimal React Router shell that handles the
 // not-yet-migrated pages via Next.js's [[...slug]] catch-all route. As
-// each remaining page (Landing, Analysis, Compare, Fund, Crypto, About)
-// migrates to App Router, its Route entry disappears from this file. When
-// all pages are migrated, this file is deleted entirely.
+// each remaining page (Landing, Compare, Fund, Crypto, About) migrates
+// to App Router, its Route entry disappears from this file. When all
+// pages are migrated, this file is deleted entirely.
 // ============================================================================
 export default function App() {
   const [ticker, setTicker] = useState('');
@@ -63,8 +65,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             {/* /filings and /filings/:ticker moved to Next.js App Router (src/app/filings/) */}
-            <Route path="/analysis" element={<AnalysisPage />} />
-            <Route path="/analysis/:ticker" element={<AnalysisPage />} />
+            {/* /analysis and /analysis/:ticker moved to Next.js App Router (src/app/analysis/) */}
             <Route path="/compare" element={<ComparePage />} />
             <Route path="/compare/:tickers" element={<ComparePage />} />
             <Route path="/fund" element={<FundPage />} />

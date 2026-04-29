@@ -1,21 +1,22 @@
+'use client';
+
 import React, { useState, useContext, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
   Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink, Info,
   LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
   Loader2, AlertCircle,
 } from 'lucide-react';
-import SEO from '../components/SEO.jsx';
-import { MetricChart } from '../components/MetricChart.jsx';
-import SummaryDashboard from '../components/SummaryDashboard.jsx';
-import StockPriceChart from '../components/StockPriceChart.jsx';
-import InsiderActivity from '../components/InsiderActivity.jsx';
-import HoldersSection from '../components/HoldersSection.jsx';
-import ConceptHistoryModal from '../components/ConceptHistoryModal.jsx';
-import { TickerContext } from '../App.jsx';
-import { secDataUrl } from '../utils/secApi.js';
-import { checkIsFund } from '../utils/fundCheck.js';
+import { MetricChart } from '../../../components/MetricChart.jsx';
+import SummaryDashboard from '../../../components/SummaryDashboard.jsx';
+import StockPriceChart from '../../../components/StockPriceChart.jsx';
+import InsiderActivity from '../../../components/InsiderActivity.jsx';
+import HoldersSection from '../../../components/HoldersSection.jsx';
+import ConceptHistoryModal from '../../../components/ConceptHistoryModal.jsx';
+import { TickerContext } from '../../../contexts/TickerContext';
+import { secDataUrl } from '../../../utils/secApi.js';
+import { checkIsFund } from '../../../utils/fundCheck.js';
 import {
   extractAnnualPeriods,
   extractQuarterlyPeriods,
@@ -28,9 +29,60 @@ import {
   computeGrowth,
   periodLabel,
   buildSourceUrl,
-} from '../utils/xbrlParser.js';
-import { classifyIndustry, industryLabel, industryDisclosure } from '../utils/industry.js';
+} from '../../../utils/xbrlParser.js';
+import { classifyIndustry, industryLabel, industryDisclosure } from '../../../utils/industry.js';
 
+// ============================================================================
+// Types
+// ============================================================================
+interface AnalysisClientProps {
+  urlTicker: string;
+  preloadedCik: string | null;
+  preloadedCompanyName: string | null;
+  preloadedSicDescription: string | null;
+}
+
+interface FilingEntry {
+  form: string;
+  filingDate: string;
+  accession: string;
+  accessionNumber: string;
+  documentUrl: string;
+}
+
+interface CompanyState {
+  name: string;
+  cik: string;
+  sic?: string;
+  sicNumber?: string | number;
+  exchanges: string;
+  tickers: string;
+  fiscalYearEnd?: string;
+  stateOfIncorporation?: string;
+  ein?: string;
+}
+
+interface InsiderMarker {
+  date: string;
+  direction: 'buy' | 'sell';
+  ownerName?: string;
+  relationship?: string;
+  shares?: number;
+  price?: number;
+  value?: number;
+  accession?: string;
+  xmlUrl?: string;
+}
+
+interface ConceptToTrace {
+  tag: string;
+  taxonomy: string;
+  unit: string;
+}
+
+// ============================================================================
+// Section + statement definitions (unchanged from original)
+// ============================================================================
 const SECTIONS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'stock-chart', label: 'Stock Chart', icon: LineChart },
@@ -49,29 +101,53 @@ const STATEMENTS = [
     featuredRows: ['Operating Cash Flow', 'Capital Expenditures', 'Financing Cash Flow', 'Investing Cash Flow'] },
 ];
 
-export default function AnalysisPage() {
-  const { ticker: urlTicker } = useParams();
-  const navigate = useNavigate();
-  const { company, setCompany, tickerMap } = useContext(TickerContext);
-  const [facts, setFacts] = useState(null);
-  const [sicCode, setSicCode] = useState(null);
-  const [filings, setFilings] = useState([]);
+// ============================================================================
+// Main client component
+// ============================================================================
+export default function AnalysisClient({
+  urlTicker,
+  preloadedCik,
+  preloadedCompanyName,
+  preloadedSicDescription,
+}: AnalysisClientProps) {
+  const router = useRouter();
+  const ctx = useContext(TickerContext);
+  const tickerMap = ctx?.tickerMap ?? null;
+
+  // Local company state — initialized from server props for instant display,
+  // augmented client-side once submissions fetch completes
+  const [company, setCompanyState] = useState<CompanyState | null>(
+    preloadedCik && preloadedCompanyName
+      ? {
+          name: preloadedCompanyName,
+          cik: preloadedCik,
+          sic: preloadedSicDescription || undefined,
+          exchanges: 'N/A',
+          tickers: urlTicker,
+        }
+      : null
+  );
+
+  const [facts, setFacts] = useState<Record<string, unknown> | null>(null);
+  const [sicCode, setSicCode] = useState<string | number | null>(null);
+  const [filings, setFilings] = useState<FilingEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [statement, setStatement] = useState('income');
-  const [periodType, setPeriodType] = useState('annual');
+  const [periodType, setPeriodType] = useState<'annual' | 'quarterly'>('annual');
   const [showGrowth, setShowGrowth] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
 
-  const [insiderMarkers, setInsiderMarkers] = useState([]);
-  const handleInsiderMarkers = useCallback((markers) => {
+  const [insiderMarkers, setInsiderMarkers] = useState<InsiderMarker[]>([]);
+  const handleInsiderMarkers = useCallback((markers: InsiderMarker[]) => {
     setInsiderMarkers(markers || []);
   }, []);
 
-  const [conceptToTrace, setConceptToTrace] = useState(null);
-  const sectionRefs = useRef({});
+  const [conceptToTrace, setConceptToTrace] = useState<ConceptToTrace | null>(null);
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
+  // Scrollspy: highlight active section as user scrolls
   useEffect(() => {
     if (!facts) return;
     const observer = new IntersectionObserver(
@@ -92,104 +168,130 @@ export default function AnalysisPage() {
     return () => observer.disconnect();
   }, [facts]);
 
-  const fetchFacts = useCallback(async (entry) => {
-    // Fund detection — if already known to be a fund, redirect
-    if (entry.type === 'fund' || entry.isFund) {
-      navigate(`/fund/${entry.ticker}`);
-      return;
-    }
+  // ==========================================================================
+  // fetchFacts — load XBRL data for a given company entry
+  //
+  // Order matters: clear state FIRST, then run the fund check, then fetch.
+  // The original code ran setFacts(null) AFTER the fund check, causing a
+  // brief flicker where stale data was visible during the async check.
+  // ==========================================================================
+  const fetchFacts = useCallback(
+    async (entry: { ticker: string; cik: string; name: string; type: string; isFund: boolean }) => {
+      // Clear state immediately so any previous company's data disappears
+      setFacts(null);
+      setFilings([]);
+      setInsiderMarkers([]);
+      setActiveSection('overview');
+      setError(null);
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      const authoritativeIsFund = await checkIsFund(entry.cik, 3000);
-      if (authoritativeIsFund === true) {
-        setLoading(false);
-        navigate(`/fund/${entry.ticker}`);
+      // Fund detection — if already known to be a fund, redirect
+      if (entry.type === 'fund' || entry.isFund) {
+        router.push(`/fund/${entry.ticker}`);
         return;
       }
-    } catch (err) {
-      console.warn('Fund check unexpected error:', err);
-    }
 
-    setFacts(null);
-    setFilings([]);
-    setInsiderMarkers([]);
-    setActiveSection('overview');
+      setLoading(true);
 
-    try {
-      const [submissionsRes, factsRes] = await Promise.all([
-        fetch(secDataUrl(`/submissions/CIK${entry.cik}.json`)),
-        fetch(secDataUrl(`/api/xbrl/companyfacts/CIK${entry.cik}.json`)),
-      ]);
-
-      if (!submissionsRes.ok) throw new Error(`Submissions API returned ${submissionsRes.status}`);
-      if (!factsRes.ok) {
-        if (factsRes.status === 404) {
-          throw new Error('This company has no XBRL financial data available.');
+      try {
+        const authoritativeIsFund = await checkIsFund(entry.cik, 3000);
+        if (authoritativeIsFund === true) {
+          setLoading(false);
+          router.push(`/fund/${entry.ticker}`);
+          return;
         }
-        throw new Error(`XBRL API returned ${factsRes.status}`);
+      } catch (err) {
+        console.warn('Fund check unexpected error:', err);
       }
 
-      const submissions = await submissionsRes.json();
-      const factsData = await factsRes.json();
+      try {
+        const [submissionsRes, factsRes] = await Promise.all([
+          fetch(secDataUrl(`/submissions/CIK${entry.cik}.json`)),
+          fetch(secDataUrl(`/api/xbrl/companyfacts/CIK${entry.cik}.json`)),
+        ]);
 
-      setCompany({
-        name: submissions.name,
-        cik: entry.cik,
-        sic: submissions.sicDescription,
-        sicNumber: submissions.sic,
-        exchanges: submissions.exchanges?.join(', ') || 'N/A',
-        tickers: submissions.tickers?.join(', ') || entry.name,
-        fiscalYearEnd: submissions.fiscalYearEnd,
-        stateOfIncorporation: submissions.stateOfIncorporation,
-        ein: submissions.ein,
-      });
+        if (!submissionsRes.ok) throw new Error(`Submissions API returned ${submissionsRes.status}`);
+        if (!factsRes.ok) {
+          if (factsRes.status === 404) {
+            throw new Error('This company has no XBRL financial data available.');
+          }
+          throw new Error(`XBRL API returned ${factsRes.status}`);
+        }
 
-      setSicCode(submissions.sic);
-      setFacts(factsData.facts || {});
+        const submissions = await submissionsRes.json();
+        const factsData = await factsRes.json();
 
-      const recent = submissions.filings?.recent;
-      if (recent) {
-        const allFilings = recent.accessionNumber.map((acc, i) => {
-          const accessionClean = acc.replace(/-/g, '');
-          const primaryDoc = recent.primaryDocument[i];
-          return {
-            form: recent.form[i],
-            filingDate: recent.filingDate[i],
-            accession: acc,
-            accessionNumber: acc,
-            documentUrl: `https://www.sec.gov/Archives/edgar/data/${parseInt(entry.cik, 10)}/${accessionClean}/${primaryDoc}`,
-          };
+        setCompanyState({
+          name: submissions.name,
+          cik: entry.cik,
+          sic: submissions.sicDescription,
+          sicNumber: submissions.sic,
+          exchanges: submissions.exchanges?.join(', ') || 'N/A',
+          tickers: submissions.tickers?.join(', ') || entry.name,
+          fiscalYearEnd: submissions.fiscalYearEnd,
+          stateOfIncorporation: submissions.stateOfIncorporation,
+          ein: submissions.ein,
         });
-        setFilings(allFilings);
+
+        setSicCode(submissions.sic);
+        setFacts(factsData.facts || {});
+
+        const recent = submissions.filings?.recent;
+        if (recent) {
+          const allFilings: FilingEntry[] = recent.accessionNumber.map((acc: string, i: number) => {
+            const accessionClean = acc.replace(/-/g, '');
+            const primaryDoc = recent.primaryDocument[i];
+            return {
+              form: recent.form[i],
+              filingDate: recent.filingDate[i],
+              accession: acc,
+              accessionNumber: acc,
+              documentUrl: `https://www.sec.gov/Archives/edgar/data/${parseInt(entry.cik, 10)}/${accessionClean}/${primaryDoc}`,
+            };
+          });
+          setFilings(allFilings);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Failed to fetch financial data: ${msg}`);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError(`Failed to fetch financial data: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate, setCompany]);
+    },
+    [router]
+  );
 
   // ==========================================================================
-  // AUTO-FETCH when URL has a ticker parameter.
-  // This replaces the old pattern where TickerSearchBar's internal state
-  // triggered the fetch. Now, changing URL (via GlobalSearchBar or direct
-  // link) immediately triggers data load.
+  // AUTO-FETCH on mount / ticker change
+  //
+  // Server already gave us preloadedCik. Use it directly when available to
+  // skip the tickerMap lookup. Fall back to tickerMap only if server lookup
+  // failed.
   // ==========================================================================
   useEffect(() => {
     if (!urlTicker) {
-      // No ticker in URL → clear state
       setFacts(null);
       setFilings([]);
       setError(null);
       return;
     }
-    if (!tickerMap) return;  // wait for ticker map
 
     const upper = urlTicker.toUpperCase();
+
+    // Path A: server resolved CIK → fetch directly
+    if (preloadedCik && preloadedCompanyName) {
+      fetchFacts({
+        ticker: upper,
+        cik: preloadedCik,
+        name: preloadedCompanyName,
+        type: 'company',
+        isFund: false,
+      });
+      return;
+    }
+
+    // Path B: server failed to resolve → wait for client-side ticker map
+    if (!tickerMap) return;
+
     const entry = tickerMap[upper];
     if (!entry) {
       setError(`No SEC registrant found for "${urlTicker}". Try a valid ticker, CIK, or company name.`);
@@ -205,15 +307,18 @@ export default function AnalysisPage() {
       type: entry.isFund ? 'fund' : 'company',
       isFund: entry.isFund,
     });
-  }, [urlTicker, tickerMap, fetchFacts]);
+  }, [urlTicker, tickerMap, preloadedCik, preloadedCompanyName, fetchFacts]);
 
+  // ==========================================================================
+  // Derived state — periods, table rows, growth, etc.
+  // ==========================================================================
   const periods = facts
     ? periodType === 'annual'
       ? extractAnnualPeriods(facts).slice(0, 10)
       : extractQuarterlyPeriods(facts).slice(0, 12)
     : [];
 
-  const statementDef = STATEMENTS.find((s) => s.id === statement);
+  const statementDef = STATEMENTS.find((s) => s.id === statement) || STATEMENTS[0];
   const rows = useMemo(
     () => (facts && periods.length > 0 ? statementDef.build(facts, periods, sicCode) : []),
     [facts, periods, statementDef, sicCode]
@@ -226,22 +331,27 @@ export default function AnalysisPage() {
 
   const featuredRows = useMemo(() => {
     if (!rows.length) return [];
-    return rows.filter((r) => statementDef.featuredRows.includes(r.label));
+    return rows.filter((r: { label: string }) => statementDef.featuredRows.includes(r.label));
   }, [rows, statementDef]);
 
   const featuredRatioRows = useMemo(() => {
     if (!ratioRows.length) return [];
-    return ratioRows.filter((r) => r.values.some((v) => v.value != null)).slice(0, 4);
+    return ratioRows
+      .filter((r: { values: { value: number | null }[] }) => r.values.some((v) => v.value != null))
+      .slice(0, 4);
   }, [ratioRows]);
 
   const growthVisible = showGrowth && periodType === 'annual';
 
-  const exportCsv = (rowData, name) => {
+  // ==========================================================================
+  // Action handlers
+  // ==========================================================================
+  const exportCsv = (rowData: any[], name: string) => {
     if (!rowData.length || !periods.length) return;
     const header = ['Metric', ...periods.map(periodLabel), 'YoY %', '5Y CAGR %', '10Y CAGR %'].join(',');
     const lines = rowData.map((r) => {
       const g = computeGrowth(r);
-      const vals = r.values.map((v) => (v.value == null ? '' : v.value));
+      const vals = r.values.map((v: { value: number | null }) => (v.value == null ? '' : v.value));
       return [
         `"${r.label}"`,
         ...vals,
@@ -261,24 +371,25 @@ export default function AnalysisPage() {
   };
 
   const copyShareLink = () => {
-    const url = `${window.location.origin}/analysis/${company?.tickers?.split(',')[0]?.trim() || urlTicker}`;
+    const t = company?.tickers?.split(',')[0]?.trim() || urlTicker;
+    const url = `${window.location.origin}/analysis/${t}`;
     navigator.clipboard.writeText(url);
   };
 
   const goToCompare = () => {
     const t = urlTicker || company?.tickers?.split(',')[0]?.trim();
-    if (t) navigate(`/compare/${t}`);
-    else navigate('/compare');
+    if (t) router.push(`/compare/${t}`);
+    else router.push('/compare');
   };
 
-  const scrollToSection = (id) => {
+  const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const traceRowHistory = useCallback((row) => {
+  const traceRowHistory = useCallback((row: { values: { source?: { tag: string; taxonomy?: string; unit?: string } }[] }) => {
     const firstSourced = row.values.find((v) => v.source && v.source.tag);
-    if (!firstSourced) return;
+    if (!firstSourced || !firstSourced.source) return;
     setConceptToTrace({
       tag: firstSourced.source.tag,
       taxonomy: firstSourced.source.taxonomy || 'us-gaap',
@@ -291,25 +402,11 @@ export default function AnalysisPage() {
   const chartTicker = company?.tickers?.split(',')[0]?.trim() || urlTicker;
   const form4Count = filings.filter((f) => f.form === '4').length;
 
-  const displayTicker = urlTicker ? urlTicker.toUpperCase() : null;
-  const companyName = company?.name;
-
-  const seoTitle = displayTicker && companyName
-    ? `${companyName} (${displayTicker}) — Financial Analysis & Ratios`
-    : displayTicker
-      ? `${displayTicker} — Financial Analysis`
-      : 'Financial Analysis — SEC XBRL Data';
-
-  const seoDescription = displayTicker && companyName
-    ? `10-year financial analysis for ${companyName} (${displayTicker}). Revenue, net income, operating margin, ROE, ROA, and industry-specific ratios sourced directly from SEC XBRL filings.`
-    : 'Structured financial analysis for every U.S. public company. Income statement, balance sheet, cash flow, and industry-aware ratios from SEC XBRL data.';
-
-  const seoPath = displayTicker ? `/analysis/${displayTicker}` : '/analysis';
-
+  // ==========================================================================
+  // Render
+  // ==========================================================================
   return (
     <>
-      <SEO title={seoTitle} description={seoDescription} path={seoPath} />
-
       {loading && (
         <div className="flex items-center gap-2 text-sm text-stone-400 mb-4 uppercase tracking-widest">
           <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
@@ -355,6 +452,7 @@ export default function AnalysisPage() {
                         ? 'bg-amber-500 text-stone-950 border-amber-500'
                         : 'bg-stone-900 text-stone-400 border-stone-800'
                     }`}
+                    type="button"
                   >
                     <Icon className="w-3 h-3" />
                     {s.label}
@@ -380,6 +478,7 @@ export default function AnalysisPage() {
                         ? 'bg-amber-500/10 text-amber-400 border-amber-500'
                         : 'text-stone-500 border-stone-800 hover:text-stone-200 hover:border-stone-600 hover:bg-stone-900/50'
                     }`}
+                    type="button"
                   >
                     <Icon className="w-3.5 h-3.5 shrink-0" />
                     <span className="flex-1 text-left">{s.label}</span>
@@ -402,6 +501,7 @@ export default function AnalysisPage() {
               <button
                 onClick={copyShareLink}
                 className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest text-stone-400 hover:text-amber-400 hover:bg-stone-900/50 transition-colors"
+                type="button"
               >
                 <LinkIcon className="w-3.5 h-3.5" />
                 Share
@@ -409,6 +509,7 @@ export default function AnalysisPage() {
               <button
                 onClick={goToCompare}
                 className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest text-stone-400 hover:text-amber-400 hover:bg-stone-900/50 transition-colors"
+                type="button"
               >
                 <GitCompare className="w-3.5 h-3.5" />
                 Compare
@@ -498,6 +599,7 @@ export default function AnalysisPage() {
                             ? 'bg-amber-500 text-stone-950 border-amber-500'
                             : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700 hover:text-stone-200'
                         }`}
+                        type="button"
                       >
                         <Icon className="w-3.5 h-3.5" />
                         {s.label}
@@ -512,6 +614,7 @@ export default function AnalysisPage() {
                     className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
                       periodType === 'annual' ? 'bg-stone-100 text-stone-950 border-stone-100' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
                     }`}
+                    type="button"
                   >
                     Annual (10-K)
                   </button>
@@ -520,6 +623,7 @@ export default function AnalysisPage() {
                     className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
                       periodType === 'quarterly' ? 'bg-stone-100 text-stone-950 border-stone-100' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
                     }`}
+                    type="button"
                   >
                     Quarterly (10-Q)
                   </button>
@@ -530,6 +634,7 @@ export default function AnalysisPage() {
                       className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
                         showGrowth ? 'bg-emerald-500 text-stone-950 border-emerald-500' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
                       }`}
+                      type="button"
                     >
                       Growth {showGrowth ? 'ON' : 'OFF'}
                     </button>
@@ -538,6 +643,7 @@ export default function AnalysisPage() {
                   <button
                     onClick={() => exportCsv(rows, statement)}
                     className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+                    type="button"
                   >
                     <Download className="w-3.5 h-3.5" />
                     CSV
@@ -547,7 +653,7 @@ export default function AnalysisPage() {
 
               {featuredRows.length > 0 && (
                 <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {featuredRows.map((row) => (
+                  {featuredRows.map((row: { label: string; values: any[]; format: string }) => (
                     <MetricChart
                       key={row.label}
                       title={row.label}
@@ -565,7 +671,7 @@ export default function AnalysisPage() {
                 growthVisible={growthVisible}
                 cik={company?.cik}
                 onTraceRow={traceRowHistory}
-                isHeaderRow={(label) => ['Revenue', 'Gross Profit', 'Operating Income', 'Net Income', 'Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Operating Cash Flow'].includes(label)}
+                isHeaderRow={(label: string) => ['Revenue', 'Gross Profit', 'Operating Income', 'Net Income', 'Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Operating Cash Flow'].includes(label)}
               />
 
               <p className="mt-4 text-[11px] text-stone-500 leading-relaxed">
@@ -586,6 +692,7 @@ export default function AnalysisPage() {
                     className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
                       showGrowth ? 'bg-emerald-500 text-stone-950 border-emerald-500' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
                     }`}
+                    type="button"
                   >
                     Growth {showGrowth ? 'ON' : 'OFF'}
                   </button>
@@ -593,6 +700,7 @@ export default function AnalysisPage() {
                 <button
                   onClick={() => exportCsv(ratioRows, 'ratios')}
                   className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+                  type="button"
                 >
                   <Download className="w-3.5 h-3.5" />
                   CSV
@@ -601,7 +709,7 @@ export default function AnalysisPage() {
 
               {featuredRatioRows.length > 0 && (
                 <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {featuredRatioRows.map((row) => (
+                  {featuredRatioRows.map((row: { label: string; values: any[]; format: string }) => (
                     <MetricChart
                       key={row.label}
                       title={row.label}
@@ -646,7 +754,11 @@ export default function AnalysisPage() {
   );
 }
 
-function SectionHeader({ icon: Icon, title }) {
+// ============================================================================
+// Sub-components — moved from page-components/AnalysisPage.jsx unchanged
+// ============================================================================
+
+function SectionHeader({ icon: Icon, title }: { icon: any; title: string }) {
   return (
     <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-stone-800">
       <Icon className="w-5 h-5 text-amber-400" />
@@ -655,7 +767,16 @@ function SectionHeader({ icon: Icon, title }) {
   );
 }
 
-function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeaderRow }) {
+interface FinancialTableProps {
+  rows: any[];
+  periods: any[];
+  growthVisible: boolean;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+  isHeaderRow: (label: string) => boolean;
+}
+
+function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeaderRow }: FinancialTableProps) {
   return (
     <div className="border-2 border-stone-800 bg-stone-900/30 overflow-x-auto">
       <table className="w-full text-sm">
@@ -664,7 +785,7 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
             <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 z-20 min-w-[240px]">
               Metric
             </th>
-            {periods.map((p) => (
+            {periods.map((p: any) => (
               <th
                 key={`${p.fy}-${p.fp}-${p.end}`}
                 className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[90px]"
@@ -688,10 +809,10 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {rows.map((row: any) => {
             const header = isHeaderRow(row.label);
             const growth = computeGrowth(row);
-            const hasSource = row.values.some((v) => v.source && v.source.tag);
+            const hasSource = row.values.some((v: any) => v.source && v.source.tag);
             return (
               <tr key={row.label} className={`border-b border-stone-800/60 hover:bg-amber-500/5 transition-colors group ${header ? 'bg-stone-900/40' : ''}`}>
                 <td className={`px-4 py-2.5 sticky left-0 z-10 ${header ? 'bg-stone-900/95 text-stone-100 font-bold' : 'bg-stone-950/95 text-stone-300'}`}>
@@ -703,13 +824,14 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
                         className="text-stone-600 hover:text-amber-400 transition-colors opacity-0 group-hover:opacity-100"
                         title="Trace full history of this concept (detects restatements)"
                         aria-label={`Trace history of ${row.label}`}
+                        type="button"
                       >
                         <History className="w-3 h-3" />
                       </button>
                     )}
                   </span>
                 </td>
-                {row.values.map((v, i) => (
+                {row.values.map((v: any, i: number) => (
                   <ValueCell key={i} value={v.value} source={v.source} cik={cik} format={row.format} isHeader={header} />
                 ))}
                 {growthVisible && (
@@ -728,7 +850,15 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
   );
 }
 
-function ValueCell({ value, source, cik, format, isHeader }) {
+interface ValueCellProps {
+  value: number | null;
+  source?: { tag: string; unit: string; end: string; filed: string; accession: string };
+  cik?: string;
+  format: string;
+  isHeader: boolean;
+}
+
+function ValueCell({ value, source, cik, format, isHeader }: ValueCellProps) {
   const sourceUrl = source && cik ? buildSourceUrl(cik, source) : null;
   const tooltip = source
     ? `Tag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}\nClick to open SEC source`
@@ -749,7 +879,14 @@ function ValueCell({ value, source, cik, format, isHeader }) {
   );
 }
 
-function GrowthCell({ pct, isHeader, borderLeft, stickyRight }) {
+interface GrowthCellProps {
+  pct: number | null;
+  isHeader: boolean;
+  borderLeft?: boolean;
+  stickyRight?: number;
+}
+
+function GrowthCell({ pct, isHeader, borderLeft, stickyRight }: GrowthCellProps) {
   const g = formatGrowth(pct);
   const colorClass = g.color === 'positive' ? 'text-emerald-400' : g.color === 'negative' ? 'text-rose-400' : 'text-stone-600';
   const bg = isHeader ? 'bg-stone-900/95' : 'bg-stone-950/95';
