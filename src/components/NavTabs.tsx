@@ -39,7 +39,7 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Home',
     icon: Home,
     matchPath: (p) => p === '/',
-    legacy: true, // LandingPage still served by App.jsx
+    legacy: false, // Migrated to App Router in Phase 2d
   },
   {
     href: '/filings',

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
-import LandingPage from './page-components/LandingPage.jsx';
 import FundPage from './page-components/FundPage.jsx';
 import AboutPage from './page-components/AboutPage.jsx';
 import CryptoPage from './page-components/CryptoPage.jsx';
@@ -22,10 +21,17 @@ export const TickerContext = React.createContext(null);
 // Phase 2a: /filings migrated
 // Phase 2b: /analysis migrated
 // Phase 2c: /compare migrated
+// Phase 2d: / (Landing) migrated — LandingPage.jsx deleted
 //
-// Remaining pages still served by this React Router shell: Landing, Fund,
-// Crypto, About. As each migrates, its Route entry disappears. When all
-// pages are migrated, this file is deleted entirely.
+// Remaining pages still served by this React Router shell: Fund, Crypto,
+// About. As each migrates, its Route entry disappears. When all pages
+// are migrated, this file is deleted entirely.
+//
+// The `*` fallback (typo'd URLs) now redirects to /. Previously this
+// rendered LandingPage inline, but that file is gone after Phase 2d,
+// and rendering the Next.js-served landing inside React Router would be
+// nonsensical anyway. A redirect to / lets Next.js's app/page.tsx
+// handle the destination correctly.
 // ============================================================================
 export default function App() {
   const [ticker, setTicker] = useState('');
@@ -47,7 +53,7 @@ export default function App() {
       <TickerContext.Provider value={{ ticker, setTicker, tickerMap, setTickerMap, company, setCompany }}>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            {/* / moved to Next.js App Router (src/app/page.tsx) */}
             {/* /filings and /filings/:ticker moved to Next.js App Router (src/app/filings/) */}
             {/* /analysis and /analysis/:ticker moved to Next.js App Router (src/app/analysis/) */}
             {/* /compare and /compare/:tickers moved to Next.js App Router (src/app/compare/) */}
@@ -55,7 +61,7 @@ export default function App() {
             <Route path="/fund/:ticker" element={<FundPage />} />
             <Route path="/crypto" element={<CryptoPage />} />
             <Route path="/about" element={<AboutPage />} />
-            <Route path="*" element={<LandingPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
       </TickerContext.Provider>
