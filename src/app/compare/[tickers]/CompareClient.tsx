@@ -1,20 +1,67 @@
+'use client';
+
 import React, { useState, useEffect, useContext, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import {
   GitCompare, X, Plus, Loader2, AlertCircle, Search, Link as LinkIcon,
   AlertTriangle, Download, Sparkles, TrendingUp, Percent, BarChart3,
   Trophy, LayoutGrid, ExternalLink,
 } from 'lucide-react';
-import SEO from '../components/SEO.jsx';
-import { TickerContext } from '../App.jsx';
-import { ComparisonChart } from '../components/MetricChart.jsx';
-import { secDataUrl, secFilesUrl } from '../utils/secApi.js';
+import { ComparisonChart as ComparisonChartImpl } from '../../../components/MetricChart.jsx';
+import { TickerContext } from '../../../contexts/TickerContext';
+import { secDataUrl, secFilesUrl } from '../../../utils/secApi.js';
 import {
   extractAnnualPeriods, buildMetricRow, computeGrowth, buildSourceUrl,
-} from '../utils/xbrlParser.js';
-import { classifyIndustry } from '../utils/industry.js';
-import { PEER_GROUPS, COMPANY_COLORS } from '../utils/peerGroups.js';
+} from '../../../utils/xbrlParser.js';
+import { classifyIndustry } from '../../../utils/industry.js';
+import { PEER_GROUPS, COMPANY_COLORS } from '../../../utils/peerGroups.js';
 
+// ============================================================================
+// JS-component prop interop (same pattern as AnalysisClient)
+//
+// ComparisonChart is a plain .jsx file with no TypeScript prop types.
+// Casting at the import boundary tells TS "trust the runtime here".
+// ============================================================================
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const ComparisonChart = ComparisonChartImpl as any;
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+// ============================================================================
+// Exported types — server page imports PreloadedCompany
+// ============================================================================
+export interface PreloadedCompany {
+  ticker: string;
+  cik: string;
+  name: string;
+}
+
+interface CompareClientProps {
+  initialTickers: string[];
+  preloadedCompanies: PreloadedCompany[];
+}
+
+// ============================================================================
+// Internal types
+// ============================================================================
+interface CompanyState {
+  ticker: string;
+  name: string;
+  cik: string;
+  color: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  facts: any | null;
+  sicCode: string | number | null;
+  sicDescription: string | null;
+  loading: boolean;
+  error: string | null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyValue = any;
+
+// ============================================================================
+// Constants — preserved from original ComparePage.jsx
+// ============================================================================
 const ABSOLUTE_METRICS = [
   { key: 'revenue', label: 'Revenue', format: 'currency' },
   { key: 'netIncome', label: 'Net Income', format: 'currency' },
@@ -24,18 +71,40 @@ const ABSOLUTE_METRICS = [
   { key: 'operatingCashFlow', label: 'Operating Cash Flow', format: 'currency' },
 ];
 
-const RATIO_METRICS = [
+interface RatioMetric {
+  key: string;
+  label: string;
+  format: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  compute: (vals: any) => number | null;
+  sourceMetricKey: string;
+  formulaLabel: string;
+}
+
+const RATIO_METRICS: RatioMetric[] = [
   { key: 'roe', label: 'Return on Equity (ROE)', format: 'percent',
-    compute: (vals) => safeDiv(vals.netIncome, vals.stockholdersEquity) * 100,
+    compute: (vals) => {
+      const r = safeDiv(vals.netIncome, vals.stockholdersEquity);
+      return r == null ? null : r * 100;
+    },
     sourceMetricKey: 'netIncome', formulaLabel: 'Net Income ÷ Stockholders\' Equity' },
   { key: 'roa', label: 'Return on Assets (ROA)', format: 'percent',
-    compute: (vals) => safeDiv(vals.netIncome, vals.totalAssets) * 100,
+    compute: (vals) => {
+      const r = safeDiv(vals.netIncome, vals.totalAssets);
+      return r == null ? null : r * 100;
+    },
     sourceMetricKey: 'netIncome', formulaLabel: 'Net Income ÷ Total Assets' },
   { key: 'netMargin', label: 'Net Margin', format: 'percent',
-    compute: (vals) => safeDiv(vals.netIncome, vals.revenue) * 100,
+    compute: (vals) => {
+      const r = safeDiv(vals.netIncome, vals.revenue);
+      return r == null ? null : r * 100;
+    },
     sourceMetricKey: 'netIncome', formulaLabel: 'Net Income ÷ Revenue' },
   { key: 'operatingMargin', label: 'Operating Margin', format: 'percent',
-    compute: (vals) => safeDiv(vals.operatingIncome, vals.revenue) * 100,
+    compute: (vals) => {
+      const r = safeDiv(vals.operatingIncome, vals.revenue);
+      return r == null ? null : r * 100;
+    },
     sourceMetricKey: 'operatingIncome', formulaLabel: 'Operating Income ÷ Revenue' },
 ];
 
@@ -55,35 +124,49 @@ const NORMALIZATION_MODES = [
 
 const MAX_COMPANIES = 5;
 
-function safeDiv(a, b) {
+function safeDiv(a: number | null | undefined, b: number | null | undefined): number | null {
   if (a == null || b == null || b === 0 || !Number.isFinite(a) || !Number.isFinite(b)) return null;
   const r = a / b;
   return Number.isFinite(r) ? r : null;
 }
 
-export default function ComparePage() {
-  const { tickers: urlTickers } = useParams();
-  const navigate = useNavigate();
-  const { tickerMap, setTickerMap } = useContext(TickerContext);
+// ============================================================================
+// Main client component
+// ============================================================================
+export default function CompareClient({ initialTickers, preloadedCompanies }: CompareClientProps) {
+  const router = useRouter();
+  const ctx = useContext(TickerContext);
+  const tickerMap = ctx?.tickerMap ?? null;
+  const setTickerMap = ctx?.setTickerMap ?? (() => {});
 
-  const [companies, setCompanies] = useState([]);
+  const [companies, setCompanies] = useState<CompanyState[]>([]);
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIdx, setHighlightedIdx] = useState(0);
-  const [globalError, setGlobalError] = useState(null);
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
   const [normalization, setNormalization] = useState('absolute');
-  const [autoSuggestFor, setAutoSuggestFor] = useState(null);
-  const [autoSuggestions, setAutoSuggestions] = useState([]);
+  const [autoSuggestFor, setAutoSuggestFor] = useState<string | null>(null);
+  const [autoSuggestions, setAutoSuggestions] = useState<AnyValue[]>([]);
 
-  const updateUrl = useCallback((cmps) => {
+  // ==========================================================================
+  // updateUrl — replace the URL when companies are added/removed
+  //
+  // Uses router.replace (not router.push) so we don't pollute browser history
+  // with intermediate states. The setTimeout(0) preserves the behavior of
+  // the original AnalysisPage to avoid navigation during a render cycle.
+  // ==========================================================================
+  const updateUrl = useCallback((cmps: CompanyState[]) => {
     const tickers = cmps.map((c) => c.ticker).join(',');
     setTimeout(() => {
-      if (tickers) navigate(`/compare/${tickers}`, { replace: true });
-      else navigate('/compare', { replace: true });
+      if (tickers) router.replace(`/compare/${tickers}`);
+      else router.replace('/compare');
     }, 0);
-  }, [navigate]);
+  }, [router]);
 
+  // ==========================================================================
+  // Load ticker map if not already in context
+  // ==========================================================================
   useEffect(() => {
     if (tickerMap) return;
     (async () => {
@@ -91,8 +174,8 @@ export default function ComparePage() {
         const res = await fetch(secFilesUrl('company_tickers.json'));
         if (!res.ok) throw new Error('Failed to load ticker database');
         const data = await res.json();
-        const map = {};
-        Object.values(data).forEach((entry) => {
+        const map: AnyValue = {};
+        Object.values(data).forEach((entry: AnyValue) => {
           map[entry.ticker.toUpperCase()] = {
             cik: String(entry.cik_str).padStart(10, '0'),
             name: entry.title,
@@ -100,26 +183,16 @@ export default function ComparePage() {
           };
         });
         setTickerMap(map);
-      } catch (err) {
+      } catch {
         setGlobalError('Could not load ticker database.');
       }
     })();
   }, [tickerMap, setTickerMap]);
 
-  useEffect(() => {
-    if (initialized || !tickerMap) return;
-    setInitialized(true);
-    if (urlTickers) {
-      const list = urlTickers.split(',').map((t) => t.trim().toUpperCase()).filter(Boolean);
-      list.slice(0, MAX_COMPANIES).forEach((t) => {
-        const entry = tickerMap[t];
-        if (entry) addCompany(entry, false);
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tickerMap, initialized]);
-
-  const addCompany = useCallback(async (entry, updateUrlAfter = true) => {
+  // ==========================================================================
+  // addCompany — fetch SEC data for a ticker and append to companies list
+  // ==========================================================================
+  const addCompany = useCallback(async (entry: { ticker: string; cik: string; name: string }, updateUrlAfter = true) => {
     if (companies.find((c) => c.ticker === entry.ticker)) return;
     if (companies.length >= MAX_COMPANIES) {
       setGlobalError(`Maximum of ${MAX_COMPANIES} companies at once.`);
@@ -128,7 +201,7 @@ export default function ComparePage() {
     setGlobalError(null);
 
     const color = COMPANY_COLORS[companies.length % COMPANY_COLORS.length];
-    const newCompany = {
+    const newCompany: CompanyState = {
       ticker: entry.ticker, name: entry.name, cik: entry.cik, color,
       facts: null, sicCode: null, sicDescription: null,
       loading: true, error: null,
@@ -149,7 +222,8 @@ export default function ComparePage() {
         throw new Error(`SEC API ${factsRes.status}`);
       }
       const factsData = await factsRes.json();
-      let sicCode = null, sicDescription = null;
+      let sicCode: string | number | null = null;
+      let sicDescription: string | null = null;
       if (submissionsRes.ok) {
         const sub = await submissionsRes.json();
         sicCode = sub.sic;
@@ -161,20 +235,67 @@ export default function ComparePage() {
           : c
       ));
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       setCompanies((prev) => prev.map((c) =>
-        c.ticker === entry.ticker ? { ...c, loading: false, error: err.message } : c
+        c.ticker === entry.ticker ? { ...c, loading: false, error: msg } : c
       ));
     }
   }, [companies, updateUrl]);
 
-  const removeCompany = useCallback((ticker) => {
+  // ==========================================================================
+  // Initialize from URL — runs once when ticker data is available.
+  //
+  // Path A (preloaded): server resolved company names already, use them
+  // directly without waiting for the client-side tickerMap. Faster first
+  // render, fewer API round-trips.
+  //
+  // Path B (fallback): server failed to resolve some tickers (e.g. unknown
+  // ticker). Wait for tickerMap and resolve client-side.
+  // ==========================================================================
+  useEffect(() => {
+    if (initialized) return;
+    if (initialTickers.length === 0) {
+      setInitialized(true);
+      return;
+    }
+
+    // Path A — preloaded server-side
+    if (preloadedCompanies.length > 0) {
+      setInitialized(true);
+      preloadedCompanies.slice(0, MAX_COMPANIES).forEach((entry, i) => {
+        // Stagger by 50ms to avoid hammering SEC's rate limit and to spread
+        // out the loading skeletons visually
+        setTimeout(() => addCompany(entry, false), i * 50);
+      });
+      return;
+    }
+
+    // Path B — fall back to tickerMap
+    if (!tickerMap) return;
+    setInitialized(true);
+    initialTickers.slice(0, MAX_COMPANIES).forEach((t, i) => {
+      const entry = tickerMap[t];
+      if (entry) {
+        setTimeout(() => addCompany(entry, false), i * 50);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tickerMap, initialized, initialTickers, preloadedCompanies]);
+
+  // ==========================================================================
+  // removeCompany — drop one and recolor remaining so colors stay sequential
+  // ==========================================================================
+  const removeCompany = useCallback((ticker: string) => {
     const next = companies.filter((c) => c.ticker !== ticker);
     const recolored = next.map((c, i) => ({ ...c, color: COMPANY_COLORS[i % COMPANY_COLORS.length] }));
     setCompanies(recolored);
     updateUrl(recolored);
   }, [companies, updateUrl]);
 
-  const loadPeerGroup = useCallback((group) => {
+  // ==========================================================================
+  // loadPeerGroup — clear + add all tickers from a preset peer group
+  // ==========================================================================
+  const loadPeerGroup = useCallback((group: { tickers: string[] }) => {
     setCompanies([]);
     setAutoSuggestFor(null);
     setAutoSuggestions([]);
@@ -188,6 +309,10 @@ export default function ComparePage() {
     }, 100);
   }, [tickerMap, addCompany]);
 
+  // ==========================================================================
+  // Auto-suggest peers — when exactly one company is loaded, find others
+  // in the same peer group and offer them as one-click adds
+  // ==========================================================================
   useEffect(() => {
     if (companies.length !== 1) {
       setAutoSuggestions([]);
@@ -198,12 +323,12 @@ export default function ComparePage() {
     if (!anchor.sicCode || anchor.loading || anchor.error) return;
     if (autoSuggestFor === anchor.ticker) return;
     setAutoSuggestFor(anchor.ticker);
-    const suggestions = [];
-    for (const entry of Object.values(tickerMap || {})) {
+    const suggestions: AnyValue[] = [];
+    for (const entry of Object.values(tickerMap || {}) as AnyValue[]) {
       if (entry.ticker === anchor.ticker) continue;
       for (const group of PEER_GROUPS) {
         if (group.tickers.includes(anchor.ticker) && group.tickers.includes(entry.ticker)) {
-          if (!suggestions.find((s) => s.ticker === entry.ticker)) {
+          if (!suggestions.find((s: AnyValue) => s.ticker === entry.ticker)) {
             suggestions.push({ ...entry, groupLabel: group.label });
           }
           break;
@@ -223,8 +348,8 @@ export default function ComparePage() {
   const suggestions = useMemo(() => {
     if (!tickerMap || !input.trim()) return [];
     const q = input.trim().toUpperCase();
-    const scored = [];
-    for (const e of Object.values(tickerMap)) {
+    const scored: AnyValue[] = [];
+    for (const e of Object.values(tickerMap) as AnyValue[]) {
       if (companies.find((c) => c.ticker === e.ticker)) continue;
       let score = 0;
       if (e.ticker === q) score = 1000;
@@ -233,7 +358,7 @@ export default function ComparePage() {
       else if (e.name.toUpperCase().includes(q)) score = 100;
       if (score > 0) scored.push({ ...e, score });
     }
-    scored.sort((a, b) => b.score - a.score);
+    scored.sort((a: AnyValue, b: AnyValue) => b.score - a.score);
     return scored.slice(0, 8);
   }, [input, tickerMap, companies]);
 
@@ -246,10 +371,10 @@ export default function ComparePage() {
   };
 
   const alignedPeriods = useMemo(() => {
-    const allYears = new Set();
+    const allYears = new Set<number>();
     companies.forEach((c) => {
       if (c.facts) {
-        extractAnnualPeriods(c.facts).slice(0, 10).forEach((p) => allYears.add(p.fy));
+        extractAnnualPeriods(c.facts).slice(0, 10).forEach((p: AnyValue) => allYears.add(p.fy));
       }
     });
     return Array.from(allYears).sort((a, b) => b - a).slice(0, 10);
@@ -257,38 +382,38 @@ export default function ComparePage() {
 
   const allLoaded = companies.length > 0 && companies.every((c) => !c.loading);
 
-  const buildSeriesForMetric = useCallback((metricKey, format = 'currency') => {
+  const buildSeriesForMetric = useCallback((metricKey: string, format: string = 'currency') => {
     return companies
       .filter((c) => c.facts && !c.error)
       .map((c) => {
         const companyPeriods = extractAnnualPeriods(c.facts).slice(0, 10);
-        const row = buildMetricRow(c.facts, metricKey, '', companyPeriods, format, c.sicCode);
+        const row = buildMetricRow(c.facts, metricKey, '', companyPeriods, format, c.sicCode as AnyValue);
         return { name: c.name, ticker: c.ticker, color: c.color, data: row.values, sicCode: c.sicCode };
       });
   }, [companies]);
 
-  const normalizeSeries = useCallback((series, mode, metricKey) => {
+  const normalizeSeries = useCallback((series: AnyValue[], mode: string, metricKey: string) => {
     if (mode === 'absolute') return series;
     if (mode === 'indexed') {
-      return series.map((s) => {
-        const sorted = [...s.data].sort((a, b) => (a.period?.fy || 0) - (b.period?.fy || 0));
-        const baseline = sorted.find((v) => v.value != null)?.value;
+      return series.map((s: AnyValue) => {
+        const sorted = [...s.data].sort((a: AnyValue, b: AnyValue) => (a.period?.fy || 0) - (b.period?.fy || 0));
+        const baseline = sorted.find((v: AnyValue) => v.value != null)?.value;
         if (!baseline || baseline === 0) return s;
         return {
           ...s,
-          data: s.data.map((v) => ({ ...v, value: v.value != null ? (v.value / baseline) * 100 : null })),
+          data: s.data.map((v: AnyValue) => ({ ...v, value: v.value != null ? (v.value / baseline) * 100 : null })),
         };
       });
     }
     if (mode === 'perShare') {
-      return series.map((s) => {
+      return series.map((s: AnyValue) => {
         const company = companies.find((c) => c.ticker === s.ticker);
         if (!company?.facts) return s;
         const periods = extractAnnualPeriods(company.facts).slice(0, 10);
-        const sharesRow = buildMetricRow(company.facts, 'dilutedShares', '', periods, 'decimal', company.sicCode);
+        const sharesRow = buildMetricRow(company.facts, 'dilutedShares', '', periods, 'decimal', company.sicCode as AnyValue);
         return {
           ...s,
-          data: s.data.map((v, i) => {
+          data: s.data.map((v: AnyValue, i: number) => {
             const shares = sharesRow.values[i]?.value;
             if (v.value == null || !shares || shares === 0) return { ...v, value: null };
             return { ...v, value: v.value / shares };
@@ -298,19 +423,19 @@ export default function ComparePage() {
     }
     if (mode === 'pctRevenue') {
       if (metricKey === 'revenue') {
-        return series.map((s) => ({
+        return series.map((s: AnyValue) => ({
           ...s,
-          data: s.data.map((v) => ({ ...v, value: v.value != null ? 100 : null })),
+          data: s.data.map((v: AnyValue) => ({ ...v, value: v.value != null ? 100 : null })),
         }));
       }
-      return series.map((s) => {
+      return series.map((s: AnyValue) => {
         const company = companies.find((c) => c.ticker === s.ticker);
         if (!company?.facts) return s;
         const periods = extractAnnualPeriods(company.facts).slice(0, 10);
-        const revRow = buildMetricRow(company.facts, 'revenue', '', periods, 'currency', company.sicCode);
+        const revRow = buildMetricRow(company.facts, 'revenue', '', periods, 'currency', company.sicCode as AnyValue);
         return {
           ...s,
-          data: s.data.map((v, i) => {
+          data: s.data.map((v: AnyValue, i: number) => {
             const rev = revRow.values[i]?.value;
             if (v.value == null || !rev || rev === 0) return { ...v, value: null };
             return { ...v, value: (v.value / rev) * 100 };
@@ -321,24 +446,24 @@ export default function ComparePage() {
     return series;
   }, [companies]);
 
-  const effectiveFormat = (originalFormat) => {
+  const effectiveFormat = (originalFormat: string): string => {
     if (normalization === 'indexed') return 'indexed';
     if (normalization === 'pctRevenue') return 'percent';
     if (normalization === 'perShare') return 'currency';
     return originalFormat;
   };
 
-  const buildRatioSeries = useCallback((ratioMetric) => {
+  const buildRatioSeries = useCallback((ratioMetric: RatioMetric) => {
     return companies
       .filter((c) => c.facts && !c.error)
       .map((c) => {
         const periods = extractAnnualPeriods(c.facts).slice(0, 10);
-        const revenue = buildMetricRow(c.facts, 'revenue', '', periods, 'currency', c.sicCode);
-        const netIncome = buildMetricRow(c.facts, 'netIncome', '', periods, 'currency', c.sicCode);
-        const operatingIncome = buildMetricRow(c.facts, 'operatingIncome', '', periods, 'currency', c.sicCode);
-        const totalAssets = buildMetricRow(c.facts, 'totalAssets', '', periods, 'currency', c.sicCode);
-        const equity = buildMetricRow(c.facts, 'stockholdersEquity', '', periods, 'currency', c.sicCode);
-        const data = periods.map((p, i) => ({
+        const revenue = buildMetricRow(c.facts, 'revenue', '', periods, 'currency', c.sicCode as AnyValue);
+        const netIncome = buildMetricRow(c.facts, 'netIncome', '', periods, 'currency', c.sicCode as AnyValue);
+        const operatingIncome = buildMetricRow(c.facts, 'operatingIncome', '', periods, 'currency', c.sicCode as AnyValue);
+        const totalAssets = buildMetricRow(c.facts, 'totalAssets', '', periods, 'currency', c.sicCode as AnyValue);
+        const equity = buildMetricRow(c.facts, 'stockholdersEquity', '', periods, 'currency', c.sicCode as AnyValue);
+        const data = periods.map((p: AnyValue, i: number) => ({
           period: p,
           value: ratioMetric.compute({
             revenue: revenue.values[i]?.value,
@@ -366,7 +491,7 @@ export default function ComparePage() {
       { key: 'operatingMargin', label: 'Operating Margin', format: 'percent', higherIsBetter: true, computed: true, tooltip: 'Operating Margin = Operating Income ÷ Revenue' },
     ];
     return allMetrics.map((m) => {
-      const row = {
+      const row: AnyValue = {
         metric: m.label, metricKey: m.key, format: m.format,
         higherIsBetter: m.higherIsBetter, isComputed: !!m.computed, tooltip: m.tooltip, values: [],
       };
@@ -377,11 +502,11 @@ export default function ComparePage() {
           return;
         }
         if (m.computed) {
-          const revenue = buildMetricRow(c.facts, 'revenue', '', periods, 'currency', c.sicCode);
-          const netIncome = buildMetricRow(c.facts, 'netIncome', '', periods, 'currency', c.sicCode);
-          const opIncome = buildMetricRow(c.facts, 'operatingIncome', '', periods, 'currency', c.sicCode);
-          const assets = buildMetricRow(c.facts, 'totalAssets', '', periods, 'currency', c.sicCode);
-          const equity = buildMetricRow(c.facts, 'stockholdersEquity', '', periods, 'currency', c.sicCode);
+          const revenue = buildMetricRow(c.facts, 'revenue', '', periods, 'currency', c.sicCode as AnyValue);
+          const netIncome = buildMetricRow(c.facts, 'netIncome', '', periods, 'currency', c.sicCode as AnyValue);
+          const opIncome = buildMetricRow(c.facts, 'operatingIncome', '', periods, 'currency', c.sicCode as AnyValue);
+          const assets = buildMetricRow(c.facts, 'totalAssets', '', periods, 'currency', c.sicCode as AnyValue);
+          const equity = buildMetricRow(c.facts, 'stockholdersEquity', '', periods, 'currency', c.sicCode as AnyValue);
           const vals = {
             revenue: revenue.values[0]?.value,
             netIncome: netIncome.values[0]?.value,
@@ -398,7 +523,7 @@ export default function ComparePage() {
             period: periods[0], formulaLabel: ratioMetric?.formulaLabel,
           });
         } else {
-          const r = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode);
+          const r = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode as AnyValue);
           row.values.push({
             ticker: c.ticker, cik: c.cik,
             value: r.values[0]?.value ?? null,
@@ -411,13 +536,12 @@ export default function ComparePage() {
     });
   }, [companies]);
 
-  // Build growth bar data: grouped [{ metric, bars: [{ticker, color, value}, ...] }, ...]
-  const buildGrowthGroups = useCallback((field) => {
+  const buildGrowthGroups = useCallback((field: '5y' | '10y') => {
     const loadedCompanies = companies.filter((c) => c.facts && !c.error);
     return GROWTH_BAR_METRICS.map((m) => {
       const bars = loadedCompanies.map((c) => {
         const periods = extractAnnualPeriods(c.facts).slice(0, 10);
-        const metricRow = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode);
+        const metricRow = buildMetricRow(c.facts, m.key, '', periods, 'currency', c.sicCode as AnyValue);
         const growth = computeGrowth(metricRow);
         return {
           ticker: c.ticker,
@@ -433,15 +557,15 @@ export default function ComparePage() {
     if (!companies.length || !allLoaded) return;
     const loadedCompanies = companies.filter((c) => c.facts && !c.error);
     if (!loadedCompanies.length) return;
-    const rows = [];
+    const rows: string[] = [];
     rows.push(['Metric', 'Company', 'Ticker', ...alignedPeriods.map((y) => `FY${String(y).slice(2)}`), 'YoY %', '5Y CAGR %', '10Y CAGR %'].join(','));
     for (const metric of ABSOLUTE_METRICS) {
       for (const c of loadedCompanies) {
         const periods = extractAnnualPeriods(c.facts).slice(0, 10);
-        const row = buildMetricRow(c.facts, metric.key, '', periods, metric.format, c.sicCode);
+        const row = buildMetricRow(c.facts, metric.key, '', periods, metric.format, c.sicCode as AnyValue);
         const growth = computeGrowth(row);
-        const valsByYear = new Map();
-        row.values.forEach((v) => { if (v.period?.fy) valsByYear.set(v.period.fy, v.value); });
+        const valsByYear = new Map<number, AnyValue>();
+        row.values.forEach((v: AnyValue) => { if (v.period?.fy) valsByYear.set(v.period.fy, v.value); });
         const vals = alignedPeriods.map((y) => {
           const val = valsByYear.get(y);
           return val == null ? '' : val;
@@ -469,29 +593,11 @@ export default function ComparePage() {
   );
   const mixedIndustries = industryGroups.size > 1;
 
-  // ============================================================================
-  // SEO — dynamic based on tickers in URL
-  // ============================================================================
-  const displayTickers = urlTickers
-    ? urlTickers.toUpperCase().split(',').map((t) => t.trim()).filter(Boolean)
-    : [];
-  const tickersVsLabel = displayTickers.length > 0 ? displayTickers.join(' vs ') : null;
-  const tickersPath = displayTickers.length > 0 ? displayTickers.join(',') : null;
-
-  const seoTitle = tickersVsLabel
-    ? `${tickersVsLabel} — Side-by-Side Financial Comparison`
-    : 'Peer Comparison — Compare SEC Filings & Financials';
-
-  const seoDescription = tickersVsLabel
-    ? `Compare ${tickersVsLabel} side-by-side across 10 fiscal years. Revenue, net income, margins, ROE, ROA, and growth rates from SEC XBRL filings.`
-    : 'Compare up to 5 public companies side-by-side. 10 years of financial data, head-to-head snapshot tables, industry-aware ratios from SEC XBRL filings.';
-
-  const seoPath = tickersPath ? `/compare/${tickersPath}` : '/compare';
-
+  // ==========================================================================
+  // Render
+  // ==========================================================================
   return (
     <>
-      <SEO title={seoTitle} description={seoDescription} path={seoPath} />
-
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">
           <GitCompare className="w-5 h-5 text-amber-500" />
@@ -513,7 +619,8 @@ export default function ComparePage() {
             {PEER_GROUPS.map((group) => (
               <button key={group.id} onClick={() => loadPeerGroup(group)}
                 className="flex items-center gap-2 px-3 py-2 bg-stone-900 border-2 border-stone-800 hover:border-amber-500 hover:bg-amber-500/5 text-stone-300 hover:text-amber-300 text-xs uppercase tracking-wider font-bold transition-colors group"
-                title={group.description}>
+                title={group.description}
+                type="button">
                 <span>{group.icon}</span>
                 <span>{group.label}</span>
                 <span className="text-[10px] text-stone-600 group-hover:text-amber-600 ml-1">({group.tickers.length})</span>
@@ -535,8 +642,8 @@ export default function ComparePage() {
               <span className="text-xs font-black tracking-wider">{c.ticker}</span>
               <span className="text-[11px] text-stone-400 truncate max-w-[180px]">{c.name}</span>
               {c.loading && <Loader2 className="w-3 h-3 animate-spin" />}
-              {c.error && <AlertCircle className="w-3 h-3" title={c.error} />}
-              <button onClick={() => removeCompany(c.ticker)} className="text-stone-500 hover:text-rose-400 ml-1">
+              {c.error && <AlertCircle className="w-3 h-3" />}
+              <button onClick={() => removeCompany(c.ticker)} className="text-stone-500 hover:text-rose-400 ml-1" type="button">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -565,12 +672,13 @@ export default function ComparePage() {
               />
               {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-stone-900 border-2 border-stone-700 z-50 max-h-80 overflow-y-auto shadow-2xl">
-                  {suggestions.map((s, i) => (
+                  {suggestions.map((s: AnyValue, i: number) => (
                     <button key={s.cik} onMouseEnter={() => setHighlightedIdx(i)}
                       onClick={() => { addCompany(s); setInput(''); setShowSuggestions(false); }}
                       className={`w-full flex items-center justify-between px-3 py-2.5 text-left border-b border-stone-800 last:border-b-0 transition-colors ${
                         i === highlightedIdx ? 'bg-amber-500/10 border-l-2 border-l-amber-500' : 'hover:bg-stone-800/50'
-                      }`}>
+                      }`}
+                      type="button">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-bold text-stone-100 truncate">{s.name}</div>
                       </div>
@@ -581,15 +689,16 @@ export default function ComparePage() {
               )}
             </div>
             <button onClick={handleSubmit} disabled={!suggestions.length}
-              className="px-5 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-stone-800 disabled:text-stone-600 text-stone-950 font-black uppercase tracking-widest text-xs transition-colors flex items-center gap-2">
+              className="px-5 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-stone-800 disabled:text-stone-600 text-stone-950 font-black uppercase tracking-widest text-xs transition-colors flex items-center gap-2"
+              type="button">
               <Plus className="w-4 h-4" /> Add
             </button>
             {companies.length > 0 && (
               <>
-                <button onClick={copyShareLink} className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors" title="Copy shareable link">
+                <button onClick={copyShareLink} className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors" title="Copy shareable link" type="button">
                   <LinkIcon className="w-4 h-4" />
                 </button>
-                <button onClick={exportFullCsv} disabled={!allLoaded} className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors" title="Download full comparison as CSV">
+                <button onClick={exportFullCsv} disabled={!allLoaded} className="px-3 py-3 border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors" title="Download full comparison as CSV" type="button">
                   <Download className="w-4 h-4" />
                 </button>
               </>
@@ -605,10 +714,11 @@ export default function ComparePage() {
             <span className="text-[11px] uppercase tracking-[0.2em] text-sky-300 font-bold">Suggested peers for {companies[0].ticker}</span>
           </div>
           <div className="flex flex-wrap gap-2">
-            {autoSuggestions.map((s) => (
+            {autoSuggestions.map((s: AnyValue) => (
               <button key={s.ticker} onClick={() => addCompany(s)}
                 className="flex items-center gap-2 px-3 py-1.5 bg-stone-900 border border-sky-800/50 hover:border-sky-500 text-stone-300 hover:text-sky-300 text-xs font-bold transition-colors"
-                title={`${s.name} · ${s.groupLabel}`}>
+                title={`${s.name} · ${s.groupLabel}`}
+                type="button">
                 <Plus className="w-3 h-3" />
                 {s.ticker}
                 <span className="text-[10px] text-stone-500">{s.name.split(' ').slice(0, 2).join(' ')}</span>
@@ -656,7 +766,8 @@ export default function ComparePage() {
                     ? 'bg-stone-100 text-stone-950 border-stone-100'
                     : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700 hover:text-stone-200'
                 }`}
-                title={mode.desc}>
+                title={mode.desc}
+                type="button">
                 {mode.label}
               </button>
             ))}
@@ -725,7 +836,12 @@ export default function ComparePage() {
   );
 }
 
-function SectionTitle({ icon: Icon, title }) {
+// ============================================================================
+// Sub-components — preserved verbatim from original ComparePage.jsx
+// ============================================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function SectionTitle({ icon: Icon, title }: { icon: any; title: string }) {
   return (
     <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-stone-800">
       <Icon className="w-5 h-5 text-amber-400" />
@@ -734,7 +850,12 @@ function SectionTitle({ icon: Icon, title }) {
   );
 }
 
-function SnapshotTable({ data, companies }) {
+interface SnapshotTableProps {
+  data: AnyValue[];
+  companies: CompanyState[];
+}
+
+function SnapshotTable({ data, companies }: SnapshotTableProps) {
   const loadedCompanies = companies.filter((c) => c.facts && !c.error);
   return (
     <div className="mb-8">
@@ -752,13 +873,13 @@ function SnapshotTable({ data, companies }) {
             </tr>
           </thead>
           <tbody>
-            {data.map((row) => {
+            {data.map((row: AnyValue) => {
               const numericValues = row.values
-                .map((v, i) => ({ idx: i, value: v.value }))
-                .filter((v) => v.value != null && Number.isFinite(v.value));
+                .map((v: AnyValue, i: number) => ({ idx: i, value: v.value }))
+                .filter((v: AnyValue) => v.value != null && Number.isFinite(v.value));
               let bestIdx = -1, worstIdx = -1;
               if (numericValues.length > 1 && row.higherIsBetter !== null) {
-                const sorted = [...numericValues].sort((a, b) => b.value - a.value);
+                const sorted = [...numericValues].sort((a: AnyValue, b: AnyValue) => b.value - a.value);
                 bestIdx = row.higherIsBetter ? sorted[0].idx : sorted[sorted.length - 1].idx;
                 worstIdx = row.higherIsBetter ? sorted[sorted.length - 1].idx : sorted[0].idx;
               }
@@ -768,7 +889,7 @@ function SnapshotTable({ data, companies }) {
                     {row.metric}
                     {row.isComputed && <span className="ml-1.5 text-[9px] text-stone-600 font-normal italic tracking-normal">(computed)</span>}
                   </td>
-                  {row.values.map((v, i) => (
+                  {row.values.map((v: AnyValue, i: number) => (
                     <SnapshotCell key={i} value={v} row={row} isBest={i === bestIdx} isWorst={i === worstIdx} />
                   ))}
                 </tr>
@@ -787,7 +908,14 @@ function SnapshotTable({ data, companies }) {
   );
 }
 
-function SnapshotCell({ value, row, isBest, isWorst }) {
+interface SnapshotCellProps {
+  value: AnyValue;
+  row: AnyValue;
+  isBest: boolean;
+  isWorst: boolean;
+}
+
+function SnapshotCell({ value, row, isBest, isWorst }: SnapshotCellProps) {
   const formatted = formatSnapshotValue(value.value, row.format);
   const textClass = isBest ? 'text-emerald-400 font-black'
     : isWorst ? 'text-rose-400'
@@ -823,21 +951,21 @@ function SnapshotCell({ value, row, isBest, isWorst }) {
 // ============================================================================
 // GrowthBarChart — hand-rolled SVG, no Recharts.
 //
-// Given the three failed attempts with Recharts color APIs, this chart directly
-// renders <rect> elements with inline fill attributes that the library cannot
-// interfere with. Layout math is simple: divide available width into N metric
-// groups, then M bars per group, with padding between.
-//
-// Props:
-//   title:     chart heading
-//   groups:    [{ metric: 'Revenue', bars: [{ ticker, color, value }, ...] }, ...]
-//   companies: full companies list (used for legend)
+// Preserved verbatim from the original ComparePage.jsx. The reason this is
+// hand-rolled rather than using Recharts is that earlier attempts with
+// Recharts color APIs failed three times — the library couldn't be reliably
+// configured to use per-bar colors. This direct-SVG approach renders <rect>
+// elements with inline fill attributes that no library can interfere with.
 // ============================================================================
+interface GrowthBarChartProps {
+  title: string;
+  groups: AnyValue[];
+  companies: CompanyState[];
+}
 
-function GrowthBarChart({ title, groups, companies }) {
+function GrowthBarChart({ title, groups, companies }: GrowthBarChartProps) {
   const loadedCompanies = companies.filter((c) => c.facts && !c.error);
 
-  // SVG viewport
   const width = 600;
   const height = 220;
   const padTop = 15;
@@ -847,13 +975,11 @@ function GrowthBarChart({ title, groups, companies }) {
   const plotWidth = width - padLeft - padRight;
   const plotHeight = height - padTop - padBottom;
 
-  // Compute Y-axis scale
-  const allValues = groups.flatMap((g) =>
-    g.bars.map((b) => b.value).filter((v) => v != null && Number.isFinite(v))
+  const allValues = groups.flatMap((g: AnyValue) =>
+    g.bars.map((b: AnyValue) => b.value).filter((v: AnyValue) => v != null && Number.isFinite(v))
   );
   let maxY = Math.max(0, ...allValues);
   let minY = Math.min(0, ...allValues);
-  // Add 10% padding
   const yRange = maxY - minY;
   if (yRange > 0) {
     maxY += yRange * 0.1;
@@ -863,7 +989,6 @@ function GrowthBarChart({ title, groups, companies }) {
     minY = -5;
   }
 
-  // Handle empty (no 10Y data case)
   const hasData = allValues.length > 0;
   if (!hasData) {
     return (
@@ -886,28 +1011,26 @@ function GrowthBarChart({ title, groups, companies }) {
     );
   }
 
-  // Scale value to Y pixel
-  const yScale = (v) => {
+  const yScale = (v: number | null): number | null => {
     if (v == null || !Number.isFinite(v)) return null;
     return padTop + plotHeight - ((v - minY) / (maxY - minY)) * plotHeight;
   };
-  const zeroY = yScale(0);
+  const zeroY = yScale(0)!;
 
-  // Layout: each group gets equal width, bars within a group are side-by-side with small gap
   const groupCount = groups.length;
   const groupWidth = plotWidth / groupCount;
-  const groupPadding = groupWidth * 0.1; // 10% padding between groups
+  const groupPadding = groupWidth * 0.1;
   const innerGroupWidth = groupWidth - groupPadding * 2;
   const barsPerGroup = loadedCompanies.length;
   const barGap = 2;
   const barWidth = Math.max(4, (innerGroupWidth - barGap * (barsPerGroup - 1)) / barsPerGroup);
 
-  // Y-axis grid lines — compute nice round values
-  const gridLines = [];
+  const gridLines: { value: number; y: number }[] = [];
   const step = (maxY - minY) / 4;
   for (let i = 0; i <= 4; i++) {
     const v = minY + step * i;
-    gridLines.push({ value: v, y: yScale(v) });
+    const y = yScale(v);
+    if (y != null) gridLines.push({ value: v, y });
   }
 
   return (
@@ -916,7 +1039,6 @@ function GrowthBarChart({ title, groups, companies }) {
         <span className="text-xs uppercase tracking-[0.2em] text-amber-400 font-bold">{title}</span>
       </div>
 
-      {/* Legend — plain HTML, no library involvement */}
       <div className="flex flex-wrap gap-3 mb-3 px-2">
         {loadedCompanies.map((c) => (
           <div key={c.ticker} className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider">
@@ -926,14 +1048,12 @@ function GrowthBarChart({ title, groups, companies }) {
         ))}
       </div>
 
-      {/* Hand-rolled SVG */}
       <svg
         viewBox={`0 0 ${width} ${height}`}
         width="100%"
         height="auto"
         style={{ fontFamily: 'ui-monospace, monospace' }}
       >
-        {/* Y-axis grid lines with labels */}
         {gridLines.map((line, i) => (
           <g key={i}>
             <line
@@ -957,7 +1077,6 @@ function GrowthBarChart({ title, groups, companies }) {
           </g>
         ))}
 
-        {/* Zero line (solid, bolder) */}
         {minY < 0 && (
           <line
             x1={padLeft}
@@ -969,14 +1088,12 @@ function GrowthBarChart({ title, groups, companies }) {
           />
         )}
 
-        {/* Bars + group labels */}
-        {groups.map((group, gIdx) => {
+        {groups.map((group: AnyValue, gIdx: number) => {
           const groupX = padLeft + gIdx * groupWidth + groupPadding;
           const labelY = height - padBottom + 30;
 
           return (
             <g key={group.metric}>
-              {/* Metric group label */}
               <text
                 x={groupX + innerGroupWidth / 2}
                 y={labelY}
@@ -989,8 +1106,7 @@ function GrowthBarChart({ title, groups, companies }) {
                 {group.metric}
               </text>
 
-              {/* Bars in this group */}
-              {group.bars.map((bar, bIdx) => {
+              {group.bars.map((bar: AnyValue, bIdx: number) => {
                 const x = groupX + bIdx * (barWidth + barGap);
                 const barY = yScale(bar.value);
                 if (barY == null) return null;
@@ -1000,7 +1116,6 @@ function GrowthBarChart({ title, groups, companies }) {
 
                 return (
                   <g key={`${group.metric}-${bar.ticker}`}>
-                    {/* The bar itself — inline fill, no library to override it */}
                     <rect
                       x={x}
                       y={barTop}
@@ -1013,7 +1128,6 @@ function GrowthBarChart({ title, groups, companies }) {
                       <title>{`${group.metric} — ${bar.ticker}: ${bar.value != null ? bar.value.toFixed(1) + '%' : 'N/A'}`}</title>
                     </rect>
 
-                    {/* Ticker label under the bar */}
                     <text
                       x={x + barWidth / 2}
                       y={height - padBottom + 12}
@@ -1031,7 +1145,6 @@ function GrowthBarChart({ title, groups, companies }) {
           );
         })}
 
-        {/* X-axis baseline */}
         <line
           x1={padLeft}
           y1={height - padBottom}
@@ -1045,7 +1158,7 @@ function GrowthBarChart({ title, groups, companies }) {
   );
 }
 
-function formatSnapshotValue(value, format) {
+function formatSnapshotValue(value: number | null, format: string): string {
   if (value == null || !Number.isFinite(value)) return '—';
   if (format === 'percent') return `${value.toFixed(1)}%`;
   const abs = Math.abs(value);

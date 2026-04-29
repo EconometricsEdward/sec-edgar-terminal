@@ -60,7 +60,7 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Compare',
     icon: GitCompare,
     matchPath: (p) => p === '/compare' || p.startsWith('/compare/'),
-    legacy: true,
+    legacy: false, // Migrated to App Router in Phase 2c
   },
   {
     href: '/fund',
