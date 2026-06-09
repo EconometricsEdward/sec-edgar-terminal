@@ -62,8 +62,11 @@ XBRL values can be affected by restatements, non-standard company tags, amended 
 
 The app is free. If it saves time, there are two transparent support paths:
 
+- Paid SEC snapshot API: https://secedgarterminal.com/paid-api
 - Optional no-service tip: `0.01 SOL` with memo `QuickProofTip`.
 - Fixed-scope public-page/data-source check: https://pages.share-html.com/quickproof-micro-audit-20260609
+
+The paid API is a machine-readable HTTP 402-style endpoint for compact public SEC filing snapshots. It costs `0.001 SOL`, verifies an exact `EdgarSnapshot:<TICKER>:<nonce>` memo on Solana mainnet, and returns JSON after confirmation. It uses public SEC data only and is still not investment, financial, legal, or tax advice.
 
 The paid check is limited to public URLs and public repository or data-source observations. It does not include investment advice, trading recommendations, private data review, security testing, legal/compliance certification, or guaranteed ranking, traffic, revenue, or accuracy outcomes.
 
