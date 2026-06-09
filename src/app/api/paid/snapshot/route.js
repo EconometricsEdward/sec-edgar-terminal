@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 
 export const runtime = 'nodejs';
@@ -12,6 +13,8 @@ const PRICE_SOL = Number.isFinite(CONFIGURED_PRICE_SOL) && CONFIGURED_PRICE_SOL 
   : 0.001;
 const PRICE_LAMPORTS = Math.max(1, Math.ceil(PRICE_SOL * LAMPORTS_PER_SOL));
 const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+const RESOURCE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL || 'https://secedgarterminal.com';
+const SOLANA_MAINNET_CAIP2 = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
 const MEMO_PREFIX = 'EdgarSnapshot';
 const MEMO_PROGRAMS = new Set([
   'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
@@ -59,12 +62,62 @@ function solanaPayUrl(memo) {
   return `solana:${RECIPIENT_ADDRESS}?${params.toString()}`;
 }
 
+function resourceUrl(ticker, memo) {
+  const params = new URLSearchParams({ ticker, memo });
+  return `${RESOURCE_ORIGIN}/api/paid/snapshot?${params.toString()}`;
+}
+
+function paymentRequirements(ticker, memo) {
+  const resource = resourceUrl(ticker, memo);
+  return {
+    x402Version: 1,
+    protocol: 'solana-direct-memo',
+    note: 'HTTP 402-style challenge using native SOL plus an exact memo. It does not require a facilitator.',
+    resource,
+    accepts: [
+      {
+        scheme: 'solana-native-memo',
+        network: SOLANA_MAINNET_CAIP2,
+        asset: 'native-sol',
+        amount: String(PRICE_LAMPORTS),
+        decimals: 9,
+        priceSol: PRICE_SOL,
+        payTo: RECIPIENT_ADDRESS,
+        memo,
+        retryUrl: resource,
+        solanaPayUrl: solanaPayUrl(memo),
+      },
+    ],
+    metadata: {
+      product: 'EDGAR Terminal paid SEC snapshot API',
+      description: 'Compact public SEC filing snapshot JSON for a ticker.',
+      mimeType: 'application/json',
+      input: { ticker },
+      output: [
+        'company identity',
+        'CIK and SIC metadata',
+        'recent 10-K, 10-Q, 8-K, proxy, and amendment filing rows',
+        'source SEC URLs',
+      ],
+      docs: `${RESOURCE_ORIGIN}/paid-api`,
+      openapi: `${RESOURCE_ORIGIN}/openapi.json`,
+      llms: `${RESOURCE_ORIGIN}/llms.txt`,
+    },
+  };
+}
+
+function encodePaymentHeader(payload) {
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+}
+
 function paymentRequired(ticker, memo, verification = null) {
+  const requirements = paymentRequirements(ticker, memo);
   const retryUrl = `/api/paid/snapshot?ticker=${encodeURIComponent(ticker)}&memo=${encodeURIComponent(memo)}`;
   return json(
     {
       error: 'payment_required',
       product: 'EDGAR Terminal paid SEC snapshot API',
+      ...requirements,
       priceSol: PRICE_SOL,
       priceLamports: PRICE_LAMPORTS,
       recipient: RECIPIENT_ADDRESS,
@@ -76,6 +129,7 @@ function paymentRequired(ticker, memo, verification = null) {
         'Send the exact SOL amount or more to the recipient address.',
         'Include the required memo exactly.',
         'Retry the endpoint with the same ticker and memo after confirmation.',
+        'If your client has the confirmed transaction signature, pass it as ?signature=<tx_signature> or in PAYMENT-SIGNATURE.',
       ],
       boundaries: [
         'The response uses public SEC data only.',
@@ -86,6 +140,7 @@ function paymentRequired(ticker, memo, verification = null) {
     {
       status: 402,
       headers: {
+        'PAYMENT-REQUIRED': encodePaymentHeader(requirements),
         'X-Payment-Required': 'Solana transfer with memo',
         'X-Payment-Recipient': RECIPIENT_ADDRESS,
         'X-Payment-Memo': memo,
@@ -148,6 +203,44 @@ function lamportsToRecipient(transaction) {
   return lamports;
 }
 
+function transactionVerification(transaction, memo, signature) {
+  if (!transaction) {
+    return {
+      paid: false,
+      signature,
+      memo,
+      reason: 'transaction_not_found',
+      requiredLamports: PRICE_LAMPORTS,
+    };
+  }
+
+  const lamports = lamportsToRecipient(transaction);
+  const memoMatched = transactionHasMemo(transaction, memo);
+  return {
+    paid: memoMatched && lamports >= PRICE_LAMPORTS,
+    signature,
+    slot: transaction.slot,
+    blockTime: transaction.blockTime,
+    memo,
+    memoMatched,
+    lamportsToRecipient: lamports,
+    solToRecipient: lamports / LAMPORTS_PER_SOL,
+    requiredLamports: PRICE_LAMPORTS,
+  };
+}
+
+async function verifySignaturePayment(memo, signature) {
+  const transaction = await rpc('getTransaction', [
+    signature,
+    {
+      encoding: 'jsonParsed',
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 0,
+    },
+  ]);
+  return transactionVerification(transaction, memo, signature);
+}
+
 async function findPayment(memo) {
   const signatures = await rpc('getSignaturesForAddress', [
     RECIPIENT_ADDRESS,
@@ -165,16 +258,10 @@ async function findPayment(memo) {
     ]);
     if (!transaction || !transactionHasMemo(transaction, memo)) continue;
 
-    const lamports = lamportsToRecipient(transaction);
-    if (lamports >= PRICE_LAMPORTS) {
+    const verification = transactionVerification(transaction, memo, signatureInfo.signature);
+    if (verification.paid) {
       return {
-        paid: true,
-        signature: signatureInfo.signature,
-        slot: signatureInfo.slot,
-        blockTime: transaction.blockTime,
-        memo,
-        lamportsToRecipient: lamports,
-        solToRecipient: lamports / LAMPORTS_PER_SOL,
+        ...verification,
         signaturesChecked: (signatures || []).length,
       };
     }
@@ -186,6 +273,32 @@ async function findPayment(memo) {
     signaturesChecked: (signatures || []).length,
     requiredLamports: PRICE_LAMPORTS,
   };
+}
+
+function looksLikeSolanaSignature(value) {
+  return /^[1-9A-HJ-NP-Za-km-z]{64,100}$/.test(value);
+}
+
+function decodePaymentSignatureHeader(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return {};
+  if (looksLikeSolanaSignature(raw)) return { signature: raw };
+
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
+    return {
+      signature: String(
+        parsed.signature ||
+          parsed.txHash ||
+          parsed.transactionSignature ||
+          parsed.transaction ||
+          '',
+      ).trim(),
+      memo: String(parsed.memo || parsed.requiredMemo || '').trim(),
+    };
+  } catch {
+    return {};
+  }
 }
 
 async function secJson(url) {
@@ -267,7 +380,15 @@ export async function GET(request) {
     );
   }
 
-  const memo = String(searchParams.get('memo') || '').trim();
+  const paymentHeader = decodePaymentSignatureHeader(
+    request.headers.get('PAYMENT-SIGNATURE') ||
+      request.headers.get('X-Payment-Signature') ||
+      request.headers.get('X-Payment-TxHash') ||
+      request.headers.get('X-Solana-Signature') ||
+      '',
+  );
+  const memo = String(searchParams.get('memo') || paymentHeader.memo || '').trim();
+  const signature = String(searchParams.get('signature') || paymentHeader.signature || '').trim();
   if (!memo) return paymentRequired(ticker, createMemo(ticker));
   if (!isValidMemoForTicker(memo, ticker)) {
     return json(
@@ -278,10 +399,21 @@ export async function GET(request) {
       { status: 400 },
     );
   }
+  if (signature && !looksLikeSolanaSignature(signature)) {
+    return json(
+      {
+        error: 'invalid_signature',
+        message: 'Provide a base58 Solana transaction signature in the signature query parameter or PAYMENT-SIGNATURE header.',
+      },
+      { status: 400 },
+    );
+  }
 
   let verification;
   try {
-    verification = await findPayment(memo);
+    verification = signature
+      ? await verifySignaturePayment(memo, signature)
+      : await findPayment(memo);
   } catch (error) {
     return json(
       {

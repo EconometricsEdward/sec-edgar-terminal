@@ -1,0 +1,40 @@
+{
+  "name": "EDGAR Terminal Paid SEC Snapshot API",
+  "description": "A compact paid JSON endpoint for source-linked public SEC filing snapshots by ticker.",
+  "homepage": "https://secedgarterminal.com/",
+  "docs": "https://secedgarterminal.com/paid-api",
+  "openapi": "https://secedgarterminal.com/openapi.json",
+  "llms": "https://secedgarterminal.com/llms.txt",
+  "endpoint": "https://secedgarterminal.com/api/paid/snapshot?ticker=AAPL",
+  "price": {
+    "amount": "0.001",
+    "currency": "SOL",
+    "lamports": 1000000,
+    "network": "solana-mainnet"
+  },
+  "payment": {
+    "protocol": "solana-direct-memo",
+    "recipient": "CmkHJ5W6NS4A2icKRym5gqcMXYAL8eBPMZAWd4QfBGoS",
+    "memoFormat": "EdgarSnapshot:<TICKER>:<nonce>",
+    "headers": {
+      "challenge": "PAYMENT-REQUIRED",
+      "signature": "PAYMENT-SIGNATURE"
+    },
+    "retry": "Retry the endpoint with ticker, memo, and optionally signature after Solana confirmation."
+  },
+  "data": {
+    "source": "Public SEC APIs and SEC filing archive URLs",
+    "output": [
+      "company identity",
+      "CIK and SIC metadata",
+      "recent 10-K, 10-Q, 8-K, proxy, and amendment filings",
+      "source SEC URLs"
+    ]
+  },
+  "boundaries": [
+    "Public SEC data only.",
+    "No investment, financial, legal, or tax advice.",
+    "No private data or login-based collection.",
+    "Payments are public on-chain transactions."
+  ]
+}

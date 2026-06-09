@@ -1,0 +1,39 @@
+# EDGAR Terminal
+
+EDGAR Terminal is a free, accountless SEC filings explorer for public-company research.
+
+Live site: https://secedgarterminal.com/
+
+## Paid SEC Snapshot API
+
+The paid endpoint returns a compact JSON snapshot of public SEC filing metadata for a requested ticker. It is designed for scripts, agents, and research workflows that need source-linked public SEC records.
+
+Endpoint:
+
+GET https://secedgarterminal.com/api/paid/snapshot?ticker=AAPL
+
+Price:
+
+0.001 SOL on Solana mainnet.
+
+Payment flow:
+
+1. Call the endpoint with a ticker.
+2. The endpoint returns HTTP 402 with a PAYMENT-REQUIRED header and JSON body.
+3. Send at least 0.001 SOL to the listed recipient address.
+4. Include the required memo exactly, for example EdgarSnapshot:AAPL:<nonce>.
+5. Retry with the same ticker and memo after confirmation.
+6. If available, include the confirmed transaction signature as ?signature=<tx_signature> or in the PAYMENT-SIGNATURE header.
+
+Discovery:
+
+- API docs: https://secedgarterminal.com/paid-api
+- OpenAPI: https://secedgarterminal.com/openapi.json
+- Well-known metadata: https://secedgarterminal.com/.well-known/edgar-paid-api.json
+
+Boundaries:
+
+- Public SEC data only.
+- No private data, login data, forecasts, trading recommendations, or investment advice.
+- Payments are public on-chain transactions.
+- For research and educational use only.

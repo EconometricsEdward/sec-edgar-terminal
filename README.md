@@ -68,6 +68,14 @@ The app is free. If it saves time, there are two transparent support paths:
 
 The paid API is a machine-readable HTTP 402-style endpoint for compact public SEC filing snapshots. It costs `0.001 SOL`, verifies an exact `EdgarSnapshot:<TICKER>:<nonce>` memo on Solana mainnet, and returns JSON after confirmation. It uses public SEC data only and is still not investment, financial, legal, or tax advice.
 
+Agent and script discovery files are published at:
+
+- OpenAPI: https://secedgarterminal.com/openapi.json
+- llms.txt: https://secedgarterminal.com/llms.txt
+- Well-known metadata: https://secedgarterminal.com/.well-known/edgar-paid-api.json
+
+The 402 response includes a base64 JSON `PAYMENT-REQUIRED` header. Clients that already have a confirmed Solana transaction signature can retry with `?signature=<tx_signature>` or the `PAYMENT-SIGNATURE` header.
+
 The paid check is limited to public URLs and public repository or data-source observations. It does not include investment advice, trading recommendations, private data review, security testing, legal/compliance certification, or guaranteed ranking, traffic, revenue, or accuracy outcomes.
 
 Public QuickProof proof gallery: https://rentry.co/quickproof-value-first-sample-gallery-20260609-v2

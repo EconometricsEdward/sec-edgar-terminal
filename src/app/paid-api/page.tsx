@@ -1,5 +1,13 @@
 import Link from 'next/link';
-import { Code2, ExternalLink, FileJson, ShieldCheck, WalletCards, type LucideIcon } from 'lucide-react';
+import {
+  Code2,
+  ExternalLink,
+  FileJson,
+  ListChecks,
+  ShieldCheck,
+  WalletCards,
+  type LucideIcon,
+} from 'lucide-react';
 
 const ENDPOINT = '/api/paid/snapshot?ticker=AAPL';
 const RECIPIENT = 'CmkHJ5W6NS4A2icKRym5gqcMXYAL8eBPMZAWd4QfBGoS';
@@ -62,16 +70,18 @@ export default function PaidApiPage() {
               GET {ENDPOINT}
             </code>
             <p className="text-xs text-stone-400 leading-relaxed mt-3">
-              The endpoint returns HTTP 402 with a recipient, exact memo, Solana Pay URL, and retry URL.
+              The endpoint returns HTTP 402 with a decodable PAYMENT-REQUIRED header, recipient,
+              exact memo, Solana Pay URL, and retry URL.
             </p>
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-widest text-stone-500 mb-2">2. Pay and retry</div>
             <code className="block text-xs break-all border border-stone-800 bg-stone-950 p-3 text-amber-300">
-              GET /api/paid/snapshot?ticker=AAPL&amp;memo=EdgarSnapshot:AAPL:&lt;nonce&gt;
+              GET /api/paid/snapshot?ticker=AAPL&amp;memo=EdgarSnapshot:AAPL:&lt;nonce&gt;&amp;signature=&lt;tx&gt;
             </code>
             <p className="text-xs text-stone-400 leading-relaxed mt-3">
               After the transfer confirms, the endpoint verifies the memo and amount through public Solana RPC.
+              The signature parameter is optional; if it is absent, the endpoint scans recent recipient transactions.
             </p>
           </div>
         </div>
@@ -87,6 +97,7 @@ export default function PaidApiPage() {
             <Row label="Recipient" value={RECIPIENT} />
             <Row label="Memo prefix" value="EdgarSnapshot:<TICKER>:<nonce>" />
             <Row label="Verification" value="Confirmed transfer to recipient plus exact memo" />
+            <Row label="Headers" value="PAYMENT-REQUIRED, PAYMENT-SIGNATURE" />
           </dl>
         </div>
         <div className="border-2 border-amber-700/40 bg-amber-950/20 p-5">
@@ -102,6 +113,18 @@ export default function PaidApiPage() {
           >
             Open 402 response <ExternalLink className="w-4 h-4" />
           </Link>
+        </div>
+      </section>
+
+      <section className="border-2 border-stone-800 bg-stone-900/30 p-5 md:p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <ListChecks className="w-5 h-5 text-amber-400" />
+          <h2 className="text-lg font-black text-stone-100 uppercase tracking-wider">Agent Discovery</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <DiscoveryLink href="/openapi.json" label="OpenAPI" />
+          <DiscoveryLink href="/llms.txt" label="llms.txt" />
+          <DiscoveryLink href="/.well-known/edgar-paid-api.json" label="Well-known JSON" />
         </div>
       </section>
 
@@ -134,6 +157,18 @@ function InfoTile({
       <div className="text-lg font-black text-stone-100 mb-2">{value}</div>
       <p className="text-xs text-stone-400 leading-relaxed">{text}</p>
     </div>
+  );
+}
+
+function DiscoveryLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center justify-between gap-3 border border-stone-800 bg-stone-950 px-3 py-2.5 text-xs font-black uppercase tracking-widest text-stone-200 hover:border-amber-500 hover:text-amber-300 transition-colors"
+    >
+      {label}
+      <ExternalLink className="w-4 h-4 shrink-0" />
+    </Link>
   );
 }
 
