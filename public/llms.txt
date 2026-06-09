@@ -38,6 +38,8 @@ Discovery:
 - API docs: https://secedgarterminal.com/paid-api
 - OpenAPI: https://secedgarterminal.com/openapi.json
 - Well-known metadata: https://secedgarterminal.com/.well-known/edgar-paid-api.json
+- x402 manifest: https://secedgarterminal.com/.well-known/x402
+- x402 manifest JSON mirror: https://secedgarterminal.com/.well-known/x402.json
 
 Boundaries:
 

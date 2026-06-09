@@ -5,6 +5,8 @@
   "docs": "https://secedgarterminal.com/paid-api",
   "openapi": "https://secedgarterminal.com/openapi.json",
   "llms": "https://secedgarterminal.com/llms.txt",
+  "x402Manifest": "https://secedgarterminal.com/.well-known/x402",
+  "x402ManifestJson": "https://secedgarterminal.com/.well-known/x402.json",
   "endpoint": "https://secedgarterminal.com/api/paid/snapshot?ticker=AAPL",
   "x402Proxy": {
     "proxyUrl": "https://x402-scoutgate.onrender.com/api/2f9ca2f9?ticker=AAPL",

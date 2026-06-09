@@ -14,6 +14,7 @@ const RECIPIENT = 'CmkHJ5W6NS4A2icKRym5gqcMXYAL8eBPMZAWd4QfBGoS';
 const X402_PROXY = 'https://x402-scoutgate.onrender.com/api/2f9ca2f9?ticker=AAPL';
 const X402_CATALOG = 'https://x402scout.com/catalog?q=EDGAR';
 const X402_PAYOUT = '0x91D59f9932557c8347AaAC800756E49A1cEDc794';
+const X402_MANIFEST = '/.well-known/x402';
 
 export const metadata = {
   title: 'Paid Snapshot API',
@@ -158,6 +159,7 @@ export default function PaidApiPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <DiscoveryLink href="/openapi.json" label="OpenAPI" />
+          <DiscoveryLink href={X402_MANIFEST} label="x402 Manifest" />
           <DiscoveryLink href="/llms.txt" label="llms.txt" />
           <DiscoveryLink href="/.well-known/edgar-paid-api.json" label="Well-known JSON" />
           <DiscoveryLink href={X402_CATALOG} label="x402Scout" external />

@@ -80,6 +80,8 @@ ScoutGate returns a platform-mediated x402 challenge; its challenge `payTo` addr
 Agent and script discovery files are published at:
 
 - OpenAPI: https://secedgarterminal.com/openapi.json
+- x402 manifest: https://secedgarterminal.com/.well-known/x402
+- x402 manifest JSON mirror: https://secedgarterminal.com/.well-known/x402.json
 - llms.txt: https://secedgarterminal.com/llms.txt
 - Well-known metadata: https://secedgarterminal.com/.well-known/edgar-paid-api.json
 
