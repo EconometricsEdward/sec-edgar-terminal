@@ -11,11 +11,14 @@ import {
 
 const ENDPOINT = '/api/paid/snapshot?ticker=AAPL';
 const RECIPIENT = 'CmkHJ5W6NS4A2icKRym5gqcMXYAL8eBPMZAWd4QfBGoS';
+const X402_PROXY = 'https://x402-scoutgate.onrender.com/api/2f9ca2f9?ticker=AAPL';
+const X402_CATALOG = 'https://x402scout.com/catalog?q=EDGAR';
+const X402_PAYOUT = '0x91D59f9932557c8347AaAC800756E49A1cEDc794';
 
 export const metadata = {
   title: 'Paid Snapshot API',
   description:
-    'A tiny pay-per-use SEC snapshot API for agents and scripts. Uses public SEC data and Solana memo verification.',
+    'A tiny pay-per-use SEC snapshot API for agents and scripts. Uses public SEC data with native Solana memo verification or a ScoutGate x402 USDC proxy.',
 };
 
 export default function PaidApiPage() {
@@ -32,7 +35,8 @@ export default function PaidApiPage() {
           <p className="text-sm md:text-base text-stone-400 leading-relaxed">
             The public app stays free. This endpoint is a small machine-readable product for scripts,
             agents, and workflows that want a compact JSON summary of a ticker's recent SEC filings.
-            It uses only public SEC data and unlocks after a confirmed Solana transfer with the exact memo.
+            It uses only public SEC data and can be reached through native Solana memo verification or
+            a ScoutGate x402 proxy that quotes USDC on Base.
           </p>
         </div>
       </section>
@@ -41,8 +45,8 @@ export default function PaidApiPage() {
         <InfoTile
           icon={WalletCards}
           label="Price"
-          value="0.001 SOL"
-          text="Returned as HTTP 402 until the memo-linked payment is visible on-chain."
+          value="0.001 SOL / $0.01"
+          text="Native Solana memo verification or ScoutGate-mediated x402 USDC on Base."
         />
         <InfoTile
           icon={FileJson}
@@ -61,7 +65,7 @@ export default function PaidApiPage() {
       <section className="border-2 border-stone-800 bg-stone-900/30 p-5 md:p-6">
         <div className="flex items-center gap-3 mb-4">
           <Code2 className="w-5 h-5 text-amber-400" />
-          <h2 className="text-lg font-black text-stone-100 uppercase tracking-wider">How it works</h2>
+          <h2 className="text-lg font-black text-stone-100 uppercase tracking-wider">Native Solana path</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
@@ -87,6 +91,35 @@ export default function PaidApiPage() {
         </div>
       </section>
 
+      <section className="border-2 border-stone-800 bg-stone-900/30 p-5 md:p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <WalletCards className="w-5 h-5 text-amber-400" />
+          <h2 className="text-lg font-black text-stone-100 uppercase tracking-wider">ScoutGate x402 path</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-stone-500 mb-2">Proxy request</div>
+            <code className="block text-xs break-all border border-stone-800 bg-stone-950 p-3 text-amber-300">
+              GET {X402_PROXY}
+            </code>
+            <p className="text-xs text-stone-400 leading-relaxed mt-3">
+              ScoutGate returns a standard x402 payment challenge for $0.01 USDC on Base, then forwards
+              paid requests to the public SEC snapshot upstream.
+            </p>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-stone-500 mb-2">Settlement note</div>
+            <p className="text-xs text-stone-300 leading-relaxed">
+              The x402 challenge is platform-mediated: the challenge payTo address is controlled by
+              ScoutGate, while this registered payout address is used for settlement tracking.
+            </p>
+            <code className="block text-xs break-all border border-stone-800 bg-stone-950 p-3 text-amber-300 mt-3">
+              {X402_PAYOUT}
+            </code>
+          </div>
+        </div>
+      </section>
+
       <section className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-5">
         <div className="border-2 border-stone-800 bg-stone-900/30 p-5">
           <h2 className="text-sm font-black uppercase tracking-wider text-stone-100 mb-3">
@@ -98,6 +131,8 @@ export default function PaidApiPage() {
             <Row label="Memo prefix" value="EdgarSnapshot:<TICKER>:<nonce>" />
             <Row label="Verification" value="Confirmed transfer to recipient plus exact memo" />
             <Row label="Headers" value="PAYMENT-REQUIRED, PAYMENT-SIGNATURE" />
+            <Row label="x402 proxy" value={X402_PROXY} />
+            <Row label="x402 network" value="Base USDC through ScoutGate" />
           </dl>
         </div>
         <div className="border-2 border-amber-700/40 bg-amber-950/20 p-5">
@@ -125,6 +160,8 @@ export default function PaidApiPage() {
           <DiscoveryLink href="/openapi.json" label="OpenAPI" />
           <DiscoveryLink href="/llms.txt" label="llms.txt" />
           <DiscoveryLink href="/.well-known/edgar-paid-api.json" label="Well-known JSON" />
+          <DiscoveryLink href={X402_CATALOG} label="x402Scout" external />
+          <DiscoveryLink href={X402_PROXY} label="x402 Proxy" external />
         </div>
       </section>
 
@@ -160,10 +197,12 @@ function InfoTile({
   );
 }
 
-function DiscoveryLink({ href, label }: { href: string; label: string }) {
+function DiscoveryLink({ href, label, external = false }: { href: string; label: string; external?: boolean }) {
   return (
     <Link
       href={href}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noreferrer' : undefined}
       className="inline-flex items-center justify-between gap-3 border border-stone-800 bg-stone-950 px-3 py-2.5 text-xs font-black uppercase tracking-widest text-stone-200 hover:border-amber-500 hover:text-amber-300 transition-colors"
     >
       {label}

@@ -68,6 +68,15 @@ The app is free. If it saves time, there are two transparent support paths:
 
 The paid API is a machine-readable HTTP 402-style endpoint for compact public SEC filing snapshots. It costs `0.001 SOL`, verifies an exact `EdgarSnapshot:<TICKER>:<nonce>` memo on Solana mainnet, and returns JSON after confirmation. It uses public SEC data only and is still not investment, financial, legal, or tax advice.
 
+The same snapshot is also exposed through a ScoutGate x402 proxy for agent wallets that support USDC on Base:
+
+- x402 proxy: https://x402-scoutgate.onrender.com/api/2f9ca2f9?ticker=AAPL
+- x402Scout catalog search: https://x402scout.com/catalog?q=EDGAR
+- Price: `$0.01` USDC on Base through ScoutGate.
+- Registered payout address for settlement tracking: `0x91D59f9932557c8347AaAC800756E49A1cEDc794`.
+
+ScoutGate returns a platform-mediated x402 challenge; its challenge `payTo` address can be ScoutGate-controlled. Treat revenue as received only after payout USDC reaches the registered payout address.
+
 Agent and script discovery files are published at:
 
 - OpenAPI: https://secedgarterminal.com/openapi.json

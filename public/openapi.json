@@ -3,7 +3,23 @@
   "info": {
     "title": "EDGAR Terminal Paid SEC Snapshot API",
     "version": "2026-06-09",
-    "description": "HTTP 402-style paid endpoint for compact, source-linked public SEC filing snapshots. Uses native SOL payments with an exact Solana memo. This is research data, not investment, financial, legal, or tax advice."
+    "description": "HTTP 402-style paid endpoint for compact, source-linked public SEC filing snapshots. Uses native SOL payments with an exact Solana memo, with an additional ScoutGate x402 proxy for USDC on Base. This is research data, not investment, financial, legal, or tax advice."
+  },
+  "externalDocs": {
+    "description": "ScoutGate x402 proxy catalog search",
+    "url": "https://x402scout.com/catalog?q=EDGAR"
+  },
+  "x-scoutgateProxy": {
+    "proxyUrl": "https://x402-scoutgate.onrender.com/api/2f9ca2f9?ticker=AAPL",
+    "catalogUrl": "https://x402scout.com/catalog?q=EDGAR",
+    "price": {
+      "amount": "0.01",
+      "currency": "USDC",
+      "network": "base",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
+    "registeredPayoutAddress": "0x91D59f9932557c8347AaAC800756E49A1cEDc794",
+    "settlementNote": "ScoutGate returns a platform-mediated x402 challenge. Count received revenue only after USDC reaches the registered payout address."
   },
   "servers": [
     {
