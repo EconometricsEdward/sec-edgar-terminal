@@ -77,7 +77,7 @@ export default function AboutPage() {
                 icon={BarChart3}
                 title="Financial Analysis"
                 path="/analysis/:ticker"
-                text="Structured financial data pulled from SEC's XBRL 'Company Facts' API. Overview includes SEC data coverage, filing activity, material event radar, key metrics, quality snapshot, profitability bridge, per-share economics, capital efficiency, balance sheet risk, cash conversion, capital allocation, and a source-linked analyst checklist. Toggle between annual (10-K) and quarterly (10-Q) views. Growth columns (YoY, 5Y CAGR, 10Y CAGR) on every metric."
+                text="Structured financial data pulled from SEC's XBRL 'Company Facts' API. Overview includes SEC data coverage, filing activity, material event radar, key metrics, quality snapshot, profitability bridge, earnings quality, per-share economics, capital efficiency, balance sheet risk, cash conversion, capital allocation, and a source-linked analyst checklist. Toggle between annual (10-K) and quarterly (10-Q) views. Growth columns (YoY, 5Y CAGR, 10Y CAGR) on every metric."
               />
               <FeatureBlock
                 icon={Percent}

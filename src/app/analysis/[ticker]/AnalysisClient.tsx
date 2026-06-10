@@ -509,7 +509,7 @@ export default function AnalysisClient({
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Use the search bar above to look up any company by ticker or name.
             You'll see financial data, industry-specific ratios, stock prices with filing markers,
-            profitability bridge, per-share economics, capital efficiency, and insider trading activity.
+            profitability bridge, earnings quality, per-share economics, capital efficiency, and insider trading activity.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
             Mutual fund and ETF tickers are automatically routed to the Funds page.
@@ -644,6 +644,13 @@ export default function AnalysisClient({
                   <AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <ProfitabilityBridgePanel
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
+                  <EarningsQualityPanel
                     facts={facts}
                     periods={annualPeriods}
                     sicCode={sicCode}
@@ -3976,6 +3983,457 @@ function ProfitabilityBridgePanel({
           />
           <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
             Derived margins divide annual SEC XBRL values by annual revenue. Free cash flow margin subtracts capital expenditures from operating cash flow before dividing by revenue; linked values open the reported source tags.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EarningsQualityPanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}) {
+  const { tiles, tableRows, displayPeriods, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 5);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as SnapshotTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+        group,
+      };
+    }
+
+    const metricRow = (key: string, label: string) => (
+      buildMetricRow(facts, key, label, displayPeriods, 'currency', group as any)
+    );
+
+    const rowsByKey = {
+      revenue: metricRow('revenue', 'Revenue'),
+      netIncome: metricRow('netIncome', 'Net Income'),
+      operatingCashFlow: metricRow('operatingCashFlow', 'Operating Cash Flow'),
+      capex: metricRow('capex', 'Capital Expenditures'),
+      totalAssets: metricRow('totalAssets', 'Total Assets'),
+      currentAssets: metricRow('currentAssets', 'Current Assets'),
+      currentLiabilities: metricRow('currentLiabilities', 'Current Liabilities'),
+      receivables: metricRow('receivables', 'Accounts Receivable'),
+      inventory: metricRow('inventory', 'Inventory'),
+      accountsPayable: metricRow('accountsPayable', 'Accounts Payable'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const magnitude = (item: MetricPoint | null) => {
+      const value = num(item);
+      return value == null ? null : Math.abs(value);
+    };
+    const pct = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return (numerator / denominator) * 100;
+    };
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter((source): source is SourceFact & { label: string } => {
+          if (!source?.tag) return false;
+          const key = `${source.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+
+    const valueForPeriod = (index: number) => {
+      const revenuePoint = point('revenue', index);
+      const netIncomePoint = point('netIncome', index);
+      const ocfPoint = point('operatingCashFlow', index);
+      const capexPoint = point('capex', index);
+      const assetsPoint = point('totalAssets', index);
+      const currentAssetsPoint = point('currentAssets', index);
+      const currentLiabilitiesPoint = point('currentLiabilities', index);
+      const receivablesPoint = point('receivables', index);
+      const inventoryPoint = point('inventory', index);
+      const payablesPoint = point('accountsPayable', index);
+
+      const revenue = num(revenuePoint);
+      const netIncome = num(netIncomePoint);
+      const ocf = num(ocfPoint);
+      const capex = magnitude(capexPoint);
+      const assets = num(assetsPoint);
+      const currentAssets = num(currentAssetsPoint);
+      const currentLiabilities = num(currentLiabilitiesPoint);
+      const receivables = num(receivablesPoint);
+      const inventory = num(inventoryPoint);
+      const payables = num(payablesPoint);
+      const fcf = ocf != null && capex != null ? ocf - capex : null;
+      const accruals = netIncome != null && ocf != null ? netIncome - ocf : null;
+      const workingCapital = currentAssets != null && currentLiabilities != null
+        ? currentAssets - currentLiabilities
+        : null;
+
+      return {
+        revenuePoint,
+        netIncomePoint,
+        ocfPoint,
+        capexPoint,
+        assetsPoint,
+        currentAssetsPoint,
+        currentLiabilitiesPoint,
+        receivablesPoint,
+        inventoryPoint,
+        payablesPoint,
+        revenue,
+        netIncome,
+        ocf,
+        capex,
+        assets,
+        currentAssets,
+        currentLiabilities,
+        receivables,
+        inventory,
+        payables,
+        fcf,
+        accruals,
+        workingCapital,
+        cfoConversion: netIncome != null && netIncome > 0 ? pct(ocf, netIncome) : null,
+        fcfConversion: netIncome != null && netIncome > 0 ? pct(fcf, netIncome) : null,
+        accrualsAssets: pct(accruals, assets),
+        fcfMargin: pct(fcf, revenue),
+        workingCapitalRevenue: pct(workingCapital, revenue),
+        receivablesRevenue: pct(receivables, revenue),
+        inventoryRevenue: pct(inventory, revenue),
+        payablesRevenue: pct(payables, revenue),
+      };
+    };
+
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => {
+      const sources = sourceFacts(inputs);
+      return {
+        period: displayPeriods[index],
+        value,
+        source: sources[0] || null,
+        sources,
+      };
+    };
+
+    const tableRows = [
+      {
+        key: 'netIncome',
+        label: 'Net Income',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const netIncomePoint = point('netIncome', index);
+          return {
+            ...rowsByKey.netIncome.values[index],
+            sources: sourceFacts([['Net Income', netIncomePoint]]),
+          };
+        }),
+      },
+      {
+        key: 'operatingCashFlow',
+        label: 'Operating Cash Flow',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const ocfPoint = point('operatingCashFlow', index);
+          return {
+            ...rowsByKey.operatingCashFlow.values[index],
+            sources: sourceFacts([['Operating Cash Flow', ocfPoint]]),
+          };
+        }),
+      },
+      {
+        key: 'freeCashFlow',
+        label: 'Free Cash Flow',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.fcf, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Capex', v.capexPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'accruals',
+        label: 'Accruals',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.accruals, [
+            ['Net Income', v.netIncomePoint],
+            ['Operating Cash Flow', v.ocfPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cfoConversion',
+        label: 'CFO / Net Income',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cfoConversion, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Net Income', v.netIncomePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'fcfConversion',
+        label: 'FCF / Net Income',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.fcfConversion, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Capex', v.capexPoint],
+            ['Net Income', v.netIncomePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'accrualsAssets',
+        label: 'Accruals / Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.accrualsAssets, [
+            ['Net Income', v.netIncomePoint],
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'fcfMargin',
+        label: 'FCF Margin',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.fcfMargin, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Capex', v.capexPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'workingCapitalRevenue',
+        label: 'Working Capital / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.workingCapitalRevenue, [
+            ['Current Assets', v.currentAssetsPoint],
+            ['Current Liabilities', v.currentLiabilitiesPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'receivablesRevenue',
+        label: 'Receivables / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.receivablesRevenue, [
+            ['Receivables', v.receivablesPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'inventoryRevenue',
+        label: 'Inventory / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.inventoryRevenue, [
+            ['Inventory', v.inventoryPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'payablesRevenue',
+        label: 'Payables / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.payablesRevenue, [
+            ['Payables', v.payablesPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: SnapshotTile[] = [];
+    const addTile = (
+      tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }
+    ) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.cfoConversion != null) {
+      addTile({
+        key: 'earnings-quality-cfo-conversion',
+        label: 'CFO / Net Income',
+        value: latest.cfoConversion,
+        format: 'percent',
+        detail: 'Operating cash flow compared with net income',
+        tone: latest.cfoConversion >= 100 ? 'good' : latest.cfoConversion >= 75 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Cash Flow', latest.ocfPoint],
+          ['Net Income', latest.netIncomePoint],
+        ]),
+      });
+    }
+
+    if (latest.fcfConversion != null) {
+      addTile({
+        key: 'earnings-quality-fcf-conversion',
+        label: 'FCF / Net Income',
+        value: latest.fcfConversion,
+        format: 'percent',
+        detail: `Free cash flow: ${formatValue(latest.fcf, 'currency')}`,
+        tone: latest.fcfConversion >= 80 ? 'good' : latest.fcfConversion >= 50 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Cash Flow', latest.ocfPoint],
+          ['Capex', latest.capexPoint],
+          ['Net Income', latest.netIncomePoint],
+        ]),
+      });
+    }
+
+    if (latest.accrualsAssets != null) {
+      addTile({
+        key: 'earnings-quality-accruals',
+        label: 'Accruals / Assets',
+        value: latest.accrualsAssets,
+        format: 'percent',
+        detail: `Accruals: ${formatValue(latest.accruals, 'currency')}`,
+        tone: latest.accrualsAssets <= 0 ? 'good' : latest.accrualsAssets <= 5 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Net Income', latest.netIncomePoint],
+          ['Operating Cash Flow', latest.ocfPoint],
+          ['Assets', latest.assetsPoint],
+        ]),
+      });
+    }
+
+    if (latest.fcfMargin != null) {
+      addTile({
+        key: 'earnings-quality-fcf-margin',
+        label: 'FCF Margin',
+        value: latest.fcfMargin,
+        format: 'percent',
+        detail: 'Free cash flow divided by revenue',
+        tone: latest.fcfMargin >= 10 ? 'good' : latest.fcfMargin >= 0 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Cash Flow', latest.ocfPoint],
+          ['Capex', latest.capexPoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.workingCapitalRevenue != null) {
+      addTile({
+        key: 'earnings-quality-working-capital',
+        label: 'Working Capital / Revenue',
+        value: latest.workingCapitalRevenue,
+        format: 'percent',
+        detail: `Working capital: ${formatValue(latest.workingCapital, 'currency')}`,
+        tone: 'neutral',
+        sources: snapshotSources([
+          ['Current Assets', latest.currentAssetsPoint],
+          ['Current Liabilities', latest.currentLiabilitiesPoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    return { tiles: tiles.slice(0, 4), tableRows, displayPeriods, latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-amber-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Earnings Quality
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked checks on cash conversion, accrual burden, free cash flow, and working-capital absorption for {industryLabel(group)} companies.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {latestPeriod ? periodLabel(latestPeriod) : 'Annual'} inputs
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <QualityTile key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Five-Year Earnings Quality Bridge
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Net Income', 'Operating Cash Flow', 'Free Cash Flow', 'Accruals / Assets', 'FCF Margin'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Accruals equal net income less operating cash flow. Free cash flow subtracts capital expenditures from operating cash flow using capex payment magnitudes where SEC tags report outflows; linked values open the reported source tags.
           </p>
         </div>
       )}
