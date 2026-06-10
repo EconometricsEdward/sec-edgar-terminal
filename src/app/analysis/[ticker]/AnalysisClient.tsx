@@ -127,6 +127,14 @@ const STATEMENTS = [
     featuredRows: ['Operating Cash Flow', 'Capital Expenditures', 'Financing Cash Flow', 'Investing Cash Flow'] },
 ];
 
+const COMMON_SIZE_BASES = {
+  income: { metricKey: 'revenue', label: 'Revenue', buttonLabel: '% of Revenue' },
+  balance: { metricKey: 'totalAssets', label: 'Total Assets', buttonLabel: '% of Assets' },
+  cashflow: { metricKey: 'revenue', label: 'Revenue', buttonLabel: '% of Revenue' },
+} as const;
+
+type StatementViewMode = 'reported' | 'commonSize';
+
 // ============================================================================
 // Main client component
 // ============================================================================
@@ -162,6 +170,7 @@ export default function AnalysisClient({
 
   const [statement, setStatement] = useState('income');
   const [periodType, setPeriodType] = useState<'annual' | 'quarterly'>('annual');
+  const [statementView, setStatementView] = useState<StatementViewMode>('reported');
   const [showGrowth, setShowGrowth] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
 
@@ -359,6 +368,26 @@ export default function AnalysisClient({
     [facts, periods, statementDef, sicCode]
   );
 
+  const commonSizeBasis = useMemo(() => {
+    const basis = COMMON_SIZE_BASES[statement as keyof typeof COMMON_SIZE_BASES];
+    if (!basis || !facts || periods.length === 0) return null;
+    return {
+      ...basis,
+      row: buildMetricRow(facts, basis.metricKey, basis.label, periods, 'currency', sicCode as any),
+    };
+  }, [facts, periods, sicCode, statement]);
+
+  const commonSizeRows = useMemo(
+    () => (commonSizeBasis ? buildCommonSizeRows(rows, commonSizeBasis.row, commonSizeBasis.label) : []),
+    [rows, commonSizeBasis]
+  );
+
+  const commonSizeAvailable = commonSizeRows.some((row: any) => (
+    row.values.some((point: MetricPoint) => point.value != null && hasPointSource(point))
+  ));
+  const activeStatementView = statementView === 'commonSize' && commonSizeAvailable ? 'commonSize' : 'reported';
+  const displayedRows = activeStatementView === 'commonSize' ? commonSizeRows : rows;
+
   const ratioRows = useMemo(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     () => (facts && periods.length > 0 ? buildRatios(facts, periods, sicCode as any) : []),
@@ -378,9 +407,9 @@ export default function AnalysisClient({
   );
 
   const featuredRows = useMemo(() => {
-    if (!rows.length) return [];
-    return rows.filter((r: { label: string }) => statementDef.featuredRows.includes(r.label));
-  }, [rows, statementDef]);
+    if (!displayedRows.length) return [];
+    return displayedRows.filter((r: { label: string }) => statementDef.featuredRows.includes(r.label));
+  }, [displayedRows, statementDef]);
 
   const featuredRatioRows = useMemo(() => {
     if (!ratioRows.length) return [];
@@ -390,6 +419,7 @@ export default function AnalysisClient({
   }, [ratioRows]);
 
   const growthVisible = showGrowth && periodType === 'annual';
+  const statementGrowthVisible = growthVisible && activeStatementView === 'reported';
 
   // ==========================================================================
   // Action handlers
@@ -697,7 +727,28 @@ export default function AnalysisClient({
                     Quarterly (10-Q)
                   </button>
 
-                  {periodType === 'annual' && (
+                  <button
+                    onClick={() => setStatementView('reported')}
+                    className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
+                      activeStatementView === 'reported' ? 'bg-stone-100 text-stone-950 border-stone-100' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
+                    }`}
+                    type="button"
+                  >
+                    Reported
+                  </button>
+                  <button
+                    onClick={() => setStatementView('commonSize')}
+                    disabled={!commonSizeAvailable}
+                    title={commonSizeBasis ? `Divide statement rows by ${commonSizeBasis.label}` : 'Common-size view unavailable'}
+                    className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                      activeStatementView === 'commonSize' ? 'bg-sky-500 text-stone-950 border-sky-500' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
+                    }`}
+                    type="button"
+                  >
+                    {commonSizeBasis?.buttonLabel || 'Common Size'}
+                  </button>
+
+                  {periodType === 'annual' && activeStatementView === 'reported' && (
                     <button
                       onClick={() => setShowGrowth((s) => !s)}
                       className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
@@ -710,7 +761,7 @@ export default function AnalysisClient({
                   )}
 
                   <button
-                    onClick={() => exportCsv(rows, statement)}
+                    onClick={() => exportCsv(displayedRows, activeStatementView === 'commonSize' ? `${statement}_common_size` : statement)}
                     className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
                     type="button"
                   >
@@ -735,9 +786,9 @@ export default function AnalysisClient({
               )}
 
               <FinancialTable
-                rows={rows}
+                rows={displayedRows}
                 periods={periods}
-                growthVisible={growthVisible}
+                growthVisible={statementGrowthVisible}
                 cik={company?.cik}
                 onTraceRow={traceRowHistory}
                 isHeaderRow={(label: string) => ['Revenue', 'Gross Profit', 'Operating Income', 'Net Income', 'Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Operating Cash Flow'].includes(label)}
@@ -745,6 +796,9 @@ export default function AnalysisClient({
 
               <p className="mt-4 text-[11px] text-stone-500 leading-relaxed">
                 Source: SEC XBRL Company Facts. Hover any value for the source XBRL tag; click to open SEC's concept endpoint.
+                {activeStatementView === 'commonSize' && commonSizeBasis ? (
+                  <span> Common-size values divide each reported row by {commonSizeBasis.label}; computed cells link both inputs.</span>
+                ) : null}{' '}
                 Click the <History className="inline w-3 h-3 text-amber-400" /> icon next to any metric to trace its full reporting history including restatements.
                 Industry group: <span className="text-amber-400 font-bold">{industryLabel(group)}</span>
                 {sicCode ? <span> · SIC {sicCode}</span> : null}
@@ -839,6 +893,49 @@ interface MetricPoint {
   value: number | null;
   source?: SourceFact | null;
   sources?: SourceFact[];
+}
+
+function buildCommonSizeRows(rows: any[], basisRow: any, basisLabel: string) {
+  const sourceWithLabel = (label: string, point?: MetricPoint | null) => {
+    if (!point?.source?.tag) return null;
+    return { ...point.source, label };
+  };
+
+  const uniqueSources = (sources: Array<(SourceFact & { label: string }) | null>) => {
+    const seen = new Set<string>();
+    return sources.filter((source) => {
+      if (!source?.tag) return false;
+      const key = `${source.tag}:${source.end}:${source.accession || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }) as Array<SourceFact & { label: string }>;
+  };
+
+  return rows.map((row) => ({
+    ...row,
+    format: 'percent',
+    commonSizeBase: basisLabel,
+    values: row.values.map((point: MetricPoint, index: number) => {
+      const basisPoint = basisRow?.values?.[index] || null;
+      const numerator = typeof point?.value === 'number' && Number.isFinite(point.value) ? point.value : null;
+      const denominator = typeof basisPoint?.value === 'number' && Number.isFinite(basisPoint.value) ? basisPoint.value : null;
+      const value = numerator != null && denominator != null && denominator !== 0
+        ? (numerator / denominator) * 100
+        : null;
+      const sources = uniqueSources([
+        sourceWithLabel(row.label, point),
+        sourceWithLabel(`Base: ${basisLabel}`, basisPoint),
+      ]);
+
+      return {
+        period: point?.period || basisPoint?.period,
+        value,
+        source: sources[0] || null,
+        sources,
+      };
+    }),
+  }));
 }
 
 interface CapitalAllocationPanelProps {
