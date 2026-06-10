@@ -63,8 +63,17 @@ function quoteSearchTerm(term) {
   return `"${clean}"`;
 }
 
-function buildSecQuery(terms) {
-  return terms.map(quoteSearchTerm).join(' OR ');
+function parseMatchMode(value) {
+  return String(value || '').toLowerCase() === 'all' ? 'all' : 'any';
+}
+
+function buildSecQuery(terms, matchMode = 'any') {
+  return terms.map(quoteSearchTerm).join(matchMode === 'all' ? ' AND ' : ' OR ');
+}
+
+function buildFallbackQueries(terms, matchMode) {
+  if (matchMode !== 'any' || terms.length < 2) return [];
+  return terms.map(quoteSearchTerm);
 }
 
 function buildSearchParams({ secQuery, forms, startDate, endDate, from, size }) {
@@ -94,6 +103,37 @@ function uniqueHits(hits) {
     seen.add(key);
     return true;
   });
+}
+
+async function fetchSearchPage({ secQuery, forms, startDate, endDate, from, size, signal }) {
+  const params = buildSearchParams({
+    secQuery,
+    forms,
+    startDate,
+    endDate,
+    from,
+    size,
+  });
+  const requestUrl = `${SEC_SEARCH_URL}?${params}`;
+  const response = await fetch(requestUrl, {
+    headers: {
+      'User-Agent': process.env.SEC_USER_AGENT || DEFAULT_USER_AGENT,
+      Accept: 'application/json',
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    const error = new Error(`SEC full-text search returned HTTP ${response.status}`);
+    error.status = response.status;
+    error.requestUrl = requestUrl;
+    throw error;
+  }
+
+  return {
+    data: await response.json(),
+    requestUrl,
+  };
 }
 
 function parseFocusTerms(rawFocus) {
@@ -341,9 +381,10 @@ export async function GET(request) {
   const forms = parseForms(url.searchParams.get('forms'));
   const rawFocus = url.searchParams.get('focus') || url.searchParams.get('ticker') || url.searchParams.get('cik') || url.searchParams.get('company') || '';
   const focusTerms = parseFocusTerms(rawFocus);
+  const matchMode = parseMatchMode(url.searchParams.get('match') || url.searchParams.get('matchMode'));
   const startDate = url.searchParams.get('startdt') || isoDate(monthsAgo(months));
   const endDate = url.searchParams.get('enddt') || isoDate(new Date());
-  const secQuery = buildSecQuery(parsed.terms);
+  const secQuery = buildSecQuery(parsed.terms, matchMode);
   const pageSize = focusTerms.length ? FOCUS_PAGE_SIZE : limit;
   const maxPages = focusTerms.length ? MAX_FOCUS_PAGES : 1;
 
@@ -357,58 +398,75 @@ export async function GET(request) {
     let totalRelation = 'eq';
     let tookMs = 0;
     let timedOut = false;
+    let usedFallback = false;
+    let fallbackReason = '';
 
-    for (let page = 0; page < maxPages; page += 1) {
-      const from = page * pageSize;
-      const params = buildSearchParams({
-        secQuery,
-        forms,
-        startDate,
-        endDate,
-        from,
-        size: pageSize,
-      });
-      const requestUrl = `${SEC_SEARCH_URL}?${params}`;
-      sourceUrls.push(requestUrl);
+    const runSearchPages = async (activeSecQuery) => {
+      for (let page = 0; page < maxPages; page += 1) {
+        const from = page * pageSize;
+        const { data, requestUrl } = await fetchSearchPage({
+          secQuery: activeSecQuery,
+          forms,
+          startDate,
+          endDate,
+          from,
+          size: pageSize,
+          signal: controller.signal,
+        });
+        sourceUrls.push(requestUrl);
 
-      const response = await fetch(requestUrl, {
-        headers: {
-          'User-Agent': process.env.SEC_USER_AGENT || DEFAULT_USER_AGENT,
-          Accept: 'application/json',
-        },
-        signal: controller.signal,
-      });
+        const hits = data?.hits?.hits || [];
+        if (page === 0) {
+          if (usedFallback) {
+            totalHits += totalValue(data);
+            totalRelation = data?.hits?.total?.relation === 'gte' ? 'gte' : totalRelation;
+          } else {
+            totalHits = totalValue(data);
+            totalRelation = data?.hits?.total?.relation || 'eq';
+          }
+        }
+        tookMs += data?.took || 0;
+        timedOut = timedOut || Boolean(data?.timed_out);
 
-      if (!response.ok) {
-        return NextResponse.json(
-          { error: `SEC full-text search returned HTTP ${response.status}` },
-          { status: 502 },
-        );
+        const normalizedPage = hits
+          .map((hit, index) => normalizeHit(hit, from + index + 1))
+          .filter((hit) => hit.documentUrl);
+        normalizedPages.push(...normalizedPage);
+
+        const focusedSoFar = focusTerms.length
+          ? normalizedPages.filter((hit) => matchesFocus(hit, focusTerms))
+          : normalizedPages;
+        if (focusTerms.length && focusedSoFar.length >= limit) break;
+        if (hits.length < pageSize) break;
+        if (!usedFallback && totalHits && from + hits.length >= totalHits) break;
       }
+    };
 
-      const data = await response.json();
-      const hits = data?.hits?.hits || [];
-      if (page === 0) {
-        totalHits = totalValue(data);
-        totalRelation = data?.hits?.total?.relation || 'eq';
+    try {
+      await runSearchPages(secQuery);
+    } catch (err) {
+      const fallbackQueries = buildFallbackQueries(parsed.terms, matchMode);
+      if (!fallbackQueries.length) throw err;
+
+      normalizedPages.length = 0;
+      sourceUrls.length = 0;
+      totalHits = 0;
+      totalRelation = 'eq';
+      tookMs = 0;
+      timedOut = false;
+      usedFallback = true;
+      fallbackReason = err.message;
+
+      for (const fallbackQuery of fallbackQueries) {
+        await runSearchPages(fallbackQuery);
       }
-      tookMs += data?.took || 0;
-      timedOut = timedOut || Boolean(data?.timed_out);
-
-      const normalizedPage = hits
-        .map((hit, index) => normalizeHit(hit, from + index + 1))
-        .filter((hit) => hit.documentUrl);
-      normalizedPages.push(...normalizedPage);
-
-      const focusedSoFar = focusTerms.length
-        ? normalizedPages.filter((hit) => matchesFocus(hit, focusTerms))
-        : normalizedPages;
-      if (focusTerms.length && focusedSoFar.length >= limit) break;
-      if (hits.length < pageSize) break;
-      if (totalHits && from + hits.length >= totalHits) break;
     }
 
     const normalizedHits = uniqueHits(normalizedPages);
+    if (usedFallback) {
+      totalHits = normalizedHits.length;
+      totalRelation = 'gte';
+    }
     const focusedHits = normalizedHits.filter((hit) => matchesFocus(hit, focusTerms));
     const analysisHits = focusTerms.length ? focusedHits : normalizedHits;
     const summary = buildSummary(analysisHits, { focusApplied: focusTerms.length > 0 });
@@ -431,12 +489,20 @@ export async function GET(request) {
           requests: sourceUrls,
           pagesSearched: sourceUrls.length,
           pageSize,
+          fallback: usedFallback
+            ? {
+                reason: fallbackReason,
+                strategy: 'per-term any-match searches merged by filing document',
+              }
+            : null,
         },
         query: {
           raw: rawQuery,
           terms: parsed.terms,
           rejected: parsed.rejected,
           secQuery,
+          fallbackSecQueries: usedFallback ? buildFallbackQueries(parsed.terms, matchMode) : [],
+          matchMode,
         },
         focus: {
           raw: rawFocus,
@@ -471,7 +537,9 @@ export async function GET(request) {
   } catch (err) {
     const message = err?.name === 'AbortError'
       ? 'SEC full-text search timed out'
-      : `SEC full-text search failed: ${err.message}`;
+      : err?.status
+        ? err.message
+        : `SEC full-text search failed: ${err.message}`;
     return NextResponse.json({ error: message }, { status: 502 });
   } finally {
     clearTimeout(timeoutId);

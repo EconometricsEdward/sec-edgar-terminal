@@ -30,9 +30,14 @@ const MAX_MARKET_TICKERS = 40;
 const SCAN_FORM_TYPES = ['10-K', '10-Q', '8-K', 'S-1', 'DEF 14A', 'DEFM14A', '20-F', '40-F', 'N-CSR'];
 const MAX_EXCERPTS_PER_FILING = 6;
 
-async function scanTicker(ticker, cik, depth, definitions) {
+function parseMatchMode(value) {
+  return String(value || '').toLowerCase() === 'all' ? 'all' : 'any';
+}
+
+async function scanTicker(ticker, cik, depth, definitions, matchMode = 'any') {
   const startedAt = Date.now();
   const { filings, companyName, error: fetchErr } = await fetchRecentFilings(cik, depth, SCAN_FORM_TYPES);
+  const requiredTerms = definitions.map((definition) => definition.canonical);
 
   if (fetchErr) {
     return {
@@ -90,7 +95,19 @@ async function scanTicker(ticker, cik, depth, definitions) {
         };
       }
 
-      const keywordsFound = new Set();
+      const keywordsFound = new Set(matches.map((match) => match.canonical));
+      if (matchMode === 'all' && requiredTerms.some((term) => !keywordsFound.has(term))) {
+        return {
+          ...filing,
+          url,
+          matchCount: 0,
+          excerpts: [],
+          keywordsFound: Array.from(keywordsFound).sort(),
+          categoriesFound: [],
+          allTermsRequired: true,
+        };
+      }
+
       const excerpts = [];
       const usedTerms = new Set();
 
@@ -157,6 +174,7 @@ export async function GET(request) {
   const rawQuery = url.searchParams.get('query') || url.searchParams.get('keywords') || '';
   const depthParam = url.searchParams.get('depth');
   const fresh = url.searchParams.get('fresh') === 'true';
+  const matchMode = parseMatchMode(url.searchParams.get('match') || url.searchParams.get('matchMode'));
 
   const parsed = buildKeywordDefinitions(rawQuery);
   if (parsed.definitions.length === 0) {
@@ -233,7 +251,7 @@ export async function GET(request) {
   if (!Number.isFinite(depth) || depth < 1) depth = defaultDepth;
   if (depth > maxDepth) depth = maxDepth;
 
-  const signature = disclosureSignature({ terms: parsed.terms, depth });
+  const signature = disclosureSignature({ terms: parsed.terms, depth, matchMode });
 
   let cikByTicker;
   try {
@@ -268,7 +286,7 @@ export async function GET(request) {
     }
 
     try {
-      const result = await scanTicker(ticker, entry.cik, depth, parsed.definitions);
+      const result = await scanTicker(ticker, entry.cik, depth, parsed.definitions, matchMode);
       results.push({ ...result, fromCache: false });
 
       if (!result.error) {
@@ -313,6 +331,7 @@ export async function GET(request) {
         raw: rawQuery,
         terms: parsed.terms,
         rejected: parsed.rejected,
+        matchMode,
       },
       results,
       errors,
@@ -326,6 +345,7 @@ export async function DELETE(request) {
   const tickersParam = url.searchParams.get('tickers');
   const rawQuery = url.searchParams.get('query') || url.searchParams.get('keywords') || '';
   const depthParam = url.searchParams.get('depth');
+  const matchMode = parseMatchMode(url.searchParams.get('match') || url.searchParams.get('matchMode'));
 
   if (!tickersParam) {
     return NextResponse.json({ error: 'Missing tickers parameter' }, { status: 400 });
@@ -340,7 +360,7 @@ export async function DELETE(request) {
   if (!Number.isFinite(depth) || depth < 1) depth = DEFAULT_DEPTH;
   if (depth > MAX_DEPTH) depth = MAX_DEPTH;
 
-  const signature = disclosureSignature({ terms: parsed.terms, depth });
+  const signature = disclosureSignature({ terms: parsed.terms, depth, matchMode });
   const tickers = tickersParam.split(',').map((ticker) => ticker.trim().toUpperCase()).filter(Boolean);
   for (const ticker of tickers) {
     await invalidateDisclosureScan(ticker, signature);

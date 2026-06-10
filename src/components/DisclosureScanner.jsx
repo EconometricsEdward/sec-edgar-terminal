@@ -164,6 +164,7 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
   const [indexFormPresetId, setIndexFormPresetId] = useState('broad');
   const [indexLimit, setIndexLimit] = useState(50);
   const [indexFocusInput, setIndexFocusInput] = useState(initialFocus);
+  const [matchMode, setMatchMode] = useState('any');
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
   const tickerRef = useRef(null);
@@ -208,6 +209,7 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
     try {
       const params = new URLSearchParams({ query: nextQuery });
       let endpoint = '/api/disclosure-search';
+      params.set('match', options.matchMode || matchMode);
 
       if (index) {
         endpoint = '/api/edgar-index-search';
@@ -250,13 +252,14 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
         forms: selectedIndexFormPreset.forms,
         limit: indexLimit,
         focus: indexFocusInput,
+        matchMode,
       });
     } else if (isMarketMode) {
-      runSearch([], queryInput, { market: true, depth: 2 });
+      runSearch([], queryInput, { market: true, depth: 2, matchMode });
     } else if (isUniverseMode) {
-      runSearch([], queryInput, { universe: selectedUniverse.id, depth: 12 });
+      runSearch([], queryInput, { universe: selectedUniverse.id, depth: 12, matchMode });
     } else {
-      runSearch(tickers, queryInput);
+      runSearch(tickers, queryInput, { matchMode });
     }
   };
 
@@ -269,15 +272,17 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
   const applyQuickStart = (item) => {
     if (scanning) return;
     setSearchMode('companies');
+    setMatchMode('any');
     setTickerInput(item.tickers);
     setQueryInput(item.query);
-    runSearch(parseTickers(item.tickers), item.query);
+    runSearch(parseTickers(item.tickers), item.query, { matchMode: 'any' });
   };
 
   const applyIndexQuickStart = (item) => {
     if (scanning) return;
     const formPreset = indexFormPresetById(item.formPresetId);
     setSearchMode('index');
+    setMatchMode('any');
     setQueryInput(item.query);
     setIndexMonths(item.months);
     setIndexFormPresetId(formPreset.id);
@@ -289,6 +294,7 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
       forms: formPreset.forms,
       limit: item.limit,
       focus: '',
+      matchMode: 'any',
     });
   };
 
@@ -491,6 +497,48 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 border-2 border-stone-800 bg-stone-900/30 p-2">
+          <span className="px-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+            Match mode
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setMatchMode('any');
+              setError(null);
+            }}
+            disabled={scanning}
+            className={`border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] font-black transition-colors ${
+              matchMode === 'any'
+                ? 'border-amber-400 bg-amber-400 text-stone-950'
+                : 'border-stone-700 bg-stone-950/70 text-stone-400 hover:border-amber-500 hover:text-amber-200'
+            }`}
+          >
+            Any term
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMatchMode('all');
+              setError(null);
+            }}
+            disabled={scanning || terms.length < 2}
+            title={terms.length < 2 ? 'Add at least two terms to require all terms' : 'Require every entered term or phrase'}
+            className={`border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] font-black transition-colors ${
+              matchMode === 'all'
+                ? 'border-sky-400 bg-sky-400 text-stone-950'
+                : 'border-stone-700 bg-stone-950/70 text-stone-400 hover:border-sky-500 hover:text-sky-200'
+            } disabled:opacity-50 disabled:hover:border-stone-700 disabled:hover:text-stone-400`}
+          >
+            All terms
+          </button>
+          <span className="text-[10px] leading-relaxed text-stone-500">
+            {matchMode === 'all'
+              ? 'Only filings matching every entered term are counted.'
+              : 'Filings matching any entered term are counted.'}
+          </span>
+        </div>
+
         {isIndexMode && !scanning && (
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(220px,0.45fr)_220px] gap-2">
             <div className="border-2 border-stone-800 bg-stone-900/30 p-3">
@@ -603,6 +651,7 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
               <div className="text-[10px] uppercase tracking-[0.14em] text-sky-300">
                 {selectedIndexFormPreset.label} / up to {indexLimit} source filings
                 {indexFocusInput.trim() ? ` / focus: ${indexFocusInput.trim()}` : ''}
+                {matchMode === 'all' ? ' / all terms' : ' / any term'}
               </div>
             </div>
           </div>
@@ -675,6 +724,8 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
                   : 'Add at least 1 company'}
             <span className="mx-2 text-stone-700">/</span>
             {terms.length > 0 ? `Terms: ${terms.slice(0, 4).join(', ')}${terms.length > 4 ? '...' : ''}` : 'Add at least 1 term'}
+            <span className="mx-2 text-stone-700">/</span>
+            {matchMode === 'all' ? 'All terms required' : 'Any term can match'}
           </div>
         )}
       </form>
@@ -690,8 +741,8 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
             </div>
             <div className="text-xs text-amber-100/80 leading-relaxed">
               {isIndexMode
-                ? `The index search asks SEC for matching ${selectedIndexFormPreset.label.toLowerCase()} filings across EDGAR${indexFocusInput.trim() ? `, narrows returned hits to ${indexFocusInput.trim()}` : ''}, then returns direct SEC archive links for verification.`
-                : 'The scanner fetches recent 10-K, 10-Q, 8-K, proxy, registration, foreign issuer, and fund filings, converts them to text, and returns paragraph-level excerpts with direct SEC source links.'}
+                ? `The index search asks SEC for ${matchMode === 'all' ? 'filings that include every entered term' : 'filings that include any entered term'} across ${selectedIndexFormPreset.label.toLowerCase()} filings${indexFocusInput.trim() ? `, narrows returned hits to ${indexFocusInput.trim()}` : ''}, then returns direct SEC archive links for verification.`
+                : `The scanner fetches recent 10-K, 10-Q, 8-K, proxy, registration, foreign issuer, and fund filings, converts them to text, and returns paragraph-level excerpts with direct SEC source links. ${matchMode === 'all' ? 'Only filings containing every entered term are counted.' : 'Filings containing any entered term are counted.'}`}
             </div>
           </div>
         </div>

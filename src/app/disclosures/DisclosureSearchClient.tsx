@@ -35,6 +35,7 @@ export default function DisclosureSearchClient({
       query: scanData.query.raw,
       depth: String(scanData.depth || 35),
     });
+    if (scanData.query?.matchMode) params.set('match', scanData.query.matchMode);
     if (options.fresh) params.set('fresh', 'true');
 
     const response = await fetch(`/api/disclosure-search?${params}`);

@@ -15,6 +15,7 @@ export default function ScanResults({ data, onRescan }) {
   const results = data.results || [];
   const errors = data.errors || [];
   const terms = data.query?.terms || [];
+  const matchMode = data.query?.matchMode === 'all' ? 'All terms' : 'Any term';
 
   if (results.length === 0 && errors.length === 0) {
     return null;
@@ -36,6 +37,12 @@ export default function ScanResults({ data, onRescan }) {
           <>
             <span>·</span>
             <span>Depth: {data.depth} filings per ticker</span>
+          </>
+        )}
+        {terms.length > 1 && (
+          <>
+            <span>/</span>
+            <span>Match: {matchMode}</span>
           </>
         )}
         {data.mode === 'universe' && data.universe?.label && (
@@ -105,6 +112,7 @@ export default function ScanResults({ data, onRescan }) {
 function EdgarIndexResults({ data }) {
   const results = data.results || [];
   const terms = data.query?.terms || [];
+  const matchMode = data.query?.matchMode === 'all' ? 'All terms' : 'Any term';
   const focusTerms = data.focus?.terms || [];
   const summary = data.summary || {};
   const topCompanies = summary.topCompanies || [];
@@ -148,6 +156,12 @@ function EdgarIndexResults({ data }) {
             <span>Focus: {focusTerms.join(', ')}</span>
           </>
         )}
+        {terms.length > 1 && (
+          <>
+            <span>/</span>
+            <span>Match: {matchMode}</span>
+          </>
+        )}
         {data.tookMs != null && (
           <>
             <span>/</span>
@@ -167,6 +181,7 @@ function EdgarIndexResults({ data }) {
             </div>
             <p className="mt-1 text-[11px] text-stone-500">
               Broad discovery across SEC-indexed filing documents{focusTerms.length ? `, focused on ${focusTerms.join(', ')}` : ''}. Open each source filing to verify the exact language in context.
+              {terms.length > 1 ? ` Match mode: ${data.query?.matchMode === 'all' ? 'every entered term' : 'any entered term'}.` : ''}
             </p>
           </div>
           {data.source?.url && (
