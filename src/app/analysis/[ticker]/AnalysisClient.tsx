@@ -414,13 +414,16 @@ export default function AnalysisClient({
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const traceRowHistory = useCallback((row: { values: { source?: { tag: string; taxonomy?: string; unit?: string } }[] }) => {
-    const firstSourced = row.values.find((v) => v.source && v.source.tag);
-    if (!firstSourced || !firstSourced.source) return;
+  const traceRowHistory = useCallback((row: { values: { source?: { tag: string; taxonomy?: string; unit?: string }, sources?: { tag: string; taxonomy?: string; unit?: string }[] }[] }) => {
+    const firstSourced = row.values.find((v) => (v.source && v.source.tag) || v.sources?.some((source) => source.tag));
+    const source = firstSourced?.source?.tag
+      ? firstSourced.source
+      : firstSourced?.sources?.find((item) => item.tag);
+    if (!source) return;
     setConceptToTrace({
-      tag: firstSourced.source.tag,
-      taxonomy: firstSourced.source.taxonomy || 'us-gaap',
-      unit: firstSourced.source.unit || 'USD',
+      tag: source.tag,
+      taxonomy: source.taxonomy || 'us-gaap',
+      unit: source.unit || 'USD',
     });
   }, []);
 
@@ -1224,7 +1227,7 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
           {rows.map((row: any) => {
             const header = isHeaderRow(row.label);
             const growth = computeGrowth(row);
-            const hasSource = row.values.some((v: any) => v.source && v.source.tag);
+            const hasSource = row.values.some((v: any) => (v.source && v.source.tag) || v.sources?.some((source: any) => source.tag));
             return (
               <tr key={row.label} className={`border-b border-stone-800/60 hover:bg-amber-500/5 transition-colors group ${header ? 'bg-stone-900/40' : ''}`}>
                 <td className={`px-4 py-2.5 sticky left-0 z-10 ${header ? 'bg-stone-900/95 text-stone-100 font-bold' : 'bg-stone-950/95 text-stone-300'}`}>
@@ -1244,7 +1247,7 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
                   </span>
                 </td>
                 {row.values.map((v: any, i: number) => (
-                  <ValueCell key={i} value={v.value} source={v.source} cik={cik} format={row.format} isHeader={header} />
+                  <ValueCell key={i} value={v.value} source={v.source} sources={v.sources} cik={cik} format={row.format} isHeader={header} />
                 ))}
                 {growthVisible && (
                   <>
@@ -1264,29 +1267,61 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
 
 interface ValueCellProps {
   value: number | null;
-  source?: { tag: string; unit: string; end: string; filed: string; accession: string };
+  source?: { label?: string; tag: string; unit: string; end: string; filed: string; accession: string };
+  sources?: { label?: string; tag: string; unit: string; end: string; filed: string; accession: string }[];
   cik?: string;
   format: string;
   isHeader: boolean;
 }
 
-function ValueCell({ value, source, cik, format, isHeader }: ValueCellProps) {
-  const sourceUrl = source && cik ? buildSourceUrl(cik, source) : null;
-  const tooltip = source
-    ? `Tag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}\nClick to open SEC source`
+function ValueCell({ value, source, sources, cik, format, isHeader }: ValueCellProps) {
+  const sourceLinks = ((sources && sources.length > 0) ? sources : source ? [source] : [])
+    .filter((item) => item?.tag);
+  const linkedSources = sourceLinks
+    .map((item) => ({ source: item, url: cik ? buildSourceUrl(cik, item) : null }))
+    .filter((item) => item.url);
+  const tooltip = sourceLinks.length > 0
+    ? sourceLinks.map((item, index) => (
+      `${item.label || `Source ${index + 1}`}\nTag: ${item.tag}\nUnit: ${item.unit}\nPeriod: ${item.end}\nFiled: ${item.filed}\nAccession: ${item.accession}`
+    )).join('\n\n')
     : value == null ? 'No data reported for this concept' : 'Computed value';
   const cellClasses = `px-4 py-2.5 text-right tabular-nums group/cell ${
     value == null ? 'text-stone-700' : isHeader ? 'text-stone-100 font-bold' : 'text-stone-300'
   }`;
-  if (!sourceUrl || value == null) {
+  if (!linkedSources.length || value == null) {
     return <td className={cellClasses} title={tooltip}>{formatValue(value, format)}</td>;
+  }
+  if (linkedSources.length === 1) {
+    const only = linkedSources[0];
+    return (
+      <td className={cellClasses} title={`${tooltip}\nClick to open SEC source`}>
+        <a href={only.url || '#'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors">
+          {formatValue(value, format)}
+          <ExternalLink className="w-3 h-3 opacity-0 group-hover/cell:opacity-50 transition-opacity" />
+        </a>
+      </td>
+    );
   }
   return (
     <td className={cellClasses} title={tooltip}>
-      <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors">
-        {formatValue(value, format)}
-        <ExternalLink className="w-3 h-3 opacity-0 group-hover/cell:opacity-50 transition-opacity" />
-      </a>
+      <span className="inline-flex items-center justify-end gap-1.5">
+        <span>{formatValue(value, format)}</span>
+        <span className="inline-flex items-center gap-0.5 opacity-0 group-hover/cell:opacity-70 transition-opacity">
+          {linkedSources.slice(0, 4).map(({ source: item, url }, index) => (
+            <a
+              key={`${item.tag}-${item.end}-${index}`}
+              href={url || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`${item.label || `Source ${index + 1}`}\nTag: ${item.tag}\nUnit: ${item.unit}\nPeriod: ${item.end}\nFiled: ${item.filed}\nAccession: ${item.accession}\nClick to open SEC source`}
+              aria-label={`Open SEC source for ${item.label || `input ${index + 1}`}`}
+              className="text-stone-500 hover:text-amber-400 transition-colors"
+            >
+              <LinkIcon className="w-3 h-3" />
+            </a>
+          ))}
+        </span>
+      </span>
     </td>
   );
 }

@@ -303,23 +303,125 @@ export function buildCashFlow(facts, periods, sicCode = null) {
 
 export function buildRatios(facts, periods, sicCode = null) {
   const g = classifyIndustry(sicCode);
-  const getVal = (key, p) => {
-    const row = buildMetricRow(facts, key, '', [p], key.startsWith('eps') ? 'eps' : 'currency', g);
-    return row.values[0]?.value;
+  const SOURCE_LABELS = {
+    revenue: 'Revenue',
+    grossProfit: 'Gross Profit',
+    costOfRevenue: 'Cost of Revenue',
+    operatingIncome: 'Operating Income',
+    netIncome: 'Net Income',
+    stockholdersEquity: 'Equity',
+    totalAssets: 'Assets',
+    shortTermDebt: 'Short-term Debt',
+    longTermDebt: 'Long-term Debt',
+    currentAssets: 'Current Assets',
+    currentLiabilities: 'Current Liabilities',
+    netInterestIncome: 'Net Interest',
+    interestIncomeExpenseNet: 'Net Interest',
+    earningAssets: 'Earning Assets',
+    noninterestExpense: 'Noninterest Expense',
+    noninterestIncome: 'Noninterest Income',
+    loans: 'Loans',
+    deposits: 'Deposits',
+    nonperformingLoans: 'NPL',
+    allowanceForLoanLoss: 'Allowance',
+    lossesIncurred: 'Losses',
+    premiumsEarned: 'Premiums',
+    underwritingExpenses: 'Underwriting Expense',
+    investmentIncome: 'Investment Income',
+    shortTermInvestments: 'Investments',
+    rnd: 'R&D',
+    operatingCashFlow: 'Operating Cash Flow',
+    capex: 'Capex',
+    inventory: 'Inventory',
+    receivables: 'Receivables',
+    cash: 'Cash',
   };
 
-  const ratio = (label, fn, format = 'percent') => ({
+  const getPoint = (key, p) => {
+    const row = buildMetricRow(facts, key, '', [p], key.startsWith('eps') ? 'eps' : 'currency', g);
+    return row.values[0] || null;
+  };
+
+  const getVal = (key, p) => getPoint(key, p)?.value;
+
+  const sourceFor = (key, p, label = SOURCE_LABELS[key] || key) => {
+    const point = getPoint(key, p);
+    if (!point?.source?.tag) return null;
+    return { ...point.source, key, label, value: point.value };
+  };
+
+  const fallbackSource = (keys, p, label = null) => {
+    for (const key of keys) {
+      const source = sourceFor(key, p, label || SOURCE_LABELS[key] || key);
+      if (source) return source;
+    }
+    return null;
+  };
+
+  const uniqueSources = (sources) => {
+    const seen = new Set();
+    return sources.filter((source) => {
+      if (!source?.tag) return false;
+      const key = `${source.label || ''}:${source.tag}:${source.end}:${source.accession || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const sourceList = (entries, p) => {
+    const raw = entries.flatMap((entry) => {
+      if (!entry) return [];
+      if (typeof entry === 'function') {
+        const result = entry(p);
+        return Array.isArray(result) ? result : [result];
+      }
+      if (Array.isArray(entry)) return [fallbackSource(entry, p)];
+      return [sourceFor(entry, p)];
+    });
+    return uniqueSources(raw);
+  };
+
+  const ratio = (label, fn, format = 'percent', sourceEntries = []) => ({
     label,
     format,
     values: periods.map((p) => {
       try {
         const v = fn(p);
-        return { period: p, value: Number.isFinite(v) ? v : null, source: null };
+        const value = Number.isFinite(v) ? v : null;
+        const sources = value == null ? [] : sourceList(sourceEntries, p);
+        return { period: p, value, source: sources[0] || null, sources };
       } catch {
-        return { period: p, value: null, source: null };
+        return { period: p, value: null, source: null, sources: [] };
       }
     }),
   });
+
+  const grossMarginSources = (p) => [
+    sourceFor('revenue', p),
+    sourceFor('grossProfit', p) || sourceFor('costOfRevenue', p),
+  ];
+
+  const investmentBaseSources = (p) => [
+    sourceFor('investmentIncome', p),
+    sourceFor('shortTermInvestments', p) || sourceFor('totalAssets', p, 'Assets'),
+  ];
+
+  const nimSources = (p) => [
+    fallbackSource(['netInterestIncome', 'interestIncomeExpenseNet'], p, 'Net Interest'),
+    fallbackSource(['earningAssets', 'totalAssets'], p, 'Asset Base'),
+  ];
+
+  const ruleOf40Sources = (p) => {
+    const priorYearEnd = incrementYear(p.end, -1);
+    const priorYearPeriod = { fy: p.fy - 1, fp: 'FY', end: priorYearEnd };
+    return [
+      sourceFor('revenue', p, 'Current Revenue'),
+      sourceFor('revenue', priorYearPeriod, 'Prior Revenue'),
+      sourceFor('operatingCashFlow', p),
+      sourceFor('capex', p),
+    ];
+  };
 
   const margins = {
     gross: ratio('Gross Margin', (p) => {
@@ -330,29 +432,29 @@ export function buildRatios(facts, periods, sicCode = null) {
         if (rev != null && cost != null) gp = rev - cost;
       }
       return rev && gp != null ? (gp / rev) * 100 : null;
-    }),
+    }, 'percent', [grossMarginSources]),
     operating: ratio('Operating Margin', (p) => {
       const rev = getVal('revenue', p);
       const op = getVal('operatingIncome', p);
       return rev && op != null ? (op / rev) * 100 : null;
-    }),
+    }, 'percent', ['operatingIncome', 'revenue']),
     net: ratio('Net Margin', (p) => {
       const rev = getVal('revenue', p);
       const ni = getVal('netIncome', p);
       return rev && ni != null ? (ni / rev) * 100 : null;
-    }),
+    }, 'percent', ['netIncome', 'revenue']),
   };
   const returns = {
     roe: ratio('Return on Equity (ROE)', (p) => {
       const eq = getVal('stockholdersEquity', p);
       const ni = getVal('netIncome', p);
       return eq && ni != null ? (ni / eq) * 100 : null;
-    }),
+    }, 'percent', ['netIncome', 'stockholdersEquity']),
     roa: ratio('Return on Assets (ROA)', (p) => {
       const ta = getVal('totalAssets', p);
       const ni = getVal('netIncome', p);
       return ta && ni != null ? (ni / ta) * 100 : null;
-    }),
+    }, 'percent', ['netIncome', 'totalAssets']),
   };
   const leverage = {
     de: ratio('Debt-to-Equity', (p) => {
@@ -360,20 +462,20 @@ export function buildRatios(facts, periods, sicCode = null) {
       const std = getVal('shortTermDebt', p) || 0;
       const ltd = getVal('longTermDebt', p) || 0;
       return eq ? (std + ltd) / eq : null;
-    }, 'decimal'),
+    }, 'decimal', ['shortTermDebt', 'longTermDebt', 'stockholdersEquity']),
     da: ratio('Debt-to-Assets', (p) => {
       const ta = getVal('totalAssets', p);
       const std = getVal('shortTermDebt', p) || 0;
       const ltd = getVal('longTermDebt', p) || 0;
       return ta ? (std + ltd) / ta : null;
-    }, 'decimal'),
+    }, 'decimal', ['shortTermDebt', 'longTermDebt', 'totalAssets']),
   };
   const liquidity = {
     cr: ratio('Current Ratio', (p) => {
       const ca = getVal('currentAssets', p);
       const cl = getVal('currentLiabilities', p);
       return ca && cl ? ca / cl : null;
-    }, 'decimal'),
+    }, 'decimal', ['currentAssets', 'currentLiabilities']),
   };
 
   if (g === INDUSTRY_GROUPS.BANKING) {
@@ -383,34 +485,34 @@ export function buildRatios(facts, periods, sicCode = null) {
         const nii = getVal('netInterestIncome', p) ?? getVal('interestIncomeExpenseNet', p);
         const earning = getVal('earningAssets', p) ?? getVal('totalAssets', p);
         return nii && earning ? (nii / earning) * 100 : null;
-      }),
+      }, 'percent', [nimSources]),
       ratio('Efficiency Ratio', (p) => {
         const nie = getVal('noninterestExpense', p);
         const nii = getVal('netInterestIncome', p) ?? getVal('interestIncomeExpenseNet', p);
         const noni = getVal('noninterestIncome', p);
         const revenue = (nii || 0) + (noni || 0);
         return nie && revenue ? (nie / revenue) * 100 : null;
-      }),
+      }, 'percent', ['noninterestExpense', ['netInterestIncome', 'interestIncomeExpenseNet'], 'noninterestIncome']),
       ratio('Loan-to-Deposit Ratio', (p) => {
         const loans = getVal('loans', p);
         const deposits = getVal('deposits', p);
         return loans && deposits ? (loans / deposits) * 100 : null;
-      }),
+      }, 'percent', ['loans', 'deposits']),
       ratio('NPL Ratio', (p) => {
         const npl = getVal('nonperformingLoans', p);
         const loans = getVal('loans', p);
         return npl && loans ? (npl / loans) * 100 : null;
-      }),
+      }, 'percent', ['nonperformingLoans', 'loans']),
       ratio('Allowance Coverage Ratio', (p) => {
         const all = getVal('allowanceForLoanLoss', p);
         const loans = getVal('loans', p);
         return all && loans ? (all / loans) * 100 : null;
-      }),
+      }, 'percent', ['allowanceForLoanLoss', 'loans']),
       ratio('Equity-to-Assets', (p) => {
         const eq = getVal('stockholdersEquity', p);
         const ta = getVal('totalAssets', p);
         return eq && ta ? (eq / ta) * 100 : null;
-      }),
+      }, 'percent', ['stockholdersEquity', 'totalAssets']),
     ];
   }
 
@@ -421,12 +523,12 @@ export function buildRatios(facts, periods, sicCode = null) {
         const losses = getVal('lossesIncurred', p);
         const premiums = getVal('premiumsEarned', p);
         return losses && premiums ? (losses / premiums) * 100 : null;
-      }),
+      }, 'percent', ['lossesIncurred', 'premiumsEarned']),
       ratio('Expense Ratio', (p) => {
         const ue = getVal('underwritingExpenses', p);
         const premiums = getVal('premiumsEarned', p);
         return ue && premiums ? (ue / premiums) * 100 : null;
-      }),
+      }, 'percent', ['underwritingExpenses', 'premiumsEarned']),
       ratio('Combined Ratio', (p) => {
         const losses = getVal('lossesIncurred', p);
         const ue = getVal('underwritingExpenses', p);
@@ -434,12 +536,12 @@ export function buildRatios(facts, periods, sicCode = null) {
         if (!premiums) return null;
         const num = (losses || 0) + (ue || 0);
         return num > 0 ? (num / premiums) * 100 : null;
-      }),
+      }, 'percent', ['lossesIncurred', 'underwritingExpenses', 'premiumsEarned']),
       ratio('Investment Yield', (p) => {
         const ii = getVal('investmentIncome', p);
         const inv = getVal('shortTermInvestments', p) ?? getVal('totalAssets', p);
         return ii && inv ? (ii / inv) * 100 : null;
-      }),
+      }, 'percent', [investmentBaseSources]),
       leverage.de,
     ];
   }
@@ -451,14 +553,14 @@ export function buildRatios(facts, periods, sicCode = null) {
         const rnd = getVal('rnd', p);
         const rev = getVal('revenue', p);
         return rnd && rev ? (rnd / rev) * 100 : null;
-      }),
+      }, 'percent', ['rnd', 'revenue']),
       ratio('FCF Margin', (p) => {
         const ocf = getVal('operatingCashFlow', p);
         const capex = getVal('capex', p) || 0;
         const rev = getVal('revenue', p);
         if (!ocf || !rev) return null;
         return ((ocf - capex) / rev) * 100;
-      }),
+      }, 'percent', ['operatingCashFlow', 'capex', 'revenue']),
       ratio('Rule of 40', (p) => {
         const curRev = getVal('revenue', p);
         const priorYearEnd = incrementYear(p.end, -1);
@@ -471,7 +573,7 @@ export function buildRatios(facts, periods, sicCode = null) {
         const fcf = ocf != null ? ocf - capex : null;
         const fcfMargin = fcf != null ? (fcf / curRev) * 100 : null;
         return fcfMargin != null ? growth + fcfMargin : null;
-      }),
+      }, 'percent', [ruleOf40Sources]),
       liquidity.cr, leverage.de,
     ];
   }
@@ -483,22 +585,22 @@ export function buildRatios(facts, periods, sicCode = null) {
         const cogs = getVal('costOfRevenue', p);
         const inv = getVal('inventory', p);
         return cogs && inv ? cogs / inv : null;
-      }, 'decimal'),
+      }, 'decimal', ['costOfRevenue', 'inventory']),
       ratio('Days Inventory', (p) => {
         const cogs = getVal('costOfRevenue', p);
         const inv = getVal('inventory', p);
         return cogs && inv ? (inv / cogs) * 365 : null;
-      }, 'decimal'),
+      }, 'decimal', ['inventory', 'costOfRevenue']),
       ratio('Asset Turnover', (p) => {
         const rev = getVal('revenue', p);
         const ta = getVal('totalAssets', p);
         return rev && ta ? rev / ta : null;
-      }, 'decimal'),
+      }, 'decimal', ['revenue', 'totalAssets']),
       ratio('DSO (Days Sales Outstanding)', (p) => {
         const rev = getVal('revenue', p);
         const ar = getVal('receivables', p);
         return rev && ar ? (ar / rev) * 365 : null;
-      }, 'decimal'),
+      }, 'decimal', ['receivables', 'revenue']),
       leverage.de,
     ];
   }
@@ -510,20 +612,20 @@ export function buildRatios(facts, periods, sicCode = null) {
         const rnd = getVal('rnd', p);
         const rev = getVal('revenue', p);
         return rnd && rev ? (rnd / rev) * 100 : null;
-      }),
+      }, 'percent', ['rnd', 'revenue']),
       ratio('Cash Runway (years)', (p) => {
         const cash = (getVal('cash', p) || 0) + (getVal('shortTermInvestments', p) || 0);
         const ocf = getVal('operatingCashFlow', p);
         if (!cash || !ocf || ocf >= 0) return null;
         return cash / Math.abs(ocf);
-      }, 'decimal'),
+      }, 'decimal', ['cash', 'shortTermInvestments', 'operatingCashFlow']),
       ratio('FCF Margin', (p) => {
         const ocf = getVal('operatingCashFlow', p);
         const capex = getVal('capex', p) || 0;
         const rev = getVal('revenue', p);
         if (!ocf || !rev) return null;
         return ((ocf - capex) / rev) * 100;
-      }),
+      }, 'percent', ['operatingCashFlow', 'capex', 'revenue']),
       leverage.de,
     ];
   }
@@ -535,12 +637,12 @@ export function buildRatios(facts, periods, sicCode = null) {
         const rev = getVal('revenue', p);
         const ta = getVal('totalAssets', p);
         return rev && ta ? rev / ta : null;
-      }, 'decimal'),
+      }, 'decimal', ['revenue', 'totalAssets']),
       ratio('Inventory Turnover', (p) => {
         const cogs = getVal('costOfRevenue', p);
         const inv = getVal('inventory', p);
         return cogs && inv ? cogs / inv : null;
-      }, 'decimal'),
+      }, 'decimal', ['costOfRevenue', 'inventory']),
       liquidity.cr, leverage.de,
     ];
   }
