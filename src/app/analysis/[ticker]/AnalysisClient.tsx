@@ -509,7 +509,7 @@ export default function AnalysisClient({
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Use the search bar above to look up any company by ticker or name.
             You'll see financial data, industry-specific ratios, stock prices with filing markers,
-            profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, and insider trading activity.
+            expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, and insider trading activity.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
             Mutual fund and ETF tickers are automatically routed to the Funds page.
@@ -643,6 +643,13 @@ export default function AnalysisClient({
                   <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
+                  <ExpenseDisciplinePanel
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
                   <ProfitabilityBridgePanel
                     facts={facts}
                     periods={annualPeriods}
@@ -3590,6 +3597,466 @@ function QualitySnapshot({
           <QualityTile key={tile.key} tile={tile} cik={cik} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function ExpenseDisciplinePanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}) {
+  const { tiles, tableRows, displayPeriods, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 5);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as SnapshotTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+        group,
+      };
+    }
+
+    const metricRow = (key: string, label: string) => (
+      buildMetricRow(facts, key, label, displayPeriods, 'currency', group as any)
+    );
+
+    const rowsByKey = {
+      revenue: metricRow('revenue', 'Revenue'),
+      costOfRevenue: metricRow('costOfRevenue', 'Cost of Revenue'),
+      grossProfit: metricRow('grossProfit', 'Gross Profit'),
+      operatingExpenses: metricRow('operatingExpenses', 'Operating Expenses'),
+      rnd: metricRow('rnd', 'R&D Expense'),
+      sga: metricRow('sga', 'SG&A Expense'),
+      operatingIncome: metricRow('operatingIncome', 'Operating Income'),
+      interestExpense: metricRow('interestExpense', 'Interest Expense'),
+      pretaxIncome: metricRow('pretaxIncome', 'Pre-tax Income'),
+      incomeTax: metricRow('incomeTax', 'Income Tax'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const magnitude = (item: MetricPoint | null) => {
+      const value = num(item);
+      return value == null ? null : Math.abs(value);
+    };
+    const pct = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return (numerator / denominator) * 100;
+    };
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter((source): source is SourceFact & { label: string } => {
+          if (!source?.tag) return false;
+          const key = `${source.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+
+    const valueForPeriod = (index: number) => {
+      const revenuePoint = point('revenue', index);
+      const costOfRevenuePoint = point('costOfRevenue', index);
+      const grossProfitPoint = point('grossProfit', index);
+      const operatingExpensesPoint = point('operatingExpenses', index);
+      const rndPoint = point('rnd', index);
+      const sgaPoint = point('sga', index);
+      const operatingIncomePoint = point('operatingIncome', index);
+      const interestExpensePoint = point('interestExpense', index);
+      const pretaxIncomePoint = point('pretaxIncome', index);
+      const incomeTaxPoint = point('incomeTax', index);
+
+      const revenue = num(revenuePoint);
+      const costOfRevenue = magnitude(costOfRevenuePoint);
+      const grossProfit = num(grossProfitPoint);
+      const reportedOperatingExpenses = magnitude(operatingExpensesPoint);
+      const rnd = magnitude(rndPoint);
+      const sga = magnitude(sgaPoint);
+      const operatingIncome = num(operatingIncomePoint);
+      const interestExpense = magnitude(interestExpensePoint);
+      const pretaxIncome = num(pretaxIncomePoint);
+      const incomeTax = num(incomeTaxPoint);
+      const derivedOperatingExpenses = grossProfit != null && operatingIncome != null
+        ? grossProfit - operatingIncome
+        : null;
+      const operatingExpenses = reportedOperatingExpenses ?? (
+        derivedOperatingExpenses != null && derivedOperatingExpenses >= 0 ? derivedOperatingExpenses : null
+      );
+      const operatingExpenseInputs: Array<[string, MetricPoint | null]> = reportedOperatingExpenses != null
+        ? [['Operating Expenses', operatingExpensesPoint]]
+        : [
+          ['Gross Profit', grossProfitPoint],
+          ['Operating Income', operatingIncomePoint],
+        ];
+
+      return {
+        revenuePoint,
+        costOfRevenuePoint,
+        grossProfitPoint,
+        operatingExpensesPoint,
+        rndPoint,
+        sgaPoint,
+        operatingIncomePoint,
+        interestExpensePoint,
+        pretaxIncomePoint,
+        incomeTaxPoint,
+        revenue,
+        costOfRevenue,
+        grossProfit,
+        operatingExpenses,
+        operatingExpenseInputs,
+        rnd,
+        sga,
+        operatingIncome,
+        interestExpense,
+        pretaxIncome,
+        incomeTax,
+        costOfRevenueRevenue: pct(costOfRevenue, revenue),
+        operatingExpenseRevenue: pct(operatingExpenses, revenue),
+        rndRevenue: pct(rnd, revenue),
+        rndOperatingExpense: pct(rnd, operatingExpenses),
+        sgaRevenue: pct(sga, revenue),
+        sgaOperatingExpense: pct(sga, operatingExpenses),
+        interestRevenue: pct(interestExpense, revenue),
+        interestOperatingIncome: operatingIncome != null && operatingIncome > 0
+          ? pct(interestExpense, operatingIncome)
+          : null,
+        taxRate: pretaxIncome != null && pretaxIncome > 0 ? pct(incomeTax, pretaxIncome) : null,
+      };
+    };
+
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => {
+      const sources = sourceFacts(inputs);
+      return {
+        period: displayPeriods[index],
+        value,
+        source: sources[0] || null,
+        sources,
+      };
+    };
+
+    const tableRows = [
+      {
+        key: 'revenue',
+        label: 'Revenue',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const revenuePoint = point('revenue', index);
+          return {
+            ...rowsByKey.revenue.values[index],
+            sources: sourceFacts([['Revenue', revenuePoint]]),
+          };
+        }),
+      },
+      {
+        key: 'costOfRevenue',
+        label: 'Cost of Revenue',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.costOfRevenue, [['Cost of Revenue', v.costOfRevenuePoint]]);
+        }),
+      },
+      {
+        key: 'costOfRevenueRevenue',
+        label: 'Cost of Revenue / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.costOfRevenueRevenue, [
+            ['Cost of Revenue', v.costOfRevenuePoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'operatingExpenses',
+        label: 'Operating Expenses',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.operatingExpenses, v.operatingExpenseInputs);
+        }),
+      },
+      {
+        key: 'operatingExpenseRevenue',
+        label: 'Operating Expenses / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.operatingExpenseRevenue, [
+            ...v.operatingExpenseInputs,
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'rndRevenue',
+        label: 'R&D / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.rndRevenue, [
+            ['R&D', v.rndPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'rndOperatingExpense',
+        label: 'R&D / Operating Expenses',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.rndOperatingExpense, [
+            ['R&D', v.rndPoint],
+            ...v.operatingExpenseInputs,
+          ]);
+        }),
+      },
+      {
+        key: 'sgaRevenue',
+        label: 'SG&A / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.sgaRevenue, [
+            ['SG&A', v.sgaPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'sgaOperatingExpense',
+        label: 'SG&A / Operating Expenses',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.sgaOperatingExpense, [
+            ['SG&A', v.sgaPoint],
+            ...v.operatingExpenseInputs,
+          ]);
+        }),
+      },
+      {
+        key: 'interestRevenue',
+        label: 'Interest / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.interestRevenue, [
+            ['Interest Expense', v.interestExpensePoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'interestOperatingIncome',
+        label: 'Interest / Operating Income',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.interestOperatingIncome, [
+            ['Interest Expense', v.interestExpensePoint],
+            ['Operating Income', v.operatingIncomePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'taxRate',
+        label: 'Effective Tax Rate',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.taxRate, [
+            ['Income Tax', v.incomeTaxPoint],
+            ['Pre-tax Income', v.pretaxIncomePoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: SnapshotTile[] = [];
+    const addTile = (
+      tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }
+    ) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.costOfRevenueRevenue != null) {
+      addTile({
+        key: 'expense-discipline-cost-revenue',
+        label: 'Cost / Revenue',
+        value: latest.costOfRevenueRevenue,
+        format: 'percent',
+        detail: 'Cost of revenue as a share of revenue',
+        tone: latest.costOfRevenueRevenue <= 50 ? 'good' : latest.costOfRevenueRevenue <= 75 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Cost of Revenue', latest.costOfRevenuePoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.operatingExpenseRevenue != null) {
+      addTile({
+        key: 'expense-discipline-opex-revenue',
+        label: 'OpEx / Revenue',
+        value: latest.operatingExpenseRevenue,
+        format: 'percent',
+        detail: 'Operating expenses as a share of revenue',
+        tone: latest.operatingExpenseRevenue <= 25 ? 'good' : latest.operatingExpenseRevenue <= 45 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ...latest.operatingExpenseInputs,
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.rndRevenue != null) {
+      addTile({
+        key: 'expense-discipline-rnd-revenue',
+        label: 'R&D / Revenue',
+        value: latest.rndRevenue,
+        format: 'percent',
+        detail: 'Research and development intensity',
+        tone: 'neutral',
+        sources: snapshotSources([
+          ['R&D', latest.rndPoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.sgaRevenue != null) {
+      addTile({
+        key: 'expense-discipline-sga-revenue',
+        label: 'SG&A / Revenue',
+        value: latest.sgaRevenue,
+        format: 'percent',
+        detail: 'Selling, general, and administrative intensity',
+        tone: latest.sgaRevenue <= 20 ? 'good' : latest.sgaRevenue <= 35 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['SG&A', latest.sgaPoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.interestOperatingIncome != null) {
+      addTile({
+        key: 'expense-discipline-interest-burden',
+        label: 'Interest Burden',
+        value: latest.interestOperatingIncome,
+        format: 'percent',
+        detail: 'Interest expense divided by operating income',
+        tone: latest.interestOperatingIncome <= 10 ? 'good' : latest.interestOperatingIncome <= 30 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Interest Expense', latest.interestExpensePoint],
+          ['Operating Income', latest.operatingIncomePoint],
+        ]),
+      });
+    }
+
+    if (latest.taxRate != null) {
+      addTile({
+        key: 'expense-discipline-tax-rate',
+        label: 'Tax Rate',
+        value: latest.taxRate,
+        format: 'percent',
+        detail: 'Income tax divided by pre-tax income',
+        tone: latest.taxRate >= 0 && latest.taxRate <= 35 ? 'neutral' : 'warn',
+        sources: snapshotSources([
+          ['Income Tax', latest.incomeTaxPoint],
+          ['Pre-tax Income', latest.pretaxIncomePoint],
+        ]),
+      });
+    }
+
+    return { tiles: tiles.slice(0, 4), tableRows, displayPeriods, latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-sky-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Expense Discipline
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked view of cost structure, operating expense mix, interest burden, and tax load for {industryLabel(group)} companies.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {latestPeriod ? periodLabel(latestPeriod) : 'Annual'} inputs
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <QualityTile key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Five-Year Expense Discipline Bridge
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Revenue', 'Cost of Revenue', 'Operating Expenses', 'Interest / Operating Income', 'Effective Tax Rate'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Expense ratios divide annual SEC XBRL amounts by revenue, operating expenses, operating income, or pre-tax income. When operating expenses are not reported directly, the table derives them from gross profit less operating income and links both source tags.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
