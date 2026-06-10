@@ -6,7 +6,7 @@ import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
   Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink, Info,
   LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
-  Loader2, AlertCircle, ShieldCheck, FileText,
+  Loader2, AlertCircle, ShieldCheck, FileText, Search,
 } from 'lucide-react';
 import { MetricChart as MetricChartImpl } from '../../../components/MetricChart.jsx';
 import SummaryDashboardImpl from '../../../components/SummaryDashboard.jsx';
@@ -134,6 +134,165 @@ const COMMON_SIZE_BASES = {
 } as const;
 
 type StatementViewMode = 'reported' | 'commonSize';
+
+interface DisclosureRiskPrompt {
+  title: string;
+  query: string;
+  detail: string;
+}
+
+const BASE_DISCLOSURE_RISKS: DisclosureRiskPrompt[] = [
+  {
+    title: 'Liquidity Stress',
+    query: 'going concern, substantial doubt, liquidity, covenant',
+    detail: 'Cash runway, covenant, and near-term funding language',
+  },
+  {
+    title: 'Customer Concentration',
+    query: 'major customer, significant customer, customer concentration',
+    detail: 'Revenue dependency and counterparty concentration language',
+  },
+  {
+    title: 'Cybersecurity',
+    query: 'cybersecurity, data breach, ransomware, unauthorized access',
+    detail: 'Operational, incident, and risk-factor cyber language',
+  },
+];
+
+const INDUSTRY_DISCLOSURE_RISKS: Record<string, DisclosureRiskPrompt[]> = {
+  [INDUSTRY_GROUPS.BANKING]: [
+    {
+      title: 'Credit Quality',
+      query: 'nonperforming loans, allowance for credit losses, charge-offs',
+      detail: 'Loan-loss, allowance, and credit deterioration language',
+    },
+    {
+      title: 'Deposit Pressure',
+      query: 'uninsured deposits, deposit outflows, liquidity coverage',
+      detail: 'Funding base stability and deposit sensitivity language',
+    },
+  ],
+  [INDUSTRY_GROUPS.INSURANCE]: [
+    {
+      title: 'Catastrophe Losses',
+      query: 'catastrophe losses, reinsurance, reserve development',
+      detail: 'Claims severity, reinsurance, and reserve adequacy language',
+    },
+    {
+      title: 'Investment Portfolio',
+      query: 'unrealized losses, investment portfolio, credit impairments',
+      detail: 'Portfolio marks, credit losses, and investment risk language',
+    },
+  ],
+  [INDUSTRY_GROUPS.REIT]: [
+    {
+      title: 'Occupancy + Rent',
+      query: 'occupancy, rent collections, tenant concentration',
+      detail: 'Property demand, rent collection, and tenant risk language',
+    },
+    {
+      title: 'Refinancing Risk',
+      query: 'debt maturities, refinancing, interest rate risk',
+      detail: 'Rate exposure, debt maturities, and refinancing language',
+    },
+  ],
+  [INDUSTRY_GROUPS.OIL_GAS]: [
+    {
+      title: 'Reserves',
+      query: 'proved reserves, reserve estimates, depletion',
+      detail: 'Reserve base, depletion, and estimation language',
+    },
+    {
+      title: 'Commodity Exposure',
+      query: 'commodity prices, hedging, price volatility',
+      detail: 'Price sensitivity, hedge book, and commodity-cycle language',
+    },
+  ],
+  [INDUSTRY_GROUPS.AIRLINES]: [
+    {
+      title: 'Fuel + Capacity',
+      query: 'fuel prices, capacity, load factor',
+      detail: 'Fuel cost exposure and capacity planning language',
+    },
+    {
+      title: 'Labor + Fleet',
+      query: 'labor costs, collective bargaining, aircraft delivery',
+      detail: 'Labor, aircraft delivery, and fleet disruption language',
+    },
+  ],
+  [INDUSTRY_GROUPS.TECH]: [
+    {
+      title: 'AI + Platform Risk',
+      query: 'artificial intelligence, AI, platform, cloud',
+      detail: 'AI, platform dependency, and cloud demand language',
+    },
+    {
+      title: 'Data Privacy',
+      query: 'data privacy, data protection, regulatory investigations',
+      detail: 'Privacy regulation, data handling, and enforcement language',
+    },
+  ],
+  [INDUSTRY_GROUPS.RETAIL]: [
+    {
+      title: 'Inventory + Demand',
+      query: 'inventory, markdowns, consumer demand',
+      detail: 'Inventory quality, markdown, and demand weakness language',
+    },
+    {
+      title: 'Supply Chain',
+      query: 'supply chain, tariffs, freight costs',
+      detail: 'Tariff, freight, vendor, and supply disruption language',
+    },
+  ],
+  [INDUSTRY_GROUPS.PHARMA]: [
+    {
+      title: 'Clinical Pipeline',
+      query: 'clinical trial, FDA, regulatory approval',
+      detail: 'Trial, approval, and regulator-dependent value drivers',
+    },
+    {
+      title: 'Patent + Exclusivity',
+      query: 'patent expiration, exclusivity, generic competition',
+      detail: 'IP cliff, exclusivity, and competitive entry language',
+    },
+  ],
+  [INDUSTRY_GROUPS.MANUFACTURING]: [
+    {
+      title: 'Input Costs',
+      query: 'raw material costs, supply chain, tariffs',
+      detail: 'Input inflation, supplier risk, and tariff language',
+    },
+    {
+      title: 'Backlog + Orders',
+      query: 'backlog, orders, cancellations',
+      detail: 'Demand visibility, order flow, and cancellation language',
+    },
+  ],
+  [INDUSTRY_GROUPS.UTILITIES]: [
+    {
+      title: 'Regulatory Recovery',
+      query: 'rate case, regulatory recovery, allowed return',
+      detail: 'Rate-case, allowed-return, and cost-recovery language',
+    },
+    {
+      title: 'Capital Program',
+      query: 'capital expenditures, transmission, grid modernization',
+      detail: 'Capex, grid investment, and regulatory execution language',
+    },
+  ],
+  [INDUSTRY_GROUPS.GENERAL]: [
+    {
+      title: 'Restructuring',
+      query: 'restructuring, impairment, cost reduction',
+      detail: 'Turnaround, asset write-down, and cost action language',
+    },
+    {
+      title: 'Litigation',
+      query: 'litigation, investigations, legal proceedings',
+      detail: 'Material legal, investigation, and proceeding language',
+    },
+  ],
+};
 
 // ============================================================================
 // Main client component
@@ -509,7 +668,7 @@ export default function AnalysisClient({
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Use the search bar above to look up any company by ticker or name.
             You'll see financial data, industry-specific ratios, stock prices with filing markers,
-            quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and insider trading activity.
+            disclosure risk radar, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and insider trading activity.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
             Mutual fund and ETF tickers are automatically routed to the Funds page.
@@ -640,6 +799,11 @@ export default function AnalysisClient({
                     cik={company?.cik}
                   />
                   <FilingActivityPanel filings={filings} ticker={chartTicker} />
+                  <DisclosureRiskRadar
+                    ticker={chartTicker}
+                    companyName={company?.name}
+                    sicCode={sicCode}
+                  />
                   <QuarterlyMomentumPanel
                     facts={facts}
                     periods={quarterlyPeriods}
@@ -3423,6 +3587,95 @@ function FilingActivityPanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function disclosureSearchHref(query: string, ticker?: string) {
+  const params = new URLSearchParams({ query });
+  if (ticker) params.set('focus', ticker);
+  return `/disclosures?${params.toString()}`;
+}
+
+function DisclosureRiskRadar({
+  ticker,
+  companyName,
+  sicCode,
+}: {
+  ticker?: string;
+  companyName?: string;
+  sicCode?: string | number | null;
+}) {
+  const group = classifyIndustry(sicCode);
+  const prompts = useMemo(() => {
+    const industryPrompts = INDUSTRY_DISCLOSURE_RISKS[group] || INDUSTRY_DISCLOSURE_RISKS[INDUSTRY_GROUPS.GENERAL] || [];
+    return [...industryPrompts, ...BASE_DISCLOSURE_RISKS].slice(0, 6);
+  }, [group]);
+
+  if (!ticker || prompts.length === 0) return null;
+
+  return (
+    <div className="mb-6 border-2 border-stone-800 bg-stone-950/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4 text-amber-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Disclosure Risk Radar
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Industry-aware disclosure themes for {companyName || ticker}, routed into company-focused SEC EDGAR keyword searches.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {industryLabel(group)} / Focus {ticker}
+        </div>
+      </div>
+
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+        {prompts.map((prompt) => (
+          <a
+            key={`${ticker}-${prompt.title}`}
+            href={disclosureSearchHref(prompt.query, ticker)}
+            className="group flex min-h-[156px] flex-col justify-between border-2 border-stone-800 bg-stone-900/30 p-4 transition-colors hover:border-amber-500 hover:bg-amber-500/5"
+          >
+            <div>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-black tracking-wider text-stone-100 group-hover:text-amber-300 transition-colors">
+                    {prompt.title}
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-stone-400">
+                    {prompt.detail}
+                  </p>
+                </div>
+                <ExternalLink className="w-3.5 h-3.5 shrink-0 text-stone-600 group-hover:text-amber-300 transition-colors" />
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 text-[9px] uppercase tracking-[0.18em] text-stone-600">
+                SEC keyword query
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {prompt.query.split(',').slice(0, 4).map((term) => (
+                  <span
+                    key={`${prompt.title}-${term.trim()}`}
+                    className="border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-stone-400"
+                  >
+                    {term.trim()}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
+
+      <div className="border-t border-stone-800 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
+        These are research paths, not model-generated conclusions. The linked searches use the SEC full-text index with company focus and return direct SEC archive sources for verification.
+      </div>
     </div>
   );
 }

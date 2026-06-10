@@ -128,7 +128,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   const title = `${meta.name} (${upper}) — Financial Analysis & Ratios`;
-  const description = `10-year financial analysis for ${meta.name} (${upper}). Revenue, net income, operating margin, ROE, ROA, and industry-specific ratios sourced directly from SEC XBRL filings. Includes stock chart with filing markers, insider trading, and institutional holders.`;
+  const description = `10-year financial analysis for ${meta.name} (${upper}). Revenue, net income, operating margin, ROE, ROA, industry-specific ratios, and disclosure risk radar sourced directly from SEC XBRL filings and SEC EDGAR search links. Includes stock chart with filing markers, insider trading, and institutional holders.`;
   const canonical = `https://secedgarterminal.com/analysis/${upper}`;
 
   return {

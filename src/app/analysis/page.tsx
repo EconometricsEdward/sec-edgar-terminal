@@ -8,7 +8,7 @@ import { BarChart3, ArrowRight } from 'lucide-react';
 export const metadata: Metadata = {
   title: 'Financial Analysis — SEC XBRL Data',
   description:
-    'Structured financial analysis for every U.S. public company. Income statement, balance sheet, cash flow, filing activity, material event radar, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and industry-aware ratios from SEC XBRL data.',
+    'Structured financial analysis for every U.S. public company. Income statement, balance sheet, cash flow, filing activity, material event radar, disclosure risk radar, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and industry-aware ratios from SEC XBRL data.',
   alternates: {
     canonical: 'https://secedgarterminal.com/analysis',
   },
@@ -42,7 +42,7 @@ export default function AnalysisIndexPage() {
           statement, balance sheet, cash flow, and industry-aware ratios pulled
           directly from SEC XBRL filings. Includes 10-year stock price history
           with filing markers, insider trading activity, institutional holders,
-          material event radar, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and concept-level history (including restatements).
+          material event radar, disclosure risk radar, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and concept-level history (including restatements).
         </p>
       </div>
 
