@@ -182,7 +182,7 @@ function EdgarIndexResults({ data }) {
           )}
         </div>
 
-        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
           <EvidenceStat
             icon={Database}
             label={focusTerms.length ? 'Focused Hits' : 'Index Hits'}
@@ -206,6 +206,13 @@ function EdgarIndexResults({ data }) {
             label="Filing Forms"
             value={formCount.toLocaleString()}
             detail={Array.from(forms).slice(0, 4).join(', ') || `Searched ${data.forms?.length || 0} form types`}
+          />
+          <EvidenceStat
+            icon={Calendar}
+            label="Source Window"
+            value={formatDateWindow(summary.dateSpan)}
+            detail={`Oldest and newest filing dates in ${summaryScope}`}
+            tone={summary.dateSpan?.latestFilingDate ? 'emerald' : 'stone'}
           />
           <EvidenceStat
             icon={Clock}
@@ -239,6 +246,7 @@ function EdgarIndexResults({ data }) {
             formMix={formMix}
             analyzedHits={analyzedHits}
             summaryScope={summaryScope}
+            terms={terms}
           />
         )}
 
@@ -293,7 +301,7 @@ function EdgarIndexResults({ data }) {
   );
 }
 
-function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope }) {
+function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope, terms }) {
   const maxFormHits = Math.max(...formMix.map((row) => row.hits || 0), 1);
 
   return (
@@ -330,69 +338,24 @@ function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope }
                   <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[150px]">
                     Forms
                   </th>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[170px]">
+                    First / Latest
+                  </th>
                   <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[180px]">
                     Latest Source
+                  </th>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[210px]">
+                    Research Links
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {topCompanies.map((company) => (
-                  <tr key={company.cik || company.companyName} className="border-b border-stone-800/60 align-top hover:bg-emerald-500/5">
-                    <td className="px-4 py-3">
-                      <div className="text-xs font-black tracking-wider text-stone-100">{company.companyName}</div>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {(company.tickers || []).length > 0 ? company.tickers.slice(0, 4).map((ticker) => (
-                          <span
-                            key={ticker}
-                            className="border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-stone-400"
-                          >
-                            {ticker}
-                          </span>
-                        )) : (
-                          <span className="text-[10px] text-stone-600">No ticker parsed</span>
-                        )}
-                      </div>
-                      <div className="mt-1 text-[10px] font-mono text-stone-600">CIK {company.cik}</div>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="text-lg font-black tabular-nums text-emerald-300">{company.hits.toLocaleString()}</div>
-                      {company.bestSecRank != null && (
-                        <div className="text-[10px] uppercase tracking-widest text-stone-600">
-                          Best SEC #{company.bestSecRank}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {compactFormList(company.forms).map((form) => (
-                          <span
-                            key={`${company.cik}-${form.form}`}
-                            className={`border px-1.5 py-0.5 text-[9px] font-black tracking-wider ${getFormColor(form.form)}`}
-                          >
-                            {form.form} {form.count}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-stone-300">
-                      {company.latestSource?.documentUrl ? (
-                        <a
-                          href={company.latestSource.documentUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-sky-300 hover:text-sky-200"
-                        >
-                          {company.latestSource.filingDate || 'Open filing'}
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      ) : (
-                        <span className="text-stone-600">No source link</span>
-                      )}
-                      <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-500">
-                        {company.latestSource?.form || 'Filing'}
-                      </div>
-                    </td>
-                  </tr>
+                  <EdgarIndexCompanyRow
+                    key={company.cik || company.companyName}
+                    company={company}
+                    terms={terms}
+                  />
                 ))}
               </tbody>
             </table>
@@ -441,6 +404,135 @@ function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope }
       </div>
     </div>
   );
+}
+
+function EdgarIndexCompanyRow({ company, terms }) {
+  const primaryTicker = getPrimaryTicker(company);
+  const disclosureHref = buildFocusedDisclosureHref(company, terms);
+  const formCount = Object.keys(company.forms || {}).length;
+
+  return (
+    <tr className="border-b border-stone-800/60 align-top hover:bg-emerald-500/5">
+      <td className="px-4 py-3">
+        <div className="text-xs font-black tracking-wider text-stone-100">{company.companyName}</div>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {(company.tickers || []).length > 0 ? company.tickers.slice(0, 4).map((ticker) => (
+            <a
+              key={ticker}
+              href={`/analysis/${ticker}`}
+              className="border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-stone-400 hover:border-amber-500 hover:text-amber-200"
+              title={`Open ${ticker} analysis`}
+            >
+              {ticker}
+            </a>
+          )) : (
+            <span className="text-[10px] text-stone-600">No ticker parsed</span>
+          )}
+        </div>
+        <div className="mt-1 text-[10px] font-mono text-stone-600">CIK {company.cik}</div>
+      </td>
+      <td className="px-4 py-3 text-right">
+        <div className="text-lg font-black tabular-nums text-emerald-300">{company.hits.toLocaleString()}</div>
+        {company.bestSecRank != null && (
+          <div className="text-[10px] uppercase tracking-widest text-stone-600">
+            Best SEC #{company.bestSecRank}
+          </div>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-wrap gap-1">
+          {compactFormList(company.forms).map((form) => (
+            <span
+              key={`${company.cik}-${form.form}`}
+              className={`border px-1.5 py-0.5 text-[9px] font-black tracking-wider ${getFormColor(form.form)}`}
+            >
+              {form.form} {form.count}
+            </span>
+          ))}
+        </div>
+        <div className="mt-2 text-[10px] uppercase tracking-widest text-stone-600">
+          {formCount.toLocaleString()} form {formCount === 1 ? 'type' : 'types'}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-xs text-stone-400">
+        <div>
+          First: <span className="font-bold tabular-nums text-stone-200">{company.firstFilingDate || 'N/A'}</span>
+        </div>
+        <div className="mt-1">
+          Latest: <span className="font-bold tabular-nums text-stone-200">{company.latestFilingDate || 'N/A'}</span>
+        </div>
+      </td>
+      <td className="px-4 py-3 text-xs text-stone-300">
+        {company.latestSource?.documentUrl ? (
+          <a
+            href={company.latestSource.documentUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sky-300 hover:text-sky-200"
+          >
+            {company.latestSource.filingDate || 'Open filing'}
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        ) : (
+          <span className="text-stone-600">No source link</span>
+        )}
+        <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-500">
+          {company.latestSource?.form || 'Filing'}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          {primaryTicker && (
+            <>
+              <a
+                href={`/analysis/${primaryTicker}`}
+                className="border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-stone-300 hover:border-amber-500 hover:text-amber-200"
+              >
+                Analysis
+              </a>
+              <a
+                href={`/filings/${primaryTicker}`}
+                className="border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-stone-300 hover:border-sky-500 hover:text-sky-200"
+              >
+                Filings
+              </a>
+            </>
+          )}
+          {disclosureHref && (
+            <a
+              href={disclosureHref}
+              className="border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-stone-300 hover:border-emerald-500 hover:text-emerald-200"
+            >
+              Focused Search
+            </a>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function getPrimaryTicker(company) {
+  return (company.tickers || []).find(Boolean) || null;
+}
+
+function buildFocusedDisclosureHref(company, terms) {
+  if (!terms?.length) return null;
+  const focus = getPrimaryTicker(company) || company.cik || company.companyName;
+  if (!focus) return null;
+  const params = new URLSearchParams({
+    query: terms.join(', '),
+    focus,
+  });
+  return `/disclosures?${params.toString()}`;
+}
+
+function formatDateWindow(dateSpan) {
+  const first = dateSpan?.firstFilingDate;
+  const latest = dateSpan?.latestFilingDate;
+  if (!first && !latest) return 'N/A';
+  if (first && latest && first !== latest) return `${first} -> ${latest}`;
+  return first || latest;
 }
 
 function compactFormList(forms) {

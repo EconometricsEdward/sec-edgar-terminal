@@ -113,7 +113,7 @@ const jsonLd = {
     '10-year stock price history with filing markers',
     'Form 4 insider trading activity',
     'Peer comparison with up to 5 companies',
-    'Disclosure keyword search with source-linked SEC excerpts',
+    'Disclosure keyword search with source-linked SEC excerpts, EDGAR index source windows, and filer concentration',
     'Source-linked data — every number traces to SEC.gov',
   ],
 };

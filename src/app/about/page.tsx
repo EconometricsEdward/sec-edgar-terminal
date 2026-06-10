@@ -107,7 +107,7 @@ export default function AboutPage() {
                 icon={FileSearch}
                 title="Disclosure Keyword Search"
                 path="/disclosures"
-                text="Searches the SEC EDGAR full-text index with optional company/ticker focus plus date, filing-form, and result-count filters for broad source discovery, or scans recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) across up to 5 hand-picked companies, curated 8-company sector universes, or a bounded 40-company Market Map. Index hits and scanner excerpts link directly to the source filing. Manual scans are depth-limited to 50 recent filings per ticker; universe and Market Map scans use shallower defaults to respect SEC fair-access limits. Results cache for 24 hours by ticker and query where applicable."
+                text="Searches the SEC EDGAR full-text index with optional company/ticker focus plus date, filing-form, and result-count filters for broad source discovery, including source-window, filer-concentration, and filing-mix signals. It can also scan recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) across up to 5 hand-picked companies, curated 8-company sector universes, or a bounded 40-company Market Map. Index hits and scanner excerpts link directly to the source filing. Manual scans are depth-limited to 50 recent filings per ticker; universe and Market Map scans use shallower defaults to respect SEC fair-access limits. Results cache for 24 hours by ticker and query where applicable."
               />
             </div>
           </section>

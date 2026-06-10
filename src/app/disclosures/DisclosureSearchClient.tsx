@@ -64,8 +64,9 @@ export default function DisclosureSearchClient({
           emerging risks, customer concentration, tariffs, AI exposure, restructuring language,
           liquidity warnings, or any other term that matters to your analysis. Search the EDGAR
           index for broad source discovery with company focus, filing-form filters, and result-count
-          controls, or scan a manual company set, curated sector universe, or bounded cross-sector
-          Market Map when you need paragraph-level excerpts.
+          controls, review source-window and filer-concentration signals, or scan a manual
+          company set, curated sector universe, or bounded cross-sector Market Map when you need
+          paragraph-level excerpts.
         </p>
       </div>
 
@@ -99,7 +100,8 @@ export default function DisclosureSearchClient({
           <span className="font-bold text-stone-200">Methodology:</span>{' '}
           EDGAR Index mode uses the SEC full-text index to find matching source filings across
           the broader SEC corpus with optional company/ticker focus, date-range, form-type, and
-          result-count filters. Company, Universe, and Market Map modes fetch recent 10-K, 10-Q,
+          result-count filters, then summarizes source-window, filer-concentration, filing-mix,
+          and latest-source signals from the returned SEC records. Company, Universe, and Market Map modes fetch recent 10-K, 10-Q,
           8-K, S-1, proxy, 20-F, 40-F, and N-CSR filings, convert them to text, and return
           paragraph-level excerpts. Results are cached for 24 hours by ticker and query where
           applicable. Keyword matching is exact but flexible for whitespace and hyphenation, so
