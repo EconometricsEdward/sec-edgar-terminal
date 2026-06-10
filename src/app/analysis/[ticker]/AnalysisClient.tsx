@@ -650,6 +650,13 @@ export default function AnalysisClient({
                     cik={company?.cik}
                     onTraceRow={traceRowHistory}
                   />
+                  <PerShareEconomicsPanel
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
                   <BalanceSheetRiskPanel
                     facts={facts}
                     periods={annualPeriods}
@@ -3962,6 +3969,401 @@ function ProfitabilityBridgePanel({
           />
           <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
             Derived margins divide annual SEC XBRL values by annual revenue. Free cash flow margin subtracts capital expenditures from operating cash flow before dividing by revenue; linked values open the reported source tags.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PerShareEconomicsPanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}) {
+  const { tiles, tableRows, displayPeriods, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 5);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as SnapshotTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+        group,
+      };
+    }
+
+    const metricRow = (key: string, label: string, format = 'currency') => (
+      buildMetricRow(facts, key, label, displayPeriods, format, group as any)
+    );
+
+    const rowsByKey = {
+      revenue: metricRow('revenue', 'Revenue'),
+      netIncome: metricRow('netIncome', 'Net Income'),
+      operatingCashFlow: metricRow('operatingCashFlow', 'Operating Cash Flow'),
+      capex: metricRow('capex', 'Capital Expenditures'),
+      stockholdersEquity: metricRow('stockholdersEquity', "Stockholders' Equity"),
+      sharesDiluted: metricRow('sharesDiluted', 'Diluted Shares', 'shares'),
+      epsDiluted: metricRow('epsDiluted', 'Diluted EPS', 'eps'),
+      stockRepurchased: metricRow('stockRepurchased', 'Share Repurchases'),
+      dividendsPaid: metricRow('dividendsPaid', 'Dividends Paid'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const magnitude = (item: MetricPoint | null) => {
+      const value = num(item);
+      return value == null ? null : Math.abs(value);
+    };
+    const perShare = (numerator: number | null, shares: number | null) => {
+      if (numerator == null || shares == null || shares <= 0) return null;
+      return numerator / shares;
+    };
+    const growth = (current: number | null, prior: number | null) => {
+      if (current == null || prior == null || prior === 0) return null;
+      return ((current - prior) / Math.abs(prior)) * 100;
+    };
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter((source): source is SourceFact & { label: string } => {
+          if (!source?.tag) return false;
+          const key = `${source.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+
+    const valueForPeriod = (index: number) => {
+      const revenuePoint = point('revenue', index);
+      const netIncomePoint = point('netIncome', index);
+      const ocfPoint = point('operatingCashFlow', index);
+      const capexPoint = point('capex', index);
+      const equityPoint = point('stockholdersEquity', index);
+      const sharesPoint = point('sharesDiluted', index);
+      const epsPoint = point('epsDiluted', index);
+      const buybackPoint = point('stockRepurchased', index);
+      const dividendPoint = point('dividendsPaid', index);
+      const priorSharesPoint = point('sharesDiluted', index + 1);
+
+      const revenue = num(revenuePoint);
+      const netIncome = num(netIncomePoint);
+      const ocf = num(ocfPoint);
+      const capex = magnitude(capexPoint);
+      const equity = num(equityPoint);
+      const shares = num(sharesPoint);
+      const eps = num(epsPoint);
+      const buybacks = magnitude(buybackPoint);
+      const dividends = magnitude(dividendPoint);
+      const priorShares = num(priorSharesPoint);
+      const fcf = ocf != null && capex != null ? ocf - capex : null;
+      const cashReturned = buybacks != null || dividends != null ? (buybacks || 0) + (dividends || 0) : null;
+
+      return {
+        revenuePoint,
+        netIncomePoint,
+        ocfPoint,
+        capexPoint,
+        equityPoint,
+        sharesPoint,
+        epsPoint,
+        buybackPoint,
+        dividendPoint,
+        priorSharesPoint,
+        revenue,
+        netIncome,
+        ocf,
+        capex,
+        equity,
+        shares,
+        eps,
+        buybacks,
+        dividends,
+        fcf,
+        cashReturned,
+        revenuePerShare: perShare(revenue, shares),
+        netIncomePerShare: perShare(netIncome, shares),
+        fcfPerShare: perShare(fcf, shares),
+        bookValuePerShare: perShare(equity, shares),
+        cashReturnedPerShare: perShare(cashReturned, shares),
+        shareCountChange: growth(shares, priorShares),
+      };
+    };
+
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => {
+      const sources = sourceFacts(inputs);
+      return {
+        period: displayPeriods[index],
+        value,
+        source: sources[0] || null,
+        sources,
+      };
+    };
+
+    const tableRows = [
+      {
+        key: 'sharesDiluted',
+        label: 'Diluted Shares',
+        format: 'shares',
+        values: displayPeriods.map((_, index) => {
+          const sharesPoint = point('sharesDiluted', index);
+          return {
+            ...rowsByKey.sharesDiluted.values[index],
+            sources: sourceFacts([['Diluted Shares', sharesPoint]]),
+          };
+        }),
+      },
+      {
+        key: 'revenuePerShare',
+        label: 'Revenue / Diluted Share',
+        format: 'eps',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.revenuePerShare, [
+            ['Revenue', v.revenuePoint],
+            ['Diluted Shares', v.sharesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'netIncomePerShare',
+        label: 'Net Income / Diluted Share',
+        format: 'eps',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.netIncomePerShare, [
+            ['Net Income', v.netIncomePoint],
+            ['Diluted Shares', v.sharesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'reportedDilutedEps',
+        label: 'Reported Diluted EPS',
+        format: 'eps',
+        values: displayPeriods.map((_, index) => {
+          const epsPoint = point('epsDiluted', index);
+          return {
+            ...rowsByKey.epsDiluted.values[index],
+            sources: sourceFacts([['Diluted EPS', epsPoint]]),
+          };
+        }),
+      },
+      {
+        key: 'fcfPerShare',
+        label: 'Free Cash Flow / Diluted Share',
+        format: 'eps',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.fcfPerShare, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Capex', v.capexPoint],
+            ['Diluted Shares', v.sharesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'bookValuePerShare',
+        label: 'Book Value / Diluted Share',
+        format: 'eps',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.bookValuePerShare, [
+            ['Equity', v.equityPoint],
+            ['Diluted Shares', v.sharesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cashReturnedPerShare',
+        label: 'Cash Returned / Diluted Share',
+        format: 'eps',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cashReturnedPerShare, [
+            ['Buybacks', v.buybackPoint],
+            ['Dividends', v.dividendPoint],
+            ['Diluted Shares', v.sharesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'shareCountChange',
+        label: 'Share Count Change',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.shareCountChange, [
+            ['Diluted Shares', v.sharesPoint],
+            ['Prior Diluted Shares', v.priorSharesPoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: SnapshotTile[] = [];
+    const addTile = (
+      tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }
+    ) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.revenuePerShare != null) {
+      addTile({
+        key: 'per-share-revenue',
+        label: 'Revenue / Share',
+        value: latest.revenuePerShare,
+        format: 'eps',
+        detail: 'Revenue divided by diluted weighted-average shares',
+        tone: 'neutral',
+        sources: snapshotSources([
+          ['Revenue', latest.revenuePoint],
+          ['Diluted Shares', latest.sharesPoint],
+        ]),
+      });
+    }
+
+    if (latest.fcfPerShare != null) {
+      addTile({
+        key: 'per-share-fcf',
+        label: 'FCF / Share',
+        value: latest.fcfPerShare,
+        format: 'eps',
+        detail: `Free cash flow: ${formatValue(latest.fcf, 'currency')}`,
+        tone: latest.fcfPerShare > 0 ? 'good' : 'bad',
+        sources: snapshotSources([
+          ['Operating Cash Flow', latest.ocfPoint],
+          ['Capex', latest.capexPoint],
+          ['Diluted Shares', latest.sharesPoint],
+        ]),
+      });
+    }
+
+    if (latest.bookValuePerShare != null) {
+      addTile({
+        key: 'per-share-book-value',
+        label: 'Book Value / Share',
+        value: latest.bookValuePerShare,
+        format: 'eps',
+        detail: "Stockholders' equity divided by diluted shares",
+        tone: latest.bookValuePerShare >= 0 ? 'neutral' : 'bad',
+        sources: snapshotSources([
+          ['Equity', latest.equityPoint],
+          ['Diluted Shares', latest.sharesPoint],
+        ]),
+      });
+    }
+
+    if (latest.shareCountChange != null) {
+      addTile({
+        key: 'per-share-dilution',
+        label: 'Share Count Change',
+        value: latest.shareCountChange,
+        format: 'percent',
+        detail: 'Diluted shares versus prior annual period',
+        tone: latest.shareCountChange <= 0 ? 'good' : latest.shareCountChange <= 2 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Diluted Shares', latest.sharesPoint],
+          ['Prior Diluted Shares', latest.priorSharesPoint],
+        ]),
+      });
+    }
+
+    if (latest.cashReturnedPerShare != null) {
+      addTile({
+        key: 'per-share-cash-returned',
+        label: 'Cash Returned / Share',
+        value: latest.cashReturnedPerShare,
+        format: 'eps',
+        detail: `Cash returned: ${formatValue(latest.cashReturned, 'currency')}`,
+        tone: 'neutral',
+        sources: snapshotSources([
+          ['Buybacks', latest.buybackPoint],
+          ['Dividends', latest.dividendPoint],
+          ['Diluted Shares', latest.sharesPoint],
+        ]),
+      });
+    }
+
+    return { tiles: tiles.slice(0, 4), tableRows, displayPeriods, latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-sky-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Per-Share Economics
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked view of what each diluted share received across revenue, earnings, free cash flow, book value, and capital returns for {industryLabel(group)} companies.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {latestPeriod ? periodLabel(latestPeriod) : 'Annual'} inputs
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <QualityTile key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Five-Year Per-Share Bridge
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Diluted Shares', 'Revenue / Diluted Share', 'Free Cash Flow / Diluted Share', 'Book Value / Diluted Share'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Derived per-share values divide annual SEC XBRL amounts by diluted weighted-average shares. Cash returns use payment magnitudes where SEC tags report outflow concepts; linked values open the reported source tags.
           </p>
         </div>
       )}
