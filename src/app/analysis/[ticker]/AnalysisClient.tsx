@@ -222,14 +222,14 @@ const INDUSTRY_DISCLOSURE_RISKS: Record<string, DisclosureRiskPrompt[]> = {
   ],
   [INDUSTRY_GROUPS.TECH]: [
     {
-      title: 'AI + Platform Risk',
-      query: 'artificial intelligence, AI, platform, cloud',
-      detail: 'AI, platform dependency, and cloud demand language',
+      title: 'Platform + Antitrust',
+      query: 'App Store, antitrust, Digital Markets Act',
+      detail: 'Platform rules, app marketplace, and competition language',
     },
     {
-      title: 'Data Privacy',
-      query: 'data privacy, data protection, regulatory investigations',
-      detail: 'Privacy regulation, data handling, and enforcement language',
+      title: 'Privacy + Services',
+      query: 'privacy, App Store, services',
+      detail: 'Privacy regulation, services revenue, and ecosystem language',
     },
   ],
   [INDUSTRY_GROUPS.RETAIL]: [
