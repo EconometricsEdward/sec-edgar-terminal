@@ -1,0 +1,20 @@
+﻿c65ed3c Merge Next.js App Router migration (Phase 1 + Phase 2)
+d601eab Fix invalid SVG height attribute on GrowthBarChart
+c6fb1ce Phase 2 cleanup: delete App.jsx, drop legacy deps, simplify NavTabs
+9545822 Phase 2e: Migrate About, Crypto, Fund to App Router (Phase 2 complete)
+7033d26 Phase 2d: Migrate Landing to App Router; static homepage prerender
+3387c9b Phase 2c: Migrate Compare to App Router with dynamic metadata
+a5e65e9 Phase 2b fixup: cast JS-component imports to any for production type-check
+918745c Phase 2b: Migrate Analysis to App Router with JSON-LD structured data
+57a920f Phase 2a: Migrate Filings to App Router; strip duplicate chrome
+f54791f Phase 1: Next.js App Router scaffolding
+df8254c Add auto-warm: promote trending tickers to prewarm list
+0a92288 Ignore scratch files from analysis sessions
+ab1028e Add multi-layer caching, rate limiting, and daily pre-warmer
+fd102d2 Add GlobalSearchBar, crypto page with live coin prices, and SEC crypto disclosure scanner
+fb8a478 Merge nextjs-migration: Migrate from Vite to Next.js 16 App Router
+d29af95 Rename src/pages/ to src/page-components/ to avoid Next.js Pages Router conflict
+eb81390 Migrate from Vite to Next.js 16 App Router
+157e2cb Add Google Search Console verification file
+39e88f7 Fix hash URLs in sitemap and share/navigation links
+1bc97a1 Add react-helmet-async + per-route dynamic SEO meta tags

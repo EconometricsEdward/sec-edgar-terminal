@@ -69,11 +69,19 @@ export default function GlobalSearchBar() {
     if (error) setError(null);
   }, [input]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Ctrl+K / Cmd+K focuses the search bar
+  // Ctrl+K / Cmd+K — or plain "/" when not already typing — focuses the search bar
   useEffect(() => {
     const handler = (e) => {
       const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
-      if (isCmdK) {
+      const target = e.target;
+      const typing =
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      const isSlash =
+        e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey;
+      if (isCmdK || isSlash) {
         e.preventDefault();
         inputRef.current?.focus();
         inputRef.current?.select();

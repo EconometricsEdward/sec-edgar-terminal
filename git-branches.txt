@@ -1,0 +1,4 @@
+﻿* main
+  nextjs-day2-migration
+  remotes/origin/main
+  remotes/origin/nextjs-day2-migration

@@ -8,9 +8,11 @@ import {
   LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
   Loader2, AlertCircle,
 } from 'lucide-react';
-import { MetricChart as MetricChartImpl } from '../../../components/MetricChart.jsx';
+import dynamic from 'next/dynamic';
+import ChartSkeleton from '../../../components/ChartSkeleton.jsx';
+import RedFlagsImpl from '../../../components/RedFlags.jsx';
+import TickerNotFoundImpl from '../../../components/TickerNotFound.jsx';
 import SummaryDashboardImpl from '../../../components/SummaryDashboard.jsx';
-import StockPriceChartImpl from '../../../components/StockPriceChart.jsx';
 import InsiderActivityImpl from '../../../components/InsiderActivity.jsx';
 import HoldersSectionImpl from '../../../components/HoldersSection.jsx';
 import ConceptHistoryModalImpl from '../../../components/ConceptHistoryModal.jsx';
@@ -44,12 +46,24 @@ import { classifyIndustry, industryLabel, industryDisclosure } from '../../../ut
 // runtime behavior is unchanged.
 // ============================================================================
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const MetricChart = MetricChartImpl as any;
+// recharts is the single heaviest dependency in the client bundle, and these
+// two components are its only consumers. next/dynamic keeps that subtree out
+// of the initial bundle entirely — it streams in behind a skeleton the first
+// time a chart renders. ssr:false is safe here (this is a client island).
+const MetricChart = dynamic(
+  () => import('../../../components/MetricChart.jsx').then((m: any) => m.MetricChart),
+  { ssr: false, loading: () => <ChartSkeleton height={260} /> },
+) as any;
 const SummaryDashboard = SummaryDashboardImpl as any;
-const StockPriceChart = StockPriceChartImpl as any;
+const StockPriceChart = dynamic(
+  () => import('../../../components/StockPriceChart.jsx'),
+  { ssr: false, loading: () => <ChartSkeleton height={340} /> },
+) as any;
 const InsiderActivity = InsiderActivityImpl as any;
 const HoldersSection = HoldersSectionImpl as any;
 const ConceptHistoryModal = ConceptHistoryModalImpl as any;
+const RedFlags = RedFlagsImpl as any;
+const TickerNotFound = TickerNotFoundImpl as any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ============================================================================
@@ -108,6 +122,7 @@ const SECTIONS = [
   { id: 'stock-chart', label: 'Stock Chart', icon: LineChart },
   { id: 'insiders', label: 'Insiders', icon: Users },
   { id: 'holders', label: 'Holders', icon: Building2 },
+  { id: 'redflags', label: 'Red Flags', icon: AlertTriangle },
   { id: 'financials', label: 'Financials', icon: DollarSign },
   { id: 'ratios', label: 'Ratios', icon: Percent },
 ];
@@ -437,9 +452,14 @@ export default function AnalysisClient({
       )}
 
       {error && (
-        <div className="bg-rose-950/30 border-2 border-rose-900/60 px-4 py-3 mb-4 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-          <span className="text-sm text-rose-200">{error}</span>
+        <div className="mb-4">
+          <div className="bg-rose-950/30 border-2 border-rose-900/60 px-4 py-3 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="text-sm text-rose-200">{error}</span>
+          </div>
+          {/not found|unknown|could not (find|resolve)|no match/i.test(String(error)) && (
+            <TickerNotFound query={urlTicker} />
+          )}
         </div>
       )}
 
@@ -603,6 +623,17 @@ export default function AnalysisClient({
             {chartTicker && (
               <HoldersSection ticker={chartTicker} cik={company?.cik} companyName={company?.name} />
             )}
+
+            <section id="redflags" className="scroll-mt-4">
+              <SectionHeader icon={AlertTriangle} title="Red Flags" />
+              {chartTicker ? (
+                <RedFlags ticker={chartTicker} />
+              ) : (
+                <div className="border-2 border-stone-800 bg-stone-900/30 p-6 text-center">
+                  <p className="text-stone-500 text-xs uppercase tracking-widest">Waiting for company data...</p>
+                </div>
+              )}
+            </section>
 
             <section id="financials" className="scroll-mt-4">
               <SectionHeader icon={DollarSign} title="Financial Statements" />

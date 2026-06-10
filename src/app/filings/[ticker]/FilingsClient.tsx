@@ -7,6 +7,12 @@ import {
   Link as LinkIcon, AlertCircle, BarChart3, X,
 } from 'lucide-react';
 import { getItemsInfo } from '../../../utils/formItems.js';
+import { describeForm, deriveSignals } from '../../../utils/formIntel.js';
+import AISummaryImpl from '../../../components/AISummary.jsx';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const AISummary = AISummaryImpl as any;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ============================================================================
 // Types — exported so the server page can import them
@@ -377,29 +383,48 @@ export default function FilingsClient({
                                 {qFilings.map((f) => {
                                   const items =
                                     f.form === '8-K' ? getItemsInfo(f.items || '') : [];
+                                  const intel = describeForm(f.form);
+                                  const signals = deriveSignals(
+                                    f.form,
+                                    items.map((it) => it.code)
+                                  );
+                                  const signalCodes = new Set(
+                                    signals.map((s) => s.key.replace('item-', ''))
+                                  );
+                                  const plainItems = items.filter(
+                                    (it) => !signalCodes.has(it.code)
+                                  );
                                   return (
-                                    <a
+                                    <div
                                       key={f.accession}
-                                      href={f.documentUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
                                       className="flex items-start gap-4 px-5 py-3.5 hover:bg-amber-500/5 transition-colors group"
                                     >
                                       <div
                                         className={`shrink-0 px-2.5 py-1 text-[11px] font-black border tracking-wider ${formColor(
                                           f.form
                                         )} min-w-[80px] text-center`}
+                                        title={intel.desc}
                                       >
                                         {f.form}
                                       </div>
                                       <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                          <span className="text-sm font-bold text-stone-100 truncate">
+                                        <a
+                                          href={f.documentUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center gap-2 mb-0.5"
+                                        >
+                                          <span className="text-sm font-bold text-stone-100 truncate group-hover:text-amber-300 transition-colors">
                                             {f.primaryDescription ||
                                               f.primaryDoc ||
                                               'Filing Document'}
                                           </span>
                                           <ExternalLink className="w-3.5 h-3.5 text-stone-500 group-hover:text-amber-500 transition-colors shrink-0" />
+                                        </a>
+                                        <div className="text-[11px] text-stone-500 mb-1 truncate">
+                                          <span className="text-stone-400 font-semibold">{intel.label}</span>
+                                          {' — '}
+                                          {intel.desc}
                                         </div>
                                         <div className="flex items-center gap-4 text-[11px] text-stone-500 uppercase tracking-wider">
                                           <span className="flex items-center gap-1">
@@ -415,12 +440,24 @@ export default function FilingsClient({
                                             {f.accession}
                                           </span>
                                         </div>
-                                        {items.length > 0 && (
+                                        {(signals.length > 0 || plainItems.length > 0) && (
                                           <div className="flex flex-wrap gap-1 mt-1.5">
-                                            {items.map(({ code, label }) => (
+                                            {signals.map((s) => (
+                                              <span
+                                                key={s.key}
+                                                className={`px-1.5 py-0.5 border text-[9px] font-bold uppercase tracking-wider ${
+                                                  s.severity === 'alert'
+                                                    ? 'bg-rose-950/60 border-rose-700/60 text-rose-200'
+                                                    : 'bg-amber-950/40 border-amber-800/40 text-amber-200'
+                                                }`}
+                                              >
+                                                {s.label}
+                                              </span>
+                                            ))}
+                                            {plainItems.map(({ code, label }) => (
                                               <span
                                                 key={code}
-                                                className="px-1.5 py-0.5 bg-rose-950/40 border border-rose-800/40 text-rose-200 text-[9px] font-bold uppercase tracking-wider"
+                                                className="px-1.5 py-0.5 bg-stone-900 border border-stone-700/60 text-stone-300 text-[9px] font-bold uppercase tracking-wider"
                                                 title={`8-K Item ${code}`}
                                               >
                                                 {code} · {label}
@@ -428,8 +465,15 @@ export default function FilingsClient({
                                             ))}
                                           </div>
                                         )}
+                                        <AISummary
+                                          cik={company?.cik}
+                                          accession={f.accession}
+                                          primaryDoc={f.primaryDoc}
+                                          ticker={ticker}
+                                          form={f.form}
+                                        />
                                       </div>
-                                    </a>
+                                    </div>
                                   );
                                 })}
                               </div>
