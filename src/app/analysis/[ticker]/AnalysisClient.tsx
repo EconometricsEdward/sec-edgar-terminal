@@ -509,7 +509,7 @@ export default function AnalysisClient({
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Use the search bar above to look up any company by ticker or name.
             You'll see financial data, industry-specific ratios, stock prices with filing markers,
-            and insider trading activity.
+            profitability bridge, per-share economics, capital efficiency, and insider trading activity.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
             Mutual fund and ETF tickers are automatically routed to the Funds page.
@@ -651,6 +651,13 @@ export default function AnalysisClient({
                     onTraceRow={traceRowHistory}
                   />
                   <PerShareEconomicsPanel
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
+                  <CapitalEfficiencyPanel
                     facts={facts}
                     periods={annualPeriods}
                     sicCode={sicCode}
@@ -4364,6 +4371,497 @@ function PerShareEconomicsPanel({
           />
           <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
             Derived per-share values divide annual SEC XBRL amounts by diluted weighted-average shares. Cash returns use payment magnitudes where SEC tags report outflow concepts; linked values open the reported source tags.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CapitalEfficiencyPanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}) {
+  const { tiles, tableRows, displayPeriods, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 5);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as SnapshotTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+        group,
+      };
+    }
+
+    const metricRow = (key: string, label: string, format = 'currency') => (
+      buildMetricRow(facts, key, label, displayPeriods, format, group as any)
+    );
+
+    const rowsByKey = {
+      revenue: metricRow('revenue', 'Revenue'),
+      operatingIncome: metricRow('operatingIncome', 'Operating Income'),
+      pretaxIncome: metricRow('pretaxIncome', 'Pre-tax Income'),
+      incomeTax: metricRow('incomeTax', 'Income Tax'),
+      netIncome: metricRow('netIncome', 'Net Income'),
+      totalAssets: metricRow('totalAssets', 'Total Assets'),
+      stockholdersEquity: metricRow('stockholdersEquity', "Stockholders' Equity"),
+      cash: metricRow('cash', 'Cash & Equivalents'),
+      shortTermDebt: metricRow('shortTermDebt', 'Short-term Debt'),
+      longTermDebt: metricRow('longTermDebt', 'Long-term Debt'),
+      operatingCashFlow: metricRow('operatingCashFlow', 'Operating Cash Flow'),
+      capex: metricRow('capex', 'Capital Expenditures'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const magnitude = (item: MetricPoint | null) => {
+      const value = num(item);
+      return value == null ? null : Math.abs(value);
+    };
+    const pct = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return (numerator / denominator) * 100;
+    };
+    const ratio = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return numerator / denominator;
+    };
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter((source): source is SourceFact & { label: string } => {
+          if (!source?.tag) return false;
+          const key = `${source.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+
+    const valueForPeriod = (index: number) => {
+      const revenuePoint = point('revenue', index);
+      const operatingIncomePoint = point('operatingIncome', index);
+      const pretaxIncomePoint = point('pretaxIncome', index);
+      const incomeTaxPoint = point('incomeTax', index);
+      const netIncomePoint = point('netIncome', index);
+      const assetsPoint = point('totalAssets', index);
+      const equityPoint = point('stockholdersEquity', index);
+      const cashPoint = point('cash', index);
+      const shortDebtPoint = point('shortTermDebt', index);
+      const longDebtPoint = point('longTermDebt', index);
+      const ocfPoint = point('operatingCashFlow', index);
+      const capexPoint = point('capex', index);
+
+      const revenue = num(revenuePoint);
+      const operatingIncome = num(operatingIncomePoint);
+      const pretaxIncome = num(pretaxIncomePoint);
+      const incomeTax = num(incomeTaxPoint);
+      const netIncome = num(netIncomePoint);
+      const assets = num(assetsPoint);
+      const equity = num(equityPoint);
+      const cash = num(cashPoint);
+      const shortDebt = num(shortDebtPoint);
+      const longDebt = num(longDebtPoint);
+      const ocf = num(ocfPoint);
+      const capex = magnitude(capexPoint);
+      const totalDebt = shortDebt != null || longDebt != null ? (shortDebt || 0) + (longDebt || 0) : null;
+      const capitalEmployed = equity != null && totalDebt != null && cash != null
+        ? equity + totalDebt - cash
+        : null;
+      const taxRate = pretaxIncome != null && pretaxIncome > 0 && incomeTax != null
+        ? Math.min(Math.max(incomeTax / pretaxIncome, 0), 1)
+        : null;
+      const nopat = operatingIncome != null && taxRate != null
+        ? operatingIncome * (1 - taxRate)
+        : null;
+      const fcf = ocf != null && capex != null ? ocf - capex : null;
+
+      return {
+        revenuePoint,
+        operatingIncomePoint,
+        pretaxIncomePoint,
+        incomeTaxPoint,
+        netIncomePoint,
+        assetsPoint,
+        equityPoint,
+        cashPoint,
+        shortDebtPoint,
+        longDebtPoint,
+        ocfPoint,
+        capexPoint,
+        revenue,
+        operatingIncome,
+        pretaxIncome,
+        incomeTax,
+        netIncome,
+        assets,
+        equity,
+        cash,
+        shortDebt,
+        longDebt,
+        totalDebt,
+        capitalEmployed,
+        taxRate,
+        nopat,
+        fcf,
+        roe: pct(netIncome, equity),
+        roa: pct(netIncome, assets),
+        assetTurnover: ratio(revenue, assets),
+        equityMultiplier: ratio(assets, equity),
+        debtEquity: ratio(totalDebt, equity),
+        operatingReturnOnAssets: pct(operatingIncome, assets),
+        operatingReturnOnCapital: pct(operatingIncome, capitalEmployed),
+        roic: pct(nopat, capitalEmployed),
+        fcfReturnOnCapital: pct(fcf, capitalEmployed),
+      };
+    };
+
+    const capitalInputs = (v: ReturnType<typeof valueForPeriod>) => [
+      ['Equity', v.equityPoint],
+      ['ST Debt', v.shortDebtPoint],
+      ['LT Debt', v.longDebtPoint],
+      ['Cash', v.cashPoint],
+    ] as Array<[string, MetricPoint | null]>;
+    const nopatInputs = (v: ReturnType<typeof valueForPeriod>) => [
+      ['Operating Income', v.operatingIncomePoint],
+      ['Income Tax', v.incomeTaxPoint],
+      ['Pre-tax Income', v.pretaxIncomePoint],
+    ] as Array<[string, MetricPoint | null]>;
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => {
+      const sources = sourceFacts(inputs);
+      return {
+        period: displayPeriods[index],
+        value,
+        source: sources[0] || null,
+        sources,
+      };
+    };
+
+    const tableRows = [
+      {
+        key: 'revenue',
+        label: 'Revenue',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const revenuePoint = point('revenue', index);
+          return {
+            ...rowsByKey.revenue.values[index],
+            sources: sourceFacts([['Revenue', revenuePoint]]),
+          };
+        }),
+      },
+      {
+        key: 'netIncome',
+        label: 'Net Income',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const netIncomePoint = point('netIncome', index);
+          return {
+            ...rowsByKey.netIncome.values[index],
+            sources: sourceFacts([['Net Income', netIncomePoint]]),
+          };
+        }),
+      },
+      {
+        key: 'capitalEmployed',
+        label: 'Capital Employed',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.capitalEmployed, capitalInputs(v));
+        }),
+      },
+      {
+        key: 'roe',
+        label: 'Return on Equity',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.roe, [
+            ['Net Income', v.netIncomePoint],
+            ['Equity', v.equityPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'roa',
+        label: 'Return on Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.roa, [
+            ['Net Income', v.netIncomePoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'assetTurnover',
+        label: 'Asset Turnover',
+        format: 'decimal',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.assetTurnover, [
+            ['Revenue', v.revenuePoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'equityMultiplier',
+        label: 'Equity Multiplier',
+        format: 'decimal',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.equityMultiplier, [
+            ['Assets', v.assetsPoint],
+            ['Equity', v.equityPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'operatingReturnOnAssets',
+        label: 'Operating Return on Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.operatingReturnOnAssets, [
+            ['Operating Income', v.operatingIncomePoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'nopat',
+        label: 'NOPAT Proxy',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.nopat, nopatInputs(v));
+        }),
+      },
+      {
+        key: 'roic',
+        label: 'ROIC Proxy',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.roic, [
+            ...nopatInputs(v),
+            ...capitalInputs(v),
+          ]);
+        }),
+      },
+      {
+        key: 'operatingReturnOnCapital',
+        label: 'Operating Return on Capital',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.operatingReturnOnCapital, [
+            ['Operating Income', v.operatingIncomePoint],
+            ...capitalInputs(v),
+          ]);
+        }),
+      },
+      {
+        key: 'fcfReturnOnCapital',
+        label: 'FCF Return on Capital',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.fcfReturnOnCapital, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Capex', v.capexPoint],
+            ...capitalInputs(v),
+          ]);
+        }),
+      },
+      {
+        key: 'debtEquity',
+        label: 'Debt / Equity',
+        format: 'decimal',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.debtEquity, [
+            ['ST Debt', v.shortDebtPoint],
+            ['LT Debt', v.longDebtPoint],
+            ['Equity', v.equityPoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: SnapshotTile[] = [];
+    const addTile = (
+      tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }
+    ) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.roe != null) {
+      addTile({
+        key: 'capital-efficiency-roe',
+        label: 'Return on Equity',
+        value: latest.roe,
+        format: 'percent',
+        detail: 'Net income divided by stockholders equity',
+        tone: latest.roe >= 15 ? 'good' : latest.roe >= 8 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Net Income', latest.netIncomePoint],
+          ['Equity', latest.equityPoint],
+        ]),
+      });
+    }
+
+    if (latest.roic != null) {
+      addTile({
+        key: 'capital-efficiency-roic',
+        label: 'ROIC Proxy',
+        value: latest.roic,
+        format: 'percent',
+        detail: 'Tax-adjusted operating income over capital employed',
+        tone: latest.roic >= 12 ? 'good' : latest.roic >= 6 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Income', latest.operatingIncomePoint],
+          ['Income Tax', latest.incomeTaxPoint],
+          ['Pre-tax Income', latest.pretaxIncomePoint],
+          ['Equity', latest.equityPoint],
+          ['Debt', latest.longDebtPoint || latest.shortDebtPoint],
+          ['Cash', latest.cashPoint],
+        ]),
+      });
+    }
+
+    if (latest.fcfReturnOnCapital != null) {
+      addTile({
+        key: 'capital-efficiency-fcf-return',
+        label: 'FCF Return on Capital',
+        value: latest.fcfReturnOnCapital,
+        format: 'percent',
+        detail: `Free cash flow: ${formatValue(latest.fcf, 'currency')}`,
+        tone: latest.fcfReturnOnCapital >= 8 ? 'good' : latest.fcfReturnOnCapital >= 0 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Cash Flow', latest.ocfPoint],
+          ['Capex', latest.capexPoint],
+          ['Equity', latest.equityPoint],
+          ['Debt', latest.longDebtPoint || latest.shortDebtPoint],
+          ['Cash', latest.cashPoint],
+        ]),
+      });
+    }
+
+    if (latest.assetTurnover != null) {
+      addTile({
+        key: 'capital-efficiency-asset-turnover',
+        label: 'Asset Turnover',
+        value: latest.assetTurnover,
+        format: 'decimal',
+        detail: 'Revenue divided by total assets',
+        tone: 'neutral',
+        sources: snapshotSources([
+          ['Revenue', latest.revenuePoint],
+          ['Assets', latest.assetsPoint],
+        ]),
+      });
+    }
+
+    if (latest.debtEquity != null) {
+      addTile({
+        key: 'capital-efficiency-debt-equity',
+        label: 'Debt / Equity',
+        value: latest.debtEquity,
+        format: 'decimal',
+        detail: `Total debt: ${formatValue(latest.totalDebt, 'currency')}`,
+        tone: latest.debtEquity <= 0.5 ? 'good' : latest.debtEquity <= 1.5 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['ST Debt', latest.shortDebtPoint],
+          ['LT Debt', latest.longDebtPoint],
+          ['Equity', latest.equityPoint],
+        ]),
+      });
+    }
+
+    return { tiles: tiles.slice(0, 4), tableRows, displayPeriods, latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Capital Efficiency
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked returns, turnover, leverage, and capital-employed signals for {industryLabel(group)} companies.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {latestPeriod ? periodLabel(latestPeriod) : 'Annual'} inputs
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <QualityTile key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Five-Year Return on Capital Bridge
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Revenue', 'Net Income', 'Capital Employed', 'Return on Equity', 'ROIC Proxy', 'FCF Return on Capital'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Capital employed is stockholders equity plus reported short- and long-term debt less cash. ROIC proxy applies the latest period's reported tax rate to operating income before dividing by capital employed; linked values open the SEC source tags used in each calculation.
           </p>
         </div>
       )}
