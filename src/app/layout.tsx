@@ -192,12 +192,6 @@ export default function RootLayout({
               <footer className="mt-12 pt-6 border-t-2 border-stone-800 text-[10px] uppercase tracking-widest text-stone-500 flex flex-wrap justify-between gap-2">
                 <span>Data via SEC.gov · Public EDGAR APIs · XBRL Financial Facts</span>
                 <span>For research use only · Not investment advice</span>
-                <Link
-                  href="/paid-api"
-                  className="text-amber-500 hover:text-amber-300 transition-colors"
-                >
-                  Paid snapshot API
-                </Link>
                 <a
                   href="https://pages.share-html.com/quickproof-micro-audit-20260609?utm_source=edgar-terminal&utm_medium=footer&utm_campaign=owned-github"
                   target="_blank"
