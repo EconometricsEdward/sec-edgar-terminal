@@ -8,7 +8,7 @@ import { BarChart3, ArrowRight } from 'lucide-react';
 export const metadata: Metadata = {
   title: 'Financial Analysis — SEC XBRL Data',
   description:
-    'Structured financial analysis for every U.S. public company. Income statement, balance sheet, cash flow, filing activity, material event radar, and industry-aware ratios from SEC XBRL data.',
+    'Structured financial analysis for every U.S. public company. Income statement, balance sheet, cash flow, filing activity, material event radar, balance sheet risk, and industry-aware ratios from SEC XBRL data.',
   alternates: {
     canonical: 'https://secedgarterminal.com/analysis',
   },
@@ -42,7 +42,7 @@ export default function AnalysisIndexPage() {
           statement, balance sheet, cash flow, and industry-aware ratios pulled
           directly from SEC XBRL filings. Includes 10-year stock price history
           with filing markers, insider trading activity, institutional holders,
-          material event radar, and concept-level history (including restatements).
+          material event radar, balance sheet risk, and concept-level history (including restatements).
         </p>
       </div>
 
@@ -82,7 +82,7 @@ export default function AnalysisIndexPage() {
         <p className="text-stone-600 text-xs max-w-md mx-auto">
           Use the search bar above to look up any company by ticker or name.
           You'll see financial data, industry-specific ratios, stock prices
-          with filing markers, material event radar, and insider trading activity.
+          with filing markers, material event radar, balance sheet risk, and insider trading activity.
         </p>
         <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
           Mutual fund and ETF tickers are automatically routed to the Funds page.

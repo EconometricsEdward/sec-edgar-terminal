@@ -643,6 +643,13 @@ export default function AnalysisClient({
                   <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
+                  <BalanceSheetRiskPanel
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
                   <CapitalAllocationPanel
                     facts={facts}
                     periods={annualPeriods}
@@ -1270,6 +1277,371 @@ function CapitalTileCard({ tile, cik }: { tile: CapitalTile; cik?: string }) {
           <SourceChip key={`${tile.key}-${source.label}`} source={source} cik={cik} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function BalanceSheetRiskPanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}) {
+  const { tiles, tableRows, displayPeriods, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 5);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as SnapshotTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+        group,
+      };
+    }
+
+    const metricRow = (key: string, label: string) => (
+      buildMetricRow(facts, key, label, displayPeriods, 'currency', group as any)
+    );
+    const rowsByKey = {
+      revenue: metricRow('revenue', 'Revenue'),
+      cash: metricRow('cash', 'Cash & Equivalents'),
+      currentAssets: metricRow('currentAssets', 'Current Assets'),
+      currentLiabilities: metricRow('currentLiabilities', 'Current Liabilities'),
+      shortTermDebt: metricRow('shortTermDebt', 'Short-term Debt'),
+      longTermDebt: metricRow('longTermDebt', 'Long-term Debt'),
+      totalAssets: metricRow('totalAssets', 'Total Assets'),
+      totalLiabilities: metricRow('totalLiabilities', 'Total Liabilities'),
+      stockholdersEquity: metricRow('stockholdersEquity', "Stockholders' Equity"),
+      operatingCashFlow: metricRow('operatingCashFlow', 'Operating Cash Flow'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter((source): source is SourceFact & { label: string } => {
+          if (!source?.tag) return false;
+          const key = `${source.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+    const ratio = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return numerator / denominator;
+    };
+    const pct = (numerator: number | null, denominator: number | null) => {
+      const value = ratio(numerator, denominator);
+      return value == null ? null : value * 100;
+    };
+    const valueForPeriod = (index: number) => {
+      const revenuePoint = point('revenue', index);
+      const cashPoint = point('cash', index);
+      const currentAssetsPoint = point('currentAssets', index);
+      const currentLiabilitiesPoint = point('currentLiabilities', index);
+      const shortDebtPoint = point('shortTermDebt', index);
+      const longDebtPoint = point('longTermDebt', index);
+      const totalAssetsPoint = point('totalAssets', index);
+      const totalLiabilitiesPoint = point('totalLiabilities', index);
+      const equityPoint = point('stockholdersEquity', index);
+      const ocfPoint = point('operatingCashFlow', index);
+
+      const revenue = num(revenuePoint);
+      const cash = num(cashPoint);
+      const currentAssets = num(currentAssetsPoint);
+      const currentLiabilities = num(currentLiabilitiesPoint);
+      const shortDebt = num(shortDebtPoint);
+      const longDebt = num(longDebtPoint);
+      const totalAssets = num(totalAssetsPoint);
+      const totalLiabilities = num(totalLiabilitiesPoint);
+      const equity = num(equityPoint);
+      const ocf = num(ocfPoint);
+      const totalDebt = shortDebt != null || longDebt != null ? (shortDebt || 0) + (longDebt || 0) : null;
+      const netDebt = totalDebt != null && cash != null ? totalDebt - cash : null;
+      const workingCapital = currentAssets != null && currentLiabilities != null
+        ? currentAssets - currentLiabilities
+        : null;
+
+      return {
+        revenuePoint,
+        cashPoint,
+        currentAssetsPoint,
+        currentLiabilitiesPoint,
+        shortDebtPoint,
+        longDebtPoint,
+        totalAssetsPoint,
+        totalLiabilitiesPoint,
+        equityPoint,
+        ocfPoint,
+        revenue,
+        cash,
+        currentAssets,
+        currentLiabilities,
+        totalDebt,
+        netDebt,
+        totalAssets,
+        totalLiabilities,
+        equity,
+        ocf,
+        workingCapital,
+        currentRatio: ratio(currentAssets, currentLiabilities),
+        cashCurrentLiabilities: pct(cash, currentLiabilities),
+        workingCapitalRevenue: pct(workingCapital, revenue),
+        liabilitiesAssets: pct(totalLiabilities, totalAssets),
+        debtEquity: pct(totalDebt, equity),
+        netDebtCfo: ratio(netDebt, ocf && ocf > 0 ? ocf : null),
+      };
+    };
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => ({
+      period: displayPeriods[index],
+      value,
+      source: sourceFacts(inputs)[0] || null,
+      sources: sourceFacts(inputs),
+    });
+
+    const tableRows = [
+      {
+        key: 'currentRatio',
+        label: 'Current Ratio',
+        format: 'decimal',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.currentRatio, [
+            ['Current Assets', v.currentAssetsPoint],
+            ['Current Liabilities', v.currentLiabilitiesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'workingCapital',
+        label: 'Working Capital',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.workingCapital, [
+            ['Current Assets', v.currentAssetsPoint],
+            ['Current Liabilities', v.currentLiabilitiesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cashCoverage',
+        label: 'Cash / Current Liabilities',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cashCurrentLiabilities, [
+            ['Cash', v.cashPoint],
+            ['Current Liabilities', v.currentLiabilitiesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'netDebt',
+        label: 'Net Debt',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.netDebt, [
+            ['Short-term Debt', v.shortDebtPoint],
+            ['Long-term Debt', v.longDebtPoint],
+            ['Cash', v.cashPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'netDebtCfo',
+        label: 'Net Debt / CFO',
+        format: 'decimal',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.netDebtCfo, [
+            ['Short-term Debt', v.shortDebtPoint],
+            ['Long-term Debt', v.longDebtPoint],
+            ['Cash', v.cashPoint],
+            ['CFO', v.ocfPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'liabilitiesAssets',
+        label: 'Liabilities / Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.liabilitiesAssets, [
+            ['Liabilities', v.totalLiabilitiesPoint],
+            ['Assets', v.totalAssetsPoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: SnapshotTile[] = [];
+    const addTile = (tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.currentRatio != null) {
+      addTile({
+        key: 'current-ratio',
+        label: 'Current Ratio',
+        value: latest.currentRatio,
+        format: 'decimal',
+        detail: 'Current assets divided by current liabilities',
+        tone: latest.currentRatio >= 1.5 ? 'good' : latest.currentRatio >= 1 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Current Assets', latest.currentAssetsPoint],
+          ['Current Liabilities', latest.currentLiabilitiesPoint],
+        ]),
+      });
+    }
+
+    if (latest.cashCurrentLiabilities != null) {
+      addTile({
+        key: 'cash-current-liabilities',
+        label: 'Cash / Current Liabilities',
+        value: latest.cashCurrentLiabilities,
+        format: 'percent',
+        detail: 'Cash coverage of near-term reported obligations',
+        tone: latest.cashCurrentLiabilities >= 50 ? 'good' : latest.cashCurrentLiabilities >= 20 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Cash', latest.cashPoint],
+          ['Current Liabilities', latest.currentLiabilitiesPoint],
+        ]),
+      });
+    }
+
+    if (latest.netDebtCfo != null) {
+      addTile({
+        key: 'net-debt-cfo',
+        label: 'Net Debt / CFO',
+        value: latest.netDebtCfo,
+        format: 'decimal',
+        detail: `Net debt: ${formatValue(latest.netDebt, 'currency')}; CFO: ${formatValue(latest.ocf, 'currency')}`,
+        tone: latest.netDebt != null && latest.netDebt <= 0 ? 'good' : latest.netDebtCfo <= 2 ? 'good' : latest.netDebtCfo <= 4 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Short-term Debt', latest.shortDebtPoint],
+          ['Long-term Debt', latest.longDebtPoint],
+          ['Cash', latest.cashPoint],
+          ['CFO', latest.ocfPoint],
+        ]),
+      });
+    }
+
+    if (latest.workingCapitalRevenue != null) {
+      addTile({
+        key: 'working-capital-revenue',
+        label: 'Working Capital / Revenue',
+        value: latest.workingCapitalRevenue,
+        format: 'percent',
+        detail: `Working capital: ${formatValue(latest.workingCapital, 'currency')}`,
+        tone: latest.workingCapitalRevenue >= 10 ? 'good' : latest.workingCapitalRevenue >= 0 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Current Assets', latest.currentAssetsPoint],
+          ['Current Liabilities', latest.currentLiabilitiesPoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.liabilitiesAssets != null) {
+      addTile({
+        key: 'liabilities-assets',
+        label: 'Liabilities / Assets',
+        value: latest.liabilitiesAssets,
+        format: 'percent',
+        detail: 'Reported liabilities as a share of total assets',
+        tone: latest.liabilitiesAssets <= 60 ? 'good' : latest.liabilitiesAssets <= 80 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Liabilities', latest.totalLiabilitiesPoint],
+          ['Assets', latest.totalAssetsPoint],
+        ]),
+      });
+    }
+
+    return { tiles: tiles.slice(0, 4), tableRows, displayPeriods, latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-sky-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Balance Sheet Risk
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked liquidity, leverage, and working-capital signals for {latestPeriod ? periodLabel(latestPeriod) : 'the latest annual period'}.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {industryLabel(group)}
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <QualityTile key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Five-Year Balance Sheet Watch
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Working Capital', 'Net Debt'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Derived ratios use reported SEC XBRL values. Click linked values to open the source filing/tag; use the history icon to inspect the underlying concept over time.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
