@@ -509,7 +509,7 @@ export default function AnalysisClient({
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Use the search bar above to look up any company by ticker or name.
             You'll see financial data, industry-specific ratios, stock prices with filing markers,
-            quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, and insider trading activity.
+            quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, payout coverage, capital efficiency, and insider trading activity.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
             Mutual fund and ETF tickers are automatically routed to the Funds page.
@@ -1046,6 +1046,7 @@ function CapitalAllocationPanel({
     );
 
     const rowsByKey = {
+      netIncome: metricRow('netIncome', 'Net Income'),
       operatingCashFlow: metricRow('operatingCashFlow', 'Operating Cash Flow'),
       capex: metricRow('capex', 'Capital Expenditures'),
       dividendsPaid: metricRow('dividendsPaid', 'Dividends Paid'),
@@ -1081,6 +1082,7 @@ function CapitalAllocationPanel({
     const valueForPeriod = (index: number) => {
       const ocfPoint = point('operatingCashFlow', index);
       const capexPoint = point('capex', index);
+      const netIncomePoint = point('netIncome', index);
       const dividendPoint = point('dividendsPaid', index);
       const buybackPoint = point('stockRepurchased', index);
       const issuedPoint = point('debtIssued', index);
@@ -1088,6 +1090,7 @@ function CapitalAllocationPanel({
 
       const ocf = num(ocfPoint);
       const capex = outflow(capexPoint);
+      const netIncome = num(netIncomePoint);
       const dividends = outflow(dividendPoint);
       const buybacks = outflow(buybackPoint);
       const debtIssued = num(issuedPoint);
@@ -1095,21 +1098,33 @@ function CapitalAllocationPanel({
       const fcf = ocf != null && capex != null ? ocf - capex : null;
       const cashReturned = dividends != null || buybacks != null ? (dividends || 0) + (buybacks || 0) : null;
       const netDebtIssued = debtIssued != null || debtRepaid != null ? (debtIssued || 0) - (debtRepaid || 0) : null;
+      const payoutRatio = (outflowValue: number | null, incomeValue: number | null) => (
+        outflowValue != null && incomeValue != null && incomeValue > 0
+          ? (outflowValue / incomeValue) * 100
+          : null
+      );
 
       return {
         ocfPoint,
         capexPoint,
+        netIncomePoint,
         dividendPoint,
         buybackPoint,
         issuedPoint,
         repaidPoint,
         ocf,
         capex,
+        netIncome,
         dividends,
         buybacks,
         fcf,
         cashReturned,
         netDebtIssued,
+        dividendNetIncome: payoutRatio(dividends, netIncome),
+        dividendFcf: payoutRatio(dividends, fcf),
+        buybacksFcf: payoutRatio(buybacks, fcf),
+        cashReturnedNetIncome: payoutRatio(cashReturned, netIncome),
+        cashReturnedFcf: payoutRatio(cashReturned, fcf),
       };
     };
 
@@ -1125,6 +1140,15 @@ function CapitalAllocationPanel({
     });
 
     const tableRows = [
+      {
+        key: 'netIncome',
+        label: 'Net Income',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const p = point('netIncome', index);
+          return { ...rowsByKey.netIncome.values[index], sources: sourceFacts([['Net Income', p]]) };
+        }),
+      },
       {
         key: 'operatingCashFlow',
         label: 'Operating Cash Flow',
@@ -1164,6 +1188,89 @@ function CapitalAllocationPanel({
           return rowValue(index, v.cashReturned, [
             ['Buybacks', v.buybackPoint],
             ['Dividends', v.dividendPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'dividendsPaid',
+        label: 'Dividends Paid',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.dividends, [['Dividends', v.dividendPoint]]);
+        }),
+      },
+      {
+        key: 'stockRepurchased',
+        label: 'Share Repurchases',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.buybacks, [['Buybacks', v.buybackPoint]]);
+        }),
+      },
+      {
+        key: 'dividendNetIncome',
+        label: 'Dividends / Net Income',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.dividendNetIncome, [
+            ['Dividends', v.dividendPoint],
+            ['Net Income', v.netIncomePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'dividendFcf',
+        label: 'Dividends / FCF',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.dividendFcf, [
+            ['Dividends', v.dividendPoint],
+            ['OCF', v.ocfPoint],
+            ['Capex', v.capexPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'buybacksFcf',
+        label: 'Buybacks / FCF',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.buybacksFcf, [
+            ['Buybacks', v.buybackPoint],
+            ['OCF', v.ocfPoint],
+            ['Capex', v.capexPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cashReturnedNetIncome',
+        label: 'Cash Returned / Net Income',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cashReturnedNetIncome, [
+            ['Buybacks', v.buybackPoint],
+            ['Dividends', v.dividendPoint],
+            ['Net Income', v.netIncomePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cashReturnedFcf',
+        label: 'Cash Returned / FCF',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cashReturnedFcf, [
+            ['Buybacks', v.buybackPoint],
+            ['Dividends', v.dividendPoint],
+            ['OCF', v.ocfPoint],
+            ['Capex', v.capexPoint],
           ]);
         }),
       },
@@ -1238,6 +1345,53 @@ function CapitalAllocationPanel({
       });
     }
 
+    if (latest.dividendFcf != null) {
+      addTile({
+        key: 'dividend-fcf-coverage',
+        label: 'Dividends / FCF',
+        value: latest.dividendFcf,
+        format: 'percent',
+        detail: `Dividends paid: ${formatValue(latest.dividends, 'currency')}`,
+        tone: latest.dividendFcf <= 60 ? 'good' : latest.dividendFcf <= 100 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Dividends', latest.dividendPoint],
+          ['OCF', latest.ocfPoint],
+          ['Capex', latest.capexPoint],
+        ]),
+      });
+    }
+
+    if (latest.dividendNetIncome != null) {
+      addTile({
+        key: 'dividend-net-income-coverage',
+        label: 'Dividends / Net Income',
+        value: latest.dividendNetIncome,
+        format: 'percent',
+        detail: 'Dividends paid divided by reported net income',
+        tone: latest.dividendNetIncome <= 60 ? 'good' : latest.dividendNetIncome <= 100 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Dividends', latest.dividendPoint],
+          ['Net Income', latest.netIncomePoint],
+        ]),
+      });
+    }
+
+    if (latest.cashReturnedNetIncome != null) {
+      addTile({
+        key: 'cash-returned-net-income',
+        label: 'Cash Returned / Net Income',
+        value: latest.cashReturnedNetIncome,
+        format: 'percent',
+        detail: 'Dividends plus buybacks divided by reported net income',
+        tone: latest.cashReturnedNetIncome <= 80 ? 'good' : latest.cashReturnedNetIncome <= 120 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Buybacks', latest.buybackPoint],
+          ['Dividends', latest.dividendPoint],
+          ['Net Income', latest.netIncomePoint],
+        ]),
+      });
+    }
+
     if (latest.netDebtIssued != null) {
       addTile({
         key: 'net-debt-issued',
@@ -1269,7 +1423,7 @@ function CapitalAllocationPanel({
             </h3>
           </div>
           <p className="mt-1 text-[11px] text-stone-500">
-            Latest annual cash generation, reinvestment, shareholder returns, and debt flows.
+            Latest annual cash generation, reinvestment, payout coverage, shareholder returns, and debt flows.
           </p>
         </div>
         <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
@@ -1288,7 +1442,7 @@ function CapitalAllocationPanel({
       {tableRows.length > 0 && displayPeriods.length > 0 && (
         <div className="border-t border-stone-800 p-4">
           <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
-            Five-Year Cash Deployment
+            Five-Year Cash Deployment & Payout Coverage
           </div>
           <FinancialTable
             rows={tableRows}
@@ -1296,10 +1450,10 @@ function CapitalAllocationPanel({
             growthVisible={false}
             cik={cik}
             onTraceRow={onTraceRow}
-            isHeaderRow={(label: string) => ['Free Cash Flow', 'Cash Returned'].includes(label)}
+            isHeaderRow={(label: string) => ['Net Income', 'Free Cash Flow', 'Cash Returned', 'Dividends / FCF', 'Cash Returned / FCF'].includes(label)}
           />
           <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
-            Capex, dividends, repurchases, and debt repayments are shown as cash-flow magnitudes where SEC tags report payment concepts.
+            Capex, dividends, repurchases, and debt repayments are shown as cash-flow magnitudes where SEC tags report payment concepts. Payout coverage rows compare those cash returns with reported net income and free cash flow; linked values open each source tag.
           </p>
         </div>
       )}
