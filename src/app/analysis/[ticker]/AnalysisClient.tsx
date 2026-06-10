@@ -581,7 +581,7 @@ export default function AnalysisClient({
 
               {annualPeriods.length > 0 && (
                 <>
-                  <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} />
+                  <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                 </>
               )}

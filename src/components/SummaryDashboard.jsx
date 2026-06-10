@@ -1,12 +1,12 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { formatValue, formatGrowth, computeGrowth, buildMetricRow, periodLabel } from '../utils/xbrlParser.js';
+import { TrendingUp, TrendingDown, Minus, ExternalLink } from 'lucide-react';
+import { formatValue, formatGrowth, computeGrowth, buildMetricRow, periodLabel, buildSourceUrl } from '../utils/xbrlParser.js';
 
 /**
  * Headline summary cards at the top of the Analysis page.
  * Shows the 6 most important metrics with latest value, YoY, 5Y CAGR.
  */
-export default function SummaryDashboard({ facts, periods, sicCode }) {
+export default function SummaryDashboard({ facts, periods, sicCode, cik }) {
   if (!facts || !periods || periods.length === 0) return null;
 
   const isBank = () => {
@@ -36,7 +36,9 @@ export default function SummaryDashboard({ facts, periods, sicCode }) {
   const cards = metricsConfig.map((m) => {
     const row = buildMetricRow(facts, m.key, m.label, periods, m.format, sicCode);
     const growth = computeGrowth(row);
-    return { ...m, row, ...growth };
+    const latestPoint = row.values[0] || {};
+    const sourceUrl = latestPoint.source && cik ? buildSourceUrl(cik, latestPoint.source) : null;
+    return { ...m, row, latestPoint, sourceUrl, ...growth };
   });
 
   const latestPeriod = periods[0];
@@ -65,11 +67,31 @@ function SummaryCard({ card }) {
   const yoy = formatGrowth(card.yoy);
   const cagr5 = formatGrowth(card.cagr5y);
   const cagr10 = formatGrowth(card.cagr10y);
+  const source = card.latestPoint?.source;
+  const tooltip = source
+    ? `Tag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}\nClick to open SEC source`
+    : card.latest == null ? 'No data reported for this concept' : 'Computed value';
+  const linked = card.sourceUrl && card.latest != null;
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900/40 p-4 hover:border-stone-700 transition-colors">
       <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 mb-1.5">{card.label}</div>
-      <div className="text-2xl font-black text-amber-400 mb-2 tabular-nums">{latestText}</div>
+      <div className="text-2xl font-black text-amber-400 mb-2 tabular-nums">
+        {linked ? (
+          <a
+            href={card.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={tooltip}
+            className="inline-flex items-center gap-1 hover:text-amber-300 transition-colors group/source"
+          >
+            <span>{latestText}</span>
+            <ExternalLink className="w-3.5 h-3.5 opacity-50 group-hover/source:opacity-90 shrink-0" />
+          </a>
+        ) : (
+          <span title={tooltip}>{latestText}</span>
+        )}
+      </div>
       <div className="flex items-center gap-3 text-[11px] font-bold tabular-nums">
         <GrowthPill icon label="YoY" data={yoy} />
         <GrowthPill label="5Y" data={cagr5} />
