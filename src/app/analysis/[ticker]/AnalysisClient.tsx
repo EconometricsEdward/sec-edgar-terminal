@@ -6,7 +6,7 @@ import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
   Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink, Info,
   LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
-  Loader2, AlertCircle, ShieldCheck, FileText, Search,
+  Loader2, AlertCircle, ShieldCheck, FileText, Search, Clock,
 } from 'lucide-react';
 import { MetricChart as MetricChartImpl } from '../../../components/MetricChart.jsx';
 import SummaryDashboardImpl from '../../../components/SummaryDashboard.jsx';
