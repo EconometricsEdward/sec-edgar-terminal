@@ -17,6 +17,7 @@ import ConceptHistoryModalImpl from '../../../components/ConceptHistoryModal.jsx
 import { TickerContext } from '../../../contexts/TickerContext';
 import { secDataUrl } from '../../../utils/secApi.js';
 import { checkIsFund } from '../../../utils/fundCheck.js';
+import { getItemsInfo } from '../../../utils/formItems.js';
 import {
   extractAnnualPeriods,
   extractQuarterlyPeriods,
@@ -69,6 +70,10 @@ interface FilingEntry {
   accession: string;
   accessionNumber: string;
   documentUrl: string;
+  reportDate?: string;
+  primaryDoc?: string;
+  primaryDescription?: string;
+  items?: string;
 }
 
 interface CompanyState {
@@ -267,6 +272,10 @@ export default function AnalysisClient({
               accession: acc,
               accessionNumber: acc,
               documentUrl: `https://www.sec.gov/Archives/edgar/data/${parseInt(entry.cik, 10)}/${accessionClean}/${primaryDoc}`,
+              reportDate: recent.reportDate?.[i],
+              primaryDoc,
+              primaryDescription: recent.primaryDocDescription?.[i],
+              items: recent.items?.[i],
             };
           });
           setFilings(allFilings);
@@ -600,6 +609,7 @@ export default function AnalysisClient({
                     filings={filings}
                     cik={company?.cik}
                   />
+                  <FilingActivityPanel filings={filings} ticker={chartTicker} />
                   <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                 </>
@@ -822,6 +832,203 @@ interface MetricPoint {
   value: number | null;
   source?: SourceFact | null;
   sources?: SourceFact[];
+}
+
+function FilingActivityPanel({
+  filings,
+  ticker,
+}: {
+  filings: FilingEntry[];
+  ticker?: string;
+}) {
+  const activity = useMemo(() => {
+    const latestAnnual = findLatestFiling(filings, ['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A']);
+    const latestQuarterly = findLatestFiling(filings, ['10-Q', '10-Q/A', '6-K']);
+    const latestCurrent = findLatestFiling(filings, ['8-K', '8-K/A', '6-K']);
+    const latestProxy = filings.find((filing) => filing.form.includes('DEF 14A') || filing.form.includes('PRE 14A')) || null;
+    const insiderForms = filings.filter((filing) => ['3', '3/A', '4', '4/A', '5', '5/A'].includes(filing.form));
+    const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    const last90Days = filings.filter((filing) => {
+      const time = new Date(filing.filingDate).getTime();
+      return Number.isFinite(time) && time >= cutoff;
+    }).length;
+    const eventFilings = filings
+      .filter((filing) => isEventFiling(filing))
+      .slice(0, 6);
+
+    return {
+      latestAnnual,
+      latestQuarterly,
+      latestCurrent,
+      latestProxy,
+      insiderForms,
+      last90Days,
+      eventFilings,
+    };
+  }, [filings]);
+
+  if (!filings.length) return null;
+
+  const filingsHref = ticker ? `/filings/${ticker}` : '/filings';
+
+  return (
+    <div className="mb-6 border-2 border-stone-800 bg-stone-950/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-sky-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              SEC Filing Activity
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Recent source documents that explain what changed around the reported numbers.
+          </p>
+        </div>
+        <a
+          href={filingsHref}
+          className="inline-flex items-center gap-1.5 border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.16em] text-stone-300 hover:border-sky-500 hover:text-sky-300 transition-colors"
+        >
+          Full Filing History
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+        <FilingStat
+          label="Annual Report"
+          filing={activity.latestAnnual}
+          fallback="No recent 10-K / 20-F in SEC submissions feed"
+        />
+        <FilingStat
+          label="Quarterly Update"
+          filing={activity.latestQuarterly}
+          fallback="No recent 10-Q / 6-K in SEC submissions feed"
+        />
+        <FilingStat
+          label="Current Report"
+          filing={activity.latestCurrent}
+          fallback="No recent 8-K / 6-K in SEC submissions feed"
+        />
+        <FilingCountStat
+          label="Recent Filing Load"
+          value={`${activity.last90Days}`}
+          detail={`${activity.insiderForms.length} insider ownership forms in recent feed`}
+        />
+      </div>
+
+      {activity.eventFilings.length > 0 && (
+        <div className="border-t border-stone-800 px-4 py-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+              Event Watch
+            </div>
+            {activity.latestProxy && (
+              <a
+                href={activity.latestProxy.documentUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-violet-300 hover:text-violet-200 transition-colors"
+              >
+                Latest Proxy: {activity.latestProxy.filingDate}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+          <div className="grid gap-2 lg:grid-cols-2">
+            {activity.eventFilings.map((filing) => (
+              <FilingEventRow key={filing.accession} filing={filing} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilingCountStat({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="border-2 border-stone-800 bg-stone-950/60 p-4">
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-stone-500 font-bold">
+        <FileText className="w-3.5 h-3.5 text-stone-500" />
+        {label}
+      </div>
+      <div className="mt-2 text-lg font-black tabular-nums text-stone-100">{value}</div>
+      <div className="mt-2 text-xs leading-relaxed text-stone-400">
+        filings in the last 90 days
+        <span className="block text-stone-500">{detail}</span>
+      </div>
+    </div>
+  );
+}
+
+function FilingEventRow({ filing }: { filing: FilingEntry }) {
+  const items = filing.form.startsWith('8-K') ? getItemsInfo(filing.items || '') : [];
+  return (
+    <a
+      href={filing.documentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block border border-stone-800 bg-stone-900/30 px-3 py-3 hover:border-sky-700/70 hover:bg-sky-950/10 transition-colors"
+    >
+      <div className="flex items-start gap-3">
+        <span className={`shrink-0 border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${filingBadgeClass(filing.form)}`}>
+          {filing.form}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-stone-100">
+            <span className="truncate">{filing.primaryDescription || filing.primaryDoc || 'SEC filing'}</span>
+            <ExternalLink className="w-3 h-3 shrink-0 text-stone-600 group-hover:text-sky-300 transition-colors" />
+          </div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] uppercase tracking-[0.12em] text-stone-500">
+            <span>Filed {filing.filingDate}</span>
+            {filing.reportDate && <span>Period {filing.reportDate}</span>}
+            <span className="font-mono">{filing.accession}</span>
+          </div>
+          {items.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {items.slice(0, 4).map((item) => (
+                <span
+                  key={`${filing.accession}-${item.code}`}
+                  className="border border-sky-800/60 bg-sky-950/30 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-sky-200"
+                  title={`8-K Item ${item.code}`}
+                >
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function isEventFiling(filing: FilingEntry) {
+  return (
+    filing.form.startsWith('8-K')
+    || filing.form === '6-K'
+    || filing.form.includes('DEF 14A')
+    || filing.form.startsWith('S-')
+    || filing.form.startsWith('SC 13')
+  );
+}
+
+function filingBadgeClass(form: string) {
+  if (form.startsWith('8-K')) return 'border-rose-700/50 bg-rose-900/30 text-rose-200';
+  if (form === '6-K') return 'border-sky-700/50 bg-sky-900/30 text-sky-200';
+  if (form.includes('DEF 14A') || form.includes('PRE 14A')) return 'border-violet-700/50 bg-violet-900/30 text-violet-200';
+  if (form.startsWith('S-')) return 'border-sky-700/50 bg-sky-900/30 text-sky-200';
+  if (form.startsWith('SC 13')) return 'border-fuchsia-700/50 bg-fuchsia-900/30 text-fuchsia-200';
+  return 'border-stone-700 bg-stone-800/60 text-stone-300';
 }
 
 interface CoveragePanelProps {
