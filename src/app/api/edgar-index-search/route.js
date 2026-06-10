@@ -10,6 +10,7 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
 const DEFAULT_MONTHS = 12;
 const MAX_MONTHS = 120;
+const MAX_FOCUS_TERMS = 5;
 const DEFAULT_FORMS = ['10-K', '10-Q', '8-K', 'S-1', 'DEF 14A', '20-F', '40-F', 'N-CSR'];
 const ALLOWED_FORMS = new Set([
   '10-K',
@@ -62,6 +63,45 @@ function quoteSearchTerm(term) {
 
 function buildSecQuery(terms) {
   return terms.map(quoteSearchTerm).join(' OR ');
+}
+
+function parseFocusTerms(rawFocus) {
+  if (!rawFocus) return [];
+  return rawFocus
+    .split(',')
+    .map((term) => term.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, MAX_FOCUS_TERMS)
+    .map((raw) => {
+      const upper = raw.toUpperCase();
+      const digits = raw.replace(/\D/g, '');
+      const isCik = /^\d{1,10}$/.test(raw);
+      const isTicker = /^[A-Z][A-Z0-9.-]{0,9}$/.test(upper);
+      return {
+        raw,
+        upper,
+        lower: raw.toLowerCase(),
+        cik: isCik ? digits.padStart(10, '0') : null,
+        ticker: isTicker ? upper : null,
+      };
+    });
+}
+
+function matchesFocus(hit, focusTerms) {
+  if (!focusTerms.length) return true;
+  const tickers = (hit.tickers || []).map((ticker) => String(ticker).toUpperCase());
+  const companyName = String(hit.companyName || '').toLowerCase();
+  const displayName = String(hit.displayName || '').toLowerCase();
+  const cik = String(hit.cik || '').padStart(10, '0');
+
+  return focusTerms.some((focus) => {
+    if (focus.cik && cik === focus.cik) return true;
+    if (focus.ticker && tickers.includes(focus.ticker)) return true;
+    if (focus.lower.length >= 3 && (companyName.includes(focus.lower) || displayName.includes(focus.lower))) {
+      return true;
+    }
+    return false;
+  });
 }
 
 function parseDisplayName(displayName, cik) {
@@ -152,6 +192,8 @@ export async function GET(request) {
   const limit = parsePositiveInt(url.searchParams.get('limit'), DEFAULT_LIMIT, MAX_LIMIT);
   const months = parsePositiveInt(url.searchParams.get('months'), DEFAULT_MONTHS, MAX_MONTHS);
   const forms = parseForms(url.searchParams.get('forms'));
+  const rawFocus = url.searchParams.get('focus') || url.searchParams.get('ticker') || url.searchParams.get('cik') || url.searchParams.get('company') || '';
+  const focusTerms = parseFocusTerms(rawFocus);
   const startDate = url.searchParams.get('startdt') || isoDate(monthsAgo(months));
   const endDate = url.searchParams.get('enddt') || isoDate(new Date());
   const secQuery = buildSecQuery(parsed.terms);
@@ -163,7 +205,7 @@ export async function GET(request) {
     startdt: startDate,
     enddt: endDate,
     from: '0',
-    size: String(limit),
+    size: String(focusTerms.length ? MAX_LIMIT : limit),
   });
 
   const controller = new AbortController();
@@ -187,10 +229,17 @@ export async function GET(request) {
 
     const data = await response.json();
     const hits = data?.hits?.hits || [];
-    const results = hits
-      .slice(0, limit)
+    const normalizedHits = hits
       .map((hit, index) => normalizeHit(hit, index + 1))
       .filter((hit) => hit.documentUrl);
+    const focusedHits = normalizedHits.filter((hit) => matchesFocus(hit, focusTerms));
+    const results = focusedHits
+      .slice(0, limit)
+      .map((hit, index) => ({
+        ...hit,
+        secRank: hit.rank,
+        rank: index + 1,
+      }));
 
     return NextResponse.json(
       {
@@ -206,6 +255,13 @@ export async function GET(request) {
           terms: parsed.terms,
           rejected: parsed.rejected,
           secQuery,
+        },
+        focus: {
+          raw: rawFocus,
+          terms: focusTerms.map((focus) => focus.raw),
+          applied: focusTerms.length > 0,
+          matchedHits: focusTerms.length ? focusedHits.length : null,
+          searchedHits: normalizedHits.length,
         },
         dateRange: {
           start: startDate,

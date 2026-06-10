@@ -107,7 +107,7 @@ export default function AboutPage() {
                 icon={FileSearch}
                 title="Disclosure Keyword Search"
                 path="/disclosures"
-                text="Searches the SEC EDGAR full-text index with date, filing-form, and result-count filters for broad source discovery, or scans recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) across up to 5 hand-picked companies, curated 8-company sector universes, or a bounded 40-company Market Map. Index hits and scanner excerpts link directly to the source filing. Manual scans are depth-limited to 50 recent filings per ticker; universe and Market Map scans use shallower defaults to respect SEC fair-access limits. Results cache for 24 hours by ticker and query where applicable."
+                text="Searches the SEC EDGAR full-text index with optional company/ticker focus plus date, filing-form, and result-count filters for broad source discovery, or scans recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) across up to 5 hand-picked companies, curated 8-company sector universes, or a bounded 40-company Market Map. Index hits and scanner excerpts link directly to the source filing. Manual scans are depth-limited to 50 recent filings per ticker; universe and Market Map scans use shallower defaults to respect SEC fair-access limits. Results cache for 24 hours by ticker and query where applicable."
               />
             </div>
           </section>
@@ -170,7 +170,7 @@ export default function AboutPage() {
                 <h4 className="text-stone-100 font-bold mb-1">Disclosure keyword search</h4>
                 <p className="text-stone-400">
                   EDGAR Index mode queries the SEC full-text index for matching source filings across
-                  the broader EDGAR corpus with date, form, and result-count filters and links each hit to the SEC archive document. Manual
+                  the broader EDGAR corpus with optional company/ticker focus plus date, form, and result-count filters and links each hit to the SEC archive document. Manual
                   searches fetch up to 50 recent filings per ticker from SEC EDGAR. Curated universe
                   searches scan 8 companies at a shallower default depth so broader research stays
                   bounded. Market Map searches interleave companies from every curated universe into

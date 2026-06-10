@@ -105,6 +105,7 @@ export default function ScanResults({ data, onRescan }) {
 function EdgarIndexResults({ data }) {
   const results = data.results || [];
   const terms = data.query?.terms || [];
+  const focusTerms = data.focus?.terms || [];
   const companies = new Set(results.map((row) => row.cik).filter(Boolean));
   const forms = new Set(results.map((row) => row.form).filter(Boolean));
   const latest = [...results]
@@ -130,6 +131,12 @@ function EdgarIndexResults({ data }) {
             <span>Forms searched: {data.forms.join(', ')}</span>
           </>
         )}
+        {focusTerms.length > 0 && (
+          <>
+            <span>/</span>
+            <span>Focus: {focusTerms.join(', ')}</span>
+          </>
+        )}
         {data.tookMs != null && (
           <>
             <span>/</span>
@@ -148,7 +155,7 @@ function EdgarIndexResults({ data }) {
               </h3>
             </div>
             <p className="mt-1 text-[11px] text-stone-500">
-              Broad discovery across SEC-indexed filing documents. Open each source filing to verify the exact language in context.
+              Broad discovery across SEC-indexed filing documents{focusTerms.length ? `, focused on ${focusTerms.join(', ')}` : ''}. Open each source filing to verify the exact language in context.
             </p>
           </div>
           {data.source?.url && (
@@ -167,9 +174,13 @@ function EdgarIndexResults({ data }) {
         <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
           <EvidenceStat
             icon={Database}
-            label="Index Hits"
-            value={`${data.totalHits?.toLocaleString?.() || 0}${data.totalRelation === 'gte' ? '+' : ''}`}
-            detail={`${results.length.toLocaleString()} source filings returned`}
+            label={focusTerms.length ? 'Focused Hits' : 'Index Hits'}
+            value={focusTerms.length
+              ? (data.focus?.matchedHits || 0).toLocaleString()
+              : `${data.totalHits?.toLocaleString?.() || 0}${data.totalRelation === 'gte' ? '+' : ''}`}
+            detail={focusTerms.length
+              ? `${results.length.toLocaleString()} returned from ${data.focus?.searchedHits || 0} searched SEC hits`
+              : `${results.length.toLocaleString()} source filings returned`}
             tone={results.length > 0 ? 'amber' : 'stone'}
           />
           <EvidenceStat
@@ -216,7 +227,7 @@ function EdgarIndexResults({ data }) {
             <Search className="w-10 h-10 text-stone-700 mx-auto mb-3" />
             <p className="text-sm text-stone-400 mb-1">No EDGAR index hits found</p>
             <p className="text-xs text-stone-600">
-              Try a broader date range, fewer phrases, or related terminology.
+              Try a broader date range, fewer phrases, related terminology, or remove the company focus.
             </p>
           </div>
         ) : (
@@ -252,8 +263,9 @@ function EdgarIndexResults({ data }) {
 
         <div className="border-t border-stone-800 bg-stone-950/60 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
           EDGAR index mode discovers source filings across the SEC full-text index. It does not
-          generate paragraph excerpts; use the linked SEC document as the source of truth, then use
-          company scan mode when you need paragraph-level excerpts for a defined peer set.
+          generate paragraph excerpts; company focus narrows the returned SEC hits by parsed ticker,
+          CIK, or company name. Use the linked SEC document as the source of truth, then use company
+          scan mode when you need paragraph-level excerpts for a defined peer set.
         </div>
       </section>
     </div>
@@ -268,6 +280,11 @@ function EdgarIndexRow({ row }) {
         <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-600">
           Score {formatScore(row.score)}
         </div>
+        {row.secRank && row.secRank !== row.rank && (
+          <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-700">
+            SEC #{row.secRank}
+          </div>
+        )}
       </td>
       <td className="px-4 py-3">
         <a
