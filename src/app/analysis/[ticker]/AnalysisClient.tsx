@@ -1124,6 +1124,8 @@ interface SourceFact {
   accession: string;
 }
 
+type LabeledSourceFact = SourceFact & { label?: string };
+
 interface MetricPoint {
   period?: any;
   value: number | null;
@@ -4151,6 +4153,34 @@ interface CoverageRow {
   latestSourced: boolean;
 }
 
+interface XbrlConceptAuditRow {
+  tag: string;
+  label: string;
+  count: number;
+  latestFiled: string;
+  latestEnd: string;
+  units: string[];
+  url: string | null;
+}
+
+interface XbrlFilingAuditRow {
+  accession: string;
+  filed: string;
+  count: number;
+  concepts: string[];
+  url: string | null;
+}
+
+interface XbrlSourceAudit {
+  sourceLinkCount: number;
+  sourceFactCount: number;
+  conceptCount: number;
+  filingCount: number;
+  latestFiled: string;
+  concepts: XbrlConceptAuditRow[];
+  filings: XbrlFilingAuditRow[];
+}
+
 function DataCoveragePanel({
   statementRows,
   ratioRows,
@@ -4194,6 +4224,8 @@ function DataCoveragePanel({
       weakRows,
     };
   }, [statementRows, ratioRows]);
+
+  const sourceAudit = useMemo(() => buildXbrlSourceAudit(coverage.rows, cik), [coverage.rows, cik]);
 
   if (!coverage.cells.length) return null;
 
@@ -4258,6 +4290,62 @@ function DataCoveragePanel({
         />
       </div>
 
+      {sourceAudit.sourceLinkCount > 0 && (
+        <div className="border-t border-stone-800 px-4 py-4">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+                XBRL Source Audit
+              </div>
+              <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-stone-500">
+                Filing accessions and SEC XBRL concepts behind the visible statement and ratio values.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-right sm:grid-cols-4">
+              <div className="border border-stone-800 bg-stone-950/70 px-3 py-2">
+                <div className="text-lg font-black tabular-nums text-stone-100">{sourceAudit.conceptCount}</div>
+                <div className="text-[9px] uppercase tracking-[0.16em] text-stone-600">Concepts</div>
+              </div>
+              <div className="border border-stone-800 bg-stone-950/70 px-3 py-2">
+                <div className="text-lg font-black tabular-nums text-stone-100">{sourceAudit.filingCount}</div>
+                <div className="text-[9px] uppercase tracking-[0.16em] text-stone-600">Filings</div>
+              </div>
+              <div className="border border-stone-800 bg-stone-950/70 px-3 py-2">
+                <div className="text-lg font-black tabular-nums text-stone-100">{sourceAudit.sourceFactCount}</div>
+                <div className="text-[9px] uppercase tracking-[0.16em] text-stone-600">Facts</div>
+              </div>
+              <div className="border border-stone-800 bg-stone-950/70 px-3 py-2">
+                <div className="text-sm font-black tabular-nums text-stone-100">{sourceAudit.latestFiled || 'N/A'}</div>
+                <div className="text-[9px] uppercase tracking-[0.16em] text-stone-600">Latest</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.65fr)]">
+            <div className="border border-stone-800 bg-stone-950/40">
+              <div className="border-b border-stone-800 px-3 py-2 text-[10px] uppercase tracking-[0.18em] font-bold text-stone-500">
+                Most Used Concepts
+              </div>
+              <div className="divide-y divide-stone-800/80">
+                {sourceAudit.concepts.map((concept) => (
+                  <SourceConceptAuditRow key={concept.tag} concept={concept} />
+                ))}
+              </div>
+            </div>
+            <div className="border border-stone-800 bg-stone-950/40">
+              <div className="border-b border-stone-800 px-3 py-2 text-[10px] uppercase tracking-[0.18em] font-bold text-stone-500">
+                Recent Source Filings
+              </div>
+              <div className="divide-y divide-stone-800/80">
+                {sourceAudit.filings.map((filing) => (
+                  <SourceFilingAuditRow key={filing.accession} filing={filing} />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {coverage.weakRows.length > 0 && (
         <div className="border-t border-stone-800 px-4 py-3">
           <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
@@ -4278,6 +4366,81 @@ function DataCoveragePanel({
         </div>
       )}
     </div>
+  );
+}
+
+function SourceConceptAuditRow({ concept }: { concept: XbrlConceptAuditRow }) {
+  const content = (
+    <>
+      <div className="min-w-0">
+        <div className="truncate text-xs font-bold text-stone-200">{concept.label}</div>
+        <div className="mt-1 truncate font-mono text-[10px] text-stone-600">{concept.tag}</div>
+      </div>
+      <div className="text-right">
+        <div className="text-xs font-black tabular-nums text-amber-300">{concept.count}</div>
+        <div className="mt-1 text-[10px] text-stone-500">
+          Filed {concept.latestFiled || 'N/A'}
+        </div>
+      </div>
+      <div className="col-span-2 flex flex-wrap items-center gap-2 text-[10px] text-stone-500">
+        <span>Period {concept.latestEnd || 'N/A'}</span>
+        {concept.units.slice(0, 3).map((unit) => (
+          <span key={unit} className="font-mono text-stone-600">{unit}</span>
+        ))}
+      </div>
+    </>
+  );
+
+  if (!concept.url) {
+    return <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 px-3 py-3">{content}</div>;
+  }
+
+  return (
+    <a
+      href={concept.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 px-3 py-3 hover:bg-amber-500/5 transition-colors"
+    >
+      {content}
+    </a>
+  );
+}
+
+function SourceFilingAuditRow({ filing }: { filing: XbrlFilingAuditRow }) {
+  const content = (
+    <>
+      <div className="min-w-0">
+        <div className="truncate font-mono text-[11px] font-bold text-stone-200">{filing.accession}</div>
+        <div className="mt-1 text-[10px] text-stone-500">Filed {filing.filed || 'N/A'}</div>
+      </div>
+      <div className="text-right">
+        <div className="text-xs font-black tabular-nums text-emerald-300">{filing.count}</div>
+        <div className="mt-1 text-[10px] text-stone-500">
+          {filing.concepts.length} concepts
+        </div>
+      </div>
+      {filing.concepts.length > 0 && (
+        <div className="col-span-2 truncate font-mono text-[10px] text-stone-600">
+          {filing.concepts.slice(0, 4).join(', ')}
+        </div>
+      )}
+    </>
+  );
+
+  if (!filing.url) {
+    return <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 px-3 py-3">{content}</div>;
+  }
+
+  return (
+    <a
+      href={filing.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 px-3 py-3 hover:bg-emerald-500/5 transition-colors"
+    >
+      {content}
+    </a>
   );
 }
 
@@ -4340,11 +4503,118 @@ function FilingStat({
   );
 }
 
+function buildXbrlSourceAudit(rows: any[], cik?: string): XbrlSourceAudit {
+  const conceptMap = new Map<string, {
+    tag: string;
+    label: string;
+    count: number;
+    latestFiled: string;
+    latestEnd: string;
+    units: Set<string>;
+    source: LabeledSourceFact;
+  }>();
+  const filingMap = new Map<string, {
+    accession: string;
+    filed: string;
+    count: number;
+    concepts: Set<string>;
+  }>();
+  const sourceFacts = new Set<string>();
+  let sourceLinkCount = 0;
+  let latestFiled = '';
+
+  rows.forEach((row) => {
+    const values = Array.isArray(row?.values) ? row.values : [];
+    values.forEach((point: MetricPoint) => {
+      if (point?.value == null) return;
+      getPointSources(point).forEach((source) => {
+        if (!source?.tag) return;
+
+        sourceLinkCount += 1;
+        const label = source.label || row?.label || source.tag;
+        const factKey = `${source.tag}:${source.unit || ''}:${source.end || ''}:${source.filed || ''}:${source.accession || ''}`;
+        sourceFacts.add(factKey);
+        if (isLaterDate(source.filed, latestFiled)) latestFiled = source.filed;
+
+        const concept = conceptMap.get(source.tag) || {
+          tag: source.tag,
+          label,
+          count: 0,
+          latestFiled: '',
+          latestEnd: '',
+          units: new Set<string>(),
+          source,
+        };
+        concept.count += 1;
+        if (source.unit) concept.units.add(source.unit);
+        if (isLaterDate(source.filed, concept.latestFiled)) {
+          concept.latestFiled = source.filed;
+          concept.latestEnd = source.end || concept.latestEnd;
+          concept.source = source;
+        }
+        conceptMap.set(source.tag, concept);
+
+        if (source.accession) {
+          const filing = filingMap.get(source.accession) || {
+            accession: source.accession,
+            filed: source.filed || '',
+            count: 0,
+            concepts: new Set<string>(),
+          };
+          filing.count += 1;
+          filing.concepts.add(source.tag);
+          if (isLaterDate(source.filed, filing.filed)) filing.filed = source.filed;
+          filingMap.set(source.accession, filing);
+        }
+      });
+    });
+  });
+
+  const concepts = Array.from(conceptMap.values())
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+    .slice(0, 8)
+    .map((concept) => ({
+      tag: concept.tag,
+      label: concept.label,
+      count: concept.count,
+      latestFiled: concept.latestFiled,
+      latestEnd: concept.latestEnd,
+      units: Array.from(concept.units),
+      url: cik ? buildSourceUrl(cik, concept.source) : null,
+    }));
+
+  const filings = Array.from(filingMap.values())
+    .sort((a, b) => sourceDateTime(b.filed) - sourceDateTime(a.filed) || b.count - a.count)
+    .slice(0, 5)
+    .map((filing) => ({
+      accession: filing.accession,
+      filed: filing.filed,
+      count: filing.count,
+      concepts: Array.from(filing.concepts).sort(),
+      url: buildFilingArchiveUrl(cik, filing.accession),
+    }));
+
+  return {
+    sourceLinkCount,
+    sourceFactCount: sourceFacts.size,
+    conceptCount: conceptMap.size,
+    filingCount: filingMap.size,
+    latestFiled,
+    concepts,
+    filings,
+  };
+}
+
 function hasPointSource(point?: MetricPoint | null) {
   return Boolean(
     point?.source?.tag
       || point?.sources?.some((source) => source?.tag)
   );
+}
+
+function getPointSources(point?: MetricPoint | null): LabeledSourceFact[] {
+  const sources = point?.sources?.length ? point.sources : point?.source ? [point.source] : [];
+  return sources.filter((source): source is LabeledSourceFact => Boolean(source?.tag));
 }
 
 function findLatestFiling(filings: FilingEntry[], forms: string[]) {
@@ -4354,6 +4624,22 @@ function findLatestFiling(filings: FilingEntry[], forms: string[]) {
 function pctText(numerator: number, denominator: number) {
   if (!denominator) return '0%';
   return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+function sourceDateTime(value?: string) {
+  if (!value) return 0;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isLaterDate(candidate?: string, current?: string) {
+  return sourceDateTime(candidate) > sourceDateTime(current);
+}
+
+function buildFilingArchiveUrl(cik?: string, accession?: string) {
+  const cikNumber = Number.parseInt(String(cik || ''), 10);
+  if (!Number.isFinite(cikNumber) || !accession) return null;
+  return `https://www.sec.gov/Archives/edgar/data/${cikNumber}/${accession.replace(/-/g, '')}/`;
 }
 
 interface SnapshotSource {
