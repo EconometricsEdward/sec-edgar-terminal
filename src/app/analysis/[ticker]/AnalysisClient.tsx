@@ -509,7 +509,7 @@ export default function AnalysisClient({
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Use the search bar above to look up any company by ticker or name.
             You'll see financial data, industry-specific ratios, stock prices with filing markers,
-            expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, and insider trading activity.
+            quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, and insider trading activity.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
             Mutual fund and ETF tickers are automatically routed to the Funds page.
@@ -640,6 +640,13 @@ export default function AnalysisClient({
                     cik={company?.cik}
                   />
                   <FilingActivityPanel filings={filings} ticker={chartTicker} />
+                  <QuarterlyMomentumPanel
+                    facts={facts}
+                    periods={quarterlyPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
                   <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
@@ -3597,6 +3604,489 @@ function QualitySnapshot({
           <QualityTile key={tile.key} tile={tile} cik={cik} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function QuarterlyMomentumPanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}) {
+  const { tiles, tableRows, displayPeriods, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 6);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as SnapshotTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+        group,
+      };
+    }
+
+    const metricRow = (key: string, label: string) => (
+      buildMetricRow(facts, key, label, displayPeriods, 'currency', group as any)
+    );
+
+    const rowsByKey = {
+      revenue: metricRow('revenue', 'Revenue'),
+      grossProfit: metricRow('grossProfit', 'Gross Profit'),
+      operatingIncome: metricRow('operatingIncome', 'Operating Income'),
+      netIncome: metricRow('netIncome', 'Net Income'),
+      operatingCashFlow: metricRow('operatingCashFlow', 'Operating Cash Flow'),
+      capex: metricRow('capex', 'Capital Expenditures'),
+      cash: metricRow('cash', 'Cash & Equivalents'),
+      shortTermDebt: metricRow('shortTermDebt', 'Short-term Debt'),
+      currentLiabilities: metricRow('currentLiabilities', 'Current Liabilities'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      index >= 0 ? rowsByKey[key]?.values?.[index] || null : null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const magnitude = (item: MetricPoint | null) => {
+      const value = num(item);
+      return value == null ? null : Math.abs(value);
+    };
+    const pct = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return (numerator / denominator) * 100;
+    };
+    const growth = (current: number | null, prior: number | null) => {
+      if (current == null || prior == null || prior === 0) return null;
+      return ((current - prior) / Math.abs(prior)) * 100;
+    };
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter((source): source is SourceFact & { label: string } => {
+          if (!source?.tag) return false;
+          const key = `${source.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+    const quarterNumber = (period: any) => {
+      const match = String(period?.fp || '').match(/Q(\d)/);
+      return match ? Number(match[1]) : null;
+    };
+    const previousSequentialIndex = (index: number) => {
+      const current = displayPeriods[index];
+      const prior = displayPeriods[index + 1];
+      const currentQuarter = quarterNumber(current);
+      const priorQuarter = quarterNumber(prior);
+      if (!current || !prior || currentQuarter == null || priorQuarter == null) return -1;
+      if (current.fy === prior.fy && priorQuarter === currentQuarter - 1) return index + 1;
+      return -1;
+    };
+    const sameQuarterPriorYearIndex = (index: number) => {
+      const current = displayPeriods[index];
+      if (!current) return -1;
+      return displayPeriods.findIndex((period, candidateIndex) => (
+        candidateIndex > index
+          && period?.fp === current.fp
+          && Number(period?.fy) === Number(current.fy) - 1
+      ));
+    };
+
+    const valueForPeriod = (index: number) => {
+      const sequentialIndex = previousSequentialIndex(index);
+      const priorYearIndex = sameQuarterPriorYearIndex(index);
+      const revenuePoint = point('revenue', index);
+      const grossProfitPoint = point('grossProfit', index);
+      const operatingIncomePoint = point('operatingIncome', index);
+      const netIncomePoint = point('netIncome', index);
+      const ocfPoint = point('operatingCashFlow', index);
+      const capexPoint = point('capex', index);
+      const cashPoint = point('cash', index);
+      const shortTermDebtPoint = point('shortTermDebt', index);
+      const currentLiabilitiesPoint = point('currentLiabilities', index);
+
+      const sequentialRevenuePoint = point('revenue', sequentialIndex);
+      const priorYearRevenuePoint = point('revenue', priorYearIndex);
+      const priorYearGrossProfitPoint = point('grossProfit', priorYearIndex);
+      const priorYearOperatingIncomePoint = point('operatingIncome', priorYearIndex);
+      const priorYearNetIncomePoint = point('netIncome', priorYearIndex);
+      const priorYearOcfPoint = point('operatingCashFlow', priorYearIndex);
+      const priorYearCapexPoint = point('capex', priorYearIndex);
+
+      const revenue = num(revenuePoint);
+      const grossProfit = num(grossProfitPoint);
+      const operatingIncome = num(operatingIncomePoint);
+      const netIncome = num(netIncomePoint);
+      const ocf = num(ocfPoint);
+      const capex = magnitude(capexPoint);
+      const cash = num(cashPoint);
+      const shortTermDebt = magnitude(shortTermDebtPoint);
+      const currentLiabilities = magnitude(currentLiabilitiesPoint);
+      const sequentialRevenue = num(sequentialRevenuePoint);
+      const priorYearRevenue = num(priorYearRevenuePoint);
+      const priorYearGrossProfit = num(priorYearGrossProfitPoint);
+      const priorYearOperatingIncome = num(priorYearOperatingIncomePoint);
+      const priorYearNetIncome = num(priorYearNetIncomePoint);
+      const priorYearOcf = num(priorYearOcfPoint);
+      const priorYearCapex = magnitude(priorYearCapexPoint);
+      const fcf = ocf != null && capex != null ? ocf - capex : null;
+      const priorYearFcf = priorYearOcf != null && priorYearCapex != null ? priorYearOcf - priorYearCapex : null;
+
+      return {
+        sequentialIndex,
+        priorYearIndex,
+        revenuePoint,
+        grossProfitPoint,
+        operatingIncomePoint,
+        netIncomePoint,
+        ocfPoint,
+        capexPoint,
+        cashPoint,
+        shortTermDebtPoint,
+        currentLiabilitiesPoint,
+        sequentialRevenuePoint,
+        priorYearRevenuePoint,
+        priorYearGrossProfitPoint,
+        priorYearOperatingIncomePoint,
+        priorYearNetIncomePoint,
+        priorYearOcfPoint,
+        priorYearCapexPoint,
+        revenue,
+        grossProfit,
+        operatingIncome,
+        netIncome,
+        ocf,
+        capex,
+        cash,
+        shortTermDebt,
+        currentLiabilities,
+        sequentialRevenue,
+        priorYearRevenue,
+        priorYearGrossProfit,
+        priorYearOperatingIncome,
+        priorYearNetIncome,
+        fcf,
+        priorYearFcf,
+        revenueSequentialGrowth: growth(revenue, sequentialRevenue),
+        revenueYoYGrowth: growth(revenue, priorYearRevenue),
+        grossProfitYoYGrowth: growth(grossProfit, priorYearGrossProfit),
+        operatingIncomeYoYGrowth: growth(operatingIncome, priorYearOperatingIncome),
+        netIncomeYoYGrowth: growth(netIncome, priorYearNetIncome),
+        fcfYoYGrowth: growth(fcf, priorYearFcf),
+        cashCurrentLiabilities: pct(cash, currentLiabilities),
+        shortTermDebtCash: pct(shortTermDebt, cash),
+      };
+    };
+
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => {
+      const sources = sourceFacts(inputs);
+      return {
+        period: displayPeriods[index],
+        value,
+        source: sources[0] || null,
+        sources,
+      };
+    };
+
+    const tableRows = [
+      {
+        key: 'revenue',
+        label: 'Revenue',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const revenuePoint = point('revenue', index);
+          return {
+            ...rowsByKey.revenue.values[index],
+            sources: sourceFacts([['Revenue', revenuePoint]]),
+          };
+        }),
+      },
+      {
+        key: 'revenueSequentialGrowth',
+        label: 'Revenue Sequential Change',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.revenueSequentialGrowth, [
+            ['Revenue', v.revenuePoint],
+            ['Prior Sequential Revenue', v.sequentialRevenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'revenueYoYGrowth',
+        label: 'Revenue YoY Change',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.revenueYoYGrowth, [
+            ['Revenue', v.revenuePoint],
+            ['Prior-Year Revenue', v.priorYearRevenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'grossProfitYoYGrowth',
+        label: 'Gross Profit YoY Change',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.grossProfitYoYGrowth, [
+            ['Gross Profit', v.grossProfitPoint],
+            ['Prior-Year Gross Profit', v.priorYearGrossProfitPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'operatingIncomeYoYGrowth',
+        label: 'Operating Income YoY Change',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.operatingIncomeYoYGrowth, [
+            ['Operating Income', v.operatingIncomePoint],
+            ['Prior-Year Operating Income', v.priorYearOperatingIncomePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'netIncomeYoYGrowth',
+        label: 'Net Income YoY Change',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.netIncomeYoYGrowth, [
+            ['Net Income', v.netIncomePoint],
+            ['Prior-Year Net Income', v.priorYearNetIncomePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'freeCashFlow',
+        label: 'Free Cash Flow',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.fcf, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Capex', v.capexPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'fcfYoYGrowth',
+        label: 'Free Cash Flow YoY Change',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.fcfYoYGrowth, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Capex', v.capexPoint],
+            ['Prior-Year Operating Cash Flow', v.priorYearOcfPoint],
+            ['Prior-Year Capex', v.priorYearCapexPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cash',
+        label: 'Cash & Equivalents',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const cashPoint = point('cash', index);
+          return {
+            ...rowsByKey.cash.values[index],
+            sources: sourceFacts([['Cash', cashPoint]]),
+          };
+        }),
+      },
+      {
+        key: 'cashCurrentLiabilities',
+        label: 'Cash / Current Liabilities',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cashCurrentLiabilities, [
+            ['Cash', v.cashPoint],
+            ['Current Liabilities', v.currentLiabilitiesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'shortTermDebtCash',
+        label: 'Short-Term Debt / Cash',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.shortTermDebtCash, [
+            ['Short-term Debt', v.shortTermDebtPoint],
+            ['Cash', v.cashPoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: SnapshotTile[] = [];
+    const addTile = (
+      tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }
+    ) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.revenueYoYGrowth != null) {
+      addTile({
+        key: 'quarterly-momentum-revenue-yoy',
+        label: 'Revenue YoY',
+        value: latest.revenueYoYGrowth,
+        format: 'percent',
+        detail: 'Latest 10-Q revenue versus same quarter prior year',
+        tone: latest.revenueYoYGrowth >= 10 ? 'good' : latest.revenueYoYGrowth >= 0 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Revenue', latest.revenuePoint],
+          ['Prior-Year Revenue', latest.priorYearRevenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.revenueSequentialGrowth != null) {
+      addTile({
+        key: 'quarterly-momentum-revenue-sequential',
+        label: 'Revenue Sequential',
+        value: latest.revenueSequentialGrowth,
+        format: 'percent',
+        detail: 'Latest 10-Q revenue versus the prior sequential 10-Q',
+        tone: latest.revenueSequentialGrowth >= 5 ? 'good' : latest.revenueSequentialGrowth >= 0 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Revenue', latest.revenuePoint],
+          ['Prior Sequential Revenue', latest.sequentialRevenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.operatingIncomeYoYGrowth != null) {
+      addTile({
+        key: 'quarterly-momentum-operating-income-yoy',
+        label: 'Operating Income YoY',
+        value: latest.operatingIncomeYoYGrowth,
+        format: 'percent',
+        detail: 'Operating income versus same quarter prior year',
+        tone: latest.operatingIncomeYoYGrowth >= 10 ? 'good' : latest.operatingIncomeYoYGrowth >= 0 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Income', latest.operatingIncomePoint],
+          ['Prior-Year Operating Income', latest.priorYearOperatingIncomePoint],
+        ]),
+      });
+    }
+
+    if (latest.fcfYoYGrowth != null) {
+      addTile({
+        key: 'quarterly-momentum-fcf-yoy',
+        label: 'FCF YoY',
+        value: latest.fcfYoYGrowth,
+        format: 'percent',
+        detail: `Latest free cash flow: ${formatValue(latest.fcf, 'currency')}`,
+        tone: latest.fcfYoYGrowth >= 10 ? 'good' : latest.fcfYoYGrowth >= 0 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Cash Flow', latest.ocfPoint],
+          ['Capex', latest.capexPoint],
+          ['Prior-Year Operating Cash Flow', latest.priorYearOcfPoint],
+          ['Prior-Year Capex', latest.priorYearCapexPoint],
+        ]),
+      });
+    }
+
+    if (latest.cashCurrentLiabilities != null) {
+      addTile({
+        key: 'quarterly-momentum-cash-current-liabilities',
+        label: 'Cash / Current Liabilities',
+        value: latest.cashCurrentLiabilities,
+        format: 'percent',
+        detail: 'Quarter-end liquidity against current liabilities',
+        tone: latest.cashCurrentLiabilities >= 100 ? 'good' : latest.cashCurrentLiabilities >= 50 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Cash', latest.cashPoint],
+          ['Current Liabilities', latest.currentLiabilitiesPoint],
+        ]),
+      });
+    }
+
+    return { tiles: tiles.slice(0, 4), tableRows, displayPeriods, latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <LineChart className="w-4 h-4 text-lime-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Quarterly Momentum
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked 10-Q view of recent growth, profit momentum, free cash flow, and liquidity for {industryLabel(group)} companies.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {latestPeriod ? periodLabel(latestPeriod) : 'Latest 10-Q'} inputs
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <QualityTile key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Six-Quarter Momentum Bridge
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Revenue', 'Revenue YoY Change', 'Operating Income YoY Change', 'Free Cash Flow', 'Cash & Equivalents'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Sequential rows compare adjacent reported 10-Q periods when the prior quarter is available. YoY rows compare each 10-Q period with the same fiscal quarter one year earlier. Free cash flow subtracts capital expenditures from operating cash flow using payment magnitudes where SEC tags report outflows.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
