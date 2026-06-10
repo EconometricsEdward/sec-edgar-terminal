@@ -509,7 +509,7 @@ export default function AnalysisClient({
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Use the search bar above to look up any company by ticker or name.
             You'll see financial data, industry-specific ratios, stock prices with filing markers,
-            quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, payout coverage, capital efficiency, and insider trading activity.
+            quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and insider trading activity.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
             Mutual fund and ETF tickers are automatically routed to the Funds page.
@@ -686,6 +686,13 @@ export default function AnalysisClient({
                     onTraceRow={traceRowHistory}
                   />
                   <CapitalEfficiencyPanel
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
+                  <AssetCompositionPanel
                     facts={facts}
                     periods={annualPeriods}
                     sicCode={sicCode}
@@ -1487,6 +1494,487 @@ function CapitalTileCard({ tile, cik }: { tile: CapitalTile; cik?: string }) {
           <SourceChip key={`${tile.key}-${source.label}`} source={source} cik={cik} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function AssetCompositionPanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}) {
+  const { tiles, tableRows, displayPeriods, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 5);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as SnapshotTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+        group,
+      };
+    }
+
+    const metricRow = (key: string, label: string) => (
+      buildMetricRow(facts, key, label, displayPeriods, 'currency', group as any)
+    );
+
+    const rowsByKey = {
+      totalAssets: metricRow('totalAssets', 'Total Assets'),
+      currentAssets: metricRow('currentAssets', 'Current Assets'),
+      cash: metricRow('cash', 'Cash & Equivalents'),
+      shortTermInvestments: metricRow('shortTermInvestments', 'Short-term Investments'),
+      receivables: metricRow('receivables', 'Accounts Receivable'),
+      inventory: metricRow('inventory', 'Inventory'),
+      ppe: metricRow('ppe', 'Property, Plant & Equipment'),
+      goodwill: metricRow('goodwill', 'Goodwill'),
+      intangibles: metricRow('intangibles', 'Intangible Assets'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const positive = (item: MetricPoint | null) => {
+      const value = num(item);
+      return value == null ? null : Math.abs(value);
+    };
+    const pct = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return (numerator / denominator) * 100;
+    };
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter((source): source is SourceFact & { label: string } => {
+          if (!source?.tag) return false;
+          const key = `${source.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+
+    const valueForPeriod = (index: number) => {
+      const assetsPoint = point('totalAssets', index);
+      const currentAssetsPoint = point('currentAssets', index);
+      const cashPoint = point('cash', index);
+      const investmentsPoint = point('shortTermInvestments', index);
+      const receivablesPoint = point('receivables', index);
+      const inventoryPoint = point('inventory', index);
+      const ppePoint = point('ppe', index);
+      const goodwillPoint = point('goodwill', index);
+      const intangiblesPoint = point('intangibles', index);
+
+      const assets = num(assetsPoint);
+      const currentAssets = positive(currentAssetsPoint);
+      const cash = positive(cashPoint);
+      const investments = positive(investmentsPoint);
+      const receivables = positive(receivablesPoint);
+      const inventory = positive(inventoryPoint);
+      const ppe = positive(ppePoint);
+      const goodwill = positive(goodwillPoint);
+      const intangibles = positive(intangiblesPoint);
+      const cashAndInvestments = cash != null || investments != null ? (cash || 0) + (investments || 0) : null;
+      const goodwillAndIntangibles = goodwill != null || intangibles != null ? (goodwill || 0) + (intangibles || 0) : null;
+      const tangibleAssets = assets != null && goodwillAndIntangibles != null ? assets - goodwillAndIntangibles : null;
+
+      return {
+        assetsPoint,
+        currentAssetsPoint,
+        cashPoint,
+        investmentsPoint,
+        receivablesPoint,
+        inventoryPoint,
+        ppePoint,
+        goodwillPoint,
+        intangiblesPoint,
+        assets,
+        currentAssets,
+        cash,
+        investments,
+        receivables,
+        inventory,
+        ppe,
+        goodwill,
+        intangibles,
+        cashAndInvestments,
+        goodwillAndIntangibles,
+        tangibleAssets,
+        currentAssetsAssets: pct(currentAssets, assets),
+        cashAssets: pct(cash, assets),
+        cashAndInvestmentsAssets: pct(cashAndInvestments, assets),
+        receivablesAssets: pct(receivables, assets),
+        inventoryAssets: pct(inventory, assets),
+        ppeAssets: pct(ppe, assets),
+        goodwillAssets: pct(goodwill, assets),
+        intangiblesAssets: pct(intangibles, assets),
+        goodwillAndIntangiblesAssets: pct(goodwillAndIntangibles, assets),
+        tangibleAssetsAssets: pct(tangibleAssets, assets),
+      };
+    };
+
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => {
+      const sources = sourceFacts(inputs);
+      return {
+        period: displayPeriods[index],
+        value,
+        source: sources[0] || null,
+        sources,
+      };
+    };
+
+    const tableRows = [
+      {
+        key: 'totalAssets',
+        label: 'Total Assets',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const assetsPoint = point('totalAssets', index);
+          return {
+            ...rowsByKey.totalAssets.values[index],
+            sources: sourceFacts([['Assets', assetsPoint]]),
+          };
+        }),
+      },
+      {
+        key: 'currentAssets',
+        label: 'Current Assets',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.currentAssets, [
+            ['Current Assets', v.currentAssetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'currentAssetsAssets',
+        label: 'Current Assets / Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.currentAssetsAssets, [
+            ['Current Assets', v.currentAssetsPoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cashAndInvestments',
+        label: 'Cash + Short-term Investments',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cashAndInvestments, [
+            ['Cash', v.cashPoint],
+            ['Short-term Investments', v.investmentsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cashAndInvestmentsAssets',
+        label: 'Cash + Investments / Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cashAndInvestmentsAssets, [
+            ['Cash', v.cashPoint],
+            ['Short-term Investments', v.investmentsPoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'receivablesAssets',
+        label: 'Receivables / Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.receivablesAssets, [
+            ['Receivables', v.receivablesPoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'inventoryAssets',
+        label: 'Inventory / Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.inventoryAssets, [
+            ['Inventory', v.inventoryPoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'ppeAssets',
+        label: 'PP&E / Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.ppeAssets, [
+            ['PP&E', v.ppePoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'goodwill',
+        label: 'Goodwill',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.goodwill, [
+            ['Goodwill', v.goodwillPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'intangibles',
+        label: 'Intangible Assets',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.intangibles, [
+            ['Intangibles', v.intangiblesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'goodwillAndIntangibles',
+        label: 'Goodwill + Intangibles',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.goodwillAndIntangibles, [
+            ['Goodwill', v.goodwillPoint],
+            ['Intangibles', v.intangiblesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'goodwillAndIntangiblesAssets',
+        label: 'Goodwill + Intangibles / Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.goodwillAndIntangiblesAssets, [
+            ['Goodwill', v.goodwillPoint],
+            ['Intangibles', v.intangiblesPoint],
+            ['Assets', v.assetsPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'tangibleAssets',
+        label: 'Tangible Assets',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.tangibleAssets, [
+            ['Assets', v.assetsPoint],
+            ['Goodwill', v.goodwillPoint],
+            ['Intangibles', v.intangiblesPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'tangibleAssetsAssets',
+        label: 'Tangible Assets / Assets',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.tangibleAssetsAssets, [
+            ['Assets', v.assetsPoint],
+            ['Goodwill', v.goodwillPoint],
+            ['Intangibles', v.intangiblesPoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: SnapshotTile[] = [];
+    const addTile = (
+      tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }
+    ) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.cashAndInvestmentsAssets != null) {
+      addTile({
+        key: 'asset-composition-cash-investments',
+        label: 'Cash + Investments / Assets',
+        value: latest.cashAndInvestmentsAssets,
+        format: 'percent',
+        detail: `Liquid assets: ${formatValue(latest.cashAndInvestments, 'currency')}`,
+        tone: latest.cashAndInvestmentsAssets >= 20 ? 'good' : latest.cashAndInvestmentsAssets >= 8 ? 'neutral' : 'warn',
+        sources: snapshotSources([
+          ['Cash', latest.cashPoint],
+          ['Short-term Investments', latest.investmentsPoint],
+          ['Assets', latest.assetsPoint],
+        ]),
+      });
+    }
+
+    if (latest.goodwillAndIntangiblesAssets != null) {
+      addTile({
+        key: 'asset-composition-goodwill-intangibles',
+        label: 'Goodwill + Intangibles / Assets',
+        value: latest.goodwillAndIntangiblesAssets,
+        format: 'percent',
+        detail: `Goodwill + intangibles: ${formatValue(latest.goodwillAndIntangibles, 'currency')}`,
+        tone: latest.goodwillAndIntangiblesAssets <= 15 ? 'good' : latest.goodwillAndIntangiblesAssets <= 35 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Goodwill', latest.goodwillPoint],
+          ['Intangibles', latest.intangiblesPoint],
+          ['Assets', latest.assetsPoint],
+        ]),
+      });
+    }
+
+    if (latest.tangibleAssetsAssets != null) {
+      addTile({
+        key: 'asset-composition-tangible-assets',
+        label: 'Tangible Assets / Assets',
+        value: latest.tangibleAssetsAssets,
+        format: 'percent',
+        detail: 'Total assets less reported goodwill and intangibles',
+        tone: latest.tangibleAssetsAssets >= 75 ? 'good' : latest.tangibleAssetsAssets >= 50 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Assets', latest.assetsPoint],
+          ['Goodwill', latest.goodwillPoint],
+          ['Intangibles', latest.intangiblesPoint],
+        ]),
+      });
+    }
+
+    if (latest.receivablesAssets != null) {
+      addTile({
+        key: 'asset-composition-receivables',
+        label: 'Receivables / Assets',
+        value: latest.receivablesAssets,
+        format: 'percent',
+        detail: 'Receivables concentration in the reported asset base',
+        tone: latest.receivablesAssets <= 20 ? 'good' : latest.receivablesAssets <= 35 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Receivables', latest.receivablesPoint],
+          ['Assets', latest.assetsPoint],
+        ]),
+      });
+    }
+
+    if (latest.inventoryAssets != null) {
+      addTile({
+        key: 'asset-composition-inventory',
+        label: 'Inventory / Assets',
+        value: latest.inventoryAssets,
+        format: 'percent',
+        detail: 'Inventory concentration in the reported asset base',
+        tone: latest.inventoryAssets <= 20 ? 'good' : latest.inventoryAssets <= 35 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Inventory', latest.inventoryPoint],
+          ['Assets', latest.assetsPoint],
+        ]),
+      });
+    }
+
+    if (latest.ppeAssets != null) {
+      addTile({
+        key: 'asset-composition-ppe',
+        label: 'PP&E / Assets',
+        value: latest.ppeAssets,
+        format: 'percent',
+        detail: 'Property, plant, and equipment concentration',
+        tone: 'neutral',
+        sources: snapshotSources([
+          ['PP&E', latest.ppePoint],
+          ['Assets', latest.assetsPoint],
+        ]),
+      });
+    }
+
+    return { tiles: tiles.slice(0, 4), tableRows, displayPeriods, latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Asset Composition
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked view of liquid assets, operating assets, PP&E, goodwill, intangibles, and tangible asset mix for {industryLabel(group)} companies.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {latestPeriod ? periodLabel(latestPeriod) : 'Annual'} inputs
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <QualityTile key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Five-Year Asset Composition Bridge
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Total Assets', 'Current Assets', 'Cash + Short-term Investments', 'Goodwill + Intangibles', 'Tangible Assets'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Composition rows divide reported SEC XBRL balance-sheet concepts by total assets. Tangible assets subtract reported goodwill and intangible assets from total assets; linked values open each source tag.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
