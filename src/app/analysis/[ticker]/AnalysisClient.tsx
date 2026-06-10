@@ -612,6 +612,13 @@ export default function AnalysisClient({
                   <FilingActivityPanel filings={filings} ticker={chartTicker} />
                   <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
+                  <CapitalAllocationPanel
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
                 </>
               )}
             </section>
@@ -832,6 +839,340 @@ interface MetricPoint {
   value: number | null;
   source?: SourceFact | null;
   sources?: SourceFact[];
+}
+
+interface CapitalAllocationPanelProps {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}
+
+interface CapitalTile {
+  key: string;
+  label: string;
+  value: number;
+  format: string;
+  detail: string;
+  tone: 'good' | 'warn' | 'bad' | 'neutral';
+  sources: SnapshotSource[];
+}
+
+function CapitalAllocationPanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: CapitalAllocationPanelProps) {
+  const { tiles, tableRows, displayPeriods, latestPeriod } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 5);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as CapitalTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+      };
+    }
+
+    const metricRow = (key: string, label: string) => (
+      buildMetricRow(facts, key, label, displayPeriods, 'currency', group as any)
+    );
+
+    const rowsByKey = {
+      operatingCashFlow: metricRow('operatingCashFlow', 'Operating Cash Flow'),
+      capex: metricRow('capex', 'Capital Expenditures'),
+      dividendsPaid: metricRow('dividendsPaid', 'Dividends Paid'),
+      stockRepurchased: metricRow('stockRepurchased', 'Share Repurchases'),
+      debtIssued: metricRow('debtIssued', 'Debt Issued'),
+      debtRepaid: metricRow('debtRepaid', 'Debt Repaid'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const outflow = (item: MetricPoint | null) => {
+      const value = num(item);
+      return value == null ? null : Math.abs(value);
+    };
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter(Boolean) as Array<SourceFact & { label: string }>
+    );
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+
+    const valueForPeriod = (index: number) => {
+      const ocfPoint = point('operatingCashFlow', index);
+      const capexPoint = point('capex', index);
+      const dividendPoint = point('dividendsPaid', index);
+      const buybackPoint = point('stockRepurchased', index);
+      const issuedPoint = point('debtIssued', index);
+      const repaidPoint = point('debtRepaid', index);
+
+      const ocf = num(ocfPoint);
+      const capex = outflow(capexPoint);
+      const dividends = outflow(dividendPoint);
+      const buybacks = outflow(buybackPoint);
+      const debtIssued = num(issuedPoint);
+      const debtRepaid = outflow(repaidPoint);
+      const fcf = ocf != null && capex != null ? ocf - capex : null;
+      const cashReturned = dividends != null || buybacks != null ? (dividends || 0) + (buybacks || 0) : null;
+      const netDebtIssued = debtIssued != null || debtRepaid != null ? (debtIssued || 0) - (debtRepaid || 0) : null;
+
+      return {
+        ocfPoint,
+        capexPoint,
+        dividendPoint,
+        buybackPoint,
+        issuedPoint,
+        repaidPoint,
+        ocf,
+        capex,
+        dividends,
+        buybacks,
+        fcf,
+        cashReturned,
+        netDebtIssued,
+      };
+    };
+
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => ({
+      period: displayPeriods[index],
+      value,
+      source: sourceFacts(inputs)[0] || null,
+      sources: sourceFacts(inputs),
+    });
+
+    const tableRows = [
+      {
+        key: 'operatingCashFlow',
+        label: 'Operating Cash Flow',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const p = point('operatingCashFlow', index);
+          return { ...rowsByKey.operatingCashFlow.values[index], sources: sourceFacts([['OCF', p]]) };
+        }),
+      },
+      {
+        key: 'capexOutflow',
+        label: 'Capex Outflow',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.capex, [['Capex', v.capexPoint]]);
+        }),
+      },
+      {
+        key: 'freeCashFlow',
+        label: 'Free Cash Flow',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.fcf, [
+            ['OCF', v.ocfPoint],
+            ['Capex', v.capexPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cashReturned',
+        label: 'Cash Returned',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cashReturned, [
+            ['Buybacks', v.buybackPoint],
+            ['Dividends', v.dividendPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'netDebtIssuance',
+        label: 'Net Debt Issuance',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.netDebtIssued, [
+            ['Debt Issued', v.issuedPoint],
+            ['Debt Repaid', v.repaidPoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: CapitalTile[] = [];
+    const addTile = (tile: CapitalTile) => {
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!Number.isFinite(tile.value) || sources.length === 0) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.fcf != null) {
+      addTile({
+        key: 'free-cash-flow',
+        label: 'Free Cash Flow',
+        value: latest.fcf,
+        format: 'currency',
+        detail: 'Operating cash flow less capital expenditures',
+        tone: latest.fcf > 0 ? 'good' : 'bad',
+        sources: snapshotSources([
+          ['OCF', latest.ocfPoint],
+          ['Capex', latest.capexPoint],
+        ]),
+      });
+    }
+
+    if (latest.ocf != null && latest.ocf > 0 && latest.capex != null) {
+      const reinvestmentRate = (latest.capex / latest.ocf) * 100;
+      addTile({
+        key: 'reinvestment-rate',
+        label: 'Reinvestment / CFO',
+        value: reinvestmentRate,
+        format: 'percent',
+        detail: 'Capex outflow as a share of operating cash flow',
+        tone: reinvestmentRate <= 35 ? 'good' : reinvestmentRate <= 75 ? 'warn' : 'neutral',
+        sources: snapshotSources([
+          ['Capex', latest.capexPoint],
+          ['OCF', latest.ocfPoint],
+        ]),
+      });
+    }
+
+    if (latest.cashReturned != null && latest.fcf != null && latest.fcf > 0) {
+      const returnedFcf = (latest.cashReturned / latest.fcf) * 100;
+      addTile({
+        key: 'cash-returned-fcf',
+        label: 'Cash Returned / FCF',
+        value: returnedFcf,
+        format: 'percent',
+        detail: `Cash returned: ${formatValue(latest.cashReturned, 'currency')}`,
+        tone: returnedFcf <= 80 ? 'good' : returnedFcf <= 120 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Buybacks', latest.buybackPoint],
+          ['Dividends', latest.dividendPoint],
+          ['OCF', latest.ocfPoint],
+          ['Capex', latest.capexPoint],
+        ]),
+      });
+    }
+
+    if (latest.netDebtIssued != null) {
+      addTile({
+        key: 'net-debt-issued',
+        label: 'Net Debt Issuance',
+        value: latest.netDebtIssued,
+        format: 'currency',
+        detail: 'Debt issued less debt repaid in the latest annual period',
+        tone: latest.netDebtIssued <= 0 ? 'good' : 'warn',
+        sources: snapshotSources([
+          ['Debt Issued', latest.issuedPoint],
+          ['Debt Repaid', latest.repaidPoint],
+        ]),
+      });
+    }
+
+    return { tiles, tableRows, displayPeriods, latestPeriod };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ArrowRightLeft className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Capital Allocation
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Latest annual cash generation, reinvestment, shareholder returns, and debt flows.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {latestPeriod ? periodLabel(latestPeriod) : 'Annual'} inputs
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <CapitalTileCard key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Five-Year Cash Deployment
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Free Cash Flow', 'Cash Returned'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Capex, dividends, repurchases, and debt repayments are shown as cash-flow magnitudes where SEC tags report payment concepts.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CapitalTileCard({ tile, cik }: { tile: CapitalTile; cik?: string }) {
+  const toneClasses = {
+    good: 'border-emerald-800/70 bg-emerald-950/10 text-emerald-300',
+    warn: 'border-amber-800/70 bg-amber-950/10 text-amber-300',
+    bad: 'border-rose-800/70 bg-rose-950/10 text-rose-300',
+    neutral: 'border-sky-800/70 bg-sky-950/10 text-sky-300',
+  }[tile.tone];
+
+  return (
+    <div className={`min-h-[168px] border-2 p-4 flex flex-col justify-between ${toneClasses}`}>
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-stone-400">
+          {tile.label}
+        </div>
+        <div className="mt-2 text-2xl font-black tabular-nums text-stone-100">
+          {formatValue(tile.value, tile.format)}
+        </div>
+        <div className="mt-2 text-xs leading-relaxed text-stone-400">
+          {tile.detail}
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {tile.sources.map((source) => (
+          <SourceChip key={`${tile.key}-${source.label}`} source={source} cik={cik} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function FilingActivityPanel({
