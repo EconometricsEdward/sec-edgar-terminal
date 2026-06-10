@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   ExternalLink, FileText, ChevronDown, ChevronRight, Calendar, Hash,
   TrendingUp, Clock, Tag, AlertCircle, Zap, Database,
-  GitCompare, BarChart3, Search,
+  GitCompare, Search, ShieldCheck, Activity,
 } from 'lucide-react';
 
 export default function ScanResults({ data, onRescan }) {
@@ -51,6 +51,8 @@ export default function ScanResults({ data, onRescan }) {
         </div>
       )}
 
+      {results.length > 0 && <EvidenceDashboard results={results} />}
+
       {/* Compare summary table */}
       {isCompareMode && <CompareSummaryTable results={results} />}
 
@@ -76,6 +78,259 @@ export default function ScanResults({ data, onRescan }) {
       ))}
     </div>
   );
+}
+
+// ============================================================================
+// Evidence dashboard - source-linked summary across result sets
+// ============================================================================
+
+function EvidenceDashboard({ results }) {
+  const rows = useMemo(() => (
+    results.map(buildEvidenceRow)
+  ), [results]);
+
+  const totals = useMemo(() => {
+    const totalMatches = rows.reduce((sum, row) => sum + row.totalMatches, 0);
+    const filingsWithMatches = rows.reduce((sum, row) => sum + row.filingsWithMatches, 0);
+    const scanned = rows.reduce((sum, row) => sum + row.totalFilingsScanned, 0);
+    const highestRate = rows
+      .filter((row) => row.matchRate != null)
+      .sort((a, b) => b.matchRate - a.matchRate)[0] || null;
+    const latestSource = rows
+      .filter((row) => row.mostRecentFiling?.filingDate)
+      .sort((a, b) => new Date(b.mostRecentFiling.filingDate) - new Date(a.mostRecentFiling.filingDate))[0] || null;
+
+    return {
+      totalMatches,
+      filingsWithMatches,
+      scanned,
+      highestRate,
+      latestSource,
+    };
+  }, [rows]);
+
+  if (!rows.length) return null;
+
+  return (
+    <section className="mb-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Filing Evidence Summary
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked view of where the searched language appears across recent SEC filings.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          SEC filing links
+        </div>
+      </div>
+
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+        <EvidenceStat
+          icon={Database}
+          label="Companies"
+          value={rows.length}
+          detail={`${totals.scanned.toLocaleString()} filings scanned`}
+        />
+        <EvidenceStat
+          icon={FileText}
+          label="Matched Filings"
+          value={totals.filingsWithMatches.toLocaleString()}
+          detail={`${totals.totalMatches.toLocaleString()} total literal matches`}
+          tone={totals.totalMatches > 0 ? 'amber' : 'stone'}
+        />
+        <EvidenceStat
+          icon={Activity}
+          label="Highest Hit Rate"
+          value={totals.highestRate ? `${totals.highestRate.ticker} ${formatPct(totals.highestRate.matchRate)}` : 'N/A'}
+          detail={totals.highestRate ? `${totals.highestRate.filingsWithMatches} of ${totals.highestRate.totalFilingsScanned} filings` : 'No matching filings'}
+          tone={totals.highestRate?.matchRate > 0 ? 'emerald' : 'stone'}
+        />
+        <EvidenceStat
+          icon={Clock}
+          label="Latest Source"
+          value={totals.latestSource?.mostRecentFiling?.filingDate || 'N/A'}
+          detail={totals.latestSource ? `${totals.latestSource.ticker} ${totals.latestSource.mostRecentFiling.form}` : 'No matched source'}
+          href={totals.latestSource?.mostRecentFiling?.url}
+          tone={totals.latestSource ? 'sky' : 'stone'}
+        />
+      </div>
+
+      <div className="border-t border-stone-800 p-4">
+        <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+          Evidence by company
+        </div>
+        <div className="overflow-x-auto border-2 border-stone-800 bg-stone-900/30">
+          <table className="w-full text-sm">
+            <thead className="bg-stone-900 border-b-2 border-stone-800">
+              <tr>
+                <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 min-w-[120px]">
+                  Company
+                </th>
+                <th className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[100px]">
+                  Hit Rate
+                </th>
+                <th className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[100px]">
+                  Matches
+                </th>
+                <th className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[120px]">
+                  Matched Filings
+                </th>
+                <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[150px]">
+                  First / Recent
+                </th>
+                <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[220px]">
+                  Strongest Source
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <EvidenceRow key={row.ticker} row={row} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function EvidenceStat({ icon: Icon, label, value, detail, href, tone = 'stone' }) {
+  const toneClass = {
+    amber: 'border-amber-800/70 text-amber-300',
+    emerald: 'border-emerald-800/70 text-emerald-300',
+    sky: 'border-sky-800/70 text-sky-300',
+    stone: 'border-stone-800 text-stone-300',
+  }[tone];
+
+  const body = (
+    <>
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-stone-500 font-bold">
+        <Icon className="w-3.5 h-3.5" />
+        {label}
+      </div>
+      <div className="mt-2 text-xl font-black tabular-nums text-stone-100">{value}</div>
+      <div className="mt-2 text-xs leading-relaxed text-stone-400">{detail}</div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`block border-2 bg-stone-950/60 p-4 hover:border-sky-500 hover:bg-sky-950/10 transition-colors ${toneClass}`}
+      >
+        {body}
+      </a>
+    );
+  }
+
+  return (
+    <div className={`border-2 bg-stone-950/60 p-4 ${toneClass}`}>
+      {body}
+    </div>
+  );
+}
+
+function EvidenceRow({ row }) {
+  return (
+    <tr className="border-b border-stone-800/60 hover:bg-amber-500/5">
+      <td className="px-4 py-2.5 sticky left-0 bg-stone-950/95">
+        <div className="font-black text-stone-100 tracking-wider">{row.ticker}</div>
+        <div className="text-[10px] text-stone-500 truncate max-w-[180px]">{row.companyName || 'Unknown company'}</div>
+      </td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-stone-300">
+        {formatPct(row.matchRate)}
+      </td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-amber-300 font-black">
+        {row.totalMatches.toLocaleString()}
+      </td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-stone-300">
+        {row.filingsWithMatches} / {row.totalFilingsScanned}
+      </td>
+      <td className="px-4 py-2.5 text-xs text-stone-400">
+        <div>First: <span className="text-stone-200">{row.firstMention || 'N/A'}</span></div>
+        <div>Recent: <span className="text-stone-200">{row.mostRecentMention || 'N/A'}</span></div>
+      </td>
+      <td className="px-4 py-2.5 text-xs">
+        {row.strongestFiling?.url ? (
+          <a
+            href={row.strongestFiling.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sky-300 hover:text-sky-200 transition-colors"
+            title={`Open ${row.strongestFiling.form} filed ${row.strongestFiling.filingDate} on SEC.gov`}
+          >
+            <span className="font-bold">{row.strongestFiling.form}</span>
+            <span>{row.strongestFiling.filingDate}</span>
+            <span className="text-stone-500 tabular-nums">({row.strongestFiling.matchCount} matches)</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        ) : (
+          <span className="text-stone-600">No matched source</span>
+        )}
+        {row.topTerms.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {row.topTerms.slice(0, 4).map((term) => (
+              <span key={term} className="border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-stone-400">
+                {term}
+              </span>
+            ))}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function buildEvidenceRow(result) {
+  const matchingFilings = (result.matches || [])
+    .filter((filing) => filing.matchCount > 0 && !filing.skipped);
+  const byDateAsc = [...matchingFilings]
+    .filter((filing) => filing.filingDate)
+    .sort((a, b) => new Date(a.filingDate) - new Date(b.filingDate));
+  const byDateDesc = [...byDateAsc].reverse();
+  const strongestFiling = [...matchingFilings].sort((a, b) => {
+    if ((b.matchCount || 0) !== (a.matchCount || 0)) return (b.matchCount || 0) - (a.matchCount || 0);
+    return new Date(b.filingDate || 0) - new Date(a.filingDate || 0);
+  })[0] || null;
+  const termCounts = new Map();
+  for (const filing of matchingFilings) {
+    for (const term of filing.keywordsFound || []) {
+      termCounts.set(term, (termCounts.get(term) || 0) + 1);
+    }
+  }
+  const topTerms = Array.from(termCounts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([term]) => term);
+
+  return {
+    ticker: result.ticker,
+    companyName: result.companyName,
+    totalFilingsScanned: result.totalFilingsScanned || 0,
+    filingsWithMatches: result.filingsWithMatches || 0,
+    totalMatches: result.totalMatches || 0,
+    firstMention: result.firstMention || byDateAsc[0]?.filingDate || null,
+    mostRecentMention: result.mostRecentMention || byDateDesc[0]?.filingDate || null,
+    firstFiling: byDateAsc[0] || null,
+    mostRecentFiling: byDateDesc[0] || null,
+    strongestFiling,
+    matchRate: result.totalFilingsScanned ? ((result.filingsWithMatches || 0) / result.totalFilingsScanned) * 100 : null,
+    topTerms,
+  };
+}
+
+function formatPct(value) {
+  if (value == null || !Number.isFinite(value)) return 'N/A';
+  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
 }
 
 // ============================================================================
