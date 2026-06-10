@@ -23,6 +23,7 @@ import {
   buildIncomeStatement,
   buildBalanceSheet,
   buildCashFlow,
+  buildMetricRow,
   buildRatios,
   formatValue,
   formatGrowth,
@@ -30,7 +31,7 @@ import {
   periodLabel,
   buildSourceUrl,
 } from '../../../utils/xbrlParser.js';
-import { classifyIndustry, industryLabel, industryDisclosure } from '../../../utils/industry.js';
+import { classifyIndustry, industryLabel, industryDisclosure, INDUSTRY_GROUPS } from '../../../utils/industry.js';
 
 // ============================================================================
 // JS-component prop interop
@@ -332,11 +333,15 @@ export default function AnalysisClient({
   // ==========================================================================
   // Derived state — periods, table rows, growth, etc.
   // ==========================================================================
-  const periods = facts
-    ? periodType === 'annual'
-      ? extractAnnualPeriods(facts).slice(0, 10)
-      : extractQuarterlyPeriods(facts).slice(0, 12)
-    : [];
+  const annualPeriods = useMemo(
+    () => (facts ? extractAnnualPeriods(facts).slice(0, 10) : []),
+    [facts]
+  );
+  const quarterlyPeriods = useMemo(
+    () => (facts ? extractQuarterlyPeriods(facts).slice(0, 12) : []),
+    [facts]
+  );
+  const periods = periodType === 'annual' ? annualPeriods : quarterlyPeriods;
 
   const statementDef = STATEMENTS.find((s) => s.id === statement) || STATEMENTS[0];
   const rows = useMemo(
@@ -571,8 +576,11 @@ export default function AnalysisClient({
                 </div>
               )}
 
-              {periodType === 'annual' && periods.length > 0 && (
-                <SummaryDashboard facts={facts} periods={periods} sicCode={sicCode} />
+              {annualPeriods.length > 0 && (
+                <>
+                  <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} />
+                  <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
+                </>
               )}
             </section>
 
@@ -779,6 +787,388 @@ export default function AnalysisClient({
 // ============================================================================
 // Sub-components — moved from page-components/AnalysisPage.jsx unchanged
 // ============================================================================
+
+interface SourceFact {
+  tag: string;
+  unit: string;
+  end: string;
+  filed: string;
+  accession: string;
+}
+
+interface MetricPoint {
+  value: number | null;
+  source?: SourceFact | null;
+}
+
+interface SnapshotSource {
+  label: string;
+  point: MetricPoint | null;
+}
+
+interface SnapshotTile {
+  key: string;
+  label: string;
+  value: number;
+  format: string;
+  detail: string;
+  tone: 'good' | 'warn' | 'bad' | 'neutral';
+  sources: SnapshotSource[];
+}
+
+function QualitySnapshot({
+  facts,
+  periods,
+  sicCode,
+  cik,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+}) {
+  const { tiles, latestPeriod, group } = useMemo(() => {
+    const latestPeriod = periods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod) return { tiles: [] as SnapshotTile[], latestPeriod, group };
+
+    const metric = (key: string, format = 'currency'): MetricPoint | null => {
+      const row = buildMetricRow(facts, key, key, [latestPeriod], format, group as any);
+      return row?.values?.[0] || null;
+    };
+
+    const points = {
+      revenue: metric('revenue'),
+      netIncome: metric('netIncome'),
+      operatingCashFlow: metric('operatingCashFlow'),
+      capex: metric('capex'),
+      cash: metric('cash'),
+      shortTermDebt: metric('shortTermDebt'),
+      longTermDebt: metric('longTermDebt'),
+      stockholdersEquity: metric('stockholdersEquity'),
+      totalAssets: metric('totalAssets'),
+      loans: metric('loans'),
+      deposits: metric('deposits'),
+      allowanceForLoanLoss: metric('allowanceForLoanLoss'),
+      provisionForLoanLoss: metric('provisionForLoanLoss'),
+      premiumsEarned: metric('premiumsEarned'),
+      lossesIncurred: metric('lossesIncurred'),
+      underwritingExpenses: metric('underwritingExpenses'),
+      investmentIncome: metric('investmentIncome'),
+      shortTermInvestments: metric('shortTermInvestments'),
+    };
+
+    const num = (point: MetricPoint | null) => (
+      typeof point?.value === 'number' && Number.isFinite(point.value) ? point.value : null
+    );
+    const pct = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return (numerator / denominator) * 100;
+    };
+    const addTile = (
+      list: SnapshotTile[],
+      tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }
+    ) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      list.push({ ...tile, sources });
+    };
+
+    const tiles: SnapshotTile[] = [];
+
+    if (group === INDUSTRY_GROUPS.BANKING) {
+      const equity = num(points.stockholdersEquity);
+      const assets = num(points.totalAssets);
+      const loans = num(points.loans);
+      const deposits = num(points.deposits);
+      const allowance = num(points.allowanceForLoanLoss);
+      const provision = num(points.provisionForLoanLoss);
+      const revenue = num(points.revenue);
+
+      const equityAssets = pct(equity, assets);
+      if (equityAssets != null) {
+        addTile(tiles, {
+          key: 'equity-assets',
+          label: 'Equity / Assets',
+          value: equityAssets,
+          format: 'percent',
+          detail: 'Capital cushion from reported equity and assets',
+          tone: equityAssets >= 8 ? 'good' : equityAssets >= 5 ? 'warn' : 'bad',
+          sources: [
+            { label: 'Equity', point: points.stockholdersEquity },
+            { label: 'Assets', point: points.totalAssets },
+          ],
+        });
+      }
+
+      const loanDeposit = pct(loans, deposits);
+      if (loanDeposit != null) {
+        addTile(tiles, {
+          key: 'loan-deposit',
+          label: 'Loans / Deposits',
+          value: loanDeposit,
+          format: 'percent',
+          detail: 'Loan book funded by customer deposits',
+          tone: loanDeposit <= 90 ? 'good' : loanDeposit <= 105 ? 'warn' : 'bad',
+          sources: [
+            { label: 'Loans', point: points.loans },
+            { label: 'Deposits', point: points.deposits },
+          ],
+        });
+      }
+
+      const allowanceCoverage = pct(allowance, loans);
+      if (allowanceCoverage != null) {
+        addTile(tiles, {
+          key: 'allowance-loans',
+          label: 'Allowance / Loans',
+          value: allowanceCoverage,
+          format: 'percent',
+          detail: 'Credit-loss allowance against reported loans',
+          tone: 'neutral',
+          sources: [
+            { label: 'Allowance', point: points.allowanceForLoanLoss },
+            { label: 'Loans', point: points.loans },
+          ],
+        });
+      }
+
+      const provisionBurden = pct(provision, revenue);
+      if (provisionBurden != null) {
+        addTile(tiles, {
+          key: 'provision-revenue',
+          label: 'Provision / Revenue',
+          value: provisionBurden,
+          format: 'percent',
+          detail: 'Credit provision burden in the latest annual period',
+          tone: provisionBurden <= 5 ? 'good' : provisionBurden <= 15 ? 'warn' : 'bad',
+          sources: [
+            { label: 'Provision', point: points.provisionForLoanLoss },
+            { label: 'Revenue', point: points.revenue },
+          ],
+        });
+      }
+    } else if (group === INDUSTRY_GROUPS.INSURANCE) {
+      const premiums = num(points.premiumsEarned);
+      const losses = num(points.lossesIncurred);
+      const expenses = num(points.underwritingExpenses);
+      const investmentIncome = num(points.investmentIncome);
+      const investments = num(points.shortTermInvestments) ?? num(points.totalAssets);
+      const equity = num(points.stockholdersEquity);
+      const assets = num(points.totalAssets);
+
+      if (premiums != null && premiums !== 0 && (losses != null || expenses != null)) {
+        const combinedRatio = (((losses || 0) + (expenses || 0)) / premiums) * 100;
+        addTile(tiles, {
+          key: 'combined-ratio',
+          label: 'Combined Ratio',
+          value: combinedRatio,
+          format: 'percent',
+          detail: 'Losses plus underwriting expenses / premiums earned',
+          tone: combinedRatio < 95 ? 'good' : combinedRatio <= 100 ? 'warn' : 'bad',
+          sources: [
+            { label: 'Losses', point: points.lossesIncurred },
+            { label: 'Expenses', point: points.underwritingExpenses },
+            { label: 'Premiums', point: points.premiumsEarned },
+          ],
+        });
+      }
+
+      const investmentYield = pct(investmentIncome, investments);
+      if (investmentYield != null) {
+        addTile(tiles, {
+          key: 'investment-yield',
+          label: 'Investment Yield',
+          value: investmentYield,
+          format: 'percent',
+          detail: 'Investment income over reported investments or assets',
+          tone: investmentYield >= 3 ? 'good' : investmentYield >= 1 ? 'warn' : 'bad',
+          sources: [
+            { label: 'Income', point: points.investmentIncome },
+            { label: 'Base', point: points.shortTermInvestments?.value != null ? points.shortTermInvestments : points.totalAssets },
+          ],
+        });
+      }
+
+      const equityAssets = pct(equity, assets);
+      if (equityAssets != null) {
+        addTile(tiles, {
+          key: 'insurer-equity-assets',
+          label: 'Equity / Assets',
+          value: equityAssets,
+          format: 'percent',
+          detail: 'Balance-sheet cushion from equity and assets',
+          tone: equityAssets >= 10 ? 'good' : equityAssets >= 6 ? 'warn' : 'bad',
+          sources: [
+            { label: 'Equity', point: points.stockholdersEquity },
+            { label: 'Assets', point: points.totalAssets },
+          ],
+        });
+      }
+    } else {
+      const revenue = num(points.revenue);
+      const netIncome = num(points.netIncome);
+      const ocf = num(points.operatingCashFlow);
+      const capex = num(points.capex);
+      const normalizedCapex = capex == null ? null : Math.abs(capex);
+      const fcf = ocf != null && normalizedCapex != null ? ocf - normalizedCapex : null;
+      const equity = num(points.stockholdersEquity);
+      const cash = num(points.cash);
+      const shortDebt = num(points.shortTermDebt);
+      const longDebt = num(points.longTermDebt);
+      const totalDebt = shortDebt != null || longDebt != null ? (shortDebt || 0) + (longDebt || 0) : null;
+
+      const cfoConversion = netIncome != null && netIncome > 0 ? pct(ocf, netIncome) : null;
+      if (cfoConversion != null) {
+        addTile(tiles, {
+          key: 'cfo-conversion',
+          label: 'CFO Conversion',
+          value: cfoConversion,
+          format: 'percent',
+          detail: 'Operating cash flow / net income',
+          tone: cfoConversion >= 100 ? 'good' : cfoConversion >= 75 ? 'warn' : 'bad',
+          sources: [
+            { label: 'OCF', point: points.operatingCashFlow },
+            { label: 'Net Income', point: points.netIncome },
+          ],
+        });
+      }
+
+      const fcfMargin = pct(fcf, revenue);
+      if (fcfMargin != null) {
+        addTile(tiles, {
+          key: 'fcf-margin',
+          label: 'FCF Margin',
+          value: fcfMargin,
+          format: 'percent',
+          detail: `Free cash flow: ${formatValue(fcf, 'currency')}`,
+          tone: fcfMargin >= 10 ? 'good' : fcfMargin >= 0 ? 'warn' : 'bad',
+          sources: [
+            { label: 'OCF', point: points.operatingCashFlow },
+            { label: 'Capex', point: points.capex },
+            { label: 'Revenue', point: points.revenue },
+          ],
+        });
+      }
+
+      const capexIntensity = pct(normalizedCapex, revenue);
+      if (capexIntensity != null) {
+        addTile(tiles, {
+          key: 'capex-intensity',
+          label: 'Capex Intensity',
+          value: capexIntensity,
+          format: 'percent',
+          detail: 'Capital expenditures / revenue',
+          tone: capexIntensity <= 8 ? 'good' : capexIntensity <= 18 ? 'warn' : 'neutral',
+          sources: [
+            { label: 'Capex', point: points.capex },
+            { label: 'Revenue', point: points.revenue },
+          ],
+        });
+      }
+
+      const netDebt = totalDebt != null && cash != null ? totalDebt - cash : null;
+      const netDebtEquity = pct(netDebt, equity);
+      if (netDebt != null && netDebtEquity != null) {
+        addTile(tiles, {
+          key: 'net-debt-equity',
+          label: 'Net Debt / Equity',
+          value: netDebtEquity,
+          format: 'percent',
+          detail: `Net debt: ${formatValue(netDebt, 'currency')}`,
+          tone: netDebt <= 0 ? 'good' : netDebtEquity <= 75 ? 'warn' : 'bad',
+          sources: [
+            { label: 'Cash', point: points.cash },
+            { label: 'ST Debt', point: points.shortTermDebt },
+            { label: 'LT Debt', point: points.longTermDebt },
+            { label: 'Equity', point: points.stockholdersEquity },
+          ],
+        });
+      }
+    }
+
+    return { tiles: tiles.slice(0, 4), latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-amber-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Quality Snapshot
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Latest annual XBRL period: {latestPeriod ? periodLabel(latestPeriod) : 'Latest'} ({industryLabel(group)})
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          Source-linked inputs
+        </div>
+      </div>
+
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+        {tiles.map((tile) => (
+          <QualityTile key={tile.key} tile={tile} cik={cik} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QualityTile({ tile, cik }: { tile: SnapshotTile; cik?: string }) {
+  const toneClasses = {
+    good: 'border-emerald-800/70 bg-emerald-950/10 text-emerald-300',
+    warn: 'border-amber-800/70 bg-amber-950/10 text-amber-300',
+    bad: 'border-rose-800/70 bg-rose-950/10 text-rose-300',
+    neutral: 'border-sky-800/70 bg-sky-950/10 text-sky-300',
+  }[tile.tone];
+
+  return (
+    <div className={`min-h-[168px] border-2 p-4 flex flex-col justify-between ${toneClasses}`}>
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-stone-400">
+          {tile.label}
+        </div>
+        <div className="mt-2 text-2xl font-black tabular-nums text-stone-100">
+          {formatValue(tile.value, tile.format)}
+        </div>
+        <div className="mt-2 text-xs leading-relaxed text-stone-400">
+          {tile.detail}
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {tile.sources.map((source) => (
+          <SourceChip key={`${tile.key}-${source.label}`} source={source} cik={cik} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SourceChip({ source, cik }: { source: SnapshotSource; cik?: string }) {
+  const sourceUrl = source.point?.source && cik ? buildSourceUrl(cik, source.point.source) : null;
+  if (!sourceUrl || !source.point?.source) return null;
+
+  const factSource = source.point.source;
+  return (
+    <a
+      href={sourceUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`Tag: ${factSource.tag}\nUnit: ${factSource.unit}\nPeriod: ${factSource.end}\nFiled: ${factSource.filed}\nAccession: ${factSource.accession}`}
+      className="inline-flex items-center gap-1 border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-stone-300 hover:border-amber-500 hover:text-amber-300 transition-colors"
+    >
+      <LinkIcon className="w-3 h-3" />
+      {source.label}
+    </a>
+  );
+}
 
 function SectionHeader({ icon: Icon, title }: { icon: any; title: string }) {
   return (
