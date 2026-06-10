@@ -174,6 +174,122 @@ function normalizeHit(hit, rank) {
   };
 }
 
+function filingTime(value) {
+  const time = new Date(value || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function latestSourceFromHits(hits) {
+  return [...hits]
+    .filter((hit) => hit.documentUrl)
+    .sort((a, b) => (
+      filingTime(b.filingDate) - filingTime(a.filingDate)
+      || (a.rank || 0) - (b.rank || 0)
+    ))[0] || null;
+}
+
+function buildSummary(hits, { focusApplied }) {
+  const companyMap = new Map();
+  const formMap = new Map();
+  let firstFilingDate = '';
+  let latestFilingDate = '';
+
+  for (const hit of hits) {
+    const companyKey = hit.cik || hit.companyName || 'unknown';
+    const company = companyMap.get(companyKey) || {
+      cik: hit.cik,
+      companyName: hit.companyName || 'Unknown filer',
+      tickers: [],
+      hits: 0,
+      forms: {},
+      firstFilingDate: '',
+      latestFilingDate: '',
+      latestSource: null,
+      bestSecRank: null,
+    };
+
+    company.hits += 1;
+    company.forms[hit.form || 'Filing'] = (company.forms[hit.form || 'Filing'] || 0) + 1;
+    company.tickers = Array.from(new Set([...company.tickers, ...(hit.tickers || [])])).sort();
+    company.bestSecRank = company.bestSecRank == null
+      ? hit.rank
+      : Math.min(company.bestSecRank, hit.rank);
+    if (!company.firstFilingDate || filingTime(hit.filingDate) < filingTime(company.firstFilingDate)) {
+      company.firstFilingDate = hit.filingDate || company.firstFilingDate;
+    }
+    if (!company.latestFilingDate || filingTime(hit.filingDate) > filingTime(company.latestFilingDate)) {
+      company.latestFilingDate = hit.filingDate || company.latestFilingDate;
+      company.latestSource = {
+        form: hit.form,
+        filingDate: hit.filingDate,
+        accession: hit.accession,
+        documentName: hit.documentName,
+        documentUrl: hit.documentUrl,
+        fileDescription: hit.fileDescription || hit.fileType || hit.documentName,
+      };
+    }
+    companyMap.set(companyKey, company);
+
+    const formKey = hit.form || 'Filing';
+    const form = formMap.get(formKey) || {
+      form: formKey,
+      hits: 0,
+      companies: new Set(),
+      latestSource: null,
+    };
+    form.hits += 1;
+    if (hit.cik) form.companies.add(hit.cik);
+    if (!form.latestSource || filingTime(hit.filingDate) > filingTime(form.latestSource.filingDate)) {
+      form.latestSource = {
+        companyName: hit.companyName,
+        tickers: hit.tickers || [],
+        filingDate: hit.filingDate,
+        documentUrl: hit.documentUrl,
+      };
+    }
+    formMap.set(formKey, form);
+
+    if (!firstFilingDate || filingTime(hit.filingDate) < filingTime(firstFilingDate)) {
+      firstFilingDate = hit.filingDate || firstFilingDate;
+    }
+    if (!latestFilingDate || filingTime(hit.filingDate) > filingTime(latestFilingDate)) {
+      latestFilingDate = hit.filingDate || latestFilingDate;
+    }
+  }
+
+  const topCompanies = Array.from(companyMap.values())
+    .sort((a, b) => (
+      b.hits - a.hits
+      || filingTime(b.latestFilingDate) - filingTime(a.latestFilingDate)
+      || (a.bestSecRank || 999999) - (b.bestSecRank || 999999)
+      || a.companyName.localeCompare(b.companyName)
+    ))
+    .slice(0, 10);
+
+  const formMix = Array.from(formMap.values())
+    .map((form) => ({
+      form: form.form,
+      hits: form.hits,
+      companies: form.companies.size,
+      latestSource: form.latestSource,
+    }))
+    .sort((a, b) => b.hits - a.hits || a.form.localeCompare(b.form));
+
+  return {
+    scope: focusApplied ? 'focused-sec-hits' : 'returned-sec-hits',
+    analyzedHits: hits.length,
+    companyCount: companyMap.size,
+    formCount: formMap.size,
+    dateSpan: {
+      firstFilingDate,
+      latestFilingDate,
+    },
+    latestSource: latestSourceFromHits(hits),
+    topCompanies,
+    formMix,
+  };
+}
+
 export async function GET(request) {
   const url = new URL(request.url);
   const rawQuery = url.searchParams.get('query') || url.searchParams.get('keywords') || '';
@@ -233,6 +349,8 @@ export async function GET(request) {
       .map((hit, index) => normalizeHit(hit, index + 1))
       .filter((hit) => hit.documentUrl);
     const focusedHits = normalizedHits.filter((hit) => matchesFocus(hit, focusTerms));
+    const analysisHits = focusTerms.length ? focusedHits : normalizedHits;
+    const summary = buildSummary(analysisHits, { focusApplied: focusTerms.length > 0 });
     const results = focusedHits
       .slice(0, limit)
       .map((hit, index) => ({
@@ -274,6 +392,7 @@ export async function GET(request) {
         returnedHits: results.length,
         tookMs: data?.took || null,
         timedOut: Boolean(data?.timed_out),
+        summary,
         results,
         errors: [],
       },

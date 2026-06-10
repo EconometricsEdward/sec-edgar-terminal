@@ -106,11 +106,20 @@ function EdgarIndexResults({ data }) {
   const results = data.results || [];
   const terms = data.query?.terms || [];
   const focusTerms = data.focus?.terms || [];
+  const summary = data.summary || {};
+  const topCompanies = summary.topCompanies || [];
+  const formMix = summary.formMix || [];
   const companies = new Set(results.map((row) => row.cik).filter(Boolean));
   const forms = new Set(results.map((row) => row.form).filter(Boolean));
-  const latest = [...results]
+  const latest = summary.latestSource || [...results]
     .filter((row) => row.filingDate)
     .sort((a, b) => filingTimestamp(b.filingDate) - filingTimestamp(a.filingDate))[0] || null;
+  const companyCount = summary.companyCount ?? companies.size;
+  const formCount = summary.formCount ?? forms.size;
+  const analyzedHits = summary.analyzedHits ?? results.length;
+  const summaryScope = summary.scope === 'focused-sec-hits'
+    ? 'focused SEC hits'
+    : 'returned SEC hits';
 
   return (
     <div className="mb-8">
@@ -186,14 +195,14 @@ function EdgarIndexResults({ data }) {
           <EvidenceStat
             icon={Activity}
             label="Companies"
-            value={companies.size.toLocaleString()}
-            detail="Distinct reporting CIKs in returned hits"
-            tone={companies.size > 0 ? 'emerald' : 'stone'}
+            value={companyCount.toLocaleString()}
+            detail={`Distinct reporting CIKs in ${summaryScope}`}
+            tone={companyCount > 0 ? 'emerald' : 'stone'}
           />
           <EvidenceStat
             icon={FileText}
             label="Filing Forms"
-            value={forms.size.toLocaleString()}
+            value={formCount.toLocaleString()}
             detail={Array.from(forms).slice(0, 4).join(', ') || `Searched ${data.forms?.length || 0} form types`}
           />
           <EvidenceStat
@@ -220,6 +229,15 @@ function EdgarIndexResults({ data }) {
               </span>
             ))}
           </div>
+        )}
+
+        {(topCompanies.length > 0 || formMix.length > 0) && (
+          <EdgarIndexSummary
+            topCompanies={topCompanies}
+            formMix={formMix}
+            analyzedHits={analyzedHits}
+            summaryScope={summaryScope}
+          />
         )}
 
         {results.length === 0 ? (
@@ -270,6 +288,163 @@ function EdgarIndexResults({ data }) {
       </section>
     </div>
   );
+}
+
+function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope }) {
+  const maxFormHits = Math.max(...formMix.map((row) => row.hits || 0), 1);
+
+  return (
+    <div className="border-t border-stone-800 p-4">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-emerald-400" />
+            <h4 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Filer Concentration
+            </h4>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Counts below summarize {analyzedHits.toLocaleString()} {summaryScope} and link to the newest source filing behind each company or form.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          SEC-index sourced
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.55fr)]">
+        {topCompanies.length > 0 && (
+          <div className="overflow-x-auto border-2 border-stone-800 bg-stone-900/20">
+            <table className="w-full text-sm">
+              <thead className="bg-stone-900 border-b-2 border-stone-800">
+                <tr>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[240px]">
+                    Top Filer
+                  </th>
+                  <th className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[90px]">
+                    Hits
+                  </th>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[150px]">
+                    Forms
+                  </th>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[180px]">
+                    Latest Source
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {topCompanies.map((company) => (
+                  <tr key={company.cik || company.companyName} className="border-b border-stone-800/60 align-top hover:bg-emerald-500/5">
+                    <td className="px-4 py-3">
+                      <div className="text-xs font-black tracking-wider text-stone-100">{company.companyName}</div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {(company.tickers || []).length > 0 ? company.tickers.slice(0, 4).map((ticker) => (
+                          <span
+                            key={ticker}
+                            className="border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-stone-400"
+                          >
+                            {ticker}
+                          </span>
+                        )) : (
+                          <span className="text-[10px] text-stone-600">No ticker parsed</span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-[10px] font-mono text-stone-600">CIK {company.cik}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="text-lg font-black tabular-nums text-emerald-300">{company.hits.toLocaleString()}</div>
+                      {company.bestSecRank != null && (
+                        <div className="text-[10px] uppercase tracking-widest text-stone-600">
+                          Best SEC #{company.bestSecRank}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {compactFormList(company.forms).map((form) => (
+                          <span
+                            key={`${company.cik}-${form.form}`}
+                            className={`border px-1.5 py-0.5 text-[9px] font-black tracking-wider ${getFormColor(form.form)}`}
+                          >
+                            {form.form} {form.count}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-stone-300">
+                      {company.latestSource?.documentUrl ? (
+                        <a
+                          href={company.latestSource.documentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-sky-300 hover:text-sky-200"
+                        >
+                          {company.latestSource.filingDate || 'Open filing'}
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <span className="text-stone-600">No source link</span>
+                      )}
+                      <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-500">
+                        {company.latestSource?.form || 'Filing'}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {formMix.length > 0 && (
+          <div className="border-2 border-stone-800 bg-stone-900/20 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-sky-400" />
+              <h4 className="text-[10px] uppercase tracking-[0.22em] font-black text-stone-200">
+                Filing Mix
+              </h4>
+            </div>
+            <div className="space-y-3">
+              {formMix.slice(0, 8).map((row) => (
+                <div key={row.form}>
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-widest">
+                    <span className="font-black text-stone-300">{row.form}</span>
+                    <span className="text-stone-500">
+                      {row.hits.toLocaleString()} hits / {row.companies.toLocaleString()} companies
+                    </span>
+                  </div>
+                  <div className="h-2 bg-stone-800">
+                    <div
+                      className="h-full bg-sky-400"
+                      style={{ width: `${Math.max(8, Math.round((row.hits / maxFormHits) * 100))}%` }}
+                    />
+                  </div>
+                  {row.latestSource?.documentUrl && (
+                    <a
+                      href={row.latestSource.documentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-sky-300 hover:text-sky-200"
+                    >
+                      Latest: {row.latestSource.filingDate || row.latestSource.companyName || 'source filing'}
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function compactFormList(forms) {
+  return Object.entries(forms || {})
+    .map(([form, count]) => ({ form, count }))
+    .sort((a, b) => b.count - a.count || a.form.localeCompare(b.form))
+    .slice(0, 5);
 }
 
 function EdgarIndexRow({ row }) {
