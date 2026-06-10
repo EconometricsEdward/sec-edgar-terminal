@@ -107,7 +107,7 @@ const jsonLd = {
     priceCurrency: 'USD',
   },
   featureList: [
-    'SEC filings browser with 10-K, 10-Q, 8-K, Form 4, and proxy support',
+    'SEC filings browser with source-linked filing pulse, 10-K, 10-Q, 8-K, Form 4, and proxy support',
     'XBRL financial statements (income, balance sheet, cash flow)',
     'Industry-specific ratio calculations',
     '10-year stock price history with filing markers',

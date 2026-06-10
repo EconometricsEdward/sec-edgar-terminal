@@ -78,6 +78,422 @@ function formatSize(bytes?: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
+const ANNUAL_FORMS = new Set(['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A']);
+const QUARTERLY_FORMS = new Set(['10-Q', '10-Q/A', '6-K']);
+const CURRENT_FORMS = new Set(['8-K', '8-K/A', '6-K']);
+const PROXY_FORMS = new Set(['DEF 14A', 'DEF 14A/A', 'PRE 14A', 'PRE 14A/A']);
+const INSIDER_FORMS = new Set(['3', '3/A', '4', '4/A', '5', '5/A']);
+
+const HIGH_SIGNAL_8K_ITEMS = new Set([
+  '1.03',
+  '2.01',
+  '2.02',
+  '2.03',
+  '2.05',
+  '2.06',
+  '3.01',
+  '3.03',
+  '4.01',
+  '5.02',
+  '5.03',
+  '8.01',
+]);
+
+function filingDateTime(filing: FilingEntry): number {
+  const time = new Date(filing.filingDate).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function findLatestFiling(
+  filings: FilingEntry[],
+  predicate: (filing: FilingEntry) => boolean
+): FilingEntry | null {
+  return [...filings]
+    .filter(predicate)
+    .sort((a, b) => filingDateTime(b) - filingDateTime(a))[0] || null;
+}
+
+function filingAgeDays(filing?: FilingEntry | null): number | null {
+  if (!filing) return null;
+  const time = filingDateTime(filing);
+  if (!time) return null;
+  return Math.max(0, Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000)));
+}
+
+function formatAgeDays(days: number | null): string {
+  if (days == null) return 'N/A';
+  if (days === 0) return 'Today';
+  if (days === 1) return '1 day';
+  return `${days} days`;
+}
+
+function isProxyFiling(filing: FilingEntry): boolean {
+  return PROXY_FORMS.has(filing.form) || filing.form.includes('DEF 14A') || filing.form.includes('PRE 14A');
+}
+
+function filingsSince(filings: FilingEntry[], days: number): FilingEntry[] {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return filings.filter((filing) => filingDateTime(filing) >= cutoff);
+}
+
+function submissionsFeedUrl(cik?: string) {
+  return cik ? `https://data.sec.gov/submissions/CIK${cik}.json` : null;
+}
+
+function FilingPulsePanel({ filings, cik }: { filings: FilingEntry[]; cik?: string }) {
+  const pulse = useMemo(() => {
+    const latestAny = findLatestFiling(filings, () => true);
+    const latestAnnual = findLatestFiling(filings, (filing) => ANNUAL_FORMS.has(filing.form));
+    const latestQuarterly = findLatestFiling(filings, (filing) => QUARTERLY_FORMS.has(filing.form));
+    const latestCurrent = findLatestFiling(filings, (filing) => CURRENT_FORMS.has(filing.form));
+    const latestProxy = findLatestFiling(filings, isProxyFiling);
+    const last90 = filingsSince(filings, 90);
+    const last365 = filingsSince(filings, 365);
+
+    const countFamily = (
+      label: string,
+      predicate: (filing: FilingEntry) => boolean
+    ) => {
+      const matches = last365.filter(predicate);
+      return {
+        label,
+        count: matches.length,
+        latest: findLatestFiling(matches, () => true),
+      };
+    };
+
+    const eventSignals = last365
+      .filter((filing) => filing.form.startsWith('8-K'))
+      .map((filing) => {
+        const items = getItemsInfo(filing.items || '');
+        return { filing, items };
+      })
+      .filter(({ items }) => items.some((item) => HIGH_SIGNAL_8K_ITEMS.has(item.code)))
+      .sort((a, b) => filingDateTime(b.filing) - filingDateTime(a.filing))
+      .slice(0, 3);
+
+    return {
+      latestAny,
+      latestAnnual,
+      latestQuarterly,
+      latestCurrent,
+      latestProxy,
+      last90Count: last90.length,
+      last365Count: last365.length,
+      familyMix: [
+        countFamily('Annual', (filing) => ANNUAL_FORMS.has(filing.form)),
+        countFamily('Quarterly', (filing) => QUARTERLY_FORMS.has(filing.form)),
+        countFamily('Current Reports', (filing) => CURRENT_FORMS.has(filing.form)),
+        countFamily('Proxy', isProxyFiling),
+        countFamily('Insider', (filing) => INSIDER_FORMS.has(filing.form)),
+      ],
+      eventSignals,
+    };
+  }, [filings]);
+
+  const feedUrl = submissionsFeedUrl(cik);
+  const cards = [
+    {
+      key: 'latest',
+      label: 'Latest Filing',
+      filing: pulse.latestAny,
+      fallback: 'No dated filing found',
+    },
+    {
+      key: 'annual',
+      label: 'Annual Report',
+      filing: pulse.latestAnnual,
+      fallback: 'No annual report in recent feed',
+    },
+    {
+      key: 'quarterly',
+      label: 'Quarterly Update',
+      filing: pulse.latestQuarterly,
+      fallback: 'No quarterly update in recent feed',
+    },
+    {
+      key: 'current',
+      label: 'Current Report',
+      filing: pulse.latestCurrent,
+      fallback: 'No current report in recent feed',
+    },
+    {
+      key: 'proxy',
+      label: 'Proxy Statement',
+      filing: pulse.latestProxy,
+      fallback: 'No proxy statement in recent feed',
+    },
+  ];
+
+  return (
+    <section className="mb-6 border-2 border-stone-800 bg-stone-950/60">
+      <div className="border-b border-stone-800 px-4 py-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] font-black text-stone-400">
+            <FileText className="w-4 h-4 text-amber-400" />
+            Filing Pulse
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500 max-w-2xl">
+            Latest filing timestamps, trailing activity, and material 8-K item codes from SEC submissions.
+          </p>
+        </div>
+        {feedUrl && (
+          <a
+            href={feedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-sky-300 hover:text-sky-200 transition-colors"
+            title="Open SEC submissions feed"
+          >
+            SEC submissions feed
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-5">
+        {cards.map((card) => (
+          <FilingPulseCard
+            key={card.key}
+            label={card.label}
+            filing={card.filing}
+            fallback={card.fallback}
+          />
+        ))}
+      </div>
+
+      <div className="grid gap-0 border-t border-stone-800 lg:grid-cols-[1.05fr_1.4fr]">
+        <div className="border-b border-stone-800 p-4 lg:border-b-0 lg:border-r">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] font-black text-stone-500">
+              SEC Feed Activity
+            </div>
+            {feedUrl && (
+              <a
+                href={feedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] uppercase tracking-[0.14em] text-stone-500 hover:text-sky-300 transition-colors"
+              >
+                Source JSON
+              </a>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FilingPulseMetric
+              label="Last 90 Days"
+              value={pulse.last90Count}
+              detail="Recent SEC submissions"
+              sourceUrl={feedUrl}
+            />
+            <FilingPulseMetric
+              label="Last 12 Months"
+              value={pulse.last365Count}
+              detail="Trailing filing volume"
+              sourceUrl={feedUrl}
+            />
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-black text-stone-500">
+              12-Month Filing Mix
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {pulse.familyMix.map((family) => (
+                <FilingFamilyChip key={family.label} family={family} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-black text-stone-500">
+            Recent High-Signal 8-K Items
+          </div>
+          {pulse.eventSignals.length > 0 ? (
+            <div className="space-y-2">
+              {pulse.eventSignals.map(({ filing, items }) => (
+                <a
+                  key={filing.accession}
+                  href={filing.documentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block border border-stone-800 bg-stone-900/30 px-3 py-2.5 hover:border-rose-700/70 hover:bg-rose-950/10 transition-colors group"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-black text-stone-100">
+                      {filing.form} filed {filing.filingDate}
+                    </span>
+                    <ExternalLink className="w-3.5 h-3.5 text-stone-600 group-hover:text-rose-300" />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {items
+                      .filter((item) => HIGH_SIGNAL_8K_ITEMS.has(item.code))
+                      .map((item) => (
+                        <span
+                          key={`${filing.accession}-${item.code}`}
+                          className="px-1.5 py-0.5 bg-rose-950/40 border border-rose-800/50 text-rose-200 text-[9px] font-bold uppercase tracking-wider"
+                          title={`8-K Item ${item.code}`}
+                        >
+                          {item.code} / {item.label}
+                        </span>
+                      ))}
+                  </div>
+                  <div className="mt-2 font-mono text-[10px] text-stone-600">
+                    {filing.accession}
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="border border-dashed border-stone-800 px-3 py-5 text-center text-xs text-stone-500">
+              No recent high-signal 8-K item codes found in the SEC submissions feed.
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FilingPulseCard({
+  label,
+  filing,
+  fallback,
+}: {
+  label: string;
+  filing?: FilingEntry | null;
+  fallback: string;
+}) {
+  const age = filingAgeDays(filing);
+  const body = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] uppercase tracking-[0.18em] font-black text-stone-500">
+          {label}
+        </div>
+        {filing && (
+          <span className={`border px-1.5 py-0.5 text-[9px] font-black tracking-wider ${formColor(filing.form)}`}>
+            {filing.form}
+          </span>
+        )}
+      </div>
+      <div className="mt-3 text-2xl font-black tabular-nums text-stone-100">
+        {formatAgeDays(age)}
+      </div>
+      <div className="mt-2 text-xs leading-relaxed text-stone-400">
+        {filing ? (
+          <>
+            Filed {filing.filingDate}
+            {filing.reportDate && <span className="block text-stone-500">Period {filing.reportDate}</span>}
+            <span className="block font-mono text-[10px] text-stone-600">{filing.accession}</span>
+          </>
+        ) : (
+          fallback
+        )}
+      </div>
+    </>
+  );
+
+  if (!filing?.documentUrl) {
+    return (
+      <div className="border border-stone-800 bg-stone-900/30 p-3">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={filing.documentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="border border-stone-800 bg-stone-900/30 p-3 hover:border-amber-600/70 hover:bg-amber-950/10 transition-colors group"
+      title={`Open ${filing.form} filed ${filing.filingDate} on SEC.gov`}
+    >
+      {body}
+      <div className="mt-3 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-stone-600 group-hover:text-amber-300">
+        Open source
+        <ExternalLink className="w-3 h-3" />
+      </div>
+    </a>
+  );
+}
+
+function FilingPulseMetric({
+  label,
+  value,
+  detail,
+  sourceUrl,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  sourceUrl: string | null;
+}) {
+  const content = (
+    <>
+      <div className="text-[10px] uppercase tracking-[0.18em] font-black text-stone-500">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-black tabular-nums text-stone-100">{value}</div>
+      <div className="mt-1 text-[11px] text-stone-500">{detail}</div>
+    </>
+  );
+
+  if (!sourceUrl) {
+    return <div className="border border-stone-800 bg-stone-900/30 p-3">{content}</div>;
+  }
+
+  return (
+    <a
+      href={sourceUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="border border-stone-800 bg-stone-900/30 p-3 hover:border-sky-700/70 hover:bg-sky-950/10 transition-colors"
+      title="Open SEC submissions feed"
+    >
+      {content}
+    </a>
+  );
+}
+
+function FilingFamilyChip({
+  family,
+}: {
+  family: { label: string; count: number; latest: FilingEntry | null };
+}) {
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-[0.16em] font-black text-stone-500">
+          {family.label}
+        </span>
+        <span className="text-sm font-black tabular-nums text-stone-200">{family.count}</span>
+      </div>
+      <div className="mt-1 text-[10px] text-stone-600">
+        {family.latest ? `Latest ${family.latest.form} on ${family.latest.filingDate}` : 'No matching filing'}
+      </div>
+    </>
+  );
+
+  if (!family.latest?.documentUrl) {
+    return <div className="border border-stone-800 bg-stone-900/20 px-2.5 py-2">{content}</div>;
+  }
+
+  return (
+    <a
+      href={family.latest.documentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="border border-stone-800 bg-stone-900/20 px-2.5 py-2 hover:border-sky-700/70 hover:text-sky-200 transition-colors"
+      title={`Open latest ${family.label} source filing`}
+    >
+      {content}
+    </a>
+  );
+}
+
 // ============================================================================
 // Main client component
 // ============================================================================
@@ -211,6 +627,8 @@ export default function FilingsClient({
           </div>
         </div>
       )}
+
+      <FilingPulsePanel filings={filings} cik={company?.cik} />
 
       {/* Multi-select filter row */}
       <div className="mb-4 flex flex-wrap items-center gap-2">

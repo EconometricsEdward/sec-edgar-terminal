@@ -175,7 +175,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const companyName = submissions?.name || upper;
 
   const title = `${companyName} (${upper}) — SEC Filings`;
-  const description = `Complete SEC filing history for ${companyName} (${upper}). Browse 10-Ks, 10-Qs, 8-Ks, Form 4s, and proxy statements. Direct links to original documents on SEC.gov.`;
+  const description = `Complete SEC filing history for ${companyName} (${upper}). Browse a source-linked filing pulse, 10-Ks, 10-Qs, 8-Ks, Form 4s, and proxy statements with direct links to original documents on SEC.gov.`;
 
   return {
     title,

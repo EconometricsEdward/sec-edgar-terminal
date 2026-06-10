@@ -71,7 +71,7 @@ export default function AboutPage() {
                 icon={FileText}
                 title="Filings Browser"
                 path="/filings/:ticker"
-                text="Every filing a company has submitted to SEC, grouped by year and quarter, filterable by form type (10-K, 10-Q, 8-K, Form 4, proxy, etc.). Each filing links to the original document on SEC.gov. Form badges are color-coded to help distinguish periodic reports from material events."
+                text="Every filing a company has submitted to SEC, starting with a source-linked filing pulse for latest annual, quarterly, current report, proxy, recent volume, and high-signal 8-K activity. The full filing tree is grouped by year and quarter, filterable by form type, and every filing links to the original document on SEC.gov."
               />
               <FeatureBlock
                 icon={BarChart3}

@@ -8,7 +8,7 @@ import { FileText, ArrowRight } from 'lucide-react';
 export const metadata: Metadata = {
   title: 'SEC Filings Browser — 10-K, 10-Q, 8-K, Form 4',
   description:
-    'Search and browse SEC filings for every publicly traded U.S. company. Filter by form type, year, and quarter. Direct source links to data.sec.gov.',
+    'Search and browse SEC filings for every publicly traded U.S. company. Includes a source-linked filing pulse, form-type filters, year and quarter grouping, and direct links to SEC.gov.',
   alternates: {
     canonical: 'https://secedgarterminal.com/filings',
   },
@@ -39,9 +39,9 @@ export default function FilingsIndexPage() {
         </div>
         <p className="text-xs text-stone-400 leading-relaxed max-w-3xl">
           Complete filing history for every publicly traded U.S. company —
-          10-K, 10-Q, 8-K, Form 4, proxy statements, and more. Grouped by year
-          and quarter. Every filing links directly to its source document on
-          SEC.gov.
+          10-K, 10-Q, 8-K, Form 4, proxy statements, and more. Each company
+          page starts with a source-linked filing pulse, then groups every
+          filing by year and quarter with direct links to SEC.gov.
         </p>
       </div>
 
