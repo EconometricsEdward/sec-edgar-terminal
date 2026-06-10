@@ -34,6 +34,12 @@ export default function ScanResults({ data, onRescan }) {
             <span>Depth: {data.depth} filings per ticker</span>
           </>
         )}
+        {data.mode === 'universe' && data.universe?.label && (
+          <>
+            <span> / </span>
+            <span>Universe: {data.universe.label}</span>
+          </>
+        )}
       </div>
 
       {/* Errors */}

@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, ChevronRight, Clock, FileSearch, Loader2, Search, Sparkles, X,
+  AlertCircle, ChevronRight, Clock, Database, FileSearch, Loader2, Search, Sparkles, X,
 } from 'lucide-react';
+import { DISCLOSURE_UNIVERSES } from '../utils/disclosureUniverses.js';
 
 const QUICK_STARTS = [
   {
@@ -57,28 +58,40 @@ function parseTerms(input) {
 }
 
 export default function DisclosureScanner({ initialQuery = '', onScanComplete }) {
+  const [searchMode, setSearchMode] = useState('companies');
   const [tickerInput, setTickerInput] = useState('');
   const [queryInput, setQueryInput] = useState(initialQuery);
+  const [universeId, setUniverseId] = useState(DISCLOSURE_UNIVERSES[0]?.id || '');
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
   const tickerRef = useRef(null);
 
   const tickers = useMemo(() => parseTickers(tickerInput), [tickerInput]);
   const terms = useMemo(() => parseTerms(queryInput), [queryInput]);
-  const isValid = tickers.length >= 1 && tickers.length <= 5 && terms.length >= 1;
+  const selectedUniverse = useMemo(
+    () => DISCLOSURE_UNIVERSES.find((universe) => universe.id === universeId) || DISCLOSURE_UNIVERSES[0],
+    [universeId],
+  );
+  const isUniverseMode = searchMode === 'universe';
+  const scopeCount = isUniverseMode ? (selectedUniverse?.tickers?.length || 0) : tickers.length;
+  const isValid = isUniverseMode
+    ? Boolean(selectedUniverse) && terms.length >= 1
+    : tickers.length >= 1 && tickers.length <= 5 && terms.length >= 1;
 
   const runSearch = async (nextTickers, nextQuery, options = {}) => {
-    if (scanning || !nextTickers.length || !nextQuery.trim()) return;
+    const universe = options.universe || null;
+    if (scanning || (!universe && !nextTickers.length) || !nextQuery.trim()) return;
 
     setScanning(true);
     setError(null);
 
     try {
       const params = new URLSearchParams({
-        tickers: nextTickers.join(','),
         query: nextQuery,
-        depth: String(options.depth || 35),
+        depth: String(options.depth || (universe ? 12 : 35)),
       });
+      if (universe) params.set('universe', universe);
+      else params.set('tickers', nextTickers.join(','));
       if (options.fresh) params.set('fresh', 'true');
 
       const response = await fetch(`/api/disclosure-search?${params}`);
@@ -99,7 +112,11 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
   const handleSubmit = (event) => {
     event?.preventDefault();
     if (!isValid) return;
-    runSearch(tickers, queryInput);
+    if (isUniverseMode) {
+      runSearch([], queryInput, { universe: selectedUniverse.id, depth: 12 });
+    } else {
+      runSearch(tickers, queryInput);
+    }
   };
 
   const clearTickers = () => {
@@ -110,6 +127,7 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
 
   const applyQuickStart = (item) => {
     if (scanning) return;
+    setSearchMode('companies');
     setTickerInput(item.tickers);
     setQueryInput(item.query);
     runSearch(parseTickers(item.tickers), item.query);
@@ -125,44 +143,93 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
       </div>
       <p className="text-xs text-stone-400 mb-4 leading-relaxed max-w-3xl">
         Search recent SEC filings for any literal word or phrase. Enter up to 5 public-company
-        tickers and one or more comma-separated terms; every match links back to the original
-        filing on SEC.gov.
+        tickers, or scan a curated sector universe; every match links back to the original filing
+        on SEC.gov.
       </p>
 
       <form onSubmit={handleSubmit} className="mb-4 space-y-3">
+        <div className="flex flex-wrap gap-1">
+          <ModeButton
+            icon={Search}
+            label="Companies"
+            active={!isUniverseMode}
+            onClick={() => {
+              setSearchMode('companies');
+              setError(null);
+            }}
+            disabled={scanning}
+          />
+          <ModeButton
+            icon={Database}
+            label="Universe"
+            active={isUniverseMode}
+            onClick={() => {
+              setSearchMode('universe');
+              setError(null);
+            }}
+            disabled={scanning}
+          />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto] gap-2">
-          <label className="block">
-            <span className="block mb-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
-              Companies
-            </span>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500 pointer-events-none" />
-              <input
-                ref={tickerRef}
-                type="text"
-                value={tickerInput}
-                onChange={(event) => {
-                  setTickerInput(event.target.value.toUpperCase());
-                  setError(null);
-                }}
-                placeholder="AAPL,NVDA,JPM"
-                className="w-full bg-stone-900 border-2 border-stone-800 focus:border-amber-500 outline-none pl-10 pr-10 py-3 text-sm font-bold tracking-wider placeholder-stone-600 transition-colors"
-                autoComplete="off"
-                spellCheck="false"
-                disabled={scanning}
-              />
-              {tickerInput && !scanning && (
-                <button
-                  type="button"
-                  onClick={clearTickers}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300"
-                  aria-label="Clear tickers"
+          {isUniverseMode ? (
+            <label className="block">
+              <span className="block mb-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+                Universe
+              </span>
+              <div className="relative">
+                <Database className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500 pointer-events-none" />
+                <select
+                  value={universeId}
+                  onChange={(event) => {
+                    setUniverseId(event.target.value);
+                    setError(null);
+                  }}
+                  className="w-full appearance-none bg-stone-900 border-2 border-stone-800 focus:border-amber-500 outline-none pl-10 pr-8 py-3 text-sm font-bold tracking-wider transition-colors"
+                  disabled={scanning}
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </label>
+                  {DISCLOSURE_UNIVERSES.map((universe) => (
+                    <option key={universe.id} value={universe.id}>
+                      {universe.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+          ) : (
+            <label className="block">
+              <span className="block mb-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+                Companies
+              </span>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500 pointer-events-none" />
+                <input
+                  ref={tickerRef}
+                  type="text"
+                  value={tickerInput}
+                  onChange={(event) => {
+                    setTickerInput(event.target.value.toUpperCase());
+                    setError(null);
+                  }}
+                  placeholder="AAPL,NVDA,JPM"
+                  className="w-full bg-stone-900 border-2 border-stone-800 focus:border-amber-500 outline-none pl-10 pr-10 py-3 text-sm font-bold tracking-wider placeholder-stone-600 transition-colors"
+                  autoComplete="off"
+                  spellCheck="false"
+                  disabled={scanning}
+                />
+                {tickerInput && !scanning && (
+                  <button
+                    type="button"
+                    onClick={clearTickers}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300"
+                    aria-label="Clear tickers"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </label>
+          )}
 
           <label className="block">
             <span className="block mb-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
@@ -204,13 +271,41 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
           </div>
         </div>
 
-        {(tickers.length > 0 || terms.length > 0) && !scanning && (
+        {isUniverseMode && selectedUniverse && !scanning && (
+          <div className="border-2 border-stone-800 bg-stone-900/30 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="text-xs font-black text-stone-100">{selectedUniverse.label}</div>
+                <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-500">
+                  {selectedUniverse.description}
+                </div>
+              </div>
+              <div className="text-[10px] uppercase tracking-[0.14em] text-sky-300">
+                {selectedUniverse.tickers.length} companies / 12 filings each
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {selectedUniverse.tickers.map((ticker) => (
+                <span
+                  key={ticker}
+                  className="border border-stone-700 bg-stone-950/70 px-2 py-0.5 text-[10px] font-bold tracking-wider text-stone-300"
+                >
+                  {ticker}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(scopeCount > 0 || terms.length > 0) && !scanning && (
           <div className="text-[10px] font-mono uppercase tracking-wider text-stone-500">
-            {tickers.length > 5
-              ? `Too many companies: ${tickers.length}. Max 5.`
-              : tickers.length > 0
-                ? `Companies: ${tickers.join(', ')}`
-                : 'Add at least 1 company'}
+            {isUniverseMode
+              ? `Universe: ${selectedUniverse?.label || 'Select a universe'} (${scopeCount} companies)`
+              : tickers.length > 5
+                ? `Too many companies: ${tickers.length}. Max 5.`
+                : tickers.length > 0
+                  ? `Companies: ${tickers.join(', ')}`
+                  : 'Add at least 1 company'}
             <span className="mx-2 text-stone-700">/</span>
             {terms.length > 0 ? `Terms: ${terms.slice(0, 4).join(', ')}${terms.length > 4 ? '...' : ''}` : 'Add at least 1 term'}
           </div>
@@ -222,7 +317,7 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
           <Loader2 className="w-5 h-5 text-amber-400 shrink-0 mt-0.5 animate-spin" />
           <div className="flex-1">
             <div className="text-sm text-amber-200 font-bold mb-1">
-              Searching SEC filings for {tickers.length} {tickers.length === 1 ? 'company' : 'companies'}...
+              Searching SEC filings for {scopeCount} {scopeCount === 1 ? 'company' : 'companies'}...
             </div>
             <div className="text-xs text-amber-100/80 leading-relaxed">
               The scanner fetches recent 10-K, 10-Q, 8-K, proxy, registration, foreign issuer, and
@@ -278,5 +373,23 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
         </div>
       )}
     </div>
+  );
+}
+
+function ModeButton({ icon: Icon, label, active, onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center gap-2 border-2 px-3 py-2 text-[10px] uppercase tracking-[0.18em] font-black transition-colors ${
+        active
+          ? 'border-amber-500 bg-amber-500 text-stone-950'
+          : 'border-stone-800 bg-stone-900 text-stone-400 hover:border-stone-700 hover:text-stone-200'
+      } disabled:opacity-60`}
+    >
+      <Icon className="w-3.5 h-3.5" />
+      {label}
+    </button>
   );
 }

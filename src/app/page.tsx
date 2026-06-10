@@ -34,7 +34,7 @@ const FEATURE_GRID = [
   { icon: LineChart, title: 'Stock Price with Filing Markers', description: '10 years of stock price history, with 10-K and 10-Q filing dates marked. Click any marker to open that filing. Insider buys and sells overlaid.', link: '/analysis/TSLA', linkLabel: "See Tesla's chart →" },
   { icon: Users, title: 'Insider Trading', description: 'Parsed from SEC Form 4 XML filings. See which executives are buying or selling, when, at what price, and how it relates to filing dates.', link: '/analysis/NVDA', linkLabel: 'NVIDIA insiders →' },
   { icon: GitCompare, title: 'Peer Comparison', description: 'Compare up to 5 companies side-by-side. Normalize by index-to-100, per-share, or % of revenue. Head-to-head snapshot table with color-coded leaders.', link: '/compare/AAPL,MSFT,GOOGL,META,AMZN', linkLabel: 'Compare Big Tech →' },
-  { icon: FileSearch, title: 'Disclosure Keyword Search', description: "Search any company's SEC filings for the exact risks, trends, or operating terms you care about. Evidence summaries and paragraph-level excerpts link directly to source filings, and you can compare up to 5 companies.", link: '/disclosures', linkLabel: 'Search tariffs, AI, cyber risk →' },
+  { icon: FileSearch, title: 'Disclosure Keyword Search', description: "Search any company's SEC filings for the exact risks, trends, or operating terms you care about. Evidence summaries and paragraph-level excerpts link directly to source filings, and you can compare up to 5 companies or scan curated sector universes.", link: '/disclosures', linkLabel: 'Search tariffs, AI, cyber risk →' },
 ];
 
 const PEER_GROUP_SAMPLES = [

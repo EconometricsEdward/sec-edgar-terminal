@@ -13,13 +13,17 @@ import {
   setCachedDisclosureScan,
 } from '../../../utils/scannerCache.js';
 import { getOperatingTickers } from '../../../utils/tickerMap.js';
+import { getDisclosureUniverse } from '../../../utils/disclosureUniverses.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 const DEFAULT_DEPTH = 35;
 const MAX_DEPTH = 50;
-const MAX_TICKERS = 5;
+const DEFAULT_UNIVERSE_DEPTH = 12;
+const MAX_UNIVERSE_DEPTH = 20;
+const MAX_MANUAL_TICKERS = 5;
+const MAX_UNIVERSE_TICKERS = 8;
 const SCAN_FORM_TYPES = ['10-K', '10-Q', '8-K', 'S-1', 'DEF 14A', 'DEFM14A', '20-F', '40-F', 'N-CSR'];
 const MAX_EXCERPTS_PER_FILING = 6;
 
@@ -145,16 +149,10 @@ async function scanTicker(ticker, cik, depth, definitions) {
 export async function GET(request) {
   const url = new URL(request.url);
   const tickersParam = url.searchParams.get('tickers');
+  const universeParam = url.searchParams.get('universe');
   const rawQuery = url.searchParams.get('query') || url.searchParams.get('keywords') || '';
   const depthParam = url.searchParams.get('depth');
   const fresh = url.searchParams.get('fresh') === 'true';
-
-  if (!tickersParam) {
-    return NextResponse.json(
-      { error: 'Missing required parameter: tickers (comma-separated, 1-5 tickers)' },
-      { status: 400 },
-    );
-  }
 
   const parsed = buildKeywordDefinitions(rawQuery);
   if (parsed.definitions.length === 0) {
@@ -167,25 +165,52 @@ export async function GET(request) {
     );
   }
 
-  const tickers = tickersParam
-    .split(',')
-    .map((ticker) => ticker.trim().toUpperCase())
-    .filter(Boolean);
+  let selectedUniverse = null;
+  let tickers = [];
+  let mode = 'tickers';
+
+  if (universeParam) {
+    selectedUniverse = getDisclosureUniverse(universeParam);
+    if (!selectedUniverse) {
+      return NextResponse.json(
+        { error: `Unknown disclosure universe: ${universeParam}` },
+        { status: 400 },
+      );
+    }
+    mode = 'universe';
+    tickers = selectedUniverse.tickers.slice(0, MAX_UNIVERSE_TICKERS);
+  } else if (tickersParam) {
+    tickers = tickersParam
+      .split(',')
+      .map((ticker) => ticker.trim().toUpperCase())
+      .filter(Boolean);
+  } else {
+    return NextResponse.json(
+      { error: 'Missing required parameter: tickers (comma-separated, 1-5 tickers) or universe' },
+      { status: 400 },
+    );
+  }
 
   if (tickers.length === 0) {
     return NextResponse.json({ error: 'No valid tickers provided' }, { status: 400 });
   }
 
-  if (tickers.length > MAX_TICKERS) {
+  if (mode === 'tickers' && tickers.length > MAX_MANUAL_TICKERS) {
     return NextResponse.json(
-      { error: `Maximum ${MAX_TICKERS} tickers per search. Got ${tickers.length}.` },
+      { error: `Maximum ${MAX_MANUAL_TICKERS} tickers per manual search. Got ${tickers.length}. Use a universe preset for broader scans.` },
       { status: 400 },
     );
   }
 
-  let depth = depthParam ? parseInt(depthParam, 10) : DEFAULT_DEPTH;
-  if (!Number.isFinite(depth) || depth < 1) depth = DEFAULT_DEPTH;
-  if (depth > MAX_DEPTH) depth = MAX_DEPTH;
+  if (mode === 'universe' && tickers.length > MAX_UNIVERSE_TICKERS) {
+    tickers = tickers.slice(0, MAX_UNIVERSE_TICKERS);
+  }
+
+  const defaultDepth = mode === 'universe' ? DEFAULT_UNIVERSE_DEPTH : DEFAULT_DEPTH;
+  const maxDepth = mode === 'universe' ? MAX_UNIVERSE_DEPTH : MAX_DEPTH;
+  let depth = depthParam ? parseInt(depthParam, 10) : defaultDepth;
+  if (!Number.isFinite(depth) || depth < 1) depth = defaultDepth;
+  if (depth > maxDepth) depth = maxDepth;
 
   const signature = disclosureSignature({ terms: parsed.terms, depth });
 
@@ -246,6 +271,15 @@ export async function GET(request) {
       scannedAt: new Date().toISOString(),
       cacheBackend: await getBackendType(),
       depth,
+      mode,
+      universe: selectedUniverse
+        ? {
+            id: selectedUniverse.id,
+            label: selectedUniverse.label,
+            description: selectedUniverse.description,
+            tickers,
+          }
+        : null,
       query: {
         raw: rawQuery,
         terms: parsed.terms,

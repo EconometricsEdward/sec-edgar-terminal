@@ -4,7 +4,7 @@ import DisclosureSearchClient from './DisclosureSearchClient';
 export const metadata: Metadata = {
   title: 'SEC Disclosure Keyword Search',
   description:
-    'Search recent SEC filings for any word or phrase across public companies. Every result links to the source filing on SEC.gov.',
+    'Search recent SEC filings for any word or phrase across companies or curated sector universes. Every result links to the source filing on SEC.gov.',
   alternates: {
     canonical: 'https://secedgarterminal.com/disclosures',
   },
