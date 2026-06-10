@@ -11,6 +11,8 @@ const MAX_LIMIT = 100;
 const DEFAULT_MONTHS = 12;
 const MAX_MONTHS = 120;
 const MAX_FOCUS_TERMS = 5;
+const FOCUS_PAGE_SIZE = 100;
+const MAX_FOCUS_PAGES = 5;
 const DEFAULT_FORMS = ['10-K', '10-Q', '8-K', 'S-1', 'DEF 14A', '20-F', '40-F', 'N-CSR'];
 const ALLOWED_FORMS = new Set([
   '10-K',
@@ -63,6 +65,35 @@ function quoteSearchTerm(term) {
 
 function buildSecQuery(terms) {
   return terms.map(quoteSearchTerm).join(' OR ');
+}
+
+function buildSearchParams({ secQuery, forms, startDate, endDate, from, size }) {
+  return new URLSearchParams({
+    q: secQuery,
+    forms: forms.join(','),
+    dateRange: 'custom',
+    startdt: startDate,
+    enddt: endDate,
+    from: String(from),
+    size: String(size),
+  });
+}
+
+function totalValue(data) {
+  const total = data?.hits?.total;
+  if (typeof total === 'number') return total;
+  const value = total?.value || 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function uniqueHits(hits) {
+  const seen = new Set();
+  return hits.filter((hit) => {
+    const key = `${hit.accession}:${hit.documentName}:${hit.cik}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function parseFocusTerms(rawFocus) {
@@ -313,41 +344,71 @@ export async function GET(request) {
   const startDate = url.searchParams.get('startdt') || isoDate(monthsAgo(months));
   const endDate = url.searchParams.get('enddt') || isoDate(new Date());
   const secQuery = buildSecQuery(parsed.terms);
-
-  const params = new URLSearchParams({
-    q: secQuery,
-    forms: forms.join(','),
-    dateRange: 'custom',
-    startdt: startDate,
-    enddt: endDate,
-    from: '0',
-    size: String(focusTerms.length ? MAX_LIMIT : limit),
-  });
+  const pageSize = focusTerms.length ? FOCUS_PAGE_SIZE : limit;
+  const maxPages = focusTerms.length ? MAX_FOCUS_PAGES : 1;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 25000);
 
   try {
-    const response = await fetch(`${SEC_SEARCH_URL}?${params}`, {
-      headers: {
-        'User-Agent': process.env.SEC_USER_AGENT || DEFAULT_USER_AGENT,
-        Accept: 'application/json',
-      },
-      signal: controller.signal,
-    });
+    const normalizedPages = [];
+    const sourceUrls = [];
+    let totalHits = 0;
+    let totalRelation = 'eq';
+    let tookMs = 0;
+    let timedOut = false;
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: `SEC full-text search returned HTTP ${response.status}` },
-        { status: 502 },
-      );
+    for (let page = 0; page < maxPages; page += 1) {
+      const from = page * pageSize;
+      const params = buildSearchParams({
+        secQuery,
+        forms,
+        startDate,
+        endDate,
+        from,
+        size: pageSize,
+      });
+      const requestUrl = `${SEC_SEARCH_URL}?${params}`;
+      sourceUrls.push(requestUrl);
+
+      const response = await fetch(requestUrl, {
+        headers: {
+          'User-Agent': process.env.SEC_USER_AGENT || DEFAULT_USER_AGENT,
+          Accept: 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        return NextResponse.json(
+          { error: `SEC full-text search returned HTTP ${response.status}` },
+          { status: 502 },
+        );
+      }
+
+      const data = await response.json();
+      const hits = data?.hits?.hits || [];
+      if (page === 0) {
+        totalHits = totalValue(data);
+        totalRelation = data?.hits?.total?.relation || 'eq';
+      }
+      tookMs += data?.took || 0;
+      timedOut = timedOut || Boolean(data?.timed_out);
+
+      const normalizedPage = hits
+        .map((hit, index) => normalizeHit(hit, from + index + 1))
+        .filter((hit) => hit.documentUrl);
+      normalizedPages.push(...normalizedPage);
+
+      const focusedSoFar = focusTerms.length
+        ? normalizedPages.filter((hit) => matchesFocus(hit, focusTerms))
+        : normalizedPages;
+      if (focusTerms.length && focusedSoFar.length >= limit) break;
+      if (hits.length < pageSize) break;
+      if (totalHits && from + hits.length >= totalHits) break;
     }
 
-    const data = await response.json();
-    const hits = data?.hits?.hits || [];
-    const normalizedHits = hits
-      .map((hit, index) => normalizeHit(hit, index + 1))
-      .filter((hit) => hit.documentUrl);
+    const normalizedHits = uniqueHits(normalizedPages);
     const focusedHits = normalizedHits.filter((hit) => matchesFocus(hit, focusTerms));
     const analysisHits = focusTerms.length ? focusedHits : normalizedHits;
     const summary = buildSummary(analysisHits, { focusApplied: focusTerms.length > 0 });
@@ -366,7 +427,10 @@ export async function GET(request) {
         cacheBackend: 'sec-index',
         source: {
           label: 'SEC full-text search index',
-          url: `${SEC_SEARCH_URL}?${params}`,
+          url: sourceUrls[0] || null,
+          requests: sourceUrls,
+          pagesSearched: sourceUrls.length,
+          pageSize,
         },
         query: {
           raw: rawQuery,
@@ -380,6 +444,8 @@ export async function GET(request) {
           applied: focusTerms.length > 0,
           matchedHits: focusTerms.length ? focusedHits.length : null,
           searchedHits: normalizedHits.length,
+          pagesSearched: sourceUrls.length,
+          maxPages,
         },
         dateRange: {
           start: startDate,
@@ -387,11 +453,11 @@ export async function GET(request) {
           months,
         },
         forms,
-        totalHits: data?.hits?.total?.value || 0,
-        totalRelation: data?.hits?.total?.relation || 'eq',
+        totalHits,
+        totalRelation,
         returnedHits: results.length,
-        tookMs: data?.took || null,
-        timedOut: Boolean(data?.timed_out),
+        tookMs: tookMs || null,
+        timedOut,
         summary,
         results,
         errors: [],

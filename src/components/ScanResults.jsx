@@ -120,6 +120,8 @@ function EdgarIndexResults({ data }) {
   const summaryScope = summary.scope === 'focused-sec-hits'
     ? 'focused SEC hits'
     : 'returned SEC hits';
+  const pagesSearched = data.focus?.pagesSearched || data.source?.pagesSearched || 1;
+  const pageLabel = `${pagesSearched.toLocaleString()} SEC page${pagesSearched === 1 ? '' : 's'}`;
 
   return (
     <div className="mb-8">
@@ -188,7 +190,7 @@ function EdgarIndexResults({ data }) {
               ? (data.focus?.matchedHits || 0).toLocaleString()
               : `${data.totalHits?.toLocaleString?.() || 0}${data.totalRelation === 'gte' ? '+' : ''}`}
             detail={focusTerms.length
-              ? `${results.length.toLocaleString()} returned from ${data.focus?.searchedHits || 0} searched SEC hits`
+              ? `${results.length.toLocaleString()} returned from ${data.focus?.searchedHits || 0} searched SEC hits across ${pageLabel}`
               : `${results.length.toLocaleString()} source filings returned`}
             tone={results.length > 0 ? 'amber' : 'stone'}
           />
@@ -281,9 +283,10 @@ function EdgarIndexResults({ data }) {
 
         <div className="border-t border-stone-800 bg-stone-950/60 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
           EDGAR index mode discovers source filings across the SEC full-text index. It does not
-          generate paragraph excerpts; company focus narrows the returned SEC hits by parsed ticker,
-          CIK, or company name. Use the linked SEC document as the source of truth, then use company
-          scan mode when you need paragraph-level excerpts for a defined peer set.
+          generate paragraph excerpts; company focus searches deeper SEC result windows and narrows
+          matched hits by parsed ticker, CIK, or company name. Use the linked SEC document as the
+          source of truth, then use company scan mode when you need paragraph-level excerpts for a
+          defined peer set.
         </div>
       </section>
     </div>
