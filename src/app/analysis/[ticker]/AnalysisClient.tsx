@@ -641,6 +641,7 @@ export default function AnalysisClient({
                   />
                   <FilingActivityPanel filings={filings} ticker={chartTicker} />
                   <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
+                  <AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <CapitalAllocationPanel
                     facts={facts}
@@ -1271,6 +1272,457 @@ function CapitalTileCard({ tile, cik }: { tile: CapitalTile; cik?: string }) {
       </div>
     </div>
   );
+}
+
+type ChecklistTone = 'good' | 'watch' | 'bad' | 'neutral';
+
+interface ChecklistItem {
+  key: string;
+  label: string;
+  value: string;
+  question: string;
+  detail: string;
+  tone: ChecklistTone;
+  sources: SnapshotSource[];
+}
+
+function AnalystChecklist({
+  facts,
+  periods,
+  sicCode,
+  cik,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+}) {
+  const { items, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 2);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length < 2) {
+      return { items: [] as ChecklistItem[], latestPeriod, group };
+    }
+
+    const row = (key: string, label: string, format = 'currency') => (
+      buildMetricRow(facts, key, label, displayPeriods, format, group as any)
+    );
+    const rowsByKey = {
+      revenue: row('revenue', 'Revenue'),
+      operatingIncome: row('operatingIncome', 'Operating Income'),
+      netIncome: row('netIncome', 'Net Income'),
+      operatingCashFlow: row('operatingCashFlow', 'Operating Cash Flow'),
+      capex: row('capex', 'Capital Expenditures'),
+      cash: row('cash', 'Cash & Equivalents'),
+      shortTermDebt: row('shortTermDebt', 'Short-term Debt'),
+      longTermDebt: row('longTermDebt', 'Long-term Debt'),
+      stockholdersEquity: row('stockholdersEquity', "Stockholders' Equity"),
+      totalAssets: row('totalAssets', 'Total Assets'),
+      sharesDiluted: row('sharesDiluted', 'Diluted Shares', 'shares'),
+      stockRepurchased: row('stockRepurchased', 'Share Repurchases'),
+      dividendsPaid: row('dividendsPaid', 'Dividends Paid'),
+      loans: row('loans', 'Loans'),
+      deposits: row('deposits', 'Deposits'),
+      allowanceForLoanLoss: row('allowanceForLoanLoss', 'Allowance for Credit Losses'),
+      provisionForLoanLoss: row('provisionForLoanLoss', 'Provision for Credit Losses'),
+      premiumsEarned: row('premiumsEarned', 'Premiums Earned'),
+      lossesIncurred: row('lossesIncurred', 'Losses Incurred'),
+      underwritingExpenses: row('underwritingExpenses', 'Underwriting Expenses'),
+      investmentIncome: row('investmentIncome', 'Investment Income'),
+      shortTermInvestments: row('shortTermInvestments', 'Investments'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index = 0): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const magnitude = (item: MetricPoint | null) => {
+      const value = num(item);
+      return value == null ? null : Math.abs(value);
+    };
+    const pct = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return (numerator / denominator) * 100;
+    };
+    const growth = (current: number | null, prior: number | null) => {
+      if (current == null || prior == null || prior === 0) return null;
+      return ((current - prior) / Math.abs(prior)) * 100;
+    };
+    const sources = (inputs: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return inputs
+        .filter(([, item]) => item?.source?.tag)
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((source) => {
+          const key = `${source.label}:${source.point?.source?.tag}:${source.point?.source?.end}:${source.point?.source?.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }) as SnapshotSource[];
+    };
+    const addItem = (
+      list: ChecklistItem[],
+      item: Omit<ChecklistItem, 'sources'> & { sources: SnapshotSource[] }
+    ) => {
+      const linkedSources = item.sources.filter((source) => source.point?.source?.tag);
+      if (!linkedSources.length) return;
+      list.push({ ...item, sources: linkedSources });
+    };
+
+    const items: ChecklistItem[] = [];
+
+    if (group === INDUSTRY_GROUPS.BANKING) {
+      const equityAssets = pct(num(point('stockholdersEquity')), num(point('totalAssets')));
+      if (equityAssets != null) {
+        addItem(items, {
+          key: 'bank-capital',
+          label: 'Capital Cushion',
+          value: formatValue(equityAssets, 'percent'),
+          question: 'Is the balance sheet carrying enough equity against assets?',
+          detail: 'Equity / assets from the latest annual XBRL period.',
+          tone: equityAssets >= 8 ? 'good' : equityAssets >= 5 ? 'watch' : 'bad',
+          sources: sources([
+            ['Equity', point('stockholdersEquity')],
+            ['Assets', point('totalAssets')],
+          ]),
+        });
+      }
+
+      const loanDeposit = pct(num(point('loans')), num(point('deposits')));
+      if (loanDeposit != null) {
+        addItem(items, {
+          key: 'bank-funding',
+          label: 'Funding Mix',
+          value: formatValue(loanDeposit, 'percent'),
+          question: 'How much of the loan book is funded by deposits?',
+          detail: 'Loans / deposits helps frame funding intensity.',
+          tone: loanDeposit <= 90 ? 'good' : loanDeposit <= 105 ? 'watch' : 'bad',
+          sources: sources([
+            ['Loans', point('loans')],
+            ['Deposits', point('deposits')],
+          ]),
+        });
+      }
+
+      const provisionRevenue = pct(num(point('provisionForLoanLoss')), num(point('revenue')));
+      if (provisionRevenue != null) {
+        addItem(items, {
+          key: 'bank-credit',
+          label: 'Credit Cost Burden',
+          value: formatValue(provisionRevenue, 'percent'),
+          question: 'Are credit-loss provisions becoming material to revenue?',
+          detail: 'Provision for credit losses / revenue in the latest annual period.',
+          tone: provisionRevenue <= 5 ? 'good' : provisionRevenue <= 15 ? 'watch' : 'bad',
+          sources: sources([
+            ['Provision', point('provisionForLoanLoss')],
+            ['Revenue', point('revenue')],
+          ]),
+        });
+      }
+
+      const roe = pct(num(point('netIncome')), num(point('stockholdersEquity')));
+      if (roe != null) {
+        addItem(items, {
+          key: 'bank-profitability',
+          label: 'Profitability',
+          value: formatValue(roe, 'percent'),
+          question: 'Is the bank earning enough on equity?',
+          detail: 'Net income / stockholders equity from the latest annual XBRL period.',
+          tone: roe >= 12 ? 'good' : roe >= 8 ? 'watch' : 'bad',
+          sources: sources([
+            ['Net Income', point('netIncome')],
+            ['Equity', point('stockholdersEquity')],
+          ]),
+        });
+      }
+
+      const depositGrowth = growth(num(point('deposits')), num(point('deposits', 1)));
+      if (depositGrowth != null) {
+        addItem(items, {
+          key: 'bank-deposit-growth',
+          label: 'Deposit Trend',
+          value: `${formatSignedPct(depositGrowth)} deposits`,
+          question: 'Are deposits growing or leaving the balance sheet?',
+          detail: 'Year-over-year change in reported deposits.',
+          tone: depositGrowth >= 0 ? 'good' : depositGrowth >= -5 ? 'watch' : 'bad',
+          sources: sources([
+            ['Deposits', point('deposits')],
+            ['Prior Deposits', point('deposits', 1)],
+          ]),
+        });
+      }
+    } else if (group === INDUSTRY_GROUPS.INSURANCE) {
+      const premiums = num(point('premiumsEarned'));
+      const losses = num(point('lossesIncurred'));
+      const expenses = num(point('underwritingExpenses'));
+      if (premiums != null && premiums !== 0 && (losses != null || expenses != null)) {
+        const combined = (((losses || 0) + (expenses || 0)) / premiums) * 100;
+        addItem(items, {
+          key: 'insurance-underwriting',
+          label: 'Underwriting Discipline',
+          value: formatValue(combined, 'percent'),
+          question: 'Is underwriting profitable before investment income?',
+          detail: 'Combined ratio from losses, underwriting expenses, and premiums earned.',
+          tone: combined < 95 ? 'good' : combined <= 100 ? 'watch' : 'bad',
+          sources: sources([
+            ['Losses', point('lossesIncurred')],
+            ['Expenses', point('underwritingExpenses')],
+            ['Premiums', point('premiumsEarned')],
+          ]),
+        });
+      }
+
+      const premiumGrowth = growth(num(point('premiumsEarned')), num(point('premiumsEarned', 1)));
+      if (premiumGrowth != null) {
+        addItem(items, {
+          key: 'insurance-premium-growth',
+          label: 'Premium Trend',
+          value: `${formatSignedPct(premiumGrowth)} premiums`,
+          question: 'Is the premium base expanding?',
+          detail: 'Year-over-year change in premiums earned.',
+          tone: premiumGrowth >= 5 ? 'good' : premiumGrowth >= 0 ? 'watch' : 'bad',
+          sources: sources([
+            ['Premiums', point('premiumsEarned')],
+            ['Prior Premiums', point('premiumsEarned', 1)],
+          ]),
+        });
+      }
+
+      const investmentPoint = num(point('shortTermInvestments')) != null ? point('shortTermInvestments') : point('totalAssets');
+      const investmentYield = pct(num(point('investmentIncome')), num(investmentPoint));
+      if (investmentYield != null) {
+        addItem(items, {
+          key: 'insurance-investments',
+          label: 'Investment Yield',
+          value: formatValue(investmentYield, 'percent'),
+          question: 'How much yield is the investment portfolio producing?',
+          detail: 'Investment income over reported investments or assets.',
+          tone: investmentYield >= 3 ? 'good' : investmentYield >= 1 ? 'watch' : 'bad',
+          sources: sources([
+            ['Investment Income', point('investmentIncome')],
+            [investmentPoint === point('shortTermInvestments') ? 'Investments' : 'Assets', investmentPoint],
+          ]),
+        });
+      }
+
+      const equityAssets = pct(num(point('stockholdersEquity')), num(point('totalAssets')));
+      if (equityAssets != null) {
+        addItem(items, {
+          key: 'insurance-capital',
+          label: 'Capital Cushion',
+          value: formatValue(equityAssets, 'percent'),
+          question: 'How much equity supports the insurer balance sheet?',
+          detail: 'Stockholders equity / total assets from the latest annual XBRL period.',
+          tone: equityAssets >= 10 ? 'good' : equityAssets >= 6 ? 'watch' : 'bad',
+          sources: sources([
+            ['Equity', point('stockholdersEquity')],
+            ['Assets', point('totalAssets')],
+          ]),
+        });
+      }
+    } else {
+      const revenueGrowth = growth(num(point('revenue')), num(point('revenue', 1)));
+      const opGrowth = growth(num(point('operatingIncome')), num(point('operatingIncome', 1)));
+      const operatingMargin = pct(num(point('operatingIncome')), num(point('revenue')));
+      if (revenueGrowth != null || opGrowth != null || operatingMargin != null) {
+        addItem(items, {
+          key: 'growth-quality',
+          label: 'Growth Quality',
+          value: `${formatSignedPct(revenueGrowth)} rev`,
+          question: 'Is revenue growth converting into operating leverage?',
+          detail: `Operating income growth: ${formatSignedPct(opGrowth)}; latest operating margin: ${formatPctValue(operatingMargin)}.`,
+          tone: revenueGrowth != null && revenueGrowth > 0 && opGrowth != null && opGrowth >= revenueGrowth
+            ? 'good'
+            : revenueGrowth != null && revenueGrowth < 0
+              ? 'bad'
+              : 'watch',
+          sources: sources([
+            ['Revenue', point('revenue')],
+            ['Prior Revenue', point('revenue', 1)],
+            ['Operating Income', point('operatingIncome')],
+            ['Prior Operating Income', point('operatingIncome', 1)],
+          ]),
+        });
+      }
+
+      const cfoConversion = num(point('netIncome')) != null && (num(point('netIncome')) || 0) > 0
+        ? pct(num(point('operatingCashFlow')), num(point('netIncome')))
+        : null;
+      const fcf = num(point('operatingCashFlow')) != null && magnitude(point('capex')) != null
+        ? (num(point('operatingCashFlow')) || 0) - (magnitude(point('capex')) || 0)
+        : null;
+      if (cfoConversion != null || fcf != null) {
+        addItem(items, {
+          key: 'cash-conversion',
+          label: 'Cash Conversion',
+          value: cfoConversion != null ? formatValue(cfoConversion, 'percent') : formatValue(fcf, 'currency'),
+          question: 'Do reported earnings turn into cash?',
+          detail: `Free cash flow in the latest annual period: ${formatValue(fcf, 'currency')}.`,
+          tone: cfoConversion == null ? 'neutral' : cfoConversion >= 100 ? 'good' : cfoConversion >= 75 ? 'watch' : 'bad',
+          sources: sources([
+            ['Operating Cash Flow', point('operatingCashFlow')],
+            ['Net Income', point('netIncome')],
+            ['Capex', point('capex')],
+          ]),
+        });
+      }
+
+      const totalDebt = num(point('shortTermDebt')) != null || num(point('longTermDebt')) != null
+        ? (num(point('shortTermDebt')) || 0) + (num(point('longTermDebt')) || 0)
+        : null;
+      const netDebt = totalDebt != null && num(point('cash')) != null ? totalDebt - (num(point('cash')) || 0) : null;
+      const netDebtEquity = pct(netDebt, num(point('stockholdersEquity')));
+      if (netDebt != null || netDebtEquity != null) {
+        addItem(items, {
+          key: 'balance-sheet',
+          label: 'Balance Sheet Pressure',
+          value: netDebtEquity != null ? formatValue(netDebtEquity, 'percent') : formatValue(netDebt, 'currency'),
+          question: 'Is net debt manageable relative to equity?',
+          detail: `Net debt: ${formatValue(netDebt, 'currency')}; debt less reported cash.`,
+          tone: netDebt != null && netDebt <= 0 ? 'good' : netDebtEquity != null && netDebtEquity <= 75 ? 'watch' : 'bad',
+          sources: sources([
+            ['Cash', point('cash')],
+            ['ST Debt', point('shortTermDebt')],
+            ['LT Debt', point('longTermDebt')],
+            ['Equity', point('stockholdersEquity')],
+          ]),
+        });
+      }
+
+      const shareGrowth = growth(num(point('sharesDiluted')), num(point('sharesDiluted', 1)));
+      if (shareGrowth != null) {
+        addItem(items, {
+          key: 'dilution',
+          label: 'Dilution Check',
+          value: `${formatSignedPct(shareGrowth)} shares`,
+          question: 'Are per-share economics being diluted?',
+          detail: 'Year-over-year change in diluted weighted-average shares.',
+          tone: shareGrowth <= 0 ? 'good' : shareGrowth <= 2 ? 'watch' : 'bad',
+          sources: sources([
+            ['Diluted Shares', point('sharesDiluted')],
+            ['Prior Diluted Shares', point('sharesDiluted', 1)],
+          ]),
+        });
+      }
+
+      const cashReturned = magnitude(point('stockRepurchased')) != null || magnitude(point('dividendsPaid')) != null
+        ? (magnitude(point('stockRepurchased')) || 0) + (magnitude(point('dividendsPaid')) || 0)
+        : null;
+      const returnFcf = fcf != null && fcf > 0 ? pct(cashReturned, fcf) : null;
+      if (returnFcf != null) {
+        addItem(items, {
+          key: 'capital-return',
+          label: 'Capital Return',
+          value: formatValue(returnFcf, 'percent'),
+          question: 'Are buybacks and dividends covered by free cash flow?',
+          detail: `Cash returned: ${formatValue(cashReturned, 'currency')}.`,
+          tone: returnFcf <= 80 ? 'good' : returnFcf <= 120 ? 'watch' : 'bad',
+          sources: sources([
+            ['Buybacks', point('stockRepurchased')],
+            ['Dividends', point('dividendsPaid')],
+            ['Operating Cash Flow', point('operatingCashFlow')],
+            ['Capex', point('capex')],
+          ]),
+        });
+      }
+    }
+
+    return { items: items.slice(0, 5), latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!items.length) return null;
+
+  const toneCounts = items.reduce((counts, item) => {
+    counts[item.tone] = (counts[item.tone] || 0) + 1;
+    return counts;
+  }, {} as Record<ChecklistTone, number>);
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-sky-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Analyst Checklist
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked diligence prompts for {latestPeriod ? periodLabel(latestPeriod) : 'the latest annual period'} ({industryLabel(group)}).
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5 text-[10px] uppercase tracking-[0.14em]">
+          {toneCounts.good ? <span className="border border-emerald-800/70 bg-emerald-950/20 px-2 py-1 text-emerald-300">{toneCounts.good} steady</span> : null}
+          {toneCounts.watch ? <span className="border border-amber-800/70 bg-amber-950/20 px-2 py-1 text-amber-300">{toneCounts.watch} watch</span> : null}
+          {toneCounts.bad ? <span className="border border-rose-800/70 bg-rose-950/20 px-2 py-1 text-rose-300">{toneCounts.bad} stress</span> : null}
+        </div>
+      </div>
+
+      <div className="divide-y divide-stone-800/70">
+        {items.map((item) => (
+          <ChecklistRow key={item.key} item={item} cik={cik} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChecklistRow({ item, cik }: { item: ChecklistItem; cik?: string }) {
+  const toneClass = {
+    good: 'border-emerald-800/70 bg-emerald-950/10 text-emerald-300',
+    watch: 'border-amber-800/70 bg-amber-950/10 text-amber-300',
+    bad: 'border-rose-800/70 bg-rose-950/10 text-rose-300',
+    neutral: 'border-sky-800/70 bg-sky-950/10 text-sky-300',
+  }[item.tone];
+  const label = {
+    good: 'Steady',
+    watch: 'Watch',
+    bad: 'Stress',
+    neutral: 'Context',
+  }[item.tone];
+
+  return (
+    <div className="grid gap-3 p-4 lg:grid-cols-[180px_1fr]">
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-stone-500">
+          {item.label}
+        </div>
+        <div className="mt-1 text-lg font-black tabular-nums text-stone-100">
+          {item.value}
+        </div>
+        <span className={`mt-2 inline-flex border px-2 py-1 text-[10px] uppercase tracking-[0.14em] font-bold ${toneClass}`}>
+          {label}
+        </span>
+      </div>
+      <div>
+        <div className="text-sm font-bold text-stone-100">
+          {item.question}
+        </div>
+        <p className="mt-1 text-xs leading-relaxed text-stone-400">
+          {item.detail}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {item.sources.map((source) => (
+            <SourceChip key={`${item.key}-${source.label}`} source={source} cik={cik} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatSignedPct(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return 'N/A';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(1)}%`;
+}
+
+function formatPctValue(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return 'N/A';
+  return formatValue(value, 'percent');
 }
 
 function FilingActivityPanel({
