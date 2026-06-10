@@ -3394,6 +3394,10 @@ function filingDateTime(filing: FilingEntry) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function findMostRecentFiling(filings: FilingEntry[]) {
+  return [...filings].sort((a, b) => filingDateTime(b) - filingDateTime(a))[0] || null;
+}
+
 function itemTone(item: FilingItemInfo): EventSignalTone {
   if (HIGH_SIGNAL_8K_ITEMS.has(item.code)) return 'critical';
   if (WATCH_8K_ITEMS.has(item.code)) return 'watch';
@@ -3430,6 +3434,7 @@ function FilingActivityPanel({
     const latestAnnual = findLatestFiling(filings, ['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A']);
     const latestQuarterly = findLatestFiling(filings, ['10-Q', '10-Q/A', '6-K']);
     const latestCurrent = findLatestFiling(filings, ['8-K', '8-K/A', '6-K']);
+    const latestAny = findMostRecentFiling(filings);
     const latestProxy = filings.find((filing) => filing.form.includes('DEF 14A') || filing.form.includes('PRE 14A')) || null;
     const insiderForms = filings.filter((filing) => ['3', '3/A', '4', '4/A', '5', '5/A'].includes(filing.form));
     const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
@@ -3491,6 +3496,7 @@ function FilingActivityPanel({
       latestAnnual,
       latestQuarterly,
       latestCurrent,
+      latestAny,
       latestProxy,
       insiderForms,
       last90Days,
@@ -3553,6 +3559,13 @@ function FilingActivityPanel({
         />
       </div>
 
+      <FilingFreshnessPanel
+        latestAny={activity.latestAny}
+        latestAnnual={activity.latestAnnual}
+        latestQuarterly={activity.latestQuarterly}
+        latestCurrent={activity.latestCurrent}
+      />
+
       {activity.itemEvents.length > 0 && (
         <MaterialEventRadar
           recentItemEvents={activity.recentItemEvents}
@@ -3589,6 +3602,166 @@ function FilingActivityPanel({
       )}
     </div>
   );
+}
+
+function FilingFreshnessPanel({
+  latestAny,
+  latestAnnual,
+  latestQuarterly,
+  latestCurrent,
+}: {
+  latestAny?: FilingEntry | null;
+  latestAnnual?: FilingEntry | null;
+  latestQuarterly?: FilingEntry | null;
+  latestCurrent?: FilingEntry | null;
+}) {
+  const tiles = [
+    {
+      key: 'latest',
+      label: 'Latest Filing Age',
+      filing: latestAny,
+      fallback: 'No dated filing found in SEC submissions feed',
+      goodDays: 45,
+      warnDays: 120,
+    },
+    {
+      key: 'annual',
+      label: 'Annual Report Age',
+      filing: latestAnnual,
+      fallback: 'No recent annual report found in SEC submissions feed',
+      goodDays: 455,
+      warnDays: 550,
+    },
+    {
+      key: 'quarterly',
+      label: 'Quarterly Update Age',
+      filing: latestQuarterly,
+      fallback: 'No recent quarterly update found in SEC submissions feed',
+      goodDays: 140,
+      warnDays: 220,
+    },
+    {
+      key: 'current',
+      label: 'Current Report Age',
+      filing: latestCurrent,
+      fallback: 'No current report found in SEC submissions feed',
+      goodDays: 90,
+      warnDays: 180,
+    },
+  ];
+
+  return (
+    <div className="border-t border-stone-800 px-4 py-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            <Clock className="w-3.5 h-3.5 text-sky-400" />
+            Reporting Freshness
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Days since the latest source filing in each reporting lane. Each tile opens the SEC document behind the date.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.14em] text-stone-500">
+          Source: SEC submissions feed
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {tiles.map((tile) => (
+          <FilingFreshnessTile
+            key={tile.key}
+            label={tile.label}
+            filing={tile.filing}
+            fallback={tile.fallback}
+            goodDays={tile.goodDays}
+            warnDays={tile.warnDays}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FilingFreshnessTile({
+  label,
+  filing,
+  fallback,
+  goodDays,
+  warnDays,
+}: {
+  label: string;
+  filing?: FilingEntry | null;
+  fallback: string;
+  goodDays: number;
+  warnDays: number;
+}) {
+  const ageDays = filing ? daysSinceFiling(filing) : null;
+  const tone = ageDays == null ? 'missing' : ageDays <= goodDays ? 'fresh' : ageDays <= warnDays ? 'watch' : 'stale';
+  const toneClass = freshnessToneClass(tone);
+  const content = (
+    <>
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-stone-500 font-bold">
+        <FileText className="w-3.5 h-3.5 text-stone-500" />
+        {label}
+      </div>
+      <div className="mt-2 flex items-center gap-1.5 text-2xl font-black tabular-nums text-stone-100">
+        {ageDays == null ? 'N/A' : formatAgeDays(ageDays)}
+        {filing && <ExternalLink className="w-3.5 h-3.5 text-stone-600" />}
+      </div>
+      <div className="mt-2 text-xs leading-relaxed text-stone-400">
+        {filing ? (
+          <>
+            {filing.form} filed {filing.filingDate}
+            {filing.reportDate && <span className="block text-stone-500">Period {filing.reportDate}</span>}
+            <span className="block font-mono text-[10px] text-stone-600">{filing.accession}</span>
+          </>
+        ) : (
+          fallback
+        )}
+      </div>
+    </>
+  );
+
+  if (!filing?.documentUrl) {
+    return (
+      <div className={`border-2 bg-stone-950/60 p-4 ${toneClass}`}>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={filing.documentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`group block border-2 bg-stone-950/60 p-4 transition-colors hover:border-sky-500 hover:bg-sky-950/20 ${toneClass}`}
+      title={`Open ${filing.form} filed ${filing.filingDate} on SEC.gov`}
+    >
+      {content}
+    </a>
+  );
+}
+
+function daysSinceFiling(filing: FilingEntry) {
+  const time = filingDateTime(filing);
+  if (!time) return null;
+  const days = Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000));
+  return Math.max(days, 0);
+}
+
+function formatAgeDays(days: number) {
+  if (days < 1) return '0d';
+  if (days < 365) return `${days}d`;
+  return `${(days / 365).toFixed(1)}y`;
+}
+
+function freshnessToneClass(tone: 'fresh' | 'watch' | 'stale' | 'missing') {
+  if (tone === 'fresh') return 'border-emerald-800/70 text-emerald-300';
+  if (tone === 'watch') return 'border-amber-800/70 text-amber-300';
+  if (tone === 'stale') return 'border-rose-800/70 text-rose-300';
+  return 'border-stone-800 text-stone-400';
 }
 
 function disclosureSearchHref(query: string, ticker?: string) {
