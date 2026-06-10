@@ -650,6 +650,13 @@ export default function AnalysisClient({
                     cik={company?.cik}
                     onTraceRow={traceRowHistory}
                   />
+                  <CashConversionPanel
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
                   <CapitalAllocationPanel
                     facts={facts}
                     periods={annualPeriods}
@@ -1639,6 +1646,381 @@ function BalanceSheetRiskPanel({
           />
           <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
             Derived ratios use reported SEC XBRL values. Click linked values to open the source filing/tag; use the history icon to inspect the underlying concept over time.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CashConversionPanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}) {
+  const { tiles, tableRows, displayPeriods, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 5);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as SnapshotTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+        group,
+      };
+    }
+
+    const metricRow = (key: string, label: string) => (
+      buildMetricRow(facts, key, label, displayPeriods, 'currency', group as any)
+    );
+    const rowsByKey = {
+      revenue: metricRow('revenue', 'Revenue'),
+      costOfRevenue: metricRow('costOfRevenue', 'Cost of Revenue'),
+      receivables: metricRow('receivables', 'Accounts Receivable'),
+      inventory: metricRow('inventory', 'Inventory'),
+      accountsPayable: metricRow('accountsPayable', 'Accounts Payable'),
+      operatingCashFlow: metricRow('operatingCashFlow', 'Operating Cash Flow'),
+      netIncome: metricRow('netIncome', 'Net Income'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter((source): source is SourceFact & { label: string } => {
+          if (!source?.tag) return false;
+          const key = `${source.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+    const ratio = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return numerator / denominator;
+    };
+    const pct = (numerator: number | null, denominator: number | null) => {
+      const value = ratio(numerator, denominator);
+      return value == null ? null : value * 100;
+    };
+    const days = (balance: number | null, flow: number | null) => {
+      const value = ratio(balance, flow);
+      return value == null ? null : value * 365;
+    };
+    const valueForPeriod = (index: number) => {
+      const revenuePoint = point('revenue', index);
+      const costPoint = point('costOfRevenue', index);
+      const receivablesPoint = point('receivables', index);
+      const inventoryPoint = point('inventory', index);
+      const payablePoint = point('accountsPayable', index);
+      const ocfPoint = point('operatingCashFlow', index);
+      const netIncomePoint = point('netIncome', index);
+
+      const revenue = num(revenuePoint);
+      const costOfRevenue = num(costPoint);
+      const receivables = num(receivablesPoint);
+      const inventory = num(inventoryPoint);
+      const accountsPayable = num(payablePoint);
+      const ocf = num(ocfPoint);
+      const netIncome = num(netIncomePoint);
+      const dso = days(receivables, revenue);
+      const daysInventory = days(inventory, costOfRevenue);
+      const dpo = days(accountsPayable, costOfRevenue);
+      const cashConversionCycle = dso != null && (daysInventory != null || dpo != null)
+        ? (dso || 0) + (daysInventory || 0) - (dpo || 0)
+        : null;
+      const tradeWorkingCapitalInputs = [receivables, inventory, accountsPayable].filter((value) => value != null).length;
+      const tradeWorkingCapital = tradeWorkingCapitalInputs >= 2
+        ? (receivables || 0) + (inventory || 0) - (accountsPayable || 0)
+        : null;
+
+      return {
+        revenuePoint,
+        costPoint,
+        receivablesPoint,
+        inventoryPoint,
+        payablePoint,
+        ocfPoint,
+        netIncomePoint,
+        revenue,
+        ocf,
+        netIncome,
+        dso,
+        daysInventory,
+        dpo,
+        cashConversionCycle,
+        tradeWorkingCapital,
+        tradeWorkingCapitalRevenue: pct(tradeWorkingCapital, revenue),
+        cfoNetIncome: netIncome != null && netIncome > 0 ? pct(ocf, netIncome) : null,
+      };
+    };
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => {
+      const sources = sourceFacts(inputs);
+      return {
+        period: displayPeriods[index],
+        value,
+        source: sources[0] || null,
+        sources,
+      };
+    };
+
+    const tableRows = [
+      {
+        key: 'dso',
+        label: 'Days Sales Outstanding',
+        format: 'decimal',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.dso, [
+            ['Receivables', v.receivablesPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'daysInventory',
+        label: 'Days Inventory',
+        format: 'decimal',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.daysInventory, [
+            ['Inventory', v.inventoryPoint],
+            ['Cost of Revenue', v.costPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'dpo',
+        label: 'Days Payable Outstanding',
+        format: 'decimal',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.dpo, [
+            ['Accounts Payable', v.payablePoint],
+            ['Cost of Revenue', v.costPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cashConversionCycle',
+        label: 'Cash Conversion Cycle',
+        format: 'decimal',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cashConversionCycle, [
+            ['Receivables', v.receivablesPoint],
+            ['Inventory', v.inventoryPoint],
+            ['Payables', v.payablePoint],
+            ['Revenue', v.revenuePoint],
+            ['Cost of Revenue', v.costPoint],
+          ]);
+        }),
+      },
+      {
+        key: 'tradeWorkingCapital',
+        label: 'Trade Working Capital',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.tradeWorkingCapital, [
+            ['Receivables', v.receivablesPoint],
+            ['Inventory', v.inventoryPoint],
+            ['Payables', v.payablePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'tradeWorkingCapitalRevenue',
+        label: 'Trade WC / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.tradeWorkingCapitalRevenue, [
+            ['Receivables', v.receivablesPoint],
+            ['Inventory', v.inventoryPoint],
+            ['Payables', v.payablePoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'cfoNetIncome',
+        label: 'CFO / Net Income',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.cfoNetIncome, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Net Income', v.netIncomePoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: SnapshotTile[] = [];
+    const addTile = (tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.cashConversionCycle != null) {
+      addTile({
+        key: 'cash-conversion-cycle',
+        label: 'Cash Conversion Cycle',
+        value: latest.cashConversionCycle,
+        format: 'decimal',
+        detail: 'DSO plus inventory days less payable days',
+        tone: latest.cashConversionCycle <= 30 ? 'good' : latest.cashConversionCycle <= 90 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Receivables', latest.receivablesPoint],
+          ['Inventory', latest.inventoryPoint],
+          ['Payables', latest.payablePoint],
+          ['Revenue', latest.revenuePoint],
+          ['Cost of Revenue', latest.costPoint],
+        ]),
+      });
+    }
+
+    if (latest.dso != null) {
+      addTile({
+        key: 'dso',
+        label: 'Days Sales Outstanding',
+        value: latest.dso,
+        format: 'decimal',
+        detail: 'Receivables divided by annual revenue, expressed in days',
+        tone: latest.dso <= 45 ? 'good' : latest.dso <= 75 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Receivables', latest.receivablesPoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.tradeWorkingCapitalRevenue != null) {
+      addTile({
+        key: 'trade-working-capital-revenue',
+        label: 'Trade WC / Revenue',
+        value: latest.tradeWorkingCapitalRevenue,
+        format: 'percent',
+        detail: `Trade working capital: ${formatValue(latest.tradeWorkingCapital, 'currency')}`,
+        tone: latest.tradeWorkingCapitalRevenue <= 15 ? 'good' : latest.tradeWorkingCapitalRevenue <= 35 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Receivables', latest.receivablesPoint],
+          ['Inventory', latest.inventoryPoint],
+          ['Payables', latest.payablePoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.cfoNetIncome != null) {
+      addTile({
+        key: 'cfo-net-income',
+        label: 'CFO / Net Income',
+        value: latest.cfoNetIncome,
+        format: 'percent',
+        detail: 'Operating cash flow compared with reported net income',
+        tone: latest.cfoNetIncome >= 100 ? 'good' : latest.cfoNetIncome >= 75 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Cash Flow', latest.ocfPoint],
+          ['Net Income', latest.netIncomePoint],
+        ]),
+      });
+    }
+
+    if (latest.daysInventory != null) {
+      addTile({
+        key: 'days-inventory',
+        label: 'Days Inventory',
+        value: latest.daysInventory,
+        format: 'decimal',
+        detail: 'Inventory divided by annual cost of revenue, expressed in days',
+        tone: latest.daysInventory <= 60 ? 'good' : latest.daysInventory <= 120 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Inventory', latest.inventoryPoint],
+          ['Cost of Revenue', latest.costPoint],
+        ]),
+      });
+    }
+
+    return { tiles: tiles.slice(0, 4), tableRows, displayPeriods, latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ArrowRightLeft className="w-4 h-4 text-amber-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Cash Conversion
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked receivables, inventory, payables, and cash-flow conversion signals for {latestPeriod ? periodLabel(latestPeriod) : 'the latest annual period'}.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {industryLabel(group)}
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <QualityTile key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Five-Year Cash Conversion Watch
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Cash Conversion Cycle', 'Trade Working Capital'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Derived days metrics use annual SEC XBRL balance sheet amounts divided by annual flow amounts. Linked values open the reported source tags; use trend direction and company context rather than a single-year cutoff.
           </p>
         </div>
       )}
