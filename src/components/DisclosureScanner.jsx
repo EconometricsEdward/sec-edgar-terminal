@@ -43,6 +43,13 @@ const QUICK_STARTS = [
   },
 ];
 
+const INDEX_RANGES = [
+  { label: 'Last 90 Days', months: 3 },
+  { label: 'Last 12 Months', months: 12 },
+  { label: 'Last 36 Months', months: 36 },
+  { label: 'Last 10 Years', months: 120 },
+];
+
 function parseTickers(input) {
   return input
     .split(',')
@@ -58,10 +65,11 @@ function parseTerms(input) {
 }
 
 export default function DisclosureScanner({ initialQuery = '', onScanComplete }) {
-  const [searchMode, setSearchMode] = useState(initialQuery ? 'market' : 'companies');
+  const [searchMode, setSearchMode] = useState(initialQuery ? 'index' : 'companies');
   const [tickerInput, setTickerInput] = useState('');
   const [queryInput, setQueryInput] = useState(initialQuery);
   const [universeId, setUniverseId] = useState(DISCLOSURE_UNIVERSES[0]?.id || '');
+  const [indexMonths, setIndexMonths] = useState(12);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
   const tickerRef = useRef(null);
@@ -72,38 +80,50 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
     () => DISCLOSURE_UNIVERSES.find((universe) => universe.id === universeId) || DISCLOSURE_UNIVERSES[0],
     [universeId],
   );
+  const isIndexMode = searchMode === 'index';
   const isUniverseMode = searchMode === 'universe';
   const isMarketMode = searchMode === 'market';
-  const scopeCount = isMarketMode
+  const scopeCount = isIndexMode
+    ? null
+    : isMarketMode
     ? (DISCLOSURE_MARKET_MAP?.tickers?.length || 0)
     : isUniverseMode
       ? (selectedUniverse?.tickers?.length || 0)
       : tickers.length;
-  const isValid = isMarketMode
+  const isValid = isIndexMode
+    ? terms.length >= 1
+    : isMarketMode
     ? terms.length >= 1
     : isUniverseMode
     ? Boolean(selectedUniverse) && terms.length >= 1
     : tickers.length >= 1 && tickers.length <= 5 && terms.length >= 1;
 
   const runSearch = async (nextTickers, nextQuery, options = {}) => {
+    const index = options.index === true;
     const universe = options.universe || null;
     const market = options.market === true;
-    if (scanning || (!universe && !market && !nextTickers.length) || !nextQuery.trim()) return;
+    if (scanning || (!index && !universe && !market && !nextTickers.length) || !nextQuery.trim()) return;
 
     setScanning(true);
     setError(null);
 
     try {
-      const params = new URLSearchParams({
-        query: nextQuery,
-        depth: String(options.depth || (market ? 2 : universe ? 12 : 35)),
-      });
-      if (market) params.set('market', 'true');
-      else if (universe) params.set('universe', universe);
-      else params.set('tickers', nextTickers.join(','));
-      if (options.fresh) params.set('fresh', 'true');
+      const params = new URLSearchParams({ query: nextQuery });
+      let endpoint = '/api/disclosure-search';
 
-      const response = await fetch(`/api/disclosure-search?${params}`);
+      if (index) {
+        endpoint = '/api/edgar-index-search';
+        params.set('months', String(options.months || indexMonths));
+        params.set('limit', '50');
+      } else {
+        params.set('depth', String(options.depth || (market ? 2 : universe ? 12 : 35)));
+        if (market) params.set('market', 'true');
+        else if (universe) params.set('universe', universe);
+        else params.set('tickers', nextTickers.join(','));
+        if (options.fresh) params.set('fresh', 'true');
+      }
+
+      const response = await fetch(`${endpoint}?${params}`);
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload.error || `Search failed: HTTP ${response.status}`);
@@ -121,7 +141,9 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
   const handleSubmit = (event) => {
     event?.preventDefault();
     if (!isValid) return;
-    if (isMarketMode) {
+    if (isIndexMode) {
+      runSearch([], queryInput, { index: true, months: indexMonths });
+    } else if (isMarketMode) {
       runSearch([], queryInput, { market: true, depth: 2 });
     } else if (isUniverseMode) {
       runSearch([], queryInput, { universe: selectedUniverse.id, depth: 12 });
@@ -154,8 +176,8 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
       </div>
       <p className="text-xs text-stone-400 mb-4 leading-relaxed max-w-3xl">
         Search recent SEC filings for any literal word or phrase. Enter up to 5 public-company
-        tickers, scan a curated sector universe, or use Market Map for a bounded cross-sector
-        discovery pass; every match links back to the original filing on SEC.gov.
+        tickers, scan a curated sector universe, use Market Map, or search the SEC full-text
+        index across recent EDGAR filings; every match links back to the original filing on SEC.gov.
       </p>
 
       <form onSubmit={handleSubmit} className="mb-4 space-y-3">
@@ -163,9 +185,19 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
           <ModeButton
             icon={Search}
             label="Companies"
-            active={!isUniverseMode && !isMarketMode}
+            active={!isIndexMode && !isUniverseMode && !isMarketMode}
             onClick={() => {
               setSearchMode('companies');
+              setError(null);
+            }}
+            disabled={scanning}
+          />
+          <ModeButton
+            icon={FileSearch}
+            label="EDGAR Index"
+            active={isIndexMode}
+            onClick={() => {
+              setSearchMode('index');
               setError(null);
             }}
             disabled={scanning}
@@ -193,7 +225,31 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto] gap-2">
-          {isMarketMode ? (
+          {isIndexMode ? (
+            <label className="block">
+              <span className="block mb-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+                SEC index range
+              </span>
+              <div className="relative">
+                <FileSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500 pointer-events-none" />
+                <select
+                  value={indexMonths}
+                  onChange={(event) => {
+                    setIndexMonths(Number(event.target.value));
+                    setError(null);
+                  }}
+                  className="w-full appearance-none bg-stone-900 border-2 border-stone-800 focus:border-amber-500 outline-none pl-10 pr-8 py-3 text-sm font-bold tracking-wider transition-colors"
+                  disabled={scanning}
+                >
+                  {INDEX_RANGES.map((range) => (
+                    <option key={range.months} value={range.months}>
+                      {range.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+          ) : isMarketMode ? (
             <label className="block">
               <span className="block mb-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
                 Discovery scope
@@ -309,6 +365,22 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
           </div>
         </div>
 
+        {isIndexMode && !scanning && (
+          <div className="border-2 border-sky-800/50 bg-sky-950/20 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="text-xs font-black text-stone-100">SEC EDGAR full-text index</div>
+                <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-500">
+                  Broad discovery across indexed SEC filings; open each linked filing to verify exact context.
+                </div>
+              </div>
+              <div className="text-[10px] uppercase tracking-[0.14em] text-sky-300">
+                Up to 50 source filings
+              </div>
+            </div>
+          </div>
+        )}
+
         {isMarketMode && !scanning && (
           <div className="border-2 border-sky-800/50 bg-sky-950/20 p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -361,9 +433,11 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
           </div>
         )}
 
-        {(scopeCount > 0 || terms.length > 0) && !scanning && (
+        {((scopeCount || 0) > 0 || terms.length > 0 || isIndexMode) && !scanning && (
           <div className="text-[10px] font-mono uppercase tracking-wider text-stone-500">
-            {isMarketMode
+            {isIndexMode
+              ? `EDGAR index: ${INDEX_RANGES.find((range) => range.months === indexMonths)?.label || 'Custom range'}`
+              : isMarketMode
               ? `Market Map: ${scopeCount} companies`
               : isUniverseMode
               ? `Universe: ${selectedUniverse?.label || 'Select a universe'} (${scopeCount} companies)`
@@ -383,12 +457,14 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
           <Loader2 className="w-5 h-5 text-amber-400 shrink-0 mt-0.5 animate-spin" />
           <div className="flex-1">
             <div className="text-sm text-amber-200 font-bold mb-1">
-              Searching SEC filings for {scopeCount} {scopeCount === 1 ? 'company' : 'companies'}...
+              {isIndexMode
+                ? 'Searching the SEC EDGAR full-text index...'
+                : `Searching SEC filings for ${scopeCount} ${scopeCount === 1 ? 'company' : 'companies'}...`}
             </div>
             <div className="text-xs text-amber-100/80 leading-relaxed">
-              The scanner fetches recent 10-K, 10-Q, 8-K, proxy, registration, foreign issuer, and
-              fund filings, converts them to text, and returns paragraph-level excerpts with direct
-              SEC source links.
+              {isIndexMode
+                ? 'The index search asks SEC for matching source filings across EDGAR, then returns direct SEC archive links for verification.'
+                : 'The scanner fetches recent 10-K, 10-Q, 8-K, proxy, registration, foreign issuer, and fund filings, converts them to text, and returns paragraph-level excerpts with direct SEC source links.'}
             </div>
           </div>
         </div>

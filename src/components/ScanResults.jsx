@@ -8,6 +8,10 @@ import {
 export default function ScanResults({ data, onRescan }) {
   if (!data) return null;
 
+  if (data.mode === 'edgar-index') {
+    return <EdgarIndexResults data={data} />;
+  }
+
   const results = data.results || [];
   const errors = data.errors || [];
   const terms = data.query?.terms || [];
@@ -92,6 +96,238 @@ export default function ScanResults({ data, onRescan }) {
       ))}
     </div>
   );
+}
+
+// ============================================================================
+// EDGAR index results - broad source discovery across SEC full-text search
+// ============================================================================
+
+function EdgarIndexResults({ data }) {
+  const results = data.results || [];
+  const terms = data.query?.terms || [];
+  const companies = new Set(results.map((row) => row.cik).filter(Boolean));
+  const forms = new Set(results.map((row) => row.form).filter(Boolean));
+  const latest = [...results]
+    .filter((row) => row.filingDate)
+    .sort((a, b) => filingTimestamp(b.filingDate) - filingTimestamp(a.filingDate))[0] || null;
+
+  return (
+    <div className="mb-8">
+      <div className="flex flex-wrap items-center gap-3 mb-4 text-[10px] uppercase tracking-widest text-stone-500">
+        <span className="flex items-center gap-1.5">
+          <Database className="w-3 h-3" />
+          Source: SEC full-text index
+        </span>
+        <span>/</span>
+        <span>Scanned: {new Date(data.scannedAt).toLocaleString()}</span>
+        <span>/</span>
+        <span>
+          Filed: {data.dateRange?.start || 'N/A'} to {data.dateRange?.end || 'N/A'}
+        </span>
+        {data.tookMs != null && (
+          <>
+            <span>/</span>
+            <span>SEC query: {data.tookMs}ms</span>
+          </>
+        )}
+      </div>
+
+      <section className="mb-6 border-2 border-stone-800 bg-stone-950/40">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <FileSearch className="w-4 h-4 text-sky-400" />
+              <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+                EDGAR Index Source Hits
+              </h3>
+            </div>
+            <p className="mt-1 text-[11px] text-stone-500">
+              Broad discovery across SEC-indexed filing documents. Open each source filing to verify the exact language in context.
+            </p>
+          </div>
+          {data.source?.url && (
+            <a
+              href={data.source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-sky-300 hover:text-sky-200"
+            >
+              SEC index query
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </div>
+
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          <EvidenceStat
+            icon={Database}
+            label="Index Hits"
+            value={`${data.totalHits?.toLocaleString?.() || 0}${data.totalRelation === 'gte' ? '+' : ''}`}
+            detail={`${results.length.toLocaleString()} source filings returned`}
+            tone={results.length > 0 ? 'amber' : 'stone'}
+          />
+          <EvidenceStat
+            icon={Activity}
+            label="Companies"
+            value={companies.size.toLocaleString()}
+            detail="Distinct reporting CIKs in returned hits"
+            tone={companies.size > 0 ? 'emerald' : 'stone'}
+          />
+          <EvidenceStat
+            icon={FileText}
+            label="Filing Forms"
+            value={forms.size.toLocaleString()}
+            detail={Array.from(forms).slice(0, 4).join(', ') || 'No forms returned'}
+          />
+          <EvidenceStat
+            icon={Clock}
+            label="Latest Source"
+            value={latest?.filingDate || 'N/A'}
+            detail={latest ? `${latest.form || 'Filing'} / ${latest.companyName}` : 'No source filing'}
+            href={latest?.documentUrl}
+            tone={latest ? 'sky' : 'stone'}
+          />
+        </div>
+
+        {terms.length > 0 && (
+          <div className="border-t border-stone-800 px-4 py-3 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+              Search terms
+            </span>
+            {terms.map((term) => (
+              <span
+                key={term}
+                className="text-[10px] px-2 py-0.5 bg-amber-950/40 border border-amber-800/60 text-amber-200"
+              >
+                {term}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {results.length === 0 ? (
+          <div className="p-8 text-center">
+            <Search className="w-10 h-10 text-stone-700 mx-auto mb-3" />
+            <p className="text-sm text-stone-400 mb-1">No EDGAR index hits found</p>
+            <p className="text-xs text-stone-600">
+              Try a broader date range, fewer phrases, or related terminology.
+            </p>
+          </div>
+        ) : (
+          <div className="border-t border-stone-800 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-stone-900 border-b-2 border-stone-800">
+                <tr>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 min-w-[90px]">
+                    Rank
+                  </th>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[260px]">
+                    Source Filing
+                  </th>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[240px]">
+                    Company
+                  </th>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[160px]">
+                    Filing Date
+                  </th>
+                  <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-amber-400 font-black min-w-[180px]">
+                    Context
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((row) => (
+                  <EdgarIndexRow key={`${row.accession}-${row.documentName}-${row.rank}`} row={row} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="border-t border-stone-800 bg-stone-950/60 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
+          EDGAR index mode discovers source filings across the SEC full-text index. It does not
+          generate paragraph excerpts; use the linked SEC document as the source of truth, then use
+          company scan mode when you need paragraph-level excerpts for a defined peer set.
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function EdgarIndexRow({ row }) {
+  return (
+    <tr className="border-b border-stone-800/60 hover:bg-sky-500/5 align-top">
+      <td className="px-4 py-3">
+        <div className="text-sm font-black tabular-nums text-stone-200">#{row.rank}</div>
+        <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-600">
+          Score {formatScore(row.score)}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <a
+          href={row.documentUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 text-sky-300 hover:text-sky-200 transition-colors"
+          title="Open source filing on SEC.gov"
+        >
+          <span className={`px-2 py-0.5 text-[10px] font-black tracking-wider border ${getFormColor(row.form)}`}>
+            {row.form || 'Filing'}
+          </span>
+          <span className="text-xs font-bold">{row.fileDescription || row.fileType || row.documentName}</span>
+          <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+        </a>
+        <div className="mt-1 text-[10px] font-mono text-stone-600">{row.accession}</div>
+        <div className="mt-1 text-[10px] text-stone-500 truncate max-w-[320px]">{row.documentName}</div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="text-xs font-black tracking-wider text-stone-100">{row.companyName}</div>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {row.tickers.length > 0 ? row.tickers.map((ticker) => (
+            <span
+              key={ticker}
+              className="border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-stone-400"
+            >
+              {ticker}
+            </span>
+          )) : (
+            <span className="text-[10px] text-stone-600">No ticker parsed</span>
+          )}
+        </div>
+        <div className="mt-1 text-[10px] font-mono text-stone-600">CIK {row.cik}</div>
+      </td>
+      <td className="px-4 py-3 text-xs text-stone-300">
+        <div className="font-bold tabular-nums">{row.filingDate || 'N/A'}</div>
+        {row.periodEnding && (
+          <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-500">
+            Period {row.periodEnding}
+          </div>
+        )}
+      </td>
+      <td className="px-4 py-3 text-xs text-stone-400">
+        {row.items.length > 0 && (
+          <div className="mb-1">
+            <span className="text-stone-500">Items: </span>
+            <span className="text-stone-300">{row.items.join(', ')}</span>
+          </div>
+        )}
+        {row.sic && (
+          <div>
+            <span className="text-stone-500">SIC: </span>
+            <span className="text-stone-300">{row.sic}</span>
+          </div>
+        )}
+        {row.businessLocation && (
+          <div className="mt-1 text-stone-500">{row.businessLocation}</div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function formatScore(value) {
+  if (!Number.isFinite(value)) return 'N/A';
+  return value.toFixed(value >= 10 ? 1 : 2);
 }
 
 // ============================================================================

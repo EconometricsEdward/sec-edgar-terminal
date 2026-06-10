@@ -54,11 +54,11 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
           </h1>
         </div>
         <p className="text-xs text-stone-400 leading-relaxed max-w-3xl">
-          Run plain-language searches across recent SEC filings for any company. Use it for
+          Run plain-language searches across recent SEC filings or the broader SEC full-text index. Use it for
           emerging risks, customer concentration, tariffs, AI exposure, restructuring language,
-          liquidity warnings, or any other term that matters to your analysis. Search a manual
-          company set, a curated sector universe, or a bounded cross-sector Market Map, then
-          use the disclosure timeline to jump into the newest SEC source documents.
+          liquidity warnings, or any other term that matters to your analysis. Search the EDGAR
+          index for broad source discovery, or scan a manual company set, curated sector universe,
+          or bounded cross-sector Market Map when you need paragraph-level excerpts.
         </p>
       </div>
 
@@ -82,7 +82,7 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
         <InfoPanel
           icon={FileSearch}
           title="Research workflow"
-          text="Compare up to 5 hand-picked companies, scan a sector universe, or run a cross-sector market map, then use the source timeline and excerpts as a launch point for reading filings in context."
+          text="Start with EDGAR Index to find source filings across the broader SEC corpus, then compare up to 5 hand-picked companies, scan a sector universe, or run a cross-sector market map for paragraph-level context."
         />
       </section>
 
@@ -90,13 +90,12 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
         <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
         <div className="text-[11px] text-stone-400 leading-relaxed">
           <span className="font-bold text-stone-200">Methodology:</span>{' '}
-          The scanner checks recent 10-K, 10-Q, 8-K, S-1, proxy, 20-F, 40-F, and N-CSR filings.
-          Manual searches support up to 5 tickers. Universe searches scan curated 8-company
-          baskets at a shallower default depth. Market Map scans a diversified 40-company basket
-          at the shallowest depth to surface likely source documents without pretending to be a
-          full EDGAR-wide index. Results are cached for 24 hours by ticker and query. Keyword
-          matching is exact but flexible for whitespace and hyphenation, so always read the linked
-          SEC source before drawing conclusions.
+          EDGAR Index mode uses the SEC full-text index to find matching source filings across
+          the broader SEC corpus. Company, Universe, and Market Map modes fetch recent 10-K,
+          10-Q, 8-K, S-1, proxy, 20-F, 40-F, and N-CSR filings, convert them to text, and return
+          paragraph-level excerpts. Results are cached for 24 hours by ticker and query where
+          applicable. Keyword matching is exact but flexible for whitespace and hyphenation, so
+          always read the linked SEC source before drawing conclusions.
         </div>
       </div>
     </>
