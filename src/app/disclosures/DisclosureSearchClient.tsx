@@ -57,7 +57,8 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
           Run plain-language searches across recent SEC filings for any company. Use it for
           emerging risks, customer concentration, tariffs, AI exposure, restructuring language,
           liquidity warnings, or any other term that matters to your analysis. Search a manual
-          company set, a curated sector universe, or a bounded cross-sector Market Map.
+          company set, a curated sector universe, or a bounded cross-sector Market Map, then
+          use the disclosure timeline to jump into the newest SEC source documents.
         </p>
       </div>
 
@@ -81,7 +82,7 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
         <InfoPanel
           icon={FileSearch}
           title="Research workflow"
-          text="Compare up to 5 hand-picked companies, scan a sector universe, or run a cross-sector market map and use excerpts as a launch point for reading the filing section in context."
+          text="Compare up to 5 hand-picked companies, scan a sector universe, or run a cross-sector market map, then use the source timeline and excerpts as a launch point for reading filings in context."
         />
       </section>
 

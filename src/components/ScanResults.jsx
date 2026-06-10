@@ -65,6 +65,8 @@ export default function ScanResults({ data, onRescan }) {
 
       {results.length > 0 && <EvidenceDashboard results={results} />}
 
+      {results.length > 0 && <DisclosureTimeline results={results} />}
+
       {/* Compare summary table */}
       {isCompareMode && <CompareSummaryTable results={results} />}
 
@@ -343,6 +345,183 @@ function buildEvidenceRow(result) {
 function formatPct(value) {
   if (value == null || !Number.isFinite(value)) return 'N/A';
   return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
+}
+
+// ============================================================================
+// Disclosure timeline - recent source trail across all matched filings
+// ============================================================================
+
+function DisclosureTimeline({ results }) {
+  const rows = useMemo(() => buildDisclosureTimelineRows(results), [results]);
+
+  if (!rows.length) return null;
+
+  const recentRows = rows.filter((row) => isRecentFiling(row.filingDate, 180));
+  const forms = new Set(rows.map((row) => row.form).filter(Boolean));
+  const companies = new Set(rows.map((row) => row.ticker).filter(Boolean));
+
+  return (
+    <section className="mb-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-sky-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Disclosure Timeline
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Recent source trail for the matched language, ordered by filing date.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {rows.length} source filings
+        </div>
+      </div>
+
+      <div className="grid gap-3 border-b border-stone-800 p-4 md:grid-cols-3">
+        <TimelineStat
+          label="Last 180 Days"
+          value={recentRows.length.toLocaleString()}
+          detail="Recent matched filing sources"
+          tone={recentRows.length > 0 ? 'sky' : 'stone'}
+        />
+        <TimelineStat
+          label="Filing Forms"
+          value={forms.size.toLocaleString()}
+          detail="Distinct SEC form types with matches"
+        />
+        <TimelineStat
+          label="Companies"
+          value={companies.size.toLocaleString()}
+          detail="Companies represented in this source trail"
+        />
+      </div>
+
+      <div className="divide-y divide-stone-800/70">
+        {rows.map((row) => (
+          <TimelineRow key={`${row.ticker}-${row.accession}-${row.url}`} row={row} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TimelineStat({ label, value, detail, tone = 'stone' }) {
+  const toneClass = {
+    sky: 'border-sky-800/70 text-sky-300',
+    stone: 'border-stone-800 text-stone-300',
+  }[tone];
+
+  return (
+    <div className={`border-2 bg-stone-950/60 p-3 ${toneClass}`}>
+      <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-bold">{label}</div>
+      <div className="mt-1 text-2xl font-black tabular-nums text-stone-100">{value}</div>
+      <div className="mt-1 text-xs leading-relaxed text-stone-400">{detail}</div>
+    </div>
+  );
+}
+
+function TimelineRow({ row }) {
+  return (
+    <a
+      href={row.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block px-4 py-3 transition-colors hover:bg-sky-950/10"
+      title={`Open ${row.form} filed ${row.filingDate} on SEC.gov`}
+    >
+      <div className="grid gap-3 lg:grid-cols-[150px_1fr_auto] lg:items-start">
+        <div>
+          <div className="text-sm font-black tabular-nums text-stone-100">{row.filingDate || 'N/A'}</div>
+          {row.reportDate && (
+            <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-stone-500">
+              Period {row.reportDate}
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`px-2 py-0.5 text-[10px] font-black tracking-wider border ${getFormColor(row.form)}`}>
+              {row.form || 'Filing'}
+            </span>
+            <span className="text-sm font-black tracking-wider text-stone-100">{row.ticker}</span>
+            <span className="min-w-0 truncate text-xs text-stone-400">{row.companyName || 'Unknown company'}</span>
+            <ExternalLink className="w-3.5 h-3.5 text-stone-600" />
+          </div>
+          <div className="mt-1 truncate text-xs text-stone-500">
+            {row.primaryDescription || row.primaryDoc || row.accession}
+          </div>
+          {row.keywordsFound.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {row.keywordsFound.slice(0, 5).map((term) => (
+                <span
+                  key={`${row.accession}-${term}`}
+                  className="border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-stone-400"
+                >
+                  {term}
+                </span>
+              ))}
+              {row.keywordsFound.length > 5 && (
+                <span className="px-1.5 py-0.5 text-[9px] text-stone-500">
+                  +{row.keywordsFound.length - 5} more
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="text-left lg:text-right">
+          <div className="text-lg font-black tabular-nums text-amber-300">{row.matchCount.toLocaleString()}</div>
+          <div className="text-[9px] uppercase tracking-widest text-stone-500">
+            {row.matchCount === 1 ? 'match' : 'matches'}
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function buildDisclosureTimelineRows(results) {
+  const rows = [];
+
+  for (const result of results || []) {
+    for (const filing of result.matches || []) {
+      if (!filing || filing.skipped || !filing.url || (filing.matchCount || 0) <= 0) continue;
+      rows.push({
+        ticker: result.ticker,
+        companyName: result.companyName,
+        accession: filing.accession,
+        form: filing.form,
+        filingDate: filing.filingDate,
+        reportDate: filing.reportDate,
+        primaryDoc: filing.primaryDoc,
+        primaryDescription: filing.primaryDescription,
+        matchCount: filing.matchCount || 0,
+        keywordsFound: filing.keywordsFound || [],
+        url: filing.url,
+      });
+    }
+  }
+
+  return rows
+    .sort((a, b) => (
+      filingTimestamp(b.filingDate) - filingTimestamp(a.filingDate)
+      || (b.matchCount || 0) - (a.matchCount || 0)
+      || String(a.ticker || '').localeCompare(String(b.ticker || ''))
+    ))
+    .slice(0, 12);
+}
+
+function filingTimestamp(date) {
+  const time = new Date(date || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isRecentFiling(date, days) {
+  const time = filingTimestamp(date);
+  return time > 0 && time >= Date.now() - days * 24 * 60 * 60 * 1000;
 }
 
 // ============================================================================
