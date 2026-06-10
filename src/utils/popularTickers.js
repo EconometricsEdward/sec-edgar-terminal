@@ -29,15 +29,12 @@
  *     - Stock price:       ~0.3s per ticker (Yahoo v8)
  *     - Submissions:       ~0.3s per ticker (SEC)
  *     - Form 4 scan:       ~0.3s per ticker (SEC submissions)
- *     - Crypto scan:       ~5-30s per ticker (expensive)
  *
- *   With 3 concurrent Yahoo workers and 5 concurrent SEC workers, ~15
- *   stocks × 3 stages ≈ 20-30s, leaving room for ~3 crypto-heavy tickers
- *   within the 60s budget. MAX_STOCKS is set to 25 to give hot tickers
- *   10 extra slots beyond the 15 seed stocks.
+ *   With 3 concurrent Yahoo workers and 5 concurrent SEC workers, ~15 stocks
+ *   across the three stages usually fits within the 60s budget. MAX_STOCKS is
+ *   set to 25 to give hot tickers 10 extra slots beyond the 15 seed stocks.
  *
- *   On Pro (300s cap), we'd want ~50 stocks + 10 crypto-heavy. When you
- *   upgrade, grow the two seed lists below and widen MAX_* accordingly.
+ *   On Pro (300s cap), grow the seed list below and widen MAX_STOCKS.
  */
 
 import { getHotTickers } from './viewTracker.js';
@@ -60,22 +57,10 @@ const SEED_STOCKS = [
   // 'SOFI', 'RIVN', 'LCID', 'AMC',
 ];
 
-// Crypto-heavy tickers — expensive to pre-warm (full filing scans).
-// Kept small on Hobby since crypto-scan can take 30s+ per ticker.
-const SEED_CRYPTO_HEAVY = [
-  'MSTR',  // MicroStrategy — the headline one
-  'COIN',  // Coinbase
-  'MARA',  // Marathon Digital
-
-  // ---- When upgrading to Pro, uncomment this block ----
-  // 'HOOD', 'TSLA', 'BKKT', 'RIOT', 'CLSK', 'HUT', 'SQ',
-];
-
 // Absolute caps — keep the pre-warm bounded even if someone adds too many
 // tickers to the KV override or the hot list. 25 stocks leaves ~10 slots for
-// hot tickers beyond the 15 seed stocks. On Pro, raise these to 60 / 15.
+// hot tickers beyond the 15 seed stocks. On Pro, raise this to 60+.
 const MAX_STOCKS = 25;
-const MAX_CRYPTO_HEAVY = 5;
 
 const REST_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const REST_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -136,14 +121,4 @@ export async function getPopularStocks() {
 
   const merged = cleanList([...SEED_STOCKS, ...hot, ...override]);
   return merged.slice(0, MAX_STOCKS);
-}
-
-/**
- * Returns the merged crypto-heavy list (seed + KV override), deduped and capped.
- * Override key: `popular_crypto_tickers`.
- */
-export async function getPopularCryptoTickers() {
-  const override = (await kvSetMembers('popular_crypto_tickers')) || [];
-  const merged = cleanList([...SEED_CRYPTO_HEAVY, ...override]);
-  return merged.slice(0, MAX_CRYPTO_HEAVY);
 }

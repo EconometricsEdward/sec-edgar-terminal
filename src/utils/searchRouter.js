@@ -1,13 +1,13 @@
 // ============================================================================
-// searchRouter — Advanced search logic for GlobalSearchBar
+// searchRouter - Advanced search logic for GlobalSearchBar
 //
 // Hybrid disambiguation:
-//   - Company ticker (AAPL)       → disambiguate: Filings | Analysis
-//   - Fund ticker (SPY, IBIT)     → disambiguate: Filings | Fund page
-//   - Crypto only (BTC, SOL)      → navigate directly to /crypto
-//   - Crypto + company (ETH)      → disambiguate: Crypto | Filings | Analysis
-//   - Crypto + fund (BTC=Grayscale)→ disambiguate: Crypto | Filings | Fund page
-//   - Comma-separated             → /compare (validate all exist, no crypto)
+//   - Company ticker (AAPL)       -> disambiguate: Filings | Analysis
+//   - Fund ticker (SPY, IBIT)     -> disambiguate: Filings | Fund page
+//   - Topic shortcut (BTC, SOL)   -> navigate to disclosure keyword search
+//   - Topic + company overlap     -> disambiguate: Disclosures | Filings | Analysis
+//   - Topic + fund overlap        -> disambiguate: Disclosures | Filings | Fund page
+//   - Comma-separated             -> /compare (public-company tickers only)
 // ============================================================================
 
 export const CRYPTO_TICKERS = new Set([
@@ -26,6 +26,10 @@ export const CRYPTO_NAMES = {
   LTC: 'Litecoin',
   BCH: 'Bitcoin Cash',
 };
+
+export function disclosureSearchPath(term) {
+  return `/disclosures?query=${encodeURIComponent(term)}`;
+}
 
 // ============================================================================
 // Active segment parsing — for multi-ticker autocomplete
@@ -81,9 +85,9 @@ export function buildDestinationOptions(ticker, secEntry) {
 
   if (isCrypto) {
     options.push({
-      label: `${CRYPTO_NAMES[upper] || upper} — Crypto page`,
-      shortLabel: 'Crypto',
-      path: '/crypto',
+      label: `${CRYPTO_NAMES[upper] || upper} disclosure search`,
+      shortLabel: 'Disclosures',
+      path: disclosureSearchPath(CRYPTO_NAMES[upper] || upper),
       type: 'crypto',
     });
   }
@@ -153,7 +157,7 @@ export function routeSearch(query, tickerMap) {
     const cryptoInList = tickers.filter((t) => CRYPTO_TICKERS.has(t));
     if (cryptoInList.length > 0) {
       return {
-        error: `Compare mode doesn't support crypto yet: ${cryptoInList.join(', ')}`,
+        error: `Compare mode supports SEC company and fund tickers only. Use disclosure search for topics: ${cryptoInList.join(', ')}`,
       };
     }
 
@@ -169,21 +173,21 @@ export function routeSearch(query, tickerMap) {
   const isCrypto = CRYPTO_TICKERS.has(normalized);
   const secEntry = tickerMap?.[normalized];
 
-  // Crypto only, no SEC ticker overlap → go directly
+  // Topic shortcut only, no SEC ticker overlap -> go directly to disclosure search
   if (isCrypto && !secEntry) {
-    return { path: '/crypto' };
+    return { path: disclosureSearchPath(CRYPTO_NAMES[normalized] || normalized) };
   }
 
-  // SEC ticker exists (with or without crypto overlap) → always disambiguate
-  // This covers: company alone, fund alone, crypto+company, crypto+fund
+  // SEC ticker exists (with or without topic overlap) -> always disambiguate
+  // This covers: company alone, fund alone, topic+company, topic+fund
   if (secEntry) {
     const options = buildDestinationOptions(normalized, secEntry);
-    // If crypto also matches, add it to options
+    // If a topic shortcut also matches, add disclosure search to options.
     if (isCrypto) {
       options.unshift({
-        label: `${CRYPTO_NAMES[normalized] || normalized} — Crypto page`,
-        shortLabel: 'Crypto',
-        path: '/crypto',
+        label: `${CRYPTO_NAMES[normalized] || normalized} disclosure search`,
+        shortLabel: 'Disclosures',
+        path: disclosureSearchPath(CRYPTO_NAMES[normalized] || normalized),
         type: 'crypto',
       });
     }
@@ -247,7 +251,7 @@ export function getSuggestions(query, tickerMap, limit = 10) {
   const excludeSet = new Set(completed);
   const isCompareMode = query.includes(',');
 
-  // Crypto suggestions (only when not in compare mode)
+  // Topic suggestions (only when not in compare mode)
   if (!isCompareMode) {
     for (const cryptoTicker of CRYPTO_TICKERS) {
       if (excludeSet.has(cryptoTicker)) continue;

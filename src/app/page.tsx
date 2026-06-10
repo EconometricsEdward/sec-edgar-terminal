@@ -34,7 +34,7 @@ const FEATURE_GRID = [
   { icon: LineChart, title: 'Stock Price with Filing Markers', description: '10 years of stock price history, with 10-K and 10-Q filing dates marked. Click any marker to open that filing. Insider buys and sells overlaid.', link: '/analysis/TSLA', linkLabel: "See Tesla's chart →" },
   { icon: Users, title: 'Insider Trading', description: 'Parsed from SEC Form 4 XML filings. See which executives are buying or selling, when, at what price, and how it relates to filing dates.', link: '/analysis/NVDA', linkLabel: 'NVIDIA insiders →' },
   { icon: GitCompare, title: 'Peer Comparison', description: 'Compare up to 5 companies side-by-side. Normalize by index-to-100, per-share, or % of revenue. Head-to-head snapshot table with color-coded leaders.', link: '/compare/AAPL,MSFT,GOOGL,META,AMZN', linkLabel: 'Compare Big Tech →' },
-  { icon: FileSearch, title: 'Crypto Disclosure Scanner', description: "Scan any company's SEC filings for bitcoin, cryptocurrency, and digital asset mentions. Paragraph-level excerpts with direct links to source filings. Compare crypto exposure across up to 5 tickers.", link: '/crypto', linkLabel: 'Scan MSTR, COIN, MARA →' },
+  { icon: FileSearch, title: 'Disclosure Keyword Search', description: "Search any company's SEC filings for the exact risks, trends, or operating terms you care about. Paragraph-level excerpts link directly to source filings, and you can compare up to 5 companies.", link: '/disclosures', linkLabel: 'Search tariffs, AI, cyber risk →' },
 ];
 
 const PEER_GROUP_SAMPLES = [
@@ -66,7 +66,7 @@ export default function LandingPage() {
           <p className="text-base md:text-lg text-stone-400 leading-relaxed mb-6 max-w-3xl">
             A transparent, source-linked explorer for every publicly traded U.S. company.
             Read the actual filings. See the reported financials. Compare peers. Track insiders.
-            Scan crypto disclosures. Every number cites its XBRL source on SEC.gov.
+            Search disclosures. Every number cites its XBRL source on SEC.gov.
           </p>
 
           {/* Hero search — client island */}
@@ -195,8 +195,8 @@ export default function LandingPage() {
             <Link href="/compare/AAPL,MSFT,GOOGL,META,AMZN" className="inline-flex items-center gap-2 px-4 py-2.5 bg-stone-900 border-2 border-stone-700 hover:border-amber-500 text-stone-200 hover:text-amber-400 font-black uppercase tracking-widest text-xs transition-colors">
               <GitCompare className="w-4 h-4" />Compare Peers
             </Link>
-            <Link href="/crypto" className="inline-flex items-center gap-2 px-4 py-2.5 bg-stone-900 border-2 border-stone-700 hover:border-amber-500 text-stone-200 hover:text-amber-400 font-black uppercase tracking-widest text-xs transition-colors">
-              <FileSearch className="w-4 h-4" />Scan Crypto Disclosures
+            <Link href="/disclosures" className="inline-flex items-center gap-2 px-4 py-2.5 bg-stone-900 border-2 border-stone-700 hover:border-amber-500 text-stone-200 hover:text-amber-400 font-black uppercase tracking-widest text-xs transition-colors">
+              <FileSearch className="w-4 h-4" />Search Disclosures
             </Link>
           </div>
         </div>

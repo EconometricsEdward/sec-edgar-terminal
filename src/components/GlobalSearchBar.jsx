@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Search, X, AlertCircle, Bitcoin, Building2, Wallet as WalletIcon,
+  Search, X, AlertCircle, FileSearch, Building2, Wallet as WalletIcon,
   ArrowRight, Clock, Command, GitCompare, FileText, BarChart3,
 } from 'lucide-react';
 import { TickerContext } from '../contexts/TickerContext';
@@ -15,9 +15,9 @@ import {
   loadRecentSearches,
   pushRecentSearch,
   clearRecentSearches,
-  buildDestinationOptions,
   CRYPTO_TICKERS,
   CRYPTO_NAMES,
+  disclosureSearchPath,
 } from '../utils/searchRouter.js';
 
 export default function GlobalSearchBar() {
@@ -124,7 +124,7 @@ export default function GlobalSearchBar() {
 
     // Single mode: navigate based on actionType
     let path;
-    if (actionType === 'crypto') path = '/crypto';
+    if (actionType === 'crypto') path = disclosureSearchPath(CRYPTO_NAMES[suggestion.ticker] || suggestion.ticker);
     else if (actionType === 'filings') path = `/filings/${suggestion.ticker}`;
     else if (actionType === 'fund') path = `/fund/${suggestion.ticker}`;
     else if (actionType === 'analysis') path = `/analysis/${suggestion.ticker}`;
@@ -514,8 +514,8 @@ function SuggestionsDropdown({
                 {s.type === 'crypto' ? (
                   <ActionButton
                     onClick={() => onActionClick(s, 'crypto')}
-                    label="Crypto"
-                    icon={Bitcoin}
+                    label="Search"
+                    icon={FileSearch}
                     color="amber"
                   />
                 ) : (
@@ -582,10 +582,10 @@ function ActionButton({ onClick, label, icon: Icon, color }) {
 function getTypeVisuals(type) {
   if (type === 'crypto') {
     return {
-      TypeIcon: Bitcoin,
+      TypeIcon: FileSearch,
       color: 'text-amber-400',
       badgeColor: 'bg-amber-900/60 text-amber-300 border-amber-700/60',
-      badgeLabel: 'CRYPTO',
+      badgeLabel: 'TOPIC',
     };
   }
   if (type === 'fund') {
@@ -649,14 +649,14 @@ function computeSyntaxHint(input, tickerMap, completed) {
       return {
         label: 'Ambiguous',
         icon: <AlertCircle className="w-2.5 h-2.5" />,
-        tip: 'Matches crypto AND a SEC ticker — press Enter to pick',
+        tip: 'Matches a disclosure topic and a SEC ticker — press Enter to pick',
         color: 'bg-amber-950/40 text-amber-300 border-amber-800',
       };
     }
     return {
-      label: 'Crypto',
-      icon: <Bitcoin className="w-2.5 h-2.5" />,
-      tip: 'Press Enter → crypto page',
+      label: 'Disclosure',
+      icon: <FileSearch className="w-2.5 h-2.5" />,
+      tip: 'Press Enter to search SEC disclosures',
       color: 'bg-amber-950/40 text-amber-300 border-amber-800',
     };
   }

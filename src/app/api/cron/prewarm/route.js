@@ -10,7 +10,6 @@
  *   - Stock price history  (Yahoo → Stooq fallback)
  *   - SEC submissions      (data.sec.gov)
  *   - Recent Form 4s       (SEC filings for the last ~20 Form 4 accessions)
- *   - Crypto-scan results  (only for crypto-heavy tickers — it's expensive)
  *
  * Concurrency rules:
  *   - SEC: max 5 concurrent requests (SEC's published limit is 10/sec global,
@@ -32,7 +31,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getPopularStocks, getPopularCryptoTickers } from '../../../../utils/popularTickers.js';
+import { getPopularStocks } from '../../../../utils/popularTickers.js';
 import { getOperatingTickers } from '../../../../utils/tickerMap.js';
 import { warmSet, warmCacheEnabled } from '../../../../utils/warmCache.js';
 
@@ -58,13 +57,6 @@ const YAHOO_CONCURRENCY = 3;
 // Per-item timeouts — if a single ticker is slow, skip it rather than stall
 const YAHOO_ITEM_TIMEOUT_MS = 10_000;
 const SEC_ITEM_TIMEOUT_MS = 10_000;
-// Crypto-scan can legitimately take a while per ticker; give it room, but cap
-// Crypto-scan can legitimately take a while per ticker; give it room, but cap
-// it so a single stuck ticker can't consume the whole cron budget.
-// On Hobby's 60s budget we shrink this aggressively — a scan that takes >25s
-// is sacrificed so cheaper stages get to run.
-const CRYPTO_SCAN_ITEM_TIMEOUT_MS = 25_000;
-
 // Leave this much time at the end for response assembly before Vercel's
 // hard function timeout hits.
 const SAFETY_MARGIN_MS = 3_000;
@@ -187,24 +179,6 @@ async function warmForm4s(ticker, cik) {
   return { ticker, ok: true, count: accessions.length };
 }
 
-async function warmCryptoScan(ticker, cik, baseUrl) {
-  // Rather than reimplement scanTicker here (which would duplicate hundreds
-  // of lines of filing-parsing logic), we invoke our own /api/crypto-scan
-  // endpoint with fresh=true. That endpoint already handles writing to
-  // scannerCache on success, so we don't need to warmSet here — the route's
-  // own Upstash-backed scannerCache IS the warm layer for crypto-scans.
-  //
-  // The CDN won't cache this (fresh=true sets Cache-Control: private,
-  // no-store), which is exactly what we want for a pre-warm.
-  const url = `${baseUrl}/api/crypto-scan?tickers=${ticker}&fresh=true`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'EDGAR-Terminal-Prewarmer/1.0' },
-    signal: AbortSignal.timeout(CRYPTO_SCAN_ITEM_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`crypto-scan HTTP ${res.status}`);
-  return { ticker, ok: true };
-}
-
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
@@ -241,25 +215,16 @@ export async function GET(request) {
   const deadline = startedAt + (BUDGET_MS - SAFETY_MARGIN_MS);
   const timeLeft = () => deadline - Date.now();
 
-  // Figure out what we're warming. We need a base URL for the crypto-scan
-  // self-invocation, which we pull from the incoming request's origin.
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
-
-  const [stocks, cryptoHeavy] = await Promise.all([
-    getPopularStocks(),
-    getPopularCryptoTickers(),
-  ]);
+  const stocks = await getPopularStocks();
 
   // Resolve tickers → CIKs up front in one batch (shared cache). We need the
   // CIK for SEC-backed warmers. Tickers without a CIK are treated as
-  // price-only (still get stock price warming, skip SEC/Form4/crypto-scan).
-  const cikMap = await getOperatingTickers([...new Set([...stocks, ...cryptoHeavy])]);
+  // price-only (still get stock price warming, skip SEC/Form4).
+  const cikMap = await getOperatingTickers([...new Set(stocks)]);
 
   const summary = {
     startedAt: new Date(startedAt).toISOString(),
     stockCount: stocks.length,
-    cryptoHeavyCount: cryptoHeavy.length,
     stages: {},
     durationMs: null,
     timedOut: false,
@@ -319,33 +284,6 @@ export async function GET(request) {
     };
   } else {
     summary.stages.form4 = { skipped: 'insufficient time budget' };
-  }
-
-  // --- Stage 4: Crypto-scans (crypto-heavy list only) -----------------------
-  // This is the most expensive stage — each scan can fetch dozens of filings
-  // with full text. We cap at 2 concurrent so we don't blow out SEC's quota
-  // while user traffic is also hitting the app. Also, we specifically run
-  // this LAST so earlier cheap stages succeed even if we run out of budget.
-  //
-  // Hobby note: at 60s total budget, crypto-scans might not complete for all
-  // tickers. Stages 1-3 (prices/submissions/form4) are cheaper and run first
-  // so they always succeed; crypto-scans fill whatever time remains.
-  if (timeLeft() > 20_000) {
-    const items = cryptoHeavy
-      .filter((t) => cikMap[t])
-      .map((t) => ({ ticker: t, cik: cikMap[t].cik }));
-    const stage = await runPool(items, 2, async ({ ticker, cik }) => {
-      if (timeLeft() < 10_000) return; // crypto-scan needs real time per call
-      return await warmCryptoScan(ticker, cik, baseUrl);
-    });
-    summary.stages.cryptoScan = {
-      succeeded: stage.results.length,
-      failed: stage.errors.length,
-      errors: stage.errors.slice(0, 5),
-    };
-  } else {
-    summary.stages.cryptoScan = { skipped: 'insufficient time budget' };
-    summary.timedOut = true;
   }
 
   summary.durationMs = Date.now() - startedAt;

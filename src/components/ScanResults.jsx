@@ -1,16 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import {
   ExternalLink, FileText, ChevronDown, ChevronRight, Calendar, Hash,
-  TrendingUp, Clock, Tag, Bitcoin, AlertCircle, Zap, Database,
+  TrendingUp, Clock, Tag, AlertCircle, Zap, Database,
   GitCompare, BarChart3, Search,
 } from 'lucide-react';
-import { CATEGORIES } from '../utils/cryptoKeywords.js';
 
 export default function ScanResults({ data, onRescan }) {
   if (!data) return null;
 
   const results = data.results || [];
   const errors = data.errors || [];
+  const terms = data.query?.terms || [];
 
   if (results.length === 0 && errors.length === 0) {
     return null;
@@ -53,6 +53,22 @@ export default function ScanResults({ data, onRescan }) {
 
       {/* Compare summary table */}
       {isCompareMode && <CompareSummaryTable results={results} />}
+
+      {terms.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+            Search terms
+          </span>
+          {terms.map((term) => (
+            <span
+              key={term}
+              className="text-[10px] px-2 py-0.5 bg-amber-950/40 border border-amber-800/60 text-amber-200"
+            >
+              {term}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Per-ticker results */}
       {results.map((result, i) => (
@@ -112,7 +128,7 @@ function CompareSummaryTable({ results }) {
               higherIsBetter={true}
             />
             <CompareRow
-              label="Total Crypto Mentions"
+              label="Total Matches"
               values={results.map((r) => r.totalMatches)}
               format="number"
               higherIsBetter={true}
@@ -214,7 +230,7 @@ function TickerResult({ result, onRescan, expanded: initialExpanded = true }) {
         </div>
 
         <div className="flex items-center gap-4 text-right shrink-0 ml-4">
-          <Stat label="Mentions" value={result.totalMatches} color={hasMatches ? 'amber' : 'stone'} />
+          <Stat label="Matches" value={result.totalMatches} color={hasMatches ? 'amber' : 'stone'} />
           <Stat label="Filings" value={`${result.filingsWithMatches} / ${result.totalFilingsScanned}`} />
         </div>
       </button>
@@ -226,7 +242,7 @@ function TickerResult({ result, onRescan, expanded: initialExpanded = true }) {
           {!hasMatches && !result.error && (
             <div className="p-6 text-center">
               <Search className="w-10 h-10 text-stone-700 mx-auto mb-3" />
-              <p className="text-sm text-stone-400 mb-1">No crypto mentions found</p>
+              <p className="text-sm text-stone-400 mb-1">No matches found</p>
               <p className="text-xs text-stone-600">
                 Scanned {result.totalFilingsScanned} recent filings ({result.note || 'no matches'}). 
                 {onRescan && (
@@ -294,20 +310,16 @@ function SummaryBar({ result }) {
       />
       <SummaryCard
         icon={Tag}
-        label="Categories Found"
-        value={result.categoriesFound?.length || 0}
+        label="Terms Found"
+        value={result.keywordsFound?.length || 0}
         sub={
-          result.categoriesFound && result.categoriesFound.length > 0 ? (
+          result.keywordsFound && result.keywordsFound.length > 0 ? (
             <div className="flex flex-wrap gap-1 mt-1">
-              {result.categoriesFound.map((c) => {
-                const cat = CATEGORIES[c];
-                if (!cat) return null;
-                return (
-                  <span key={c} className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-stone-800 text-stone-300 border border-stone-700">
-                    {cat.label}
-                  </span>
-                );
-              })}
+              {result.keywordsFound.slice(0, 6).map((term) => (
+                <span key={term} className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-stone-800 text-stone-300 border border-stone-700">
+                  {term}
+                </span>
+              ))}
             </div>
           ) : null
         }
@@ -316,9 +328,9 @@ function SummaryBar({ result }) {
       {result.keywordsFound && result.keywordsFound.length > 0 && (
         <div className="md:col-span-3">
           <div className="flex items-center gap-2 mb-2">
-            <Bitcoin className="w-3 h-3 text-amber-500" />
+            <Search className="w-3 h-3 text-amber-500" />
             <span className="text-[10px] uppercase tracking-[0.2em] text-stone-400 font-bold">
-              Keywords Found ({result.keywordsFound.length})
+              Matched Terms ({result.keywordsFound.length})
             </span>
           </div>
           <div className="flex flex-wrap gap-1">
@@ -451,17 +463,14 @@ function FilingCard({ filing, cik }) {
 }
 
 function Excerpt({ excerpt }) {
-  const catInfo = CATEGORIES[excerpt.category];
-  const catColor = catInfo ? catInfo.color : 'stone';
-
   return (
     <div className="border-l-2 border-amber-700/40 pl-3 py-1">
       <div className="flex items-center gap-2 mb-1">
-        <span className={`text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-${catColor}-950/40 border border-${catColor}-800/60 text-${catColor}-300`}>
-          {catInfo?.label || excerpt.category}
+        <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-stone-800 text-stone-300 border border-stone-700">
+          SEC excerpt
         </span>
         <span className="text-[9px] text-stone-500 uppercase tracking-widest">
-          keyword: <span className="text-amber-400 font-bold normal-case">{excerpt.keyword}</span>
+          term: <span className="text-amber-400 font-bold normal-case">{excerpt.canonical || excerpt.keyword}</span>
         </span>
       </div>
       <p className="text-xs text-stone-300 leading-relaxed">

@@ -3,7 +3,7 @@
 import { useState, useContext, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowRight, Search, Bitcoin, Building2, Wallet, X, AlertCircle,
+  ArrowRight, Search, FileSearch, Building2, Wallet, X, AlertCircle,
   GitCompare as GitCompareIcon, FileText, BarChart3,
 } from 'lucide-react';
 import { TickerContext } from '../contexts/TickerContext';
@@ -13,6 +13,8 @@ import {
   getSuggestions,
   parseActiveSegment,
   pushRecentSearch,
+  CRYPTO_NAMES,
+  disclosureSearchPath,
 } from '../utils/searchRouter.js';
 
 // ============================================================================
@@ -69,7 +71,7 @@ export default function HeroSearch() {
         const map = await loadClassifiedTickerMap();
         setTickerMap(map);
       } catch {
-        // Silent — search still works for crypto without ticker map
+        // Silent — topic shortcuts still work without ticker map
       }
     })();
   }, [tickerMap, setTickerMap]);
@@ -142,7 +144,7 @@ export default function HeroSearch() {
       return;
     }
     let path: string | undefined;
-    if (actionType === 'crypto') path = '/crypto';
+    if (actionType === 'crypto') path = disclosureSearchPath(CRYPTO_NAMES[suggestion.ticker] || suggestion.ticker);
     else if (actionType === 'filings') path = `/filings/${suggestion.ticker}`;
     else if (actionType === 'fund') path = `/fund/${suggestion.ticker}`;
     else if (actionType === 'analysis') path = `/analysis/${suggestion.ticker}`;
@@ -247,7 +249,7 @@ export default function HeroSearch() {
           </div>
           <div className="divide-y divide-stone-800">
             {disambiguation.options.map((opt, i) => {
-              const Icon = opt.type === 'crypto' ? Bitcoin
+              const Icon = opt.type === 'crypto' ? FileSearch
                 : opt.type === 'fund' ? Wallet
                 : opt.type === 'filings' ? FileText
                 : opt.type === 'analysis' ? BarChart3
@@ -321,9 +323,9 @@ interface SuggestionRowProps {
 }
 
 function SuggestionRow({ suggestion: s, highlighted, isCompareMode, onHover, onRowClick, onActionClick }: SuggestionRowProps) {
-  const Icon = s.type === 'crypto' ? Bitcoin : s.type === 'fund' ? Wallet : Building2;
+  const Icon = s.type === 'crypto' ? FileSearch : s.type === 'fund' ? Wallet : Building2;
   const color = s.type === 'crypto' ? 'text-amber-400' : s.type === 'fund' ? 'text-emerald-400' : 'text-sky-400';
-  const badgeLabel = s.type === 'crypto' ? 'CRYPTO' : s.type === 'fund' ? 'FUND' : null;
+  const badgeLabel = s.type === 'crypto' ? 'TOPIC' : s.type === 'fund' ? 'FUND' : null;
   const badgeColor = s.type === 'crypto'
     ? 'bg-amber-900/60 text-amber-300 border-amber-700/60'
     : 'bg-emerald-900/60 text-emerald-300 border-emerald-700/60';
@@ -355,7 +357,7 @@ function SuggestionRow({ suggestion: s, highlighted, isCompareMode, onHover, onR
       {!isCompareMode && (
         <div className="flex items-center gap-1 shrink-0">
           {s.type === 'crypto' ? (
-            <ActionBtn onClick={() => onActionClick('crypto')} label="Crypto" icon={Bitcoin} color="amber" />
+            <ActionBtn onClick={() => onActionClick('crypto')} label="Search" icon={FileSearch} color="amber" />
           ) : (
             <>
               <ActionBtn onClick={() => onActionClick('filings')} label="Filings" icon={FileText} color="sky" />

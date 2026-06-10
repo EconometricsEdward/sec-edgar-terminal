@@ -105,9 +105,9 @@ export default function AboutPage() {
               />
               <FeatureBlock
                 icon={FileSearch}
-                title="Crypto Disclosure Scanner"
-                path="/crypto"
-                text="Scans any public company's recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) for mentions of bitcoin, cryptocurrency, digital assets, and related terms. Returns paragraph-level excerpts with matched keywords highlighted, categorized into nine buckets (Bitcoin, Ethereum, altcoins, infrastructure, accounting, etc.). Supports up to 5 tickers side-by-side. Scanning is depth-limited to the 50 most recent filings per ticker. Results cache for 24 hours in Redis. Plus live coin prices from Kraken with Coinbase fallback."
+                title="Disclosure Keyword Search"
+                path="/disclosures"
+                text="Searches any public company's recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) for user-defined words or phrases. Returns paragraph-level excerpts with matched terms highlighted and direct links to the source filing. Supports up to 5 tickers side-by-side. Scanning is depth-limited to the 50 most recent filings per ticker and results cache for 24 hours by ticker and query."
               />
             </div>
           </section>
@@ -167,16 +167,15 @@ export default function AboutPage() {
               </div>
 
               <div>
-                <h4 className="text-stone-100 font-bold mb-1">Crypto disclosure scanner</h4>
+                <h4 className="text-stone-100 font-bold mb-1">Disclosure keyword search</h4>
                 <p className="text-stone-400">
                   The scanner fetches up to 50 recent filings per ticker from SEC EDGAR, strips HTML
-                  to plain text, and matches against a curated library of ~50 crypto-related keyword
-                  patterns using word-boundary regex. For each match, the surrounding paragraph is
+                  to plain text, and matches literal user-provided words or phrases using escaped
+                  regex patterns with word boundaries. For each match, the surrounding paragraph is
                   extracted as context. Rate-limited to 8 requests per second to respect SEC fair
-                  access policy. Results are cached in Upstash Redis for 24 hours. Live coin prices
-                  refresh every 60 seconds from Kraken&apos;s public ticker endpoint, with Coinbase as
-                  fallback. Keyword matching is intentionally broad for recall — some matches (e.g.
-                  &quot;Ripple&quot; as a proper noun) may be false positives.
+                  access policy. Results are cached in Upstash Redis for 24 hours by ticker, query,
+                  and depth. Keyword matching is exact but still requires context: a term may appear
+                  in a legal boilerplate section, a risk factor, a business description, or a footnote.
                 </p>
               </div>
             </div>
@@ -259,16 +258,6 @@ export default function AboutPage() {
                 href="https://stooq.com"
                 title="Stooq"
                 desc="Price data fallback"
-              />
-              <SourceLink
-                href="https://www.kraken.com"
-                title="Kraken Public API"
-                desc="Crypto spot prices (primary)"
-              />
-              <SourceLink
-                href="https://www.coinbase.com"
-                title="Coinbase Public API"
-                desc="Crypto prices (fallback)"
               />
               <SourceLink
                 href="https://upstash.com"

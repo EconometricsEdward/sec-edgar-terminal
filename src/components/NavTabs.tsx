@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home, FileText, BarChart3, GitCompare, Wallet, Bitcoin, Info,
+  Home, FileText, BarChart3, GitCompare, Wallet, FileSearch, Info,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -53,10 +53,10 @@ const NAV_ITEMS: NavItem[] = [
     matchPath: (p) => p === '/fund' || p.startsWith('/fund/'),
   },
   {
-    href: '/crypto',
-    label: 'Crypto',
-    icon: Bitcoin,
-    matchPath: (p) => p === '/crypto',
+    href: '/disclosures',
+    label: 'Disclosures',
+    icon: FileSearch,
+    matchPath: (p) => p === '/disclosures' || p === '/crypto',
   },
   {
     href: '/about',

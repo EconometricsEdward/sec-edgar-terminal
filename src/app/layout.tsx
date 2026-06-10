@@ -113,6 +113,7 @@ const jsonLd = {
     '10-year stock price history with filing markers',
     'Form 4 insider trading activity',
     'Peer comparison with up to 5 companies',
+    'Disclosure keyword search with source-linked SEC excerpts',
     'Source-linked data — every number traces to SEC.gov',
   ],
 };
@@ -192,14 +193,7 @@ export default function RootLayout({
               <footer className="mt-12 pt-6 border-t-2 border-stone-800 text-[10px] uppercase tracking-widest text-stone-500 flex flex-wrap justify-between gap-2">
                 <span>Data via SEC.gov · Public EDGAR APIs · XBRL Financial Facts</span>
                 <span>For research use only · Not investment advice</span>
-                <a
-                  href="https://pages.share-html.com/quickproof-micro-audit-20260609?utm_source=edgar-terminal&utm_medium=footer&utm_campaign=owned-github"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-amber-500 hover:text-amber-300 transition-colors"
-                >
-                  Support / public check
-                </a>
+                <span>Free Â· No account required</span>
               </footer>
             </div>
           </div>

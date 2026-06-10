@@ -15,6 +15,8 @@
 // Values: JSON objects with { scannedAt, result } structure. TTL: 24 hours.
 // ============================================================================
 
+import { createHash } from 'node:crypto';
+
 const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 const KEY_PREFIX = 'scan:';
 const KEY_VERSION = 'v1';
@@ -79,16 +81,12 @@ function buildKey(ticker) {
   return `${KEY_PREFIX}${ticker.toUpperCase()}:${KEY_VERSION}`;
 }
 
-/**
- * Retrieve a cached scan result for a ticker.
- *
- * @param {string} ticker - Uppercase ticker (will be normalized)
- * @returns {Promise<object|null>} - Cached result or null if not found/expired
- */
-export async function getCachedScan(ticker) {
-  if (!ticker) return null;
-  const key = buildKey(ticker);
+function buildDisclosureKey(ticker, signature) {
+  const hash = createHash('sha256').update(String(signature || '')).digest('hex').slice(0, 24);
+  return `${KEY_PREFIX}${ticker.toUpperCase()}:kw:${hash}:${KEY_VERSION}`;
+}
 
+async function getCachedByKey(key) {
   const client = await getRedisClient();
   if (client) {
     try {
@@ -103,16 +101,7 @@ export async function getCachedScan(ticker) {
   return memGet(key);
 }
 
-/**
- * Store a scan result for a ticker with 24-hour TTL.
- *
- * @param {string} ticker
- * @param {object} result - Scan result object
- * @returns {Promise<boolean>} - true if stored successfully
- */
-export async function setCachedScan(ticker, result) {
-  if (!ticker || !result) return false;
-  const key = buildKey(ticker);
+async function setCachedByKey(key, result) {
   const payload = {
     scannedAt: new Date().toISOString(),
     result,
@@ -133,15 +122,7 @@ export async function setCachedScan(ticker, result) {
   return true;
 }
 
-/**
- * Invalidate a cached scan. Useful if user explicitly wants fresh data.
- *
- * @param {string} ticker
- */
-export async function invalidateScan(ticker) {
-  if (!ticker) return;
-  const key = buildKey(ticker);
-
+async function deleteCachedByKey(key) {
   const client = await getRedisClient();
   if (client) {
     try {
@@ -152,6 +133,75 @@ export async function invalidateScan(ticker) {
   }
 
   memDelete(key);
+}
+
+/**
+ * Retrieve a cached scan result for a ticker.
+ *
+ * @param {string} ticker - Uppercase ticker (will be normalized)
+ * @returns {Promise<object|null>} - Cached result or null if not found/expired
+ */
+export async function getCachedScan(ticker) {
+  if (!ticker) return null;
+  return getCachedByKey(buildKey(ticker));
+}
+
+/**
+ * Store a scan result for a ticker with 24-hour TTL.
+ *
+ * @param {string} ticker
+ * @param {object} result - Scan result object
+ * @returns {Promise<boolean>} - true if stored successfully
+ */
+export async function setCachedScan(ticker, result) {
+  if (!ticker || !result) return false;
+  return setCachedByKey(buildKey(ticker), result);
+}
+
+/**
+ * Invalidate a cached scan. Useful if user explicitly wants fresh data.
+ *
+ * @param {string} ticker
+ */
+export async function invalidateScan(ticker) {
+  if (!ticker) return;
+  await deleteCachedByKey(buildKey(ticker));
+}
+
+/**
+ * Retrieve a cached disclosure keyword search for a ticker/query/depth signature.
+ *
+ * @param {string} ticker
+ * @param {string} signature - Stable normalized query signature
+ * @returns {Promise<object|null>}
+ */
+export async function getCachedDisclosureScan(ticker, signature) {
+  if (!ticker || !signature) return null;
+  return getCachedByKey(buildDisclosureKey(ticker, signature));
+}
+
+/**
+ * Store a disclosure keyword search result with 24-hour TTL.
+ *
+ * @param {string} ticker
+ * @param {string} signature
+ * @param {object} result
+ * @returns {Promise<boolean>}
+ */
+export async function setCachedDisclosureScan(ticker, signature, result) {
+  if (!ticker || !signature || !result) return false;
+  return setCachedByKey(buildDisclosureKey(ticker, signature), result);
+}
+
+/**
+ * Invalidate a disclosure keyword search cache entry.
+ *
+ * @param {string} ticker
+ * @param {string} signature
+ */
+export async function invalidateDisclosureScan(ticker, signature) {
+  if (!ticker || !signature) return;
+  await deleteCachedByKey(buildDisclosureKey(ticker, signature));
 }
 
 /**

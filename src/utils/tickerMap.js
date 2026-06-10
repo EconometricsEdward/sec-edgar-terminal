@@ -5,7 +5,7 @@
  * for the full ticker/CIK mapping. These files update roughly weekly.
  *
  * Previously we fetched these on every API invocation, which meant:
- *   - ~1.5MB transferred from SEC on every crypto-scan / fund request
+ *   - ~1.5MB transferred from SEC on every disclosure search / fund request
  *   - Counted against SEC's 10 req/sec global limit
  *   - Added 200-500ms of latency to every request
  *
