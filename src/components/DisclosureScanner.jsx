@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Activity, AlertCircle, ChevronRight, Clock, Database, FileSearch, Loader2, Search, Sparkles, X,
+  FileText, Hash,
 } from 'lucide-react';
 import { DISCLOSURE_MARKET_MAP, DISCLOSURE_UNIVERSES } from '../utils/disclosureUniverses.js';
 
@@ -50,6 +51,41 @@ const INDEX_RANGES = [
   { label: 'Last 10 Years', months: 120 },
 ];
 
+const INDEX_FORM_PRESETS = [
+  {
+    id: 'broad',
+    label: 'Broad',
+    detail: '10-K, 10-Q, 8-K, registration, proxy, foreign issuer, and fund reports',
+    forms: ['10-K', '10-Q', '8-K', 'S-1', 'S-3', 'S-4', 'DEF 14A', 'DEFM14A', '20-F', '40-F', 'N-CSR', 'NPORT-P'],
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    detail: 'Annual and quarterly reports only',
+    forms: ['10-K', '10-Q'],
+  },
+  {
+    id: 'events',
+    label: 'Events',
+    detail: 'Material event filings only',
+    forms: ['8-K'],
+  },
+  {
+    id: 'deals',
+    label: 'Deals + Proxy',
+    detail: 'Registration statements, merger proxies, and annual proxies',
+    forms: ['S-1', 'S-3', 'S-4', 'DEF 14A', 'DEFM14A'],
+  },
+  {
+    id: 'foreign-funds',
+    label: 'Foreign + Funds',
+    detail: 'Foreign issuer, shareholder, and fund portfolio reports',
+    forms: ['20-F', '40-F', 'N-CSR', 'NPORT-P'],
+  },
+];
+
+const INDEX_RESULT_LIMITS = [25, 50, 100];
+
 function parseTickers(input) {
   return input
     .split(',')
@@ -70,6 +106,8 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
   const [queryInput, setQueryInput] = useState(initialQuery);
   const [universeId, setUniverseId] = useState(DISCLOSURE_UNIVERSES[0]?.id || '');
   const [indexMonths, setIndexMonths] = useState(12);
+  const [indexFormPresetId, setIndexFormPresetId] = useState('broad');
+  const [indexLimit, setIndexLimit] = useState(50);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
   const tickerRef = useRef(null);
@@ -79,6 +117,10 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
   const selectedUniverse = useMemo(
     () => DISCLOSURE_UNIVERSES.find((universe) => universe.id === universeId) || DISCLOSURE_UNIVERSES[0],
     [universeId],
+  );
+  const selectedIndexFormPreset = useMemo(
+    () => INDEX_FORM_PRESETS.find((preset) => preset.id === indexFormPresetId) || INDEX_FORM_PRESETS[0],
+    [indexFormPresetId],
   );
   const isIndexMode = searchMode === 'index';
   const isUniverseMode = searchMode === 'universe';
@@ -114,7 +156,9 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
       if (index) {
         endpoint = '/api/edgar-index-search';
         params.set('months', String(options.months || indexMonths));
-        params.set('limit', '50');
+        params.set('limit', String(options.limit || indexLimit));
+        const forms = options.forms || selectedIndexFormPreset.forms;
+        if (forms?.length) params.set('forms', forms.join(','));
       } else {
         params.set('depth', String(options.depth || (market ? 2 : universe ? 12 : 35)));
         if (market) params.set('market', 'true');
@@ -142,7 +186,12 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
     event?.preventDefault();
     if (!isValid) return;
     if (isIndexMode) {
-      runSearch([], queryInput, { index: true, months: indexMonths });
+      runSearch([], queryInput, {
+        index: true,
+        months: indexMonths,
+        forms: selectedIndexFormPreset.forms,
+        limit: indexLimit,
+      });
     } else if (isMarketMode) {
       runSearch([], queryInput, { market: true, depth: 2 });
     } else if (isUniverseMode) {
@@ -177,7 +226,7 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
       <p className="text-xs text-stone-400 mb-4 leading-relaxed max-w-3xl">
         Search recent SEC filings for any literal word or phrase. Enter up to 5 public-company
         tickers, scan a curated sector universe, use Market Map, or search the SEC full-text
-        index across recent EDGAR filings; every match links back to the original filing on SEC.gov.
+        index with date, form, and result-count filters; every match links back to the original filing on SEC.gov.
       </p>
 
       <form onSubmit={handleSubmit} className="mb-4 space-y-3">
@@ -366,6 +415,68 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
         </div>
 
         {isIndexMode && !scanning && (
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_220px] gap-2">
+            <div className="border-2 border-stone-800 bg-stone-900/30 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5 text-sky-400" />
+                <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+                  Filing forms
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {INDEX_FORM_PRESETS.map((preset) => {
+                  const active = preset.id === indexFormPresetId;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setIndexFormPresetId(preset.id);
+                        setError(null);
+                      }}
+                      disabled={scanning}
+                      title={preset.detail}
+                      className={`border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] font-black transition-colors ${
+                        active
+                          ? 'border-sky-400 bg-sky-400 text-stone-950'
+                          : 'border-stone-700 bg-stone-950/70 text-stone-400 hover:border-sky-500 hover:text-sky-200'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 text-[10px] leading-relaxed text-stone-500">
+                {selectedIndexFormPreset.detail}
+              </div>
+            </div>
+
+            <label className="block border-2 border-stone-800 bg-stone-900/30 p-3">
+              <span className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+                <Hash className="w-3.5 h-3.5 text-sky-400" />
+                Source filings
+              </span>
+              <select
+                value={indexLimit}
+                onChange={(event) => {
+                  setIndexLimit(Number(event.target.value));
+                  setError(null);
+                }}
+                className="w-full appearance-none bg-stone-950 border border-stone-700 focus:border-sky-500 outline-none px-3 py-2 text-sm font-bold tracking-wider transition-colors"
+                disabled={scanning}
+              >
+                {INDEX_RESULT_LIMITS.map((limit) => (
+                  <option key={limit} value={limit}>
+                    Up to {limit}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
+        {isIndexMode && !scanning && (
           <div className="border-2 border-sky-800/50 bg-sky-950/20 p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
@@ -375,7 +486,7 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
                 </div>
               </div>
               <div className="text-[10px] uppercase tracking-[0.14em] text-sky-300">
-                Up to 50 source filings
+                {selectedIndexFormPreset.label} / up to {indexLimit} source filings
               </div>
             </div>
           </div>
@@ -436,7 +547,7 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
         {((scopeCount || 0) > 0 || terms.length > 0 || isIndexMode) && !scanning && (
           <div className="text-[10px] font-mono uppercase tracking-wider text-stone-500">
             {isIndexMode
-              ? `EDGAR index: ${INDEX_RANGES.find((range) => range.months === indexMonths)?.label || 'Custom range'}`
+              ? `EDGAR index: ${INDEX_RANGES.find((range) => range.months === indexMonths)?.label || 'Custom range'} / ${selectedIndexFormPreset.label} / max ${indexLimit}`
               : isMarketMode
               ? `Market Map: ${scopeCount} companies`
               : isUniverseMode
@@ -463,7 +574,7 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
             </div>
             <div className="text-xs text-amber-100/80 leading-relaxed">
               {isIndexMode
-                ? 'The index search asks SEC for matching source filings across EDGAR, then returns direct SEC archive links for verification.'
+                ? `The index search asks SEC for matching ${selectedIndexFormPreset.label.toLowerCase()} filings across EDGAR, then returns direct SEC archive links for verification.`
                 : 'The scanner fetches recent 10-K, 10-Q, 8-K, proxy, registration, foreign issuer, and fund filings, converts them to text, and returns paragraph-level excerpts with direct SEC source links.'}
             </div>
           </div>

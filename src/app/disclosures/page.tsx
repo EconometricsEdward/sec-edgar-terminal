@@ -4,7 +4,7 @@ import DisclosureSearchClient from './DisclosureSearchClient';
 export const metadata: Metadata = {
   title: 'SEC Disclosure Keyword Search',
   description:
-    'Search the SEC EDGAR full-text index or scan recent company filings for any word or phrase. Every result links to the source filing on SEC.gov.',
+    'Search the SEC EDGAR full-text index with date, form, and result-count filters or scan recent company filings for any word or phrase. Every result links to the source filing on SEC.gov.',
   alternates: {
     canonical: 'https://secedgarterminal.com/disclosures',
   },

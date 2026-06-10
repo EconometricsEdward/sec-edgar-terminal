@@ -124,6 +124,12 @@ function EdgarIndexResults({ data }) {
         <span>
           Filed: {data.dateRange?.start || 'N/A'} to {data.dateRange?.end || 'N/A'}
         </span>
+        {data.forms?.length > 0 && (
+          <>
+            <span>/</span>
+            <span>Forms searched: {data.forms.join(', ')}</span>
+          </>
+        )}
         {data.tookMs != null && (
           <>
             <span>/</span>
@@ -177,7 +183,7 @@ function EdgarIndexResults({ data }) {
             icon={FileText}
             label="Filing Forms"
             value={forms.size.toLocaleString()}
-            detail={Array.from(forms).slice(0, 4).join(', ') || 'No forms returned'}
+            detail={Array.from(forms).slice(0, 4).join(', ') || `Searched ${data.forms?.length || 0} form types`}
           />
           <EvidenceStat
             icon={Clock}

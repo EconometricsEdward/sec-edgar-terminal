@@ -57,8 +57,9 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
           Run plain-language searches across recent SEC filings or the broader SEC full-text index. Use it for
           emerging risks, customer concentration, tariffs, AI exposure, restructuring language,
           liquidity warnings, or any other term that matters to your analysis. Search the EDGAR
-          index for broad source discovery, or scan a manual company set, curated sector universe,
-          or bounded cross-sector Market Map when you need paragraph-level excerpts.
+          index for broad source discovery with filing-form and result-count filters, or scan a
+          manual company set, curated sector universe, or bounded cross-sector Market Map when you
+          need paragraph-level excerpts.
         </p>
       </div>
 
@@ -91,11 +92,12 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
         <div className="text-[11px] text-stone-400 leading-relaxed">
           <span className="font-bold text-stone-200">Methodology:</span>{' '}
           EDGAR Index mode uses the SEC full-text index to find matching source filings across
-          the broader SEC corpus. Company, Universe, and Market Map modes fetch recent 10-K,
-          10-Q, 8-K, S-1, proxy, 20-F, 40-F, and N-CSR filings, convert them to text, and return
-          paragraph-level excerpts. Results are cached for 24 hours by ticker and query where
-          applicable. Keyword matching is exact but flexible for whitespace and hyphenation, so
-          always read the linked SEC source before drawing conclusions.
+          the broader SEC corpus with optional date-range, form-type, and result-count filters.
+          Company, Universe, and Market Map modes fetch recent 10-K, 10-Q, 8-K, S-1, proxy, 20-F,
+          40-F, and N-CSR filings, convert them to text, and return paragraph-level excerpts.
+          Results are cached for 24 hours by ticker and query where applicable. Keyword matching is
+          exact but flexible for whitespace and hyphenation, so always read the linked SEC source
+          before drawing conclusions.
         </div>
       </div>
     </>

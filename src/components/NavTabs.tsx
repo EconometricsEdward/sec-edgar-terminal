@@ -56,7 +56,7 @@ const NAV_ITEMS: NavItem[] = [
     href: '/disclosures',
     label: 'Disclosures',
     icon: FileSearch,
-    matchPath: (p) => p === '/disclosures' || p === '/crypto',
+    matchPath: (p) => p === '/disclosures',
   },
   {
     href: '/about',
