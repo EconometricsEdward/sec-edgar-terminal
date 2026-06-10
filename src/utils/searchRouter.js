@@ -4,17 +4,27 @@
 // Hybrid disambiguation:
 //   - Company ticker (AAPL)       -> disambiguate: Filings | Analysis
 //   - Fund ticker (SPY, IBIT)     -> disambiguate: Filings | Fund page
-//   - Topic shortcut (BTC, SOL)   -> navigate to disclosure keyword search
+//   - Topic shortcut (AI, BTC)    -> navigate to disclosure keyword search
 //   - Topic + company overlap     -> disambiguate: Disclosures | Filings | Analysis
 //   - Topic + fund overlap        -> disambiguate: Disclosures | Filings | Fund page
+//   - Unknown plain language      -> navigate to disclosure keyword search
 //   - Comma-separated             -> /compare (public-company tickers only)
 // ============================================================================
 
-export const CRYPTO_TICKERS = new Set([
-  'BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'AVAX', 'LINK', 'DOT', 'LTC', 'BCH',
-]);
-
-export const CRYPTO_NAMES = {
+export const DISCLOSURE_TOPIC_LABELS = {
+  AI: 'artificial intelligence',
+  CYBER: 'cybersecurity',
+  TARIFF: 'tariffs',
+  SUPPLY: 'supply chain',
+  CHINA: 'China exposure',
+  CHIPS: 'semiconductors',
+  INFLATION: 'inflation',
+  LIQUIDITY: 'liquidity',
+  RESTRUCTURING: 'restructuring',
+  GOINGCONCERN: 'going concern',
+  CUSTOMER: 'customer concentration',
+  CLIMATE: 'climate risk',
+  DATA: 'data privacy',
   BTC: 'Bitcoin',
   ETH: 'Ethereum',
   SOL: 'Solana',
@@ -27,8 +37,15 @@ export const CRYPTO_NAMES = {
   BCH: 'Bitcoin Cash',
 };
 
+export const DISCLOSURE_TOPIC_SHORTCUTS = new Set(Object.keys(DISCLOSURE_TOPIC_LABELS));
+
 export function disclosureSearchPath(term) {
   return `/disclosures?query=${encodeURIComponent(term)}`;
+}
+
+export function disclosureTopicTerm(shortcut) {
+  const upper = String(shortcut || '').trim().toUpperCase();
+  return DISCLOSURE_TOPIC_LABELS[upper] || String(shortcut || '').trim();
 }
 
 // ============================================================================
@@ -81,14 +98,15 @@ export function parseActiveSegment(query) {
 export function buildDestinationOptions(ticker, secEntry) {
   const options = [];
   const upper = ticker.toUpperCase();
-  const isCrypto = CRYPTO_TICKERS.has(upper);
+  const isTopic = DISCLOSURE_TOPIC_SHORTCUTS.has(upper);
 
-  if (isCrypto) {
+  if (isTopic) {
+    const topic = disclosureTopicTerm(upper);
     options.push({
-      label: `${CRYPTO_NAMES[upper] || upper} disclosure search`,
+      label: `${topic} disclosure search`,
       shortLabel: 'Disclosures',
-      path: disclosureSearchPath(CRYPTO_NAMES[upper] || upper),
-      type: 'crypto',
+      path: disclosureSearchPath(topic),
+      type: 'topic',
     });
   }
 
@@ -135,10 +153,11 @@ export function buildDestinationOptions(ticker, secEntry) {
  */
 export function routeSearch(query, tickerMap) {
   if (!query || !query.trim()) {
-    return { error: 'Type a ticker symbol' };
+    return { error: 'Type a ticker, company, or disclosure topic' };
   }
 
-  const normalized = query.trim().toUpperCase();
+  const raw = query.trim();
+  const normalized = raw.toUpperCase();
 
   // --- Comma-separated: compare mode ---
   if (normalized.includes(',')) {
@@ -154,10 +173,10 @@ export function routeSearch(query, tickerMap) {
       return { error: 'Compare supports maximum 5 tickers' };
     }
 
-    const cryptoInList = tickers.filter((t) => CRYPTO_TICKERS.has(t));
-    if (cryptoInList.length > 0) {
+    const topicsInList = tickers.filter((t) => DISCLOSURE_TOPIC_SHORTCUTS.has(t) && !tickerMap?.[t]);
+    if (topicsInList.length > 0) {
       return {
-        error: `Compare mode supports SEC company and fund tickers only. Use disclosure search for topics: ${cryptoInList.join(', ')}`,
+        error: `Compare mode supports SEC company and fund tickers only. Use disclosure search for topics: ${topicsInList.join(', ')}`,
       };
     }
 
@@ -170,27 +189,18 @@ export function routeSearch(query, tickerMap) {
   }
 
   // --- Single ticker ---
-  const isCrypto = CRYPTO_TICKERS.has(normalized);
+  const isTopic = DISCLOSURE_TOPIC_SHORTCUTS.has(normalized);
   const secEntry = tickerMap?.[normalized];
 
   // Topic shortcut only, no SEC ticker overlap -> go directly to disclosure search
-  if (isCrypto && !secEntry) {
-    return { path: disclosureSearchPath(CRYPTO_NAMES[normalized] || normalized) };
+  if (isTopic && !secEntry) {
+    return { path: disclosureSearchPath(disclosureTopicTerm(normalized)) };
   }
 
   // SEC ticker exists (with or without topic overlap) -> always disambiguate
   // This covers: company alone, fund alone, topic+company, topic+fund
   if (secEntry) {
     const options = buildDestinationOptions(normalized, secEntry);
-    // If a topic shortcut also matches, add disclosure search to options.
-    if (isCrypto) {
-      options.unshift({
-        label: `${CRYPTO_NAMES[normalized] || normalized} disclosure search`,
-        shortLabel: 'Disclosures',
-        path: disclosureSearchPath(CRYPTO_NAMES[normalized] || normalized),
-        type: 'crypto',
-      });
-    }
     return {
       disambiguate: {
         ticker: normalized,
@@ -200,8 +210,8 @@ export function routeSearch(query, tickerMap) {
     };
   }
 
-  // Nothing matched
-  return { error: `${normalized} not recognized` };
+  // Plain-language terms that are not tickers become SEC disclosure searches.
+  return { path: disclosureSearchPath(raw) };
 }
 
 // ============================================================================
@@ -253,17 +263,27 @@ export function getSuggestions(query, tickerMap, limit = 10) {
 
   // Topic suggestions (only when not in compare mode)
   if (!isCompareMode) {
-    for (const cryptoTicker of CRYPTO_TICKERS) {
-      if (excludeSet.has(cryptoTicker)) continue;
-      const score = scoreTicker(cryptoTicker, CRYPTO_NAMES[cryptoTicker], active);
+    for (const topicShortcut of DISCLOSURE_TOPIC_SHORTCUTS) {
+      if (excludeSet.has(topicShortcut)) continue;
+      const topicLabel = disclosureTopicTerm(topicShortcut);
+      const score = scoreTicker(topicShortcut, topicLabel, active);
       if (score > 0) {
         results.push({
-          ticker: cryptoTicker,
-          name: CRYPTO_NAMES[cryptoTicker] || cryptoTicker,
-          type: 'crypto',
+          ticker: topicShortcut,
+          name: topicLabel,
+          type: 'topic',
           score: score + 100,
         });
       }
+    }
+
+    if (active.length >= 2 && !DISCLOSURE_TOPIC_SHORTCUTS.has(active) && !excludeSet.has(active)) {
+      results.push({
+        ticker: active,
+        name: `Search SEC disclosures for "${active}"`,
+        type: 'topic',
+        score: 250,
+      });
     }
   }
 

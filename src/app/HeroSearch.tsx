@@ -13,7 +13,7 @@ import {
   getSuggestions,
   parseActiveSegment,
   pushRecentSearch,
-  CRYPTO_NAMES,
+  disclosureTopicTerm,
   disclosureSearchPath,
 } from '../utils/searchRouter.js';
 
@@ -23,7 +23,7 @@ import {
 interface Suggestion {
   ticker: string;
   name: string;
-  type: 'crypto' | 'fund' | 'company' | string;
+  type: 'topic' | 'fund' | 'company' | string;
 }
 
 interface DisambiguationOption {
@@ -144,7 +144,7 @@ export default function HeroSearch() {
       return;
     }
     let path: string | undefined;
-    if (actionType === 'crypto') path = disclosureSearchPath(CRYPTO_NAMES[suggestion.ticker] || suggestion.ticker);
+    if (actionType === 'topic') path = disclosureSearchPath(disclosureTopicTerm(suggestion.ticker));
     else if (actionType === 'filings') path = `/filings/${suggestion.ticker}`;
     else if (actionType === 'fund') path = `/fund/${suggestion.ticker}`;
     else if (actionType === 'analysis') path = `/analysis/${suggestion.ticker}`;
@@ -205,7 +205,7 @@ export default function HeroSearch() {
             }}
             onFocus={() => input && setShowSuggestions(true)}
             onKeyDown={handleKeyDown}
-            placeholder="Enter any ticker (AAPL, BTC, SPY) or multiple for compare (AAPL,MSFT)"
+            placeholder="Search a ticker, company, or SEC topic (AAPL, tariffs, AI, SPY)"
             className="w-full bg-stone-900 border-2 border-stone-800 focus:border-amber-500 outline-none pl-11 pr-11 py-3.5 text-base font-bold tracking-wider placeholder-stone-600 transition-colors"
             autoComplete="off"
             autoFocus
@@ -249,12 +249,12 @@ export default function HeroSearch() {
           </div>
           <div className="divide-y divide-stone-800">
             {disambiguation.options.map((opt, i) => {
-              const Icon = opt.type === 'crypto' ? FileSearch
+              const Icon = opt.type === 'topic' ? FileSearch
                 : opt.type === 'fund' ? Wallet
                 : opt.type === 'filings' ? FileText
                 : opt.type === 'analysis' ? BarChart3
                 : Building2;
-              const color = opt.type === 'crypto' ? 'text-amber-400'
+              const color = opt.type === 'topic' ? 'text-amber-400'
                 : opt.type === 'fund' ? 'text-emerald-400'
                 : opt.type === 'filings' ? 'text-sky-400'
                 : 'text-amber-400';
@@ -302,7 +302,7 @@ export default function HeroSearch() {
       {showSuggestions && !disambiguation && input.trim() && suggestions.length === 0 && active && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-stone-900 border-2 border-stone-700 px-3 py-3 z-40">
           <span className="text-xs text-stone-500">
-            No matches for &quot;{active}&quot;. Try a different ticker or company name.
+            No matches for &quot;{active}&quot;. Press Enter to search SEC disclosures for this topic.
           </span>
         </div>
       )}
@@ -323,10 +323,10 @@ interface SuggestionRowProps {
 }
 
 function SuggestionRow({ suggestion: s, highlighted, isCompareMode, onHover, onRowClick, onActionClick }: SuggestionRowProps) {
-  const Icon = s.type === 'crypto' ? FileSearch : s.type === 'fund' ? Wallet : Building2;
-  const color = s.type === 'crypto' ? 'text-amber-400' : s.type === 'fund' ? 'text-emerald-400' : 'text-sky-400';
-  const badgeLabel = s.type === 'crypto' ? 'TOPIC' : s.type === 'fund' ? 'FUND' : null;
-  const badgeColor = s.type === 'crypto'
+  const Icon = s.type === 'topic' ? FileSearch : s.type === 'fund' ? Wallet : Building2;
+  const color = s.type === 'topic' ? 'text-amber-400' : s.type === 'fund' ? 'text-emerald-400' : 'text-sky-400';
+  const badgeLabel = s.type === 'topic' ? 'TOPIC' : s.type === 'fund' ? 'FUND' : null;
+  const badgeColor = s.type === 'topic'
     ? 'bg-amber-900/60 text-amber-300 border-amber-700/60'
     : 'bg-emerald-900/60 text-emerald-300 border-emerald-700/60';
 
@@ -356,8 +356,8 @@ function SuggestionRow({ suggestion: s, highlighted, isCompareMode, onHover, onR
 
       {!isCompareMode && (
         <div className="flex items-center gap-1 shrink-0">
-          {s.type === 'crypto' ? (
-            <ActionBtn onClick={() => onActionClick('crypto')} label="Search" icon={FileSearch} color="amber" />
+          {s.type === 'topic' ? (
+            <ActionBtn onClick={() => onActionClick('topic')} label="Search" icon={FileSearch} color="amber" />
           ) : (
             <>
               <ActionBtn onClick={() => onActionClick('filings')} label="Filings" icon={FileText} color="sky" />

@@ -15,8 +15,8 @@ import {
   loadRecentSearches,
   pushRecentSearch,
   clearRecentSearches,
-  CRYPTO_TICKERS,
-  CRYPTO_NAMES,
+  DISCLOSURE_TOPIC_SHORTCUTS,
+  disclosureTopicTerm,
   disclosureSearchPath,
 } from '../utils/searchRouter.js';
 
@@ -124,7 +124,7 @@ export default function GlobalSearchBar() {
 
     // Single mode: navigate based on actionType
     let path;
-    if (actionType === 'crypto') path = disclosureSearchPath(CRYPTO_NAMES[suggestion.ticker] || suggestion.ticker);
+    if (actionType === 'topic') path = disclosureSearchPath(disclosureTopicTerm(suggestion.ticker));
     else if (actionType === 'filings') path = `/filings/${suggestion.ticker}`;
     else if (actionType === 'fund') path = `/fund/${suggestion.ticker}`;
     else if (actionType === 'analysis') path = `/analysis/${suggestion.ticker}`;
@@ -276,7 +276,7 @@ export default function GlobalSearchBar() {
             }}
             onFocus={handleFocus}
             onKeyDown={handleKeyDown}
-            placeholder="Search any ticker (AAPL, BTC, SPY) or company name — comma-separate for compare"
+            placeholder="Search any ticker, company, or SEC topic (AAPL, tariffs, AI, SPY)"
             className="w-full bg-stone-900 border-2 border-stone-800 focus:border-amber-500 outline-none pl-10 pr-24 py-2.5 text-sm font-bold tracking-wider placeholder-stone-600 transition-colors"
             autoComplete="off"
             spellCheck="false"
@@ -364,7 +364,7 @@ export default function GlobalSearchBar() {
       {showSuggestions && !disambiguation && input.trim() && suggestions.length === 0 && active && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-stone-900 border-2 border-stone-700 px-3 py-3 z-40">
           <span className="text-xs text-stone-500">
-            No matches for "{active}". Try a different ticker or company name.
+            No matches for "{active}". Press Enter to search SEC disclosures for this topic.
           </span>
         </div>
       )}
@@ -511,9 +511,9 @@ function SuggestionsDropdown({
             {/* Inline action buttons (only in single mode) */}
             {!isCompareMode && (
               <div className="flex items-center gap-1 shrink-0">
-                {s.type === 'crypto' ? (
+                {s.type === 'topic' ? (
                   <ActionButton
-                    onClick={() => onActionClick(s, 'crypto')}
+                    onClick={() => onActionClick(s, 'topic')}
                     label="Search"
                     icon={FileSearch}
                     color="amber"
@@ -580,7 +580,7 @@ function ActionButton({ onClick, label, icon: Icon, color }) {
 // ============================================================================
 
 function getTypeVisuals(type) {
-  if (type === 'crypto') {
+  if (type === 'topic') {
     return {
       TypeIcon: FileSearch,
       color: 'text-amber-400',
@@ -643,7 +643,7 @@ function computeSyntaxHint(input, tickerMap, completed) {
   }
 
   const normalized = input.trim().toUpperCase();
-  if (CRYPTO_TICKERS.has(normalized)) {
+  if (DISCLOSURE_TOPIC_SHORTCUTS.has(normalized)) {
     const alsoSEC = tickerMap?.[normalized];
     if (alsoSEC) {
       return {
@@ -680,9 +680,9 @@ function computeSyntaxHint(input, tickerMap, completed) {
   }
 
   return {
-    label: 'Searching',
-    icon: <Search className="w-2.5 h-2.5" />,
-    tip: 'Pick a suggestion or press Enter',
-    color: 'bg-stone-900 text-stone-500 border-stone-700',
+    label: 'Disclosure',
+    icon: <FileSearch className="w-2.5 h-2.5" />,
+    tip: 'Press Enter to search SEC disclosures',
+    color: 'bg-amber-950/40 text-amber-300 border-amber-800',
   };
 }
