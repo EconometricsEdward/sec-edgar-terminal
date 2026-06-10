@@ -1725,6 +1725,91 @@ function formatPctValue(value: number | null) {
   return formatValue(value, 'percent');
 }
 
+type EventSignalTone = 'critical' | 'watch' | 'routine';
+
+interface FilingItemInfo {
+  code: string;
+  label: string;
+}
+
+interface EventSignal {
+  tone: EventSignalTone;
+  label: string;
+  priority: number;
+}
+
+interface EventWithSignal {
+  filing: FilingEntry;
+  items: FilingItemInfo[];
+  signal: EventSignal;
+}
+
+interface EventItemSummary {
+  code: string;
+  label: string;
+  count: number;
+  latestFiling: FilingEntry;
+  tone: EventSignalTone;
+  priority: number;
+}
+
+const HIGH_SIGNAL_8K_ITEMS = new Set([
+  '1.03', // bankruptcy or receivership
+  '1.05', // cybersecurity incident
+  '2.04', // accelerated/direct financial obligation
+  '2.05', // exit or disposal costs
+  '2.06', // material impairment
+  '3.01', // listing/delisting notice
+  '4.01', // change of accountant
+  '4.02', // non-reliance on prior financials
+  '5.01', // change of control
+]);
+
+const WATCH_8K_ITEMS = new Set([
+  '1.01', // material agreement
+  '1.02', // termination of agreement
+  '2.01', // acquisition/disposition
+  '2.02', // earnings release
+  '2.03', // off-balance sheet arrangement
+  '3.02', // unregistered sale
+  '3.03', // modified shareholder rights
+  '5.02', // executive change
+  '5.03', // bylaws/charter change
+  '5.07', // shareholder vote
+  '7.01', // Regulation FD
+  '8.01', // other events
+]);
+
+function filingDateTime(filing: FilingEntry) {
+  const time = new Date(filing.filingDate).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function itemTone(item: FilingItemInfo): EventSignalTone {
+  if (HIGH_SIGNAL_8K_ITEMS.has(item.code)) return 'critical';
+  if (WATCH_8K_ITEMS.has(item.code)) return 'watch';
+  return 'routine';
+}
+
+function itemPriority(item: FilingItemInfo) {
+  const tone = itemTone(item);
+  if (tone === 'critical') return 3;
+  if (tone === 'watch') return 2;
+  return 1;
+}
+
+function classifyEventItems(items: FilingItemInfo[]): EventSignal {
+  if (!items.length) return { tone: 'routine', label: 'No item code', priority: 1 };
+  const sorted = [...items].sort((a, b) => itemPriority(b) - itemPriority(a));
+  const top = sorted[0];
+  const tone = itemTone(top);
+  return {
+    tone,
+    label: top.label,
+    priority: itemPriority(top),
+  };
+}
+
 function FilingActivityPanel({
   filings,
   ticker,
@@ -1743,6 +1828,52 @@ function FilingActivityPanel({
       const time = new Date(filing.filingDate).getTime();
       return Number.isFinite(time) && time >= cutoff;
     }).length;
+    const eventCutoff = Date.now() - 180 * 24 * 60 * 60 * 1000;
+    const itemEvents: EventWithSignal[] = filings
+      .filter((filing) => filing.form.startsWith('8-K'))
+      .map((filing) => {
+        const items = getItemsInfo(filing.items || '') as FilingItemInfo[];
+        return { filing, items, signal: classifyEventItems(items) };
+      })
+      .filter((event) => event.items.length > 0);
+    const recentItemEvents = itemEvents.filter((event) => filingDateTime(event.filing) >= eventCutoff);
+    const highSignalEvents = recentItemEvents
+      .filter((event) => event.signal.tone === 'critical')
+      .slice(0, 4);
+    const watchEvents = recentItemEvents
+      .filter((event) => event.signal.tone === 'watch')
+      .slice(0, 4);
+    const itemMap = new Map<string, EventItemSummary>();
+    for (const event of recentItemEvents) {
+      for (const item of event.items) {
+        const existing = itemMap.get(item.code);
+        const priority = itemPriority(item);
+        const tone = itemTone(item);
+        if (!existing) {
+          itemMap.set(item.code, {
+            code: item.code,
+            label: item.label,
+            count: 1,
+            latestFiling: event.filing,
+            priority,
+            tone,
+          });
+          continue;
+        }
+        existing.count += 1;
+        existing.priority = Math.max(existing.priority, priority);
+        if (filingDateTime(event.filing) > filingDateTime(existing.latestFiling)) {
+          existing.latestFiling = event.filing;
+        }
+      }
+    }
+    const eventItemSummary = Array.from(itemMap.values())
+      .sort((a, b) => (
+        b.priority - a.priority
+        || b.count - a.count
+        || filingDateTime(b.latestFiling) - filingDateTime(a.latestFiling)
+      ))
+      .slice(0, 8);
     const eventFilings = filings
       .filter((filing) => isEventFiling(filing))
       .slice(0, 6);
@@ -1754,6 +1885,11 @@ function FilingActivityPanel({
       latestProxy,
       insiderForms,
       last90Days,
+      itemEvents,
+      recentItemEvents,
+      highSignalEvents,
+      watchEvents,
+      eventItemSummary,
       eventFilings,
     };
   }, [filings]);
@@ -1808,6 +1944,15 @@ function FilingActivityPanel({
         />
       </div>
 
+      {activity.itemEvents.length > 0 && (
+        <MaterialEventRadar
+          recentItemEvents={activity.recentItemEvents}
+          highSignalEvents={activity.highSignalEvents}
+          watchEvents={activity.watchEvents}
+          eventItemSummary={activity.eventItemSummary}
+        />
+      )}
+
       {activity.eventFilings.length > 0 && (
         <div className="border-t border-stone-800 px-4 py-3">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -1835,6 +1980,204 @@ function FilingActivityPanel({
       )}
     </div>
   );
+}
+
+function MaterialEventRadar({
+  recentItemEvents,
+  highSignalEvents,
+  watchEvents,
+  eventItemSummary,
+}: {
+  recentItemEvents: EventWithSignal[];
+  highSignalEvents: EventWithSignal[];
+  watchEvents: EventWithSignal[];
+  eventItemSummary: EventItemSummary[];
+}) {
+  const displayedEvents = highSignalEvents.length > 0 ? highSignalEvents : watchEvents;
+  const latestSignal = displayedEvents[0] || recentItemEvents[0] || null;
+  const highSignalCount = highSignalEvents.length;
+
+  return (
+    <div className="border-t border-stone-800 px-4 py-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Material Event Radar
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            8-K item-code triage from recent SEC submissions. Every signal links to the source filing.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.14em] text-stone-500">
+          Last 180 days
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <EventRadarStat
+          label="High-Signal 8-Ks"
+          value={`${highSignalCount}`}
+          detail="Cyber, impairment, delisting, accounting, bankruptcy, obligation, or control items"
+          tone={highSignalCount > 0 ? 'critical' : 'routine'}
+        />
+        <EventRadarStat
+          label="Item-Coded 8-Ks"
+          value={`${recentItemEvents.length}`}
+          detail={`${eventItemSummary.length} distinct item types detected in recent filings`}
+          tone={recentItemEvents.length > 6 ? 'watch' : 'routine'}
+        />
+        <LatestEventStat event={latestSignal} />
+      </div>
+
+      {eventItemSummary.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {eventItemSummary.map((item) => (
+            <a
+              key={item.code}
+              href={item.latestFiling.documentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Open latest ${item.label} filing from ${item.latestFiling.filingDate}`}
+              className={`inline-flex items-center gap-1.5 border px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] transition-colors ${eventToneChipClass(item.tone)}`}
+            >
+              Item {item.code}
+              <span className="text-stone-400">{item.count}x</span>
+              <ExternalLink className="w-3 h-3 opacity-60" />
+            </a>
+          ))}
+        </div>
+      )}
+
+      {displayedEvents.length > 0 && (
+        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+          {displayedEvents.map((event) => (
+            <MaterialEventRow key={event.filing.accession} event={event} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EventRadarStat({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: EventSignalTone;
+}) {
+  const toneClass = {
+    critical: 'border-rose-800/70 text-rose-300',
+    watch: 'border-amber-800/70 text-amber-300',
+    routine: 'border-stone-800 text-stone-300',
+  }[tone];
+
+  return (
+    <div className={`border-2 bg-stone-950/60 p-4 ${toneClass}`}>
+      <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-bold">{label}</div>
+      <div className="mt-2 text-3xl font-black tabular-nums text-stone-100">{value}</div>
+      <div className="mt-2 text-xs leading-relaxed text-stone-400">{detail}</div>
+    </div>
+  );
+}
+
+function LatestEventStat({ event }: { event: EventWithSignal | null }) {
+  if (!event) {
+    return (
+      <EventRadarStat
+        label="Latest Signal"
+        value="N/A"
+        detail="No item-coded 8-Ks in the recent SEC submissions feed"
+        tone="routine"
+      />
+    );
+  }
+
+  return (
+    <div className={`border-2 bg-stone-950/60 p-4 ${eventToneBorderClass(event.signal.tone)}`}>
+      <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-bold">Latest Signal</div>
+      <a
+        href={event.filing.documentUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 inline-flex items-center gap-1.5 text-lg font-black text-stone-100 hover:text-amber-300 transition-colors"
+      >
+        {event.signal.label}
+        <ExternalLink className="w-3.5 h-3.5" />
+      </a>
+      <div className="mt-2 text-xs leading-relaxed text-stone-400">
+        {event.filing.form} filed {event.filing.filingDate}
+        <span className="block font-mono text-[10px] text-stone-600">{event.filing.accession}</span>
+      </div>
+    </div>
+  );
+}
+
+function MaterialEventRow({ event }: { event: EventWithSignal }) {
+  return (
+    <a
+      href={event.filing.documentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`group block border px-3 py-3 transition-colors ${eventRowClass(event.signal.tone)}`}
+    >
+      <div className="flex items-start gap-3">
+        <span className={`shrink-0 border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${eventToneBadgeClass(event.signal.tone)}`}>
+          {event.signal.tone === 'critical' ? 'Signal' : 'Watch'}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-stone-100">
+            <span className="truncate">{event.signal.label}</span>
+            <ExternalLink className="w-3 h-3 shrink-0 text-stone-600 group-hover:text-amber-300 transition-colors" />
+          </div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] uppercase tracking-[0.12em] text-stone-500">
+            <span>{event.filing.form}</span>
+            <span>Filed {event.filing.filingDate}</span>
+            <span className="font-mono">{event.filing.accession}</span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {event.items.slice(0, 4).map((item) => (
+              <span
+                key={`${event.filing.accession}-${item.code}`}
+                className={`border px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] ${eventToneChipClass(itemTone(item))}`}
+                title={`8-K Item ${item.code}`}
+              >
+                {item.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function eventToneBorderClass(tone: EventSignalTone) {
+  if (tone === 'critical') return 'border-rose-800/70 text-rose-300';
+  if (tone === 'watch') return 'border-amber-800/70 text-amber-300';
+  return 'border-stone-800 text-stone-300';
+}
+
+function eventToneBadgeClass(tone: EventSignalTone) {
+  if (tone === 'critical') return 'border-rose-700/60 bg-rose-950/40 text-rose-200';
+  if (tone === 'watch') return 'border-amber-700/60 bg-amber-950/30 text-amber-200';
+  return 'border-stone-700 bg-stone-900 text-stone-300';
+}
+
+function eventToneChipClass(tone: EventSignalTone) {
+  if (tone === 'critical') return 'border-rose-800/70 bg-rose-950/30 text-rose-200 hover:border-rose-500';
+  if (tone === 'watch') return 'border-amber-800/70 bg-amber-950/20 text-amber-200 hover:border-amber-500';
+  return 'border-stone-700 bg-stone-950/70 text-stone-300 hover:border-stone-500';
+}
+
+function eventRowClass(tone: EventSignalTone) {
+  if (tone === 'critical') return 'border-rose-900/70 bg-rose-950/10 hover:border-rose-600/80 hover:bg-rose-950/20';
+  if (tone === 'watch') return 'border-amber-900/60 bg-amber-950/10 hover:border-amber-600/80 hover:bg-amber-950/20';
+  return 'border-stone-800 bg-stone-900/30 hover:border-sky-700/70 hover:bg-sky-950/10';
 }
 
 function FilingCountStat({
