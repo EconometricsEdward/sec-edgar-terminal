@@ -890,6 +890,7 @@ interface SourceFact {
 }
 
 interface MetricPoint {
+  period?: any;
   value: number | null;
   source?: SourceFact | null;
   sources?: SourceFact[];
