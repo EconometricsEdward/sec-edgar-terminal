@@ -643,6 +643,13 @@ export default function AnalysisClient({
                   <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
+                  <ProfitabilityBridgePanel
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    onTraceRow={traceRowHistory}
+                  />
                   <BalanceSheetRiskPanel
                     facts={facts}
                     periods={annualPeriods}
@@ -3555,6 +3562,409 @@ function QualitySnapshot({
           <QualityTile key={tile.key} tile={tile} cik={cik} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function ProfitabilityBridgePanel({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  onTraceRow,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  onTraceRow: (row: any) => void;
+}) {
+  const { tiles, tableRows, displayPeriods, latestPeriod, group } = useMemo(() => {
+    const displayPeriods = periods.slice(0, 5);
+    const latestPeriod = displayPeriods[0];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod || displayPeriods.length === 0) {
+      return {
+        tiles: [] as SnapshotTile[],
+        tableRows: [] as any[],
+        displayPeriods,
+        latestPeriod,
+        group,
+      };
+    }
+
+    const metricRow = (key: string, label: string) => (
+      buildMetricRow(facts, key, label, displayPeriods, 'currency', group as any)
+    );
+
+    const rowsByKey = {
+      revenue: metricRow('revenue', 'Revenue'),
+      grossProfit: metricRow('grossProfit', 'Gross Profit'),
+      rnd: metricRow('rnd', 'R&D Expense'),
+      sga: metricRow('sga', 'SG&A Expense'),
+      operatingIncome: metricRow('operatingIncome', 'Operating Income'),
+      pretaxIncome: metricRow('pretaxIncome', 'Pre-tax Income'),
+      incomeTax: metricRow('incomeTax', 'Income Tax'),
+      netIncome: metricRow('netIncome', 'Net Income'),
+      operatingCashFlow: metricRow('operatingCashFlow', 'Operating Cash Flow'),
+      capex: metricRow('capex', 'Capital Expenditures'),
+    };
+
+    const point = (key: keyof typeof rowsByKey, index: number): MetricPoint | null => (
+      rowsByKey[key]?.values?.[index] || null
+    );
+    const num = (item: MetricPoint | null) => (
+      typeof item?.value === 'number' && Number.isFinite(item.value) ? item.value : null
+    );
+    const magnitude = (item: MetricPoint | null) => {
+      const value = num(item);
+      return value == null ? null : Math.abs(value);
+    };
+    const pct = (numerator: number | null, denominator: number | null) => {
+      if (numerator == null || denominator == null || denominator === 0) return null;
+      return (numerator / denominator) * 100;
+    };
+    const sourceFact = (label: string, item: MetricPoint | null) => (
+      item?.source?.tag ? { ...item.source, label } : null
+    );
+    const sourceFacts = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, item]) => sourceFact(label, item))
+        .filter((source): source is SourceFact & { label: string } => {
+          if (!source?.tag) return false;
+          const key = `${source.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+    const snapshotSources = (items: Array<[string, MetricPoint | null]>) => (
+      items
+        .map(([label, item]) => ({ label, point: item }))
+        .filter((item) => item.point?.source?.tag) as SnapshotSource[]
+    );
+
+    const valueForPeriod = (index: number) => {
+      const revenuePoint = point('revenue', index);
+      const grossProfitPoint = point('grossProfit', index);
+      const rndPoint = point('rnd', index);
+      const sgaPoint = point('sga', index);
+      const operatingIncomePoint = point('operatingIncome', index);
+      const pretaxIncomePoint = point('pretaxIncome', index);
+      const incomeTaxPoint = point('incomeTax', index);
+      const netIncomePoint = point('netIncome', index);
+      const ocfPoint = point('operatingCashFlow', index);
+      const capexPoint = point('capex', index);
+
+      const revenue = num(revenuePoint);
+      const grossProfit = num(grossProfitPoint);
+      const rnd = num(rndPoint);
+      const sga = num(sgaPoint);
+      const operatingIncome = num(operatingIncomePoint);
+      const pretaxIncome = num(pretaxIncomePoint);
+      const incomeTax = num(incomeTaxPoint);
+      const netIncome = num(netIncomePoint);
+      const ocf = num(ocfPoint);
+      const capex = magnitude(capexPoint);
+      const fcf = ocf != null && capex != null ? ocf - capex : null;
+
+      return {
+        revenuePoint,
+        grossProfitPoint,
+        rndPoint,
+        sgaPoint,
+        operatingIncomePoint,
+        pretaxIncomePoint,
+        incomeTaxPoint,
+        netIncomePoint,
+        ocfPoint,
+        capexPoint,
+        revenue,
+        grossProfit,
+        rnd,
+        sga,
+        operatingIncome,
+        pretaxIncome,
+        incomeTax,
+        netIncome,
+        ocf,
+        capex,
+        fcf,
+        grossMargin: pct(grossProfit, revenue),
+        rndRevenue: pct(rnd, revenue),
+        sgaRevenue: pct(sga, revenue),
+        operatingMargin: pct(operatingIncome, revenue),
+        pretaxMargin: pct(pretaxIncome, revenue),
+        taxRate: pretaxIncome != null && pretaxIncome > 0 ? pct(incomeTax, pretaxIncome) : null,
+        netMargin: pct(netIncome, revenue),
+        fcfMargin: pct(fcf, revenue),
+      };
+    };
+
+    const rowValue = (
+      index: number,
+      value: number | null,
+      inputs: Array<[string, MetricPoint | null]>
+    ) => {
+      const sources = sourceFacts(inputs);
+      return {
+        period: displayPeriods[index],
+        value,
+        source: sources[0] || null,
+        sources,
+      };
+    };
+
+    const tableRows = [
+      {
+        key: 'revenue',
+        label: 'Revenue',
+        format: 'currency',
+        values: displayPeriods.map((_, index) => {
+          const revenuePoint = point('revenue', index);
+          return {
+            ...rowsByKey.revenue.values[index],
+            sources: sourceFacts([['Revenue', revenuePoint]]),
+          };
+        }),
+      },
+      {
+        key: 'grossMargin',
+        label: 'Gross Margin',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.grossMargin, [
+            ['Gross Profit', v.grossProfitPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'rndRevenue',
+        label: 'R&D / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.rndRevenue, [
+            ['R&D', v.rndPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'sgaRevenue',
+        label: 'SG&A / Revenue',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.sgaRevenue, [
+            ['SG&A', v.sgaPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'operatingMargin',
+        label: 'Operating Margin',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.operatingMargin, [
+            ['Operating Income', v.operatingIncomePoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'pretaxMargin',
+        label: 'Pre-tax Margin',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.pretaxMargin, [
+            ['Pre-tax Income', v.pretaxIncomePoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'taxRate',
+        label: 'Tax Rate',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.taxRate, [
+            ['Income Tax', v.incomeTaxPoint],
+            ['Pre-tax Income', v.pretaxIncomePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'netMargin',
+        label: 'Net Margin',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.netMargin, [
+            ['Net Income', v.netIncomePoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+      {
+        key: 'fcfMargin',
+        label: 'FCF Margin',
+        format: 'percent',
+        values: displayPeriods.map((_, index) => {
+          const v = valueForPeriod(index);
+          return rowValue(index, v.fcfMargin, [
+            ['Operating Cash Flow', v.ocfPoint],
+            ['Capex', v.capexPoint],
+            ['Revenue', v.revenuePoint],
+          ]);
+        }),
+      },
+    ].filter((row) => row.values.some((value: MetricPoint) => value.value != null && hasPointSource(value)));
+
+    const latest = valueForPeriod(0);
+    const tiles: SnapshotTile[] = [];
+    const addTile = (
+      tile: Omit<SnapshotTile, 'sources'> & { sources: SnapshotSource[] }
+    ) => {
+      if (!Number.isFinite(tile.value)) return;
+      const sources = tile.sources.filter((source) => source.point?.source?.tag);
+      if (!sources.length) return;
+      tiles.push({ ...tile, sources });
+    };
+
+    if (latest.grossMargin != null) {
+      addTile({
+        key: 'profitability-gross-margin',
+        label: 'Gross Margin',
+        value: latest.grossMargin,
+        format: 'percent',
+        detail: 'Gross profit divided by revenue',
+        tone: latest.grossMargin >= 40 ? 'good' : latest.grossMargin >= 20 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Gross Profit', latest.grossProfitPoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.operatingMargin != null) {
+      addTile({
+        key: 'profitability-operating-margin',
+        label: 'Operating Margin',
+        value: latest.operatingMargin,
+        format: 'percent',
+        detail: 'Operating income divided by revenue',
+        tone: latest.operatingMargin >= 15 ? 'good' : latest.operatingMargin >= 5 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Income', latest.operatingIncomePoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.netMargin != null) {
+      addTile({
+        key: 'profitability-net-margin',
+        label: 'Net Margin',
+        value: latest.netMargin,
+        format: 'percent',
+        detail: 'Net income divided by revenue',
+        tone: latest.netMargin >= 10 ? 'good' : latest.netMargin >= 0 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Net Income', latest.netIncomePoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.fcfMargin != null) {
+      addTile({
+        key: 'profitability-fcf-margin',
+        label: 'FCF Margin',
+        value: latest.fcfMargin,
+        format: 'percent',
+        detail: `Free cash flow: ${formatValue(latest.fcf, 'currency')}`,
+        tone: latest.fcfMargin >= 10 ? 'good' : latest.fcfMargin >= 0 ? 'warn' : 'bad',
+        sources: snapshotSources([
+          ['Operating Cash Flow', latest.ocfPoint],
+          ['Capex', latest.capexPoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    if (latest.rndRevenue != null) {
+      addTile({
+        key: 'profitability-rnd-revenue',
+        label: 'R&D / Revenue',
+        value: latest.rndRevenue,
+        format: 'percent',
+        detail: 'Research and development intensity',
+        tone: 'neutral',
+        sources: snapshotSources([
+          ['R&D', latest.rndPoint],
+          ['Revenue', latest.revenuePoint],
+        ]),
+      });
+    }
+
+    return { tiles: tiles.slice(0, 4), tableRows, displayPeriods, latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!tiles.length && !tableRows.length) return null;
+
+  return (
+    <div className="mt-6 border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Percent className="w-4 h-4 text-violet-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Profitability Bridge
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-linked margin stack from revenue through free cash flow for {industryLabel(group)} companies.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {latestPeriod ? periodLabel(latestPeriod) : 'Annual'} inputs
+        </div>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiles.map((tile) => (
+            <QualityTile key={tile.key} tile={tile} cik={cik} />
+          ))}
+        </div>
+      )}
+
+      {tableRows.length > 0 && displayPeriods.length > 0 && (
+        <div className="border-t border-stone-800 p-4">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Five-Year Margin Bridge
+          </div>
+          <FinancialTable
+            rows={tableRows}
+            periods={displayPeriods}
+            growthVisible={false}
+            cik={cik}
+            onTraceRow={onTraceRow}
+            isHeaderRow={(label: string) => ['Revenue', 'Gross Margin', 'Operating Margin', 'Net Margin', 'FCF Margin'].includes(label)}
+          />
+          <p className="mt-3 text-[11px] leading-relaxed text-stone-500">
+            Derived margins divide annual SEC XBRL values by annual revenue. Free cash flow margin subtracts capital expenditures from operating cash flow before dividing by revenue; linked values open the reported source tags.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
