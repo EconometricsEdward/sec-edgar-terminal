@@ -1,8 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, ChevronRight, Clock, Database, FileSearch, Loader2, Search, Sparkles, X,
+  Activity, AlertCircle, ChevronRight, Clock, Database, FileSearch, Loader2, Search, Sparkles, X,
 } from 'lucide-react';
-import { DISCLOSURE_UNIVERSES } from '../utils/disclosureUniverses.js';
+import { DISCLOSURE_MARKET_MAP, DISCLOSURE_UNIVERSES } from '../utils/disclosureUniverses.js';
 
 const QUICK_STARTS = [
   {
@@ -58,7 +58,7 @@ function parseTerms(input) {
 }
 
 export default function DisclosureScanner({ initialQuery = '', onScanComplete }) {
-  const [searchMode, setSearchMode] = useState('companies');
+  const [searchMode, setSearchMode] = useState(initialQuery ? 'market' : 'companies');
   const [tickerInput, setTickerInput] = useState('');
   const [queryInput, setQueryInput] = useState(initialQuery);
   const [universeId, setUniverseId] = useState(DISCLOSURE_UNIVERSES[0]?.id || '');
@@ -73,14 +73,22 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
     [universeId],
   );
   const isUniverseMode = searchMode === 'universe';
-  const scopeCount = isUniverseMode ? (selectedUniverse?.tickers?.length || 0) : tickers.length;
-  const isValid = isUniverseMode
+  const isMarketMode = searchMode === 'market';
+  const scopeCount = isMarketMode
+    ? (DISCLOSURE_MARKET_MAP?.tickers?.length || 0)
+    : isUniverseMode
+      ? (selectedUniverse?.tickers?.length || 0)
+      : tickers.length;
+  const isValid = isMarketMode
+    ? terms.length >= 1
+    : isUniverseMode
     ? Boolean(selectedUniverse) && terms.length >= 1
     : tickers.length >= 1 && tickers.length <= 5 && terms.length >= 1;
 
   const runSearch = async (nextTickers, nextQuery, options = {}) => {
     const universe = options.universe || null;
-    if (scanning || (!universe && !nextTickers.length) || !nextQuery.trim()) return;
+    const market = options.market === true;
+    if (scanning || (!universe && !market && !nextTickers.length) || !nextQuery.trim()) return;
 
     setScanning(true);
     setError(null);
@@ -88,9 +96,10 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
     try {
       const params = new URLSearchParams({
         query: nextQuery,
-        depth: String(options.depth || (universe ? 12 : 35)),
+        depth: String(options.depth || (market ? 2 : universe ? 12 : 35)),
       });
-      if (universe) params.set('universe', universe);
+      if (market) params.set('market', 'true');
+      else if (universe) params.set('universe', universe);
       else params.set('tickers', nextTickers.join(','));
       if (options.fresh) params.set('fresh', 'true');
 
@@ -112,7 +121,9 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
   const handleSubmit = (event) => {
     event?.preventDefault();
     if (!isValid) return;
-    if (isUniverseMode) {
+    if (isMarketMode) {
+      runSearch([], queryInput, { market: true, depth: 2 });
+    } else if (isUniverseMode) {
       runSearch([], queryInput, { universe: selectedUniverse.id, depth: 12 });
     } else {
       runSearch(tickers, queryInput);
@@ -143,8 +154,8 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
       </div>
       <p className="text-xs text-stone-400 mb-4 leading-relaxed max-w-3xl">
         Search recent SEC filings for any literal word or phrase. Enter up to 5 public-company
-        tickers, or scan a curated sector universe; every match links back to the original filing
-        on SEC.gov.
+        tickers, scan a curated sector universe, or use Market Map for a bounded cross-sector
+        discovery pass; every match links back to the original filing on SEC.gov.
       </p>
 
       <form onSubmit={handleSubmit} className="mb-4 space-y-3">
@@ -152,7 +163,7 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
           <ModeButton
             icon={Search}
             label="Companies"
-            active={!isUniverseMode}
+            active={!isUniverseMode && !isMarketMode}
             onClick={() => {
               setSearchMode('companies');
               setError(null);
@@ -169,10 +180,37 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
             }}
             disabled={scanning}
           />
+          <ModeButton
+            icon={Activity}
+            label="Market Map"
+            active={isMarketMode}
+            onClick={() => {
+              setSearchMode('market');
+              setError(null);
+            }}
+            disabled={scanning}
+          />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto] gap-2">
-          {isUniverseMode ? (
+          {isMarketMode ? (
+            <label className="block">
+              <span className="block mb-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+                Discovery scope
+              </span>
+              <div className="flex items-center gap-3 bg-stone-900 border-2 border-stone-800 px-3 py-3 min-h-[50px]">
+                <Activity className="w-4 h-4 text-sky-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-sm font-black tracking-wider text-stone-100">
+                    {DISCLOSURE_MARKET_MAP.label}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-widest text-stone-500 truncate">
+                    {DISCLOSURE_MARKET_MAP.tickers.length} companies / 2 filings each
+                  </div>
+                </div>
+              </div>
+            </label>
+          ) : isUniverseMode ? (
             <label className="block">
               <span className="block mb-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
                 Universe
@@ -271,6 +309,32 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
           </div>
         </div>
 
+        {isMarketMode && !scanning && (
+          <div className="border-2 border-sky-800/50 bg-sky-950/20 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="text-xs font-black text-stone-100">{DISCLOSURE_MARKET_MAP.label}</div>
+                <div className="mt-1 text-[10px] uppercase tracking-widest text-stone-500">
+                  {DISCLOSURE_MARKET_MAP.description}
+                </div>
+              </div>
+              <div className="text-[10px] uppercase tracking-[0.14em] text-sky-300">
+                {DISCLOSURE_MARKET_MAP.tickers.length} companies / 2 filings each
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {DISCLOSURE_MARKET_MAP.tickers.map((ticker) => (
+                <span
+                  key={ticker}
+                  className="border border-stone-700 bg-stone-950/70 px-2 py-0.5 text-[10px] font-bold tracking-wider text-stone-300"
+                >
+                  {ticker}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {isUniverseMode && selectedUniverse && !scanning && (
           <div className="border-2 border-stone-800 bg-stone-900/30 p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -299,7 +363,9 @@ export default function DisclosureScanner({ initialQuery = '', onScanComplete })
 
         {(scopeCount > 0 || terms.length > 0) && !scanning && (
           <div className="text-[10px] font-mono uppercase tracking-wider text-stone-500">
-            {isUniverseMode
+            {isMarketMode
+              ? `Market Map: ${scopeCount} companies`
+              : isUniverseMode
               ? `Universe: ${selectedUniverse?.label || 'Select a universe'} (${scopeCount} companies)`
               : tickers.length > 5
                 ? `Too many companies: ${tickers.length}. Max 5.`

@@ -57,8 +57,46 @@ export const DISCLOSURE_UNIVERSES = [
   },
 ];
 
+const MARKET_MAP_LIMIT = 40;
+
+function buildDisclosureMarketMap(limit = MARKET_MAP_LIMIT) {
+  const tickers = [];
+  const seen = new Set();
+  const maxSlots = Math.max(...DISCLOSURE_UNIVERSES.map((universe) => universe.tickers.length));
+
+  for (let slot = 0; slot < maxSlots; slot += 1) {
+    for (const universe of DISCLOSURE_UNIVERSES) {
+      const ticker = universe.tickers[slot];
+      if (!ticker || seen.has(ticker)) continue;
+      seen.add(ticker);
+      tickers.push(ticker);
+      if (tickers.length >= limit) {
+        return {
+          id: 'market-map',
+          label: 'Market Map',
+          description: 'Diversified cross-sector discovery basket drawn from every curated universe',
+          tickers,
+        };
+      }
+    }
+  }
+
+  return {
+    id: 'market-map',
+    label: 'Market Map',
+    description: 'Diversified cross-sector discovery basket drawn from every curated universe',
+    tickers,
+  };
+}
+
+export const DISCLOSURE_MARKET_MAP = buildDisclosureMarketMap();
+
 export function getDisclosureUniverse(id) {
   if (!id) return null;
   const normalized = String(id).trim().toLowerCase();
   return DISCLOSURE_UNIVERSES.find((universe) => universe.id === normalized) || null;
+}
+
+export function getDisclosureMarketMap(limit = MARKET_MAP_LIMIT) {
+  return buildDisclosureMarketMap(limit);
 }

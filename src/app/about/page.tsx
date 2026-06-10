@@ -107,7 +107,7 @@ export default function AboutPage() {
                 icon={FileSearch}
                 title="Disclosure Keyword Search"
                 path="/disclosures"
-                text="Searches recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) for user-defined words or phrases across up to 5 hand-picked companies or curated 8-company sector universes. Returns paragraph-level excerpts with matched terms highlighted and direct links to the source filing. Manual scans are depth-limited to 50 recent filings per ticker; universe scans use a shallower default depth to respect SEC fair-access limits. Results cache for 24 hours by ticker and query."
+                text="Searches recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) for user-defined words or phrases across up to 5 hand-picked companies, curated 8-company sector universes, or a bounded 40-company Market Map. Returns paragraph-level excerpts with matched terms highlighted and direct links to the source filing. Manual scans are depth-limited to 50 recent filings per ticker; universe and Market Map scans use shallower defaults to respect SEC fair-access limits. Results cache for 24 hours by ticker and query."
               />
             </div>
           </section>
@@ -171,13 +171,15 @@ export default function AboutPage() {
                 <p className="text-stone-400">
                   Manual searches fetch up to 50 recent filings per ticker from SEC EDGAR. Curated
                   universe searches scan 8 companies at a shallower default depth so broader research
-                  stays bounded. The scanner strips HTML to plain text and matches literal
-                  user-provided words or phrases using escaped regex patterns with word boundaries.
-                  For each match, the surrounding paragraph is extracted as context. Rate-limited to
-                  8 requests per second to respect SEC fair access policy. Results are cached in
-                  Upstash Redis for 24 hours by ticker, query, and depth. Keyword matching is exact
-                  but still requires context: a term may appear in a legal boilerplate section, a
-                  risk factor, a business description, or a footnote.
+                  stays bounded. Market Map searches interleave companies from every curated universe
+                  into a diversified 40-company basket and scan the two most recent eligible filings
+                  by default. The scanner strips HTML to plain text and matches literal user-provided
+                  words or phrases using escaped regex patterns with word boundaries. For each match,
+                  the surrounding paragraph is extracted as context. Rate-limited to 8 requests per
+                  second to respect SEC fair access policy. Results are cached in Upstash Redis for
+                  24 hours by ticker, query, and depth. Keyword matching is exact but still requires
+                  context: a term may appear in a legal boilerplate section, a risk factor, a business
+                  description, or a footnote.
                 </p>
               </div>
             </div>

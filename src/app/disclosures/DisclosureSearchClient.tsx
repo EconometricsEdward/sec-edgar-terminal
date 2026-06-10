@@ -57,7 +57,7 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
           Run plain-language searches across recent SEC filings for any company. Use it for
           emerging risks, customer concentration, tariffs, AI exposure, restructuring language,
           liquidity warnings, or any other term that matters to your analysis. Search a manual
-          company set or a curated sector universe.
+          company set, a curated sector universe, or a bounded cross-sector Market Map.
         </p>
       </div>
 
@@ -81,7 +81,7 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
         <InfoPanel
           icon={FileSearch}
           title="Research workflow"
-          text="Compare up to 5 hand-picked companies, or scan a bounded sector universe and use excerpts as a launch point for reading the filing section in context."
+          text="Compare up to 5 hand-picked companies, scan a sector universe, or run a cross-sector market map and use excerpts as a launch point for reading the filing section in context."
         />
       </section>
 
@@ -91,10 +91,11 @@ export default function DisclosureSearchClient({ initialQuery = '' }: { initialQ
           <span className="font-bold text-stone-200">Methodology:</span>{' '}
           The scanner checks recent 10-K, 10-Q, 8-K, S-1, proxy, 20-F, 40-F, and N-CSR filings.
           Manual searches support up to 5 tickers. Universe searches scan curated 8-company
-          baskets at a shallower default depth to respect SEC rate limits. Results are cached
-          for 24 hours by ticker and query. Keyword matching is exact but flexible for whitespace
-          and hyphenation, so always read the linked SEC source before
-          drawing conclusions.
+          baskets at a shallower default depth. Market Map scans a diversified 40-company basket
+          at the shallowest depth to surface likely source documents without pretending to be a
+          full EDGAR-wide index. Results are cached for 24 hours by ticker and query. Keyword
+          matching is exact but flexible for whitespace and hyphenation, so always read the linked
+          SEC source before drawing conclusions.
         </div>
       </div>
     </>

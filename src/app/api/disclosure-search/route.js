@@ -13,7 +13,7 @@ import {
   setCachedDisclosureScan,
 } from '../../../utils/scannerCache.js';
 import { getOperatingTickers } from '../../../utils/tickerMap.js';
-import { getDisclosureUniverse } from '../../../utils/disclosureUniverses.js';
+import { getDisclosureMarketMap, getDisclosureUniverse } from '../../../utils/disclosureUniverses.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -22,8 +22,11 @@ const DEFAULT_DEPTH = 35;
 const MAX_DEPTH = 50;
 const DEFAULT_UNIVERSE_DEPTH = 12;
 const MAX_UNIVERSE_DEPTH = 20;
+const DEFAULT_MARKET_DEPTH = 2;
+const MAX_MARKET_DEPTH = 5;
 const MAX_MANUAL_TICKERS = 5;
 const MAX_UNIVERSE_TICKERS = 8;
+const MAX_MARKET_TICKERS = 40;
 const SCAN_FORM_TYPES = ['10-K', '10-Q', '8-K', 'S-1', 'DEF 14A', 'DEFM14A', '20-F', '40-F', 'N-CSR'];
 const MAX_EXCERPTS_PER_FILING = 6;
 
@@ -150,6 +153,7 @@ export async function GET(request) {
   const url = new URL(request.url);
   const tickersParam = url.searchParams.get('tickers');
   const universeParam = url.searchParams.get('universe');
+  const marketParam = url.searchParams.get('market') === 'true' || url.searchParams.get('scope') === 'market';
   const rawQuery = url.searchParams.get('query') || url.searchParams.get('keywords') || '';
   const depthParam = url.searchParams.get('depth');
   const fresh = url.searchParams.get('fresh') === 'true';
@@ -166,10 +170,15 @@ export async function GET(request) {
   }
 
   let selectedUniverse = null;
+  let selectedMarket = null;
   let tickers = [];
   let mode = 'tickers';
 
-  if (universeParam) {
+  if (marketParam) {
+    selectedMarket = getDisclosureMarketMap(MAX_MARKET_TICKERS);
+    mode = 'market';
+    tickers = selectedMarket.tickers.slice(0, MAX_MARKET_TICKERS);
+  } else if (universeParam) {
     selectedUniverse = getDisclosureUniverse(universeParam);
     if (!selectedUniverse) {
       return NextResponse.json(
@@ -186,7 +195,7 @@ export async function GET(request) {
       .filter(Boolean);
   } else {
     return NextResponse.json(
-      { error: 'Missing required parameter: tickers (comma-separated, 1-5 tickers) or universe' },
+      { error: 'Missing required parameter: tickers (comma-separated, 1-5 tickers), universe, or market=true' },
       { status: 400 },
     );
   }
@@ -206,8 +215,20 @@ export async function GET(request) {
     tickers = tickers.slice(0, MAX_UNIVERSE_TICKERS);
   }
 
-  const defaultDepth = mode === 'universe' ? DEFAULT_UNIVERSE_DEPTH : DEFAULT_DEPTH;
-  const maxDepth = mode === 'universe' ? MAX_UNIVERSE_DEPTH : MAX_DEPTH;
+  if (mode === 'market' && tickers.length > MAX_MARKET_TICKERS) {
+    tickers = tickers.slice(0, MAX_MARKET_TICKERS);
+  }
+
+  const defaultDepth = mode === 'market'
+    ? DEFAULT_MARKET_DEPTH
+    : mode === 'universe'
+      ? DEFAULT_UNIVERSE_DEPTH
+      : DEFAULT_DEPTH;
+  const maxDepth = mode === 'market'
+    ? MAX_MARKET_DEPTH
+    : mode === 'universe'
+      ? MAX_UNIVERSE_DEPTH
+      : MAX_DEPTH;
   let depth = depthParam ? parseInt(depthParam, 10) : defaultDepth;
   if (!Number.isFinite(depth) || depth < 1) depth = defaultDepth;
   if (depth > maxDepth) depth = maxDepth;
@@ -277,6 +298,14 @@ export async function GET(request) {
             id: selectedUniverse.id,
             label: selectedUniverse.label,
             description: selectedUniverse.description,
+            tickers,
+          }
+        : null,
+      market: selectedMarket
+        ? {
+            id: selectedMarket.id,
+            label: selectedMarket.label,
+            description: selectedMarket.description,
             tickers,
           }
         : null,

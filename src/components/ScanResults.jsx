@@ -40,6 +40,12 @@ export default function ScanResults({ data, onRescan }) {
             <span>Universe: {data.universe.label}</span>
           </>
         )}
+        {data.mode === 'market' && data.market?.label && (
+          <>
+            <span> / </span>
+            <span>{data.market.label}: {data.market.tickers?.length || results.length} companies</span>
+          </>
+        )}
       </div>
 
       {/* Errors */}
