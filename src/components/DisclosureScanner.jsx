@@ -44,6 +44,57 @@ const QUICK_STARTS = [
   },
 ];
 
+const INDEX_QUICK_STARTS = [
+  {
+    label: 'AI infrastructure',
+    query: 'artificial intelligence, generative AI, GPU, data center',
+    months: 12,
+    formPresetId: 'reports',
+    limit: 50,
+    note: 'Find fresh AI demand, capex, and risk language across company reports',
+  },
+  {
+    label: 'Tariff exposure',
+    query: 'tariff, tariffs, trade restrictions, supply chain disruption',
+    months: 36,
+    formPresetId: 'reports',
+    limit: 50,
+    note: 'Surface import-cost and supply-chain sensitivity across public companies',
+  },
+  {
+    label: 'Cyber incidents',
+    query: 'cybersecurity incident, data breach, ransomware, unauthorized access',
+    months: 36,
+    formPresetId: 'broad',
+    limit: 100,
+    note: 'Search risk factors, event filings, and company incident disclosures',
+  },
+  {
+    label: 'Liquidity pressure',
+    query: 'going concern, substantial doubt, liquidity, covenant breach',
+    months: 36,
+    formPresetId: 'reports',
+    limit: 100,
+    note: 'Screen for stress signals in annual and quarterly reports',
+  },
+  {
+    label: 'Restructuring cycle',
+    query: 'restructuring, impairment, cost reduction, workforce reduction',
+    months: 24,
+    formPresetId: 'broad',
+    limit: 100,
+    note: 'Find turnaround, layoff, and asset write-down language across filings',
+  },
+  {
+    label: 'Customer concentration',
+    query: 'customer concentration, major customer, significant customer',
+    months: 36,
+    formPresetId: 'reports',
+    limit: 50,
+    note: 'Identify issuers disclosing customer dependency or revenue concentration',
+  },
+];
+
 const INDEX_RANGES = [
   { label: 'Last 90 Days', months: 3 },
   { label: 'Last 12 Months', months: 12 },
@@ -100,6 +151,10 @@ function parseTerms(input) {
     .filter(Boolean);
 }
 
+function indexFormPresetById(id) {
+  return INDEX_FORM_PRESETS.find((preset) => preset.id === id) || INDEX_FORM_PRESETS[0];
+}
+
 export default function DisclosureScanner({ initialQuery = '', initialFocus = '', onScanComplete }) {
   const [searchMode, setSearchMode] = useState(initialQuery ? 'index' : 'companies');
   const [tickerInput, setTickerInput] = useState('');
@@ -120,7 +175,7 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
     [universeId],
   );
   const selectedIndexFormPreset = useMemo(
-    () => INDEX_FORM_PRESETS.find((preset) => preset.id === indexFormPresetId) || INDEX_FORM_PRESETS[0],
+    () => indexFormPresetById(indexFormPresetId),
     [indexFormPresetId],
   );
   const isIndexMode = searchMode === 'index';
@@ -217,6 +272,24 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
     setTickerInput(item.tickers);
     setQueryInput(item.query);
     runSearch(parseTickers(item.tickers), item.query);
+  };
+
+  const applyIndexQuickStart = (item) => {
+    if (scanning) return;
+    const formPreset = indexFormPresetById(item.formPresetId);
+    setSearchMode('index');
+    setQueryInput(item.query);
+    setIndexMonths(item.months);
+    setIndexFormPresetId(formPreset.id);
+    setIndexLimit(item.limit);
+    setIndexFocusInput('');
+    runSearch([], item.query, {
+      index: true,
+      months: item.months,
+      forms: formPreset.forms,
+      limit: item.limit,
+      focus: '',
+    });
   };
 
   return (
@@ -635,36 +708,79 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
       )}
 
       {!scanning && (
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="w-3 h-3 text-stone-500" />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
-              Research prompts
-            </span>
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Database className="w-3 h-3 text-stone-500" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+                EDGAR index prompts
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {INDEX_QUICK_STARTS.map((item) => {
+                const formPreset = indexFormPresetById(item.formPresetId);
+                const rangeLabel =
+                  INDEX_RANGES.find((range) => range.months === item.months)?.label ||
+                  `${item.months} months`;
+                return (
+                  <button
+                    key={item.label}
+                    onClick={() => applyIndexQuickStart(item)}
+                    className="group flex items-start gap-3 p-3 border-2 border-sky-900/70 bg-sky-950/20 hover:border-sky-500 hover:bg-sky-500/5 transition-colors text-left"
+                    type="button"
+                  >
+                    <Database className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-black tracking-wider text-stone-100 group-hover:text-sky-300 transition-colors">
+                          {item.label}
+                        </span>
+                        <ChevronRight className="w-3 h-3 text-stone-700 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-all" />
+                      </div>
+                      <div className="text-[10px] text-stone-400 font-bold truncate">
+                        {rangeLabel} / {formPreset.label} / up to {item.limit}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-widest text-stone-600 mt-0.5">
+                        {item.note}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {QUICK_STARTS.map((item) => (
-              <button
-                key={item.label}
-                onClick={() => applyQuickStart(item)}
-                className="group flex items-start gap-3 p-3 border-2 border-stone-800 bg-stone-900/30 hover:border-amber-500 hover:bg-amber-500/5 transition-colors text-left"
-                type="button"
-              >
-                <FileSearch className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-black tracking-wider text-stone-100 group-hover:text-amber-300 transition-colors">
-                      {item.label}
-                    </span>
-                    <ChevronRight className="w-3 h-3 text-stone-700 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
+
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="w-3 h-3 text-stone-500" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+                Company scan prompts
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {QUICK_STARTS.map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => applyQuickStart(item)}
+                  className="group flex items-start gap-3 p-3 border-2 border-stone-800 bg-stone-900/30 hover:border-amber-500 hover:bg-amber-500/5 transition-colors text-left"
+                  type="button"
+                >
+                  <FileSearch className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-black tracking-wider text-stone-100 group-hover:text-amber-300 transition-colors">
+                        {item.label}
+                      </span>
+                      <ChevronRight className="w-3 h-3 text-stone-700 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                    <div className="text-[10px] text-stone-400 font-bold truncate">{item.tickers}</div>
+                    <div className="text-[9px] uppercase tracking-widest text-stone-600 mt-0.5">
+                      {item.note}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-stone-400 font-bold truncate">{item.tickers}</div>
-                  <div className="text-[9px] uppercase tracking-widest text-stone-600 mt-0.5">
-                    {item.note}
-                  </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
