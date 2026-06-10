@@ -6,7 +6,7 @@ import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
   Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink, Info,
   LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
-  Loader2, AlertCircle,
+  Loader2, AlertCircle, ShieldCheck, FileText,
 } from 'lucide-react';
 import { MetricChart as MetricChartImpl } from '../../../components/MetricChart.jsx';
 import SummaryDashboardImpl from '../../../components/SummaryDashboard.jsx';
@@ -356,6 +356,18 @@ export default function AnalysisClient({
     [facts, periods, sicCode]
   );
 
+  const coverageStatementRows = useMemo(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    () => (facts && annualPeriods.length > 0 ? STATEMENTS.flatMap((s) => s.build(facts, annualPeriods, sicCode as any)) : []),
+    [facts, annualPeriods, sicCode]
+  );
+
+  const coverageRatioRows = useMemo(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    () => (facts && annualPeriods.length > 0 ? buildRatios(facts, annualPeriods, sicCode as any) : []),
+    [facts, annualPeriods, sicCode]
+  );
+
   const featuredRows = useMemo(() => {
     if (!rows.length) return [];
     return rows.filter((r: { label: string }) => statementDef.featuredRows.includes(r.label));
@@ -581,6 +593,13 @@ export default function AnalysisClient({
 
               {annualPeriods.length > 0 && (
                 <>
+                  <DataCoveragePanel
+                    statementRows={coverageStatementRows}
+                    ratioRows={coverageRatioRows}
+                    periods={annualPeriods}
+                    filings={filings}
+                    cik={company?.cik}
+                  />
                   <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                   <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
                 </>
@@ -802,6 +821,227 @@ interface SourceFact {
 interface MetricPoint {
   value: number | null;
   source?: SourceFact | null;
+  sources?: SourceFact[];
+}
+
+interface CoveragePanelProps {
+  statementRows: any[];
+  ratioRows: any[];
+  periods: any[];
+  filings: FilingEntry[];
+  cik?: string;
+}
+
+interface CoverageRow {
+  label: string;
+  total: number;
+  sourced: number;
+  latestSourced: boolean;
+}
+
+function DataCoveragePanel({
+  statementRows,
+  ratioRows,
+  periods,
+  filings,
+  cik,
+}: CoveragePanelProps) {
+  const coverage = useMemo(() => {
+    const rows = [...statementRows, ...ratioRows]
+      .filter((row) => row?.values?.some((point: MetricPoint) => point?.value != null));
+    const cells = rows.flatMap((row) => row.values.filter((point: MetricPoint) => point?.value != null));
+    const sourcedCells = cells.filter(hasPointSource);
+    const latestCells = rows
+      .map((row) => row.values?.[0])
+      .filter((point: MetricPoint | undefined) => point?.value != null);
+    const latestSourcedCells = latestCells.filter(hasPointSource);
+    const rowCoverage: CoverageRow[] = rows
+      .map((row) => {
+        const dataPoints = row.values.filter((point: MetricPoint) => point?.value != null);
+        const sourcedPoints = dataPoints.filter(hasPointSource);
+        return {
+          label: row.label,
+          total: dataPoints.length,
+          sourced: sourcedPoints.length,
+          latestSourced: hasPointSource(row.values?.[0]),
+        };
+      })
+      .filter((row) => row.total > 0);
+
+    const weakRows = rowCoverage
+      .filter((row) => row.sourced < row.total || !row.latestSourced)
+      .sort((a, b) => (a.sourced / a.total) - (b.sourced / b.total))
+      .slice(0, 5);
+
+    return {
+      rows,
+      cells,
+      sourcedCells,
+      latestCells,
+      latestSourcedCells,
+      weakRows,
+    };
+  }, [statementRows, ratioRows]);
+
+  if (!coverage.cells.length) return null;
+
+  const latestPeriod = periods[0];
+  const latestAnnualFiling = findLatestFiling(filings, ['10-K', '10-K/A']);
+  const latestQuarterlyFiling = findLatestFiling(filings, ['10-Q', '10-Q/A']);
+  const latestPct = pctText(coverage.latestSourcedCells.length, coverage.latestCells.length);
+  const allPct = pctText(coverage.sourcedCells.length, coverage.cells.length);
+  const companyFactsUrl = cik
+    ? `https://data.sec.gov/api/xbrl/companyfacts/CIK${String(cik).padStart(10, '0')}.json`
+    : null;
+
+  return (
+    <div className="mb-6 border-2 border-stone-800 bg-stone-950/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              SEC Data Coverage
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Auditability check for the annual company page data, sourced from SEC Company Facts.
+          </p>
+        </div>
+        {companyFactsUrl && (
+          <a
+            href={companyFactsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.16em] text-stone-300 hover:border-emerald-500 hover:text-emerald-300 transition-colors"
+          >
+            Company Facts
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+        <CoverageStat
+          label="Latest Values"
+          value={latestPct}
+          detail={`${coverage.latestSourcedCells.length} of ${coverage.latestCells.length} latest metrics link to SEC tags`}
+          tone={coverage.latestSourcedCells.length === coverage.latestCells.length ? 'good' : 'warn'}
+        />
+        <CoverageStat
+          label="Historical Values"
+          value={allPct}
+          detail={`${coverage.sourcedCells.length} of ${coverage.cells.length} reported table values are source-linked`}
+          tone={coverage.sourcedCells.length === coverage.cells.length ? 'good' : 'warn'}
+        />
+        <FilingStat
+          label="Latest 10-K"
+          filing={latestAnnualFiling}
+          fallback={latestPeriod ? `${periodLabel(latestPeriod)} filed ${latestPeriod.filed || 'N/A'}` : 'No annual period'}
+        />
+        <FilingStat
+          label="Latest 10-Q"
+          filing={latestQuarterlyFiling}
+          fallback="No recent 10-Q in SEC submissions feed"
+        />
+      </div>
+
+      {coverage.weakRows.length > 0 && (
+        <div className="border-t border-stone-800 px-4 py-3">
+          <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Coverage Watchlist
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {coverage.weakRows.map((row) => (
+              <span
+                key={row.label}
+                title={`${row.sourced} of ${row.total} reported values have source links${row.latestSourced ? '' : '; latest value has no direct source link'}`}
+                className="inline-flex items-center gap-1.5 border border-amber-800/60 bg-amber-950/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-amber-200"
+              >
+                {row.label}
+                <span className="text-stone-500 tabular-nums">{row.sourced}/{row.total}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CoverageStat({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: 'good' | 'warn';
+}) {
+  const toneClass = tone === 'good' ? 'text-emerald-300 border-emerald-800/70' : 'text-amber-300 border-amber-800/70';
+  return (
+    <div className={`border-2 bg-stone-950/60 p-4 ${toneClass}`}>
+      <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-bold">{label}</div>
+      <div className="mt-2 text-3xl font-black tabular-nums text-stone-100">{value}</div>
+      <div className="mt-2 text-xs leading-relaxed text-stone-400">{detail}</div>
+    </div>
+  );
+}
+
+function FilingStat({
+  label,
+  filing,
+  fallback,
+}: {
+  label: string;
+  filing?: FilingEntry | null;
+  fallback: string;
+}) {
+  return (
+    <div className="border-2 border-stone-800 bg-stone-950/60 p-4">
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-stone-500 font-bold">
+        <FileText className="w-3.5 h-3.5 text-stone-500" />
+        {label}
+      </div>
+      {filing ? (
+        <>
+          <a
+            href={filing.documentUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex items-center gap-1.5 text-lg font-black tabular-nums text-stone-100 hover:text-amber-300 transition-colors"
+          >
+            {filing.form}
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+          <div className="mt-2 text-xs leading-relaxed text-stone-400">
+            Filed {filing.filingDate}
+            <span className="block font-mono text-[10px] text-stone-600">{filing.accession}</span>
+          </div>
+        </>
+      ) : (
+        <div className="mt-2 text-xs leading-relaxed text-stone-500">{fallback}</div>
+      )}
+    </div>
+  );
+}
+
+function hasPointSource(point?: MetricPoint | null) {
+  return Boolean(
+    point?.source?.tag
+      || point?.sources?.some((source) => source?.tag)
+  );
+}
+
+function findLatestFiling(filings: FilingEntry[], forms: string[]) {
+  return filings.find((filing) => forms.includes(filing.form)) || null;
+}
+
+function pctText(numerator: number, denominator: number) {
+  if (!denominator) return '0%';
+  return `${Math.round((numerator / denominator) * 100)}%`;
 }
 
 interface SnapshotSource {
