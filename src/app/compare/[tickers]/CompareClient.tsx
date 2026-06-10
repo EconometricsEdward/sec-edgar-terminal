@@ -77,7 +77,7 @@ interface RatioMetric {
   format: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   compute: (vals: any) => number | null;
-  sourceMetricKey: string;
+  sourceMetricKeys: string[];
   formulaLabel: string;
 }
 
@@ -87,26 +87,45 @@ const RATIO_METRICS: RatioMetric[] = [
       const r = safeDiv(vals.netIncome, vals.stockholdersEquity);
       return r == null ? null : r * 100;
     },
-    sourceMetricKey: 'netIncome', formulaLabel: 'Net Income ÷ Stockholders\' Equity' },
+    sourceMetricKeys: ['netIncome', 'stockholdersEquity'], formulaLabel: 'Net Income ÷ Stockholders\' Equity' },
   { key: 'roa', label: 'Return on Assets (ROA)', format: 'percent',
     compute: (vals) => {
       const r = safeDiv(vals.netIncome, vals.totalAssets);
       return r == null ? null : r * 100;
     },
-    sourceMetricKey: 'netIncome', formulaLabel: 'Net Income ÷ Total Assets' },
+    sourceMetricKeys: ['netIncome', 'totalAssets'], formulaLabel: 'Net Income ÷ Total Assets' },
   { key: 'netMargin', label: 'Net Margin', format: 'percent',
     compute: (vals) => {
       const r = safeDiv(vals.netIncome, vals.revenue);
       return r == null ? null : r * 100;
     },
-    sourceMetricKey: 'netIncome', formulaLabel: 'Net Income ÷ Revenue' },
+    sourceMetricKeys: ['netIncome', 'revenue'], formulaLabel: 'Net Income ÷ Revenue' },
   { key: 'operatingMargin', label: 'Operating Margin', format: 'percent',
     compute: (vals) => {
       const r = safeDiv(vals.operatingIncome, vals.revenue);
       return r == null ? null : r * 100;
     },
-    sourceMetricKey: 'operatingIncome', formulaLabel: 'Operating Income ÷ Revenue' },
+    sourceMetricKeys: ['operatingIncome', 'revenue'], formulaLabel: 'Operating Income ÷ Revenue' },
 ];
+
+const SOURCE_LABELS: Record<string, string> = {
+  revenue: 'Revenue',
+  netIncome: 'Net Income',
+  operatingIncome: 'Operating Income',
+  totalAssets: 'Total Assets',
+  stockholdersEquity: 'Equity',
+};
+
+function sourceWithLabel(row: AnyValue, index: number, key: string) {
+  const source = row?.values?.[index]?.source;
+  return source?.tag ? { ...source, label: SOURCE_LABELS[key] || key } : null;
+}
+
+function ratioInputSources(ratioMetric: RatioMetric, rowsByKey: Record<string, AnyValue>, index: number) {
+  return ratioMetric.sourceMetricKeys
+    .map((key) => sourceWithLabel(rowsByKey[key], index, key))
+    .filter(Boolean);
+}
 
 const GROWTH_BAR_METRICS = [
   { key: 'revenue', label: 'Revenue' },
@@ -410,7 +429,7 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
         const company = companies.find((c) => c.ticker === s.ticker);
         if (!company?.facts) return s;
         const periods = extractAnnualPeriods(company.facts).slice(0, 10);
-        const sharesRow = buildMetricRow(company.facts, 'dilutedShares', '', periods, 'decimal', company.sicCode as AnyValue);
+        const sharesRow = buildMetricRow(company.facts, 'sharesDiluted', '', periods, 'shares', company.sicCode as AnyValue);
         return {
           ...s,
           data: s.data.map((v: AnyValue, i: number) => {
@@ -463,16 +482,29 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
         const operatingIncome = buildMetricRow(c.facts, 'operatingIncome', '', periods, 'currency', c.sicCode as AnyValue);
         const totalAssets = buildMetricRow(c.facts, 'totalAssets', '', periods, 'currency', c.sicCode as AnyValue);
         const equity = buildMetricRow(c.facts, 'stockholdersEquity', '', periods, 'currency', c.sicCode as AnyValue);
-        const data = periods.map((p: AnyValue, i: number) => ({
-          period: p,
-          value: ratioMetric.compute({
-            revenue: revenue.values[i]?.value,
-            netIncome: netIncome.values[i]?.value,
-            operatingIncome: operatingIncome.values[i]?.value,
-            totalAssets: totalAssets.values[i]?.value,
-            stockholdersEquity: equity.values[i]?.value,
-          }),
-        }));
+        const rowsByKey = {
+          revenue,
+          netIncome,
+          operatingIncome,
+          totalAssets,
+          stockholdersEquity: equity,
+        };
+        const data = periods.map((p: AnyValue, i: number) => {
+          const sources = ratioInputSources(ratioMetric, rowsByKey, i);
+          return {
+            period: p,
+            value: ratioMetric.compute({
+              revenue: revenue.values[i]?.value,
+              netIncome: netIncome.values[i]?.value,
+              operatingIncome: operatingIncome.values[i]?.value,
+              totalAssets: totalAssets.values[i]?.value,
+              stockholdersEquity: equity.values[i]?.value,
+            }),
+            source: sources[0] || null,
+            sources,
+            formulaLabel: ratioMetric.formulaLabel,
+          };
+        });
         return { name: c.name, ticker: c.ticker, color: c.color, data };
       });
   }, [companies]);
@@ -507,6 +539,13 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
           const opIncome = buildMetricRow(c.facts, 'operatingIncome', '', periods, 'currency', c.sicCode as AnyValue);
           const assets = buildMetricRow(c.facts, 'totalAssets', '', periods, 'currency', c.sicCode as AnyValue);
           const equity = buildMetricRow(c.facts, 'stockholdersEquity', '', periods, 'currency', c.sicCode as AnyValue);
+          const rowsByKey = {
+            revenue,
+            netIncome,
+            operatingIncome: opIncome,
+            totalAssets: assets,
+            stockholdersEquity: equity,
+          };
           const vals = {
             revenue: revenue.values[0]?.value,
             netIncome: netIncome.values[0]?.value,
@@ -516,10 +555,11 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
           };
           const ratioMetric = RATIO_METRICS.find((r) => r.key === m.key);
           const value = ratioMetric ? ratioMetric.compute(vals) : null;
-          const numeratorRow = ratioMetric?.sourceMetricKey === 'operatingIncome' ? opIncome : netIncome;
+          const sources = ratioMetric ? ratioInputSources(ratioMetric, rowsByKey, 0) : [];
           row.values.push({
             ticker: c.ticker, cik: c.cik, value,
-            source: numeratorRow.values[0]?.source || null,
+            source: sources[0] || null,
+            sources,
             period: periods[0], formulaLabel: ratioMetric?.formulaLabel,
           });
         } else {
@@ -902,7 +942,7 @@ function SnapshotTable({ data, companies }: SnapshotTableProps) {
         Most recent fiscal year for each company. <span className="text-emerald-400">Green</span> = best,{' '}
         <span className="text-rose-400">Red</span> = worst where applicable. Total Assets is neutral
         (bigger isn't always better). Hover any value for the source XBRL tag; click to open SEC's
-        concept endpoint. Computed ratios link to their numerator (e.g. ROE links to Net Income).
+        concept endpoint. Computed ratios expose source icons for each formula input.
       </p>
     </div>
   );
@@ -920,13 +960,18 @@ function SnapshotCell({ value, row, isBest, isWorst }: SnapshotCellProps) {
   const textClass = isBest ? 'text-emerald-400 font-black'
     : isWorst ? 'text-rose-400'
     : value.value == null ? 'text-stone-700' : 'text-stone-300';
+  const sourceLinks = ((value.sources && value.sources.length > 0) ? value.sources : value.source ? [value.source] : [])
+    .filter((source: AnyValue) => source?.tag);
 
   let tooltip;
-  if (value.source) {
+  if (sourceLinks.length > 0) {
     if (row.isComputed) {
-      tooltip = `Formula: ${value.formulaLabel || row.tooltip}\nNumerator tag: ${value.source.tag}\nPeriod: ${value.source.end}\nFiled: ${value.source.filed}\nAccession: ${value.source.accession}\nClick to open SEC source for numerator`;
+      tooltip = `Formula: ${value.formulaLabel || row.tooltip}\n\n${sourceLinks.map((source: AnyValue, index: number) => (
+        `${source.label || `Input ${index + 1}`}\nTag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}`
+      )).join('\n\n')}`;
     } else {
-      tooltip = `Tag: ${value.source.tag}\nUnit: ${value.source.unit}\nPeriod: ${value.source.end}\nFiled: ${value.source.filed}\nAccession: ${value.source.accession}\nClick to open SEC source`;
+      const source = sourceLinks[0];
+      tooltip = `Tag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}\nClick to open SEC source`;
     }
   } else if (row.tooltip) {
     tooltip = row.tooltip;
@@ -934,16 +979,43 @@ function SnapshotCell({ value, row, isBest, isWorst }: SnapshotCellProps) {
     tooltip = value.value == null ? 'No data reported' : 'Computed value';
   }
 
-  const sourceUrl = value.source && value.cik ? buildSourceUrl(value.cik, value.source) : null;
-  if (!sourceUrl || value.value == null) {
+  const linkedSources = sourceLinks
+    .map((source: AnyValue) => ({ source, url: value.cik ? buildSourceUrl(value.cik, source) : null }))
+    .filter((item: AnyValue) => item.url);
+  if (!linkedSources.length || value.value == null) {
     return <td className={`px-4 py-2.5 text-right tabular-nums ${textClass}`} title={tooltip}>{formatted}</td>;
+  }
+  if (linkedSources.length === 1) {
+    const only = linkedSources[0];
+    return (
+      <td className={`px-4 py-2.5 text-right tabular-nums group ${textClass}`} title={tooltip}>
+        <a href={only.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors">
+          {formatted}
+          <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+        </a>
+      </td>
+    );
   }
   return (
     <td className={`px-4 py-2.5 text-right tabular-nums group ${textClass}`} title={tooltip}>
-      <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors">
-        {formatted}
-        <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
-      </a>
+      <span className="inline-flex items-center justify-end gap-1.5">
+        <span>{formatted}</span>
+        <span className="inline-flex items-center gap-0.5 opacity-0 group-hover:opacity-70 transition-opacity">
+          {linkedSources.slice(0, 4).map(({ source, url }: AnyValue, index: number) => (
+            <a
+              key={`${source.tag}-${source.end}-${index}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`${source.label || `Input ${index + 1}`}\nTag: ${source.tag}\nUnit: ${source.unit}\nPeriod: ${source.end}\nFiled: ${source.filed}\nAccession: ${source.accession}\nClick to open SEC source`}
+              aria-label={`Open SEC source for ${source.label || `input ${index + 1}`}`}
+              className="text-stone-500 hover:text-amber-400 transition-colors"
+            >
+              <LinkIcon className="w-3 h-3" />
+            </a>
+          ))}
+        </span>
+      </span>
     </td>
   );
 }
