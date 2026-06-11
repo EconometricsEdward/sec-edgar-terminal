@@ -791,6 +791,11 @@ export default function AnalysisClient({
 
               {annualPeriods.length > 0 && (
                 <>
+                  <AnalysisSourcePack
+                    company={company}
+                    filings={filings}
+                    ticker={chartTicker}
+                  />
                   <DataCoveragePanel
                     statementRows={coverageStatementRows}
                     ratioRows={coverageRatioRows}
@@ -3398,6 +3403,231 @@ function filingDateTime(filing: FilingEntry) {
 
 function findMostRecentFiling(filings: FilingEntry[]) {
   return [...filings].sort((a, b) => filingDateTime(b) - filingDateTime(a))[0] || null;
+}
+
+type SourcePackTone = 'emerald' | 'sky' | 'amber' | 'violet' | 'stone';
+
+interface SourcePackItem {
+  key: string;
+  label: string;
+  title: string;
+  detail: string;
+  url: string | null;
+  badge: string;
+  tone: SourcePackTone;
+}
+
+function AnalysisSourcePack({
+  company,
+  filings,
+  ticker,
+}: {
+  company?: CompanyState | null;
+  filings: FilingEntry[];
+  ticker?: string;
+}) {
+  const pack = useMemo(() => {
+    const cik = company?.cik ? String(company.cik).padStart(10, '0') : '';
+    const latestAnnual = findLatestFiling(filings, ['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A']);
+    const latestQuarterly = findLatestFiling(filings, ['10-Q', '10-Q/A', '6-K']);
+    const latestCurrent = findLatestFiling(filings, ['8-K', '8-K/A', '6-K']);
+    const latestProxy = filings.find((filing) => filing.form.includes('DEF 14A') || filing.form.includes('PRE 14A')) || null;
+    const latestAny = findMostRecentFiling(filings);
+    const browseUrl = cik ? `https://www.sec.gov/edgar/browse/?CIK=${encodeURIComponent(cik)}` : null;
+    const companyFactsUrl = cik ? `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json` : null;
+    const submissionsUrl = cik ? `https://data.sec.gov/submissions/CIK${cik}.json` : null;
+    const disclosureUrl = ticker ? disclosureSearchHref('liquidity, revenue, risk factors', ticker) : null;
+
+    const filingDetail = (filing: FilingEntry | null, fallback: string) => {
+      if (!filing) return fallback;
+      const period = filing.reportDate ? ` / period ${filing.reportDate}` : '';
+      return `${filing.form} filed ${filing.filingDate}${period}`;
+    };
+
+    return [
+      {
+        key: 'sec-browser',
+        label: 'Registrant',
+        title: company?.name || ticker || 'SEC registrant',
+        detail: cik ? `SEC CIK ${cik}` : 'SEC registrant profile',
+        url: browseUrl,
+        badge: 'SEC',
+        tone: 'emerald',
+      },
+      {
+        key: 'company-facts',
+        label: 'XBRL Facts',
+        title: 'Company Facts JSON',
+        detail: 'Raw SEC XBRL facts used for statement values, ratios, and source tags',
+        url: companyFactsUrl,
+        badge: 'XBRL',
+        tone: 'sky',
+      },
+      {
+        key: 'submissions',
+        label: 'Filing Feed',
+        title: 'Submissions JSON',
+        detail: latestAny ? `Latest filing in feed: ${latestAny.form} on ${latestAny.filingDate}` : 'Raw SEC submissions feed',
+        url: submissionsUrl,
+        badge: 'FEED',
+        tone: 'stone',
+      },
+      {
+        key: 'annual-report',
+        label: 'Annual Source',
+        title: latestAnnual?.primaryDescription || latestAnnual?.primaryDoc || 'Latest annual report',
+        detail: filingDetail(latestAnnual, 'No recent annual report found in SEC submissions feed'),
+        url: latestAnnual?.documentUrl || null,
+        badge: latestAnnual?.form || '10-K',
+        tone: 'amber',
+      },
+      {
+        key: 'quarterly-update',
+        label: 'Quarterly Source',
+        title: latestQuarterly?.primaryDescription || latestQuarterly?.primaryDoc || 'Latest quarterly update',
+        detail: filingDetail(latestQuarterly, 'No recent quarterly update found in SEC submissions feed'),
+        url: latestQuarterly?.documentUrl || null,
+        badge: latestQuarterly?.form || '10-Q',
+        tone: 'sky',
+      },
+      {
+        key: 'event-report',
+        label: 'Event Trail',
+        title: latestCurrent?.primaryDescription || latestCurrent?.primaryDoc || 'Latest current report',
+        detail: filingDetail(latestCurrent, 'No recent current report found in SEC submissions feed'),
+        url: latestCurrent?.documentUrl || null,
+        badge: latestCurrent?.form || '8-K',
+        tone: 'violet',
+      },
+      {
+        key: 'proxy',
+        label: 'Governance',
+        title: latestProxy?.primaryDescription || latestProxy?.primaryDoc || 'Latest proxy statement',
+        detail: filingDetail(latestProxy, 'No recent proxy statement found in SEC submissions feed'),
+        url: latestProxy?.documentUrl || null,
+        badge: latestProxy?.form || 'DEF 14A',
+        tone: 'violet',
+      },
+      {
+        key: 'disclosure-search',
+        label: 'Narrative Search',
+        title: 'Company-focused disclosure search',
+        detail: ticker
+          ? `Search SEC filings for ${ticker} risk, liquidity, and revenue language`
+          : 'Search SEC filings for company-specific disclosure language',
+        url: disclosureUrl,
+        badge: 'SEARCH',
+        tone: 'emerald',
+      },
+    ] satisfies SourcePackItem[];
+  }, [company, filings, ticker]);
+
+  if (!pack.some((item) => item.url)) return null;
+
+  return (
+    <div className="mb-6 border-2 border-stone-800 bg-stone-950/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Analysis Source Pack
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Direct SEC links behind this company page: raw XBRL facts, filings feed, primary reports, events, governance, and disclosure search.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          No sign-in / public SEC sources
+        </div>
+      </div>
+
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+        {pack.map((item) => (
+          <SourcePackCard key={item.key} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SourcePackCard({ item }: { item: SourcePackItem }) {
+  const toneClass = sourcePackToneClass(item.tone);
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-bold">
+            {item.label}
+          </div>
+          <div className="mt-2 line-clamp-2 text-sm font-black leading-snug text-stone-100">
+            {item.title}
+          </div>
+        </div>
+        <span className={`shrink-0 border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${toneClass.badge}`}>
+          {item.badge}
+        </span>
+      </div>
+      <div className="mt-3 text-xs leading-relaxed text-stone-400">
+        {item.detail}
+      </div>
+      <div className={`mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-bold ${item.url ? toneClass.link : 'text-stone-600'}`}>
+        {item.url ? 'Open source' : 'Source unavailable'}
+        {item.url && <ExternalLink className="w-3 h-3" />}
+      </div>
+    </>
+  );
+
+  if (!item.url) {
+    return (
+      <div className="border-2 border-stone-800 bg-stone-900/30 p-4 opacity-75">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={item.url}
+      target={item.url.startsWith('http') ? '_blank' : undefined}
+      rel={item.url.startsWith('http') ? 'noopener noreferrer' : undefined}
+      className={`group block min-h-[176px] border-2 bg-stone-900/30 p-4 transition-colors ${toneClass.card}`}
+    >
+      {content}
+    </a>
+  );
+}
+
+function sourcePackToneClass(tone: SourcePackTone) {
+  const classes = {
+    emerald: {
+      card: 'border-stone-800 hover:border-emerald-500 hover:bg-emerald-500/5',
+      badge: 'border-emerald-700/60 bg-emerald-950/40 text-emerald-200',
+      link: 'text-emerald-300 group-hover:text-emerald-200',
+    },
+    sky: {
+      card: 'border-stone-800 hover:border-sky-500 hover:bg-sky-500/5',
+      badge: 'border-sky-700/60 bg-sky-950/40 text-sky-200',
+      link: 'text-sky-300 group-hover:text-sky-200',
+    },
+    amber: {
+      card: 'border-stone-800 hover:border-amber-500 hover:bg-amber-500/5',
+      badge: 'border-amber-700/60 bg-amber-950/40 text-amber-200',
+      link: 'text-amber-300 group-hover:text-amber-200',
+    },
+    violet: {
+      card: 'border-stone-800 hover:border-violet-500 hover:bg-violet-500/5',
+      badge: 'border-violet-700/60 bg-violet-950/40 text-violet-200',
+      link: 'text-violet-300 group-hover:text-violet-200',
+    },
+    stone: {
+      card: 'border-stone-800 hover:border-stone-600 hover:bg-stone-800/30',
+      badge: 'border-stone-700 bg-stone-950 text-stone-300',
+      link: 'text-stone-300 group-hover:text-stone-100',
+    },
+  };
+  return classes[tone];
 }
 
 function itemTone(item: FilingItemInfo): EventSignalTone {
