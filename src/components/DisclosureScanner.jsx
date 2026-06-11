@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Activity, AlertCircle, ChevronRight, Clock, Database, FileSearch, Loader2, Search, Sparkles, X,
-  FileText, Hash,
+  FileText, Hash, ShieldCheck,
 } from 'lucide-react';
 import { DISCLOSURE_MARKET_MAP, DISCLOSURE_UNIVERSES } from '../utils/disclosureUniverses.js';
 
@@ -95,6 +95,89 @@ const INDEX_QUICK_STARTS = [
   },
 ];
 
+const INDEX_RESEARCH_PLAYBOOKS = [
+  {
+    label: 'Solvency Watch',
+    query: 'going concern, substantial doubt, covenant breach, debt default',
+    months: 36,
+    formPresetId: 'reports',
+    limit: 100,
+    matchMode: 'any',
+    tone: 'rose',
+    note: 'Cash runway, covenant, and default language',
+  },
+  {
+    label: 'Restatement Watch',
+    query: 'non-reliance, restatement, material weakness, change in accountant',
+    months: 36,
+    formPresetId: 'broad',
+    limit: 100,
+    matchMode: 'any',
+    tone: 'rose',
+    note: 'Accounting, controls, and auditor-change signals',
+  },
+  {
+    label: 'Tariff + Supply Chain',
+    query: 'tariff, supply chain',
+    months: 36,
+    formPresetId: 'reports',
+    limit: 50,
+    matchMode: 'all',
+    tone: 'amber',
+    note: 'Requires both cost and logistics language',
+  },
+  {
+    label: 'Customer Dependency',
+    query: 'customer concentration, major customer, significant customer',
+    months: 36,
+    formPresetId: 'reports',
+    limit: 50,
+    matchMode: 'any',
+    tone: 'amber',
+    note: 'Revenue concentration and dependency disclosures',
+  },
+  {
+    label: 'AI Capex Demand',
+    query: 'artificial intelligence, data center, GPU, capital expenditures',
+    months: 12,
+    formPresetId: 'reports',
+    limit: 100,
+    matchMode: 'any',
+    tone: 'sky',
+    note: 'AI demand, infrastructure, and spend intensity',
+  },
+  {
+    label: 'Power Constraints',
+    query: 'power availability, electricity, grid interconnection, data center',
+    months: 24,
+    formPresetId: 'reports',
+    limit: 50,
+    matchMode: 'any',
+    tone: 'sky',
+    note: 'Energy availability and compute buildout friction',
+  },
+  {
+    label: 'Cyber Incident Trail',
+    query: 'cybersecurity incident, unauthorized access, ransomware, data breach',
+    months: 36,
+    formPresetId: 'broad',
+    limit: 100,
+    matchMode: 'any',
+    tone: 'emerald',
+    note: 'Incident, breach, and control-response language',
+  },
+  {
+    label: 'Regulatory Pressure',
+    query: 'investigation, subpoena, enforcement action, consent order',
+    months: 36,
+    formPresetId: 'broad',
+    limit: 100,
+    matchMode: 'any',
+    tone: 'emerald',
+    note: 'Government, regulator, and legal-process signals',
+  },
+];
+
 const INDEX_RANGES = [
   { label: 'Last 90 Days', months: 3 },
   { label: 'Last 12 Months', months: 12 },
@@ -153,6 +236,40 @@ function parseTerms(input) {
 
 function indexFormPresetById(id) {
   return INDEX_FORM_PRESETS.find((preset) => preset.id === id) || INDEX_FORM_PRESETS[0];
+}
+
+function playbookToneClasses(tone) {
+  const classes = {
+    rose: {
+      card: 'border-rose-900/70 bg-rose-950/20 hover:border-rose-500 hover:bg-rose-500/5',
+      icon: 'text-rose-400',
+      text: 'group-hover:text-rose-300',
+      meta: 'text-rose-300',
+      chip: 'border-rose-800/70 bg-rose-950/30 text-rose-200',
+    },
+    amber: {
+      card: 'border-amber-900/70 bg-amber-950/20 hover:border-amber-500 hover:bg-amber-500/5',
+      icon: 'text-amber-400',
+      text: 'group-hover:text-amber-300',
+      meta: 'text-amber-300',
+      chip: 'border-amber-800/70 bg-amber-950/30 text-amber-200',
+    },
+    sky: {
+      card: 'border-sky-900/70 bg-sky-950/20 hover:border-sky-500 hover:bg-sky-500/5',
+      icon: 'text-sky-400',
+      text: 'group-hover:text-sky-300',
+      meta: 'text-sky-300',
+      chip: 'border-sky-800/70 bg-sky-950/30 text-sky-200',
+    },
+    emerald: {
+      card: 'border-emerald-900/70 bg-emerald-950/20 hover:border-emerald-500 hover:bg-emerald-500/5',
+      icon: 'text-emerald-400',
+      text: 'group-hover:text-emerald-300',
+      meta: 'text-emerald-300',
+      chip: 'border-emerald-800/70 bg-emerald-950/30 text-emerald-200',
+    },
+  };
+  return classes[tone] || classes.sky;
 }
 
 export default function DisclosureScanner({ initialQuery = '', initialFocus = '', onScanComplete }) {
@@ -295,6 +412,27 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
       limit: item.limit,
       focus: '',
       matchMode: 'any',
+    });
+  };
+
+  const applyIndexPlaybook = (item) => {
+    if (scanning) return;
+    const formPreset = indexFormPresetById(item.formPresetId);
+    const nextMatchMode = item.matchMode === 'all' ? 'all' : 'any';
+    setSearchMode('index');
+    setMatchMode(nextMatchMode);
+    setQueryInput(item.query);
+    setIndexMonths(item.months);
+    setIndexFormPresetId(formPreset.id);
+    setIndexLimit(item.limit);
+    setIndexFocusInput('');
+    runSearch([], item.query, {
+      index: true,
+      months: item.months,
+      forms: formPreset.forms,
+      limit: item.limit,
+      focus: '',
+      matchMode: nextMatchMode,
     });
   };
 
@@ -760,6 +898,61 @@ export default function DisclosureScanner({ initialQuery = '', initialFocus = ''
 
       {!scanning && (
         <div className="space-y-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <ShieldCheck className="w-3 h-3 text-stone-500" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
+                Analyst playbooks
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+              {INDEX_RESEARCH_PLAYBOOKS.map((item) => {
+                const formPreset = indexFormPresetById(item.formPresetId);
+                const rangeLabel =
+                  INDEX_RANGES.find((range) => range.months === item.months)?.label ||
+                  `${item.months} months`;
+                const tone = playbookToneClasses(item.tone);
+                const matchLabel = item.matchMode === 'all' ? 'All terms' : 'Any term';
+                return (
+                  <button
+                    key={item.label}
+                    onClick={() => applyIndexPlaybook(item)}
+                    className={`group flex min-h-[146px] flex-col justify-between p-3 border-2 transition-colors text-left ${tone.card}`}
+                    type="button"
+                  >
+                    <div>
+                      <div className="flex items-start gap-2">
+                        <ShieldCheck className={`w-4 h-4 shrink-0 mt-0.5 ${tone.icon}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-sm font-black tracking-wider text-stone-100 transition-colors ${tone.text}`}>
+                              {item.label}
+                            </span>
+                            <ChevronRight className={`w-3 h-3 text-stone-700 group-hover:translate-x-0.5 transition-all ${tone.meta}`} />
+                          </div>
+                          <div className="mt-1 text-[9px] uppercase tracking-widest text-stone-600">
+                            {item.note}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <span className={`border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] font-bold ${tone.chip}`}>
+                        {matchLabel}
+                      </span>
+                      <span className="border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-stone-400">
+                        {rangeLabel}
+                      </span>
+                      <span className="border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-stone-400">
+                        {formPreset.label}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Database className="w-3 h-3 text-stone-500" />
