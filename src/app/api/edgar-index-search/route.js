@@ -72,7 +72,7 @@ function buildSecQuery(terms, matchMode = 'any') {
 }
 
 function buildFallbackQueries(terms, matchMode) {
-  if (matchMode !== 'any' || terms.length < 2) return [];
+  if (!['any', 'all'].includes(matchMode) || terms.length < 2) return [];
   return terms.map(quoteSearchTerm);
 }
 
@@ -98,11 +98,15 @@ function totalValue(data) {
 function uniqueHits(hits) {
   const seen = new Set();
   return hits.filter((hit) => {
-    const key = `${hit.accession}:${hit.documentName}:${hit.cik}`;
+    const key = hitKey(hit);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function hitKey(hit) {
+  return `${hit.accession}:${hit.documentName}:${hit.cik}`;
 }
 
 async function fetchSearchPage({ secQuery, forms, startDate, endDate, from, size, signal }) {
@@ -400,6 +404,9 @@ export async function GET(request) {
     let timedOut = false;
     let usedFallback = false;
     let fallbackReason = '';
+    let fallbackQueries = [];
+    const fallbackErrors = [];
+    const allFallbackHitQueries = new Map();
 
     const runSearchPages = async (activeSecQuery) => {
       for (let page = 0; page < maxPages; page += 1) {
@@ -433,6 +440,15 @@ export async function GET(request) {
           .filter((hit) => hit.documentUrl);
         normalizedPages.push(...normalizedPage);
 
+        if (usedFallback && matchMode === 'all') {
+          for (const hit of normalizedPage) {
+            const key = hitKey(hit);
+            const querySet = allFallbackHitQueries.get(key) || new Set();
+            querySet.add(activeSecQuery);
+            allFallbackHitQueries.set(key, querySet);
+          }
+        }
+
         const focusedSoFar = focusTerms.length
           ? normalizedPages.filter((hit) => matchesFocus(hit, focusTerms))
           : normalizedPages;
@@ -445,7 +461,7 @@ export async function GET(request) {
     try {
       await runSearchPages(secQuery);
     } catch (err) {
-      const fallbackQueries = buildFallbackQueries(parsed.terms, matchMode);
+      fallbackQueries = buildFallbackQueries(parsed.terms, matchMode);
       if (!fallbackQueries.length) throw err;
 
       normalizedPages.length = 0;
@@ -458,11 +474,31 @@ export async function GET(request) {
       fallbackReason = err.message;
 
       for (const fallbackQuery of fallbackQueries) {
-        await runSearchPages(fallbackQuery);
+        try {
+          await runSearchPages(fallbackQuery);
+        } catch (fallbackErr) {
+          fallbackErrors.push({
+            query: fallbackQuery,
+            error: fallbackErr?.message || 'SEC fallback search failed',
+          });
+        }
+      }
+
+      if (fallbackErrors.length === fallbackQueries.length) {
+        throw err;
+      }
+
+      if (matchMode === 'all' && fallbackErrors.length > 0) {
+        throw err;
       }
     }
 
-    const normalizedHits = uniqueHits(normalizedPages);
+    let normalizedHits = uniqueHits(normalizedPages);
+    if (usedFallback && matchMode === 'all') {
+      normalizedHits = normalizedHits.filter((hit) => (
+        allFallbackHitQueries.get(hitKey(hit))?.size === fallbackQueries.length
+      ));
+    }
     if (usedFallback) {
       totalHits = normalizedHits.length;
       totalRelation = 'gte';
@@ -492,7 +528,10 @@ export async function GET(request) {
           fallback: usedFallback
             ? {
                 reason: fallbackReason,
-                strategy: 'per-term any-match searches merged by filing document',
+                strategy: matchMode === 'all'
+                  ? 'per-term all-match searches intersected by filing document'
+                  : 'per-term any-match searches merged by filing document',
+                errors: fallbackErrors,
               }
             : null,
         },
@@ -501,7 +540,7 @@ export async function GET(request) {
           terms: parsed.terms,
           rejected: parsed.rejected,
           secQuery,
-          fallbackSecQueries: usedFallback ? buildFallbackQueries(parsed.terms, matchMode) : [],
+          fallbackSecQueries: usedFallback ? fallbackQueries : [],
           matchMode,
         },
         focus: {
@@ -526,7 +565,7 @@ export async function GET(request) {
         timedOut,
         summary,
         results,
-        errors: [],
+        errors: fallbackErrors,
       },
       {
         headers: {
