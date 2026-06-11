@@ -828,6 +828,13 @@ export default function AnalysisClient({
                     ticker={chartTicker}
                     companyName={company?.name}
                   />
+                  <FinancialInflectionMonitor
+                    statementRows={coverageStatementRows}
+                    ratioRows={coverageRatioRows}
+                    periods={annualPeriods}
+                    cik={company?.cik}
+                    ticker={chartTicker}
+                  />
                   <DataCoveragePanel
                     statementRows={coverageStatementRows}
                     ratioRows={coverageRatioRows}
@@ -5076,6 +5083,271 @@ interface SnapshotTile {
   detail: string;
   tone: 'good' | 'warn' | 'bad' | 'neutral';
   sources: SnapshotSource[];
+}
+
+interface InflectionSignal {
+  key: string;
+  label: string;
+  changeLabel: string;
+  latestValue: number;
+  priorValue: number;
+  latestLabel: string;
+  priorLabel: string;
+  format: string;
+  direction: 'up' | 'down';
+  tone: 'good' | 'warn' | 'bad' | 'neutral';
+  detail: string;
+  query: string;
+  sources: SnapshotSource[];
+  score: number;
+}
+
+function FinancialInflectionMonitor({
+  statementRows,
+  ratioRows,
+  periods,
+  cik,
+  ticker,
+}: {
+  statementRows: any[];
+  ratioRows: any[];
+  periods: any[];
+  cik?: string;
+  ticker?: string;
+}) {
+  const signals = useMemo(() => {
+    if (!periods?.length || periods.length < 2) return [] as InflectionSignal[];
+    return buildInflectionSignals([...statementRows, ...ratioRows], periods).slice(0, 6);
+  }, [statementRows, ratioRows, periods]);
+
+  if (!signals.length) return null;
+
+  return (
+    <div className="mb-6 border-2 border-stone-800 bg-stone-950/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-amber-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Financial Inflection Monitor
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Largest latest annual changes across source-linked statement and ratio rows, ranked by absolute movement.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {periodLabel(periods[0])} vs {periodLabel(periods[1])}
+        </div>
+      </div>
+
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+        {signals.map((signal) => (
+          <InflectionSignalCard key={signal.key} signal={signal} cik={cik} ticker={ticker} />
+        ))}
+      </div>
+
+      <div className="border-t border-stone-800 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
+        The monitor only displays changes where both compared periods have linked SEC XBRL source facts. Disclosure links open company-focused EDGAR searches for the narrative behind the movement.
+      </div>
+    </div>
+  );
+}
+
+function InflectionSignalCard({
+  signal,
+  cik,
+  ticker,
+}: {
+  signal: InflectionSignal;
+  cik?: string;
+  ticker?: string;
+}) {
+  const toneClasses = {
+    good: 'border-emerald-800/70 bg-emerald-950/10',
+    warn: 'border-amber-800/70 bg-amber-950/10',
+    bad: 'border-rose-800/70 bg-rose-950/10',
+    neutral: 'border-sky-800/70 bg-sky-950/10',
+  }[signal.tone];
+  const directionText = signal.direction === 'up' ? 'Increased' : 'Decreased';
+
+  return (
+    <div className={`min-h-[258px] border-2 p-4 flex flex-col justify-between ${toneClasses}`}>
+      <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-[10px] uppercase tracking-[0.18em] font-bold text-stone-500">
+              {signal.label}
+            </div>
+            <div className="mt-2 text-2xl font-black tabular-nums text-stone-100">
+              {signal.changeLabel}
+            </div>
+          </div>
+          <span className="shrink-0 border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-stone-400">
+            {directionText}
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="border border-stone-800 bg-stone-950/60 p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-stone-600">{signal.latestLabel}</div>
+            <div className="mt-1 text-sm font-black tabular-nums text-stone-200">
+              {formatValue(signal.latestValue, signal.format)}
+            </div>
+          </div>
+          <div className="border border-stone-800 bg-stone-950/60 p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-stone-600">{signal.priorLabel}</div>
+            <div className="mt-1 text-sm font-black tabular-nums text-stone-400">
+              {formatValue(signal.priorValue, signal.format)}
+            </div>
+          </div>
+        </div>
+
+        <p className="mt-3 text-xs leading-relaxed text-stone-400">
+          {signal.detail}
+        </p>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <div className="flex flex-wrap gap-1.5">
+          {signal.sources.slice(0, 5).map((source) => (
+            <SourceChip key={`${signal.key}-${source.label}-${source.point?.source?.tag}-${source.point?.source?.end}`} source={source} cik={cik} />
+          ))}
+        </div>
+        <a
+          href={disclosureSearchHref(signal.query, ticker)}
+          className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-bold text-amber-300 hover:text-amber-200 transition-colors"
+        >
+          Search the filing narrative
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function buildInflectionSignals(rows: any[], periods: any[]): InflectionSignal[] {
+  const latestPeriod = periods[0];
+  const priorPeriod = periods[1];
+  const latestLabel = latestPeriod ? periodLabel(latestPeriod) : 'Latest';
+  const priorLabel = priorPeriod ? periodLabel(priorPeriod) : 'Prior';
+  const seen = new Set<string>();
+  const signals: InflectionSignal[] = [];
+
+  rows.forEach((row) => {
+    if (!row?.label || !Array.isArray(row.values) || row.values.length < 2) return;
+    const label = String(row.label);
+    if (seen.has(label)) return;
+    seen.add(label);
+
+    const latestPoint = row.values[0] as MetricPoint | null;
+    const priorPoint = row.values[1] as MetricPoint | null;
+    const latestValue = numericPointValue(latestPoint);
+    const priorValue = numericPointValue(priorPoint);
+    if (latestValue == null || priorValue == null || latestValue === priorValue) return;
+    if (!hasPointSource(latestPoint) || !hasPointSource(priorPoint)) return;
+
+    const format = row.format || 'currency';
+    const delta = latestValue - priorValue;
+    const pctChange = priorValue !== 0 ? (delta / Math.abs(priorValue)) * 100 : null;
+    const score = inflectionScore(delta, pctChange, format);
+    if (score == null || score < 1) return;
+
+    const sources = uniqueSnapshotSources([
+      ...snapshotSourcesFromPoint(latestLabel, latestPoint),
+      ...snapshotSourcesFromPoint(priorLabel, priorPoint),
+    ]);
+    if (!sources.length) return;
+
+    signals.push({
+      key: `${label}-${latestPoint?.source?.tag || sources[0]?.point?.source?.tag || signals.length}`,
+      label,
+      changeLabel: formatInflectionChange(delta, pctChange, format),
+      latestValue,
+      priorValue,
+      latestLabel,
+      priorLabel,
+      format,
+      direction: delta >= 0 ? 'up' : 'down',
+      tone: inflectionTone(label, delta),
+      detail: inflectionDetail(label, delta, latestLabel, priorLabel),
+      query: inflectionDisclosureQuery(label),
+      sources,
+      score,
+    });
+  });
+
+  return signals.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+}
+
+function numericPointValue(point?: MetricPoint | null) {
+  return typeof point?.value === 'number' && Number.isFinite(point.value) ? point.value : null;
+}
+
+function inflectionScore(delta: number, pctChange: number | null, format: string) {
+  if (format === 'percent') return Math.abs(delta);
+  if (format === 'decimal') return Math.abs(delta) * 25;
+  if (pctChange == null || !Number.isFinite(pctChange)) return null;
+  return Math.abs(pctChange);
+}
+
+function formatInflectionChange(delta: number, pctChange: number | null, format: string) {
+  const sign = delta > 0 ? '+' : '';
+  if (format === 'percent') return `${sign}${delta.toFixed(1)} pts`;
+  if (format === 'decimal') return `${sign}${delta.toFixed(2)}`;
+  if (pctChange == null || !Number.isFinite(pctChange)) return `${sign}${formatValue(delta, format)}`;
+  return `${pctChange > 0 ? '+' : ''}${pctChange.toFixed(1)}%`;
+}
+
+function inflectionTone(label: string, delta: number): 'good' | 'warn' | 'bad' | 'neutral' {
+  const lower = label.toLowerCase();
+  const lowerBetter = /(debt|liabilit|expense|cost|days|ratio|inventory|receivable|capex|capital expenditures|diluted shares)/i.test(lower)
+    && !/(current ratio|combined ratio|cash returned|asset turnover|inventory turnover|return)/i.test(lower);
+  const higherBetter = /(revenue|gross profit|operating income|net income|cash flow|free cash flow|margin|return|roe|roa|cash|equity|asset turnover|inventory turnover|eps)/i.test(lower);
+  if (lowerBetter) return delta > 0 ? 'bad' : 'good';
+  if (higherBetter) return delta > 0 ? 'good' : 'bad';
+  return 'neutral';
+}
+
+function inflectionDetail(label: string, delta: number, latestLabel: string, priorLabel: string) {
+  const direction = delta >= 0 ? 'moved higher' : 'moved lower';
+  return `${label} ${direction} from ${priorLabel} to ${latestLabel}. Use the linked SEC facts for the numeric trail and the search link for MD&A, risk-factor, or footnote context.`;
+}
+
+function inflectionDisclosureQuery(label: string) {
+  const lower = label.toLowerCase();
+  if (/revenue|sales/.test(lower)) return 'revenue, demand, pricing, customers, competition';
+  if (/gross|cost of revenue|margin/.test(lower)) return 'gross margin, pricing, cost inflation, supply chain';
+  if (/operating income|operating expense|sga|r&d/.test(lower)) return 'operating expenses, restructuring, margin pressure, investment';
+  if (/net income|tax|pretax|eps/.test(lower)) return 'net income, tax, impairment, litigation, earnings';
+  if (/cash flow|free cash flow|capex|capital/.test(lower)) return 'cash flow, capital expenditures, working capital, liquidity';
+  if (/debt|liabilit|current ratio/.test(lower)) return 'debt maturities, refinancing, covenant, liquidity';
+  if (/inventory|receivable|payable|working capital|days/.test(lower)) return 'inventory, receivables, working capital, supply chain, demand';
+  if (/goodwill|intangible|asset/.test(lower)) return 'impairment, asset value, acquisitions, goodwill';
+  return `${label}, management discussion, risk factors`;
+}
+
+function snapshotSourcesFromPoint(prefix: string, point?: MetricPoint | null): SnapshotSource[] {
+  return getPointSources(point).map((source) => ({
+    label: `${prefix} ${source.label || source.tag}`,
+    point: {
+      period: point?.period,
+      value: point?.value ?? null,
+      source,
+    },
+  }));
+}
+
+function uniqueSnapshotSources(sources: SnapshotSource[]) {
+  const seen = new Set<string>();
+  return sources.filter((item) => {
+    const source = item.point?.source;
+    if (!source?.tag) return false;
+    const key = `${item.label}:${source.tag}:${source.end}:${source.accession || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 interface IndustryPlaybookCard {
