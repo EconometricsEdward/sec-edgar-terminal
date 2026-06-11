@@ -234,6 +234,7 @@ export default async function FilingsTickerPage({ params }: PageProps) {
   const company: CompanyInfo = {
     name: submissions.name,
     cik,
+    sicCode: submissions.sic,
     sic: submissions.sicDescription,
     exchanges: submissions.exchanges?.join(', ') || 'N/A',
     tickers: submissions.tickers?.join(', ') || upper,

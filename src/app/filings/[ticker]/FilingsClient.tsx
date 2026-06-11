@@ -4,9 +4,12 @@ import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   FileText, ExternalLink, Calendar, Hash, Filter, ChevronDown, ChevronRight,
-  Link as LinkIcon, AlertCircle, BarChart3, X,
+  Link as LinkIcon, AlertCircle, BarChart3, X, GitCompare, Search,
+  ShieldCheck, type LucideIcon,
 } from 'lucide-react';
 import { getItemsInfo } from '../../../utils/formItems.js';
+import { PEER_GROUPS } from '../../../utils/peerGroups.js';
+import { classifyIndustry, industryLabel } from '../../../utils/industry.js';
 
 // ============================================================================
 // Types — exported so the server page can import them
@@ -29,11 +32,19 @@ export interface CompanyInfo {
   name: string;
   cik: string;
   sic?: string;
+  sicCode?: string;
   exchanges: string;
   tickers: string;
   fiscalYearEnd?: string;
   stateOfIncorporation?: string;
   ein?: string;
+}
+
+interface PeerGroupPreset {
+  id: string;
+  label: string;
+  description: string;
+  tickers: string[];
 }
 
 interface FilingsClientProps {
@@ -98,6 +109,43 @@ const HIGH_SIGNAL_8K_ITEMS = new Set([
   '5.03',
   '8.01',
 ]);
+
+const PEER_GROUP_PRESETS = PEER_GROUPS as PeerGroupPreset[];
+
+const INDUSTRY_PEER_GROUP_IDS: Record<string, string[]> = {
+  banking: ['big-banks', 'regional-banks'],
+  insurance: ['insurance'],
+  oil_gas: ['big-oil'],
+  airlines: ['us-airlines'],
+  tech: ['mega-tech', 'semiconductors'],
+  retail: ['mega-retail'],
+  pharma: ['big-pharma'],
+  manufacturing: ['semiconductors', 'ev-autos'],
+  general: [],
+};
+
+const FILING_DISCLOSURE_THEMES = [
+  {
+    title: 'Risk Factor Follow-Up',
+    query: 'risk factors,material adverse,uncertainty',
+    detail: 'Find recent risk language that may explain the newest annual or quarterly filing.',
+  },
+  {
+    title: 'Liquidity And Capital',
+    query: 'liquidity,cash flow,credit facility,debt maturities',
+    detail: 'Check financing, cash flow, debt maturity, and capital availability disclosures.',
+  },
+  {
+    title: 'Revenue Quality',
+    query: 'revenue recognition,customer concentration,demand,backlog',
+    detail: 'Search for customer, demand, backlog, and revenue-recognition language.',
+  },
+  {
+    title: 'Material Events',
+    query: 'material agreement,impairment,restructuring,cybersecurity',
+    detail: 'Look for event-driven disclosures that often appear around 8-Ks and 10-Qs.',
+  },
+];
 
 function filingDateTime(filing: FilingEntry): number {
   const time = new Date(filing.filingDate).getTime();
@@ -494,6 +542,321 @@ function FilingFamilyChip({
   );
 }
 
+function disclosureSearchHref(query: string, ticker: string): string {
+  const params = new URLSearchParams({ query, focus: ticker });
+  return `/disclosures?${params.toString()}`;
+}
+
+function selectFilingPeerGroups(ticker: string, sicCode?: string): PeerGroupPreset[] {
+  const upperTicker = ticker.toUpperCase();
+  const industry = classifyIndustry(sicCode || '');
+  const byId = new Map(PEER_GROUP_PRESETS.map((preset) => [preset.id, preset]));
+  const selected: PeerGroupPreset[] = [];
+
+  const add = (preset?: PeerGroupPreset) => {
+    if (!preset || selected.some((item) => item.id === preset.id)) return;
+    selected.push(preset);
+  };
+
+  PEER_GROUP_PRESETS
+    .filter((preset) => preset.tickers.some((peerTicker) => peerTicker.toUpperCase() === upperTicker))
+    .forEach(add);
+
+  (INDUSTRY_PEER_GROUP_IDS[industry] || [])
+    .map((id) => byId.get(id))
+    .forEach(add);
+
+  return selected.slice(0, 3);
+}
+
+function peerCompareTickers(ticker: string, groupPreset: PeerGroupPreset): string[] {
+  const upperTicker = ticker.toUpperCase();
+  const tickers = groupPreset.tickers.map((peerTicker) => peerTicker.toUpperCase());
+  if (tickers.includes(upperTicker)) return tickers.slice(0, 5);
+  return [upperTicker, ...tickers.filter((peerTicker) => peerTicker !== upperTicker)].slice(0, 5);
+}
+
+function isExternalHref(href?: string | null): boolean {
+  return Boolean(href?.startsWith('http'));
+}
+
+type WorkbenchTone = 'amber' | 'sky' | 'emerald' | 'violet' | 'stone';
+
+function workbenchToneClass(tone: WorkbenchTone) {
+  const classes = {
+    amber: {
+      card: 'border-stone-800 hover:border-amber-500 hover:bg-amber-500/5',
+      icon: 'text-amber-400',
+      badge: 'border-amber-700/60 bg-amber-950/40 text-amber-200',
+      link: 'text-amber-300 group-hover:text-amber-200',
+    },
+    sky: {
+      card: 'border-stone-800 hover:border-sky-500 hover:bg-sky-500/5',
+      icon: 'text-sky-400',
+      badge: 'border-sky-700/60 bg-sky-950/40 text-sky-200',
+      link: 'text-sky-300 group-hover:text-sky-200',
+    },
+    emerald: {
+      card: 'border-stone-800 hover:border-emerald-500 hover:bg-emerald-500/5',
+      icon: 'text-emerald-400',
+      badge: 'border-emerald-700/60 bg-emerald-950/40 text-emerald-200',
+      link: 'text-emerald-300 group-hover:text-emerald-200',
+    },
+    violet: {
+      card: 'border-stone-800 hover:border-violet-500 hover:bg-violet-500/5',
+      icon: 'text-violet-400',
+      badge: 'border-violet-700/60 bg-violet-950/40 text-violet-200',
+      link: 'text-violet-300 group-hover:text-violet-200',
+    },
+    stone: {
+      card: 'border-stone-800 hover:border-stone-600 hover:bg-stone-800/30',
+      icon: 'text-stone-400',
+      badge: 'border-stone-700 bg-stone-950 text-stone-300',
+      link: 'text-stone-300 group-hover:text-stone-100',
+    },
+  };
+  return classes[tone];
+}
+
+function FilingResearchWorkbench({
+  ticker,
+  company,
+  filings,
+}: {
+  ticker: string;
+  company: CompanyInfo | null;
+  filings: FilingEntry[];
+}) {
+  const upperTicker = ticker.toUpperCase();
+  const research = useMemo(() => {
+    const peerGroups = selectFilingPeerGroups(upperTicker, company?.sicCode);
+    const primaryPeerGroup = peerGroups[0] || null;
+    const compareTickers = primaryPeerGroup
+      ? peerCompareTickers(upperTicker, primaryPeerGroup)
+      : [upperTicker];
+    const latestAnnual = findLatestFiling(filings, (filing) => ANNUAL_FORMS.has(filing.form));
+    const latestQuarterly = findLatestFiling(filings, (filing) => QUARTERLY_FORMS.has(filing.form));
+    const latestCurrent = findLatestFiling(filings, (filing) => CURRENT_FORMS.has(filing.form));
+    const sourceFeedUrl = submissionsFeedUrl(company?.cik);
+    const industry = classifyIndustry(company?.sicCode || '');
+
+    return {
+      peerGroups,
+      primaryPeerGroup,
+      compareTickers,
+      latestAnnual,
+      latestQuarterly,
+      latestCurrent,
+      sourceFeedUrl,
+      industry,
+    };
+  }, [company?.cik, company?.sicCode, filings, upperTicker]);
+
+  const primaryDisclosureHref = disclosureSearchHref(
+    'risk factors,liquidity,revenue recognition,material agreement',
+    upperTicker
+  );
+
+  const actions = [
+    {
+      key: 'analysis',
+      icon: BarChart3,
+      label: 'Financials',
+      title: 'Open XBRL analysis',
+      detail: research.latestAnnual
+        ? `Tie the filing trail to source-linked statement data from the latest ${research.latestAnnual.form}.`
+        : 'Tie the filing trail to source-linked statement data and ratios.',
+      href: `/analysis/${upperTicker}`,
+      badge: 'XBRL',
+      tone: 'amber' as const,
+    },
+    {
+      key: 'compare',
+      icon: GitCompare,
+      label: 'Peer Context',
+      title: research.primaryPeerGroup
+        ? `Compare ${research.primaryPeerGroup.label}`
+        : 'Open peer comparison',
+      detail: research.primaryPeerGroup
+        ? `Benchmark ${upperTicker} against ${research.compareTickers.join(', ')}.`
+        : `Start a comparison from ${upperTicker}, then add peers from the compare page.`,
+      href: `/compare/${research.compareTickers.join(',')}`,
+      badge: 'COMPARE',
+      tone: 'sky' as const,
+    },
+    {
+      key: 'disclosure',
+      icon: Search,
+      label: 'Narrative',
+      title: 'Search company disclosures',
+      detail: research.latestQuarterly
+        ? `Search recent SEC text around risks and operating language after the latest ${research.latestQuarterly.form}.`
+        : 'Search recent SEC text around risks, liquidity, revenue, and material events.',
+      href: primaryDisclosureHref,
+      badge: 'SEARCH',
+      tone: 'emerald' as const,
+    },
+    {
+      key: 'source-feed',
+      icon: ShieldCheck,
+      label: 'SEC Feed',
+      title: 'Open raw submissions feed',
+      detail: research.latestCurrent
+        ? `Verify the full SEC feed behind the latest ${research.latestCurrent.form} and filing history.`
+        : 'Verify the raw SEC submissions JSON behind this filing page.',
+      href: research.sourceFeedUrl,
+      badge: 'SOURCE',
+      tone: 'violet' as const,
+    },
+  ];
+
+  return (
+    <section className="mb-6 border-2 border-stone-800 bg-stone-950/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <GitCompare className="w-4 h-4 text-sky-400" />
+            <h2 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Filing Research Workbench
+            </h2>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Turn {company?.name || upperTicker} source filings into financial analysis, peer context, and focused SEC disclosure searches.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {industryLabel(research.industry)} context
+        </div>
+      </div>
+
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
+        <div>
+          <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Next research paths
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {actions.map((action) => (
+              <WorkbenchActionCard key={action.key} action={action} />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Focused disclosure searches
+          </div>
+          <div className="space-y-2">
+            {FILING_DISCLOSURE_THEMES.map((theme) => (
+              <a
+                key={`${upperTicker}-${theme.title}`}
+                href={disclosureSearchHref(theme.query, upperTicker)}
+                className="group block border border-stone-800 bg-stone-900/30 px-3 py-3 transition-colors hover:border-emerald-500 hover:bg-emerald-500/5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-black text-stone-100 group-hover:text-emerald-300 transition-colors">
+                      {theme.title}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
+                      {theme.detail}
+                    </p>
+                  </div>
+                  <Search className="w-3.5 h-3.5 shrink-0 text-stone-600 group-hover:text-emerald-300 transition-colors" />
+                </div>
+              </a>
+            ))}
+          </div>
+
+          {research.peerGroups.length > 1 && (
+            <div className="mt-3 border border-stone-800 bg-stone-900/20 px-3 py-3">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] font-bold text-stone-500">
+                Other peer routes
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {research.peerGroups.slice(1).map((group) => (
+                  <a
+                    key={`${upperTicker}-${group.id}`}
+                    href={`/compare/${peerCompareTickers(upperTicker, group).join(',')}`}
+                    className="border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400 transition-colors hover:border-sky-500 hover:text-sky-300"
+                  >
+                    {group.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="border-t border-stone-800 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
+        Links stay inside public SEC-backed workflows. Analysis and comparison pages cite XBRL source facts; disclosure searches open SEC archive results for verification.
+      </div>
+    </section>
+  );
+}
+
+function WorkbenchActionCard({
+  action,
+}: {
+  action: {
+    icon: LucideIcon;
+    label: string;
+    title: string;
+    detail: string;
+    href: string | null;
+    badge: string;
+    tone: WorkbenchTone;
+  };
+}) {
+  const toneClass = workbenchToneClass(action.tone);
+  const external = isExternalHref(action.href);
+  const Icon = action.icon;
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] font-black text-stone-500">
+            <Icon className={`w-3.5 h-3.5 ${toneClass.icon}`} />
+            {action.label}
+          </div>
+          <div className="mt-2 text-sm font-black leading-snug text-stone-100">
+            {action.title}
+          </div>
+        </div>
+        <span className={`shrink-0 border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${toneClass.badge}`}>
+          {action.badge}
+        </span>
+      </div>
+      <div className="mt-3 text-xs leading-relaxed text-stone-400">
+        {action.detail}
+      </div>
+      <div className={`mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-bold ${action.href ? toneClass.link : 'text-stone-600'}`}>
+        {action.href ? 'Open workflow' : 'Unavailable'}
+        {action.href && <ExternalLink className="w-3 h-3" />}
+      </div>
+    </>
+  );
+
+  if (!action.href) {
+    return (
+      <div className="border-2 border-stone-800 bg-stone-900/30 p-4 opacity-75">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={action.href}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noopener noreferrer' : undefined}
+      className={`group block min-h-[162px] border-2 bg-stone-900/30 p-4 transition-colors ${toneClass.card}`}
+    >
+      {content}
+    </a>
+  );
+}
+
 // ============================================================================
 // Main client component
 // ============================================================================
@@ -621,7 +984,8 @@ export default function FilingsClient({
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] uppercase tracking-widest text-stone-500">
             <span>CIK: {company.cik}</span>
-            {company.sic && <span>SIC: {company.sic}</span>}
+            {company.sicCode && <span>SIC: {company.sicCode}</span>}
+            {company.sic && <span>{company.sic}</span>}
             {company.exchanges !== 'N/A' && <span>Exchange: {company.exchanges}</span>}
             {company.fiscalYearEnd && <span>FY End: {company.fiscalYearEnd}</span>}
           </div>
@@ -629,6 +993,7 @@ export default function FilingsClient({
       )}
 
       <FilingPulsePanel filings={filings} cik={company?.cik} />
+      <FilingResearchWorkbench ticker={ticker} company={company} filings={filings} />
 
       {/* Multi-select filter row */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
