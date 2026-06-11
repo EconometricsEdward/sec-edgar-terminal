@@ -238,6 +238,22 @@ function indexFormPresetById(id) {
   return INDEX_FORM_PRESETS.find((preset) => preset.id === id) || INDEX_FORM_PRESETS[0];
 }
 
+function normalizeInitialMode(mode, { initialQuery, initialTickers }) {
+  const normalized = String(mode || '').trim().toLowerCase();
+  if (['companies', 'index', 'universe', 'market'].includes(normalized)) return normalized;
+  if (initialTickers) return 'companies';
+  if (initialQuery) return 'index';
+  return 'companies';
+}
+
+function normalizeInitialTickers(value) {
+  return parseTickers(String(value || '')).slice(0, 5).join(',');
+}
+
+function normalizeInitialMatchMode(value) {
+  return String(value || '').toLowerCase() === 'all' ? 'all' : 'any';
+}
+
 function playbookToneClasses(tone) {
   const classes = {
     rose: {
@@ -272,16 +288,31 @@ function playbookToneClasses(tone) {
   return classes[tone] || classes.sky;
 }
 
-export default function DisclosureScanner({ initialQuery = '', initialFocus = '', onScanComplete }) {
-  const [searchMode, setSearchMode] = useState(initialQuery ? 'index' : 'companies');
-  const [tickerInput, setTickerInput] = useState('');
+export default function DisclosureScanner({
+  initialQuery = '',
+  initialFocus = '',
+  initialTickers = '',
+  initialMode = '',
+  initialMatchMode = '',
+  onScanComplete,
+}) {
+  const normalizedInitialTickers = useMemo(() => normalizeInitialTickers(initialTickers), [initialTickers]);
+  const normalizedInitialMode = useMemo(
+    () => normalizeInitialMode(initialMode, {
+      initialQuery,
+      initialTickers: normalizedInitialTickers,
+    }),
+    [initialMode, initialQuery, normalizedInitialTickers],
+  );
+  const [searchMode, setSearchMode] = useState(normalizedInitialMode);
+  const [tickerInput, setTickerInput] = useState(normalizedInitialTickers);
   const [queryInput, setQueryInput] = useState(initialQuery);
   const [universeId, setUniverseId] = useState(DISCLOSURE_UNIVERSES[0]?.id || '');
   const [indexMonths, setIndexMonths] = useState(12);
   const [indexFormPresetId, setIndexFormPresetId] = useState('broad');
   const [indexLimit, setIndexLimit] = useState(50);
   const [indexFocusInput, setIndexFocusInput] = useState(initialFocus);
-  const [matchMode, setMatchMode] = useState('any');
+  const [matchMode, setMatchMode] = useState(normalizeInitialMatchMode(initialMatchMode));
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
   const tickerRef = useRef(null);

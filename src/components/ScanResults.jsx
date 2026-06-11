@@ -112,7 +112,8 @@ export default function ScanResults({ data, onRescan }) {
 function EdgarIndexResults({ data }) {
   const results = data.results || [];
   const terms = data.query?.terms || [];
-  const matchMode = data.query?.matchMode === 'all' ? 'All terms' : 'Any term';
+  const rawMatchMode = data.query?.matchMode === 'all' ? 'all' : 'any';
+  const matchMode = rawMatchMode === 'all' ? 'All terms' : 'Any term';
   const focusTerms = data.focus?.terms || [];
   const summary = data.summary || {};
   const topCompanies = summary.topCompanies || [];
@@ -262,6 +263,7 @@ function EdgarIndexResults({ data }) {
             analyzedHits={analyzedHits}
             summaryScope={summaryScope}
             terms={terms}
+            matchMode={rawMatchMode}
           />
         )}
 
@@ -316,8 +318,9 @@ function EdgarIndexResults({ data }) {
   );
 }
 
-function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope, terms }) {
+function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope, terms, matchMode }) {
   const maxFormHits = Math.max(...formMix.map((row) => row.hits || 0), 1);
+  const topTickers = collectPrimaryTickers(topCompanies, 5);
 
   return (
     <div className="border-t border-stone-800 p-4">
@@ -337,6 +340,16 @@ function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope, 
           SEC-index sourced
         </div>
       </div>
+
+      {topTickers.length > 0 && (
+        <EdgarIndexInvestigationPack
+          tickers={topTickers}
+          terms={terms}
+          matchMode={matchMode}
+          analyzedHits={analyzedHits}
+          summaryScope={summaryScope}
+        />
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.55fr)]">
         {topCompanies.length > 0 && (
@@ -370,6 +383,7 @@ function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope, 
                     key={company.cik || company.companyName}
                     company={company}
                     terms={terms}
+                    matchMode={matchMode}
                   />
                 ))}
               </tbody>
@@ -421,9 +435,101 @@ function EdgarIndexSummary({ topCompanies, formMix, analyzedHits, summaryScope, 
   );
 }
 
-function EdgarIndexCompanyRow({ company, terms }) {
+function EdgarIndexInvestigationPack({ tickers, terms, matchMode, analyzedHits, summaryScope }) {
+  const companyScanHref = buildCompanyScanHref(tickers, terms, matchMode);
+  const compareHref = buildCompareHref(tickers);
+  const firstTicker = tickers[0];
+  const focusedIndexHref = firstTicker ? buildIndexSearchHref(firstTicker, terms, matchMode) : null;
+
+  return (
+    <div className="mb-4 border-2 border-emerald-900/60 bg-emerald-950/20 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-400" />
+            <h5 className="text-xs font-black uppercase tracking-[0.22em] text-stone-200">
+              Investigation Pack
+            </h5>
+          </div>
+          <p className="mt-1 max-w-3xl text-[11px] leading-relaxed text-stone-500">
+            Built from the top ticker-bearing filers in {analyzedHits.toLocaleString()} {summaryScope}.
+            Use it to move from broad SEC index discovery into source excerpts and peer analysis.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {tickers.map((ticker) => (
+            <span
+              key={ticker}
+              className="border border-emerald-800/70 bg-stone-950/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-200"
+            >
+              {ticker}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        {companyScanHref && (
+          <InvestigationLink
+            icon={Search}
+            title="Scan top filers"
+            detail="Prefill company mode for paragraph-level excerpts from recent SEC filings."
+            href={companyScanHref}
+            tone="emerald"
+          />
+        )}
+        {compareHref && (
+          <InvestigationLink
+            icon={GitCompare}
+            title="Compare top filers"
+            detail="Open the peer comparison page for the companies surfaced by this search."
+            href={compareHref}
+            tone="amber"
+          />
+        )}
+        {focusedIndexHref && (
+          <InvestigationLink
+            icon={FileSearch}
+            title={`Focus ${firstTicker}`}
+            detail="Rerun EDGAR index discovery around the top filer while preserving the query."
+            href={focusedIndexHref}
+            tone="sky"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InvestigationLink({ icon: Icon, title, detail, href, tone }) {
+  const toneClass = {
+    amber: 'hover:border-amber-500 hover:bg-amber-500/5 hover:text-amber-200',
+    emerald: 'hover:border-emerald-500 hover:bg-emerald-500/5 hover:text-emerald-200',
+    sky: 'hover:border-sky-500 hover:bg-sky-500/5 hover:text-sky-200',
+  }[tone] || 'hover:border-stone-600 hover:bg-stone-800/40 hover:text-stone-100';
+
+  return (
+    <a
+      href={href}
+      className={`group block border border-stone-800 bg-stone-950/60 p-3 text-stone-300 transition-colors ${toneClass}`}
+    >
+      <div className="flex items-start gap-2">
+        <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stone-500 group-hover:text-current" />
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-stone-100 group-hover:text-current">
+            {title}
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-stone-500">{detail}</p>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function EdgarIndexCompanyRow({ company, terms, matchMode }) {
   const primaryTicker = getPrimaryTicker(company);
-  const disclosureHref = buildFocusedDisclosureHref(company, terms);
+  const disclosureHref = buildFocusedDisclosureHref(company, terms, matchMode);
+  const companyScanHref = primaryTicker ? buildCompanyScanHref([primaryTicker], terms, matchMode) : null;
   const formCount = Object.keys(company.forms || {}).length;
 
   return (
@@ -513,6 +619,14 @@ function EdgarIndexCompanyRow({ company, terms }) {
               </a>
             </>
           )}
+          {companyScanHref && (
+            <a
+              href={companyScanHref}
+              className="border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-stone-300 hover:border-emerald-500 hover:text-emerald-200"
+            >
+              Excerpts
+            </a>
+          )}
           {disclosureHref && (
             <a
               href={disclosureHref}
@@ -531,15 +645,48 @@ function getPrimaryTicker(company) {
   return (company.tickers || []).find(Boolean) || null;
 }
 
-function buildFocusedDisclosureHref(company, terms) {
+function collectPrimaryTickers(companies, max = 5) {
+  const seen = new Set();
+  const tickers = [];
+  for (const company of companies || []) {
+    const ticker = getPrimaryTicker(company);
+    if (!ticker || seen.has(ticker)) continue;
+    seen.add(ticker);
+    tickers.push(ticker);
+    if (tickers.length >= max) break;
+  }
+  return tickers;
+}
+
+function buildFocusedDisclosureHref(company, terms, matchMode = 'any') {
   if (!terms?.length) return null;
   const focus = getPrimaryTicker(company) || company.cik || company.companyName;
   if (!focus) return null;
-  const params = new URLSearchParams({
-    query: terms.join(', '),
-    focus,
-  });
+  return buildIndexSearchHref(focus, terms, matchMode);
+}
+
+function buildIndexSearchHref(focus, terms, matchMode = 'any') {
+  if (!focus || !terms?.length) return null;
+  const params = new URLSearchParams({ query: terms.join(', '), focus });
+  if (matchMode === 'all') params.set('match', 'all');
   return `/disclosures?${params.toString()}`;
+}
+
+function buildCompanyScanHref(tickers, terms, matchMode = 'any') {
+  const cleanTickers = (tickers || []).filter(Boolean).slice(0, 5);
+  if (!cleanTickers.length || !terms?.length) return null;
+  const params = new URLSearchParams({
+    mode: 'companies',
+    tickers: cleanTickers.join(','),
+    query: terms.join(', '),
+  });
+  if (matchMode === 'all') params.set('match', 'all');
+  return `/disclosures?${params.toString()}`;
+}
+
+function buildCompareHref(tickers) {
+  const cleanTickers = (tickers || []).filter(Boolean).slice(0, 5);
+  return cleanTickers.length >= 2 ? `/compare/${cleanTickers.join(',')}` : null;
 }
 
 function formatDateWindow(dateSpan) {

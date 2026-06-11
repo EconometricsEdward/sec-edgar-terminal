@@ -14,9 +14,15 @@ type AnyValue = any;
 export default function DisclosureSearchClient({
   initialQuery = '',
   initialFocus = '',
+  initialTickers = '',
+  initialMode = '',
+  initialMatchMode = '',
 }: {
   initialQuery?: string;
   initialFocus?: string;
+  initialTickers?: string;
+  initialMode?: string;
+  initialMatchMode?: string;
 }) {
   const [scanData, setScanData] = useState<AnyValue>(null);
 
@@ -71,7 +77,14 @@ export default function DisclosureSearchClient({
         </p>
       </div>
 
-      <DisclosureScanner initialQuery={initialQuery} initialFocus={initialFocus} onScanComplete={handleScanComplete} />
+      <DisclosureScanner
+        initialQuery={initialQuery}
+        initialFocus={initialFocus}
+        initialTickers={initialTickers}
+        initialMode={initialMode}
+        initialMatchMode={initialMatchMode}
+        onScanComplete={handleScanComplete}
+      />
 
       <div id="disclosure-results">
         {scanData && <ScanResults data={scanData} onRescan={handleRescan} />}

@@ -20,5 +20,17 @@ export default async function DisclosuresPage({ searchParams }: { searchParams: 
   const params = await searchParams;
   const initialQuery = firstParam(params.query) || firstParam(params.keywords);
   const initialFocus = firstParam(params.focus) || firstParam(params.ticker) || firstParam(params.cik) || firstParam(params.company);
-  return <DisclosureSearchClient initialQuery={initialQuery} initialFocus={initialFocus} />;
+  const initialTickers = firstParam(params.tickers);
+  const initialMode = firstParam(params.mode);
+  const initialMatchMode = firstParam(params.match) || firstParam(params.matchMode);
+
+  return (
+    <DisclosureSearchClient
+      initialQuery={initialQuery}
+      initialFocus={initialFocus}
+      initialTickers={initialTickers}
+      initialMode={initialMode}
+      initialMatchMode={initialMatchMode}
+    />
+  );
 }
