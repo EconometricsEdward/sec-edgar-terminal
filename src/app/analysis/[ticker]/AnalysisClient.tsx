@@ -18,6 +18,7 @@ import { TickerContext } from '../../../contexts/TickerContext';
 import { secDataUrl } from '../../../utils/secApi.js';
 import { checkIsFund } from '../../../utils/fundCheck.js';
 import { getItemsInfo } from '../../../utils/formItems.js';
+import { PEER_GROUPS } from '../../../utils/peerGroups.js';
 import {
   extractAnnualPeriods,
   extractQuarterlyPeriods,
@@ -293,6 +294,29 @@ const INDUSTRY_DISCLOSURE_RISKS: Record<string, DisclosureRiskPrompt[]> = {
     },
   ],
 };
+
+interface PeerGroupPreset {
+  id: string;
+  label: string;
+  description: string;
+  tickers: string[];
+}
+
+const INDUSTRY_PEER_GROUP_IDS: Record<string, string[]> = {
+  [INDUSTRY_GROUPS.BANKING]: ['big-banks', 'regional-banks', 'credit-cards'],
+  [INDUSTRY_GROUPS.INSURANCE]: ['insurance'],
+  [INDUSTRY_GROUPS.REIT]: ['insurance', 'big-banks'],
+  [INDUSTRY_GROUPS.OIL_GAS]: ['big-oil'],
+  [INDUSTRY_GROUPS.AIRLINES]: ['us-airlines'],
+  [INDUSTRY_GROUPS.TECH]: ['mega-tech', 'semiconductors', 'streaming'],
+  [INDUSTRY_GROUPS.RETAIL]: ['mega-retail'],
+  [INDUSTRY_GROUPS.PHARMA]: ['big-pharma'],
+  [INDUSTRY_GROUPS.MANUFACTURING]: ['ev-autos', 'semiconductors', 'big-oil'],
+  [INDUSTRY_GROUPS.UTILITIES]: ['big-oil', 'big-banks'],
+  [INDUSTRY_GROUPS.GENERAL]: ['mega-tech', 'big-banks', 'mega-retail'],
+};
+
+const PEER_GROUP_PRESETS = PEER_GROUPS as PeerGroupPreset[];
 
 // ============================================================================
 // Main client component
@@ -805,6 +829,11 @@ export default function AnalysisClient({
                   />
                   <FilingActivityPanel filings={filings} ticker={chartTicker} />
                   <DisclosureRiskRadar
+                    ticker={chartTicker}
+                    companyName={company?.name}
+                    sicCode={sicCode}
+                  />
+                  <PeerContextWorkbench
                     ticker={chartTicker}
                     companyName={company?.name}
                     sicCode={sicCode}
@@ -4083,6 +4112,160 @@ function DisclosureRiskRadar({
       </div>
     </div>
   );
+}
+
+function PeerContextWorkbench({
+  ticker,
+  companyName,
+  sicCode,
+}: {
+  ticker?: string;
+  companyName?: string;
+  sicCode?: string | number | null;
+}) {
+  const group = classifyIndustry(sicCode);
+  const peerGroups = useMemo(() => selectPeerContextGroups(group, ticker), [group, ticker]);
+  const disclosureThemes = useMemo(() => {
+    const industryPrompts = INDUSTRY_DISCLOSURE_RISKS[group] || INDUSTRY_DISCLOSURE_RISKS[INDUSTRY_GROUPS.GENERAL] || [];
+    return [...industryPrompts, ...BASE_DISCLOSURE_RISKS].slice(0, 4);
+  }, [group]);
+
+  if (!ticker || (!peerGroups.length && !disclosureThemes.length)) return null;
+
+  return (
+    <div className="mb-6 border-2 border-stone-800 bg-stone-950/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <GitCompare className="w-4 h-4 text-sky-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Peer Context Workbench
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Jump from {companyName || ticker} into source-linked peer comparisons and company-focused disclosure searches for the {industryLabel(group)} context.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          Compare / Search / Verify
+        </div>
+      </div>
+
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
+        <div>
+          <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Recommended Peer Sets
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {peerGroups.map((groupPreset) => {
+              const compareTickers = peerCompareTickers(ticker, groupPreset);
+              const includesTicker = groupPreset.tickers.some((peerTicker) => peerTicker.toUpperCase() === ticker.toUpperCase());
+              return (
+                <a
+                  key={groupPreset.id}
+                  href={`/compare/${compareTickers.join(',')}`}
+                  className="group block min-h-[158px] border-2 border-stone-800 bg-stone-900/30 p-4 transition-colors hover:border-sky-500 hover:bg-sky-500/5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-black tracking-wider text-stone-100 group-hover:text-sky-300 transition-colors">
+                        {groupPreset.label}
+                      </div>
+                      <p className="mt-2 text-xs leading-relaxed text-stone-400">
+                        {includesTicker
+                          ? 'Benchmark against the curated peer set that already includes this ticker.'
+                          : 'Benchmark this ticker against the closest curated peer set for its industry.'}
+                      </p>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0 text-stone-600 group-hover:text-sky-300 transition-colors" />
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-1">
+                    {compareTickers.map((peerTicker) => (
+                      <span
+                        key={`${groupPreset.id}-${peerTicker}`}
+                        className={`border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] ${
+                          peerTicker.toUpperCase() === ticker.toUpperCase()
+                            ? 'border-sky-500 bg-sky-500 text-stone-950 font-black'
+                            : 'border-stone-700 bg-stone-950/70 text-stone-400'
+                        }`}
+                      >
+                        {peerTicker}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3 text-[10px] uppercase tracking-[0.14em] font-bold text-sky-300 group-hover:text-sky-200">
+                    Open source-linked comparison
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Peer Research Searches
+          </div>
+          <div className="space-y-2">
+            {disclosureThemes.map((theme) => (
+              <a
+                key={`${ticker}-${theme.title}-peer-workbench`}
+                href={disclosureSearchHref(theme.query, ticker)}
+                className="group block border border-stone-800 bg-stone-900/30 px-3 py-3 transition-colors hover:border-emerald-500 hover:bg-emerald-500/5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-black text-stone-100 group-hover:text-emerald-300 transition-colors">
+                      {theme.title}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
+                      {theme.detail}
+                    </p>
+                  </div>
+                  <Search className="w-3.5 h-3.5 shrink-0 text-stone-600 group-hover:text-emerald-300 transition-colors" />
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-stone-800 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
+        Peer comparison pages use SEC XBRL Company Facts with linked source tags. Disclosure searches return SEC archive links and should be read as source discovery, not conclusions.
+      </div>
+    </div>
+  );
+}
+
+function selectPeerContextGroups(group: string, ticker?: string): PeerGroupPreset[] {
+  const upperTicker = ticker?.toUpperCase();
+  const byId = new Map(PEER_GROUP_PRESETS.map((preset) => [preset.id, preset]));
+  const selected: PeerGroupPreset[] = [];
+
+  const add = (preset?: PeerGroupPreset) => {
+    if (!preset || selected.some((item) => item.id === preset.id)) return;
+    selected.push(preset);
+  };
+
+  if (upperTicker) {
+    PEER_GROUP_PRESETS
+      .filter((preset) => preset.tickers.some((peerTicker) => peerTicker.toUpperCase() === upperTicker))
+      .forEach(add);
+  }
+
+  (INDUSTRY_PEER_GROUP_IDS[group] || INDUSTRY_PEER_GROUP_IDS[INDUSTRY_GROUPS.GENERAL] || [])
+    .map((id) => byId.get(id))
+    .forEach(add);
+
+  return selected.slice(0, 4);
+}
+
+function peerCompareTickers(ticker: string, groupPreset: PeerGroupPreset) {
+  const upperTicker = ticker.toUpperCase();
+  const tickers = groupPreset.tickers.map((peerTicker) => peerTicker.toUpperCase());
+  if (tickers.includes(upperTicker)) return tickers.slice(0, 5);
+  return [upperTicker, ...tickers.filter((peerTicker) => peerTicker !== upperTicker)].slice(0, 5);
 }
 
 function MaterialEventRadar({
