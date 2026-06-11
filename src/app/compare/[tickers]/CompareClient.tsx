@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import {
   GitCompare, X, Plus, Loader2, AlertCircle, Search, Link as LinkIcon,
   AlertTriangle, Download, Sparkles, TrendingUp, Percent, BarChart3,
-  Trophy, LayoutGrid, ExternalLink,
+  Trophy, LayoutGrid, ExternalLink, FileSearch, FileText, ShieldCheck,
+  type LucideIcon,
 } from 'lucide-react';
 import { ComparisonChart as ComparisonChartImpl } from '../../../components/MetricChart.jsx';
 import { TickerContext } from '../../../contexts/TickerContext';
@@ -56,8 +57,297 @@ interface CompanyState {
   error: string | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyValue = any;
+
+function PeerResearchWorkbench({
+  companies,
+  spreadPrompts,
+}: {
+  companies: CompanyState[];
+  spreadPrompts: AnyValue[];
+}) {
+  const loadedCompanies = companies.filter((c) => c.facts && !c.error);
+  const tickers = loadedCompanies.map((c) => c.ticker);
+  const broadDisclosureHref = disclosureSearchHref(
+    'risk factors, competition, demand, pricing, margin pressure',
+    tickers
+  );
+
+  return (
+    <section className="mb-8 border-2 border-stone-800 bg-stone-950/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <FileSearch className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Peer Research Workbench
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Turn source-linked peer spreads into SEC filing trails, company analysis pages, and focused disclosure searches.
+          </p>
+        </div>
+        <a
+          href={broadDisclosureHref}
+          className="inline-flex items-center gap-1.5 border border-emerald-800/70 bg-emerald-950/30 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.16em] text-emerald-200 transition-colors hover:border-emerald-500 hover:text-emerald-100"
+        >
+          Search peer set
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
+        <div>
+          <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Explain the largest spreads
+          </div>
+          {spreadPrompts.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {spreadPrompts.map((prompt: AnyValue) => (
+                <SpreadPromptCard
+                  key={`${prompt.metric}-${prompt.high.ticker}-${prompt.low.ticker}`}
+                  prompt={prompt}
+                  tickers={tickers}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="border border-dashed border-stone-800 px-4 py-8 text-center text-xs text-stone-500">
+              No comparable source-linked snapshot spreads are available for this peer set yet.
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
+            Peer source trails
+          </div>
+          <div className="space-y-2">
+            {loadedCompanies.map((company) => (
+              <PeerSourceTrail key={company.ticker} company={company} />
+            ))}
+          </div>
+
+          <div className="mt-3 grid gap-2">
+            <WorkbenchLink
+              icon={GitCompare}
+              title="Keep comparing this set"
+              detail={`Return to this peer set: ${tickers.join(', ')}.`}
+              href={`/compare/${tickers.join(',')}`}
+              tone="sky"
+            />
+            <WorkbenchLink
+              icon={ShieldCheck}
+              title="Audit the public source trail"
+              detail="Open each company's raw Company Facts JSON from data.sec.gov in the source trail above."
+              href="https://www.sec.gov/edgar/sec-api-documentation"
+              tone="stone"
+              external
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-stone-800 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
+        Spread prompts are generated from the source-linked snapshot table above. They are research starting points, not conclusions; verify each metric through the linked XBRL source or SEC filing.
+      </div>
+    </section>
+  );
+}
+
+function SpreadPromptCard({
+  prompt,
+  tickers,
+}: {
+  prompt: AnyValue;
+  tickers: string[];
+}) {
+  const href = disclosureSearchHref(prompt.query, tickers);
+  const spreadLabel = prompt.format === 'percent'
+    ? `${Math.abs(prompt.diff).toFixed(1)} pts`
+    : formatSnapshotValue(Math.abs(prompt.diff), prompt.format);
+
+  return (
+    <div className="border-2 border-stone-800 bg-stone-900/30 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-stone-500">
+            {prompt.metric}
+          </div>
+          <div className="mt-2 text-sm font-black leading-snug text-stone-100">
+            {prompt.high.ticker} vs {prompt.low.ticker}
+          </div>
+        </div>
+        <span className="shrink-0 border border-amber-700/60 bg-amber-950/40 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-amber-200">
+          {spreadLabel}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <SpreadValue label="High" value={prompt.high} format={prompt.format} />
+        <SpreadValue label="Low" value={prompt.low} format={prompt.format} />
+      </div>
+
+      <p className="mt-3 text-xs leading-relaxed text-stone-400">
+        {prompt.detail}
+      </p>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <SourcePills label="High" sources={prompt.highSources} />
+        <SourcePills label="Low" sources={prompt.lowSources} />
+      </div>
+
+      <a
+        href={href}
+        className="mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-bold text-emerald-300 transition-colors hover:text-emerald-200"
+      >
+        Search filings for explanation
+        <ExternalLink className="w-3 h-3" />
+      </a>
+    </div>
+  );
+}
+
+function SpreadValue({
+  label,
+  value,
+  format,
+}: {
+  label: string;
+  value: AnyValue;
+  format: string;
+}) {
+  return (
+    <div className="border border-stone-800 bg-stone-950/70 px-3 py-2">
+      <div className="text-[9px] uppercase tracking-[0.16em] text-stone-600 font-bold">
+        {label} / {value.ticker}
+      </div>
+      <div className="mt-1 text-sm font-black tabular-nums text-stone-100">
+        {formatSnapshotValue(value.value, format)}
+      </div>
+    </div>
+  );
+}
+
+function SourcePills({
+  label,
+  sources,
+}: {
+  label: string;
+  sources: AnyValue[];
+}) {
+  if (!sources.length) {
+    return (
+      <span className="border border-stone-800 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-stone-600">
+        {label}: no source link
+      </span>
+    );
+  }
+
+  return (
+    <>
+      {sources.slice(0, 2).map((item: AnyValue, index: number) => (
+        <a
+          key={`${label}-${item.label}-${index}`}
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 border border-stone-700 bg-stone-950/70 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-stone-400 transition-colors hover:border-amber-500 hover:text-amber-300"
+          title={`Open ${label.toLowerCase()} source: ${item.label}`}
+        >
+          {label}: {item.label}
+          <ExternalLink className="w-2.5 h-2.5" />
+        </a>
+      ))}
+    </>
+  );
+}
+
+function PeerSourceTrail({ company }: { company: CompanyState }) {
+  return (
+    <div className="border border-stone-800 bg-stone-900/30 px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-black tracking-wider text-stone-100">
+            {company.ticker}
+          </div>
+          <div className="mt-0.5 truncate text-[11px] text-stone-500">
+            {company.name}
+          </div>
+        </div>
+        <span className="shrink-0 text-[9px] uppercase tracking-[0.16em] text-stone-600">
+          CIK {company.cik}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <a
+          href={`/analysis/${company.ticker}`}
+          className="inline-flex items-center gap-1 border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-stone-400 transition-colors hover:border-amber-500 hover:text-amber-300"
+        >
+          <BarChart3 className="w-3 h-3" />
+          Analysis
+        </a>
+        <a
+          href={`/filings/${company.ticker}`}
+          className="inline-flex items-center gap-1 border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-stone-400 transition-colors hover:border-sky-500 hover:text-sky-300"
+        >
+          <FileText className="w-3 h-3" />
+          Filings
+        </a>
+        <a
+          href={companyFactsUrl(company.cik)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-stone-400 transition-colors hover:border-emerald-500 hover:text-emerald-300"
+        >
+          <ShieldCheck className="w-3 h-3" />
+          Facts JSON
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function WorkbenchLink({
+  icon: Icon,
+  title,
+  detail,
+  href,
+  tone,
+  external = false,
+}: {
+  icon: LucideIcon;
+  title: string;
+  detail: string;
+  href: string;
+  tone: 'sky' | 'stone';
+  external?: boolean;
+}) {
+  const toneClass = tone === 'sky'
+    ? 'hover:border-sky-500 hover:bg-sky-500/5 hover:text-sky-300'
+    : 'hover:border-stone-600 hover:bg-stone-800/30 hover:text-stone-100';
+
+  return (
+    <a
+      href={href}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noopener noreferrer' : undefined}
+      className={`group block border border-stone-800 bg-stone-900/30 px-3 py-3 text-stone-300 transition-colors ${toneClass}`}
+    >
+      <div className="flex items-start gap-2">
+        <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stone-500 group-hover:text-current" />
+        <div>
+          <div className="text-xs font-black text-stone-100 group-hover:text-current">
+            {title}
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
+            {detail}
+          </p>
+        </div>
+      </div>
+    </a>
+  );
+}
 
 // ============================================================================
 // Constants — preserved from original ComparePage.jsx
@@ -143,10 +433,116 @@ const NORMALIZATION_MODES = [
 
 const MAX_COMPANIES = 5;
 
+const PEER_SPREAD_QUERIES: Record<string, { query: string; detail: string }> = {
+  revenue: {
+    query: 'demand, pricing, customer concentration, competition',
+    detail: 'Look for demand, pricing, customer concentration, and competitive-position language.',
+  },
+  netIncome: {
+    query: 'margin pressure, cost reduction, restructuring, operating expenses',
+    detail: 'Check margin pressure, cost actions, and operating-expense disclosures.',
+  },
+  operatingIncome: {
+    query: 'margin pressure, cost reduction, restructuring, operating expenses',
+    detail: 'Check operating leverage, cost actions, and margin pressure disclosures.',
+  },
+  operatingCashFlow: {
+    query: 'working capital, cash flow, inventory, collections',
+    detail: 'Look for working-capital, inventory, cash collection, and cash-flow explanations.',
+  },
+  roe: {
+    query: 'capital allocation, share repurchase, debt, leverage',
+    detail: 'Check capital structure, buyback, leverage, and profitability context.',
+  },
+  roa: {
+    query: 'asset impairment, utilization, capital expenditures, productivity',
+    detail: 'Look for asset utilization, impairment, capex, and productivity disclosures.',
+  },
+  netMargin: {
+    query: 'pricing, gross margin, operating expenses, inflation',
+    detail: 'Search pricing, cost inflation, gross margin, and expense language.',
+  },
+  operatingMargin: {
+    query: 'pricing, operating expenses, cost reduction, inflation',
+    detail: 'Search pricing, operating-expense, cost-reduction, and inflation language.',
+  },
+};
+
+const DEFAULT_PEER_SPREAD_QUERY = {
+  query: 'risk factors, competition, demand, pricing',
+  detail: 'Search broad risk, demand, pricing, and competition language across the peer set.',
+};
+
 function safeDiv(a: number | null | undefined, b: number | null | undefined): number | null {
   if (a == null || b == null || b === 0 || !Number.isFinite(a) || !Number.isFinite(b)) return null;
   const r = a / b;
   return Number.isFinite(r) ? r : null;
+}
+
+function disclosureSearchHref(query: string, tickers: string[]): string {
+  const params = new URLSearchParams({
+    query,
+    focus: tickers.slice(0, MAX_COMPANIES).join(','),
+  });
+  return `/disclosures?${params.toString()}`;
+}
+
+function companyFactsUrl(cik: string): string {
+  return `https://data.sec.gov/api/xbrl/companyfacts/CIK${String(cik).padStart(10, '0')}.json`;
+}
+
+function sourceLinksForSnapshotValue(value: AnyValue) {
+  return ((value?.sources && value.sources.length > 0) ? value.sources : value?.source ? [value.source] : [])
+    .filter((source: AnyValue) => source?.tag)
+    .map((source: AnyValue, index: number) => ({
+      source,
+      label: source.label || source.tag || `Input ${index + 1}`,
+      url: value?.cik ? buildSourceUrl(value.cik, source) : null,
+    }))
+    .filter((item: AnyValue) => item.url);
+}
+
+function peerSpreadQueryForMetric(metricKey: string) {
+  return PEER_SPREAD_QUERIES[metricKey] || DEFAULT_PEER_SPREAD_QUERY;
+}
+
+function buildPeerSpreadPrompts(snapshotRows: AnyValue[]) {
+  return snapshotRows
+    .map((row: AnyValue) => {
+      if (row.higherIsBetter === null) return null;
+      const numericValues = row.values
+        .filter((value: AnyValue) => value.value != null && Number.isFinite(value.value));
+      if (numericValues.length < 2) return null;
+
+      const sorted = [...numericValues].sort((a: AnyValue, b: AnyValue) => b.value - a.value);
+      const high = sorted[0];
+      const low = sorted[sorted.length - 1];
+      const diff = high.value - low.value;
+      if (!Number.isFinite(diff) || diff === 0) return null;
+
+      const denominator = Math.abs(low.value) > 0 ? Math.abs(low.value) : Math.abs(high.value);
+      const spreadPct = denominator > 0 ? Math.abs(diff / denominator) * 100 : null;
+      const score = row.format === 'percent' ? Math.abs(diff) : spreadPct || Math.abs(diff);
+      const disclosure = peerSpreadQueryForMetric(row.metricKey);
+
+      return {
+        metric: row.metric,
+        metricKey: row.metricKey,
+        format: row.format,
+        high,
+        low,
+        diff,
+        spreadPct,
+        score,
+        query: disclosure.query,
+        detail: disclosure.detail,
+        highSources: sourceLinksForSnapshotValue(high),
+        lowSources: sourceLinksForSnapshotValue(low),
+      };
+    })
+    .filter(Boolean)
+    .sort((a: AnyValue, b: AnyValue) => b.score - a.score)
+    .slice(0, 4);
 }
 
 // ============================================================================
@@ -576,6 +972,11 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
     });
   }, [companies]);
 
+  const peerSpreadPrompts = useMemo(
+    () => buildPeerSpreadPrompts(snapshotData),
+    [snapshotData]
+  );
+
   const buildGrowthGroups = useCallback((field: '5y' | '10y') => {
     const loadedCompanies = companies.filter((c) => c.facts && !c.error);
     return GROWTH_BAR_METRICS.map((m) => {
@@ -790,6 +1191,13 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
 
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
         <SnapshotTable data={snapshotData} companies={companies} />
+      )}
+
+      {allLoaded && companies.filter((c) => c.facts).length > 1 && (
+        <PeerResearchWorkbench
+          companies={companies}
+          spreadPrompts={peerSpreadPrompts}
+        />
       )}
 
       {allLoaded && companies.filter((c) => c.facts).length > 0 && (
