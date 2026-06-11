@@ -820,6 +820,14 @@ export default function AnalysisClient({
                     filings={filings}
                     ticker={chartTicker}
                   />
+                  <IndustryResearchPlaybook
+                    facts={facts}
+                    periods={annualPeriods}
+                    sicCode={sicCode}
+                    cik={company?.cik}
+                    ticker={chartTicker}
+                    companyName={company?.name}
+                  />
                   <DataCoveragePanel
                     statementRows={coverageStatementRows}
                     ratioRows={coverageRatioRows}
@@ -5068,6 +5076,511 @@ interface SnapshotTile {
   detail: string;
   tone: 'good' | 'warn' | 'bad' | 'neutral';
   sources: SnapshotSource[];
+}
+
+interface IndustryPlaybookCard {
+  key: string;
+  label: string;
+  value: number;
+  format: string;
+  question: string;
+  detail: string;
+  query: string;
+  tone: 'good' | 'warn' | 'bad' | 'neutral';
+  sources: SnapshotSource[];
+}
+
+type IndustryPlaybookDraftCard = Omit<IndustryPlaybookCard, 'value' | 'sources'> & {
+  value: number | null;
+  sources: SnapshotSource[];
+};
+
+function IndustryResearchPlaybook({
+  facts,
+  periods,
+  sicCode,
+  cik,
+  ticker,
+  companyName,
+}: {
+  facts: any;
+  periods: any[];
+  sicCode?: string | number | null;
+  cik?: string;
+  ticker?: string;
+  companyName?: string;
+}) {
+  const { cards, latestPeriod, group } = useMemo(() => {
+    const latestPeriod = periods[0];
+    const priorPeriod = periods[1];
+    const group = classifyIndustry(sicCode);
+    if (!facts || !latestPeriod) {
+      return { cards: [] as IndustryPlaybookCard[], latestPeriod, group };
+    }
+
+    const metric = (key: string, label: string, format = 'currency', period = latestPeriod): MetricPoint | null => {
+      const row = buildMetricRow(facts, key, label, [period], format, group as any);
+      return row.values?.[0] || null;
+    };
+    const value = (point: MetricPoint | null) => (
+      typeof point?.value === 'number' && Number.isFinite(point.value) ? point.value : null
+    );
+    const magnitude = (point: MetricPoint | null) => {
+      const v = value(point);
+      return v == null ? null : Math.abs(v);
+    };
+    const pct = (numerator: number | null, denominator: number | null) => (
+      numerator != null && denominator != null && denominator !== 0 ? (numerator / denominator) * 100 : null
+    );
+    const ratio = (numerator: number | null, denominator: number | null) => (
+      numerator != null && denominator != null && denominator !== 0 ? numerator / denominator : null
+    );
+    const pctChange = (current: number | null, prior: number | null) => (
+      current != null && prior != null && prior !== 0 ? ((current - prior) / Math.abs(prior)) * 100 : null
+    );
+    const sources = (items: Array<[string, MetricPoint | null]>) => {
+      const seen = new Set<string>();
+      return items
+        .map(([label, point]) => ({ label, point }))
+        .filter((item) => {
+          if (!item.point?.source?.tag) return false;
+          const key = `${item.label}:${item.point.source.tag}:${item.point.source.end}:${item.point.source.accession || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }) as SnapshotSource[];
+    };
+
+    const rows = {
+      revenue: metric('revenue', 'Revenue'),
+      priorRevenue: priorPeriod ? metric('revenue', 'Revenue', 'currency', priorPeriod) : null,
+      grossProfit: metric('grossProfit', 'Gross Profit'),
+      costOfRevenue: metric('costOfRevenue', 'Cost of Revenue'),
+      operatingIncome: metric('operatingIncome', 'Operating Income'),
+      netIncome: metric('netIncome', 'Net Income'),
+      operatingCashFlow: metric('operatingCashFlow', 'Operating Cash Flow'),
+      capex: metric('capex', 'Capital Expenditures'),
+      rnd: metric('rnd', 'Research and Development'),
+      inventory: metric('inventory', 'Inventory'),
+      cash: metric('cash', 'Cash and Equivalents'),
+      shortTermInvestments: metric('shortTermInvestments', 'Short-term Investments'),
+      totalAssets: metric('totalAssets', 'Total Assets'),
+      totalLiabilities: metric('totalLiabilities', 'Total Liabilities'),
+      stockholdersEquity: metric('stockholdersEquity', "Stockholders' Equity"),
+      shortTermDebt: metric('shortTermDebt', 'Short-term Debt'),
+      longTermDebt: metric('longTermDebt', 'Long-term Debt'),
+      loans: metric('loans', 'Loans'),
+      deposits: metric('deposits', 'Deposits'),
+      provisionForLoanLoss: metric('provisionForLoanLoss', 'Provision for Loan Losses'),
+      premiumsEarned: metric('premiumsEarned', 'Premiums Earned'),
+      lossesIncurred: metric('lossesIncurred', 'Losses Incurred'),
+      underwritingExpenses: metric('underwritingExpenses', 'Underwriting Expenses'),
+      investmentIncome: metric('investmentIncome', 'Investment Income'),
+    };
+
+    const revenue = value(rows.revenue);
+    const priorRevenue = value(rows.priorRevenue);
+    const grossProfit = value(rows.grossProfit);
+    const costOfRevenue = magnitude(rows.costOfRevenue);
+    const operatingIncome = value(rows.operatingIncome);
+    const operatingCashFlow = value(rows.operatingCashFlow);
+    const capex = magnitude(rows.capex);
+    const rnd = magnitude(rows.rnd);
+    const inventory = value(rows.inventory);
+    const cash = value(rows.cash);
+    const shortTermInvestments = value(rows.shortTermInvestments);
+    const totalAssets = value(rows.totalAssets);
+    const totalLiabilities = value(rows.totalLiabilities);
+    const equity = value(rows.stockholdersEquity);
+    const loans = value(rows.loans);
+    const deposits = value(rows.deposits);
+    const provision = magnitude(rows.provisionForLoanLoss);
+    const premiums = value(rows.premiumsEarned);
+    const losses = magnitude(rows.lossesIncurred);
+    const underwritingExpenses = magnitude(rows.underwritingExpenses);
+    const investmentIncome = value(rows.investmentIncome);
+    const debt = (value(rows.shortTermDebt) != null || value(rows.longTermDebt) != null)
+      ? (value(rows.shortTermDebt) || 0) + (value(rows.longTermDebt) || 0)
+      : null;
+    const fcf = operatingCashFlow != null && capex != null ? operatingCashFlow - capex : null;
+    const cashAndInvestments = cash != null || shortTermInvestments != null ? (cash || 0) + (shortTermInvestments || 0) : null;
+    const revenueGrowth = pctChange(revenue, priorRevenue);
+    const grossMargin = pct(grossProfit, revenue);
+    const operatingMargin = pct(operatingIncome, revenue);
+    const fcfMargin = pct(fcf, revenue);
+    const rndIntensity = pct(rnd, revenue);
+    const capexRevenue = pct(capex, revenue);
+    const liabilitiesAssets = pct(totalLiabilities, totalAssets);
+    const debtEquity = pct(debt, equity);
+    const equityAssets = pct(equity, totalAssets);
+    const inventoryRevenue = pct(inventory, revenue);
+    const inventoryTurnover = ratio(costOfRevenue, inventory);
+    const loansDeposits = pct(loans, deposits);
+    const provisionLoans = pct(provision, loans);
+    const combinedRatio = pct(
+      losses != null || underwritingExpenses != null ? (losses || 0) + (underwritingExpenses || 0) : null,
+      premiums,
+    );
+    const investmentBase = shortTermInvestments || totalAssets;
+    const investmentYield = pct(investmentIncome, investmentBase);
+    const cfoCapex = ratio(operatingCashFlow, capex);
+    const cashAssets = pct(cashAndInvestments, totalAssets);
+    const ruleOf40 = revenueGrowth != null && fcfMargin != null ? revenueGrowth + fcfMargin : null;
+    const cards: IndustryPlaybookCard[] = [];
+    const addCard = (card: IndustryPlaybookDraftCard) => {
+      if (card.value == null || !Number.isFinite(card.value)) return;
+      const cardSources = card.sources.filter((source) => source.point?.source?.tag);
+      if (!cardSources.length) return;
+      cards.push({ ...card, value: card.value, sources: cardSources });
+    };
+
+    const commonCards = () => {
+      addCard({
+        key: 'operating-margin',
+        label: 'Operating Margin',
+        value: operatingMargin,
+        format: 'percent',
+        question: 'Is profitability widening or compressing?',
+        detail: 'Operating income divided by revenue for the latest annual period.',
+        query: 'pricing, operating expenses, margin pressure, inflation',
+        tone: (operatingMargin || 0) >= 20 ? 'good' : (operatingMargin || 0) >= 8 ? 'warn' : 'bad',
+        sources: sources([['Operating Income', rows.operatingIncome], ['Revenue', rows.revenue]]),
+      });
+      addCard({
+        key: 'fcf-margin',
+        label: 'FCF Margin',
+        value: fcfMargin,
+        format: 'percent',
+        question: 'Does earnings power convert into cash?',
+        detail: `Free cash flow: ${formatValue(fcf, 'currency')}.`,
+        query: 'cash flow, capital expenditures, working capital, liquidity',
+        tone: (fcfMargin || 0) >= 15 ? 'good' : (fcfMargin || 0) >= 0 ? 'warn' : 'bad',
+        sources: sources([['Operating Cash Flow', rows.operatingCashFlow], ['Capex', rows.capex], ['Revenue', rows.revenue]]),
+      });
+      addCard({
+        key: 'liabilities-assets',
+        label: 'Liabilities / Assets',
+        value: liabilitiesAssets,
+        format: 'percent',
+        question: 'How leveraged is the reported asset base?',
+        detail: 'Total liabilities divided by total assets.',
+        query: 'debt, liquidity, covenant, capital resources',
+        tone: (liabilitiesAssets || 0) <= 60 ? 'good' : (liabilitiesAssets || 0) <= 80 ? 'warn' : 'bad',
+        sources: sources([['Liabilities', rows.totalLiabilities], ['Assets', rows.totalAssets]]),
+      });
+    };
+
+    switch (group) {
+      case INDUSTRY_GROUPS.BANKING:
+        addCard({
+          key: 'equity-assets',
+          label: 'Equity / Assets',
+          value: equityAssets,
+          format: 'percent',
+          question: 'How much capital cushions the balance sheet?',
+          detail: 'Stockholders equity divided by total assets.',
+          query: 'capital ratios, credit losses, allowance, regulatory capital',
+          tone: (equityAssets || 0) >= 9 ? 'good' : (equityAssets || 0) >= 6 ? 'warn' : 'bad',
+          sources: sources([["Stockholders' Equity", rows.stockholdersEquity], ['Assets', rows.totalAssets]]),
+        });
+        addCard({
+          key: 'loans-deposits',
+          label: 'Loans / Deposits',
+          value: loansDeposits,
+          format: 'percent',
+          question: 'Is loan growth leaning heavily on deposit funding?',
+          detail: 'Reported loans divided by reported deposits.',
+          query: 'deposits, uninsured deposits, funding, loan growth',
+          tone: (loansDeposits || 0) <= 90 ? 'good' : (loansDeposits || 0) <= 110 ? 'warn' : 'bad',
+          sources: sources([['Loans', rows.loans], ['Deposits', rows.deposits]]),
+        });
+        addCard({
+          key: 'provision-loans',
+          label: 'Provision / Loans',
+          value: provisionLoans,
+          format: 'percent',
+          question: 'Are credit costs material relative to loans?',
+          detail: 'Loan-loss provision divided by reported loans.',
+          query: 'nonperforming loans, allowance for credit losses, charge-offs',
+          tone: (provisionLoans || 0) <= 1 ? 'good' : (provisionLoans || 0) <= 2.5 ? 'warn' : 'bad',
+          sources: sources([['Provision', rows.provisionForLoanLoss], ['Loans', rows.loans]]),
+        });
+        break;
+      case INDUSTRY_GROUPS.INSURANCE:
+        addCard({
+          key: 'combined-ratio',
+          label: 'Combined Ratio',
+          value: combinedRatio,
+          format: 'percent',
+          question: 'Is underwriting profitable before investment income?',
+          detail: 'Losses plus underwriting expenses divided by earned premiums.',
+          query: 'loss ratio, combined ratio, catastrophe losses, reserve development',
+          tone: (combinedRatio || 0) < 95 ? 'good' : (combinedRatio || 0) <= 105 ? 'warn' : 'bad',
+          sources: sources([['Losses', rows.lossesIncurred], ['Expenses', rows.underwritingExpenses], ['Premiums', rows.premiumsEarned]]),
+        });
+        addCard({
+          key: 'investment-yield',
+          label: 'Investment Yield',
+          value: investmentYield,
+          format: 'percent',
+          question: 'How much yield is the portfolio producing?',
+          detail: 'Net investment income divided by short-term investments where available, otherwise assets.',
+          query: 'investment portfolio, unrealized losses, credit impairments',
+          tone: (investmentYield || 0) >= 4 ? 'good' : (investmentYield || 0) >= 2 ? 'warn' : 'neutral',
+          sources: sources([['Investment Income', rows.investmentIncome], ['Investment Base', rows.shortTermInvestments || rows.totalAssets]]),
+        });
+        addCard({
+          key: 'equity-assets',
+          label: 'Equity / Assets',
+          value: equityAssets,
+          format: 'percent',
+          question: 'How much balance-sheet cushion backs policy risk?',
+          detail: 'Stockholders equity divided by total assets.',
+          query: 'capital adequacy, reinsurance, reserve adequacy',
+          tone: (equityAssets || 0) >= 15 ? 'good' : (equityAssets || 0) >= 8 ? 'warn' : 'bad',
+          sources: sources([["Stockholders' Equity", rows.stockholdersEquity], ['Assets', rows.totalAssets]]),
+        });
+        break;
+      case INDUSTRY_GROUPS.TECH:
+        addCard({
+          key: 'rnd-intensity',
+          label: 'R&D / Revenue',
+          value: rndIntensity,
+          format: 'percent',
+          question: 'How much revenue is reinvested into product and platform?',
+          detail: 'Research and development expense divided by revenue.',
+          query: 'research and development, artificial intelligence, platform investment',
+          tone: (rndIntensity || 0) >= 8 ? 'good' : (rndIntensity || 0) >= 3 ? 'neutral' : 'warn',
+          sources: sources([['R&D', rows.rnd], ['Revenue', rows.revenue]]),
+        });
+        addCard({
+          key: 'rule-of-40',
+          label: 'Growth + FCF Margin',
+          value: ruleOf40,
+          format: 'percent',
+          question: 'Is growth balanced with free-cash-flow discipline?',
+          detail: `Revenue growth: ${formatValue(revenueGrowth, 'percent')}; FCF margin: ${formatValue(fcfMargin, 'percent')}.`,
+          query: 'growth, revenue, cash flow, capital expenditures',
+          tone: (ruleOf40 || 0) >= 40 ? 'good' : (ruleOf40 || 0) >= 20 ? 'warn' : 'bad',
+          sources: sources([['Revenue', rows.revenue], ['Prior Revenue', rows.priorRevenue], ['CFO', rows.operatingCashFlow], ['Capex', rows.capex]]),
+        });
+        commonCards();
+        break;
+      case INDUSTRY_GROUPS.RETAIL:
+        addCard({
+          key: 'gross-margin',
+          label: 'Gross Margin',
+          value: grossMargin,
+          format: 'percent',
+          question: 'Is merchandise profitability holding up?',
+          detail: 'Gross profit divided by revenue.',
+          query: 'gross margin, markdowns, consumer demand, inventory',
+          tone: (grossMargin || 0) >= 35 ? 'good' : (grossMargin || 0) >= 20 ? 'warn' : 'bad',
+          sources: sources([['Gross Profit', rows.grossProfit], ['Revenue', rows.revenue]]),
+        });
+        addCard({
+          key: 'inventory-revenue',
+          label: 'Inventory / Revenue',
+          value: inventoryRevenue,
+          format: 'percent',
+          question: 'Is inventory building faster than sales?',
+          detail: 'Inventory divided by annual revenue.',
+          query: 'inventory, markdowns, supply chain, consumer demand',
+          tone: (inventoryRevenue || 0) <= 15 ? 'good' : (inventoryRevenue || 0) <= 25 ? 'warn' : 'bad',
+          sources: sources([['Inventory', rows.inventory], ['Revenue', rows.revenue]]),
+        });
+        commonCards();
+        break;
+      case INDUSTRY_GROUPS.PHARMA:
+        addCard({
+          key: 'rnd-intensity',
+          label: 'R&D / Revenue',
+          value: rndIntensity,
+          format: 'percent',
+          question: 'How much revenue funds pipeline development?',
+          detail: 'Research and development expense divided by revenue.',
+          query: 'clinical trial, FDA, regulatory approval, research and development',
+          tone: (rndIntensity || 0) >= 15 ? 'good' : (rndIntensity || 0) >= 8 ? 'neutral' : 'warn',
+          sources: sources([['R&D', rows.rnd], ['Revenue', rows.revenue]]),
+        });
+        addCard({
+          key: 'cash-assets',
+          label: 'Cash + Investments / Assets',
+          value: cashAssets,
+          format: 'percent',
+          question: 'How much balance-sheet liquidity supports the pipeline?',
+          detail: `Cash plus short-term investments: ${formatValue(cashAndInvestments, 'currency')}.`,
+          query: 'cash runway, clinical trial, liquidity, regulatory approval',
+          tone: (cashAssets || 0) >= 25 ? 'good' : (cashAssets || 0) >= 10 ? 'warn' : 'bad',
+          sources: sources([['Cash', rows.cash], ['Investments', rows.shortTermInvestments], ['Assets', rows.totalAssets]]),
+        });
+        commonCards();
+        break;
+      case INDUSTRY_GROUPS.OIL_GAS:
+      case INDUSTRY_GROUPS.AIRLINES:
+      case INDUSTRY_GROUPS.UTILITIES:
+        addCard({
+          key: 'capex-revenue',
+          label: 'Capex / Revenue',
+          value: capexRevenue,
+          format: 'percent',
+          question: 'How capital-intensive is the current operating model?',
+          detail: `Capital expenditures: ${formatValue(capex, 'currency')}.`,
+          query: 'capital expenditures, maintenance capital, capacity, infrastructure',
+          tone: (capexRevenue || 0) <= 8 ? 'good' : (capexRevenue || 0) <= 20 ? 'warn' : 'neutral',
+          sources: sources([['Capex', rows.capex], ['Revenue', rows.revenue]]),
+        });
+        addCard({
+          key: 'cfo-capex',
+          label: 'CFO / Capex',
+          value: cfoCapex,
+          format: 'decimal',
+          question: 'Does operating cash flow cover reinvestment needs?',
+          detail: 'Operating cash flow divided by capital expenditures.',
+          query: 'capital expenditures, operating cash flow, liquidity, financing',
+          tone: (cfoCapex || 0) >= 2 ? 'good' : (cfoCapex || 0) >= 1 ? 'warn' : 'bad',
+          sources: sources([['CFO', rows.operatingCashFlow], ['Capex', rows.capex]]),
+        });
+        addCard({
+          key: 'debt-equity',
+          label: 'Debt / Equity',
+          value: debtEquity,
+          format: 'percent',
+          question: 'How much leverage sits behind the capital program?',
+          detail: `Total debt: ${formatValue(debt, 'currency')}.`,
+          query: 'debt maturities, refinancing, interest rate risk, liquidity',
+          tone: (debtEquity || 0) <= 80 ? 'good' : (debtEquity || 0) <= 150 ? 'warn' : 'bad',
+          sources: sources([['Short-term Debt', rows.shortTermDebt], ['Long-term Debt', rows.longTermDebt], ["Stockholders' Equity", rows.stockholdersEquity]]),
+        });
+        commonCards();
+        break;
+      case INDUSTRY_GROUPS.MANUFACTURING:
+        addCard({
+          key: 'gross-margin',
+          label: 'Gross Margin',
+          value: grossMargin,
+          format: 'percent',
+          question: 'Is production profitability resilient?',
+          detail: 'Gross profit divided by revenue.',
+          query: 'raw material costs, pricing, supply chain, tariffs',
+          tone: (grossMargin || 0) >= 30 ? 'good' : (grossMargin || 0) >= 15 ? 'warn' : 'bad',
+          sources: sources([['Gross Profit', rows.grossProfit], ['Revenue', rows.revenue]]),
+        });
+        addCard({
+          key: 'inventory-turnover',
+          label: 'Inventory Turnover',
+          value: inventoryTurnover,
+          format: 'decimal',
+          question: 'Is inventory moving through the system?',
+          detail: 'Cost of revenue divided by inventory.',
+          query: 'inventory, backlog, orders, supply chain',
+          tone: (inventoryTurnover || 0) >= 4 ? 'good' : (inventoryTurnover || 0) >= 2 ? 'warn' : 'bad',
+          sources: sources([['Cost of Revenue', rows.costOfRevenue], ['Inventory', rows.inventory]]),
+        });
+        commonCards();
+        break;
+      default:
+        addCard({
+          key: 'revenue-growth',
+          label: 'Revenue Growth',
+          value: revenueGrowth,
+          format: 'percent',
+          question: 'Is the top line expanding against last year?',
+          detail: 'Latest annual revenue compared with the prior annual period.',
+          query: 'demand, pricing, revenue, competition',
+          tone: (revenueGrowth || 0) >= 10 ? 'good' : (revenueGrowth || 0) >= 0 ? 'warn' : 'bad',
+          sources: sources([['Revenue', rows.revenue], ['Prior Revenue', rows.priorRevenue]]),
+        });
+        commonCards();
+        break;
+    }
+
+    return { cards: cards.slice(0, 4), latestPeriod, group };
+  }, [facts, periods, sicCode]);
+
+  if (!cards.length) return null;
+
+  return (
+    <div className="mb-6 border-2 border-stone-800 bg-stone-950/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Industry Research Playbook
+            </h3>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Source-backed questions tailored to {industryLabel(group)} companies, with XBRL inputs and disclosure-search handoffs for {companyName || ticker || 'this company'}.
+          </p>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
+          {latestPeriod ? periodLabel(latestPeriod) : 'Annual'} / SIC {sicCode || 'N/A'}
+        </div>
+      </div>
+
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+        {cards.map((card) => (
+          <IndustryPlaybookCardView key={card.key} card={card} cik={cik} ticker={ticker} />
+        ))}
+      </div>
+
+      <div className="border-t border-stone-800 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
+        The values above are computed from linked SEC XBRL facts. The search links open company-focused EDGAR keyword searches for the narrative that explains or challenges each metric.
+      </div>
+    </div>
+  );
+}
+
+function IndustryPlaybookCardView({
+  card,
+  cik,
+  ticker,
+}: {
+  card: IndustryPlaybookCard;
+  cik?: string;
+  ticker?: string;
+}) {
+  const toneClasses = {
+    good: 'border-emerald-800/70 bg-emerald-950/10',
+    warn: 'border-amber-800/70 bg-amber-950/10',
+    bad: 'border-rose-800/70 bg-rose-950/10',
+    neutral: 'border-sky-800/70 bg-sky-950/10',
+  }[card.tone];
+
+  return (
+    <div className={`min-h-[256px] border-2 p-4 flex flex-col justify-between ${toneClasses}`}>
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-stone-500">
+          {card.label}
+        </div>
+        <div className="mt-2 text-2xl font-black tabular-nums text-stone-100">
+          {formatValue(card.value, card.format)}
+        </div>
+        <div className="mt-3 text-sm font-black leading-snug text-stone-100">
+          {card.question}
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-stone-400">
+          {card.detail}
+        </p>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <div className="flex flex-wrap gap-1.5">
+          {card.sources.map((source) => (
+            <SourceChip key={`${card.key}-${source.label}`} source={source} cik={cik} />
+          ))}
+        </div>
+        <a
+          href={disclosureSearchHref(card.query, ticker)}
+          className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-bold text-emerald-300 hover:text-emerald-200 transition-colors"
+        >
+          Search disclosure context
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+    </div>
+  );
 }
 
 function QualitySnapshot({
