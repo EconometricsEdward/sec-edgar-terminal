@@ -731,14 +731,14 @@ export function assessRisk(facts, sicCode, cik) {
   metrics.push(
     makeMetric({
       id: 'debt_to_equity', label: 'Liabilities / equity', pillar: 'capital', format: 'x',
-      row: debtToEquity, periods, cik, bands: isFinancial ? null : BANDS.debtToEquity,
+      row: debtToEquity, periods, cik, bands: isFinancial ? null : BANDS.debtToEquity, invertDeltaGood: true,
       why: isFinancial
         ? 'Financial institutions are structurally levered \u2014 read this with the capital metrics above rather than against industrial benchmarks.'
         : 'Total obligations per dollar of shareholder capital. Above ~3\u00d7, equity holders own a sliver of the balance sheet and refinancing risk dominates. Negative equity makes the ratio meaningless \u2014 see the note above if flagged.',
     }),
     makeMetric({
       id: 'liab_to_assets', label: 'Liabilities / assets', pillar: 'capital', format: 'pct',
-      row: liabToAssets, periods, cik, bands: isFinancial ? null : BANDS.liabilitiesToAssets,
+      row: liabToAssets, periods, cik, bands: isFinancial ? null : BANDS.liabilitiesToAssets, invertDeltaGood: true,
       why: 'The share of the asset base financed by creditors. Robust to negative equity, so it is the cleaner leverage gauge for heavily bought-back balance sheets.',
     }),
   );
