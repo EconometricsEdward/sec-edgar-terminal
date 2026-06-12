@@ -287,6 +287,24 @@ const BANDS = {
     [(v) => v <= 0.95, 'elevated'],
     [() => true, 'high'],
   ],
+  texasRatio: [ // nonaccruals / (tangible equity + allowance)
+    [(v) => v < 0.3, 'low'],
+    [(v) => v < 0.6, 'moderate'],
+    [(v) => v < 1.0, 'elevated'],
+    [() => true, 'high'],
+  ],
+  accruals: [ // (NI - OCF) / total assets, Sloan (1996)
+    [(v) => v <= 0, 'low'],
+    [(v) => v < 0.05, 'moderate'],
+    [(v) => v < 0.10, 'elevated'],
+    [() => true, 'high'],
+  ],
+  receivablesGap: [ // receivables growth - revenue growth, latest FY
+    [(v) => v <= 0.03, 'low'],
+    [(v) => v <= 0.08, 'moderate'],
+    [(v) => v <= 0.15, 'elevated'],
+    [() => true, 'high'],
+  ],
 };
 
 // ----------------------------------------------------------------------------
@@ -299,6 +317,15 @@ function makeMetric({ id, label, pillar, format, row, periods, cik, bands, why, 
   const value = latest ? latest.value : null;
   const priorValue = prior ? prior.value : null;
   const z = bands ? bandZone(value, bands) : zone(value == null ? 'na' : 'info');
+  // If the most recent tagged value is older than the newest fiscal year on
+  // record, say so plainly rather than presenting a stale number as current.
+  const staleness =
+    latest && periods[0] && latest.period?.fy != null && latest.period.fy < periods[0].fy
+      ? `Latest tagged value is FY${latest.period.fy} \u2014 this filer has not tagged this item in more recent annual filings.`
+      : null;
+  const combinedSources = [...sourcesOf(cik, latest), ...extraSources];
+  const seenTags = new Set();
+  const seriesOldestFirst = seriesOf(row, periods).slice(0, MAX_YEARS).reverse();
   return {
     id,
     label,
@@ -310,9 +337,10 @@ function makeMetric({ id, label, pillar, format, row, periods, cik, bands, why, 
     deltaGoodWhenDown: invertDeltaGood,
     zone: z,
     why,
-    note,
-    series: seriesOf(row, periods).slice(0, MAX_YEARS).reverse(), // oldest → newest for trend bars
-    sources: [...sourcesOf(cik, latest), ...extraSources],
+    note: [note, staleness].filter(Boolean).join(' ') || null,
+    series: seriesOldestFirst, // oldest → newest for trend bars
+    trajectory: classifyTrajectory(seriesOldestFirst, invertDeltaGood),
+    sources: combinedSources.filter((s) => (seenTags.has(s.tag) ? false : (seenTags.add(s.tag), true))),
   };
 }
 
@@ -337,6 +365,7 @@ export function assessRisk(facts, sicCode, cik) {
       industry: { group, label: industryLabel(group), isFinancial, isBank },
       periods: [],
       zScore: null,
+      models: { zmijewski: null, beneish: null },
       metrics: [],
       watchItems: [],
       notes: ['No annual (10-K) XBRL periods found for this filer. Newly public companies and foreign private issuers (20-F filers) may not expose us-gaap annual facts.'],
@@ -363,6 +392,14 @@ export function assessRisk(facts, sicCode, cik) {
     ocf: R('operatingCashFlow', 'Operating cash flow'),
     longTermDebt: R('longTermDebt', 'Long-term debt'),
     shortTermDebt: R('shortTermDebt', 'Short-term debt'),
+    receivables: R('receivables', 'Receivables'),
+    cogs: R('costOfRevenue', 'Cost of revenue'),
+    ppe: R('ppe', 'PP&E, net'),
+    securities: R('shortTermInvestments', 'Short-term investments'),
+    depreciation: R('depreciationAmortization', 'Depreciation & amortization'),
+    sga: R('sga', 'SG&A expense'),
+    goodwill: R('goodwill', 'Goodwill'),
+    intangibles: R('intangibles', 'Intangibles'),
   };
 
   const metrics = [];
@@ -392,6 +429,41 @@ export function assessRisk(facts, sicCode, cik) {
     const loansToDeposits = ratioRows(loansNet, deposits, 'Loans / deposits', periods);
     const equityToAssets = ratioRows(rows.equity, rows.totalAssets, 'Equity / assets', periods);
     const cashToAssets = ratioRows(rows.cash, rows.totalAssets, 'Cash / assets', periods);
+    const htmAC = R('htmSecuritiesAmortizedCost', 'HTM amortized cost');
+    const htmFV = R('htmSecuritiesFairValue', 'HTM fair value');
+    const nibRow = R('noninterestBearingDeposits', 'Noninterest-bearing deposits');
+    const htmUnrealizedRow = {
+      key: 'htmUnrealized', label: 'HTM unrealized', format: 'currency',
+      values: periods.map((p, i) => {
+        const f = htmFV.values[i];
+        const a = htmAC.values[i];
+        const ok = f?.value != null && a?.value != null;
+        return { period: p, value: ok ? f.value - a.value : null, source: ok ? a.source : null };
+      }),
+    };
+    const htmAdjEquityRow = {
+      key: 'htmAdjEquity', label: 'Adjusted equity / assets', format: 'ratio',
+      values: periods.map((p, i) => {
+        const e = rows.equity.values[i];
+        const t = rows.totalAssets.values[i];
+        const u = htmUnrealizedRow.values[i];
+        const ok = e?.value != null && t?.value != null && t.value !== 0 && u?.value != null;
+        return { period: p, value: ok ? (e.value + u.value) / t.value : null, source: e?.source || null };
+      }),
+    };
+    const tangibleEquityRow = {
+      key: 'tangibleEquity', label: 'Tangible equity', format: 'currency',
+      values: periods.map((p, i) => {
+        const e = rows.equity.values[i];
+        const g = rows.goodwill.values[i];
+        const n = rows.intangibles.values[i];
+        if (e?.value == null) return { period: p, value: null, source: null };
+        return { period: p, value: e.value - (g?.value || 0) - (n?.value || 0), source: e.source };
+      }),
+    };
+    const texasDenomRow = sumRows([tangibleEquityRow, allowance], 'Tangible equity + ACL', periods);
+    const texasRow = ratioRows(npl, texasDenomRow, 'Texas ratio', periods);
+    const nibShareRow = ratioRows(nibRow, deposits, 'NIB / deposits', periods);
 
     metrics.push(
       makeMetric({
@@ -433,6 +505,35 @@ export function assessRisk(facts, sicCode, cik) {
         id: 'bank_cash_assets', label: 'Cash / assets', pillar: 'liquidity', format: 'pct',
         row: cashToAssets, periods, cik, bands: null,
         why: 'On-balance-sheet liquidity available to meet outflows before selling securities or borrowing.',
+        note: 'Narrow cash only \u2014 securities portfolios and deposits placed at other banks are additional liquidity sources detailed in the 10-K.',
+      }),
+      makeMetric({
+        id: 'texas_ratio', label: 'Texas ratio (nonaccruals / (tangible equity + ACL))', pillar: 'credit', format: 'pct',
+        row: texasRow, periods, cik, bands: BANDS.texasRatio, invertDeltaGood: true,
+        why: 'The classic bank-failure screen from the S&L era: loans already gone bad measured against the capital actually available to absorb them \u2014 tangible common equity plus reserves. Readings approaching 100% preceded most historical bank failures.',
+        note: latestPoint(texasRow)
+          ? 'Tangible equity = stockholders equity \u2212 goodwill \u2212 intangibles; untagged intangible components treated as 0.'
+          : 'Requires consolidated nonaccrual tagging, which the largest banks often report only dimensionally \u2014 see the credit-quality note in the 10-K.',
+        extraSources: sourcesOf(cik, latestPoint(npl), latestPoint(allowance), latestPoint(rows.goodwill)),
+      }),
+      makeMetric({
+        id: 'htm_unrealized', label: 'HTM securities unrealized gain/(loss)', pillar: 'capital', format: 'usd',
+        row: htmUnrealizedRow, periods, cik, bands: null,
+        why: 'Held-to-maturity bonds are carried at cost, so rate-driven losses sit outside both equity and AOCI \u2014 the dynamic at the center of the March 2023 bank failures. Computed as tagged fair value minus tagged amortized cost.',
+        note: latestPoint(htmUnrealizedRow) ? null : 'No held-to-maturity portfolio tagged at the consolidated level.',
+        extraSources: sourcesOf(cik, latestPoint(htmFV), latestPoint(htmAC)),
+      }),
+      makeMetric({
+        id: 'htm_adj_equity', label: 'Equity / assets after HTM mark', pillar: 'capital', format: 'pct',
+        row: htmAdjEquityRow, periods, cik, bands: BANDS.bankEquityToAssets,
+        why: 'The capital cushion if held-to-maturity securities were carried at fair value \u2014 the stress question regulators and depositors started asking in March 2023.',
+        note: latestPoint(htmAdjEquityRow) ? null : 'Computable only when both HTM amortized cost and fair value are tagged.',
+      }),
+      makeMetric({
+        id: 'nib_deposit_share', label: 'Noninterest-bearing share of deposits', pillar: 'liquidity', format: 'pct',
+        row: nibShareRow, periods, cik, bands: null,
+        why: 'Noninterest-bearing balances are cheap funding, but they are typically corporate operating accounts that can exceed insurance limits \u2014 a high share cuts funding costs while concentrating run risk, so the trend matters more than the level.',
+        note: latestPoint(nibShareRow) ? null : 'Noninterest-bearing deposits not tagged separately by this filer.',
       }),
     );
   }
@@ -461,8 +562,18 @@ export function assessRisk(facts, sicCode, cik) {
 
   // ---------- NON-FINANCIAL credit pillar ----------
   let zScore = null;
+  let zmijewski = null;
+  let beneish = null;
   if (!isFinancial) {
     const v = (row) => latestPoint(row)?.value ?? null;
+    const reLatest = latestPoint(rows.retainedEarnings);
+    const zCautions = [];
+    if (group === INDUSTRY_GROUPS.REIT) {
+      zCautions.push('Asset-heavy REIT balance sheets often sit low on Z\u2033 by construction \u2014 weigh interest coverage and liabilities/assets more heavily here.');
+    }
+    if (reLatest && reLatest.value < 0 && eqLatest && eqLatest.value >= 0) {
+      zCautions.push('Retained earnings are negative \u2014 common after years of heavy buybacks \u2014 which drags the X2 input down without by itself implying distress.');
+    }
     const zRaw = computeZScore({
       currentAssets: v(rows.currentAssets),
       currentLiabilities: v(rows.currentLiabilities),
@@ -487,9 +598,7 @@ export function assessRisk(facts, sicCode, cik) {
         latestPoint(rows.equity),
         latestPoint(rows.totalLiabilities),
       ),
-      caution: group === INDUSTRY_GROUPS.REIT
-        ? 'Asset-heavy REIT balance sheets often sit low on Z\u2033 by construction \u2014 weigh interest coverage and liabilities/assets more heavily here.'
-        : null,
+      caution: zCautions.join(' ') || null,
     };
 
     const interestCoverage = ratioRows(rows.operatingIncome, rows.interestExpense, 'Interest coverage', periods);
@@ -527,6 +636,93 @@ export function assessRisk(facts, sicCode, cik) {
         periods, cik, bands: null, invertDeltaGood: true,
         why: 'Debt the business actually has to earn its way out of after netting cash. A multi-year climb in net debt alongside flat earnings is the classic slow-motion credit deterioration.',
         extraSources: sourcesOf(cik, debtLatest, cashLatest),
+      }),
+    );
+
+    // ---------- research models: Zmijewski probit + Beneish M-Score ----------
+    const at = (row, i) => pointAt(row, i)?.value ?? null;
+    const zm = computeZmijewski({
+      netIncome: at(rows.netIncome, 0),
+      totalAssets: at(rows.totalAssets, 0),
+      totalLiabilities: at(rows.totalLiabilities, 0),
+      currentAssets: at(rows.currentAssets, 0),
+      currentLiabilities: at(rows.currentLiabilities, 0),
+    });
+    zmijewski = {
+      ...zm,
+      formula: ZMIJEWSKI.formula,
+      bands: ZMIJEWSKI.bands,
+      fiscalYear: periods[0]?.fy ?? null,
+      sources: sourcesOf(
+        cik,
+        pointAt(rows.netIncome, 0), pointAt(rows.totalAssets, 0), pointAt(rows.totalLiabilities, 0),
+        pointAt(rows.currentAssets, 0), pointAt(rows.currentLiabilities, 0),
+      ),
+    };
+
+    if (periods.length >= 2) {
+      const year = (i) => ({
+        receivables: at(rows.receivables, i), revenue: at(rows.revenue, i), cogs: at(rows.cogs, i),
+        currentAssets: at(rows.currentAssets, i), ppe: at(rows.ppe, i), securities: at(rows.securities, i),
+        depreciation: at(rows.depreciation, i), sga: at(rows.sga, i), totalAssets: at(rows.totalAssets, i),
+        currentLiabilities: at(rows.currentLiabilities, i), longTermDebt: at(rows.longTermDebt, i),
+        netIncome: at(rows.netIncome, i), cfo: at(rows.ocf, i),
+      });
+      const bn = computeBeneish(year(0), year(1));
+      const bnRows = [rows.receivables, rows.revenue, rows.cogs, rows.currentAssets, rows.ppe, rows.securities,
+        rows.depreciation, rows.sga, rows.totalAssets, rows.currentLiabilities, rows.longTermDebt, rows.netIncome, rows.ocf];
+      beneish = {
+        ...bn,
+        fiscalYear: periods[0]?.fy ?? null,
+        priorFiscalYear: periods[1]?.fy ?? null,
+        sources: sourcesOf(cik, ...bnRows.map((r) => pointAt(r, 0)), ...bnRows.map((r) => pointAt(r, 1))),
+      };
+    } else {
+      beneish = {
+        value: null, variant: null, zone: { level: 'na', label: 'N/A' }, indices: [], assumptions: [],
+        missing: ['two consecutive fiscal years of 10-K facts required'],
+        thresholds: BENEISH.thresholds, formula: BENEISH.formula8,
+        fiscalYear: periods[0]?.fy ?? null, priorFiscalYear: null, sources: [],
+      };
+    }
+
+    // ---------- earnings quality & forensic flags ----------
+    const accrualsRow = {
+      key: 'accruals', label: 'Accruals / assets', format: 'ratio',
+      values: periods.map((p, i) => {
+        const ni = rows.netIncome.values[i];
+        const cf = rows.ocf.values[i];
+        const ta = rows.totalAssets.values[i];
+        const ok = ni?.value != null && cf?.value != null && ta?.value != null && ta.value !== 0;
+        return { period: p, value: ok ? (ni.value - cf.value) / ta.value : null, source: ni?.source || null };
+      }),
+    };
+    const grow = (row, i) => {
+      const a = row.values[i];
+      const b = row.values[i + 1];
+      return a?.value != null && b?.value != null && b.value > 0 ? a.value / b.value - 1 : null;
+    };
+    const recGapRow = {
+      key: 'recGap', label: 'Receivables vs revenue growth', format: 'ratio',
+      values: periods.map((p, i) => {
+        const gr = grow(rows.receivables, i);
+        const gs = grow(rows.revenue, i);
+        return { period: p, value: gr != null && gs != null ? gr - gs : null, source: rows.receivables.values[i]?.source || null };
+      }),
+    };
+    metrics.push(
+      makeMetric({
+        id: 'accruals_ratio', label: 'Accruals / assets (net income − operating cash flow)', pillar: 'quality', format: 'pct',
+        row: accrualsRow, periods, cik, bands: BANDS.accruals, invertDeltaGood: true,
+        why: 'The Sloan (1996) earnings-quality test: the share of reported income not backed by operating cash flow. Persistently high accruals predict weaker future earnings and precede a disproportionate share of restatements.',
+        extraSources: sourcesOf(cik, latestPoint(rows.ocf), latestPoint(rows.totalAssets)),
+      }),
+      makeMetric({
+        id: 'receivables_gap', label: 'Receivables growth − revenue growth', pillar: 'quality', format: 'pct',
+        row: recGapRow, periods, cik, bands: BANDS.receivablesGap, invertDeltaGood: true,
+        why: 'When receivables grow much faster than sales, revenue may be pulled forward or collection is slipping — among the most common precursor flags in the accounting-fraud literature. Shown as the growth differential each fiscal year.',
+        note: latestPoint(recGapRow) ? null : 'Requires receivables and revenue tagged in consecutive fiscal years.',
+        extraSources: sourcesOf(cik, latestPoint(rows.receivables), latestPoint(rows.revenue)),
       }),
     );
   }
@@ -611,22 +807,40 @@ export function assessRisk(facts, sicCode, cik) {
 
   // ---------- watch items ----------
   const severityRank = { high: 0, elevated: 1 };
+  const flagged = (m) => m && (m.zone.level === 'high' || m.zone.level === 'elevated');
   const watchItems = metrics
-    .filter((m) => m.zone.level === 'high' || m.zone.level === 'elevated')
-    .sort((a, b) => (severityRank[a.zone.level] ?? 9) - (severityRank[b.zone.level] ?? 9))
+    .filter((m) => flagged(m))
     .map((m) => ({ id: m.id, label: m.label, severity: m.zone.level, pillar: m.pillar }));
-  if (zScore && (zScore.zone.level === 'high' || zScore.zone.level === 'elevated')) {
-    watchItems.unshift({ id: 'z_score', label: `Altman Z\u2033 ${zScore.zone.label.toLowerCase()}`, severity: zScore.zone.level, pillar: 'credit' });
+  if (flagged(zScore)) {
+    watchItems.push({ id: 'z_score', label: `Altman Z\u2033 ${zScore.zone.label.toLowerCase()}`, severity: zScore.zone.level, pillar: 'credit' });
   }
+  if (flagged(zmijewski)) {
+    watchItems.push({ id: 'zmijewski', label: `Zmijewski distress probability ${(zmijewski.probability * 100).toFixed(0)}%`, severity: zmijewski.zone.level, pillar: 'credit' });
+  }
+  if (flagged(beneish)) {
+    watchItems.push({ id: 'beneish', label: `Beneish M-Score in ${beneish.zone.label.toLowerCase()}`, severity: beneish.zone.level, pillar: 'quality' });
+  }
+  for (const m of metrics) {
+    if (m.trajectory?.direction === 'deteriorating' && m.trajectory.steps >= 3 && m.zone.level !== 'high') {
+      watchItems.push({ id: `${m.id}_trend`, label: `${m.label} \u2014 worsening ${m.trajectory.years} straight FYs`, severity: 'elevated', pillar: m.pillar });
+    }
+  }
+  const modelIds = new Set(['z_score', 'zmijewski', 'beneish']);
+  watchItems.sort((a, b) => {
+    const ra = (severityRank[a.severity] ?? 9) * 2 + (modelIds.has(a.id) ? 0 : 1);
+    const rb = (severityRank[b.severity] ?? 9) * 2 + (modelIds.has(b.id) ? 0 : 1);
+    return ra - rb;
+  });
 
   if (isBank) {
-    notes.push('Bank balance sheets are unclassified (no current vs. noncurrent split) and Altman Z-Scores are not defined for financial institutions \u2014 this profile uses the bank credit lens instead: asset quality, reserves, capital, and funding.');
+    notes.push('Bank balance sheets are unclassified (no current vs. noncurrent split) and Altman Z-Scores are not defined for financial institutions \u2014 this profile uses the bank credit lens instead: asset quality, reserves, capital, and funding. Zmijewski and Beneish models are likewise estimated on non-financial samples and are not applied.');
   }
 
   return {
     industry: { group, label: industryLabel(group), isFinancial, isBank },
     periods,
     zScore,
+    models: { zmijewski, beneish },
     metrics,
     watchItems,
     notes,
@@ -653,7 +867,14 @@ export function scanRiskLanguage(text, terms = RISK_LANGUAGE_TERMS, { maxExcerpt
   const paragraphs = String(text || '')
     .split(/\n\s*\n/)
     .map((p) => p.replace(/\s+/g, ' ').trim())
-    .filter((p) => p.length >= 60);
+    .filter((p) => {
+      if (p.length < 60) return false;
+      // Inline-XBRL hidden context blocks and dense numeric tables survive HTML
+      // stripping as digit-heavy pseudo-paragraphs; they inflate counts and make
+      // garbage excerpts. Real prose rarely exceeds ~20% digit density.
+      const digits = (p.match(/[0-9]/g) || []).length;
+      return digits / p.length <= 0.2;
+    });
 
   return terms.map((term) => {
     const needle = term.toLowerCase();
@@ -678,4 +899,259 @@ export function scanRiskLanguage(text, terms = RISK_LANGUAGE_TERMS, { maxExcerpt
     }
     return { term, count, excerpts };
   });
+}
+
+// ============================================================================
+// Research models — published academic formulas, fully stated, no black boxes.
+//   Zmijewski (1984): probit distress probability, three accounting ratios.
+//   Beneish (1999): M-Score earnings-manipulation screen (8- and 5-variable).
+// Both estimated on non-financial samples; not applied to banks/insurers.
+// ============================================================================
+
+/** Abramowitz & Stegun 7.1.26 erf approximation (|error| < 1.5e-7). */
+function erf(x) {
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741,
+        a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const t = 1 / (1 + p * x);
+  const y = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return sign * y;
+}
+
+/** Standard normal CDF. */
+export function normalCdf(x) {
+  return 0.5 * (1 + erf(x / Math.SQRT2));
+}
+
+export const ZMIJEWSKI = {
+  coefficients: { intercept: -4.336, roa: -4.513, tlta: 5.679, cacl: 0.004 },
+  formula: 'X = \u22124.336 \u2212 4.513\u00b7(NI/TA) + 5.679\u00b7(TL/TA) + 0.004\u00b7(CA/CL); P(distress) = \u03a6(X)',
+  bands: { low: 0.05, moderate: 0.20, elevated: 0.50 },
+};
+
+export function computeZmijewski({ netIncome, totalAssets, totalLiabilities, currentAssets, currentLiabilities }) {
+  const need = { netIncome, totalAssets, totalLiabilities, currentAssets, currentLiabilities };
+  const missing = Object.entries(need)
+    .filter(([, v]) => v == null || !Number.isFinite(v))
+    .map(([k]) => k);
+  if (missing.length > 0 || totalAssets === 0 || currentLiabilities === 0) {
+    return { value: null, probability: null, zone: { level: 'na', label: 'N/A' }, missing, inputs: [] };
+  }
+  const c = ZMIJEWSKI.coefficients;
+  const roa = netIncome / totalAssets;
+  const tlta = totalLiabilities / totalAssets;
+  const cacl = currentAssets / currentLiabilities;
+  const value = c.intercept + c.roa * roa + c.tlta * tlta + c.cacl * cacl;
+  const probability = normalCdf(value);
+  const b = ZMIJEWSKI.bands;
+  const zone =
+    probability < b.low ? { level: 'low', label: 'Low' }
+    : probability < b.moderate ? { level: 'moderate', label: 'Moderate' }
+    : probability < b.elevated ? { level: 'elevated', label: 'Elevated' }
+    : { level: 'high', label: 'High' };
+  return {
+    value,
+    probability,
+    zone,
+    missing: [],
+    inputs: [
+      { id: 'roa', label: 'Net income / Total assets', ratio: roa, coefficient: c.roa, contribution: c.roa * roa },
+      { id: 'tlta', label: 'Total liabilities / Total assets', ratio: tlta, coefficient: c.tlta, contribution: c.tlta * tlta },
+      { id: 'cacl', label: 'Current assets / Current liabilities', ratio: cacl, coefficient: c.cacl, contribution: c.cacl * cacl },
+    ],
+  };
+}
+
+export const BENEISH = {
+  eight: { intercept: -4.84, DSRI: 0.92, GMI: 0.528, AQI: 0.404, SGI: 0.892, DEPI: 0.115, SGAI: -0.172, TATA: 4.679, LVGI: -0.327 },
+  five: { intercept: -6.065, DSRI: 0.823, GMI: 0.906, AQI: 0.593, SGI: 0.717, TATA: 4.679 },
+  thresholds: { flag: -1.78, caution: -2.22 },
+  formula8: 'M = \u22124.84 + 0.92\u00b7DSRI + 0.528\u00b7GMI + 0.404\u00b7AQI + 0.892\u00b7SGI + 0.115\u00b7DEPI \u2212 0.172\u00b7SGAI + 4.679\u00b7TATA \u2212 0.327\u00b7LVGI',
+  formula5: 'M = \u22126.065 + 0.823\u00b7DSRI + 0.906\u00b7GMI + 0.593\u00b7AQI + 0.717\u00b7SGI + 4.679\u00b7TATA',
+};
+
+const BENEISH_LABELS = {
+  DSRI: 'Days sales in receivables index',
+  GMI: 'Gross margin index',
+  AQI: 'Asset quality index',
+  SGI: 'Sales growth index',
+  DEPI: 'Depreciation index',
+  SGAI: 'SG&A index',
+  TATA: 'Total accruals / total assets',
+  LVGI: 'Leverage index',
+};
+
+/**
+ * Beneish M-Score from two consecutive fiscal years of inputs.
+ * Each year: { receivables, revenue, cogs, currentAssets, ppe, securities,
+ *              depreciation, sga, totalAssets, currentLiabilities, longTermDebt,
+ *              netIncome, cfo }
+ * Falls back to the published 5-variable model when DEPI/SGAI/LVGI inputs are
+ * untagged; returns null with a missing list when the 5-variable core is short.
+ */
+export function computeBeneish(curr, prev) {
+  const assumptions = [];
+  const missing = [];
+  const num = (v) => (v != null && Number.isFinite(v) ? v : null);
+  const pos = (v) => (num(v) != null && v > 0 ? v : null);
+
+  const ix = {};
+
+  // DSRI
+  {
+    const rt = num(curr.receivables), rp = num(prev.receivables);
+    const st = pos(curr.revenue), sp = pos(prev.revenue);
+    ix.DSRI = rt != null && rp != null && st && sp && rp !== 0 ? (rt / st) / (rp / sp) : null;
+    if (ix.DSRI == null) missing.push('DSRI (receivables or revenue)');
+  }
+  // GMI (requires positive gross margin both years)
+  {
+    const st = pos(curr.revenue), sp = pos(prev.revenue);
+    const ct = num(curr.cogs), cp = num(prev.cogs);
+    const gmT = st && ct != null ? (st - ct) / st : null;
+    const gmP = sp && cp != null ? (sp - cp) / sp : null;
+    ix.GMI = gmT != null && gmP != null && gmT > 0 && gmP > 0 ? gmP / gmT : null;
+    if (ix.GMI == null) missing.push('GMI (gross margin unavailable or nonpositive)');
+  }
+  // AQI
+  {
+    const soft = (y) => {
+      const ta = pos(y.totalAssets), ca = num(y.currentAssets), pp = num(y.ppe);
+      if (!ta || ca == null || pp == null) return null;
+      const sec = num(y.securities);
+      if (sec == null && !assumptions.includes('Short-term securities treated as 0 (not tagged).')) {
+        assumptions.push('Short-term securities treated as 0 (not tagged).');
+      }
+      return 1 - (ca + pp + (sec || 0)) / ta;
+    };
+    const aT = soft(curr), aP = soft(prev);
+    ix.AQI = aT != null && aP != null && aP > 0 ? aT / aP : null;
+    if (ix.AQI == null) missing.push('AQI (current assets / PP&E / total assets)');
+  }
+  // SGI
+  {
+    const st = pos(curr.revenue), sp = pos(prev.revenue);
+    ix.SGI = st && sp ? st / sp : null;
+    if (ix.SGI == null) missing.push('SGI (revenue)');
+  }
+  // TATA
+  {
+    const ni = num(curr.netIncome), cf = num(curr.cfo), ta = pos(curr.totalAssets);
+    ix.TATA = ni != null && cf != null && ta ? (ni - cf) / ta : null;
+    if (ix.TATA == null) missing.push('TATA (net income / operating cash flow)');
+  }
+  // DEPI / SGAI / LVGI — 8-variable extras
+  {
+    const rate = (y) => {
+      const d = pos(y.depreciation), pp = pos(y.ppe);
+      return d && pp ? d / (d + pp) : null;
+    };
+    const rT = rate(curr), rP = rate(prev);
+    ix.DEPI = rT != null && rP != null && rT !== 0 ? rP / rT : null;
+  }
+  {
+    const st = pos(curr.revenue), sp = pos(prev.revenue);
+    const gt = num(curr.sga), gp = num(prev.sga);
+    ix.SGAI = gt != null && gp != null && st && sp && gp !== 0 ? (gt / st) / (gp / sp) : null;
+  }
+  {
+    const lev = (y) => {
+      const ta = pos(y.totalAssets), cl = num(y.currentLiabilities);
+      if (!ta || cl == null) return null;
+      const ltd = num(y.longTermDebt);
+      if (ltd == null && !assumptions.includes('Long-term debt treated as 0 in LVGI (not tagged).')) {
+        assumptions.push('Long-term debt treated as 0 in LVGI (not tagged).');
+      }
+      return ((ltd || 0) + cl) / ta;
+    };
+    const lT = lev(curr), lP = lev(prev);
+    ix.LVGI = lT != null && lP != null && lP > 0 ? lT / lP : null;
+  }
+
+  const core = ['DSRI', 'GMI', 'AQI', 'SGI', 'TATA'];
+  if (core.some((k) => ix[k] == null)) {
+    return {
+      value: null,
+      variant: null,
+      zone: { level: 'na', label: 'N/A' },
+      indices: [],
+      assumptions,
+      missing,
+      thresholds: BENEISH.thresholds,
+      formula: BENEISH.formula8,
+    };
+  }
+
+  const hasExtras = ix.DEPI != null && ix.SGAI != null && ix.LVGI != null;
+  let value;
+  let variant;
+  let formula;
+  if (hasExtras) {
+    const w = BENEISH.eight;
+    value = w.intercept + w.DSRI * ix.DSRI + w.GMI * ix.GMI + w.AQI * ix.AQI + w.SGI * ix.SGI
+      + w.DEPI * ix.DEPI + w.SGAI * ix.SGAI + w.TATA * ix.TATA + w.LVGI * ix.LVGI;
+    variant = '8-variable';
+    formula = BENEISH.formula8;
+  } else {
+    const w = BENEISH.five;
+    value = w.intercept + w.DSRI * ix.DSRI + w.GMI * ix.GMI + w.AQI * ix.AQI + w.SGI * ix.SGI + w.TATA * ix.TATA;
+    variant = '5-variable';
+    formula = BENEISH.formula5;
+    assumptions.push('DEPI / SGAI / LVGI inputs untagged \u2014 published 5-variable model used.');
+  }
+
+  const t = BENEISH.thresholds;
+  const zone =
+    value > t.flag ? { level: 'high', label: 'Flagged range' }
+    : value > t.caution ? { level: 'elevated', label: 'Caution range' }
+    : { level: 'low', label: 'Unlikely range' };
+
+  const order = hasExtras ? ['DSRI', 'GMI', 'AQI', 'SGI', 'DEPI', 'SGAI', 'TATA', 'LVGI'] : core;
+  return {
+    value,
+    variant,
+    zone,
+    indices: order.map((k) => ({ id: k, label: BENEISH_LABELS[k], value: ix[k] })),
+    assumptions,
+    missing,
+    thresholds: t,
+    formula,
+  };
+}
+
+/**
+ * Classify the trailing multi-year trajectory of a metric series
+ * (oldest \u2192 newest). Research reads dynamics, not snapshots: a metric that is
+ * still "moderate" but has worsened several consecutive years is a signal.
+ * Returns null unless there is a streak of \u22652 consecutive steps one way.
+ */
+export function classifyTrajectory(seriesOldestFirst, goodWhenDown = false) {
+  const vals = (seriesOldestFirst || [])
+    .map((p) => p.value)
+    .filter((v) => v != null && Number.isFinite(v));
+  if (vals.length < 3) return null;
+  const harmful = (a, b) => (goodWhenDown ? b > a : b < a); // step a -> b
+  const beneficial = (a, b) => (goodWhenDown ? b < a : b > a);
+  const lastA = vals[vals.length - 2];
+  const lastB = vals[vals.length - 1];
+  let type = null;
+  if (harmful(lastA, lastB)) type = 'deteriorating';
+  else if (beneficial(lastA, lastB)) type = 'improving';
+  else return null;
+  let steps = 0;
+  for (let i = vals.length - 1; i > 0; i--) {
+    const a = vals[i - 1], b = vals[i];
+    const same = type === 'deteriorating' ? harmful(a, b) : beneficial(a, b);
+    if (!same) break;
+    steps += 1;
+  }
+  if (steps < 2) return null;
+  const years = steps + 1;
+  return {
+    direction: type,
+    steps,
+    years,
+    label: `${type === 'deteriorating' ? 'worsening' : 'improving'} ${years}y`,
+  };
 }

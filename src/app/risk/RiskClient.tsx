@@ -12,6 +12,8 @@ import {
   Scale,
   TrendingUp,
   FileText,
+  FlaskConical,
+  Sigma,
   Info,
 } from 'lucide-react';
 
@@ -22,7 +24,7 @@ type SeriesPoint = { fy: number; end: string | null; value: number | null };
 type Metric = {
   id: string;
   label: string;
-  pillar: 'credit' | 'capital' | 'liquidity' | 'profitability';
+  pillar: 'credit' | 'capital' | 'liquidity' | 'profitability' | 'quality';
   format: 'x' | 'pct' | 'usd' | 'ratio' | 'count';
   value: number | null;
   prior: number | null;
@@ -32,6 +34,7 @@ type Metric = {
   why: string;
   note: string | null;
   series: SeriesPoint[];
+  trajectory?: { direction: 'improving' | 'deteriorating'; steps: number; years: number; label: string } | null;
   sources: Source[];
 };
 type ZInput = { id: string; label: string; ratio: number; weight: number; contribution: number };
@@ -45,6 +48,32 @@ type ZScore = {
   sources: Source[];
   caution: string | null;
   missing?: string[];
+};
+type ZmijewskiInput = { id: string; label: string; ratio: number; coefficient: number; contribution: number };
+type ZmijewskiModel = {
+  value: number | null;
+  probability: number | null;
+  zone: Zone;
+  inputs: ZmijewskiInput[];
+  missing: string[];
+  formula: string;
+  bands: { low: number; moderate: number; elevated: number };
+  fiscalYear: number | null;
+  sources: Source[];
+};
+type BeneishIndex = { id: string; label: string; value: number };
+type BeneishModel = {
+  value: number | null;
+  variant: '8-variable' | '5-variable' | null;
+  zone: Zone;
+  indices: BeneishIndex[];
+  assumptions: string[];
+  missing: string[];
+  thresholds: { flag: number; caution: number };
+  formula: string;
+  fiscalYear: number | null;
+  priorFiscalYear: number | null;
+  sources: Source[];
 };
 type ScanTerm = { term: string; count: number; excerpts: string[] };
 type FilingScan = {
@@ -65,6 +94,7 @@ type RiskData = {
   industry: { group: string; label: string; isFinancial: boolean; isBank: boolean };
   periods: { fy: number; end: string }[];
   zScore: ZScore | null;
+  models?: { zmijewski: ZmijewskiModel | null; beneish: BeneishModel | null } | null;
   metrics: Metric[];
   watchItems: { id: string; label: string; severity: string; pillar: string }[];
   notes: string[];
@@ -100,6 +130,12 @@ const PILLARS: { id: Metric['pillar']; label: string; icon: typeof Activity; blu
     label: 'Earnings stability',
     icon: TrendingUp,
     blurb: 'Earnings power is the first line of defense against every other risk on this page.',
+  },
+  {
+    id: 'quality',
+    label: 'Earnings quality & forensic flags',
+    icon: FlaskConical,
+    blurb: 'Whether reported earnings are backed by cash — the accrual and receivables patterns that precede most restatements.',
   },
 ];
 
@@ -315,6 +351,16 @@ function Results({ data }: { data: RiskData }) {
               <span>Window: {fyWindow} (10-K facts)</span>
             </>
           )}
+          <span>/</span>
+          <a
+            href={`/api/risk?ticker=${data.ticker}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sky-400/90 hover:text-sky-300"
+          >
+            Raw JSON
+            <ExternalLink className="w-2.5 h-2.5" />
+          </a>
         </div>
         {data.notes.length > 0 && (
           <div className="mt-3 space-y-2">
@@ -353,6 +399,10 @@ function Results({ data }: { data: RiskData }) {
 
       {/* Z'' gauge (non-financials) */}
       {data.zScore && <ZScoreCard z={data.zScore} ticker={data.ticker} />}
+
+      {/* Research models: Zmijewski probit + Beneish M-Score (non-financials) */}
+      {data.models?.zmijewski && <ZmijewskiCard m={data.models.zmijewski} ticker={data.ticker} />}
+      {data.models?.beneish && <BeneishCard m={data.models.beneish} ticker={data.ticker} />}
 
       {/* Pillars */}
       {PILLARS.map((pillar) => {
@@ -393,10 +443,17 @@ function Results({ data }: { data: RiskData }) {
         stated analyst conventions, not a proprietary score: interest coverage (8× / 3× / 1.5×),
         liabilities-to-equity (0.5 / 1.5 / 3), liabilities-to-assets (50 / 70 / 85%), OCF-to-debt
         (40 / 20 / 10%), current ratio (2 / 1.2 / 1), bank equity-to-assets (11 / 8 / 5%), reserve
-        coverage (1.5 / 1.0 / 0.5% of gross loans), loans-to-deposits (80 / 100 / 110%). XBRL
-        tagging varies by filer — anything a company doesn&apos;t tag at the consolidated level
-        shows as N/A with a pointer to the 10-K note. Language counts are literal matches, not
-        judgments. For research use only — not investment advice.
+        coverage (1.5 / 1.0 / 0.5% of gross loans), loans-to-deposits (80 / 100 / 110%), Texas
+        ratio (30 / 60 / 100%), accruals-to-assets (0 / 5 / 10%), receivables-minus-revenue growth
+        (3 / 8 / 15 pts). Zmijewski probabilities band at 5 / 20 / 50%; Beneish thresholds are the
+        published −2.22 and −1.78 cutoffs; HTM-adjusted equity uses the bank capital bands. Trend
+        chips mark metrics moving one direction for three or more consecutive fiscal years. Models:
+        Altman (1968; 1995 Z&Prime;), Zmijewski (1984, J. Accounting Research), Beneish (1999,
+        Financial Analysts Journal), Sloan (1996, The Accounting Review). XBRL tagging varies by
+        filer — anything a company doesn&apos;t tag at the consolidated level shows as N/A with a
+        pointer to the 10-K note. Language counts are literal matches, not judgments. The full
+        profile is available as raw JSON via the link in the header. For research use only — not
+        investment advice.
       </div>
     </div>
   );
@@ -541,10 +598,22 @@ function MetricRow({ metric }: { metric: Metric }) {
 
       <TrendBars series={metric.series} />
 
-      <div className="text-[10px] uppercase tracking-widest text-stone-600 lg:text-right">
-        {metric.series.filter((p) => p.value != null).length > 1
-          ? `FY${metric.series[0]?.fy}–FY${metric.series[metric.series.length - 1]?.fy}`
-          : 'Latest FY only'}
+      <div className="lg:text-right">
+        {metric.trajectory && (
+          <div
+            className={`text-[10px] font-mono mb-0.5 ${
+              metric.trajectory.direction === 'deteriorating' ? 'text-amber-400' : 'text-emerald-400'
+            }`}
+            title={`${metric.trajectory.years} consecutive fiscal years one direction`}
+          >
+            {metric.trajectory.direction === 'deteriorating' ? '▼' : '▲'} {metric.trajectory.label}
+          </div>
+        )}
+        <div className="text-[10px] uppercase tracking-widest text-stone-600">
+          {metric.series.filter((p) => p.value != null).length > 1
+            ? `FY${metric.series[0]?.fy}–FY${metric.series[metric.series.length - 1]?.fy}`
+            : 'Latest FY only'}
+        </div>
       </div>
     </div>
   );
@@ -599,6 +668,174 @@ function SourceLinks({ sources }: { sources: Source[] }) {
         </a>
       ))}
     </span>
+  );
+}
+
+// ---- Zmijewski probit ----------------------------------------------------------
+function ZmijewskiCard({ m, ticker }: { m: ZmijewskiModel; ticker: string }) {
+  const hasValue = m.value != null && m.probability != null;
+  const pct = hasValue ? m.probability! * 100 : null;
+  return (
+    <section className="border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Sigma className="w-4 h-4 text-amber-400" />
+            <h2 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Zmijewski X-Score — distress probability
+            </h2>
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Zmijewski&apos;s (1984) probit: three ratios map to a probability of financial distress,
+            computed from {ticker}&apos;s own facts{m.fiscalYear ? ` (FY${m.fiscalYear})` : ''}. Formula: {m.formula}
+          </p>
+        </div>
+        {hasValue && <ZoneChip zone={m.zone} />}
+      </div>
+
+      {hasValue ? (
+        <div className="p-4">
+          <div className="flex items-baseline gap-3 mb-4">
+            <span
+              className={`text-4xl font-black tabular-nums ${
+                m.zone.level === 'low'
+                  ? 'text-emerald-300'
+                  : m.zone.level === 'moderate'
+                    ? 'text-sky-300'
+                    : m.zone.level === 'elevated'
+                      ? 'text-amber-300'
+                      : 'text-rose-300'
+              }`}
+            >
+              {pct! < 1 ? pct!.toFixed(2) : pct!.toFixed(1)}%
+            </span>
+            <span className="text-[11px] uppercase tracking-widest text-stone-500">
+              X = {m.value!.toFixed(2)} · low &lt; 5% · moderate &lt; 20% · elevated &lt; 50% · high ≥ 50%
+            </span>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3 mb-3">
+            {m.inputs.map((inp) => (
+              <div key={inp.id} className="border border-stone-800 bg-stone-900/30 px-3 py-2">
+                <div className="text-[9px] uppercase tracking-widest text-stone-500 mb-1">{inp.label}</div>
+                <div className="font-mono text-sm text-stone-200">
+                  {inp.ratio.toFixed(3)} <span className="text-stone-500">× {inp.coefficient}</span>
+                </div>
+                <div className={`text-[11px] font-mono ${inp.contribution <= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {inp.contribution >= 0 ? '+' : ''}{inp.contribution.toFixed(2)} to X
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-start gap-2 text-[11px] text-stone-400 leading-relaxed mb-2">
+            <Info className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+            <span>
+              Probit estimated on 1970s industrial samples — read the probability as a calibrated
+              ranking signal alongside Z&Prime;, not a literal modern default rate.
+            </span>
+          </div>
+
+          <SourceLinks sources={m.sources} />
+        </div>
+      ) : (
+        <div className="p-4 text-sm text-stone-400">
+          Not computable for this filer — missing tagged inputs:{' '}
+          <span className="font-mono text-stone-300">{m.missing.join(', ')}</span>.
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---- Beneish M-Score -------------------------------------------------------------
+function BeneishCard({ m, ticker }: { m: BeneishModel; ticker: string }) {
+  const hasValue = m.value != null;
+  return (
+    <section className="border-2 border-stone-800 bg-stone-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FlaskConical className="w-4 h-4 text-amber-400" />
+            <h2 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
+              Beneish M-Score — earnings-manipulation screen
+            </h2>
+            {m.variant && (
+              <span className="text-[9px] uppercase tracking-[0.18em] font-black px-1.5 py-0.5 border border-stone-700 bg-stone-900/50 text-stone-400">
+                {m.variant}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Beneish&apos;s (1999) probit on year-over-year accounting indices — the academic screen
+            that flagged Enron before its restatement — computed for {ticker}
+            {m.priorFiscalYear && m.fiscalYear ? ` from FY${m.priorFiscalYear} → FY${m.fiscalYear}` : ''}. Formula: {m.formula}
+          </p>
+        </div>
+        {hasValue && <ZoneChip zone={m.zone} />}
+      </div>
+
+      {hasValue ? (
+        <div className="p-4">
+          <div className="flex items-baseline gap-3 mb-4">
+            <span
+              className={`text-4xl font-black tabular-nums ${
+                m.zone.level === 'low' ? 'text-emerald-300' : m.zone.level === 'elevated' ? 'text-amber-300' : 'text-rose-300'
+              }`}
+            >
+              {m.value!.toFixed(2)}
+            </span>
+            <span className="text-[11px] uppercase tracking-widest text-stone-500">
+              unlikely &lt; −2.22 · caution −2.22 to −1.78 · flagged &gt; −1.78
+            </span>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 mb-3">
+            {m.indices.map((ix) => (
+              <div key={ix.id} className="border border-stone-800 bg-stone-900/30 px-3 py-2">
+                <div className="text-[9px] uppercase tracking-widest text-stone-500 mb-1">
+                  {ix.id} · {ix.label}
+                </div>
+                <div className="font-mono text-sm text-stone-200">
+                  {ix.value.toFixed(2)}
+                  {ix.id !== 'TATA' && <span className="text-stone-500"> vs 1.00 neutral</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {m.assumptions.length > 0 && (
+            <ul className="text-[11px] text-stone-500 leading-relaxed mb-2 space-y-0.5">
+              {m.assumptions.map((a, i) => (
+                <li key={i}>• {a}</li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex items-start gap-2 text-[11px] text-stone-400 leading-relaxed mb-2">
+            <Info className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+            <span>
+              A score in the flagged range means the accounting pattern resembles the manipulator
+              sample in Beneish&apos;s study — it is a prompt to read the filings, never an accusation.
+            </span>
+          </div>
+
+          <SourceLinks sources={m.sources} />
+        </div>
+      ) : (
+        <div className="p-4 text-sm text-stone-400">
+          Not computable for this filer
+          {m.missing.length > 0 ? (
+            <>
+              {' '}— missing: <span className="font-mono text-stone-300">{m.missing.join('; ')}</span>
+            </>
+          ) : (
+            <> — requires two consecutive fiscal years of 10-K facts</>
+          )}
+          .
+        </div>
+      )}
+    </section>
   );
 }
 
