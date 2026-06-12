@@ -876,6 +876,22 @@ export function scanRiskLanguage(text, terms = RISK_LANGUAGE_TERMS, { maxExcerpt
       return digits / p.length <= 0.2;
     });
 
+  // A paragraph can pass the density prefilter and still be inline-XBRL soup
+  // (long CamelCase member names dilute digit share). Validate each match's
+  // LOCAL window instead: 9+ consecutive digits (CIKs, raw fact values \u2014
+  // prose always comma-formats), local digit density, or repeated CamelCase
+  // \u2026Member tokens all mark machine context, never disclosure prose.
+  const WINDOW = 150;
+  const looksMachineContext = (paragraph, at, needleLen) => {
+    const start = Math.max(0, at - WINDOW);
+    const w = paragraph.slice(start, at + needleLen + WINDOW);
+    if (/\d{9,}/.test(w)) return true;
+    const digits = (w.match(/[0-9]/g) || []).length;
+    if (digits / w.length > 0.2) return true;
+    if ((w.match(/[a-z]Member\b/g) || []).length >= 2) return true;
+    return false;
+  };
+
   return terms.map((term) => {
     const needle = term.toLowerCase();
     let count = 0;
@@ -883,18 +899,20 @@ export function scanRiskLanguage(text, terms = RISK_LANGUAGE_TERMS, { maxExcerpt
     for (const p of paragraphs) {
       const lower = p.toLowerCase();
       let idx = lower.indexOf(needle);
-      if (idx === -1) continue;
+      let tookExcerptHere = false;
       while (idx !== -1) {
-        count += 1;
+        if (!looksMachineContext(p, idx, needle.length)) {
+          count += 1;
+          if (!tookExcerptHere && excerpts.length < maxExcerpts) {
+            const start = Math.max(0, idx - Math.floor((excerptChars - needle.length) / 2));
+            let snippet = p.slice(start, start + excerptChars).trim();
+            if (start > 0) snippet = '\u2026' + snippet;
+            if (start + excerptChars < p.length) snippet = snippet + '\u2026';
+            excerpts.push(snippet);
+            tookExcerptHere = true;
+          }
+        }
         idx = lower.indexOf(needle, idx + needle.length);
-      }
-      if (excerpts.length < maxExcerpts) {
-        const at = lower.indexOf(needle);
-        const start = Math.max(0, at - Math.floor((excerptChars - needle.length) / 2));
-        let snippet = p.slice(start, start + excerptChars).trim();
-        if (start > 0) snippet = '\u2026' + snippet;
-        if (start + excerptChars < p.length) snippet = snippet + '\u2026';
-        excerpts.push(snippet);
       }
     }
     return { term, count, excerpts };
