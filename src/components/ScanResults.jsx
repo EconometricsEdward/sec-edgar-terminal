@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
-  ExternalLink, FileText, ChevronDown, ChevronRight, Calendar, Hash,
+  ExternalLink, FileText, FileSearch, ChevronDown, ChevronRight, Calendar, Hash,
   TrendingUp, Clock, Tag, AlertCircle, Zap, Database,
   GitCompare, Search, ShieldCheck, Activity,
 } from 'lucide-react';
