@@ -9,13 +9,13 @@ import HeaderSearchWrapper from '../components/HeaderSearchWrapper';
 import './globals.css';
 
 // ============================================================================
-// Metadata — unchanged from the previous layout.tsx. Per-page overrides will
+// Metadata - unchanged from the previous layout.tsx. Per-page overrides will
 // come later via generateMetadata on each app/<route>/page.tsx.
 // ============================================================================
 export const metadata: Metadata = {
   metadataBase: new URL('https://secedgarterminal.com'),
   title: {
-    default: 'EDGAR Terminal — SEC Filings & Financial Data Explorer',
+    default: 'EDGAR Terminal - SEC Filings & Financial Data Explorer',
     template: '%s | EDGAR Terminal',
   },
   description:
@@ -44,7 +44,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     url: 'https://secedgarterminal.com/',
-    title: 'EDGAR Terminal — SEC Filings & Financial Data Explorer',
+    title: 'EDGAR Terminal - SEC Filings & Financial Data Explorer',
     description:
       'Free, source-linked explorer for SEC filings, XBRL financials, insider trading, and peer comparisons. Every number cites its SEC source.',
     siteName: 'EDGAR Terminal',
@@ -54,19 +54,19 @@ export const metadata: Metadata = {
         url: 'https://secedgarterminal.com/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'EDGAR Terminal — dark interface showing financial analysis with amber charts',
+        alt: 'EDGAR Terminal - dark interface showing financial analysis with amber charts',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'EDGAR Terminal — SEC Filings & Financial Data Explorer',
+    title: 'EDGAR Terminal - SEC Filings & Financial Data Explorer',
     description:
       'Free, source-linked explorer for SEC filings, XBRL financials, insider trading, and peer comparisons.',
     images: ['https://secedgarterminal.com/og-image.png'],
   },
   icons: {
-    // Inline SVG favicon — matches original, no extra HTTP request
+    // Inline SVG favicon - matches original, no extra HTTP request
     icon: [
       {
         url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%231c1917'/%3E%3Crect x='15' y='60' width='14' height='25' fill='%23fbbf24'/%3E%3Crect x='35' y='45' width='14' height='40' fill='%23fbbf24'/%3E%3Crect x='55' y='30' width='14' height='55' fill='%23fbbf24'/%3E%3Crect x='75' y='15' width='14' height='70' fill='%23fbbf24'/%3E%3C/svg%3E",
@@ -77,7 +77,7 @@ export const metadata: Metadata = {
 };
 
 // ============================================================================
-// Viewport — Next.js 16 requires theme-color and viewport config separately
+// Viewport - Next.js 16 requires theme-color and viewport config separately
 // from metadata. This is a breaking change from Next.js 14 that was flagged
 // in the Next.js 15 release notes.
 // ============================================================================
@@ -88,7 +88,7 @@ export const viewport: Viewport = {
 };
 
 // ============================================================================
-// JSON-LD Structured Data — Schema.org WebApplication markup
+// JSON-LD Structured Data - Schema.org WebApplication markup
 // Helps Google render rich results for the homepage.
 // ============================================================================
 const jsonLd = {
@@ -114,7 +114,7 @@ const jsonLd = {
     'Form 4 insider trading activity',
     'Peer comparison with up to 5 companies',
     'Disclosure keyword search with source-linked SEC excerpts, EDGAR index source windows, and filer concentration',
-    'Source-linked data — every number traces to SEC.gov',
+    'Source-linked data - every number traces to SEC.gov',
   ],
 };
 
@@ -147,7 +147,7 @@ export default function RootLayout({
       <body className="bg-stone-950">
         <Providers>
           <div className="min-h-screen bg-stone-950 text-stone-100 font-mono">
-            {/* Background grid — decorative, pointer-events-none so it doesn't block clicks */}
+            {/* Background grid - decorative, pointer-events-none so it doesn't block clicks */}
             <div
               className="fixed inset-0 opacity-[0.03] pointer-events-none"
               style={{
@@ -171,7 +171,7 @@ export default function RootLayout({
                       </h1>
                     </div>
                     <p className="text-xs text-stone-400 uppercase tracking-[0.2em]">
-                      SEC Public Filings Explorer · Live Data · Direct Source
+                      SEC Public Filings Explorer / Live Data / Direct Source
                     </p>
                   </Link>
                   <div className="text-right text-[10px] text-stone-500 uppercase tracking-widest">
@@ -182,7 +182,7 @@ export default function RootLayout({
 
                 <NavTabs />
 
-                {/* Global search — hidden on landing, shown everywhere else */}
+                {/* Global search - hidden on landing, shown everywhere else */}
                 <HeaderSearchWrapper />
               </header>
 
@@ -191,9 +191,9 @@ export default function RootLayout({
 
               {/* Footer */}
               <footer className="mt-12 pt-6 border-t-2 border-stone-800 text-[10px] uppercase tracking-widest text-stone-500 flex flex-wrap justify-between gap-2">
-                <span>Data via SEC.gov · Public EDGAR APIs · XBRL Financial Facts</span>
-                <span>For research use only · Not investment advice</span>
-                <span>Free Â· No account required</span>
+                <span>Data via SEC.gov / Public EDGAR APIs / XBRL Financial Facts</span>
+                <span>For research use only / Not investment advice</span>
+                <span>Free / No account required</span>
               </footer>
             </div>
           </div>

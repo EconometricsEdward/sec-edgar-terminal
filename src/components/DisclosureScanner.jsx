@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Activity, AlertCircle, ChevronRight, Clock, Database, FileSearch, Loader2, Search, Sparkles, X,
-  FileText, Hash, ShieldCheck,
+  ExternalLink, FileText, Hash, ShieldCheck,
 } from 'lucide-react';
 import { DISCLOSURE_MARKET_MAP, DISCLOSURE_UNIVERSES } from '../utils/disclosureUniverses.js';
 
@@ -288,6 +288,94 @@ function playbookToneClasses(tone) {
   return classes[tone] || classes.sky;
 }
 
+function formatTermSummary(terms) {
+  if (!terms.length) return 'Add keywords to define the evidence test';
+  if (terms.length <= 3) return terms.join(', ');
+  return `${terms.slice(0, 3).join(', ')} +${terms.length - 3} more`;
+}
+
+function rangeLabel(months) {
+  return INDEX_RANGES.find((range) => range.months === months)?.label || `${months} months`;
+}
+
+function buildResearchPlan({
+  isIndexMode,
+  isMarketMode,
+  isUniverseMode,
+  tickers,
+  terms,
+  selectedUniverse,
+  selectedIndexFormPreset,
+  indexMonths,
+  indexLimit,
+  indexFocusInput,
+  matchMode,
+}) {
+  const matchText = matchMode === 'all'
+    ? 'Require every entered term or phrase'
+    : 'Count filings that match any entered term or phrase';
+  const termText = formatTermSummary(terms);
+
+  if (isIndexMode) {
+    const focus = indexFocusInput.trim();
+    return {
+      title: 'SEC index discovery',
+      source: 'SEC full-text search',
+      sourceHref: 'https://www.sec.gov/edgar/search/',
+      scope: focus ? `Focused on ${focus}` : 'Broad SEC corpus',
+      coverage: `${rangeLabel(indexMonths)} / ${selectedIndexFormPreset.label} forms / up to ${indexLimit} source filings`,
+      match: matchText,
+      terms: termText,
+      nextStep: 'Open source filings first, then scan top filers for paragraph-level excerpts.',
+      tone: 'sky',
+    };
+  }
+
+  if (isMarketMode) {
+    return {
+      title: 'Cross-sector market map',
+      source: 'SEC submissions and archive filings',
+      sourceHref: 'https://www.sec.gov/search-filings/edgar-application-programming-interfaces',
+      scope: `${DISCLOSURE_MARKET_MAP.tickers.length} representative companies`,
+      coverage: '2 recent filings per company for bounded, broad discovery',
+      match: matchText,
+      terms: termText,
+      nextStep: 'Use the evidence table to identify which sector or company deserves a deeper scan.',
+      tone: 'emerald',
+    };
+  }
+
+  if (isUniverseMode) {
+    return {
+      title: 'Curated universe scan',
+      source: 'SEC submissions and archive filings',
+      sourceHref: 'https://www.sec.gov/search-filings/edgar-application-programming-interfaces',
+      scope: selectedUniverse
+        ? `${selectedUniverse.label} / ${selectedUniverse.tickers.length} companies`
+        : 'Selected SEC universe',
+      coverage: 'Up to 12 recent filings per company with paragraph-level excerpts',
+      match: matchText,
+      terms: termText,
+      nextStep: 'Compare hit rates, then open the strongest source filings before drawing conclusions.',
+      tone: 'amber',
+    };
+  }
+
+  return {
+    title: 'Company filing scan',
+    source: 'SEC submissions and archive filings',
+    sourceHref: 'https://www.sec.gov/search-filings/edgar-application-programming-interfaces',
+    scope: tickers.length
+      ? `${tickers.length} selected ${tickers.length === 1 ? 'company' : 'companies'}: ${tickers.join(', ')}`
+      : 'Add 1 to 5 company tickers',
+    coverage: 'Up to 35 recent filings per ticker with paragraph-level excerpts',
+    match: matchText,
+    terms: termText,
+    nextStep: 'Start with matched excerpts, then use linked filings and analysis pages for context.',
+    tone: 'stone',
+  };
+}
+
 export default function DisclosureScanner({
   initialQuery = '',
   initialFocus = '',
@@ -344,6 +432,31 @@ export default function DisclosureScanner({
     : isUniverseMode
     ? Boolean(selectedUniverse) && terms.length >= 1
     : tickers.length >= 1 && tickers.length <= 5 && terms.length >= 1;
+  const researchPlan = useMemo(() => buildResearchPlan({
+    isIndexMode,
+    isMarketMode,
+    isUniverseMode,
+    tickers,
+    terms,
+    selectedUniverse,
+    selectedIndexFormPreset,
+    indexMonths,
+    indexLimit,
+    indexFocusInput,
+    matchMode,
+  }), [
+    isIndexMode,
+    isMarketMode,
+    isUniverseMode,
+    tickers,
+    terms,
+    selectedUniverse,
+    selectedIndexFormPreset,
+    indexMonths,
+    indexLimit,
+    indexFocusInput,
+    matchMode,
+  ]);
 
   const runSearch = async (nextTickers, nextQuery, options = {}) => {
     const index = options.index === true;
@@ -708,6 +821,8 @@ export default function DisclosureScanner({
           </span>
         </div>
 
+        <SearchPlanPanel plan={researchPlan} />
+
         {isIndexMode && !scanning && (
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(220px,0.45fr)_220px] gap-2">
             <div className="border-2 border-stone-800 bg-stone-900/30 p-3">
@@ -1059,6 +1174,63 @@ export default function DisclosureScanner({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SearchPlanPanel({ plan }) {
+  const toneClass = {
+    amber: 'border-amber-900/70 bg-amber-950/20',
+    emerald: 'border-emerald-900/70 bg-emerald-950/20',
+    sky: 'border-sky-900/70 bg-sky-950/20',
+    stone: 'border-stone-800 bg-stone-900/30',
+  }[plan.tone] || 'border-stone-800 bg-stone-900/30';
+
+  return (
+    <section className={`border-2 p-3 ${toneClass}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <h3 className="text-[10px] uppercase tracking-[0.2em] text-stone-200 font-black">
+              Research plan
+            </h3>
+          </div>
+          <p className="mt-1 text-xs font-black text-stone-100">{plan.title}</p>
+        </div>
+        <a
+          href={plan.sourceHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-sky-300 hover:text-sky-200"
+        >
+          {plan.source}
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
+        <PlanFact icon={Search} label="Scope" value={plan.scope} />
+        <PlanFact icon={FileText} label="Coverage" value={plan.coverage} />
+        <PlanFact icon={Hash} label="Terms" value={plan.terms} />
+        <PlanFact icon={Activity} label="Match Logic" value={plan.match} />
+      </div>
+
+      <div className="mt-3 border-t border-stone-800 pt-3 text-[11px] leading-relaxed text-stone-400">
+        <span className="font-bold text-stone-200">Next step:</span> {plan.nextStep}
+      </div>
+    </section>
+  );
+}
+
+function PlanFact({ icon: Icon, label, value }) {
+  return (
+    <div className="border border-stone-800 bg-stone-950/60 p-3">
+      <div className="mb-1 flex items-center gap-1.5 text-[9px] uppercase tracking-[0.16em] text-stone-500 font-bold">
+        <Icon className="h-3 w-3" />
+        {label}
+      </div>
+      <div className="text-[11px] leading-relaxed text-stone-200">{value}</div>
     </div>
   );
 }
