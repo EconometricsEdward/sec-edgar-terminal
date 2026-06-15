@@ -124,6 +124,28 @@
     <priority>0.9</priority>
   </url>
 
+  <!-- Featured ticker filing pages -->
+  <url>
+    <loc>https://secedgarterminal.com/filings/AAPL</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://secedgarterminal.com/filings/JPM</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://secedgarterminal.com/filings/NVDA</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://secedgarterminal.com/filings/XOM</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
   <!-- Featured fund pages -->
   <url>
     <loc>https://secedgarterminal.com/fund/SPY</loc>
