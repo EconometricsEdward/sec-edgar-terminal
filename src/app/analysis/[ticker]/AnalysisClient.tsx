@@ -3706,6 +3706,8 @@ function FilingActivityPanel({
   filings: FilingEntry[];
   ticker?: string;
 }) {
+  const [activityReferenceTime] = useState(() => Date.now());
+
   const activity = useMemo(() => {
     const latestAnnual = findLatestFiling(filings, ['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A']);
     const latestQuarterly = findLatestFiling(filings, ['10-Q', '10-Q/A', '6-K']);
@@ -3713,12 +3715,12 @@ function FilingActivityPanel({
     const latestAny = findMostRecentFiling(filings);
     const latestProxy = filings.find((filing) => filing.form.includes('DEF 14A') || filing.form.includes('PRE 14A')) || null;
     const insiderForms = filings.filter((filing) => ['3', '3/A', '4', '4/A', '5', '5/A'].includes(filing.form));
-    const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    const cutoff = activityReferenceTime - 90 * 24 * 60 * 60 * 1000;
     const last90Days = filings.filter((filing) => {
       const time = new Date(filing.filingDate).getTime();
       return Number.isFinite(time) && time >= cutoff;
     }).length;
-    const eventCutoff = Date.now() - 180 * 24 * 60 * 60 * 1000;
+    const eventCutoff = activityReferenceTime - 180 * 24 * 60 * 60 * 1000;
     const itemEvents: EventWithSignal[] = filings
       .filter((filing) => filing.form.startsWith('8-K'))
       .map((filing) => {
@@ -3783,7 +3785,7 @@ function FilingActivityPanel({
       eventItemSummary,
       eventFilings,
     };
-  }, [filings]);
+  }, [activityReferenceTime, filings]);
 
   if (!filings.length) return null;
 
