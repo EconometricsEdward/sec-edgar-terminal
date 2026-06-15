@@ -74,7 +74,7 @@ export default function LandingPage() {
 
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-[11px] uppercase tracking-wider text-stone-500">
             <span className="flex items-center gap-1.5"><Database className="w-3.5 h-3.5 text-amber-500" />Live data from SEC.gov</span>
-            <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-emerald-500" />No tracking, no accounts</span>
+            <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-emerald-500" />No login, no paywall</span>
             <span className="flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-sky-500" />Every value source-linked</span>
             <span className="flex items-center gap-1.5"><ExternalLink className="w-3.5 h-3.5 text-violet-500" />Free forever</span>
           </div>
@@ -171,7 +171,7 @@ export default function LandingPage() {
             <div className="space-y-3">
               <DifferentiatorRow label="Source-linked" text="Every value shows its XBRL tag, filing date, and accession number" />
               <DifferentiatorRow label="Industry-aware" text="Banks get bank ratios, tech gets tech ratios, retail gets retail ratios" />
-              <DifferentiatorRow label="No account needed" text="No sign-up, no email capture, no paywalls — just the data" />
+              <DifferentiatorRow label="No account needed" text="No login, no email capture, no paywall - just the data" />
               <DifferentiatorRow label="Research-grade" text="Built for analysts, students, and curious readers of 10-Ks" />
             </div>
           </div>

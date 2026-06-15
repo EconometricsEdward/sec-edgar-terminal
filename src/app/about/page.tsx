@@ -11,7 +11,7 @@ import {
 export const metadata: Metadata = {
   title: 'About & Methodology',
   description:
-    "How EDGAR Terminal works, where the data comes from, and what you can trust. All data is sourced directly from SEC.gov public APIs — no scraping, no tracking, no accounts.",
+    "How EDGAR Terminal works, where the data comes from, and what you can trust. All data is sourced directly from SEC.gov public APIs - no scraping, no login, no paywall.",
   alternates: {
     canonical: 'https://secedgarterminal.com/about',
   },
@@ -58,7 +58,11 @@ export default function AboutPage() {
               </p>
               <p>
                 The site is intentionally free, lightweight, accountless, and ad-free.
-                There is no login, no email capture, no cookie tracking.
+                There is no login, no email capture, and no paywall.
+              </p>
+              <p>
+                Basic Vercel Analytics and Speed Insights are used to monitor aggregate page health
+                and performance. They do not create accounts, gate content, or collect emails.
               </p>
             </div>
           </section>
@@ -231,7 +235,7 @@ export default function AboutPage() {
               <FactRow term="Scanner cache" def="24 hours (Redis)" />
               <FactRow term="Cost" def="Free forever" />
               <FactRow term="Account required" def="No" />
-              <FactRow term="Tracking" def="None" />
+              <FactRow term="Telemetry" def="Vercel Analytics" />
             </dl>
           </div>
 
