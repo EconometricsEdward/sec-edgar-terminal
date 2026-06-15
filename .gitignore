@@ -27,6 +27,7 @@ yarn-error.log*
 # Next.js
 .next/
 next-env.d.ts
+tsconfig.tsbuildinfo
 .env*.local
 
 # Scratch files from analysis/debugging sessions
