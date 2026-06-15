@@ -15,7 +15,7 @@ import {
  *   cik: target company's CIK (for display only)
  *   companyName: company name (for display)
  */
-export default function HoldersSection({ ticker, cik, companyName }) {
+export default function HoldersSection({ ticker, cik: _cik, companyName: _companyName }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -251,7 +251,7 @@ function formatCurrency(val) {
   return `$${val.toFixed(0)}`;
 }
 
-function buildFilingUrl(cik, accession) {
+function buildFilingUrl(cik, _accession) {
   const cikStripped = String(cik).replace(/^0+/, '');
   return `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cikStripped}&type=13F-HR&dateb=&owner=include&count=10`;
 }

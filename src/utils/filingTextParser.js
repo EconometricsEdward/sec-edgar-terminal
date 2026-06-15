@@ -85,7 +85,7 @@ async function fetchSec(url, timeoutMs = 15000) {
     await sleep(REQUEST_DELAY_MS);
 
     return res;
-  } catch (err) {
+  } catch {
     return null;
   } finally {
     semaphore.release();

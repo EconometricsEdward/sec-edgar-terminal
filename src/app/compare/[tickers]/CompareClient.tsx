@@ -16,6 +16,9 @@ import {
 } from '../../../utils/xbrlParser.js';
 import { classifyIndustry } from '../../../utils/industry.js';
 import { PEER_GROUPS, COMPANY_COLORS } from '../../../utils/peerGroups.js';
+import type { TickerMap } from '../../../contexts/TickerContext';
+
+const noopSetTickerMap = (_map: TickerMap | null) => {};
 
 // ============================================================================
 // JS-component prop interop (same pattern as AnalysisClient)
@@ -23,9 +26,7 @@ import { PEER_GROUPS, COMPANY_COLORS } from '../../../utils/peerGroups.js';
 // ComparisonChart is a plain .jsx file with no TypeScript prop types.
 // Casting at the import boundary tells TS "trust the runtime here".
 // ============================================================================
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const ComparisonChart = ComparisonChartImpl as any;
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ============================================================================
 // Exported types — server page imports PreloadedCompany
@@ -49,7 +50,6 @@ interface CompanyState {
   name: string;
   cik: string;
   color: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   facts: any | null;
   sicCode: string | number | null;
   sicDescription: string | null;
@@ -365,7 +365,6 @@ interface RatioMetric {
   key: string;
   label: string;
   format: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   compute: (vals: any) => number | null;
   sourceMetricKeys: string[];
   formulaLabel: string;
@@ -552,7 +551,7 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
   const router = useRouter();
   const ctx = useContext(TickerContext);
   const tickerMap = ctx?.tickerMap ?? null;
-  const setTickerMap = ctx?.setTickerMap ?? (() => {});
+  const setTickerMap = ctx?.setTickerMap ?? noopSetTickerMap;
 
   const [companies, setCompanies] = useState<CompanyState[]>([]);
   const [input, setInput] = useState('');
@@ -751,7 +750,6 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
       }
     }
     setAutoSuggestions(suggestions.slice(0, 4));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companies, tickerMap, autoSuggestFor]);
 
   const copyShareLink = () => {
@@ -1288,7 +1286,6 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
 // Sub-components — preserved verbatim from original ComparePage.jsx
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function SectionTitle({ icon: Icon, title }: { icon: any; title: string }) {
   return (
     <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-stone-800">

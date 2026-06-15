@@ -302,8 +302,7 @@ function formatValue(val, unit) {
  * Build the URL to the SEC EDGAR filing browser for a specific accession.
  * Accession is in format "0000320193-24-000123" — we need to strip dashes for the path.
  */
-function buildFilingUrl(cik, accn) {
+function buildFilingUrl(cik, _accn) {
   const cikStripped = String(cik).replace(/^0+/, '');
-  const accnStripped = accn.replace(/-/g, '');
   return `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cikStripped}&type=&dateb=&owner=include&count=40&action=getcompany`;
 }

@@ -603,7 +603,6 @@ export function assessRisk(facts, sicCode, cik) {
 
     const interestCoverage = ratioRows(rows.operatingIncome, rows.interestExpense, 'Interest coverage', periods);
     const ocfToDebt = ratioRows(rows.ocf, totalDebt, 'OCF / total debt', periods);
-    const netDebt = sumRows([totalDebt], 'Total debt', periods); // base for note below
     const debtLatest = latestPoint(totalDebt);
     const cashLatest = latestPoint(rows.cash);
 

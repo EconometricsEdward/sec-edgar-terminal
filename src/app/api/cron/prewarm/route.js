@@ -87,13 +87,6 @@ async function runPool(items, limit, worker) {
   return { results, errors };
 }
 
-function withTimeout(promise, ms, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms)),
-  ]);
-}
-
 // ---------------------------------------------------------------------------
 // Individual warmers. Each is responsible for: (1) fetching upstream, (2)
 // writing to the warm cache under an agreed key, (3) returning a brief

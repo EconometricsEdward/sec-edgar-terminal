@@ -18,7 +18,6 @@ interface FundClientProps {
   preloadedCik: string | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyValue = any;
 
 // ============================================================================
@@ -191,7 +190,6 @@ export default function FundClient({ urlTicker, preloadedName, preloadedCik }: F
 
 interface NotAFundMessageProps {
   data: AnyValue;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   router: any;
   preloadedName: string | null;
   preloadedCik: string | null;

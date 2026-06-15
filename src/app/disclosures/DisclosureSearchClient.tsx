@@ -5,11 +5,9 @@ import { Database, FileSearch, Info, ShieldCheck, type LucideIcon } from 'lucide
 import DisclosureScannerImpl from '../../components/DisclosureScanner.jsx';
 import ScanResultsImpl from '../../components/ScanResults.jsx';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const DisclosureScanner = DisclosureScannerImpl as any;
 const ScanResults = ScanResultsImpl as any;
 type AnyValue = any;
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export default function DisclosureSearchClient({
   initialQuery = '',

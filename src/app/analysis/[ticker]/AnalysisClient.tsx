@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useContext, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useContext, useMemo, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
@@ -46,14 +46,12 @@ import { classifyIndustry, industryLabel, industryDisclosure, INDUSTRY_GROUPS } 
 // matches how the rest of this codebase treats JS-utility interop. The
 // runtime behavior is unchanged.
 // ============================================================================
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const MetricChart = MetricChartImpl as any;
 const SummaryDashboard = SummaryDashboardImpl as any;
 const StockPriceChart = StockPriceChartImpl as any;
 const InsiderActivity = InsiderActivityImpl as any;
 const HoldersSection = HoldersSectionImpl as any;
 const ConceptHistoryModal = ConceptHistoryModalImpl as any;
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ============================================================================
 // Types
@@ -363,7 +361,6 @@ export default function AnalysisClient({
   }, []);
 
   const [conceptToTrace, setConceptToTrace] = useState<ConceptToTrace | null>(null);
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
   // Scrollspy: highlight active section as user scrolls
   useEffect(() => {
@@ -546,7 +543,6 @@ export default function AnalysisClient({
 
   const statementDef = STATEMENTS.find((s) => s.id === statement) || STATEMENTS[0];
   const rows = useMemo(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     () => (facts && periods.length > 0 ? statementDef.build(facts, periods, sicCode as any) : []),
     [facts, periods, statementDef, sicCode]
   );
@@ -572,19 +568,16 @@ export default function AnalysisClient({
   const displayedRows = activeStatementView === 'commonSize' ? commonSizeRows : rows;
 
   const ratioRows = useMemo(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     () => (facts && periods.length > 0 ? buildRatios(facts, periods, sicCode as any) : []),
     [facts, periods, sicCode]
   );
 
   const coverageStatementRows = useMemo(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     () => (facts && annualPeriods.length > 0 ? STATEMENTS.flatMap((s) => s.build(facts, annualPeriods, sicCode as any)) : []),
     [facts, annualPeriods, sicCode]
   );
 
   const coverageRatioRows = useMemo(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     () => (facts && annualPeriods.length > 0 ? buildRatios(facts, annualPeriods, sicCode as any) : []),
     [facts, annualPeriods, sicCode]
   );

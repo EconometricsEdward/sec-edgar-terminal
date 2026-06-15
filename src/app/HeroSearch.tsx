@@ -16,6 +16,9 @@ import {
   disclosureTopicTerm,
   disclosureSearchPath,
 } from '../utils/searchRouter.js';
+import type { TickerMap } from '../contexts/TickerContext';
+
+const noopSetTickerMap = (_map: TickerMap | null) => {};
 
 // ============================================================================
 // Types
@@ -38,7 +41,6 @@ interface Disambiguation {
   options: DisambiguationOption[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyValue = any;
 
 // ============================================================================
@@ -53,7 +55,7 @@ export default function HeroSearch() {
   const router = useRouter();
   const ctx = useContext(TickerContext);
   const tickerMap = ctx?.tickerMap ?? null;
-  const setTickerMap = ctx?.setTickerMap ?? (() => {});
+  const setTickerMap = ctx?.setTickerMap ?? noopSetTickerMap;
 
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -380,7 +382,6 @@ function SuggestionRow({ suggestion: s, highlighted, isCompareMode, onHover, onR
 interface ActionBtnProps {
   onClick: () => void;
   label: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   icon: AnyValue;
   color: 'amber' | 'sky' | 'emerald';
 }

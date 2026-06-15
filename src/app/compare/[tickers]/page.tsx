@@ -25,12 +25,6 @@ interface CompanyTickersFile {
   [key: string]: CompanyTickerEntry;
 }
 
-interface SECSubmissionsLite {
-  name: string;
-  cik: string;
-  sicDescription?: string;
-}
-
 interface PageProps {
   params: Promise<{ tickers: string }>;
 }

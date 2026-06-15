@@ -298,7 +298,7 @@ async function fetchFilerHolding(filer, targetCusip, userAgent) {
       ...holding,
       source: 'known',
     };
-  } catch (err) {
+  } catch {
     // Silent failure — expected for many filers
     return null;
   }
@@ -463,7 +463,7 @@ async function fetchAndExtractHolding(filerCik, accession, targetCusip, userAgen
       issuerName,
       rowCount: matchCount,
     };
-  } catch (err) {
+  } catch {
     return null;
   }
 }

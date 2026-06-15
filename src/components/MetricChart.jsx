@@ -40,7 +40,6 @@ export function MetricChart({ title, data, format = 'currency', chartType = 'bar
   }
 
   const Chart = chartType === 'line' ? LineChart : BarChart;
-  const Shape = chartType === 'line' ? Line : Bar;
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900/30 p-4">

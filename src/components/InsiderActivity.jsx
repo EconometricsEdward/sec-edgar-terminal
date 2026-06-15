@@ -32,8 +32,10 @@ export default function InsiderActivity({ cik, filings, onMarkersReady }) {
       .filter(Boolean);
   }, [filings]);
 
+  const accessionsParam = useMemo(() => form4Accessions.join(','), [form4Accessions]);
+
   useEffect(() => {
-    if (!cik || form4Accessions.length === 0) {
+    if (!cik || !accessionsParam) {
       setData(null);
       return;
     }
@@ -43,7 +45,6 @@ export default function InsiderActivity({ cik, filings, onMarkersReady }) {
       setLoading(true);
       setError(null);
       try {
-        const accessionsParam = form4Accessions.join(',');
         const res = await fetch(
           `/api/insiders?cik=${encodeURIComponent(cik)}&accessions=${encodeURIComponent(accessionsParam)}`
         );
@@ -62,7 +63,7 @@ export default function InsiderActivity({ cik, filings, onMarkersReady }) {
 
     fetchData();
     return () => { cancelled = true; };
-  }, [cik, form4Accessions.join(',')]);
+  }, [cik, accessionsParam]);
 
   // Compute chart markers whenever data changes, pass up to parent
   useEffect(() => {

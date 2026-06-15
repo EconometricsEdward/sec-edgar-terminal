@@ -23,13 +23,6 @@ interface CompanyTickersFile {
   [key: string]: CompanyTickerEntry;
 }
 
-interface CompanyTickerMfEntry {
-  cik: number;
-  seriesId: string;
-  classId: string;
-  symbol: string;
-}
-
 // SEC's company_tickers_mf.json has a different shape than company_tickers.json
 // It uses a "data" array with rows: [cik, seriesId, classId, symbol]
 interface CompanyTickersMfFile {

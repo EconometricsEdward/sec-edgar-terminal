@@ -1509,7 +1509,7 @@ function FilingsList({ filings, cik }) {
   );
 }
 
-function FilingCard({ filing, cik }) {
+function FilingCard({ filing, cik: _cik }) {
   const [expanded, setExpanded] = useState(false);
   const formColor = getFormColor(filing.form);
 
