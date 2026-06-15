@@ -246,8 +246,8 @@ export default function AboutPage() {
             </div>
             <ul className="space-y-2.5 text-xs">
               <SourceLink
-                href="https://www.sec.gov/edgar/sec-api-documentation"
-                title="SEC EDGAR API"
+                href="https://www.sec.gov/search-filings/edgar-application-programming-interfaces"
+                title="SEC EDGAR APIs"
                 desc="Filings, submissions, XBRL facts"
               />
               <SourceLink

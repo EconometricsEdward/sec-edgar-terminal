@@ -140,7 +140,7 @@ function PeerResearchWorkbench({
               icon={ShieldCheck}
               title="Audit the public source trail"
               detail="Open each company's raw Company Facts JSON from data.sec.gov in the source trail above."
-              href="https://www.sec.gov/edgar/sec-api-documentation"
+              href="https://www.sec.gov/search-filings/edgar-application-programming-interfaces"
               tone="stone"
               external
             />
