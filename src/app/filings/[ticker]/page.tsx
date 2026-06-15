@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import FilingsClient, { type FilingEntry, type CompanyInfo } from './FilingsClient';
+import { buildPageMetadata } from '../../../utils/siteMetadata';
 
 // ============================================================================
 // Route configuration
@@ -165,10 +165,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const cik = await getCikForTicker(upper);
   if (!cik) {
-    return {
+    return buildPageMetadata({
       title: `${upper} — SEC Filings`,
       description: `SEC filings for ticker ${upper}.`,
-    };
+      path: `/filings/${upper}`,
+    });
   }
 
   const submissions = await getSubmissions(cik);
@@ -177,24 +178,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const title = `${companyName} (${upper}) — SEC Filings`;
   const description = `Complete SEC filing history for ${companyName} (${upper}). Browse a source-linked filing pulse, 10-Ks, 10-Qs, 8-Ks, Form 4s, and proxy statements with direct links to original documents on SEC.gov.`;
 
-  return {
+  return buildPageMetadata({
     title,
     description,
-    alternates: {
-      canonical: `https://secedgarterminal.com/filings/${upper}`,
-    },
-    openGraph: {
-      title,
-      description,
-      url: `https://secedgarterminal.com/filings/${upper}`,
-      type: 'website',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-    },
-  };
+    path: `/filings/${upper}`,
+  });
 }
 
 // ============================================================================

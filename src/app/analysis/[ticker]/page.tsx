@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import AnalysisClient from './AnalysisClient';
+import { buildPageMetadata } from '../../../utils/siteMetadata';
 
 // ============================================================================
 // Route configuration
@@ -121,32 +122,21 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const meta = await getCompanyMeta(upper);
 
   if (!meta) {
-    return {
+    return buildPageMetadata({
       title: `${upper} — Financial Analysis`,
       description: `Financial analysis for ticker ${upper}.`,
-    };
+      path: `/analysis/${upper}`,
+    });
   }
 
   const title = `${meta.name} (${upper}) — Financial Analysis & Ratios`;
   const description = `10-year financial analysis for ${meta.name} (${upper}). Revenue, net income, operating margin, ROE, ROA, industry-specific ratios, reporting freshness, and disclosure risk radar sourced directly from SEC XBRL filings and SEC EDGAR search links. Includes stock chart with filing markers, insider trading, and institutional holders.`;
-  const canonical = `https://secedgarterminal.com/analysis/${upper}`;
 
-  return {
+  return buildPageMetadata({
     title,
     description,
-    alternates: { canonical },
-    openGraph: {
-      title,
-      description,
-      url: canonical,
-      type: 'website',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-    },
-  };
+    path: `/analysis/${upper}`,
+  });
 }
 
 // ============================================================================

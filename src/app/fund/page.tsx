@@ -1,17 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Wallet, ArrowRight, Info } from 'lucide-react';
+import { buildPageMetadata } from '../../utils/siteMetadata';
 
 // ============================================================================
 // Metadata — static for the index page
 // ============================================================================
 export const metadata: Metadata = {
-  title: 'Mutual Funds & ETFs — Holdings, AUM, and N-PORT Filings',
-  description:
-    "Explore holdings, assets, and filings for every U.S. mutual fund and ETF. Data directly from SEC's N-PORT monthly portfolio disclosures.",
-  alternates: {
-    canonical: 'https://secedgarterminal.com/fund',
-  },
+  ...buildPageMetadata({
+    title: 'Mutual Funds & ETFs — Holdings, AUM, and N-PORT Filings',
+    description:
+      "Explore holdings, assets, and filings for every U.S. mutual fund and ETF. Data directly from SEC's N-PORT monthly portfolio disclosures.",
+    path: '/fund',
+  }),
 };
 
 // ============================================================================

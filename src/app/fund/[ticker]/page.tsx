@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import FundClient from './FundClient';
+import { buildPageMetadata } from '../../../utils/siteMetadata';
 
 // ============================================================================
 // Route configuration
@@ -124,32 +125,20 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const resolved = await resolveFund(upper);
 
   if (!resolved) {
-    return {
+    return buildPageMetadata({
       title: `${upper} — Fund Holdings`,
       description: `Fund holdings and net assets for ticker ${upper}.`,
-    };
+      path: `/fund/${upper}`,
+    });
   }
 
   const title = `${resolved.name} (${upper}) — Holdings & Net Assets`;
   const description = `Latest holdings, net assets (AUM), and SEC N-PORT filings for ${resolved.name} (${upper}). Top positions, asset class breakdown, and fund family data.`;
-  const canonical = `https://secedgarterminal.com/fund/${upper}`;
-
-  return {
+  return buildPageMetadata({
     title,
     description,
-    alternates: { canonical },
-    openGraph: {
-      title,
-      description,
-      url: canonical,
-      type: 'website',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-    },
-  };
+    path: `/fund/${upper}`,
+  });
 }
 
 // ============================================================================

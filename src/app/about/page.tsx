@@ -4,17 +4,18 @@ import {
   AlertTriangle, ExternalLink, Code, Database, FileSearch,
   type LucideIcon,
 } from 'lucide-react';
+import { buildPageMetadata } from '../../utils/siteMetadata';
 
 // ============================================================================
 // Metadata — static, this page is fully prerendered
 // ============================================================================
 export const metadata: Metadata = {
-  title: 'About & Methodology',
-  description:
-    "How EDGAR Terminal works, where the data comes from, and what you can trust. All data is sourced directly from SEC.gov public APIs - no scraping, no login, no paywall.",
-  alternates: {
-    canonical: 'https://secedgarterminal.com/about',
-  },
+  ...buildPageMetadata({
+    title: 'About & Methodology',
+    description:
+      "How EDGAR Terminal works, where the data comes from, and what you can trust. All data is sourced directly from SEC.gov public APIs - no scraping, no login, no paywall.",
+    path: '/about',
+  }),
 };
 
 // ============================================================================

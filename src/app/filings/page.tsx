@@ -1,17 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { FileText, ArrowRight } from 'lucide-react';
+import { buildPageMetadata } from '../../utils/siteMetadata';
 
 // ============================================================================
 // Metadata — static, since this page has no dynamic ticker
 // ============================================================================
 export const metadata: Metadata = {
-  title: 'SEC Filings Browser — 10-K, 10-Q, 8-K, Form 4',
-  description:
-    'Search and browse SEC filings for every publicly traded U.S. company. Includes a source-linked filing pulse, form-type filters, year and quarter grouping, and direct links to SEC.gov.',
-  alternates: {
-    canonical: 'https://secedgarterminal.com/filings',
-  },
+  ...buildPageMetadata({
+    title: 'SEC Filings Browser — 10-K, 10-Q, 8-K, Form 4',
+    description:
+      'Search and browse SEC filings for every publicly traded U.S. company. Includes a source-linked filing pulse, form-type filters, year and quarter grouping, and direct links to SEC.gov.',
+    path: '/filings',
+  }),
 };
 
 // ============================================================================

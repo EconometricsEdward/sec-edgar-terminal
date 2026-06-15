@@ -1,13 +1,14 @@
 import type { Metadata } from 'next';
 import DisclosureSearchClient from './DisclosureSearchClient';
+import { buildPageMetadata } from '../../utils/siteMetadata';
 
 export const metadata: Metadata = {
-  title: 'SEC Disclosure Keyword Search',
-  description:
-    'Search the SEC EDGAR full-text index with analyst playbooks, any-term or all-terms matching, source-window, filer-concentration, company-focus, date, form, and result-count filters. Every result links to the source filing on SEC.gov.',
-  alternates: {
-    canonical: 'https://secedgarterminal.com/disclosures',
-  },
+  ...buildPageMetadata({
+    title: 'SEC Disclosure Keyword Search',
+    description:
+      'Search the SEC EDGAR full-text index with analyst playbooks, any-term or all-terms matching, source-window, filer-concentration, company-focus, date, form, and result-count filters. Every result links to the source filing on SEC.gov.',
+    path: '/disclosures',
+  }),
 };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;

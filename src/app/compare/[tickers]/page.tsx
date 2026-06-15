@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import CompareClient, { type PreloadedCompany } from './CompareClient';
+import { buildPageMetadata } from '../../../utils/siteMetadata';
 
 // ============================================================================
 // Route configuration
@@ -104,11 +105,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const tickers = parseTickers(rawTickers);
 
   if (tickers.length === 0) {
-    return {
+    return buildPageMetadata({
       title: 'Peer Comparison — Compare SEC Filings & Financials',
       description:
         'Compare up to 5 public companies side-by-side. 10 years of financial data from SEC XBRL filings.',
-    };
+      path: '/compare',
+    });
   }
 
   const tickersVsLabel = tickers.join(' vs ');
@@ -123,24 +125,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       : `Compare ${tickersVsLabel} side-by-side across 10 fiscal years. Revenue, net income, margins, ROE, ROA, and growth rates from SEC XBRL filings.`;
 
   const title = `${tickersVsLabel} — Side-by-Side Financial Comparison`;
-  const canonical = `https://secedgarterminal.com/compare/${tickersPath}`;
-
-  return {
+  return buildPageMetadata({
     title,
     description: namedDescription,
-    alternates: { canonical },
-    openGraph: {
-      title,
-      description: namedDescription,
-      url: canonical,
-      type: 'website',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description: namedDescription,
-    },
-  };
+    path: `/compare/${tickersPath}`,
+  });
 }
 
 // ============================================================================

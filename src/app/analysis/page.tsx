@@ -1,17 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BarChart3, ArrowRight } from 'lucide-react';
+import { buildPageMetadata } from '../../utils/siteMetadata';
 
 // ============================================================================
 // Metadata — static, since this page has no dynamic ticker
 // ============================================================================
 export const metadata: Metadata = {
-  title: 'Financial Analysis — SEC XBRL Data',
-  description:
-    'Structured financial analysis for every U.S. public company. Income statement, balance sheet, cash flow, filing activity, reporting freshness, material event radar, disclosure risk radar, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and industry-aware ratios from SEC XBRL data.',
-  alternates: {
-    canonical: 'https://secedgarterminal.com/analysis',
-  },
+  ...buildPageMetadata({
+    title: 'Financial Analysis — SEC XBRL Data',
+    description:
+      'Structured financial analysis for every U.S. public company. Income statement, balance sheet, cash flow, filing activity, reporting freshness, material event radar, disclosure risk radar, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and industry-aware ratios from SEC XBRL data.',
+    path: '/analysis',
+  }),
 };
 
 // ============================================================================

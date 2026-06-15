@@ -1,16 +1,17 @@
 import type { Metadata } from 'next';
 import CompareClient from './[tickers]/CompareClient';
+import { buildPageMetadata } from '../../utils/siteMetadata';
 
 // ============================================================================
 // Metadata — static, since this page has no ticker list yet
 // ============================================================================
 export const metadata: Metadata = {
-  title: 'Peer Comparison — Compare SEC Filings & Financials',
-  description:
-    'Compare up to 5 public companies side-by-side. 10 years of financial data, head-to-head snapshot tables, industry-aware ratios from SEC XBRL filings.',
-  alternates: {
-    canonical: 'https://secedgarterminal.com/compare',
-  },
+  ...buildPageMetadata({
+    title: 'Peer Comparison — Compare SEC Filings & Financials',
+    description:
+      'Compare up to 5 public companies side-by-side. 10 years of financial data, head-to-head snapshot tables, industry-aware ratios from SEC XBRL filings.',
+    path: '/compare',
+  }),
 };
 
 // ============================================================================
