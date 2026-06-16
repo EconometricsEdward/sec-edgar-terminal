@@ -42,6 +42,10 @@ npm run lint
 npm run typecheck
 ```
 
+## Operations
+
+- `GET /api/health` returns a no-store JSON health summary for deployment checks. It reports whether the required SEC user agent is configured, whether the warm cache layer is wired, and which Vercel environment/commit is serving the request.
+
 ## Environment Variables
 
 See `.env.example` for the current set of expected variables. The important production variable is `SEC_USER_AGENT`; Redis-backed features also use Upstash configuration when enabled.
