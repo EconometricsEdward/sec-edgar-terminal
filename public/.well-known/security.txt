@@ -1,0 +1,4 @@
+Contact: https://github.com/EconometricsEdward/sec-edgar-terminal/issues
+Canonical: https://secedgarterminal.com/.well-known/security.txt
+Preferred-Languages: en
+Expires: 2027-06-01T00:00:00Z

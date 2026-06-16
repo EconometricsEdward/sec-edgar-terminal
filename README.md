@@ -45,6 +45,7 @@ npm run typecheck
 ## Operations
 
 - `GET /api/health` returns a no-store JSON health summary for deployment checks. It reports whether the required SEC user agent is configured, whether the warm cache layer is wired, and which Vercel environment/commit is serving the request.
+- `/.well-known/security.txt` publishes the public issue tracker as the security contact channel.
 
 ## Environment Variables
 
