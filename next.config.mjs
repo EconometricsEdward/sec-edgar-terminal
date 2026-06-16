@@ -1,10 +1,34 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  // React strict mode — matches your current Vite setup
-  reactStrictMode: true,
+const securityHeaders = [
+  {
+    key: 'X-Content-Type-Options',
+    value: 'nosniff',
+  },
+  {
+    key: 'Referrer-Policy',
+    value: 'strict-origin-when-cross-origin',
+  },
+  {
+    key: 'X-Frame-Options',
+    value: 'DENY',
+  },
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  },
+];
 
-  // Serve from a clean URL structure, no trailing slashes
+const nextConfig = {
+  reactStrictMode: true,
   trailingSlash: false,
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: securityHeaders,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
