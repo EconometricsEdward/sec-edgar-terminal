@@ -34,6 +34,7 @@ export const metadata: Metadata = {
     'public company data',
   ],
   authors: [{ name: 'EDGAR Terminal' }],
+  manifest: '/manifest.webmanifest',
   robots: {
     index: true,
     follow: true,
