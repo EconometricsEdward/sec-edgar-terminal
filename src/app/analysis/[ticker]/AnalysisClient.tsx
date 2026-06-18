@@ -109,12 +109,12 @@ interface ConceptToTrace {
 // Section + statement definitions (unchanged from original)
 // ============================================================================
 const SECTIONS = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'stock-chart', label: 'Stock Chart', icon: LineChart },
-  { id: 'insiders', label: 'Insiders', icon: Users },
-  { id: 'holders', label: 'Holders', icon: Building2 },
-  { id: 'financials', label: 'Financials', icon: DollarSign },
-  { id: 'ratios', label: 'Ratios', icon: Percent },
+  { id: 'snapshot', label: 'Snapshot', icon: LayoutDashboard, eyebrow: 'Company summary' },
+  { id: 'filings-risk', label: 'Filings & Risk', icon: FileText, eyebrow: 'Events and disclosure' },
+  { id: 'quality', label: 'Quality', icon: ShieldCheck, eyebrow: 'Operating diagnostics' },
+  { id: 'financials', label: 'Financials', icon: DollarSign, eyebrow: 'Statements and ratios' },
+  { id: 'market', label: 'Market', icon: LineChart, eyebrow: 'Price and filing markers' },
+  { id: 'ownership', label: 'Ownership', icon: Users, eyebrow: 'Insiders and holders' },
 ];
 
 const STATEMENTS = [
@@ -353,7 +353,8 @@ export default function AnalysisClient({
   const [periodType, setPeriodType] = useState<'annual' | 'quarterly'>('annual');
   const [statementView, setStatementView] = useState<StatementViewMode>('reported');
   const [showGrowth, setShowGrowth] = useState(true);
-  const [activeSection, setActiveSection] = useState('overview');
+  const [activeSection, setActiveSection] = useState('snapshot');
+  const [activeWorkspace, setActiveWorkspace] = useState('snapshot');
 
   const [insiderMarkers, setInsiderMarkers] = useState<InsiderMarker[]>([]);
   const handleInsiderMarkers = useCallback((markers: InsiderMarker[]) => {
@@ -694,449 +695,392 @@ export default function AnalysisClient({
       )}
 
       {facts && (
-        <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-6">
-          <aside className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-            <div className="lg:hidden flex gap-1 overflow-x-auto pb-2 -mx-2 px-2 mb-4 border-b-2 border-stone-800">
-              {SECTIONS.map((s) => {
-                const Icon = s.icon;
-                const active = activeSection === s.id;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => scrollToSection(s.id)}
-                    className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-[10px] uppercase tracking-[0.15em] font-bold border-2 transition-colors ${
-                      active
-                        ? 'bg-amber-500 text-stone-950 border-amber-500'
-                        : 'bg-stone-900 text-stone-400 border-stone-800'
-                    }`}
-                    type="button"
-                  >
-                    <Icon className="w-3 h-3" />
-                    {s.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <nav className="hidden lg:block space-y-1">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-stone-600 mb-2 px-3">
-                Sections
-              </div>
-              {SECTIONS.map((s) => {
-                const Icon = s.icon;
-                const active = activeSection === s.id;
-                const badge = s.id === 'insiders' && form4Count > 0 ? form4Count : null;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => scrollToSection(s.id)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-xs uppercase tracking-[0.15em] font-bold border-l-2 transition-all ${
-                      active
-                        ? 'bg-amber-500/10 text-amber-400 border-amber-500'
-                        : 'text-stone-500 border-stone-800 hover:text-stone-200 hover:border-stone-600 hover:bg-stone-900/50'
-                    }`}
-                    type="button"
-                  >
-                    <Icon className="w-3.5 h-3.5 shrink-0" />
-                    <span className="flex-1 text-left">{s.label}</span>
-                    {badge && (
-                      <span className={`text-[10px] tabular-nums px-1.5 py-0.5 rounded ${
-                        active ? 'bg-amber-500 text-stone-950' : 'bg-stone-800 text-stone-400'
-                      }`}>
-                        {badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-
-            <div className="hidden lg:flex flex-col gap-1 mt-6 pt-4 border-t border-stone-800">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-stone-600 mb-2 px-3">
-                Actions
-              </div>
-              <button
-                onClick={copyShareLink}
-                className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest text-stone-400 hover:text-amber-400 hover:bg-stone-900/50 transition-colors"
-                type="button"
-              >
-                <LinkIcon className="w-3.5 h-3.5" />
-                Share
-              </button>
-              <button
-                onClick={goToCompare}
-                className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest text-stone-400 hover:text-amber-400 hover:bg-stone-900/50 transition-colors"
-                type="button"
-              >
-                <GitCompare className="w-3.5 h-3.5" />
-                Compare
-              </button>
-            </div>
-          </aside>
-
-          <main className="min-w-0 space-y-12">
-            <section id="overview" className="scroll-mt-4">
-              <SectionHeader icon={LayoutDashboard} title="Overview" />
-
-              <div className="mb-4 border-2 border-amber-700/40 bg-amber-950/20 p-4 flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                <div className="text-xs text-amber-100/90 leading-relaxed">
-                  <span className="font-bold text-amber-300">Experimental — verify before relying on these numbers.</span>{' '}
-                  Financial data is parsed from SEC's XBRL API. Click any value to see the exact SEC source tag.
+        <div className="space-y-6">
+          <section className="professional-card relative overflow-hidden p-5 sm:p-6 lg:p-8">
+            <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-amber-400/10 blur-3xl" />
+            <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+              <div className="min-w-0">
+                <div className="eyebrow">Company analysis workspace</div>
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
+                    {company?.name || chartTicker}
+                  </h1>
+                  <span className="mb-1 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-amber-200">
+                    {chartTicker}
+                  </span>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                  {company?.cik && <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">CIK {company.cik}</span>}
+                  {company?.exchanges && <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">{company.exchanges}</span>}
+                  {company?.fiscalYearEnd && <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">FY end {company.fiscalYearEnd}</span>}
+                  <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">{industryLabel(group)}{sicCode ? ` · SIC ${sicCode}` : ''}</span>
                 </div>
               </div>
 
-              {disclosure && (
-                <div className={`mb-6 border-2 p-4 flex items-start gap-3 ${
-                  disclosure.tone === 'warn'
-                    ? 'border-rose-700/40 bg-rose-950/20'
-                    : 'border-sky-700/40 bg-sky-950/20'
-                }`}>
-                  <Info className={`w-5 h-5 shrink-0 mt-0.5 ${
-                    disclosure.tone === 'warn' ? 'text-rose-400' : 'text-sky-400'
-                  }`} />
-                  <div className="text-xs leading-relaxed">
-                    <span className={`font-bold ${
-                      disclosure.tone === 'warn' ? 'text-rose-300' : 'text-sky-300'
-                    }`}>
-                      {disclosure.title}
-                    </span>{' '}
-                    <span className="text-stone-200">{disclosure.body}</span>
-                  </div>
-                </div>
-              )}
+              <div className="flex flex-wrap gap-2">
+                <button onClick={copyShareLink} className="secondary-button" type="button">
+                  <LinkIcon className="h-4 w-4" /> Share
+                </button>
+                <button onClick={goToCompare} className="secondary-button" type="button">
+                  <GitCompare className="h-4 w-4" /> Compare
+                </button>
+                {company?.cik && (
+                  <a
+                    href={`https://www.sec.gov/edgar/browse/?CIK=${company.cik}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="primary-button"
+                  >
+                    <ExternalLink className="h-4 w-4" /> SEC source
+                  </a>
+                )}
+              </div>
+            </div>
+          </section>
 
-              {annualPeriods.length > 0 && (
-                <>
-                  <AnalysisSourcePack
-                    company={company}
-                    filings={filings}
-                    ticker={chartTicker}
-                  />
-                  <IndustryResearchPlaybook
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    ticker={chartTicker}
-                    companyName={company?.name}
-                  />
-                  <FinancialInflectionMonitor
-                    statementRows={coverageStatementRows}
-                    ratioRows={coverageRatioRows}
-                    periods={annualPeriods}
-                    cik={company?.cik}
-                    ticker={chartTicker}
-                  />
-                  <DataCoveragePanel
-                    statementRows={coverageStatementRows}
-                    ratioRows={coverageRatioRows}
-                    periods={annualPeriods}
-                    filings={filings}
-                    cik={company?.cik}
-                  />
-                  <FilingActivityPanel filings={filings} ticker={chartTicker} />
-                  <DisclosureRiskRadar
-                    ticker={chartTicker}
-                    companyName={company?.name}
-                    sicCode={sicCode}
-                  />
-                  <PeerContextWorkbench
-                    ticker={chartTicker}
-                    companyName={company?.name}
-                    sicCode={sicCode}
-                  />
-                  <QuarterlyMomentumPanel
-                    facts={facts}
-                    periods={quarterlyPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
-                  <AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
-                  <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
-                  <ExpenseDisciplinePanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <ProfitabilityBridgePanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <EarningsQualityPanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <GrowthDurabilityPanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <PerShareEconomicsPanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <CapitalEfficiencyPanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <AssetCompositionPanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <BalanceSheetRiskPanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <CashConversionPanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                  <CapitalAllocationPanel
-                    facts={facts}
-                    periods={annualPeriods}
-                    sicCode={sicCode}
-                    cik={company?.cik}
-                    onTraceRow={traceRowHistory}
-                  />
-                </>
-              )}
-            </section>
-
-            <section id="stock-chart" className="scroll-mt-4">
-              <SectionHeader icon={LineChart} title="Stock Chart" />
-              {chartTicker && filings.length > 0 ? (
-                <StockPriceChart ticker={chartTicker} filings={filings} insiderMarkers={insiderMarkers} />
-              ) : (
-                <div className="border-2 border-stone-800 bg-stone-900/30 p-6 text-center">
-                  <p className="text-stone-500 text-xs uppercase tracking-widest">
-                    Stock chart unavailable
+          <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+            <aside className="xl:sticky xl:top-28 xl:self-start">
+              <div className="professional-card p-3">
+                <div className="px-3 pb-3 pt-2">
+                  <div className="muted-label">Analysis chunks</div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    The same analysis modules are grouped into workspaces so this page can scale as new features are added.
                   </p>
+                  <span className="sr-only">Scroll context: {activeSection}</span>
                 </div>
-              )}
-            </section>
 
-            <section id="insiders" className="scroll-mt-4">
-              <SectionHeader icon={Users} title="Insider Activity" />
-              {company?.cik ? (
-                <InsiderActivity cik={company.cik} filings={filings} onMarkersReady={handleInsiderMarkers} />
-              ) : (
-                <div className="border-2 border-stone-800 bg-stone-900/30 p-6 text-center">
-                  <p className="text-stone-500 text-xs uppercase tracking-widest">Loading insider data...</p>
-                </div>
-              )}
-            </section>
-
-            {chartTicker && (
-              <HoldersSection ticker={chartTicker} cik={company?.cik} companyName={company?.name} />
-            )}
-
-            <section id="financials" className="scroll-mt-4">
-              <SectionHeader icon={DollarSign} title="Financial Statements" />
-
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <div className="flex flex-wrap gap-1">
-                  {STATEMENTS.map((s) => {
+                <div className="space-y-2">
+                  {SECTIONS.map((s) => {
                     const Icon = s.icon;
-                    const active = statement === s.id;
+                    const active = activeWorkspace === s.id;
+                    const scrollAware = activeSection === s.id;
+                    const badge = s.id === 'ownership' && form4Count > 0 ? form4Count : null;
                     return (
                       <button
                         key={s.id}
-                        onClick={() => setStatement(s.id)}
-                        className={`flex items-center gap-2 px-4 py-2 text-xs uppercase tracking-[0.15em] font-bold border-2 transition-colors ${
+                        onClick={() => {
+                          setActiveWorkspace(s.id);
+                          setActiveSection(s.id);
+                          window.requestAnimationFrame(() => scrollToSection('analysis-workspace'));
+                        }}
+                        className={`group w-full rounded-2xl border px-4 py-3 text-left transition-all ${
                           active
-                            ? 'bg-amber-500 text-stone-950 border-amber-500'
-                            : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700 hover:text-stone-200'
+                            ? 'border-amber-300/50 bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/25'
+                            : 'border-white/10 bg-white/[0.025] text-slate-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.055]'
                         }`}
                         type="button"
                       >
-                        <Icon className="w-3.5 h-3.5" />
-                        {s.label}
+                        <div className="flex items-center gap-3">
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-xs font-black uppercase tracking-[0.16em]">{s.label}</div>
+                            <div className={`mt-1 truncate text-[10px] font-bold uppercase tracking-[0.14em] ${active ? 'text-slate-800' : 'text-slate-600'}`}>
+                              {s.eyebrow}
+                            </div>
+                          </div>
+                          {badge && (
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-black ${active ? 'bg-slate-950 text-amber-200' : 'bg-slate-900 text-slate-400'}`}>
+                              {badge}
+                            </span>
+                          )}
+                        </div>
+                        {scrollAware && !active && <span className="mt-2 block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Visible</span>}
                       </button>
                     );
                   })}
                 </div>
 
-                <div className="flex ml-auto gap-1 flex-wrap">
-                  <button
-                    onClick={() => setPeriodType('annual')}
-                    className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
-                      periodType === 'annual' ? 'bg-stone-100 text-stone-950 border-stone-100' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
-                    }`}
-                    type="button"
-                  >
-                    Annual (10-K)
-                  </button>
-                  <button
-                    onClick={() => setPeriodType('quarterly')}
-                    className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
-                      periodType === 'quarterly' ? 'bg-stone-100 text-stone-950 border-stone-100' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
-                    }`}
-                    type="button"
-                  >
-                    Quarterly (10-Q)
-                  </button>
+                <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-200">
+                    <ShieldCheck className="h-4 w-4" /> Data trust
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    XBRL values remain clickable and traceable to SEC concept history. CSV export and source links are preserved.
+                  </p>
+                </div>
+              </div>
+            </aside>
 
-                  <button
-                    onClick={() => setStatementView('reported')}
-                    className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
-                      activeStatementView === 'reported' ? 'bg-stone-100 text-stone-950 border-stone-100' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
-                    }`}
-                    type="button"
-                  >
-                    Reported
-                  </button>
-                  <button
-                    onClick={() => setStatementView('commonSize')}
-                    disabled={!commonSizeAvailable}
-                    title={commonSizeBasis ? `Divide statement rows by ${commonSizeBasis.label}` : 'Common-size view unavailable'}
-                    className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                      activeStatementView === 'commonSize' ? 'bg-sky-500 text-stone-950 border-sky-500' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
-                    }`}
-                    type="button"
-                  >
-                    {commonSizeBasis?.buttonLabel || 'Common Size'}
-                  </button>
+            <main id="analysis-workspace" className="min-w-0 space-y-6 scroll-mt-28">
+              {company?.cik && activeWorkspace !== 'ownership' && (
+                <div className="hidden" aria-hidden="true">
+                  <InsiderActivity cik={company.cik} filings={filings} onMarkersReady={handleInsiderMarkers} />
+                </div>
+              )}
 
-                  {periodType === 'annual' && activeStatementView === 'reported' && (
-                    <button
-                      onClick={() => setShowGrowth((s) => !s)}
-                      className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
-                        showGrowth ? 'bg-emerald-500 text-stone-950 border-emerald-500' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
-                      }`}
-                      type="button"
-                    >
-                      Growth {showGrowth ? 'ON' : 'OFF'}
-                    </button>
+              {activeWorkspace === 'snapshot' && (
+                <section id="snapshot" className="space-y-6 scroll-mt-28">
+                  <SectionHeader icon={LayoutDashboard} title="Snapshot" />
+
+                  <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 p-4 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
+                    <div className="text-xs text-amber-50/90 leading-relaxed">
+                      <span className="font-bold text-amber-200">Experimental — verify before relying on these numbers.</span>{' '}
+                      Financial data is parsed from SEC's XBRL API. Click any value to see the exact SEC source tag.
+                    </div>
+                  </div>
+
+                  {disclosure && (
+                    <div className={`rounded-2xl border p-4 flex items-start gap-3 ${
+                      disclosure.tone === 'warn'
+                        ? 'border-rose-400/30 bg-rose-400/10'
+                        : 'border-sky-400/30 bg-sky-400/10'
+                    }`}>
+                      <Info className={`w-5 h-5 shrink-0 mt-0.5 ${disclosure.tone === 'warn' ? 'text-rose-300' : 'text-sky-300'}`} />
+                      <div className="text-xs leading-relaxed">
+                        <span className={`font-bold ${disclosure.tone === 'warn' ? 'text-rose-200' : 'text-sky-200'}`}>
+                          {disclosure.title}
+                        </span>{' '}
+                        <span className="text-slate-200">{disclosure.body}</span>
+                      </div>
+                    </div>
                   )}
 
-                  <button
-                    onClick={() => exportCsv(displayedRows, activeStatementView === 'commonSize' ? `${statement}_common_size` : statement)}
-                    className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
-                    type="button"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    CSV
-                  </button>
-                </div>
-              </div>
-
-              {featuredRows.length > 0 && (
-                <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {featuredRows.map((row: { label: string; values: any[]; format: string }) => (
-                    <MetricChart
-                      key={row.label}
-                      title={row.label}
-                      data={row.values}
-                      format={row.format}
-                      chartType="bar"
-                    />
-                  ))}
-                </div>
+                  {annualPeriods.length > 0 ? (
+                    <>
+                      <AnalysisSourcePack company={company} filings={filings} ticker={chartTicker} />
+                      <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
+                      <AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
+                      <DataCoveragePanel statementRows={coverageStatementRows} ratioRows={coverageRatioRows} periods={annualPeriods} filings={filings} cik={company?.cik} />
+                    </>
+                  ) : (
+                    <div className="panel-card p-8 text-center text-sm text-slate-500">No annual XBRL periods are available for this company yet.</div>
+                  )}
+                </section>
               )}
 
-              <FinancialTable
-                rows={displayedRows}
-                periods={periods}
-                growthVisible={statementGrowthVisible}
-                cik={company?.cik}
-                onTraceRow={traceRowHistory}
-                isHeaderRow={(label: string) => ['Revenue', 'Gross Profit', 'Operating Income', 'Net Income', 'Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Operating Cash Flow'].includes(label)}
-              />
-
-              <p className="mt-4 text-[11px] text-stone-500 leading-relaxed">
-                Source: SEC XBRL Company Facts. Hover any value for the source XBRL tag; click to open SEC's concept endpoint.
-                {activeStatementView === 'commonSize' && commonSizeBasis ? (
-                  <span> Common-size values divide each reported row by {commonSizeBasis.label}; computed cells link both inputs.</span>
-                ) : null}{' '}
-                Click the <History className="inline w-3 h-3 text-amber-400" /> icon next to any metric to trace its full reporting history including restatements.
-                Industry group: <span className="text-amber-400 font-bold">{industryLabel(group)}</span>
-                {sicCode ? <span> · SIC {sicCode}</span> : null}
-              </p>
-            </section>
-
-            <section id="ratios" className="scroll-mt-4">
-              <SectionHeader icon={Percent} title="Ratios" />
-
-              <div className="mb-4 flex gap-1 justify-end flex-wrap">
-                {periodType === 'annual' && (
-                  <button
-                    onClick={() => setShowGrowth((s) => !s)}
-                    className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 transition-colors ${
-                      showGrowth ? 'bg-emerald-500 text-stone-950 border-emerald-500' : 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-700'
-                    }`}
-                    type="button"
-                  >
-                    Growth {showGrowth ? 'ON' : 'OFF'}
-                  </button>
-                )}
-                <button
-                  onClick={() => exportCsv(ratioRows, 'ratios')}
-                  className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
-                  type="button"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  CSV
-                </button>
-              </div>
-
-              {featuredRatioRows.length > 0 && (
-                <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {featuredRatioRows.map((row: { label: string; values: any[]; format: string }) => (
-                    <MetricChart
-                      key={row.label}
-                      title={row.label}
-                      data={row.values}
-                      format={row.format}
-                      chartType="line"
-                    />
-                  ))}
-                </div>
+              {activeWorkspace === 'filings-risk' && (
+                <section id="filings-risk" className="space-y-6 scroll-mt-28">
+                  <SectionHeader icon={FileText} title="Filings & Risk" />
+                  {annualPeriods.length > 0 ? (
+                    <>
+                      <FilingActivityPanel filings={filings} ticker={chartTicker} />
+                      <DisclosureRiskRadar ticker={chartTicker} companyName={company?.name} sicCode={sicCode} />
+                      <PeerContextWorkbench ticker={chartTicker} companyName={company?.name} sicCode={sicCode} />
+                      <IndustryResearchPlaybook facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} ticker={chartTicker} companyName={company?.name} />
+                      <FinancialInflectionMonitor statementRows={coverageStatementRows} ratioRows={coverageRatioRows} periods={annualPeriods} cik={company?.cik} ticker={chartTicker} />
+                    </>
+                  ) : (
+                    <div className="panel-card p-8 text-center text-sm text-slate-500">No annual XBRL periods are available for this company yet.</div>
+                  )}
+                </section>
               )}
 
-              <FinancialTable
-                rows={ratioRows}
-                periods={periods}
-                growthVisible={growthVisible}
-                cik={company?.cik}
-                onTraceRow={traceRowHistory}
-                isHeaderRow={() => false}
-              />
+              {activeWorkspace === 'quality' && (
+                <section id="quality" className="space-y-6 scroll-mt-28">
+                  <SectionHeader icon={ShieldCheck} title="Quality Diagnostics" />
+                  {annualPeriods.length > 0 ? (
+                    <>
+                      <QuarterlyMomentumPanel facts={facts} periods={quarterlyPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <QualitySnapshot facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
+                      <ExpenseDisciplinePanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <ProfitabilityBridgePanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <EarningsQualityPanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <GrowthDurabilityPanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <PerShareEconomicsPanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <CapitalEfficiencyPanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <AssetCompositionPanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <BalanceSheetRiskPanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <CashConversionPanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                      <CapitalAllocationPanel facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} onTraceRow={traceRowHistory} />
+                    </>
+                  ) : (
+                    <div className="panel-card p-8 text-center text-sm text-slate-500">No annual XBRL periods are available for this company yet.</div>
+                  )}
+                </section>
+              )}
 
-              <p className="mt-4 text-[11px] text-stone-500 leading-relaxed">
-                Industry-specific ratios auto-selected based on SIC {sicCode}
-                ({industryLabel(group)}). Ratios are computed from reported XBRL values
-                and may differ slightly from company-reported non-GAAP versions.
-              </p>
-            </section>
-          </main>
+              {activeWorkspace === 'financials' && (
+                <section id="financials" className="space-y-10 scroll-mt-28">
+                  <div>
+                    <SectionHeader icon={DollarSign} title="Financial Statements" />
+
+                    <div className="mb-4 flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap gap-1">
+                        {STATEMENTS.map((s) => {
+                          const Icon = s.icon;
+                          const active = statement === s.id;
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => setStatement(s.id)}
+                              className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.15em] transition-colors ${
+                                active
+                                  ? 'bg-amber-300 text-slate-950 border-amber-300'
+                                  : 'bg-white/[0.035] text-slate-400 border-white/10 hover:border-white/20 hover:text-slate-200'
+                              }`}
+                              type="button"
+                            >
+                              <Icon className="w-3.5 h-3.5" />
+                              {s.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex ml-auto gap-1 flex-wrap">
+                        <button
+                          onClick={() => setPeriodType('annual')}
+                          className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border rounded-full transition-colors ${
+                            periodType === 'annual' ? 'bg-slate-100 text-slate-950 border-slate-100' : 'bg-white/[0.035] text-slate-400 border-white/10 hover:border-white/20'
+                          }`}
+                          type="button"
+                        >
+                          Annual (10-K)
+                        </button>
+                        <button
+                          onClick={() => setPeriodType('quarterly')}
+                          className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border rounded-full transition-colors ${
+                            periodType === 'quarterly' ? 'bg-slate-100 text-slate-950 border-slate-100' : 'bg-white/[0.035] text-slate-400 border-white/10 hover:border-white/20'
+                          }`}
+                          type="button"
+                        >
+                          Quarterly (10-Q)
+                        </button>
+
+                        <button
+                          onClick={() => setStatementView('reported')}
+                          className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border rounded-full transition-colors ${
+                            activeStatementView === 'reported' ? 'bg-slate-100 text-slate-950 border-slate-100' : 'bg-white/[0.035] text-slate-400 border-white/10 hover:border-white/20'
+                          }`}
+                          type="button"
+                        >
+                          Reported
+                        </button>
+                        <button
+                          onClick={() => setStatementView('commonSize')}
+                          disabled={!commonSizeAvailable}
+                          title={commonSizeBasis ? `Divide statement rows by ${commonSizeBasis.label}` : 'Common-size view unavailable'}
+                          className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                            activeStatementView === 'commonSize' ? 'bg-sky-300 text-slate-950 border-sky-300' : 'bg-white/[0.035] text-slate-400 border-white/10 hover:border-white/20'
+                          }`}
+                          type="button"
+                        >
+                          {commonSizeBasis?.buttonLabel || 'Common Size'}
+                        </button>
+
+                        {periodType === 'annual' && activeStatementView === 'reported' && (
+                          <button
+                            onClick={() => setShowGrowth((s) => !s)}
+                            className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border rounded-full transition-colors ${
+                              showGrowth ? 'bg-emerald-300 text-slate-950 border-emerald-300' : 'bg-white/[0.035] text-slate-400 border-white/10 hover:border-white/20'
+                            }`}
+                            type="button"
+                          >
+                            Growth {showGrowth ? 'ON' : 'OFF'}
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => exportCsv(displayedRows, activeStatementView === 'commonSize' ? `${statement}_common_size` : statement)}
+                          className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border rounded-full border-white/10 text-slate-400 hover:border-amber-300/50 hover:text-amber-200 transition-colors"
+                          type="button"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          CSV
+                        </button>
+                      </div>
+                    </div>
+
+                    {featuredRows.length > 0 && (
+                      <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {featuredRows.map((row: { label: string; values: any[]; format: string }) => (
+                          <MetricChart key={row.label} title={row.label} data={row.values} format={row.format} chartType="bar" />
+                        ))}
+                      </div>
+                    )}
+
+                    <FinancialTable
+                      rows={displayedRows}
+                      periods={periods}
+                      growthVisible={statementGrowthVisible}
+                      cik={company?.cik}
+                      onTraceRow={traceRowHistory}
+                      isHeaderRow={(label: string) => ['Revenue', 'Gross Profit', 'Operating Income', 'Net Income', 'Total Assets', 'Total Liabilities', "Stockholders' Equity", 'Operating Cash Flow'].includes(label)}
+                    />
+
+                    <p className="mt-4 text-[11px] text-slate-500 leading-relaxed">
+                      Source: SEC XBRL Company Facts. Hover any value for the source XBRL tag; click to open SEC's concept endpoint.
+                      {activeStatementView === 'commonSize' && commonSizeBasis ? (
+                        <span> Common-size values divide each reported row by {commonSizeBasis.label}; computed cells link both inputs.</span>
+                      ) : null}{' '}
+                      Click the <History className="inline w-3 h-3 text-amber-300" /> icon next to any metric to trace its full reporting history including restatements.
+                      Industry group: <span className="text-amber-200 font-bold">{industryLabel(group)}</span>
+                      {sicCode ? <span> · SIC {sicCode}</span> : null}
+                    </p>
+                  </div>
+
+                  <div>
+                    <SectionHeader icon={Percent} title="Ratios" />
+
+                    <div className="mb-4 flex gap-1 justify-end flex-wrap">
+                      {periodType === 'annual' && (
+                        <button
+                          onClick={() => setShowGrowth((s) => !s)}
+                          className={`px-3 py-2 text-[11px] uppercase tracking-widest font-bold border rounded-full transition-colors ${
+                            showGrowth ? 'bg-emerald-300 text-slate-950 border-emerald-300' : 'bg-white/[0.035] text-slate-400 border-white/10 hover:border-white/20'
+                          }`}
+                          type="button"
+                        >
+                          Growth {showGrowth ? 'ON' : 'OFF'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => exportCsv(ratioRows, 'ratios')}
+                        className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border rounded-full border-white/10 text-slate-400 hover:border-amber-300/50 hover:text-amber-200 transition-colors"
+                        type="button"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        CSV
+                      </button>
+                    </div>
+
+                    {featuredRatioRows.length > 0 && (
+                      <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {featuredRatioRows.map((row: { label: string; values: any[]; format: string }) => (
+                          <MetricChart key={row.label} title={row.label} data={row.values} format={row.format} chartType="line" />
+                        ))}
+                      </div>
+                    )}
+
+                    <FinancialTable rows={ratioRows} periods={periods} growthVisible={growthVisible} cik={company?.cik} onTraceRow={traceRowHistory} isHeaderRow={() => false} />
+
+                    <p className="mt-4 text-[11px] text-slate-500 leading-relaxed">
+                      Industry-specific ratios auto-selected based on SIC {sicCode}
+                      ({industryLabel(group)}). Ratios are computed from reported XBRL values and may differ slightly from company-reported non-GAAP versions.
+                    </p>
+                  </div>
+                </section>
+              )}
+
+              {activeWorkspace === 'market' && (
+                <section id="market" className="space-y-6 scroll-mt-28">
+                  <SectionHeader icon={LineChart} title="Market Timeline" />
+                  {chartTicker && filings.length > 0 ? (
+                    <StockPriceChart ticker={chartTicker} filings={filings} insiderMarkers={insiderMarkers} />
+                  ) : (
+                    <div className="panel-card p-8 text-center">
+                      <p className="text-slate-500 text-xs uppercase tracking-widest">Stock chart unavailable</p>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {activeWorkspace === 'ownership' && (
+                <section id="ownership" className="space-y-6 scroll-mt-28">
+                  <SectionHeader icon={Users} title="Ownership" />
+                  {company?.cik ? (
+                    <InsiderActivity cik={company.cik} filings={filings} onMarkersReady={handleInsiderMarkers} />
+                  ) : (
+                    <div className="panel-card p-8 text-center">
+                      <p className="text-slate-500 text-xs uppercase tracking-widest">Loading insider data...</p>
+                    </div>
+                  )}
+                  {chartTicker && <HoldersSection ticker={chartTicker} cik={company?.cik} companyName={company?.name} />}
+                </section>
+              )}
+            </main>
+          </div>
         </div>
       )}
 

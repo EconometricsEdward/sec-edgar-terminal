@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useContext, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   GitCompare, X, Plus, Loader2, AlertCircle, Search, Link as LinkIcon,
@@ -124,7 +124,7 @@ function PeerResearchWorkbench({
           </div>
           <div className="space-y-2">
             {loadedCompanies.map((company) => (
-              <PeerSourceTrail key={company.ticker} company={company} />
+              <PeerSourceTrail key={`${company.ticker}-${company.cik}`} company={company} />
             ))}
           </div>
 
@@ -432,6 +432,121 @@ const NORMALIZATION_MODES = [
 
 const MAX_COMPANIES = 5;
 
+const SMART_PEER_SETS = [
+  {
+    id: 'ev-autos',
+    label: 'EV and legacy auto manufacturers',
+    anchors: ['RIVN', 'LCID', 'TSLA', 'F', 'GM', 'NIO', 'XPEV', 'LI'],
+    tickers: ['TSLA', 'F', 'GM', 'LCID', 'NIO'],
+  },
+  {
+    id: 'mega-tech',
+    label: 'Mega-cap technology',
+    anchors: ['AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN'],
+    tickers: ['AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN'],
+  },
+  {
+    id: 'semiconductors',
+    label: 'Semiconductors',
+    anchors: ['NVDA', 'AMD', 'INTC', 'AVGO', 'QCOM'],
+    tickers: ['NVDA', 'AMD', 'INTC', 'AVGO', 'QCOM'],
+  },
+  {
+    id: 'big-banks',
+    label: 'Large U.S. banks',
+    anchors: ['JPM', 'BAC', 'WFC', 'C', 'GS', 'MS'],
+    tickers: ['JPM', 'BAC', 'WFC', 'C', 'GS'],
+  },
+  {
+    id: 'energy-majors',
+    label: 'Energy majors',
+    anchors: ['XOM', 'CVX', 'COP', 'OXY', 'EOG'],
+    tickers: ['XOM', 'CVX', 'COP', 'OXY', 'EOG'],
+  },
+];
+
+function normalizeTicker(ticker: string | null | undefined): string {
+  return String(ticker || '').trim().toUpperCase();
+}
+
+function uniqueTickers(tickers: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const raw of tickers) {
+    const ticker = normalizeTicker(raw);
+    if (!ticker || seen.has(ticker)) continue;
+    seen.add(ticker);
+    out.push(ticker);
+  }
+
+  return out;
+}
+
+function uniquePreloadedCompanies(companies: PreloadedCompany[]): PreloadedCompany[] {
+  const seen = new Set<string>();
+  const out: PreloadedCompany[] = [];
+
+  for (const company of companies || []) {
+    const ticker = normalizeTicker(company?.ticker);
+    if (!ticker || seen.has(ticker)) continue;
+    seen.add(ticker);
+    out.push({
+      ...company,
+      ticker,
+      cik: String(company.cik).padStart(10, '0'),
+    });
+  }
+
+  return out;
+}
+
+function buildSmartPeerSuggestions(
+  anchorTicker: string,
+  tickerMap: AnyValue | null,
+  currentTickers: string[]
+): AnyValue[] {
+  const anchor = normalizeTicker(anchorTicker);
+  const excluded = new Set(uniqueTickers([...currentTickers, anchor]));
+  const candidates: Array<{ ticker: string; groupLabel: string }> = [];
+  const seen = new Set<string>();
+
+  const pushCandidate = (tickerRaw: string, groupLabel: string) => {
+    const ticker = normalizeTicker(tickerRaw);
+    if (!ticker || excluded.has(ticker) || seen.has(ticker)) return;
+    seen.add(ticker);
+    candidates.push({ ticker, groupLabel });
+  };
+
+  for (const set of SMART_PEER_SETS) {
+    const tickers = uniqueTickers(set.tickers);
+    const anchors = uniqueTickers(set.anchors);
+    if (!anchors.includes(anchor) && !tickers.includes(anchor)) continue;
+    tickers.forEach((ticker) => pushCandidate(ticker, set.label));
+  }
+
+  for (const group of PEER_GROUPS) {
+    const tickers = uniqueTickers(group.tickers);
+    if (!tickers.includes(anchor)) continue;
+    tickers.forEach((ticker) => pushCandidate(ticker, group.label));
+  }
+
+  const map = tickerMap || {};
+  return candidates
+    .map((candidate) => {
+      const entry = map[candidate.ticker];
+      if (!entry) return null;
+      return {
+        ...entry,
+        ticker: normalizeTicker(entry.ticker || candidate.ticker),
+        cik: String(entry.cik || '').padStart(10, '0'),
+        groupLabel: candidate.groupLabel,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, MAX_COMPANIES - 1);
+}
+
 const PEER_SPREAD_QUERIES: Record<string, { query: string; detail: string }> = {
   revenue: {
     query: 'demand, pricing, customer concentration, competition',
@@ -563,6 +678,17 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
   const [autoSuggestFor, setAutoSuggestFor] = useState<string | null>(null);
   const [autoSuggestions, setAutoSuggestions] = useState<AnyValue[]>([]);
 
+  const didInitializeRef = useRef(false);
+  const companiesRef = useRef<CompanyState[]>([]);
+  const requestedTickers = useMemo(
+    () => uniqueTickers(initialTickers).slice(0, MAX_COMPANIES),
+    [initialTickers]
+  );
+
+  useEffect(() => {
+    companiesRef.current = companies;
+  }, [companies]);
+
   // ==========================================================================
   // updateUrl — replace the URL when companies are added/removed
   //
@@ -571,7 +697,7 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
   // the original AnalysisPage to avoid navigation during a render cycle.
   // ==========================================================================
   const updateUrl = useCallback((cmps: CompanyState[]) => {
-    const tickers = cmps.map((c) => c.ticker).join(',');
+    const tickers = uniqueTickers(cmps.map((c) => c.ticker)).join(',');
     setTimeout(() => {
       if (tickers) router.replace(`/compare/${tickers}`);
       else router.replace('/compare');
@@ -605,96 +731,141 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
 
   // ==========================================================================
   // addCompany — fetch SEC data for a ticker and append to companies list
+  //
+  // Idempotent by ticker. The ref guard is important because React dev/Strict
+  // Mode can run initialization effects twice and because initial URL companies
+  // are staggered with timers. State closures alone can be stale during those
+  // scheduled calls.
   // ==========================================================================
   const addCompany = useCallback(async (entry: { ticker: string; cik: string; name: string }, updateUrlAfter = true) => {
-    if (companies.find((c) => c.ticker === entry.ticker)) return;
-    if (companies.length >= MAX_COMPANIES) {
+    const ticker = normalizeTicker(entry?.ticker);
+    if (!ticker || !entry?.cik) return;
+
+    const normalizedEntry = {
+      ticker,
+      cik: String(entry.cik).padStart(10, '0'),
+      name: entry.name || ticker,
+    };
+
+    const current = companiesRef.current;
+    if (current.some((c) => c.ticker === ticker)) return;
+
+    if (current.length >= MAX_COMPANIES) {
       setGlobalError(`Maximum of ${MAX_COMPANIES} companies at once.`);
       return;
     }
+
     setGlobalError(null);
 
-    const color = COMPANY_COLORS[companies.length % COMPANY_COLORS.length];
+    const color = COMPANY_COLORS[current.length % COMPANY_COLORS.length];
     const newCompany: CompanyState = {
-      ticker: entry.ticker, name: entry.name, cik: entry.cik, color,
-      facts: null, sicCode: null, sicDescription: null,
-      loading: true, error: null,
+      ticker: normalizedEntry.ticker,
+      name: normalizedEntry.name,
+      cik: normalizedEntry.cik,
+      color,
+      facts: null,
+      sicCode: null,
+      sicDescription: null,
+      loading: true,
+      error: null,
     };
 
-    setCompanies((prev) => [...prev, newCompany]);
+    const optimistic = [...current, newCompany];
+    companiesRef.current = optimistic;
+    setCompanies(optimistic);
+
     if (updateUrlAfter) {
-      updateUrl([...companies, newCompany]);
+      updateUrl(optimistic);
     }
+
+    const updateMatchingCompany = (patch: Partial<CompanyState>) => {
+      const applyPatch = (list: CompanyState[]) =>
+        list.map((company) =>
+          company.ticker === ticker
+            ? { ...company, ...patch }
+            : company
+        );
+
+      companiesRef.current = applyPatch(companiesRef.current);
+      setCompanies((prev) => applyPatch(prev));
+    };
 
     try {
       const [submissionsRes, factsRes] = await Promise.all([
-        fetch(secDataUrl(`/submissions/CIK${entry.cik}.json`)),
-        fetch(secDataUrl(`/api/xbrl/companyfacts/CIK${entry.cik}.json`)),
+        fetch(secDataUrl(`/submissions/CIK${normalizedEntry.cik}.json`)),
+        fetch(secDataUrl(`/api/xbrl/companyfacts/CIK${normalizedEntry.cik}.json`)),
       ]);
+
       if (!factsRes.ok) {
         if (factsRes.status === 404) throw new Error('No XBRL financial data available');
         throw new Error(`SEC API ${factsRes.status}`);
       }
+
       const factsData = await factsRes.json();
       let sicCode: string | number | null = null;
       let sicDescription: string | null = null;
+
       if (submissionsRes.ok) {
         const sub = await submissionsRes.json();
         sicCode = sub.sic;
         sicDescription = sub.sicDescription;
       }
-      setCompanies((prev) => prev.map((c) =>
-        c.ticker === entry.ticker
-          ? { ...c, facts: factsData.facts || {}, sicCode, sicDescription, loading: false }
-          : c
-      ));
+
+      updateMatchingCompany({
+        facts: factsData.facts || {},
+        sicCode,
+        sicDescription,
+        loading: false,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setCompanies((prev) => prev.map((c) =>
-        c.ticker === entry.ticker ? { ...c, loading: false, error: msg } : c
-      ));
+      updateMatchingCompany({
+        loading: false,
+        error: msg,
+      });
     }
-  }, [companies, updateUrl]);
+  }, [updateUrl]);
 
   // ==========================================================================
   // Initialize from URL — runs once when ticker data is available.
   //
-  // Path A (preloaded): server resolved company names already, use them
-  // directly without waiting for the client-side tickerMap. Faster first
-  // render, fewer API round-trips.
-  //
-  // Path B (fallback): server failed to resolve some tickers (e.g. unknown
-  // ticker). Wait for tickerMap and resolve client-side.
+  // Uses a ref guard so dev/Strict Mode cannot schedule duplicate companies.
   // ==========================================================================
   useEffect(() => {
-    if (initialized) return;
-    if (initialTickers.length === 0) {
+    if (didInitializeRef.current || initialized) return;
+
+    if (requestedTickers.length === 0) {
+      didInitializeRef.current = true;
       setInitialized(true);
       return;
     }
 
-    // Path A — preloaded server-side
-    if (preloadedCompanies.length > 0) {
+    const uniquePreloaded = uniquePreloadedCompanies(preloadedCompanies)
+      .filter((company) => requestedTickers.includes(company.ticker))
+      .slice(0, MAX_COMPANIES);
+
+    if (uniquePreloaded.length > 0) {
+      didInitializeRef.current = true;
       setInitialized(true);
-      preloadedCompanies.slice(0, MAX_COMPANIES).forEach((entry, i) => {
-        // Stagger by 50ms to avoid hammering SEC's rate limit and to spread
-        // out the loading skeletons visually
+
+      uniquePreloaded.forEach((entry, i) => {
         setTimeout(() => addCompany(entry, false), i * 50);
       });
       return;
     }
 
-    // Path B — fall back to tickerMap
     if (!tickerMap) return;
+
+    didInitializeRef.current = true;
     setInitialized(true);
-    initialTickers.slice(0, MAX_COMPANIES).forEach((t, i) => {
-      const entry = tickerMap[t];
+
+    requestedTickers.forEach((ticker, i) => {
+      const entry = tickerMap[ticker];
       if (entry) {
         setTimeout(() => addCompany(entry, false), i * 50);
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tickerMap, initialized, initialTickers, preloadedCompanies]);
+  }, [tickerMap, initialized, requestedTickers, preloadedCompanies, addCompany]);
 
   // ==========================================================================
   // removeCompany — drop one and recolor remaining so colors stay sequential
@@ -702,6 +873,7 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
   const removeCompany = useCallback((ticker: string) => {
     const next = companies.filter((c) => c.ticker !== ticker);
     const recolored = next.map((c, i) => ({ ...c, color: COMPANY_COLORS[i % COMPANY_COLORS.length] }));
+    companiesRef.current = recolored;
     setCompanies(recolored);
     updateUrl(recolored);
   }, [companies, updateUrl]);
@@ -710,47 +882,56 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
   // loadPeerGroup — clear + add all tickers from a preset peer group
   // ==========================================================================
   const loadPeerGroup = useCallback((group: { tickers: string[] }) => {
+    const tickers = uniqueTickers(group.tickers).slice(0, MAX_COMPANIES);
+    const entries = tickers
+      .map((ticker) => tickerMap?.[ticker])
+      .filter(Boolean) as Array<{ ticker: string; cik: string; name: string }>;
+
+    companiesRef.current = [];
     setCompanies([]);
     setAutoSuggestFor(null);
     setAutoSuggestions([]);
+
     setTimeout(() => {
-      group.tickers.slice(0, MAX_COMPANIES).forEach((t, i) => {
-        const entry = tickerMap?.[t];
-        if (entry) {
-          setTimeout(() => addCompany(entry, i === group.tickers.length - 1), i * 50);
-        }
+      entries.forEach((entry, i) => {
+        setTimeout(() => addCompany(entry, i === entries.length - 1), i * 50);
       });
     }, 100);
   }, [tickerMap, addCompany]);
 
   // ==========================================================================
-  // Auto-suggest peers — when exactly one company is loaded, find others
-  // in the same peer group and offer them as one-click adds
+  // Smart peer suggestions — when exactly one company is loaded, recommend
+  // relevant peer additions and offer a one-click peer-set build.
   // ==========================================================================
+  const addSuggestedPeerSet = useCallback(() => {
+    const remainingSlots = MAX_COMPANIES - companiesRef.current.length;
+    if (remainingSlots <= 0) return;
+
+    const entries = autoSuggestions.slice(0, remainingSlots);
+    entries.forEach((entry, i) => {
+      setTimeout(() => addCompany(entry, i === entries.length - 1), i * 50);
+    });
+  }, [autoSuggestions, addCompany]);
+
   useEffect(() => {
     if (companies.length !== 1) {
       setAutoSuggestions([]);
       setAutoSuggestFor(null);
       return;
     }
+
     const anchor = companies[0];
-    if (!anchor.sicCode || anchor.loading || anchor.error) return;
-    if (autoSuggestFor === anchor.ticker) return;
+    if (anchor.loading || anchor.error) return;
+
     setAutoSuggestFor(anchor.ticker);
-    const suggestions: AnyValue[] = [];
-    for (const entry of Object.values(tickerMap || {}) as AnyValue[]) {
-      if (entry.ticker === anchor.ticker) continue;
-      for (const group of PEER_GROUPS) {
-        if (group.tickers.includes(anchor.ticker) && group.tickers.includes(entry.ticker)) {
-          if (!suggestions.find((s: AnyValue) => s.ticker === entry.ticker)) {
-            suggestions.push({ ...entry, groupLabel: group.label });
-          }
-          break;
-        }
-      }
-    }
-    setAutoSuggestions(suggestions.slice(0, 4));
-  }, [companies, tickerMap, autoSuggestFor]);
+    setAutoSuggestions(
+      buildSmartPeerSuggestions(
+        anchor.ticker,
+        tickerMap,
+        companies.map((company) => company.ticker)
+      )
+    );
+  }, [companies, tickerMap]);
 
   const copyShareLink = () => {
     if (!companies.length) return;
@@ -1072,7 +1253,7 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
       {companies.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
           {companies.map((c) => (
-            <div key={c.ticker} className="flex items-center gap-2 px-3 py-2 border-2"
+            <div key={`${c.ticker}-${c.cik}`} className="flex items-center gap-2 px-3 py-2 border-2"
               style={{
                 borderColor: c.error ? '#7f1d1d' : c.loading ? '#44403c' : c.color + '80',
                 backgroundColor: c.error ? '#450a0a40' : c.loading ? '#1c1917' : c.color + '1a',
@@ -1147,20 +1328,42 @@ export default function CompareClient({ initialTickers, preloadedCompanies }: Co
       )}
 
       {autoSuggestions.length > 0 && companies.length === 1 && (
-        <div className="mb-6 border-2 border-sky-900/50 bg-sky-950/20 p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-            <span className="text-[11px] uppercase tracking-[0.2em] text-sky-300 font-bold">Suggested peers for {companies[0].ticker}</span>
+        <div className="mb-6 border-2 border-sky-900/50 bg-sky-950/20 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                <span className="text-[11px] uppercase tracking-[0.2em] text-sky-300 font-bold">
+                  Smart peer suggestions for {companies[0].ticker}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
+                Build a useful comparison set in one click, or add peers individually.
+              </p>
+            </div>
+            <button
+              onClick={addSuggestedPeerSet}
+              className="inline-flex items-center gap-2 border border-sky-700/70 bg-sky-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-sky-200 transition-colors hover:border-sky-400 hover:text-sky-100"
+              type="button"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add suggested set
+            </button>
           </div>
+
           <div className="flex flex-wrap gap-2">
             {autoSuggestions.map((s: AnyValue) => (
-              <button key={s.ticker} onClick={() => addCompany(s)}
+              <button
+                key={`${s.groupLabel}-${s.ticker}`}
+                onClick={() => addCompany(s)}
                 className="flex items-center gap-2 px-3 py-1.5 bg-stone-900 border border-sky-800/50 hover:border-sky-500 text-stone-300 hover:text-sky-300 text-xs font-bold transition-colors"
                 title={`${s.name} · ${s.groupLabel}`}
-                type="button">
+                type="button"
+              >
                 <Plus className="w-3 h-3" />
                 {s.ticker}
                 <span className="text-[10px] text-stone-500">{s.name.split(' ').slice(0, 2).join(' ')}</span>
+                <span className="text-[9px] uppercase tracking-[0.12em] text-sky-500">{s.groupLabel}</span>
               </button>
             ))}
           </div>
@@ -1311,7 +1514,7 @@ function SnapshotTable({ data, companies }: SnapshotTableProps) {
             <tr>
               <th className="text-left px-4 py-3 text-[10px] uppercase tracking-[0.25em] text-stone-400 sticky left-0 bg-stone-900 min-w-[180px]">Metric</th>
               {loadedCompanies.map((c) => (
-                <th key={c.ticker} className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] font-black min-w-[120px]" style={{ color: c.color }}>
+                <th key={`${c.ticker}-${c.cik}`} className="text-right px-4 py-3 text-[10px] uppercase tracking-[0.2em] font-black min-w-[120px]" style={{ color: c.color }}>
                   {c.ticker}
                 </th>
               ))}
@@ -1475,7 +1678,7 @@ function GrowthBarChart({ title, groups, companies }: GrowthBarChartProps) {
         </div>
         <div className="flex flex-wrap gap-3 mb-3 px-2">
           {loadedCompanies.map((c) => (
-            <div key={c.ticker} className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider">
+            <div key={`${c.ticker}-${c.cik}`} className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider">
               <span className="inline-block w-3 h-3" style={{ backgroundColor: c.color }} />
               <span style={{ color: c.color }}>{c.ticker}</span>
             </div>
@@ -1518,7 +1721,7 @@ function GrowthBarChart({ title, groups, companies }: GrowthBarChartProps) {
 
       <div className="flex flex-wrap gap-3 mb-3 px-2">
         {loadedCompanies.map((c) => (
-          <div key={c.ticker} className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider">
+          <div key={`${c.ticker}-${c.cik}`} className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider">
             <span className="inline-block w-3 h-3" style={{ backgroundColor: c.color }} />
             <span style={{ color: c.color }}>{c.ticker}</span>
           </div>

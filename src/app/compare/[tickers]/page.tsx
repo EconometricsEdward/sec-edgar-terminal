@@ -37,10 +37,16 @@ interface PageProps {
 // ============================================================================
 function parseTickers(raw: string): string[] {
   const decoded = decodeURIComponent(raw || '');
+  const seen = new Set<string>();
+
   return decoded
     .split(',')
     .map((t) => t.trim().toUpperCase())
-    .filter(Boolean)
+    .filter((ticker) => {
+      if (!ticker || seen.has(ticker)) return false;
+      seen.add(ticker);
+      return true;
+    })
     .slice(0, MAX_COMPANIES);
 }
 

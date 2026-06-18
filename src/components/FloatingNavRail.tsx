@@ -43,6 +43,8 @@ function readScrollDepth(): number {
 
   if (depth > 96) return depth;
 
+  // Some local layouts scroll an inner shell instead of window.
+  // This makes the rail respond regardless of which container owns scroll.
   const candidates = document.querySelectorAll<HTMLElement>('main, section, div');
   for (const el of candidates) {
     if (el.scrollHeight > el.clientHeight + 96 && el.scrollTop > depth) {
@@ -74,6 +76,7 @@ function usePageScrolled(threshold = 96): boolean {
     document.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
 
+    // Fallback for any custom scroll container that does not emit through window.
     const interval = window.setInterval(update, 500);
 
     return () => {
@@ -88,44 +91,49 @@ function usePageScrolled(threshold = 96): boolean {
   return isScrolled;
 }
 
-function topTabClasses(isActive: boolean): string {
-  return `group inline-flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition-all duration-200 ${
+function railTabClasses(isActive: boolean): string {
+  return `group/rail relative grid h-12 w-12 place-items-center rounded-2xl border transition-all duration-200 ${
     isActive
-      ? 'border-amber-300/60 bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/30'
-      : 'border-white/10 bg-white/[0.035] text-slate-400 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06] hover:text-slate-100'
+      ? 'border-amber-300/70 bg-amber-300 text-slate-950 shadow-xl shadow-amber-950/40'
+      : 'border-white/10 bg-slate-950/80 text-slate-400 shadow-lg shadow-black/30 hover:-translate-y-0.5 hover:border-white/25 hover:bg-slate-900 hover:text-slate-100'
   }`;
 }
 
-export default function NavTabs() {
+export default function FloatingNavRail() {
   const pathname = usePathname() || '/';
   const isScrolled = usePageScrolled(96);
 
   return (
-    <div
-      className={`transition-all duration-300 ease-out ${
+    <nav
+      className={`fixed left-4 top-1/2 z-[90] hidden -translate-y-1/2 flex-col items-center gap-2 rounded-[1.6rem] border border-white/10 bg-[#070a12]/92 p-2 shadow-2xl shadow-black/50 backdrop-blur-2xl transition-all duration-300 md:flex ${
         isScrolled
-          ? 'mt-0 max-h-0 -translate-y-2 overflow-hidden opacity-0 pointer-events-none'
-          : 'mt-3 max-h-20 translate-y-0 opacity-100'
+          ? 'translate-x-0 opacity-100'
+          : 'pointer-events-none -translate-x-6 opacity-0'
       }`}
+      aria-label="Floating primary navigation"
     >
-      <nav className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" aria-label="Primary navigation">
-        {NAV_ITEMS.map((item) => {
-          const isActive = item.matchPath(pathname);
-          const Icon = item.icon;
+      <div className="mb-1 mt-1 h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,.9)]" />
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={topTabClasses(isActive)}
-              aria-current={isActive ? 'page' : undefined}
-            >
-              <Icon className="h-3.5 w-3.5" strokeWidth={2.5} />
+      {NAV_ITEMS.map((item) => {
+        const isActive = item.matchPath(pathname);
+        const Icon = item.icon;
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={railTabClasses(isActive)}
+            aria-label={item.label}
+            aria-current={isActive ? 'page' : undefined}
+            title={item.label}
+          >
+            <Icon className="h-4 w-4" strokeWidth={2.5} />
+            <span className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-full border border-white/10 bg-slate-950/95 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-200 opacity-0 shadow-xl shadow-black/40 transition-all duration-200 group-hover/rail:translate-x-1 group-hover/rail:opacity-100">
               {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-    </div>
+            </span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

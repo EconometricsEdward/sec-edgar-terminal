@@ -1,17 +1,15 @@
-import type { Metadata, Viewport } from 'next';
+﻿import type { Metadata, Viewport } from 'next';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import Link from 'next/link';
-import { TrendingUp } from 'lucide-react';
+import { Database, ShieldCheck, TrendingUp } from 'lucide-react';
 import { Providers } from './providers';
 import NavTabs from '../components/NavTabs';
 import HeaderSearchWrapper from '../components/HeaderSearchWrapper';
+import ThemeToneSlider from '../components/ThemeToneSlider';
+import FloatingNavRail from '../components/FloatingNavRail';
 import './globals.css';
 
-// ============================================================================
-// Metadata - unchanged from the previous layout.tsx. Per-page overrides will
-// come later via generateMetadata on each app/<route>/page.tsx.
-// ============================================================================
 export const metadata: Metadata = {
   metadataBase: new URL('https://secedgarterminal.com'),
   title: {
@@ -55,7 +53,7 @@ export const metadata: Metadata = {
         url: 'https://secedgarterminal.com/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'EDGAR Terminal - dark interface showing financial analysis with amber charts',
+        alt: 'EDGAR Terminal - professional SEC filings research terminal interface',
       },
     ],
   },
@@ -67,31 +65,21 @@ export const metadata: Metadata = {
     images: ['https://secedgarterminal.com/og-image.png'],
   },
   icons: {
-    // Inline SVG favicon - matches original, no extra HTTP request
     icon: [
       {
-        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%231c1917'/%3E%3Crect x='15' y='60' width='14' height='25' fill='%23fbbf24'/%3E%3Crect x='35' y='45' width='14' height='40' fill='%23fbbf24'/%3E%3Crect x='55' y='30' width='14' height='55' fill='%23fbbf24'/%3E%3Crect x='75' y='15' width='14' height='70' fill='%23fbbf24'/%3E%3C/svg%3E",
+        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23070a12'/%3E%3Cpath d='M21 73V51h10v22H21Zm16 0V39h10v34H37Zm16 0V28h10v45H53Zm16 0V18h10v55H69Z' fill='%23f59e0b'/%3E%3C/svg%3E",
         type: 'image/svg+xml',
       },
     ],
   },
 };
 
-// ============================================================================
-// Viewport - Next.js 16 requires theme-color and viewport config separately
-// from metadata. This is a breaking change from Next.js 14 that was flagged
-// in the Next.js 15 release notes.
-// ============================================================================
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1.0,
-  themeColor: '#1c1917',
+  themeColor: '#070a12',
 };
 
-// ============================================================================
-// JSON-LD Structured Data - Schema.org WebApplication markup
-// Helps Google render rich results for the homepage.
-// ============================================================================
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebApplication',
@@ -119,84 +107,89 @@ const jsonLd = {
   ],
 };
 
-// ============================================================================
-// Root layout
-//
-// Renders the site chrome (background grid, header with logo + nav + optional
-// search, main content, footer) around every page. This is the server
-// component; client interactivity (nav active state, search) is delegated to
-// small client-component children (NavTabs, HeaderSearchWrapper).
-//
-// The old App.jsx rendered this same chrome inside a BrowserRouter. Now that
-// Next.js owns routing, the chrome moves up to the layout so every route
-// inherits it automatically and the server can render it for SEO.
-// ============================================================================
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme-tone="14">
       <head>
-        {/* Inline JSON-LD for Schema.org structured data */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className="bg-stone-950">
+      <body>
         <Providers>
-          <div className="min-h-screen bg-stone-950 text-stone-100 font-mono">
-            {/* Background grid - decorative, pointer-events-none so it doesn't block clicks */}
-            <div
-              className="fixed inset-0 opacity-[0.03] pointer-events-none"
-              style={{
-                backgroundImage:
-                  'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)',
-                backgroundSize: '40px 40px',
-              }}
-            />
+          <div className="min-h-screen overflow-x-hidden bg-[#070a12] text-slate-100 antialiased">
+            <div className="pointer-events-none fixed inset-0 -z-10">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.16),transparent_32rem),radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_30rem),linear-gradient(180deg,#070a12_0%,#0b1020_48%,#070a12_100%)]" />
+              <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(rgba(255,255,255,.8)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.8)_1px,transparent_1px)] [background-size:56px_56px]" />
+            </div>
 
-            <div className="relative max-w-6xl mx-auto px-6 py-10">
-              {/* Header */}
-              <header className="border-b-2 border-stone-800 pb-6 mb-8">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <Link href="/" className="group">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 bg-amber-500 flex items-center justify-center group-hover:bg-amber-400 transition-colors">
-                        <TrendingUp className="w-6 h-6 text-stone-950" strokeWidth={3} />
+            <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070a12]/88 backdrop-blur-2xl">
+              <div className="mx-auto max-w-[1480px] px-4 py-3 sm:px-6 lg:px-8">
+                <div className="grid gap-3 xl:grid-cols-[minmax(260px,380px)_minmax(360px,680px)_auto] xl:items-center xl:gap-5">
+                  <div className="flex min-w-0 items-center justify-between gap-4">
+                    <Link href="/" className="group flex min-w-0 items-center gap-3">
+                      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-amber-300/30 bg-amber-400 text-slate-950 shadow-lg shadow-amber-950/40 transition-transform duration-300 group-hover:-translate-y-0.5">
+                        <TrendingUp className="h-5 w-5" strokeWidth={3} />
                       </div>
-                      <h1 className="text-3xl md:text-4xl font-black tracking-tight uppercase">
-                        EDGAR<span className="text-amber-500">/</span>Terminal
-                      </h1>
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-black tracking-tight text-white sm:text-lg">
+                          EDGAR<span className="text-amber-300">/</span>Terminal
+                        </div>
+                        <div className="hidden text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500 sm:block">
+                          SEC research OS · Source-linked public-company data
+                        </div>
+                      </div>
+                    </Link>
+
+                    <div className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200 md:flex xl:hidden">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,.9)]" />
+                      Live SEC data
                     </div>
-                    <p className="text-xs text-stone-400 uppercase tracking-[0.2em]">
-                      SEC Public Filings Explorer / Live Data / Direct Source
-                    </p>
-                  </Link>
-                  <div className="text-right text-[10px] text-stone-500 uppercase tracking-widest">
-                    <div>Source: data.sec.gov</div>
-                    <div>Rate: 10 req/sec max</div>
+                  </div>
+
+                  <div className="order-3 w-full xl:order-2">
+                    <HeaderSearchWrapper />
+                  </div>
+
+                  <div className="order-2 flex flex-wrap items-center justify-start gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 sm:justify-end xl:order-3 xl:flex-nowrap">
+                                        <ThemeToneSlider />
+                    <div className="hidden rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-emerald-200 xl:block">
+                      <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,.9)]" />
+                      Live SEC data
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2">
+                      <Database className="mr-1.5 inline h-3.5 w-3.5 text-amber-300" />
+                      data.sec.gov
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2">
+                      <ShieldCheck className="mr-1.5 inline h-3.5 w-3.5 text-sky-300" />
+                      Source-linked
+                    </div>
                   </div>
                 </div>
 
                 <NavTabs />
+              </div>
+            </header>
 
-                {/* Global search - hidden on landing, shown everywhere else */}
-                <HeaderSearchWrapper />
-              </header>
+            <FloatingNavRail />
 
-              {/* Page content */}
+            <main className="mx-auto max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
               {children}
+            </main>
 
-              {/* Footer */}
-              <footer className="mt-12 pt-6 border-t-2 border-stone-800 text-[10px] uppercase tracking-widest text-stone-500 flex flex-wrap justify-between gap-2">
-                <span>Data via SEC.gov / Public EDGAR APIs / XBRL Financial Facts</span>
-                <span>For research use only / Not investment advice</span>
-                <span>Free / No account required</span>
-              </footer>
-            </div>
+            <footer className="mx-auto max-w-[1480px] px-4 pb-10 sm:px-6 lg:px-8">
+              <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.025] px-5 py-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                <span>Data via SEC.gov Â· Public EDGAR APIs Â· XBRL Financial Facts</span>
+                <span>Research use only Â· Not investment advice</span>
+                <span>Free Â· No account required</span>
+              </div>
+            </footer>
           </div>
         </Providers>
         <Analytics />
@@ -205,3 +198,6 @@ export default function RootLayout({
     </html>
   );
 }
+
+
+

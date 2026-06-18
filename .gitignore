@@ -35,3 +35,7 @@ project-*.txt
 tier*.txt
 phase*.txt
 phase*-files.txt
+# Local redesign / patch backups
+.redesign-backup/
+.layout-backups/
+*.bak

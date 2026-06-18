@@ -1,3 +1,1344 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --surface: rgba(15, 23, 42, 0.72);
+    --surface-strong: rgba(15, 23, 42, 0.9);
+    --border-soft: rgba(255, 255, 255, 0.1);
+    --accent: #f59e0b;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-height: 100vh;
+    background: #070a12;
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::selection {
+    background: rgba(245, 158, 11, 0.32);
+    color: #fff7ed;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.42);
+    background-clip: padding-box;
+  }
+}
+
+@layer components {
+  .professional-card {
+    @apply rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/25 backdrop-blur-xl;
+  }
+
+  .panel-card {
+    @apply rounded-2xl border border-white/10 bg-slate-950/55 shadow-xl shadow-black/15 backdrop-blur;
+  }
+
+  .eyebrow {
+    @apply text-[10px] font-black uppercase tracking-[0.28em] text-amber-300/90;
+  }
+
+  .muted-label {
+    @apply text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500;
+  }
+
+  .primary-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-amber-400 px-4 py-2.5 text-xs font-black uppercase tracking-[0.18em] text-slate-950 shadow-lg shadow-amber-950/30 transition hover:-translate-y-0.5 hover:bg-amber-300;
+  }
+
+  .secondary-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black uppercase tracking-[0.18em] text-slate-200 transition hover:-translate-y-0.5 hover:border-amber-300/50 hover:text-amber-200;
+  }
+}
+
+@layer components {
+  .header-command-search > div {
+    width: 100%;
+  }
+
+  .header-command-search > div > div:first-child {
+    filter: drop-shadow(0 14px 32px rgba(0, 0, 0, 0.24));
+  }
+
+  .header-command-search > div > div:first-child input {
+    height: 42px !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    background: rgba(15, 23, 42, 0.68) !important;
+    border-top-left-radius: 9999px !important;
+    border-bottom-left-radius: 9999px !important;
+    color: rgb(226, 232, 240) !important;
+  }
+
+  .header-command-search > div > div:first-child input:focus {
+    border-color: rgba(252, 211, 77, 0.58) !important;
+    box-shadow: 0 0 0 1px rgba(252, 211, 77, 0.18), 0 0 30px rgba(245, 158, 11, 0.08);
+  }
+
+  .header-command-search > div > div:first-child > button {
+    height: 42px !important;
+    border-top-right-radius: 9999px !important;
+    border-bottom-right-radius: 9999px !important;
+  }
+}
+
+/* EDGAR adaptive tone system */
+@layer base {
+  :root {
+    --theme-tone: 14;
+    --theme-light-pct: 14%;
+    --theme-dark-pct: 86%;
+
+    --app-bg: #070a12;
+    --chrome-bg: rgba(7, 10, 18, 0.88);
+    --surface-panel: #0b1020;
+    --surface-raised: #111827;
+    --surface-soft: rgba(255, 255, 255, 0.035);
+    --input-bg: rgba(15, 23, 42, 0.72);
+
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #64748b;
+    --border-soft: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.18);
+
+    --app-bg: color-mix(in oklab, #070a12 var(--theme-dark-pct), #f8f5ec var(--theme-light-pct));
+    --chrome-bg: color-mix(in oklab, rgba(7, 10, 18, 0.90) var(--theme-dark-pct), rgba(255, 251, 242, 0.90) var(--theme-light-pct));
+    --surface-panel: color-mix(in oklab, #0b1020 var(--theme-dark-pct), #ffffff var(--theme-light-pct));
+    --surface-raised: color-mix(in oklab, #111827 var(--theme-dark-pct), #f3ead9 var(--theme-light-pct));
+    --surface-soft: color-mix(in oklab, rgba(255, 255, 255, 0.045) var(--theme-dark-pct), rgba(15, 23, 42, 0.045) var(--theme-light-pct));
+    --input-bg: color-mix(in oklab, rgba(15, 23, 42, 0.72) var(--theme-dark-pct), rgba(255, 255, 255, 0.80) var(--theme-light-pct));
+
+    --text-primary: color-mix(in oklab, #f8fafc var(--theme-dark-pct), #111827 var(--theme-light-pct));
+    --text-secondary: color-mix(in oklab, #cbd5e1 var(--theme-dark-pct), #334155 var(--theme-light-pct));
+    --text-muted: color-mix(in oklab, #64748b var(--theme-dark-pct), #475569 var(--theme-light-pct));
+
+    --border-soft: color-mix(in oklab, rgba(255, 255, 255, 0.10) var(--theme-dark-pct), rgba(15, 23, 42, 0.16) var(--theme-light-pct));
+    --border-strong: color-mix(in oklab, rgba(255, 255, 255, 0.18) var(--theme-dark-pct), rgba(15, 23, 42, 0.28) var(--theme-light-pct));
+
+    --shadow-soft: color-mix(in oklab, rgba(0, 0, 0, 0.45) var(--theme-dark-pct), rgba(79, 70, 50, 0.16) var(--theme-light-pct));
+  }
+
+  html,
+  body {
+    background: var(--app-bg) !important;
+    color: var(--text-primary);
+    transition:
+      background-color 180ms ease,
+      color 180ms ease;
+  }
+
+  html[data-theme-tone] body,
+  html[data-theme-tone] .min-h-screen {
+    background:
+      radial-gradient(circle at 16% 0%, color-mix(in oklab, rgba(251, 191, 36, 0.15) var(--theme-dark-pct), rgba(251, 191, 36, 0.20) var(--theme-light-pct)), transparent 30rem),
+      radial-gradient(circle at 88% 14%, color-mix(in oklab, rgba(56, 189, 248, 0.08) var(--theme-dark-pct), rgba(14, 165, 233, 0.12) var(--theme-light-pct)), transparent 28rem),
+      var(--app-bg) !important;
+    color: var(--text-primary) !important;
+  }
+
+  html[data-theme-tone] body,
+  html[data-theme-tone] header,
+  html[data-theme-tone] main,
+  html[data-theme-tone] aside,
+  html[data-theme-tone] section,
+  html[data-theme-tone] footer,
+  html[data-theme-tone] article,
+  html[data-theme-tone] div,
+  html[data-theme-tone] input,
+  html[data-theme-tone] button,
+  html[data-theme-tone] a {
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease,
+      color 180ms ease,
+      box-shadow 180ms ease,
+      fill 180ms ease,
+      stroke 180ms ease;
+  }
+}
+
+@layer components {
+  .theme-tone-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.65rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--surface-panel) 86%, transparent);
+    box-shadow: 0 14px 32px var(--shadow-soft);
+    color: var(--text-secondary);
+    backdrop-filter: blur(18px);
+  }
+
+  .theme-tone-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+    flex: 0 0 auto;
+    color: color-mix(in oklab, #facc15 72%, var(--text-secondary));
+  }
+
+  .theme-tone-label {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .theme-tone-range {
+    appearance: none;
+    width: 6.6rem;
+    height: 0.42rem;
+    border-radius: 9999px;
+    cursor: grab;
+    outline: none;
+    background:
+      linear-gradient(90deg, #050811 0%, #1e293b 42%, #facc15 64%, #fff7ed 100%);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklab, rgba(255, 255, 255, 0.16) var(--theme-dark-pct), rgba(15, 23, 42, 0.14) var(--theme-light-pct)),
+      0 0 18px color-mix(in oklab, rgba(250, 204, 21, 0.13) var(--theme-dark-pct), rgba(250, 204, 21, 0.22) var(--theme-light-pct));
+  }
+
+  .theme-tone-range:active {
+    cursor: grabbing;
+  }
+
+  .theme-tone-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 9999px;
+    border: 2px solid color-mix(in oklab, #facc15 72%, var(--surface-panel));
+    background:
+      radial-gradient(circle at 35% 30%, #ffffff, #facc15 44%, #111827 100%);
+    box-shadow:
+      0 0 0 3px color-mix(in oklab, rgba(250, 204, 21, 0.14) var(--theme-dark-pct), rgba(250, 204, 21, 0.24) var(--theme-light-pct)),
+      0 8px 18px rgba(0, 0, 0, 0.28);
+  }
+
+  .theme-tone-range::-moz-range-thumb {
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 9999px;
+    border: 2px solid color-mix(in oklab, #facc15 72%, var(--surface-panel));
+    background:
+      radial-gradient(circle at 35% 30%, #ffffff, #facc15 44%, #111827 100%);
+    box-shadow:
+      0 0 0 3px color-mix(in oklab, rgba(250, 204, 21, 0.14) var(--theme-dark-pct), rgba(250, 204, 21, 0.24) var(--theme-light-pct)),
+      0 8px 18px rgba(0, 0, 0, 0.28);
+  }
+
+  .theme-tone-output {
+    min-width: 4.4rem;
+    font-size: 0.62rem;
+    font-weight: 900;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  html[data-theme-tone] header {
+    background: var(--chrome-bg) !important;
+    border-color: var(--border-soft) !important;
+    box-shadow: 0 18px 40px var(--shadow-soft);
+  }
+
+  html[data-theme-tone] footer {
+    background: color-mix(in oklab, var(--surface-panel) 74%, transparent) !important;
+    border-color: var(--border-soft) !important;
+    color: var(--text-muted) !important;
+  }
+
+  html[data-theme-tone] [class*="bg-[#070a12"],
+  html[data-theme-tone] [class*="bg-[#080b13"],
+  html[data-theme-tone] [class*="bg-stone-950"],
+  html[data-theme-tone] [class*="bg-slate-950"],
+  html[data-theme-tone] [class*="bg-black"] {
+    background-color: var(--app-bg) !important;
+  }
+
+  html[data-theme-tone] [class*="bg-stone-900"],
+  html[data-theme-tone] [class*="bg-slate-900"],
+  html[data-theme-tone] [class*="bg-stone-800"],
+  html[data-theme-tone] [class*="bg-slate-800"],
+  html[data-theme-tone] [class*="bg-white/"],
+  html[data-theme-tone] [class*="bg-white["] {
+    background-color: var(--surface-panel) !important;
+  }
+
+  html[data-theme-tone] [class*="border-stone-"],
+  html[data-theme-tone] [class*="border-slate-"],
+  html[data-theme-tone] [class*="border-white/"] {
+    border-color: var(--border-soft) !important;
+  }
+
+  html[data-theme-tone] [class*="text-white"],
+  html[data-theme-tone] [class*="text-stone-100"],
+  html[data-theme-tone] [class*="text-stone-200"],
+  html[data-theme-tone] [class*="text-slate-100"],
+  html[data-theme-tone] [class*="text-slate-200"] {
+    color: var(--text-primary) !important;
+  }
+
+  html[data-theme-tone] [class*="text-stone-300"],
+  html[data-theme-tone] [class*="text-stone-400"],
+  html[data-theme-tone] [class*="text-slate-300"],
+  html[data-theme-tone] [class*="text-slate-400"] {
+    color: var(--text-secondary) !important;
+  }
+
+  html[data-theme-tone] [class*="text-stone-500"],
+  html[data-theme-tone] [class*="text-stone-600"],
+  html[data-theme-tone] [class*="text-stone-700"],
+  html[data-theme-tone] [class*="text-slate-500"],
+  html[data-theme-tone] [class*="text-slate-600"],
+  html[data-theme-tone] [class*="text-slate-700"] {
+    color: var(--text-muted) !important;
+  }
+
+  html[data-theme-tone] input:not([type="range"]),
+  html[data-theme-tone] textarea,
+  html[data-theme-tone] select {
+    background: var(--input-bg) !important;
+    border-color: var(--border-soft) !important;
+    color: var(--text-primary) !important;
+  }
+
+  html[data-theme-tone] input::placeholder,
+  html[data-theme-tone] textarea::placeholder {
+    color: color-mix(in oklab, var(--text-muted) 72%, transparent) !important;
+  }
+
+  html[data-theme-tone] table,
+  html[data-theme-tone] thead,
+  html[data-theme-tone] tbody,
+  html[data-theme-tone] tr {
+    color: var(--text-primary);
+    border-color: var(--border-soft);
+  }
+
+  html[data-theme-tone] .recharts-text,
+  html[data-theme-tone] .recharts-cartesian-axis-tick-value {
+    fill: var(--text-muted) !important;
+  }
+
+  html[data-theme-tone] .recharts-cartesian-grid line,
+  html[data-theme-tone] .recharts-cartesian-axis-line,
+  html[data-theme-tone] .recharts-cartesian-axis-tick-line {
+    stroke: var(--border-soft) !important;
+  }
+}
+
+/* EDGAR tone readability correction */
+@layer base {
+  html[data-theme-tone] {
+    --et-page: color-mix(in oklab, #070a12 var(--theme-dark-pct), #f7f2e8 var(--theme-light-pct));
+    --et-page-2: color-mix(in oklab, #0b1020 var(--theme-dark-pct), #fffaf0 var(--theme-light-pct));
+
+    --et-card: color-mix(in oklab, #0b1020 var(--theme-dark-pct), #fffdf7 var(--theme-light-pct));
+    --et-card-2: color-mix(in oklab, #101827 var(--theme-dark-pct), #f8f3e8 var(--theme-light-pct));
+    --et-card-3: color-mix(in oklab, #151c2c var(--theme-dark-pct), #ffffff var(--theme-light-pct));
+
+    --et-text: color-mix(in oklab, #f8fafc var(--theme-dark-pct), #101827 var(--theme-light-pct));
+    --et-text-2: color-mix(in oklab, #cbd5e1 var(--theme-dark-pct), #334155 var(--theme-light-pct));
+    --et-text-3: color-mix(in oklab, #64748b var(--theme-dark-pct), #475569 var(--theme-light-pct));
+
+    --et-border: color-mix(in oklab, rgba(255,255,255,.12) var(--theme-dark-pct), rgba(15,23,42,.18) var(--theme-light-pct));
+    --et-border-2: color-mix(in oklab, rgba(255,255,255,.20) var(--theme-dark-pct), rgba(15,23,42,.28) var(--theme-light-pct));
+
+    --et-input: color-mix(in oklab, rgba(15,23,42,.74) var(--theme-dark-pct), rgba(255,255,255,.92) var(--theme-light-pct));
+    --et-shadow: color-mix(in oklab, rgba(0,0,0,.48) var(--theme-dark-pct), rgba(76,65,40,.14) var(--theme-light-pct));
+
+    --et-card-gradient:
+      linear-gradient(
+        135deg,
+        color-mix(in oklab, var(--et-card-3) 92%, transparent),
+        color-mix(in oklab, var(--et-card) 96%, transparent)
+      );
+
+    --et-warning-bg: color-mix(in oklab, rgba(69,26,3,.34) var(--theme-dark-pct), #fff8db var(--theme-light-pct));
+    --et-info-bg: color-mix(in oklab, rgba(8,47,73,.34) var(--theme-dark-pct), #eff8ff var(--theme-light-pct));
+    --et-success-bg: color-mix(in oklab, rgba(6,78,59,.32) var(--theme-dark-pct), #ecfdf3 var(--theme-light-pct));
+    --et-danger-bg: color-mix(in oklab, rgba(76,5,25,.34) var(--theme-dark-pct), #fff1f3 var(--theme-light-pct));
+    --et-violet-bg: color-mix(in oklab, rgba(46,16,101,.32) var(--theme-dark-pct), #f5f1ff var(--theme-light-pct));
+  }
+
+  html[data-theme-tone] body,
+  html[data-theme-tone] .min-h-screen {
+    background:
+      radial-gradient(circle at 12% 0%, color-mix(in oklab, rgba(251,191,36,.18) var(--theme-dark-pct), rgba(251,191,36,.20) var(--theme-light-pct)), transparent 34rem),
+      radial-gradient(circle at 90% 14%, color-mix(in oklab, rgba(56,189,248,.10) var(--theme-dark-pct), rgba(14,165,233,.12) var(--theme-light-pct)), transparent 34rem),
+      var(--et-page) !important;
+    color: var(--et-text) !important;
+  }
+}
+
+@layer components {
+  html[data-theme-tone] header {
+    background: color-mix(in oklab, var(--et-page-2) 88%, transparent) !important;
+    border-color: var(--et-border) !important;
+    box-shadow: 0 18px 44px var(--et-shadow);
+  }
+
+  html[data-theme-tone] footer {
+    background: color-mix(in oklab, var(--et-card) 88%, transparent) !important;
+    border-color: var(--et-border) !important;
+    color: var(--et-text-3) !important;
+  }
+
+  html[data-theme-mode="balanced"] :where(
+    [class*="bg-"][class*="border"],
+    [class*="bg-"][class*="rounded"],
+    [class*="bg-gradient"],
+    [class*="bg-["]
+  ):not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-sky-"]):not([class*="bg-blue-"]):not([class*="bg-cyan-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]),
+  html[data-theme-mode="light"] :where(
+    [class*="bg-"][class*="border"],
+    [class*="bg-"][class*="rounded"],
+    [class*="bg-gradient"],
+    [class*="bg-["]
+  ):not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-sky-"]):not([class*="bg-blue-"]):not([class*="bg-cyan-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]) {
+    background-color: var(--et-card) !important;
+    background-image: var(--et-card-gradient) !important;
+    border-color: var(--et-border) !important;
+    color: var(--et-text) !important;
+    box-shadow: 0 14px 34px var(--et-shadow);
+  }
+
+  html[data-theme-mode="light"] :where(
+    [class*="bg-stone-950"],
+    [class*="bg-stone-900"],
+    [class*="bg-stone-800"],
+    [class*="bg-slate-950"],
+    [class*="bg-slate-900"],
+    [class*="bg-slate-800"],
+    [class*="bg-neutral-950"],
+    [class*="bg-neutral-900"],
+    [class*="bg-black"],
+    [class*="bg-[#"],
+    [class*="from-[#"],
+    [class*="via-[#"],
+    [class*="to-[#"]
+  ):not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-sky-"]):not([class*="bg-blue-"]):not([class*="bg-cyan-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]) {
+    background-color: var(--et-card) !important;
+    background-image: var(--et-card-gradient) !important;
+    color: var(--et-text) !important;
+  }
+
+  html[data-theme-mode="balanced"] :where(
+    [class*="bg-stone-950"],
+    [class*="bg-stone-900"],
+    [class*="bg-stone-800"],
+    [class*="bg-slate-950"],
+    [class*="bg-slate-900"],
+    [class*="bg-slate-800"],
+    [class*="bg-neutral-950"],
+    [class*="bg-neutral-900"],
+    [class*="bg-black"],
+    [class*="bg-[#"]
+  ):not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-sky-"]):not([class*="bg-blue-"]):not([class*="bg-cyan-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]) {
+    background-color: var(--et-card-2) !important;
+    color: var(--et-text) !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="bg-amber-950"], [class*="bg-amber-900"], [class*="bg-amber-800"], [class*="bg-yellow-950"], [class*="bg-yellow-900"], [class*="bg-yellow-800"]),
+  html[data-theme-mode="balanced"] :where([class*="bg-amber-950"], [class*="bg-amber-900"], [class*="bg-amber-800"], [class*="bg-yellow-950"], [class*="bg-yellow-900"], [class*="bg-yellow-800"]) {
+    background-color: var(--et-warning-bg) !important;
+    color: var(--et-text) !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="bg-sky-950"], [class*="bg-sky-900"], [class*="bg-sky-800"], [class*="bg-blue-950"], [class*="bg-blue-900"], [class*="bg-blue-800"], [class*="bg-cyan-950"], [class*="bg-cyan-900"]),
+  html[data-theme-mode="balanced"] :where([class*="bg-sky-950"], [class*="bg-sky-900"], [class*="bg-sky-800"], [class*="bg-blue-950"], [class*="bg-blue-900"], [class*="bg-blue-800"], [class*="bg-cyan-950"], [class*="bg-cyan-900"]) {
+    background-color: var(--et-info-bg) !important;
+    color: var(--et-text) !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="bg-emerald-950"], [class*="bg-emerald-900"], [class*="bg-emerald-800"], [class*="bg-green-950"], [class*="bg-green-900"], [class*="bg-green-800"]),
+  html[data-theme-mode="balanced"] :where([class*="bg-emerald-950"], [class*="bg-emerald-900"], [class*="bg-emerald-800"], [class*="bg-green-950"], [class*="bg-green-900"], [class*="bg-green-800"]) {
+    background-color: var(--et-success-bg) !important;
+    color: var(--et-text) !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="bg-rose-950"], [class*="bg-rose-900"], [class*="bg-rose-800"], [class*="bg-red-950"], [class*="bg-red-900"], [class*="bg-red-800"]),
+  html[data-theme-mode="balanced"] :where([class*="bg-rose-950"], [class*="bg-rose-900"], [class*="bg-rose-800"], [class*="bg-red-950"], [class*="bg-red-900"], [class*="bg-red-800"]) {
+    background-color: var(--et-danger-bg) !important;
+    color: var(--et-text) !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="bg-violet-950"], [class*="bg-violet-900"], [class*="bg-violet-800"], [class*="bg-purple-950"], [class*="bg-purple-900"], [class*="bg-purple-800"]),
+  html[data-theme-mode="balanced"] :where([class*="bg-violet-950"], [class*="bg-violet-900"], [class*="bg-violet-800"], [class*="bg-purple-950"], [class*="bg-purple-900"], [class*="bg-purple-800"]) {
+    background-color: var(--et-violet-bg) !important;
+    color: var(--et-text) !important;
+  }
+
+  html[data-theme-tone] :where(
+    [class*="border-stone-"],
+    [class*="border-slate-"],
+    [class*="border-neutral-"],
+    [class*="border-white/"]
+  ) {
+    border-color: var(--et-border) !important;
+  }
+
+  html[data-theme-mode="light"] :where(
+    [class*="text-white"],
+    [class*="text-stone-50"],
+    [class*="text-stone-100"],
+    [class*="text-stone-200"],
+    [class*="text-slate-50"],
+    [class*="text-slate-100"],
+    [class*="text-slate-200"]
+  ),
+  html[data-theme-mode="balanced"] :where(
+    [class*="text-white"],
+    [class*="text-stone-50"],
+    [class*="text-stone-100"],
+    [class*="text-stone-200"],
+    [class*="text-slate-50"],
+    [class*="text-slate-100"],
+    [class*="text-slate-200"]
+  ) {
+    color: var(--et-text) !important;
+  }
+
+  html[data-theme-mode="light"] :where(
+    [class*="text-stone-300"],
+    [class*="text-stone-400"],
+    [class*="text-slate-300"],
+    [class*="text-slate-400"]
+  ),
+  html[data-theme-mode="balanced"] :where(
+    [class*="text-stone-300"],
+    [class*="text-stone-400"],
+    [class*="text-slate-300"],
+    [class*="text-slate-400"]
+  ) {
+    color: var(--et-text-2) !important;
+  }
+
+  html[data-theme-mode="light"] :where(
+    [class*="text-stone-500"],
+    [class*="text-stone-600"],
+    [class*="text-stone-700"],
+    [class*="text-slate-500"],
+    [class*="text-slate-600"],
+    [class*="text-slate-700"]
+  ),
+  html[data-theme-mode="balanced"] :where(
+    [class*="text-stone-500"],
+    [class*="text-stone-600"],
+    [class*="text-stone-700"],
+    [class*="text-slate-500"],
+    [class*="text-slate-600"],
+    [class*="text-slate-700"]
+  ) {
+    color: var(--et-text-3) !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="text-amber-100"], [class*="text-amber-200"], [class*="text-amber-300"], [class*="text-yellow-100"], [class*="text-yellow-200"], [class*="text-yellow-300"]) {
+    color: #a16207 !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="text-emerald-100"], [class*="text-emerald-200"], [class*="text-emerald-300"], [class*="text-green-100"], [class*="text-green-200"], [class*="text-green-300"]) {
+    color: #047857 !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="text-sky-100"], [class*="text-sky-200"], [class*="text-sky-300"], [class*="text-blue-100"], [class*="text-blue-200"], [class*="text-blue-300"], [class*="text-cyan-100"], [class*="text-cyan-200"], [class*="text-cyan-300"]) {
+    color: #0369a1 !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="text-rose-100"], [class*="text-rose-200"], [class*="text-rose-300"], [class*="text-red-100"], [class*="text-red-200"], [class*="text-red-300"]) {
+    color: #be123c !important;
+  }
+
+  html[data-theme-mode="light"] :where([class*="text-violet-100"], [class*="text-violet-200"], [class*="text-violet-300"], [class*="text-purple-100"], [class*="text-purple-200"], [class*="text-purple-300"]) {
+    color: #6d28d9 !important;
+  }
+
+  html[data-theme-tone] input:not([type="range"]),
+  html[data-theme-tone] textarea,
+  html[data-theme-tone] select,
+  html[data-theme-tone] .header-command-search input {
+    background: var(--et-input) !important;
+    border-color: var(--et-border) !important;
+    color: var(--et-text) !important;
+  }
+
+  html[data-theme-tone] input::placeholder,
+  html[data-theme-tone] textarea::placeholder {
+    color: color-mix(in oklab, var(--et-text-3) 72%, transparent) !important;
+  }
+
+  html[data-theme-mode="light"] .header-command-search button:not([disabled]) {
+    background: #fffdf7 !important;
+    color: #111827 !important;
+    border-color: var(--et-border) !important;
+  }
+
+  html[data-theme-mode="light"] .theme-tone-control {
+    background: rgba(255, 253, 247, 0.92) !important;
+    color: #334155 !important;
+    border-color: rgba(15, 23, 42, 0.16) !important;
+  }
+
+  html[data-theme-mode="light"] .theme-tone-output {
+    color: #334155 !important;
+  }
+
+  html[data-theme-tone] table,
+  html[data-theme-tone] thead,
+  html[data-theme-tone] tbody,
+  html[data-theme-tone] tr,
+  html[data-theme-tone] td,
+  html[data-theme-tone] th {
+    color: var(--et-text) !important;
+    border-color: var(--et-border) !important;
+  }
+
+  html[data-theme-tone] .recharts-text,
+  html[data-theme-tone] .recharts-cartesian-axis-tick-value {
+    fill: var(--et-text-3) !important;
+  }
+
+  html[data-theme-tone] .recharts-cartesian-grid line,
+  html[data-theme-tone] .recharts-cartesian-axis-line,
+  html[data-theme-tone] .recharts-cartesian-axis-tick-line {
+    stroke: var(--et-border) !important;
+  }
+}
+
+/* ==========================================================================
+   HARD LIGHT / BALANCED READABILITY FIX
+   This block intentionally lives outside Tailwind @layer so it loads after
+   generated utilities and wins against old dark card classes.
+   ========================================================================== */
+
+html.et-light,
+html.et-balanced {
+  --et-hard-page: #f7f2e8;
+  --et-hard-page-soft: #fffaf0;
+  --et-hard-card: #fffdf7;
+  --et-hard-card-2: #fbf6ec;
+  --et-hard-card-3: #ffffff;
+  --et-hard-text: #0f172a;
+  --et-hard-text-2: #334155;
+  --et-hard-text-3: #64748b;
+  --et-hard-border: rgba(15, 23, 42, 0.16);
+  --et-hard-border-2: rgba(15, 23, 42, 0.24);
+  --et-hard-shadow: rgba(76, 65, 40, 0.14);
+}
+
+html.et-balanced {
+  --et-hard-page: #ece4d3;
+  --et-hard-page-soft: #f6efe2;
+  --et-hard-card: #fbf6ec;
+  --et-hard-card-2: #f3ead9;
+  --et-hard-card-3: #fffaf0;
+  --et-hard-text: #111827;
+  --et-hard-text-2: #334155;
+  --et-hard-text-3: #64748b;
+  --et-hard-border: rgba(15, 23, 42, 0.18);
+  --et-hard-border-2: rgba(15, 23, 42, 0.30);
+  --et-hard-shadow: rgba(76, 65, 40, 0.18);
+}
+
+html.et-light,
+html.et-light body,
+html.et-balanced,
+html.et-balanced body {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(251, 191, 36, 0.18), transparent 32rem),
+    radial-gradient(circle at 88% 14%, rgba(14, 165, 233, 0.12), transparent 34rem),
+    var(--et-hard-page) !important;
+  color: var(--et-hard-text) !important;
+}
+
+html.et-light .min-h-screen,
+html.et-balanced .min-h-screen {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(251, 191, 36, 0.16), transparent 32rem),
+    radial-gradient(circle at 88% 14%, rgba(14, 165, 233, 0.11), transparent 34rem),
+    var(--et-hard-page) !important;
+  color: var(--et-hard-text) !important;
+}
+
+/* Convert dark utility backgrounds and arbitrary dark backgrounds to readable light cards. */
+html.et-light body :is(
+  [class*="bg-stone-"],
+  [class*="bg-slate-"],
+  [class*="bg-neutral-"],
+  [class*="bg-zinc-"],
+  [class*="bg-black"],
+  [class*="bg-[#"],
+  [class*="bg-white/"],
+  [class*="bg-white["],
+  [class*="bg-gradient"],
+  [class*="from-stone-"],
+  [class*="from-slate-"],
+  [class*="from-neutral-"],
+  [class*="from-zinc-"],
+  [class*="from-black"],
+  [class*="from-[#"],
+  [class*="via-stone-"],
+  [class*="via-slate-"],
+  [class*="via-neutral-"],
+  [class*="via-zinc-"],
+  [class*="via-black"],
+  [class*="via-[#"],
+  [class*="to-stone-"],
+  [class*="to-slate-"],
+  [class*="to-neutral-"],
+  [class*="to-zinc-"],
+  [class*="to-black"],
+  [class*="to-[#"]
+):not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-sky-"]):not([class*="bg-blue-"]):not([class*="bg-cyan-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]),
+html.et-balanced body :is(
+  [class*="bg-stone-"],
+  [class*="bg-slate-"],
+  [class*="bg-neutral-"],
+  [class*="bg-zinc-"],
+  [class*="bg-black"],
+  [class*="bg-[#"],
+  [class*="bg-white/"],
+  [class*="bg-white["],
+  [class*="bg-gradient"],
+  [class*="from-stone-"],
+  [class*="from-slate-"],
+  [class*="from-neutral-"],
+  [class*="from-zinc-"],
+  [class*="from-black"],
+  [class*="from-[#"],
+  [class*="via-stone-"],
+  [class*="via-slate-"],
+  [class*="via-neutral-"],
+  [class*="via-zinc-"],
+  [class*="via-black"],
+  [class*="via-[#"],
+  [class*="to-stone-"],
+  [class*="to-slate-"],
+  [class*="to-neutral-"],
+  [class*="to-zinc-"],
+  [class*="to-black"],
+  [class*="to-[#"]
+):not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-sky-"]):not([class*="bg-blue-"]):not([class*="bg-cyan-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]) {
+  background-color: var(--et-hard-card) !important;
+  background-image: linear-gradient(135deg, var(--et-hard-card-3), var(--et-hard-card-2)) !important;
+  border-color: var(--et-hard-border) !important;
+  color: var(--et-hard-text) !important;
+}
+
+/* Catch card-like containers that do not have an obvious bg-* class. */
+html.et-light body :is(section, article, aside, nav, form, footer, div)[class*="border"][class*="rounded"]:not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-sky-"]):not([class*="bg-blue-"]):not([class*="bg-cyan-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]),
+html.et-balanced body :is(section, article, aside, nav, form, footer, div)[class*="border"][class*="rounded"]:not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-sky-"]):not([class*="bg-blue-"]):not([class*="bg-cyan-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]) {
+  background-color: var(--et-hard-card) !important;
+  background-image: linear-gradient(135deg, var(--et-hard-card-3), var(--et-hard-card-2)) !important;
+  border-color: var(--et-hard-border) !important;
+  color: var(--et-hard-text) !important;
+}
+
+/* Header / footer / floating rail become clean light chrome. */
+html.et-light header,
+html.et-balanced header {
+  background: rgba(255, 250, 240, 0.92) !important;
+  background-image: none !important;
+  border-color: var(--et-hard-border) !important;
+  box-shadow: 0 18px 44px var(--et-hard-shadow) !important;
+  color: var(--et-hard-text) !important;
+}
+
+html.et-light footer,
+html.et-balanced footer {
+  background: rgba(255, 253, 247, 0.92) !important;
+  background-image: none !important;
+  border-color: var(--et-hard-border) !important;
+  color: var(--et-hard-text-3) !important;
+}
+
+/* Semantic panels should become light tints, not dark slabs. */
+html.et-light body :is([class*="bg-amber-950"], [class*="bg-amber-900"], [class*="bg-amber-800"], [class*="bg-yellow-950"], [class*="bg-yellow-900"], [class*="bg-yellow-800"]),
+html.et-balanced body :is([class*="bg-amber-950"], [class*="bg-amber-900"], [class*="bg-amber-800"], [class*="bg-yellow-950"], [class*="bg-yellow-900"], [class*="bg-yellow-800"]) {
+  background-color: #fff7d6 !important;
+  background-image: linear-gradient(135deg, #fff9df, #fff2ba) !important;
+  color: #111827 !important;
+  border-color: rgba(180, 83, 9, 0.30) !important;
+}
+
+html.et-light body :is([class*="bg-sky-950"], [class*="bg-sky-900"], [class*="bg-sky-800"], [class*="bg-blue-950"], [class*="bg-blue-900"], [class*="bg-blue-800"], [class*="bg-cyan-950"], [class*="bg-cyan-900"]),
+html.et-balanced body :is([class*="bg-sky-950"], [class*="bg-sky-900"], [class*="bg-sky-800"], [class*="bg-blue-950"], [class*="bg-blue-900"], [class*="bg-blue-800"], [class*="bg-cyan-950"], [class*="bg-cyan-900"]) {
+  background-color: #eff8ff !important;
+  background-image: linear-gradient(135deg, #f5fbff, #dff2ff) !important;
+  color: #0f172a !important;
+  border-color: rgba(2, 132, 199, 0.28) !important;
+}
+
+html.et-light body :is([class*="bg-emerald-950"], [class*="bg-emerald-900"], [class*="bg-emerald-800"], [class*="bg-green-950"], [class*="bg-green-900"], [class*="bg-green-800"]),
+html.et-balanced body :is([class*="bg-emerald-950"], [class*="bg-emerald-900"], [class*="bg-emerald-800"], [class*="bg-green-950"], [class*="bg-green-900"], [class*="bg-green-800"]) {
+  background-color: #ecfdf3 !important;
+  background-image: linear-gradient(135deg, #f4fff8, #d9fbe8) !important;
+  color: #0f172a !important;
+  border-color: rgba(5, 150, 105, 0.26) !important;
+}
+
+html.et-light body :is([class*="bg-rose-950"], [class*="bg-rose-900"], [class*="bg-rose-800"], [class*="bg-red-950"], [class*="bg-red-900"], [class*="bg-red-800"]),
+html.et-balanced body :is([class*="bg-rose-950"], [class*="bg-rose-900"], [class*="bg-rose-800"], [class*="bg-red-950"], [class*="bg-red-900"], [class*="bg-red-800"]) {
+  background-color: #fff1f3 !important;
+  background-image: linear-gradient(135deg, #fff8f9, #ffe3e8) !important;
+  color: #0f172a !important;
+  border-color: rgba(225, 29, 72, 0.26) !important;
+}
+
+html.et-light body :is([class*="bg-violet-950"], [class*="bg-violet-900"], [class*="bg-violet-800"], [class*="bg-purple-950"], [class*="bg-purple-900"], [class*="bg-purple-800"]),
+html.et-balanced body :is([class*="bg-violet-950"], [class*="bg-violet-900"], [class*="bg-violet-800"], [class*="bg-purple-950"], [class*="bg-purple-900"], [class*="bg-purple-800"]) {
+  background-color: #f5f1ff !important;
+  background-image: linear-gradient(135deg, #fbf8ff, #eee7ff) !important;
+  color: #0f172a !important;
+  border-color: rgba(124, 58, 237, 0.26) !important;
+}
+
+/* Recalibrate text utility classes for light/balanced modes. */
+html.et-light body :is([class*="text-white"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"]),
+html.et-balanced body :is([class*="text-white"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"]) {
+  color: var(--et-hard-text) !important;
+}
+
+html.et-light body :is([class*="text-stone-300"], [class*="text-stone-400"], [class*="text-slate-300"], [class*="text-slate-400"]),
+html.et-balanced body :is([class*="text-stone-300"], [class*="text-stone-400"], [class*="text-slate-300"], [class*="text-slate-400"]) {
+  color: var(--et-hard-text-2) !important;
+}
+
+html.et-light body :is([class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"], [class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"]),
+html.et-balanced body :is([class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"], [class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"]) {
+  color: var(--et-hard-text-3) !important;
+}
+
+/* Preserve readable accent colors in light mode. */
+html.et-light body :is([class*="text-amber-100"], [class*="text-amber-200"], [class*="text-amber-300"], [class*="text-amber-400"], [class*="text-yellow-100"], [class*="text-yellow-200"], [class*="text-yellow-300"], [class*="text-yellow-400"]) {
+  color: #a16207 !important;
+}
+
+html.et-light body :is([class*="text-emerald-100"], [class*="text-emerald-200"], [class*="text-emerald-300"], [class*="text-emerald-400"], [class*="text-green-100"], [class*="text-green-200"], [class*="text-green-300"], [class*="text-green-400"]) {
+  color: #047857 !important;
+}
+
+html.et-light body :is([class*="text-sky-100"], [class*="text-sky-200"], [class*="text-sky-300"], [class*="text-sky-400"], [class*="text-blue-100"], [class*="text-blue-200"], [class*="text-blue-300"], [class*="text-blue-400"], [class*="text-cyan-100"], [class*="text-cyan-200"], [class*="text-cyan-300"], [class*="text-cyan-400"]) {
+  color: #0369a1 !important;
+}
+
+html.et-light body :is([class*="text-rose-100"], [class*="text-rose-200"], [class*="text-rose-300"], [class*="text-rose-400"], [class*="text-red-100"], [class*="text-red-200"], [class*="text-red-300"], [class*="text-red-400"]) {
+  color: #be123c !important;
+}
+
+html.et-light body :is([class*="text-violet-100"], [class*="text-violet-200"], [class*="text-violet-300"], [class*="text-violet-400"], [class*="text-purple-100"], [class*="text-purple-200"], [class*="text-purple-300"], [class*="text-purple-400"]) {
+  color: #6d28d9 !important;
+}
+
+/* Borders, inputs, and tables. */
+html.et-light body :is([class*="border-stone-"], [class*="border-slate-"], [class*="border-neutral-"], [class*="border-zinc-"], [class*="border-white/"]),
+html.et-balanced body :is([class*="border-stone-"], [class*="border-slate-"], [class*="border-neutral-"], [class*="border-zinc-"], [class*="border-white/"]) {
+  border-color: var(--et-hard-border) !important;
+}
+
+html.et-light input:not([type="range"]),
+html.et-light textarea,
+html.et-light select,
+html.et-light .header-command-search input,
+html.et-balanced input:not([type="range"]),
+html.et-balanced textarea,
+html.et-balanced select,
+html.et-balanced .header-command-search input {
+  background: #fffdf7 !important;
+  background-image: none !important;
+  border-color: var(--et-hard-border) !important;
+  color: var(--et-hard-text) !important;
+}
+
+html.et-light input::placeholder,
+html.et-light textarea::placeholder,
+html.et-balanced input::placeholder,
+html.et-balanced textarea::placeholder {
+  color: rgba(100, 116, 139, 0.78) !important;
+}
+
+html.et-light table,
+html.et-light thead,
+html.et-light tbody,
+html.et-light tr,
+html.et-light td,
+html.et-light th,
+html.et-balanced table,
+html.et-balanced thead,
+html.et-balanced tbody,
+html.et-balanced tr,
+html.et-balanced td,
+html.et-balanced th {
+  color: var(--et-hard-text) !important;
+  border-color: var(--et-hard-border) !important;
+}
+
+/* Make active amber controls keep dark text. */
+html.et-light body :is([class*="bg-amber-300"], [class*="bg-amber-400"], [class*="bg-amber-500"], [class*="bg-yellow-300"], [class*="bg-yellow-400"], [class*="bg-yellow-500"]),
+html.et-balanced body :is([class*="bg-amber-300"], [class*="bg-amber-400"], [class*="bg-amber-500"], [class*="bg-yellow-300"], [class*="bg-yellow-400"], [class*="bg-yellow-500"]) {
+  color: #111827 !important;
+}
+
+/* Recharts readability. */
+html.et-light .recharts-text,
+html.et-light .recharts-cartesian-axis-tick-value,
+html.et-balanced .recharts-text,
+html.et-balanced .recharts-cartesian-axis-tick-value {
+  fill: var(--et-hard-text-3) !important;
+}
+
+html.et-light .recharts-cartesian-grid line,
+html.et-light .recharts-cartesian-axis-line,
+html.et-light .recharts-cartesian-axis-tick-line,
+html.et-balanced .recharts-cartesian-grid line,
+html.et-balanced .recharts-cartesian-axis-line,
+html.et-balanced .recharts-cartesian-axis-tick-line {
+  stroke: var(--et-hard-border) !important;
+}
+
+/* Tone control itself. */
+html.et-light .theme-tone-control,
+html.et-balanced .theme-tone-control {
+  background: rgba(255, 253, 247, 0.94) !important;
+  background-image: none !important;
+  color: var(--et-hard-text-2) !important;
+  border-color: var(--et-hard-border) !important;
+  box-shadow: 0 14px 30px var(--et-hard-shadow) !important;
+}
+
+html.et-light .theme-tone-output,
+html.et-balanced .theme-tone-output {
+  color: var(--et-hard-text-2) !important;
+}
+
+/* ==========================================================================
+   FINAL LIGHT/BALANCED CARD SURFACE OVERRIDE
+   Put at the very bottom of globals.css.
+   This intentionally uses high specificity and !important.
+   ========================================================================== */
+
+html.et-light,
+html.et-balanced {
+  --et-final-page: #f7f2e8;
+  --et-final-page-soft: #fffaf0;
+  --et-final-card: #fffdf8;
+  --et-final-card-2: #f8f2e7;
+  --et-final-card-3: #ffffff;
+  --et-final-text: #0f172a;
+  --et-final-text-2: #334155;
+  --et-final-text-3: #64748b;
+  --et-final-border: rgba(15, 23, 42, 0.14);
+  --et-final-border-2: rgba(15, 23, 42, 0.22);
+  --et-final-shadow: rgba(62, 51, 34, 0.12);
+}
+
+html.et-balanced {
+  --et-final-page: #efe7d8;
+  --et-final-page-soft: #faf4e8;
+  --et-final-card: #fbf6ec;
+  --et-final-card-2: #f4ecde;
+  --et-final-card-3: #fffaf2;
+  --et-final-text: #111827;
+  --et-final-text-2: #334155;
+  --et-final-text-3: #64748b;
+  --et-final-border: rgba(15, 23, 42, 0.16);
+  --et-final-border-2: rgba(15, 23, 42, 0.24);
+  --et-final-shadow: rgba(62, 51, 34, 0.14);
+}
+
+html.et-light body,
+html.et-balanced body,
+html.et-light .min-h-screen,
+html.et-balanced .min-h-screen {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(251, 191, 36, 0.16), transparent 34rem),
+    radial-gradient(circle at 88% 14%, rgba(14, 165, 233, 0.10), transparent 34rem),
+    var(--et-final-page) !important;
+  color: var(--et-final-text) !important;
+}
+
+/* Core card rule: anything that looks like a card becomes a light card */
+html.et-light body main :is(
+  div, section, article, aside, a, button, form
+)[class*="rounded"],
+html.et-balanced body main :is(
+  div, section, article, aside, a, button, form
+)[class*="rounded"] {
+  border-color: var(--et-final-border) !important;
+}
+
+/* Force actual card panels */
+html.et-light body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded"][class*="shadow"],
+html.et-light body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded"][class*="border"],
+html.et-light body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded-xl"],
+html.et-light body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded-2xl"],
+html.et-light body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded-3xl"],
+
+html.et-balanced body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded"][class*="shadow"],
+html.et-balanced body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded"][class*="border"],
+html.et-balanced body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded-xl"],
+html.et-balanced body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded-2xl"],
+html.et-balanced body main :is(
+  div, section, article, aside, a, form
+)[class*="rounded-3xl"] {
+  background: linear-gradient(135deg, var(--et-final-card-3), var(--et-final-card-2)) !important;
+  background-color: var(--et-final-card) !important;
+  background-image: linear-gradient(135deg, var(--et-final-card-3), var(--et-final-card-2)) !important;
+  color: var(--et-final-text) !important;
+  border-color: var(--et-final-border) !important;
+  box-shadow: 0 14px 30px var(--et-final-shadow) !important;
+}
+
+/* Catch the dark cards specifically by common dark bg utilities */
+html.et-light body main :is(
+  [class*="bg-slate-"],
+  [class*="bg-stone-"],
+  [class*="bg-zinc-"],
+  [class*="bg-neutral-"],
+  [class*="bg-black"],
+  [class*="bg-[#"],
+  [class*="bg-white/"],
+  [class*="bg-gradient"],
+  [class*="from-"],
+  [class*="via-"],
+  [class*="to-"]
+):not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-blue-"]):not([class*="bg-sky-"]):not([class*="bg-cyan-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-red-"]):not([class*="bg-rose-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]),
+html.et-balanced body main :is(
+  [class*="bg-slate-"],
+  [class*="bg-stone-"],
+  [class*="bg-zinc-"],
+  [class*="bg-neutral-"],
+  [class*="bg-black"],
+  [class*="bg-[#"],
+  [class*="bg-white/"],
+  [class*="bg-gradient"],
+  [class*="from-"],
+  [class*="via-"],
+  [class*="to-"]
+):not([class*="bg-amber-"]):not([class*="bg-yellow-"]):not([class*="bg-blue-"]):not([class*="bg-sky-"]):not([class*="bg-cyan-"]):not([class*="bg-emerald-"]):not([class*="bg-green-"]):not([class*="bg-red-"]):not([class*="bg-rose-"]):not([class*="bg-violet-"]):not([class*="bg-purple-"]) {
+  background: linear-gradient(135deg, var(--et-final-card-3), var(--et-final-card-2)) !important;
+  background-color: var(--et-final-card) !important;
+  background-image: linear-gradient(135deg, var(--et-final-card-3), var(--et-final-card-2)) !important;
+  color: var(--et-final-text) !important;
+  border-color: var(--et-final-border) !important;
+}
+
+/* Text readability inside cards */
+html.et-light body main :is(
+  h1, h2, h3, h4, h5, h6,
+  p, span, li, dt, dd, small, label, strong
+),
+html.et-balanced body main :is(
+  h1, h2, h3, h4, h5, h6,
+  p, span, li, dt, dd, small, label, strong
+) {
+  color: inherit;
+}
+
+html.et-light body main :is(
+  [class*="text-white"],
+  [class*="text-slate-50"],
+  [class*="text-slate-100"],
+  [class*="text-slate-200"],
+  [class*="text-stone-50"],
+  [class*="text-stone-100"],
+  [class*="text-stone-200"]
+),
+html.et-balanced body main :is(
+  [class*="text-white"],
+  [class*="text-slate-50"],
+  [class*="text-slate-100"],
+  [class*="text-slate-200"],
+  [class*="text-stone-50"],
+  [class*="text-stone-100"],
+  [class*="text-stone-200"]
+) {
+  color: var(--et-final-text) !important;
+}
+
+html.et-light body main :is(
+  [class*="text-slate-300"],
+  [class*="text-slate-400"],
+  [class*="text-stone-300"],
+  [class*="text-stone-400"]
+),
+html.et-balanced body main :is(
+  [class*="text-slate-300"],
+  [class*="text-slate-400"],
+  [class*="text-stone-300"],
+  [class*="text-stone-400"]
+) {
+  color: var(--et-final-text-2) !important;
+}
+
+html.et-light body main :is(
+  [class*="text-slate-500"],
+  [class*="text-slate-600"],
+  [class*="text-slate-700"],
+  [class*="text-stone-500"],
+  [class*="text-stone-600"],
+  [class*="text-stone-700"]
+),
+html.et-balanced body main :is(
+  [class*="text-slate-500"],
+  [class*="text-slate-600"],
+  [class*="text-slate-700"],
+  [class*="text-stone-500"],
+  [class*="text-stone-600"],
+  [class*="text-stone-700"]
+) {
+  color: var(--et-final-text-3) !important;
+}
+
+/* Preserve accent headings/links */
+html.et-light body main :is(
+  [class*="text-amber-"],
+  [class*="text-yellow-"]
+) {
+  color: #b45309 !important;
+}
+
+html.et-light body main :is(
+  [class*="text-blue-"],
+  [class*="text-sky-"],
+  [class*="text-cyan-"]
+) {
+  color: #0369a1 !important;
+}
+
+html.et-light body main :is(
+  [class*="text-emerald-"],
+  [class*="text-green-"]
+) {
+  color: #047857 !important;
+}
+
+/* Inputs in light/balanced */
+html.et-light input:not([type="range"]),
+html.et-light textarea,
+html.et-light select,
+html.et-balanced input:not([type="range"]),
+html.et-balanced textarea,
+html.et-balanced select {
+  background: #fffdf8 !important;
+  color: var(--et-final-text) !important;
+  border-color: var(--et-final-border) !important;
+}
+
+/* Left floating rail also needs to go light */
+html.et-light nav[aria-label="Floating primary navigation"],
+html.et-balanced nav[aria-label="Floating primary navigation"] {
+  background: rgba(255, 250, 240, 0.95) !important;
+  background-image: none !important;
+  border-color: var(--et-final-border) !important;
+  box-shadow: 0 16px 36px var(--et-final-shadow) !important;
+}
+
+/* Header command search shell */
+html.et-light .header-command-search > div > div:first-child,
+html.et-balanced .header-command-search > div > div:first-child {
+  background: transparent !important;
+}
+
+/* Recharts */
+html.et-light .recharts-text,
+html.et-balanced .recharts-text,
+html.et-light .recharts-cartesian-axis-tick-value,
+html.et-balanced .recharts-cartesian-axis-tick-value {
+  fill: var(--et-final-text-3) !important;
+}
+
+html.et-light .recharts-cartesian-grid line,
+html.et-balanced .recharts-cartesian-grid line,
+html.et-light .recharts-cartesian-axis-line,
+html.et-balanced .recharts-cartesian-axis-line,
+html.et-light .recharts-cartesian-axis-tick-line,
+html.et-balanced .recharts-cartesian-axis-tick-line {
+  stroke: var(--et-final-border) !important;
+}
+
+/* ==========================================================================
+   DIRECT FIX: .panel-card and .professional-card in light/balanced mode
+   These classes use Tailwind @apply, so bg-* attribute selectors do not catch
+   them reliably. This block targets the actual custom classes.
+   ========================================================================== */
+
+html.et-light,
+html.et-balanced,
+html[data-theme-mode="light"],
+html[data-theme-mode="balanced"] {
+  --et-direct-page: #f7f2e8;
+  --et-direct-card: #fffdf8;
+  --et-direct-card-2: #f8f1e5;
+  --et-direct-card-3: #ffffff;
+  --et-direct-text: #0f172a;
+  --et-direct-text-2: #334155;
+  --et-direct-text-3: #64748b;
+  --et-direct-border: rgba(15, 23, 42, 0.14);
+  --et-direct-border-2: rgba(15, 23, 42, 0.22);
+  --et-direct-shadow: rgba(62, 51, 34, 0.13);
+  --et-direct-amber: #b45309;
+  --et-direct-blue: #0369a1;
+  --et-direct-green: #047857;
+  --et-direct-red: #be123c;
+}
+
+html.et-light .panel-card,
+html.et-balanced .panel-card,
+html[data-theme-mode="light"] .panel-card,
+html[data-theme-mode="balanced"] .panel-card {
+  background: linear-gradient(135deg, var(--et-direct-card-3), var(--et-direct-card-2)) !important;
+  background-color: var(--et-direct-card) !important;
+  background-image: linear-gradient(135deg, var(--et-direct-card-3), var(--et-direct-card-2)) !important;
+  border-color: var(--et-direct-border) !important;
+  color: var(--et-direct-text) !important;
+  box-shadow: 0 16px 34px var(--et-direct-shadow) !important;
+}
+
+html.et-light .professional-card,
+html.et-balanced .professional-card,
+html[data-theme-mode="light"] .professional-card,
+html[data-theme-mode="balanced"] .professional-card {
+  background:
+    radial-gradient(circle at 92% 0%, rgba(251, 191, 36, 0.14), transparent 18rem),
+    linear-gradient(135deg, var(--et-direct-card-3), var(--et-direct-card-2)) !important;
+  background-color: var(--et-direct-card) !important;
+  border-color: var(--et-direct-border) !important;
+  color: var(--et-direct-text) !important;
+  box-shadow: 0 20px 46px var(--et-direct-shadow) !important;
+}
+
+html.et-light .panel-card *,
+html.et-balanced .panel-card *,
+html[data-theme-mode="light"] .panel-card *,
+html[data-theme-mode="balanced"] .panel-card *,
+html.et-light .professional-card *,
+html.et-balanced .professional-card *,
+html[data-theme-mode="light"] .professional-card *,
+html[data-theme-mode="balanced"] .professional-card * {
+  border-color: var(--et-direct-border) !important;
+}
+
+/* Primary readable text inside light cards */
+html.et-light .panel-card :is(h1, h2, h3, h4, h5, h6, strong),
+html.et-balanced .panel-card :is(h1, h2, h3, h4, h5, h6, strong),
+html[data-theme-mode="light"] .panel-card :is(h1, h2, h3, h4, h5, h6, strong),
+html[data-theme-mode="balanced"] .panel-card :is(h1, h2, h3, h4, h5, h6, strong),
+html.et-light .professional-card :is(h1, h2, h3, h4, h5, h6, strong),
+html.et-balanced .professional-card :is(h1, h2, h3, h4, h5, h6, strong),
+html[data-theme-mode="light"] .professional-card :is(h1, h2, h3, h4, h5, h6, strong),
+html[data-theme-mode="balanced"] .professional-card :is(h1, h2, h3, h4, h5, h6, strong) {
+  color: var(--et-direct-text) !important;
+}
+
+/* Override explicit dark-mode text utilities inside those cards */
+html.et-light .panel-card :is([class*="text-white"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"]),
+html.et-balanced .panel-card :is([class*="text-white"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"]),
+html[data-theme-mode="light"] .panel-card :is([class*="text-white"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"]),
+html[data-theme-mode="balanced"] .panel-card :is([class*="text-white"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"]),
+html.et-light .professional-card :is([class*="text-white"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"]),
+html.et-balanced .professional-card :is([class*="text-white"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"]),
+html[data-theme-mode="light"] .professional-card :is([class*="text-white"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"]),
+html[data-theme-mode="balanced"] .professional-card :is([class*="text-white"], [class*="text-slate-50"], [class*="text-slate-100"], [class*="text-slate-200"], [class*="text-stone-50"], [class*="text-stone-100"], [class*="text-stone-200"]) {
+  color: var(--et-direct-text) !important;
+}
+
+html.et-light .panel-card :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-stone-300"], [class*="text-stone-400"]),
+html.et-balanced .panel-card :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-stone-300"], [class*="text-stone-400"]),
+html[data-theme-mode="light"] .panel-card :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-stone-300"], [class*="text-stone-400"]),
+html[data-theme-mode="balanced"] .panel-card :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-stone-300"], [class*="text-stone-400"]),
+html.et-light .professional-card :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-stone-300"], [class*="text-stone-400"]),
+html.et-balanced .professional-card :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-stone-300"], [class*="text-stone-400"]),
+html[data-theme-mode="light"] .professional-card :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-stone-300"], [class*="text-stone-400"]),
+html[data-theme-mode="balanced"] .professional-card :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-stone-300"], [class*="text-stone-400"]) {
+  color: var(--et-direct-text-2) !important;
+}
+
+html.et-light .panel-card :is([class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"], [class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"]),
+html.et-balanced .panel-card :is([class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"], [class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"]),
+html[data-theme-mode="light"] .panel-card :is([class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"], [class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"]),
+html[data-theme-mode="balanced"] .panel-card :is([class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"], [class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"]),
+html.et-light .professional-card :is([class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"], [class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"]),
+html.et-balanced .professional-card :is([class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"], [class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"]),
+html[data-theme-mode="light"] .professional-card :is([class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"], [class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"]),
+html[data-theme-mode="balanced"] .professional-card :is([class*="text-slate-500"], [class*="text-slate-600"], [class*="text-slate-700"], [class*="text-stone-500"], [class*="text-stone-600"], [class*="text-stone-700"]) {
+  color: var(--et-direct-text-3) !important;
+}
+
+/* Keep accent labels professional and readable */
+html.et-light .panel-card :is(.eyebrow, [class*="text-amber-"], [class*="text-yellow-"]),
+html.et-balanced .panel-card :is(.eyebrow, [class*="text-amber-"], [class*="text-yellow-"]),
+html[data-theme-mode="light"] .panel-card :is(.eyebrow, [class*="text-amber-"], [class*="text-yellow-"]),
+html[data-theme-mode="balanced"] .panel-card :is(.eyebrow, [class*="text-amber-"], [class*="text-yellow-"]),
+html.et-light .professional-card :is(.eyebrow, [class*="text-amber-"], [class*="text-yellow-"]),
+html.et-balanced .professional-card :is(.eyebrow, [class*="text-amber-"], [class*="text-yellow-"]),
+html[data-theme-mode="light"] .professional-card :is(.eyebrow, [class*="text-amber-"], [class*="text-yellow-"]),
+html[data-theme-mode="balanced"] .professional-card :is(.eyebrow, [class*="text-amber-"], [class*="text-yellow-"]) {
+  color: var(--et-direct-amber) !important;
+}
+
+/* Inner chips/panels inside the hero mockup should also be light, not charcoal */
+html.et-light .professional-card :is([class*="bg-white/"], [class*="bg-slate-"], [class*="bg-stone-"], [class*="bg-[#"]),
+html.et-balanced .professional-card :is([class*="bg-white/"], [class*="bg-slate-"], [class*="bg-stone-"], [class*="bg-[#"]),
+html[data-theme-mode="light"] .professional-card :is([class*="bg-white/"], [class*="bg-slate-"], [class*="bg-stone-"], [class*="bg-[#"]),
+html[data-theme-mode="balanced"] .professional-card :is([class*="bg-white/"], [class*="bg-slate-"], [class*="bg-stone-"], [class*="bg-[#"]) {
+  background: rgba(255, 255, 255, 0.62) !important;
+  background-image: none !important;
+  border-color: var(--et-direct-border) !important;
+}
+
+/* Fix amber chart bars if previous global rules washed them out */
+html.et-light :is([class*="from-amber-"], [class*="to-amber-"], [class*="bg-amber-"]),
+html.et-balanced :is([class*="from-amber-"], [class*="to-amber-"], [class*="bg-amber-"]),
+html[data-theme-mode="light"] :is([class*="from-amber-"], [class*="to-amber-"], [class*="bg-amber-"]),
+html[data-theme-mode="balanced"] :is([class*="from-amber-"], [class*="to-amber-"], [class*="bg-amber-"]) {
+  color: #111827 !important;
+}
+
+html.et-light .professional-card [class*="from-amber-"],
+html.et-balanced .professional-card [class*="from-amber-"],
+html[data-theme-mode="light"] .professional-card [class*="from-amber-"],
+html[data-theme-mode="balanced"] .professional-card [class*="from-amber-"] {
+  background-image: linear-gradient(to top, rgba(217, 119, 6, 0.48), rgba(253, 230, 138, 0.96)) !important;
+}
