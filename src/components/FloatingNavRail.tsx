@@ -1,11 +1,11 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, FileText, BarChart3, ShieldAlert, GitCompare, Wallet, FileSearch, Info, Activity,
-  type LucideIcon,
+  ChevronLeft, ChevronRight, type LucideIcon,
 } from 'lucide-react';
 
 interface NavItem {
@@ -26,6 +26,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/disclosures', label: 'Disclosures', icon: FileSearch, matchPath: (p) => p === '/disclosures' },
   { href: '/about', label: 'About', icon: Info, matchPath: (p) => p === '/about' },
 ];
+
+const NAV_RAIL_STORAGE_KEY = 'edgar-terminal:floating-nav-minimized';
 
 function readScrollDepth(): number {
   if (typeof window === 'undefined') return 0;
@@ -102,38 +104,98 @@ function railTabClasses(isActive: boolean): string {
 export default function FloatingNavRail() {
   const pathname = usePathname() || '/';
   const isScrolled = usePageScrolled(96);
+  const [isMinimized, setIsMinimized] = useState(false);
+
+  useEffect(() => {
+    try {
+      setIsMinimized(window.localStorage.getItem(NAV_RAIL_STORAGE_KEY) === 'true');
+    } catch {
+      // Keep the default expanded state when storage is unavailable.
+    }
+  }, []);
+
+  const updateMinimized = (nextValue: boolean) => {
+    setIsMinimized(nextValue);
+    try {
+      window.localStorage.setItem(NAV_RAIL_STORAGE_KEY, String(nextValue));
+    } catch {
+      // The control still works for the current page when storage is unavailable.
+    }
+  };
+
+  const showRail = isScrolled && !isMinimized;
+  const showRestoreButton = isScrolled && isMinimized;
 
   return (
-    <nav
-      className={`fixed left-4 top-1/2 z-[90] hidden -translate-y-1/2 flex-col items-center gap-2 rounded-[1.6rem] border border-white/10 bg-[#070a12]/92 p-2 shadow-2xl shadow-black/50 backdrop-blur-2xl transition-all duration-300 md:flex ${
-        isScrolled
-          ? 'translate-x-0 opacity-100'
-          : 'pointer-events-none -translate-x-6 opacity-0'
-      }`}
-      aria-label="Floating primary navigation"
-    >
-      <div className="mb-1 mt-1 h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,.9)]" />
+    <>
+      <nav
+        id="floating-primary-navigation"
+        className={`fixed left-4 top-1/2 z-[90] hidden -translate-y-1/2 flex-col items-center gap-2 rounded-[1.6rem] border border-white/10 bg-[#070a12]/92 p-2 shadow-2xl shadow-black/50 backdrop-blur-2xl transition-all duration-300 md:flex ${
+          showRail
+            ? 'translate-x-0 opacity-100'
+            : 'pointer-events-none -translate-x-24 opacity-0'
+        }`}
+        aria-label="Floating primary navigation"
+        aria-hidden={!showRail}
+      >
+        <div className="mb-1 mt-1 h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,.9)]" />
 
-      {NAV_ITEMS.map((item) => {
-        const isActive = item.matchPath(pathname);
-        const Icon = item.icon;
+        {NAV_ITEMS.map((item) => {
+          const isActive = item.matchPath(pathname);
+          const Icon = item.icon;
 
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={railTabClasses(isActive)}
-            aria-label={item.label}
-            aria-current={isActive ? 'page' : undefined}
-            title={item.label}
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={railTabClasses(isActive)}
+              aria-label={item.label}
+              aria-current={isActive ? 'page' : undefined}
+              title={item.label}
+              tabIndex={showRail ? 0 : -1}
+            >
+              <Icon className="h-4 w-4" strokeWidth={2.5} />
+              <span className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-full border border-white/10 bg-slate-950/95 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-200 opacity-0 shadow-xl shadow-black/40 transition-all duration-200 group-hover/rail:translate-x-1 group-hover/rail:opacity-100">
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+
+        <div className="mt-1 border-t border-white/10 pt-2">
+          <button
+            type="button"
+            onClick={() => updateMinimized(true)}
+            className="group/rail relative grid h-9 w-12 place-items-center rounded-xl border border-white/10 bg-white/[0.025] text-slate-500 transition-all duration-200 hover:border-white/20 hover:bg-white/[0.06] hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+            aria-label="Minimize navigation menu"
+            aria-controls="floating-primary-navigation"
+            title="Minimize navigation"
+            tabIndex={showRail ? 0 : -1}
           >
-            <Icon className="h-4 w-4" strokeWidth={2.5} />
+            <ChevronLeft className="h-4 w-4" strokeWidth={2.5} />
             <span className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-full border border-white/10 bg-slate-950/95 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-200 opacity-0 shadow-xl shadow-black/40 transition-all duration-200 group-hover/rail:translate-x-1 group-hover/rail:opacity-100">
-              {item.label}
+              Minimize
             </span>
-          </Link>
-        );
-      })}
-    </nav>
+          </button>
+        </div>
+      </nav>
+
+      <button
+        type="button"
+        onClick={() => updateMinimized(false)}
+        className={`fixed left-0 top-1/2 z-[91] hidden h-12 w-9 -translate-y-1/2 place-items-center rounded-r-2xl border border-l-0 border-white/10 bg-[#070a12]/92 text-slate-400 shadow-xl shadow-black/40 backdrop-blur-2xl transition-all duration-300 hover:w-10 hover:border-white/20 hover:bg-slate-900 hover:text-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 md:grid ${
+          showRestoreButton
+            ? 'translate-x-0 opacity-100'
+            : 'pointer-events-none -translate-x-6 opacity-0'
+        }`}
+        aria-label="Restore navigation menu"
+        aria-controls="floating-primary-navigation"
+        aria-expanded={!isMinimized}
+        title="Show navigation"
+        tabIndex={showRestoreButton ? 0 : -1}
+      >
+        <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
+      </button>
+    </>
   );
 }
