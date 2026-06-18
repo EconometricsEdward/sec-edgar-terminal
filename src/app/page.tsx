@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import {
-  ArrowRight, FileText, BarChart3, GitCompare, Users, LineChart, Percent,
+  Activity, ArrowRight, FileText, BarChart3, GitCompare, Users, LineChart, Percent,
   Database, Shield, Zap, ExternalLink,
   FileSearch, Cpu, Landmark, Plane, Search, LayoutDashboard,
 } from 'lucide-react';
@@ -16,6 +16,7 @@ const FEATURED_TICKERS = [
 const FEATURE_GRID = [
   { icon: FileText, title: 'Complete Filing History', description: 'Every 10-K, 10-Q, 8-K, Form 4, and proxy filed with the SEC. Each company starts with a source-linked filing pulse, then groups filings by year and quarter with form filters and one-click source documents.', link: '/filings/AAPL', linkLabel: "See Apple's filings →" },
   { icon: BarChart3, title: 'Financial Analysis', description: 'Income statement, balance sheet, cash flow, common-size views, SEC filing activity, material event radar, disclosure risk radar, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, capital allocation with payout coverage, and a source-linked analyst checklist across 10 fiscal years. Every value links to its source XBRL tag or filing on SEC.gov.', link: '/analysis/JPM', linkLabel: 'Analyze JPMorgan →' },
+  { icon: Activity, title: 'SEC Market Risk Atlas', description: 'The market page rolls public-company filings into a cross-sector atlas: trade-book exposure, market-risk weather, asset-class exposure indexes, derivatives dashboards, and geographic risk signals derived from SEC filings.', link: '/market', linkLabel: 'Open Market Overview →' },
   { icon: Percent, title: 'Industry-Aware Ratios', description: "Banks get NIM, Efficiency Ratio, and NPL. Tech gets Rule of 40 and R&D intensity. Retail gets inventory turnover. Ratios automatically match each company's industry.", link: '/analysis/C', linkLabel: 'See banking ratios →' },
   { icon: LineChart, title: 'Stock Price with Filing Markers', description: '10 years of stock price history, with 10-K and 10-Q filing dates marked. Click any marker to open that filing. Insider buys and sells overlaid.', link: '/analysis/TSLA', linkLabel: "See Tesla's chart →" },
   { icon: Users, title: 'Insider Trading', description: 'Parsed from SEC Form 4 XML filings. See which executives are buying or selling, when, at what price, and how it relates to filing dates.', link: '/analysis/NVDA', linkLabel: 'NVIDIA insiders →' },
@@ -36,6 +37,13 @@ const WORKFLOWS = [
   { label: 'Compare with evidence', text: 'Line up peers using standardized statements, industry ratios, and source-linked values.' },
 ];
 
+const MARKET_SIGNALS = [
+  { label: 'Trade-book exposure', text: 'Companies grouped by filing evidence around credit, rates, commodities, and FX.' },
+  { label: 'Risk weather', text: 'Market-risk pressure language summarized into readable filing-sourced signals.' },
+  { label: 'Derivatives signals', text: 'Derivative assets, liabilities, notional exposure, and instrument classes where XBRL tags support it.' },
+  { label: 'Geographic map', text: 'A globe-style filing lens for regions, drivers, and exposed ticker cohorts.' },
+];
+
 export default function LandingPage() {
   return (
     <>
@@ -53,7 +61,7 @@ export default function LandingPage() {
             </h1>
 
             <p className="mt-5 max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">
-              SEC filings and financial data, without the noise. Read the actual filings, see reported financials, compare peers, track insiders, and search disclosures. Every number cites its XBRL source on SEC.gov.
+              SEC filings and financial data, without the noise. Read the actual filings, see reported financials, compare peers, track insiders, scan market-wide risk, and search disclosures. Every number cites its XBRL source on SEC.gov.
             </p>
 
             <div className="mt-7 max-w-3xl rounded-3xl border border-white/10 bg-slate-950/70 p-3 shadow-2xl shadow-black/30">
@@ -80,7 +88,7 @@ export default function LandingPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              {['Filing pulse', 'XBRL facts', 'Disclosure radar'].map((label, idx) => (
+              {['Filing pulse', 'XBRL facts', 'Market atlas'].map((label, idx) => (
                 <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                   <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{label}</div>
                   <div className="mt-3 h-2 rounded-full bg-slate-800">
@@ -126,13 +134,50 @@ export default function LandingPage() {
         ))}
       </section>
 
+      <section className="mt-10 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="professional-card relative overflow-hidden p-6 sm:p-8">
+          <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-sky-400/10 blur-3xl" />
+          <div className="relative">
+            <div className="eyebrow">Market section</div>
+            <h2 className="mt-3 text-2xl font-black text-white sm:text-3xl">
+              SEC Market Risk Atlas for the whole filing universe.
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-slate-400">
+              The market overview extends EDGAR Terminal beyond single-company research. It groups public-company filings into asset-class lenses, market-risk weather, derivative exposure signals, and geographic risk drivers so you can start with the market map and drill back into source filings.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Link href="/market" className="primary-button"><Activity className="h-4 w-4" />Open Market Overview</Link>
+              <Link href="/disclosures" className="secondary-button"><FileSearch className="h-4 w-4" />Search market language</Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="professional-card p-5 sm:p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <div className="eyebrow">SEC filing signals</div>
+              <h3 className="mt-2 text-xl font-black text-white">What the market page adds</h3>
+            </div>
+            <Activity className="hidden h-6 w-6 text-slate-600 sm:block" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {MARKET_SIGNALS.map((signal) => (
+              <div key={signal.label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-amber-200">{signal.label}</div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">{signal.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="mt-10">
         <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
             <div className="eyebrow">Start here</div>
             <h2 className="mt-2 text-2xl font-black text-white">Try it with a familiar company</h2>
           </div>
-          <span className="text-sm text-slate-500">One click into analysis, filings, peer comparison, and disclosure research.</span>
+          <span className="text-sm text-slate-500">One click into analysis, filings, peer comparison, market overview, and disclosure research.</span>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {FEATURED_TICKERS.map((t) => (
@@ -152,7 +197,7 @@ export default function LandingPage() {
       <section className="mt-10">
         <div className="mb-4">
           <div className="eyebrow">What you can do</div>
-          <h2 className="mt-2 text-2xl font-black text-white">Seven professional research surfaces</h2>
+          <h2 className="mt-2 text-2xl font-black text-white">Eight professional research surfaces</h2>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {FEATURE_GRID.map((feature) => {
@@ -219,11 +264,12 @@ export default function LandingPage() {
       <section className="mt-10 professional-card p-6 text-center sm:p-8">
         <h2 className="text-2xl font-black text-white">Pick any ticker to begin.</h2>
         <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-          There are over 10,000 publicly traded U.S. companies in the SEC database. Type any of them above, or start with a featured example.
+          There are over 10,000 publicly traded U.S. companies in the SEC database. Type any of them above, start with a featured example, or open the market map.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <Link href="/filings/AAPL" className="primary-button"><FileText className="h-4 w-4" />Browse Filings</Link>
           <Link href="/analysis/AAPL" className="secondary-button"><BarChart3 className="h-4 w-4" />View Analysis</Link>
+          <Link href="/market" className="secondary-button"><Activity className="h-4 w-4" />Market Overview</Link>
           <Link href="/compare/AAPL,MSFT,GOOGL,META,AMZN" className="secondary-button"><GitCompare className="h-4 w-4" />Compare Peers</Link>
           <Link href="/disclosures" className="secondary-button"><FileSearch className="h-4 w-4" />Search Disclosures</Link>
         </div>

@@ -5,22 +5,15 @@ import { buildPageMetadata } from '../../../utils/siteMetadata';
 // ============================================================================
 // Route configuration
 //
-// Submissions data updates throughout the day, but the company name + CIK
-// (which is all we need server-side) is essentially static. Hourly is plenty
-// fresh and keeps the Vercel CDN layer effective.
+// The server now resolves only lightweight ticker metadata for SEO and first
+// paint. Heavy submissions and XBRL payloads stay in the /api/sec client path,
+// which avoids writing large SEC submissions JSON into the Next.js Data Cache.
 // ============================================================================
 export const revalidate = 3600;
 
 // ============================================================================
 // Types
 // ============================================================================
-interface SECSubmissionsLite {
-  name: string;
-  cik: string;
-  sicDescription?: string;
-  exchanges?: string[];
-}
-
 interface CompanyTickerEntry {
   cik_str: number;
   ticker: string;
@@ -44,13 +37,13 @@ interface CompanyMeta {
 }
 
 // ============================================================================
-// Server-side ticker → CIK lookup
+// Server-side ticker → lightweight company metadata
 //
-// Per our B+C strategy: we fetch just enough server-side to make the
-// metadata useful (company name + CIK). The bulk of the financial data
-// continues to load client-side from the existing /api/sec proxy.
+// We intentionally use SEC's company_tickers.json only. It gives us the CIK and
+// company title needed for metadata, JSON-LD, and the initial page shell without
+// fetching the much larger /submissions/CIK*.json payload server-side.
 // ============================================================================
-async function getCikForTicker(ticker: string): Promise<string | null> {
+async function getCompanyMeta(ticker: string): Promise<CompanyMeta | null> {
   const userAgent = process.env.SEC_USER_AGENT;
   if (!userAgent) {
     console.error('[analysis/[ticker]] SEC_USER_AGENT env var is not set');
@@ -62,52 +55,30 @@ async function getCikForTicker(ticker: string): Promise<string | null> {
       headers: { 'User-Agent': userAgent },
       next: { revalidate: 86400 },
     });
+
     if (!res.ok) {
       console.error(`[analysis/[ticker]] ticker-map fetch returned ${res.status}`);
       return null;
     }
+
     const data = (await res.json()) as CompanyTickersFile;
     const upper = ticker.toUpperCase();
+
     for (const entry of Object.values(data)) {
       if (entry?.ticker?.toUpperCase() === upper) {
-        return String(entry.cik_str).padStart(10, '0');
+        return {
+          ticker: upper,
+          cik: String(entry.cik_str).padStart(10, '0'),
+          name: entry.title || upper,
+          sicDescription: null,
+          exchange: null,
+        };
       }
     }
+
     return null;
   } catch (err) {
     console.error('[analysis/[ticker]] ticker-map fetch failed:', err);
-    return null;
-  }
-}
-
-// ============================================================================
-// Server-side submissions fetch (lightweight — just the top-level metadata)
-// ============================================================================
-async function getCompanyMeta(ticker: string): Promise<CompanyMeta | null> {
-  const upper = ticker.toUpperCase();
-  const cik = await getCikForTicker(upper);
-  if (!cik) return null;
-
-  const userAgent = process.env.SEC_USER_AGENT;
-  if (!userAgent) return null;
-
-  try {
-    const res = await fetch(`https://data.sec.gov/submissions/CIK${cik}.json`, {
-      headers: { 'User-Agent': userAgent },
-      next: { revalidate: 3600 },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as SECSubmissionsLite;
-
-    return {
-      ticker: upper,
-      cik,
-      name: data.name || upper,
-      sicDescription: data.sicDescription || null,
-      exchange: data.exchanges?.[0] || null,
-    };
-  } catch (err) {
-    console.error('[analysis/[ticker]] submissions fetch failed:', err);
     return null;
   }
 }
@@ -143,8 +114,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 // JSON-LD Schema.org markup
 //
 // Adds structured-data block describing the company so Google can render
-// rich SERP results. Per our B+C strategy: server-rendered, real values
-// (not generic boilerplate). Each company gets a unique payload.
+// rich SERP results. It uses lightweight ticker metadata only; the full SEC
+// submissions and XBRL payloads still load through the app's SEC proxy.
 // ============================================================================
 function buildJsonLd(meta: CompanyMeta): object {
   return {
@@ -167,6 +138,63 @@ function buildJsonLd(meta: CompanyMeta): object {
       description: `SEC XBRL financial data and analysis for ${meta.name}`,
     },
   };
+}
+
+function CompanyIdentityShell({ meta }: { meta: CompanyMeta }) {
+  return (
+    <>
+      <style>{`
+        #analysis-client-shell > .border-2.border-dashed {
+          display: none;
+        }
+
+        body:has(#analysis-workspace) #analysis-server-intro {
+          display: none;
+        }
+      `}</style>
+
+      <section id="analysis-server-intro" className="professional-card mb-6 overflow-hidden p-5 sm:p-6 lg:p-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="eyebrow">Company analysis workspace</div>
+            <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-4xl">
+              {meta.name}
+            </h1>
+            <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+              <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1.5 text-amber-200">
+                {meta.ticker}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">
+                CIK {meta.cik}
+              </span>
+              {meta.sicDescription && (
+                <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">
+                  {meta.sicDescription}
+                </span>
+              )}
+            </div>
+            <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-400">
+              Loading the source-linked XBRL workspace through EDGAR Terminal&apos;s SEC proxy. The server-rendered shell resolves company identity without caching the full SEC submissions feed.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`https://www.sec.gov/edgar/browse/?CIK=${meta.cik}`}
+              target="_blank"
+              rel="noreferrer"
+              className="secondary-button"
+            >
+              SEC source
+            </a>
+            <a href={`/filings/${meta.ticker}`} className="primary-button">
+              Browse filings
+            </a>
+          </div>
+        </div>
+      </section>
+    </>
+  );
 }
 
 // ============================================================================
@@ -203,12 +231,15 @@ export default async function AnalysisTickerPage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <AnalysisClient
-        urlTicker={upper}
-        preloadedCik={meta.cik}
-        preloadedCompanyName={meta.name}
-        preloadedSicDescription={meta.sicDescription}
-      />
+      <CompanyIdentityShell meta={meta} />
+      <div id="analysis-client-shell">
+        <AnalysisClient
+          urlTicker={upper}
+          preloadedCik={meta.cik}
+          preloadedCompanyName={meta.name}
+          preloadedSicDescription={meta.sicDescription}
+        />
+      </div>
     </>
   );
 }

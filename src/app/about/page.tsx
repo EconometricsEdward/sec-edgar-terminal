@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import {
-  Info, FileText, BarChart3, GitCompare, Users, Percent, LineChart,
+  Activity, Info, FileText, BarChart3, GitCompare, Users, Percent, LineChart,
   AlertTriangle, ExternalLink, Code, Database, FileSearch,
   type LucideIcon,
 } from 'lucide-react';
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   ...buildPageMetadata({
     title: 'About & Methodology',
     description:
-      "How EDGAR Terminal works, where the data comes from, and what you can trust. All data is sourced directly from SEC.gov public APIs - no scraping, no login, no paywall.",
+      'How EDGAR Terminal works, where the data comes from, and what you can trust. All data is sourced directly from SEC.gov public APIs, including the SEC Market Risk Atlas - no scraping, no login, no paywall.',
     path: '/about',
   }),
 };
@@ -68,6 +68,31 @@ export default function AboutPage() {
             </div>
           </section>
 
+          {/* Market section */}
+          <section className="border-2 border-sky-800/50 bg-sky-950/20 p-5">
+            <SectionHeader icon={Activity} title="Market section" accentClass="text-sky-400" />
+            <div className="space-y-3 text-sm text-stone-300 leading-relaxed">
+              <p>
+                The <span className="font-bold text-sky-300">SEC Market Risk Atlas</span> at
+                <code className="mx-1 text-xs text-sky-300">/market</code>
+                extends EDGAR Terminal from single-company analysis into a cross-company filing map.
+              </p>
+              <p>
+                It groups public-company filings into market-risk weather, trade-book exposure,
+                asset-class exposure indexes, derivatives exposure signals, and geographic filing
+                drivers. It is meant to help users start from a market theme and drill back into the
+                source companies, SEC facts, and disclosure language behind that theme.
+              </p>
+              <a
+                href="/market"
+                className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-sky-300 hover:text-sky-200"
+              >
+                Open SEC Market Risk Atlas
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </section>
+
           {/* Features deep dive */}
           <section className="border-2 border-stone-800 bg-stone-900/30 p-5">
             <SectionHeader icon={Code} title="What the tool does" />
@@ -83,6 +108,12 @@ export default function AboutPage() {
                 title="Financial Analysis"
                 path="/analysis/:ticker"
                 text="Structured financial data pulled from SEC's XBRL 'Company Facts' API. Overview includes SEC data coverage, filing activity, material event radar, disclosure risk radar, key metrics, quality snapshot, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, capital allocation with payout coverage, and a source-linked analyst checklist. Toggle between annual (10-K) and quarterly (10-Q) views. Growth columns (YoY, 5Y CAGR, 10Y CAGR) on every metric."
+              />
+              <FeatureBlock
+                icon={Activity}
+                title="Market Overview"
+                path="/market"
+                text="SEC Market Risk Atlas that rolls company-level filing evidence into market-wide lenses: trade-book exposure, market-risk weather, asset-class exposure indexes, derivatives exposure dashboards, and geographic risk signals. The page is designed as a thematic entry point before drilling back into individual filings and disclosure excerpts."
               />
               <FeatureBlock
                 icon={Percent}
@@ -112,7 +143,7 @@ export default function AboutPage() {
                 icon={FileSearch}
                 title="Disclosure Keyword Search"
                 path="/disclosures"
-                text="Searches the SEC EDGAR full-text index with optional company/ticker focus plus date, filing-form, and result-count filters for broad source discovery, including source-window, filer-concentration, and filing-mix signals. It can also scan recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) across up to 5 hand-picked companies, curated 8-company sector universes, or a bounded 40-company Market Map. Index hits and scanner excerpts link directly to the source filing. Manual scans are depth-limited to 50 recent filings per ticker; universe and Market Map scans use shallower defaults to respect SEC fair-access limits. Results cache for 24 hours by ticker and query where applicable."
+                text="Searches the SEC EDGAR full-text index with optional company/ticker focus plus date, filing-form, and result-count filters for broad source discovery, including source-window, filer-concentration, and filing-mix signals. It can also scan recent SEC filings (10-K, 10-Q, 8-K, S-1, DEF 14A, N-CSR, 20-F, 40-F) across up to 5 hand-picked companies, curated 8-company sector universes, or a bounded cross-sector Market Map with paragraph-level excerpts. Index hits and scanner excerpts link directly to the source filing. Manual scans are depth-limited to 50 recent filings per ticker; universe and Market Map scans use shallower defaults to respect SEC fair-access limits. Results cache for 24 hours by ticker and query where applicable."
               />
             </div>
           </section>
@@ -147,6 +178,16 @@ export default function AboutPage() {
                   Some ratios (ROE, ROA, margins) are computed from reported XBRL values rather than
                   taken directly from company press releases. These may differ slightly from
                   company-published non-GAAP numbers. The formulas are documented inline in tooltips.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="text-stone-100 font-bold mb-1">Market overview methodology</h4>
+                <p className="text-stone-400">
+                  The Market Overview page groups curated public-company cohorts into SEC filing lenses.
+                  It combines XBRL facts where available with bounded disclosure scans for risk-language
+                  context. Universe scans use shallower defaults than single-company searches so the
+                  atlas can stay useful without over-querying SEC endpoints.
                 </p>
               </div>
 
@@ -231,6 +272,7 @@ export default function AboutPage() {
               <FactRow term="Rate limit" def="8 req/sec to SEC" />
               <FactRow term="Companies covered" def="~10,000 U.S. public" />
               <FactRow term="History depth" def="10 fiscal years" />
+              <FactRow term="Market atlas" def="SEC risk lenses" />
               <FactRow term="Scanner depth" def="50 recent filings" />
               <FactRow term="Index search" def="SEC full-text" />
               <FactRow term="Scanner cache" def="24 hours (Redis)" />
@@ -238,6 +280,23 @@ export default function AboutPage() {
               <FactRow term="Account required" def="No" />
               <FactRow term="Telemetry" def="Vercel Analytics" />
             </dl>
+          </div>
+
+          {/* Market page quick link */}
+          <div className="border-2 border-sky-800/50 bg-sky-950/20 p-4">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-sky-300 font-bold mb-3">
+              Market Section
+            </div>
+            <p className="text-xs leading-relaxed text-stone-400">
+              Start from the SEC Market Risk Atlas when you want a cross-company view of filing-derived market exposures before drilling into individual companies.
+            </p>
+            <a
+              href="/market"
+              className="mt-3 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-sky-300 hover:text-sky-200"
+            >
+              Open /market
+              <ExternalLink className="h-3 w-3" />
+            </a>
           </div>
 
           {/* Data sources */}
