@@ -1,3 +1,4 @@
+import { contextKey } from '../utils/xbrlPeriods.js';
 import React, { useState, useEffect } from 'react';
 import { X, Loader2, ExternalLink, AlertCircle, History, Info } from 'lucide-react';
 import { secDataUrl } from '../utils/secApi.js';
@@ -84,11 +85,11 @@ export default function ConceptHistoryModal({ cik, companyName, tag, taxonomy = 
     return true;
   });
 
-  // Detect restatements: same (end, fp) with different values from different filings
+  // Detect revised observations: same (start, end, unit) with different values from different filings
   const restatements = React.useMemo(() => {
     const byPeriod = new Map();
     observations.forEach((o) => {
-      const key = `${o.end}-${o.fp}`;
+      const key = contextKey({ ...o, unit });
       if (!byPeriod.has(key)) byPeriod.set(key, []);
       byPeriod.get(key).push(o);
     });
@@ -101,7 +102,7 @@ export default function ConceptHistoryModal({ cik, companyName, tag, taxonomy = 
       }
     });
     return restated;
-  }, [observations]);
+  }, [observations, unit]);
 
   return (
     <div
@@ -171,7 +172,7 @@ export default function ConceptHistoryModal({ cik, companyName, tag, taxonomy = 
                 <div className="m-4 p-3 border-2 border-amber-700/40 bg-amber-950/20 flex items-start gap-2">
                   <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <div className="text-xs text-amber-200 leading-relaxed">
-                    <span className="font-bold">Restatements detected:</span>{' '}
+                    <span className="font-bold">Revised observations:</span>{' '}
                     {restatements.length} period{restatements.length > 1 ? 's have' : ' has'} different
                     values reported across multiple filings. Look for repeated rows with changing values.
                   </div>

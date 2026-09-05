@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint-typecheck-build:
-    name: Lint, Typecheck, Build
+    name: Test, Lint, Typecheck, Build
     runs-on: ubuntu-latest
 
     steps:
@@ -23,6 +23,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Financial and research regression tests
+        run: npm test
 
       - name: Lint
         run: npm run lint

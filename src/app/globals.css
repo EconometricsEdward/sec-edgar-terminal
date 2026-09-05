@@ -1342,3 +1342,12 @@ html[data-theme-mode="light"] .professional-card [class*="from-amber-"],
 html[data-theme-mode="balanced"] .professional-card [class*="from-amber-"] {
   background-image: linear-gradient(to top, rgba(217, 119, 6, 0.48), rgba(253, 230, 138, 0.96)) !important;
 }
+
+/* Readable controls within the company and saved-research workflows. */
+:is(.research-overview, .research-workspace, .research-drawer, .filing-changes) :is(.primary-button, .secondary-button) {
+  min-height: 44px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
