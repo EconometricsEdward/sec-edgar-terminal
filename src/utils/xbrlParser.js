@@ -1,4 +1,6 @@
 import { classifyIndustry, INDUSTRY_GROUPS } from './industry.js';
+import { reportingPeriods, selectFinancialFact, daysBetween } from './xbrlPeriods.js';
+export { withPeriodKind } from './xbrlPeriods.js';
 
 // ============================================================================
 // Tag priorities — default + industry overrides
@@ -57,7 +59,7 @@ const DEFAULT_TAGS = {
   // Industry-specific concepts
   interestIncome: ['InterestAndDividendIncomeOperating', 'InterestIncomeOperating', 'InterestIncome'],
   interestIncomeExpenseNet: ['InterestIncomeExpenseNet'],
-  netInterestIncome: ['InterestIncomeExpenseAfterProvisionForLoanLoss', 'InterestIncomeExpenseNet'],
+  netInterestIncome: ['InterestIncomeExpenseNet'],
   noninterestIncome: ['NoninterestIncome'],
   noninterestExpense: ['NoninterestExpense'],
   provisionForLoanLoss: [
@@ -137,97 +139,12 @@ function getTags(metricKey, group) {
 // Period extraction
 // ============================================================================
 
-export function extractAnnualPeriods(facts) {
-  const years = new Map();
-  const scanTags = ['Assets', 'NetIncomeLoss', 'StockholdersEquity', 'Revenues', 'Liabilities'];
-  for (const tag of scanTags) {
-    const concept = facts['us-gaap']?.[tag];
-    if (!concept?.units) continue;
-    for (const entries of Object.values(concept.units)) {
-      for (const e of entries) {
-        if (e.form === '10-K' && e.fp === 'FY' && e.end) {
-          const endYear = parseInt(e.end.slice(0, 4), 10);
-          if (!years.has(endYear) || e.filed > years.get(endYear).filed) {
-            years.set(endYear, { fy: endYear, fp: 'FY', end: e.end, filed: e.filed });
-          }
-        }
-      }
-    }
-  }
-  return Array.from(years.values()).sort((a, b) => b.fy - a.fy);
+export function extractAnnualPeriods(facts, asOf) {
+  return reportingPeriods(facts, 'annual', asOf);
 }
 
-export function extractQuarterlyPeriods(facts) {
-  const periods = new Map();
-  const scanTags = ['Assets', 'NetIncomeLoss', 'Revenues'];
-  for (const tag of scanTags) {
-    const concept = facts['us-gaap']?.[tag];
-    if (!concept?.units) continue;
-    for (const entries of Object.values(concept.units)) {
-      for (const e of entries) {
-        if (e.form === '10-Q' && e.end && e.fp?.startsWith('Q')) {
-          const endYear = parseInt(e.end.slice(0, 4), 10);
-          const key = `${endYear}-${e.fp}`;
-          if (!periods.has(key) || e.filed > periods.get(key).filed) {
-            periods.set(key, { fy: endYear, fp: e.fp, end: e.end, filed: e.filed });
-          }
-        }
-      }
-    }
-  }
-  return Array.from(periods.values()).sort((a, b) => {
-    if (a.fy !== b.fy) return b.fy - a.fy;
-    return b.fp.localeCompare(a.fp);
-  });
-}
-
-// ============================================================================
-// Value lookup
-// ============================================================================
-
-function findFactByEnd(facts, tags, periodEnd, form, scope = 'USD') {
-  const expectedEndYear = periodEnd.slice(0, 4);
-  for (const tag of tags) {
-    const concept = facts['us-gaap']?.[tag] || facts['ifrs-full']?.[tag];
-    if (!concept?.units) continue;
-    const preferred = scope === 'USD' ? ['USD'] : scope === 'shares' ? ['shares'] : ['USD/shares'];
-    const allUnits = [...preferred, ...Object.keys(concept.units).filter((u) => !preferred.includes(u))];
-    const matches = [];
-    for (const unit of allUnits) {
-      const entries = concept.units[unit];
-      if (!entries) continue;
-      for (const e of entries) {
-        const sameEnd = e.end === periodEnd;
-        const sameEndYear = e.end && e.end.slice(0, 4) === expectedEndYear;
-        const formMatch = !form || e.form === form;
-        if (formMatch && (sameEnd || sameEndYear)) {
-          if (form === '10-K' && e.fp !== 'FY') continue;
-          if (form === '10-Q' && !e.fp?.startsWith('Q')) continue;
-          matches.push({ ...e, tag, unit });
-        }
-      }
-      if (matches.length > 0) break;
-    }
-    if (matches.length > 0) {
-      matches.sort((a, b) => {
-        const aExact = a.end === periodEnd ? 1 : 0;
-        const bExact = b.end === periodEnd ? 1 : 0;
-        if (aExact !== bExact) return bExact - aExact;
-        return (b.filed || '').localeCompare(a.filed || '');
-      });
-      const best = matches[0];
-      return {
-        value: best.val,
-        tag: best.tag,
-        unit: best.unit,
-        accession: best.accn,
-        filed: best.filed,
-        end: best.end,
-        form: best.form,
-      };
-    }
-  }
-  return null;
+export function extractQuarterlyPeriods(facts, asOf) {
+  return reportingPeriods(facts, 'quarter', asOf);
 }
 
 // ============================================================================
@@ -244,20 +161,10 @@ export function buildMetricRow(facts, metricKey, label, periods, format = 'curre
 
   const values = periods.map((p) => {
     if (tags.length === 0) return { period: p, value: null, source: null };
-    const form = p.form || (p.fp === 'FY' ? '10-K' : '10-Q');
-    const found = findFactByEnd(facts, tags, p.end, form, scope);
-    if (!found) return { period: p, value: null, source: null };
-    return {
-      period: p,
-      value: found.value,
-      source: {
-        tag: found.tag,
-        unit: found.unit,
-        accession: found.accession,
-        filed: found.filed,
-        end: found.end,
-      },
-    };
+    const found = selectFinancialFact(facts, tags, p, scope, { additive: !['eps', 'shares'].includes(format) });
+    if (!found) return { period: p, value: null, source: null, sources: [], classification: 'unavailable', note: 'No compatible context in the requested unit and reporting period.' };
+    return { period: p, ...found };
+
   });
 
   return { key: metricKey, label, values, format };
@@ -322,6 +229,23 @@ export function buildCashFlow(facts, periods, sicCode = null) {
 // Industry-specific ratios
 // ============================================================================
 
+export const RATIO_FORMULAS = {
+  'Gross Margin': '(Revenue − cost of revenue) / revenue × 100; reported gross profit used when available',
+  'Operating Margin': 'Operating income / revenue × 100',
+  'Net Margin': 'Net income / revenue × 100',
+  'Return on Equity (ROE)': 'Net income / average equity × annualization factor × 100',
+  'Return on Assets (ROA)': 'Net income / average total assets × annualization factor × 100',
+  'Net Interest Margin (NIM)': 'Net interest income before provision / average earning assets × annualization factor × 100',
+  'Efficiency Ratio': 'Noninterest expense / (net interest income before provision + noninterest income) × 100',
+  'Loan-to-Deposit Ratio': 'Reported net loans / deposits × 100',
+  'NPL Ratio': 'Reported nonaccrual loans / reported net loans × 100 (net-loan denominator)',
+  'Allowance Coverage Ratio': 'Loan-loss allowance / reported net loans × 100 (net-loan denominator)',
+  'Equity-to-Assets': 'Stockholders equity / total assets × 100',
+  'Debt-to-Equity': '(Reported current debt + noncurrent debt) / equity',
+  'Debt-to-Assets': '(Reported current debt + noncurrent debt) / total assets',
+  'Current Ratio': 'Current assets / current liabilities',
+};
+
 export function buildRatios(facts, periods, sicCode = null) {
   const g = classifyIndustry(sicCode);
   const SOURCE_LABELS = {
@@ -368,7 +292,7 @@ export function buildRatios(facts, periods, sicCode = null) {
   const sourceFor = (key, p, label = SOURCE_LABELS[key] || key) => {
     const point = getPoint(key, p);
     if (!point?.source?.tag) return null;
-    return { ...point.source, key, label, value: point.value };
+    return { ...point.source, key, label, value: point.value, calculations: point.calculations };
   };
 
   const fallbackSource = (keys, p, label = null) => {
@@ -383,7 +307,7 @@ export function buildRatios(facts, periods, sicCode = null) {
     const seen = new Set();
     return sources.filter((source) => {
       if (!source?.tag) return false;
-      const key = `${source.label || ''}:${source.tag}:${source.end}:${source.accession || ''}`;
+      const key = `${source.label || ''}:${source.tag}:${source.start}:${source.end}:${source.unit}:${source.accession || ''}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -411,7 +335,7 @@ export function buildRatios(facts, periods, sicCode = null) {
         const v = fn(p);
         const value = Number.isFinite(v) ? v : null;
         const sources = value == null ? [] : sourceList(sourceEntries, p);
-        return { period: p, value, source: sources[0] || null, sources };
+        return { period: p, value, source: sources[0] || null, sources, classification: value == null ? 'unavailable' : 'calculated', formula: RATIO_FORMULAS[label] || label, note: label.includes('Return on') || label.includes('Net Interest Margin') ? 'Annualized for interim periods using the average of beginning and ending balances. Unavailable when either balance is missing.' : null };
       } catch {
         return { period: p, value: null, source: null, sources: [] };
       }
@@ -428,10 +352,24 @@ export function buildRatios(facts, periods, sicCode = null) {
     sourceFor('shortTermInvestments', p) || sourceFor('totalAssets', p, 'Assets'),
   ];
 
-  const nimSources = (p) => [
-    fallbackSource(['netInterestIncome', 'interestIncomeExpenseNet'], p, 'Net Interest'),
-    fallbackSource(['earningAssets', 'totalAssets'], p, 'Asset Base'),
-  ];
+  const beginning = (p) => {
+    const start = p.kind === 'ttm' ? p.ttmStart || p.start : p.start || p.fiscalStart;
+    if (!start) return null;
+    return { ...p, end: new Date(Date.parse(start) - 86400000).toISOString().slice(0, 10) };
+  };
+  const averageBalance = (key, p) => {
+    const before = beginning(p);
+    const current = getVal(key, p);
+    const prior = before ? getVal(key, before) : null;
+    return current != null && prior != null ? (current + prior) / 2 : null;
+  };
+  const annualFactor = (p) => {
+    if (p.fp === 'FY' || p.kind === 'ttm' || p.kind === 'annual') return 1;
+    const start = p.start || p.fiscalStart;
+    return start ? 365 / (daysBetween(start, p.end) + 1) : null;
+  };
+  const balanceSources = (key, p) => [sourceFor(key, p, 'Ending balance'), beginning(p) ? sourceFor(key, beginning(p), 'Beginning balance') : null];
+  const nimSources = (p) => [sourceFor('netInterestIncome', p, 'Net interest income before provision'), ...balanceSources('earningAssets', p)];
 
   const ruleOf40Sources = (p) => {
     const priorYearEnd = incrementYear(p.end, -1);
@@ -467,28 +405,30 @@ export function buildRatios(facts, periods, sicCode = null) {
   };
   const returns = {
     roe: ratio('Return on Equity (ROE)', (p) => {
-      const eq = getVal('stockholdersEquity', p);
+      const eq = averageBalance('stockholdersEquity', p);
       const ni = getVal('netIncome', p);
-      return eq && ni != null ? (ni / eq) * 100 : null;
-    }, 'percent', ['netIncome', 'stockholdersEquity']),
+      const factor = annualFactor(p);
+      return eq > 0 && ni != null && factor != null ? (ni / eq) * factor * 100 : null;
+    }, 'percent', ['netIncome', (p) => balanceSources('stockholdersEquity', p)]),
     roa: ratio('Return on Assets (ROA)', (p) => {
-      const ta = getVal('totalAssets', p);
+      const ta = averageBalance('totalAssets', p);
       const ni = getVal('netIncome', p);
-      return ta && ni != null ? (ni / ta) * 100 : null;
-    }, 'percent', ['netIncome', 'totalAssets']),
+      const factor = annualFactor(p);
+      return ta > 0 && ni != null && factor != null ? (ni / ta) * factor * 100 : null;
+    }, 'percent', ['netIncome', (p) => balanceSources('totalAssets', p)]),
   };
   const leverage = {
     de: ratio('Debt-to-Equity', (p) => {
       const eq = getVal('stockholdersEquity', p);
-      const std = getVal('shortTermDebt', p) || 0;
-      const ltd = getVal('longTermDebt', p) || 0;
-      return eq ? (std + ltd) / eq : null;
+      const std = getVal('shortTermDebt', p);
+      const ltd = getVal('longTermDebt', p);
+      return eq > 0 && std != null && ltd != null ? (std + ltd) / eq : null;
     }, 'decimal', ['shortTermDebt', 'longTermDebt', 'stockholdersEquity']),
     da: ratio('Debt-to-Assets', (p) => {
       const ta = getVal('totalAssets', p);
-      const std = getVal('shortTermDebt', p) || 0;
-      const ltd = getVal('longTermDebt', p) || 0;
-      return ta ? (std + ltd) / ta : null;
+      const std = getVal('shortTermDebt', p);
+      const ltd = getVal('longTermDebt', p);
+      return ta > 0 && std != null && ltd != null ? (std + ltd) / ta : null;
     }, 'decimal', ['shortTermDebt', 'longTermDebt', 'totalAssets']),
   };
   const liquidity = {
@@ -504,15 +444,16 @@ export function buildRatios(facts, periods, sicCode = null) {
       margins.net, returns.roe, returns.roa,
       ratio('Net Interest Margin (NIM)', (p) => {
         const nii = getVal('netInterestIncome', p) ?? getVal('interestIncomeExpenseNet', p);
-        const earning = getVal('earningAssets', p) ?? getVal('totalAssets', p);
-        return nii && earning ? (nii / earning) * 100 : null;
+        const earning = averageBalance('earningAssets', p);
+        const factor = annualFactor(p);
+        return nii != null && earning > 0 && factor != null ? (nii / earning) * factor * 100 : null;
       }, 'percent', [nimSources]),
       ratio('Efficiency Ratio', (p) => {
         const nie = getVal('noninterestExpense', p);
         const nii = getVal('netInterestIncome', p) ?? getVal('interestIncomeExpenseNet', p);
         const noni = getVal('noninterestIncome', p);
-        const revenue = (nii || 0) + (noni || 0);
-        return nie && revenue ? (nie / revenue) * 100 : null;
+        const revenue = nii != null && noni != null ? nii + noni : null;
+        return nie != null && revenue > 0 ? (nie / revenue) * 100 : null;
       }, 'percent', ['noninterestExpense', ['netInterestIncome', 'interestIncomeExpenseNet'], 'noninterestIncome']),
       ratio('Loan-to-Deposit Ratio', (p) => {
         const loans = getVal('loans', p);
@@ -522,12 +463,12 @@ export function buildRatios(facts, periods, sicCode = null) {
       ratio('NPL Ratio', (p) => {
         const npl = getVal('nonperformingLoans', p);
         const loans = getVal('loans', p);
-        return npl && loans ? (npl / loans) * 100 : null;
+        return npl != null && loans > 0 ? (npl / loans) * 100 : null;
       }, 'percent', ['nonperformingLoans', 'loans']),
       ratio('Allowance Coverage Ratio', (p) => {
         const all = getVal('allowanceForLoanLoss', p);
         const loans = getVal('loans', p);
-        return all && loans ? (all / loans) * 100 : null;
+        return all != null && loans > 0 ? (all / loans) * 100 : null;
       }, 'percent', ['allowanceForLoanLoss', 'loans']),
       ratio('Equity-to-Assets', (p) => {
         const eq = getVal('stockholdersEquity', p);
@@ -697,16 +638,16 @@ export function cagr(startValue, endValue, years) {
 }
 
 export function computeGrowth(row) {
-  const values = row.values.filter((v) => v.value != null);
-  if (values.length === 0) return { latest: null, prior: null, yoy: null, cagr5y: null, cagr10y: null };
-  const latest = values[0].value;
-  const prior = values[1]?.value ?? null;
-  const yoy = prior != null ? yoyGrowth(latest, prior) : null;
-  const fiveBack = values[5]?.value ?? null;
-  const tenBack = values[10]?.value ?? null;
-  const cagr5y = fiveBack != null ? cagr(fiveBack, latest, 5) : null;
-  const cagr10y = tenBack != null ? cagr(tenBack, latest, 10) : null;
-  return { latest, prior, yoy, cagr5y, cagr10y };
+  const values = row.values || [];
+  const latest = values[0]?.value ?? null;
+  const end = values[0]?.period?.end;
+  const back = (years) => {
+    if (!end) return values[years]?.value ?? null;
+    return values.find((v) => v.period?.end && Math.abs(daysBetween(v.period.end, end) - years * 365.25) < 35)?.value ?? null;
+  };
+  const prior = back(1);
+  return { latest, prior, yoy: yoyGrowth(latest, prior), cagr5y: cagr(back(5), latest, 5), cagr10y: cagr(back(10), latest, 10) };
+
 }
 
 export function formatValue(value, format) {
@@ -736,6 +677,8 @@ export function formatGrowth(pct) {
 }
 
 export function periodLabel(period) {
+  if (period.kind === 'ttm') return `TTM ${period.end}`;
+  if (period.kind === 'ytd') return `YTD ${period.end}`;
   if (period.fp === 'FY') return `FY${String(period.fy).slice(-2)}`;
   return `${period.fp} ${String(period.fy).slice(-2)}`;
 }
@@ -744,7 +687,7 @@ export function buildSourceUrl(cik, source) {
   if (!source) return null;
   const paddedCik = String(cik).padStart(10, '0');
   if (source.tag) {
-    return `https://data.sec.gov/api/xbrl/companyconcept/CIK${paddedCik}/us-gaap/${source.tag}.json`;
+    return `https://data.sec.gov/api/xbrl/companyconcept/CIK${paddedCik}/${source.taxonomy || 'us-gaap'}/${source.tag}.json`;
   }
   return null;
 }

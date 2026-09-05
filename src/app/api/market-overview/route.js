@@ -5,6 +5,9 @@ import {
   buildMetricRow,
 } from '../../../utils/xbrlParser.js';
 
+import { warmGet, warmSet } from '../../../utils/warmCache.js';
+import { illustrativeGeography, marketSnapshot, appendSnapshot } from '../../../utils/marketEvidence.js';
+
 export const revalidate = 21600;
 
 const MAX_CONCURRENCY = 5;
@@ -1524,45 +1527,7 @@ function buildGeographicExposure(lenses, tradeBookAtlas, derivativesDashboard, a
 
   const combine = (...values) => values.reduce((sum, value) => sum + n(value), 0);
 
-  const scaleMetrics = (metrics, factor, mentionFactor = factor, intensityFactor = factor) => {
-    const out = {};
-    for (const [key, value] of Object.entries(metrics || {})) {
-      if (key === 'mentions') out[key] = Math.max(0, value * mentionFactor);
-      else if (key === 'intensity') out[key] = Math.max(1, Math.min(100, value * intensityFactor));
-      else out[key] = Math.max(0, value * factor);
-    }
-    return out;
-  };
-
-  const makeTimeline = (metrics, pattern = 'steady') => {
-    const configs = pattern === 'growth'
-      ? [
-          ['1Y ago', 0.78, 0.76, 0.72, 'Lower filing intensity one year ago.'],
-          ['Prior Q', 0.90, 0.88, 0.86, 'Signal was building last quarter.'],
-          ['Current', 1.00, 1.00, 1.00, 'Latest filing window.'],
-          ['Stress case', 1.15, 1.35, 1.22, 'Illustrative stress overlay using current filing exposures.'],
-        ]
-      : pattern === 'risk'
-        ? [
-            ['1Y ago', 0.72, 0.68, 0.70, 'Lower risk-book density one year ago.'],
-            ['Prior Q', 0.88, 0.90, 0.88, 'Risk language and exposure were lower last quarter.'],
-            ['Current', 1.00, 1.00, 1.00, 'Latest filing window.'],
-            ['Stress case', 1.22, 1.45, 1.30, 'Illustrative stress overlay using current risk exposures.'],
-          ]
-        : [
-            ['1Y ago', 0.82, 0.80, 0.78, 'Prior-year comparison baseline.'],
-            ['Prior Q', 0.93, 0.92, 0.90, 'Prior-quarter comparison baseline.'],
-            ['Current', 1.00, 1.00, 1.00, 'Latest filing window.'],
-            ['Stress case', 1.12, 1.25, 1.16, 'Illustrative stress overlay using current filing exposures.'],
-          ];
-
-    return configs.map(([label, factor, mentionFactor, intensityFactor, note]) => ({
-      label,
-      period: label,
-      note,
-      metricByMode: scaleMetrics(metrics, factor, mentionFactor, intensityFactor),
-    }));
-  };
+  const makeTimeline = (metrics) => [{ label: 'Scenario', period: 'Scenario', note: 'Illustrative allocation of current company data; no historical geographic observations.', metricByMode: metrics }];
 
   const mk = ({
     id,
@@ -1583,7 +1548,6 @@ function buildGeographicExposure(lenses, tradeBookAtlas, derivativesDashboard, a
     evidenceCount,
     sourceBasis,
     metrics,
-    pattern,
     outboundFlows,
   }) => ({
     id,
@@ -1605,7 +1569,7 @@ function buildGeographicExposure(lenses, tradeBookAtlas, derivativesDashboard, a
     evidenceCount,
     sourceBasis,
     metricByMode: metrics,
-    timeSeries: makeTimeline(metrics, pattern),
+    timeSeries: makeTimeline(metrics),
     outboundFlows: outboundFlows || [],
   });
 
@@ -2533,6 +2497,10 @@ export async function GET(request) {
   }
 
   try {
+    const cached = !refresh ? await warmGet('market-v2', 'atlas') : null;
+    if (cached && Date.now() - Date.parse(cached.generatedAt) < MARKET_OVERVIEW_TTL_MS) {
+      return NextResponse.json(cached, { headers: { 'Cache-Control': 's-maxage=21600, stale-while-revalidate=86400' } });
+    }
     const tickerMap = await loadTickerMap(userAgent);
     const universeTickers = uniqueTickers(MARKET_LENSES.flatMap((lens) => lens.tickers));
     const entries = universeTickers
@@ -2555,7 +2523,7 @@ export async function GET(request) {
     const exposureIndexes = buildExposureIndexes(lenses, companies.filter((company) => !company.error), tradeBookAtlas);
     const derivativesDashboard = aggregateDerivativesDashboard(companies, tradeBookAtlas);
     const aggregateUniverse = buildAggregateUniverse(companies, lenses, tradeBookAtlas, derivativesDashboard);
-    const geographicExposure = buildGeographicExposure(lenses, tradeBookAtlas, derivativesDashboard, aggregateUniverse);
+    const geographicExposure = illustrativeGeography(buildGeographicExposure(lenses, tradeBookAtlas, derivativesDashboard, aggregateUniverse));
 
     const loadedCompanies = companies.filter((company) => !company.error);
     const erroredCompanies = companies.filter((company) => company.error);
@@ -2585,6 +2553,10 @@ export async function GET(request) {
       derivativesDashboard,
     };
 
+    const previousSnapshots = await warmGet('market-v2', 'observations');
+    payload.observedHistory = appendSnapshot(previousSnapshots, marketSnapshot(payload));
+    payload.historyPersistence = await warmSet('market-v2', 'observations', payload.observedHistory, 90 * 86400);
+    await warmSet('market-v2', 'atlas', payload, 21600);
     marketOverviewCache = {
       payload,
       expiresAt: Date.now() + MARKET_OVERVIEW_TTL_MS,

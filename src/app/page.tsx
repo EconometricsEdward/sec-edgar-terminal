@@ -140,7 +140,7 @@ export default function LandingPage() {
           <div className="relative">
             <div className="eyebrow">Market section</div>
             <h2 className="mt-3 text-2xl font-black text-white sm:text-3xl">
-              SEC Market Risk Atlas for the whole filing universe.
+              SEC Market Risk Atlas for covered companies.
             </h2>
             <p className="mt-4 text-sm leading-7 text-slate-400">
               The market overview extends EDGAR Terminal beyond single-company research. It groups public-company filings into asset-class lenses, market-risk weather, derivative exposure signals, and geographic risk drivers so you can start with the market map and drill back into source filings.

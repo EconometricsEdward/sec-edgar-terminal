@@ -17,6 +17,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Home', icon: Home, matchPath: (p) => p === '/' },
+  { href: '/workspace', label: 'Workspace', icon: BarChart3, matchPath: (p) => p === '/workspace' },
   { href: '/filings', label: 'Filings', icon: FileText, matchPath: (p) => p === '/filings' || p.startsWith('/filings/') },
   { href: '/analysis', label: 'Analysis', icon: BarChart3, matchPath: (p) => p === '/analysis' || p.startsWith('/analysis/') },
   { href: '/market', label: 'Market', icon: Activity, matchPath: (p) => p === '/market' || p.startsWith('/market/') },

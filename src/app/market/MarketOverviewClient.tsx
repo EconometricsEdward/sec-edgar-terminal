@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity,
@@ -13,15 +13,13 @@ import {
   FileSearch,
   Gauge,
   GitCompare,
-  Globe2,
-  Layers,
   Loader2,
   Network,
   ShieldCheck,
   Sparkles,
   TrendingUp,
 } from 'lucide-react';
-import SecGeoGlobeExplorer from '../../components/SecGeoGlobeExplorer';
+import GeographicEvidencePanel from '../../components/GeographicEvidencePanel';
 
 type Tone = 'expansion' | 'caution' | 'stress' | 'neutral';
 
@@ -221,6 +219,8 @@ interface MarketPayload {
   derivativesDashboard: DerivativesDashboard;
   aggregateUniverse: AggregateUniverse;
   geographicExposure: GeographicRegion[];
+  observedHistory?: Array<{ observedAt: string; companies: number; totalAssets: number; totalLiabilities: number }>;
+  historyPersistence?: boolean;
   error?: string;
 }
 
@@ -459,7 +459,7 @@ export default function MarketOverviewClient() {
             </div>
 
             <h1 className="max-w-4xl text-4xl font-black leading-[0.96] tracking-tight text-white md:text-6xl">
-              Market overview built from aggregate SEC exposure.
+              Market research across covered companies.
             </h1>
 
             <p className="mt-5 max-w-3xl text-sm leading-7 text-slate-300 md:text-base">
@@ -503,7 +503,7 @@ export default function MarketOverviewClient() {
         <div className="panel-card mb-8 rounded-2xl border border-white/10 p-5">
           <div className="flex items-center gap-3 text-sm text-slate-300">
             <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
-            Building aggregate SEC market map. This may take a moment locally because it scans a broad filing universe.
+            Building aggregate SEC market map. Cached results are reused when available.
           </div>
         </div>
       )}
@@ -523,6 +523,7 @@ export default function MarketOverviewClient() {
       {!loading && !error && data && (
         <>
           <AggregateUniverseSection aggregate={data.aggregateUniverse} />
+          <details className="panel-card mb-8 rounded-2xl border border-white/10 p-5"><summary className="cursor-pointer text-base font-semibold text-white">Observed cohort history</summary><p className="my-4 max-w-3xl text-sm leading-6 text-slate-400">Actual calculation dates for the covered companies. Totals can change as filings and coverage change; these observations do not reconstruct historical geographic exposures.{!data.historyPersistence && ' Shared history storage is unavailable; only this calculation can be retained for this response.'}</p><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-slate-400"><tr><th className="p-3">Observed date (UTC)</th><th className="p-3">Companies</th><th className="p-3">Total assets</th><th className="p-3">Total liabilities</th></tr></thead><tbody>{(data.observedHistory || []).slice().reverse().map((row) => <tr key={row.observedAt} className="border-t border-white/10 text-slate-200"><td className="p-3">{row.observedAt.slice(0, 10)}</td><td className="p-3">{row.companies}</td><td className="p-3">{formatCompactCurrency(row.totalAssets)}</td><td className="p-3">{formatCompactCurrency(row.totalLiabilities)}</td></tr>)}</tbody></table></div>{(data.observedHistory?.length || 0) < 2 && <p className="mt-3 text-sm text-slate-400">History starts when this version collects its first snapshot. A trend requires observations from more than one day.</p>}</details>
 
           <GlobalExposureSection regions={data.geographicExposure} aggregate={data.aggregateUniverse} />
 
@@ -554,7 +555,7 @@ export default function MarketOverviewClient() {
               <p className="text-sm leading-7 text-slate-400">
                 This is a covered SEC filing universe, not every EDGAR filing yet. The page aggregates a broad
                 curated public-company set using XBRL facts, derivative concepts, and bounded recent filing-text scans.
-                A production all-SEC version should be powered by scheduled ingestion and historical market snapshots.
+                Observed snapshots are retained when shared caching is configured. Scores are heuristic research signals, not calibrated risk probabilities.
               </p>
               <div className="mt-4 rounded-2xl border border-cyan-700/40 bg-cyan-950/20 p-4 text-xs leading-relaxed text-cyan-100/90">
                 <strong className="text-cyan-200">Interpretation:</strong> geographic nodes are exposure proxies based on filing language and company cohorts.
@@ -647,30 +648,7 @@ function AggregateUniverseSection({ aggregate }: { aggregate: AggregateUniverse 
 
 
 function GlobalExposureSection({ regions, aggregate }: { regions: GeographicRegion[]; aggregate: AggregateUniverse }) {
-  return (
-    <section className="panel-card mb-8 rounded-[1.4rem] border border-white/10 p-5">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Globe2 className="h-4 w-4 text-cyan-300" />
-            <h2 className="text-sm font-black uppercase tracking-[0.22em] text-slate-100">
-              3D Global Exposure Globe
-            </h2>
-          </div>
-          <p className="mt-1 max-w-3xl text-xs leading-6 text-slate-500">
-            Left: interactive 3D globe. Right: globe control panel with metric selector, view selector,
-            location list, and expanded source packet. Location rows rotate the globe smoothly to the
-            selected exposure node.
-          </p>
-        </div>
-        <div className="rounded-full border border-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-          {formatCompactCurrency(aggregate.totalAssets)} assets mapped
-        </div>
-      </div>
-
-      <SecGeoGlobeExplorer regions={regions} aggregate={aggregate} />
-    </section>
-  );
+  return <GeographicEvidencePanel regions={regions} aggregate={aggregate} />;
 }
 
 function MarketRiskWeatherMap({ items }: { items: WeatherItem[] }) {

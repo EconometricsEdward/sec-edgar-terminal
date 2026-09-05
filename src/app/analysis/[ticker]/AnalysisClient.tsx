@@ -4,12 +4,14 @@ import React, { useState, useContext, useMemo, useCallback, useEffect } from 're
 import { useRouter } from 'next/navigation';
 import {
   BarChart3, Download, TrendingUp, Wallet, ArrowRightLeft, Percent,
-  Link as LinkIcon, GitCompare, AlertTriangle, ExternalLink, Info,
+  Link as LinkIcon, GitCompare, ExternalLink,
   LayoutDashboard, LineChart, Users, DollarSign, History, Building2,
   Loader2, AlertCircle, ShieldCheck, FileText, Search, Clock,
 } from 'lucide-react';
 import { MetricChart as MetricChartImpl } from '../../../components/MetricChart.jsx';
-import SummaryDashboardImpl from '../../../components/SummaryDashboard.jsx';
+import CompanyOverview from '../../../components/research/CompanyOverview';
+import FilingChangesPanel from '../../../components/research/FilingChangesPanel';
+import EvidenceProvider, { useEvidence } from '../../../components/research/EvidenceProvider';
 import StockPriceChartImpl from '../../../components/StockPriceChart.jsx';
 import InsiderActivityImpl from '../../../components/InsiderActivity.jsx';
 import HoldersSectionImpl from '../../../components/HoldersSection.jsx';
@@ -20,6 +22,7 @@ import { checkIsFund } from '../../../utils/fundCheck.js';
 import { getItemsInfo } from '../../../utils/formItems.js';
 import { PEER_GROUPS } from '../../../utils/peerGroups.js';
 import {
+  withPeriodKind,
   extractAnnualPeriods,
   extractQuarterlyPeriods,
   buildIncomeStatement,
@@ -47,7 +50,6 @@ import { classifyIndustry, industryLabel, industryDisclosure, INDUSTRY_GROUPS } 
 // runtime behavior is unchanged.
 // ============================================================================
 const MetricChart = MetricChartImpl as any;
-const SummaryDashboard = SummaryDashboardImpl as any;
 const StockPriceChart = StockPriceChartImpl as any;
 const InsiderActivity = InsiderActivityImpl as any;
 const HoldersSection = HoldersSectionImpl as any;
@@ -109,7 +111,8 @@ interface ConceptToTrace {
 // Section + statement definitions (unchanged from original)
 // ============================================================================
 const SECTIONS = [
-  { id: 'snapshot', label: 'Snapshot', icon: LayoutDashboard, eyebrow: 'Company summary' },
+  { id: 'snapshot', label: 'Overview & Notes', icon: LayoutDashboard, eyebrow: 'Company summary' },
+  { id: 'changes', label: 'What changed?', icon: History, eyebrow: 'Filing comparisons' },
   { id: 'filings-risk', label: 'Filings & Risk', icon: FileText, eyebrow: 'Events and disclosure' },
   { id: 'quality', label: 'Quality', icon: ShieldCheck, eyebrow: 'Operating diagnostics' },
   { id: 'financials', label: 'Financials', icon: DollarSign, eyebrow: 'Statements and ratios' },
@@ -350,11 +353,20 @@ export default function AnalysisClient({
   const [error, setError] = useState<string | null>(null);
 
   const [statement, setStatement] = useState('income');
-  const [periodType, setPeriodType] = useState<'annual' | 'quarterly'>('annual');
+  const [periodType, setPeriodType] = useState<'annual' | 'quarterly' | 'ytd' | 'ttm'>('quarterly');
   const [statementView, setStatementView] = useState<StatementViewMode>('reported');
   const [showGrowth, setShowGrowth] = useState(true);
-  const [activeSection, setActiveSection] = useState('snapshot');
   const [activeWorkspace, setActiveWorkspace] = useState('snapshot');
+  useEffect(() => {
+    const view = new URL(window.location.href).searchParams.get('view');
+    setActiveWorkspace(SECTIONS.some((s) => s.id === view) ? view! : 'snapshot');
+  }, [urlTicker]);
+  function selectWorkspace(view: string) {
+    setActiveWorkspace(view);
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', view);
+    window.history.replaceState(null, '', url);
+  }
 
   const [insiderMarkers, setInsiderMarkers] = useState<InsiderMarker[]>([]);
   const handleInsiderMarkers = useCallback((markers: InsiderMarker[]) => {
@@ -362,27 +374,6 @@ export default function AnalysisClient({
   }, []);
 
   const [conceptToTrace, setConceptToTrace] = useState<ConceptToTrace | null>(null);
-
-  // Scrollspy: highlight active section as user scrolls
-  useEffect(() => {
-    if (!facts) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible.length > 0) {
-          setActiveSection(visible[0].target.id);
-        }
-      },
-      { rootMargin: '-100px 0px -60% 0px', threshold: 0 }
-    );
-    SECTIONS.forEach(({ id }) => {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    });
-    return () => observer.disconnect();
-  }, [facts]);
 
   // ==========================================================================
   // fetchFacts — load XBRL data for a given company entry
@@ -397,7 +388,6 @@ export default function AnalysisClient({
       setFacts(null);
       setFilings([]);
       setInsiderMarkers([]);
-      setActiveSection('overview');
       setError(null);
 
       // Fund detection — if already known to be a fund, redirect
@@ -441,7 +431,7 @@ export default function AnalysisClient({
           cik: entry.cik,
           sic: submissions.sicDescription,
           sicNumber: submissions.sic,
-          exchanges: submissions.exchanges?.join(', ') || 'N/A',
+          exchanges: [...new Set(submissions.exchanges || [])].join(', ') || 'N/A',
           tickers: submissions.tickers?.join(', ') || entry.name,
           fiscalYearEnd: submissions.fiscalYearEnd,
           stateOfIncorporation: submissions.stateOfIncorporation,
@@ -540,7 +530,7 @@ export default function AnalysisClient({
     () => (facts ? extractQuarterlyPeriods(facts).slice(0, 12) : []),
     [facts]
   );
-  const periods = periodType === 'annual' ? annualPeriods : quarterlyPeriods;
+  const periods = useMemo(() => periodType === 'annual' ? annualPeriods : periodType === 'quarterly' ? quarterlyPeriods : withPeriodKind(quarterlyPeriods, periodType), [periodType, annualPeriods, quarterlyPeriods]);
 
   const statementDef = STATEMENTS.find((s) => s.id === statement) || STATEMENTS[0];
   const rows = useMemo(
@@ -627,7 +617,7 @@ export default function AnalysisClient({
 
   const copyShareLink = () => {
     const t = company?.tickers?.split(',')[0]?.trim() || urlTicker;
-    const url = `${window.location.origin}/analysis/${t}`;
+    const url = `${window.location.origin}/analysis/${t}?view=${activeWorkspace}`;
     navigator.clipboard.writeText(url);
   };
 
@@ -635,11 +625,6 @@ export default function AnalysisClient({
     const t = urlTicker || company?.tickers?.split(',')[0]?.trim();
     if (t) router.push(`/compare/${t}`);
     else router.push('/compare');
-  };
-
-  const scrollToSection = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const traceRowHistory = useCallback((row: { values: { source?: { tag: string; taxonomy?: string; unit?: string }, sources?: { tag: string; taxonomy?: string; unit?: string }[] }[] }) => {
@@ -664,7 +649,8 @@ export default function AnalysisClient({
   // Render
   // ==========================================================================
   return (
-    <>
+    <EvidenceProvider cik={company?.cik} ticker={chartTicker} filings={filings}>
+    <div className="research-workspace">
       {loading && (
         <div className="flex items-center gap-2 text-sm text-stone-400 mb-4 uppercase tracking-widest">
           <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
@@ -696,13 +682,13 @@ export default function AnalysisClient({
 
       {facts && (
         <div className="space-y-6">
-          <section className="professional-card relative overflow-hidden p-5 sm:p-6 lg:p-8">
+          <section className="professional-card relative overflow-hidden p-4 sm:p-5">
             <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-amber-400/10 blur-3xl" />
             <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
               <div className="min-w-0">
                 <div className="eyebrow">Company analysis workspace</div>
                 <div className="mt-3 flex flex-wrap items-end gap-3">
-                  <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
+                  <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
                     {company?.name || chartTicker}
                   </h1>
                   <span className="mb-1 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-amber-200">
@@ -712,7 +698,7 @@ export default function AnalysisClient({
                 <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
                   {company?.cik && <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">CIK {company.cik}</span>}
                   {company?.exchanges && <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">{company.exchanges}</span>}
-                  {company?.fiscalYearEnd && <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">FY end {company.fiscalYearEnd}</span>}
+                  {company?.fiscalYearEnd && <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">FY end {company.fiscalYearEnd.slice(0, 2)}/{company.fiscalYearEnd.slice(2)}</span>}
                   <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">{industryLabel(group)}{sicCode ? ` · SIC ${sicCode}` : ''}</span>
                 </div>
               </div>
@@ -738,116 +724,18 @@ export default function AnalysisClient({
             </div>
           </section>
 
-          <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <aside className="xl:sticky xl:top-28 xl:self-start">
-              <div className="professional-card p-3">
-                <div className="px-3 pb-3 pt-2">
-                  <div className="muted-label">Analysis chunks</div>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    The same analysis modules are grouped into workspaces so this page can scale as new features are added.
-                  </p>
-                  <span className="sr-only">Scroll context: {activeSection}</span>
-                </div>
+          <div className="space-y-5">
+            <nav aria-label="Company research" className="flex flex-wrap gap-2 rounded-xl border border-white/10 bg-slate-950/80 p-2">
+              {SECTIONS.map((section) => <button type="button" key={section.id} aria-pressed={activeWorkspace === section.id} onClick={() => selectWorkspace(section.id)} className={`rounded-lg px-4 py-3 text-sm font-semibold transition ${activeWorkspace === section.id ? 'bg-amber-300 text-slate-950' : 'text-slate-300 hover:bg-white/10'}`}>{section.label}{section.id === 'ownership' && form4Count > 0 ? ` (${form4Count})` : ''}</button>)}
+            </nav>
 
-                <div className="space-y-2">
-                  {SECTIONS.map((s) => {
-                    const Icon = s.icon;
-                    const active = activeWorkspace === s.id;
-                    const scrollAware = activeSection === s.id;
-                    const badge = s.id === 'ownership' && form4Count > 0 ? form4Count : null;
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => {
-                          setActiveWorkspace(s.id);
-                          setActiveSection(s.id);
-                          window.requestAnimationFrame(() => scrollToSection('analysis-workspace'));
-                        }}
-                        className={`group w-full rounded-2xl border px-4 py-3 text-left transition-all ${
-                          active
-                            ? 'border-amber-300/50 bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/25'
-                            : 'border-white/10 bg-white/[0.025] text-slate-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.055]'
-                        }`}
-                        type="button"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Icon className="h-4 w-4 shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-xs font-black uppercase tracking-[0.16em]">{s.label}</div>
-                            <div className={`mt-1 truncate text-[10px] font-bold uppercase tracking-[0.14em] ${active ? 'text-slate-800' : 'text-slate-600'}`}>
-                              {s.eyebrow}
-                            </div>
-                          </div>
-                          {badge && (
-                            <span className={`rounded-full px-2 py-1 text-[10px] font-black ${active ? 'bg-slate-950 text-amber-200' : 'bg-slate-900 text-slate-400'}`}>
-                              {badge}
-                            </span>
-                          )}
-                        </div>
-                        {scrollAware && !active && <span className="mt-2 block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Visible</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-200">
-                    <ShieldCheck className="h-4 w-4" /> Data trust
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    XBRL values remain clickable and traceable to SEC concept history. CSV export and source links are preserved.
-                  </p>
-                </div>
-              </div>
-            </aside>
-
-            <main id="analysis-workspace" className="min-w-0 space-y-6 scroll-mt-28">
-              {company?.cik && activeWorkspace !== 'ownership' && (
-                <div className="hidden" aria-hidden="true">
-                  <InsiderActivity cik={company.cik} filings={filings} onMarkersReady={handleInsiderMarkers} />
-                </div>
-              )}
-
-              {activeWorkspace === 'snapshot' && (
-                <section id="snapshot" className="space-y-6 scroll-mt-28">
-                  <SectionHeader icon={LayoutDashboard} title="Snapshot" />
-
-                  <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 p-4 flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
-                    <div className="text-xs text-amber-50/90 leading-relaxed">
-                      <span className="font-bold text-amber-200">Experimental — verify before relying on these numbers.</span>{' '}
-                      Financial data is parsed from SEC's XBRL API. Click any value to see the exact SEC source tag.
-                    </div>
-                  </div>
-
-                  {disclosure && (
-                    <div className={`rounded-2xl border p-4 flex items-start gap-3 ${
-                      disclosure.tone === 'warn'
-                        ? 'border-rose-400/30 bg-rose-400/10'
-                        : 'border-sky-400/30 bg-sky-400/10'
-                    }`}>
-                      <Info className={`w-5 h-5 shrink-0 mt-0.5 ${disclosure.tone === 'warn' ? 'text-rose-300' : 'text-sky-300'}`} />
-                      <div className="text-xs leading-relaxed">
-                        <span className={`font-bold ${disclosure.tone === 'warn' ? 'text-rose-200' : 'text-sky-200'}`}>
-                          {disclosure.title}
-                        </span>{' '}
-                        <span className="text-slate-200">{disclosure.body}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {annualPeriods.length > 0 ? (
-                    <>
-                      <AnalysisSourcePack company={company} filings={filings} ticker={chartTicker} />
-                      <SummaryDashboard facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
-                      <AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} />
-                      <DataCoveragePanel statementRows={coverageStatementRows} ratioRows={coverageRatioRows} periods={annualPeriods} filings={filings} cik={company?.cik} />
-                    </>
-                  ) : (
-                    <div className="panel-card p-8 text-center text-sm text-slate-500">No annual XBRL periods are available for this company yet.</div>
-                  )}
+            <div id="analysis-workspace" className="min-w-0 space-y-6 scroll-mt-28">
+              <section id="snapshot" hidden={activeWorkspace !== 'snapshot'} className="space-y-6 scroll-mt-28">
+                  <CompanyOverview key={chartTicker} ticker={chartTicker} company={company} facts={facts} sic={sicCode} filings={filings} onChanges={() => selectWorkspace('changes')} />
+                  {annualPeriods.length > 0 && <details className="rounded-xl border border-white/10 p-5"><summary className="cursor-pointer text-sm font-semibold text-slate-300">Annual diligence and data coverage</summary><div className="mt-5 space-y-6"><AnalystChecklist facts={facts} periods={annualPeriods} sicCode={sicCode} cik={company?.cik} /><DataCoveragePanel statementRows={coverageStatementRows} ratioRows={coverageRatioRows} periods={annualPeriods} filings={filings} cik={company?.cik} /></div></details>}
+                  <details className="rounded-xl border border-white/10 p-5"><summary className="cursor-pointer text-sm font-semibold text-slate-300">Source filings and methodology</summary><div className="mt-4 space-y-4"><p className="text-sm leading-6 text-slate-400">Values require compatible periods and units. Calculated quarters retain their cumulative source inputs. Click a value to inspect its evidence. {disclosure?.body}</p><AnalysisSourcePack company={company} filings={filings} ticker={chartTicker} /></div></details>
                 </section>
-              )}
+              {activeWorkspace === 'changes' && <FilingChangesPanel key={chartTicker} ticker={chartTicker} />}
 
               {activeWorkspace === 'filings-risk' && (
                 <section id="filings-risk" className="space-y-6 scroll-mt-28">
@@ -937,6 +825,7 @@ export default function AnalysisClient({
                         >
                           Quarterly (10-Q)
                         </button>
+                        {(['ytd', 'ttm'] as const).map((basis) => <button key={basis} type="button" aria-pressed={periodType === basis} onClick={() => setPeriodType(basis)} className={`rounded-full border px-3 py-2 text-sm ${periodType === basis ? 'bg-slate-100 text-slate-950' : 'border-white/10 text-slate-300'}`}>{basis === 'ytd' ? 'Year to date' : 'Trailing 12 months'}</button>)}
 
                         <button
                           onClick={() => setStatementView('reported')}
@@ -945,7 +834,7 @@ export default function AnalysisClient({
                           }`}
                           type="button"
                         >
-                          Reported
+                          Values
                         </button>
                         <button
                           onClick={() => setStatementView('commonSize')}
@@ -1056,6 +945,7 @@ export default function AnalysisClient({
               {activeWorkspace === 'market' && (
                 <section id="market" className="space-y-6 scroll-mt-28">
                   <SectionHeader icon={LineChart} title="Market Timeline" />
+                  {company?.cik && <div hidden><InsiderActivity cik={company.cik} filings={filings} onMarkersReady={handleInsiderMarkers} /></div>}
                   {chartTicker && filings.length > 0 ? (
                     <StockPriceChart ticker={chartTicker} filings={filings} insiderMarkers={insiderMarkers} />
                   ) : (
@@ -1079,7 +969,7 @@ export default function AnalysisClient({
                   {chartTicker && <HoldersSection ticker={chartTicker} cik={company?.cik} companyName={company?.name} />}
                 </section>
               )}
-            </main>
+            </div>
           </div>
         </div>
       )}
@@ -1094,7 +984,8 @@ export default function AnalysisClient({
           onClose={() => setConceptToTrace(null)}
         />
       )}
-    </>
+    </div>
+    </EvidenceProvider>
   );
 }
 
@@ -1157,6 +1048,8 @@ function buildCommonSizeRows(rows: any[], basisRow: any, basisLabel: string) {
         value,
         source: sources[0] || null,
         sources,
+        classification: 'calculated',
+        formula: `${row.label} / ${basisLabel} × 100`,
       };
     }),
   }));
@@ -9310,6 +9203,7 @@ function QualityTile({ tile, cik }: { tile: SnapshotTile; cik?: string }) {
 }
 
 function SourceChip({ source, cik }: { source: SnapshotSource; cik?: string }) {
+  const openEvidence = useEvidence();
   const sourceUrl = source.point?.source && cik ? buildSourceUrl(cik, source.point.source) : null;
   if (!sourceUrl || !source.point?.source) return null;
 
@@ -9317,6 +9211,7 @@ function SourceChip({ source, cik }: { source: SnapshotSource; cik?: string }) {
   return (
     <a
       href={sourceUrl}
+      onClick={(event) => { if (openEvidence && !event.ctrlKey && !event.metaKey) { event.preventDefault(); openEvidence({ label: source.label, point: source.point }); } }}
       target="_blank"
       rel="noopener noreferrer"
       title={`Tag: ${factSource.tag}\nUnit: ${factSource.unit}\nPeriod: ${factSource.end}\nFiled: ${factSource.filed}\nAccession: ${factSource.accession}`}
@@ -9402,7 +9297,7 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
                   </span>
                 </td>
                 {row.values.map((v: any, i: number) => (
-                  <ValueCell key={i} value={v.value} source={v.source} sources={v.sources} cik={cik} format={row.format} isHeader={header} />
+                  <ValueCell key={i} point={v} label={row.label} value={v.value} source={v.source} sources={v.sources} cik={cik} format={row.format} isHeader={header} />
                 ))}
                 {growthVisible && (
                   <>
@@ -9421,6 +9316,8 @@ function FinancialTable({ rows, periods, growthVisible, cik, onTraceRow, isHeade
 }
 
 interface ValueCellProps {
+  point?: any;
+  label?: string;
   value: number | null;
   source?: { label?: string; tag: string; unit: string; end: string; filed: string; accession: string };
   sources?: { label?: string; tag: string; unit: string; end: string; filed: string; accession: string }[];
@@ -9429,7 +9326,8 @@ interface ValueCellProps {
   isHeader: boolean;
 }
 
-function ValueCell({ value, source, sources, cik, format, isHeader }: ValueCellProps) {
+function ValueCell({ value, source, sources, cik, format, isHeader, point, label }: ValueCellProps) {
+  const openEvidence = useEvidence();
   const sourceLinks = ((sources && sources.length > 0) ? sources : source ? [source] : [])
     .filter((item) => item?.tag);
   const linkedSources = sourceLinks
@@ -9443,6 +9341,9 @@ function ValueCell({ value, source, sources, cik, format, isHeader }: ValueCellP
   const cellClasses = `px-4 py-2.5 text-right tabular-nums group/cell ${
     value == null ? 'text-stone-700' : isHeader ? 'text-stone-100 font-bold' : 'text-stone-300'
   }`;
+  if (openEvidence && point) {
+    return <td className={cellClasses}><button type="button" title="Inspect value, calculation, and SEC evidence" onClick={() => openEvidence({ label: label || 'Financial value', point, format })} className="inline-flex items-center gap-1 underline decoration-amber-300/30 underline-offset-4 hover:text-amber-300">{formatValue(value, format)}{point.classification === 'calculated' && <span aria-label="Calculated" className="text-xs text-slate-500">ƒ</span>}</button></td>;
+  }
   if (!linkedSources.length || value == null) {
     return <td className={cellClasses} title={tooltip}>{formatValue(value, format)}</td>;
   }
