@@ -6,7 +6,8 @@ export const metadata: Metadata = {
   ...buildPageMetadata({
     title: 'Company Risk Profile — Credit, Liquidity, Capital & Earnings Risk from SEC Filings',
     description:
-      "Multi-pillar risk profile built from SEC XBRL data: Altman Z''-Score, interest coverage, leverage, and liquidity for operating companies — and a dedicated bank credit lens (reserve coverage, provisions, capital, loans/deposits) for financial institutions. Plus a credit-language scan of the latest 10-K. Every number links to its SEC source.",
+      'Explore current SEC risk signals with quarterly balances, trailing twelve-month financials, auditable trend charts, source filing inputs, and interactive bank funding and credit-loss scenarios. Includes annual research models and risk-language excerpts.',
+
     path: '/risk',
   }),
 };

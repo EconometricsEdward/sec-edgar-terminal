@@ -25,10 +25,14 @@
 
 import {
   extractAnnualPeriods,
+  extractQuarterlyPeriods,
+  withPeriodKind,
   buildMetricRow,
   buildSourceUrl,
 } from './xbrlParser.js';
 import { classifyIndustry, industryLabel, INDUSTRY_GROUPS } from './industry.js';
+import { sourceDocumentUrl, selectFinancialFact } from './xbrlPeriods.js';
+import { evidenceSources, evidenceCalculations } from './researchEvidence.js';
 
 const MAX_YEARS = 6;
 
@@ -49,11 +53,8 @@ const ZONE_LABELS = {
 // ----------------------------------------------------------------------------
 
 function latestPoint(row) {
-  if (!row) return null;
-  for (const v of row.values) {
-    if (v.value != null && Number.isFinite(v.value)) return v;
-  }
-  return null;
+  // Never substitute a stale input into a current-period ratio or model.
+  return pointAt(row, 0);
 }
 
 function pointAt(row, index) {
@@ -66,8 +67,13 @@ function seriesOf(row, periods) {
   return row.values
     .map((v, i) => ({
       fy: periods[i]?.fy ?? null,
+      fp: periods[i]?.fp,
+      kind: periods[i]?.kind,
       end: periods[i]?.end ?? null,
       value: v.value != null && Number.isFinite(v.value) ? v.value : null,
+      sources: v.sources || (v.source ? [v.source] : []),
+      calculations: evidenceCalculations(v),
+      formula: v.formula || null,
     }))
     .filter((p) => p.fy != null);
 }
@@ -75,38 +81,48 @@ function seriesOf(row, periods) {
 function sourcesOf(cik, ...points) {
   const seen = new Set();
   const out = [];
-  for (const p of points) {
-    const s = p?.source;
-    if (!s?.tag || seen.has(s.tag)) continue;
-    seen.add(s.tag);
+  for (const p of points) for (const s of evidenceSources(p)) {
+    const key = [s.tag, s.start, s.end, s.accession, s.value].join(':');
+    if (!s?.tag || seen.has(key)) continue;
+    seen.add(key);
     out.push({
-      tag: s.tag,
-      end: s.end || null,
-      accession: s.accession || null,
+      ...s,
+      label: s.label || p?.label || s.tag,
       url: buildSourceUrl(cik, s),
+      documentUrl: sourceDocumentUrl(cik, s),
     });
   }
   return out;
 }
 
-/** Per-period sum of several rows. Null components count as 0 only if at least
- *  one component is present for that period; tracks which components were found. */
+function derivedPoint(period, value, inputs, formula, label) {
+  const sources = inputs.flatMap((p) => evidenceSources(p).map((s) => ({ ...s, label: s.label || p?.label || s.tag })));
+  const validValue = Number.isFinite(value) ? value : null;
+  return {
+    period, value: validValue, label, sources, source: sources[0] || null, formula,
+    classification: validValue == null ? 'unavailable' : 'calculated',
+    calculations: [
+      ...inputs.flatMap((p) => [...evidenceCalculations(p), ...(p?.formula ? [{ label: p.label, value: p.value, formula: p.formula, end: p.period?.end, start: p.source?.start, unit: p.source?.unit }] : [])]),
+    ],
+    inputs: inputs.map((p) => ({ label: p?.label, value: p?.value ?? null })),
+  };
+}
+
+/** All components are required. An untagged component is not a reported zero. */
 function sumRows(rows, label, periods) {
   const componentTags = new Set();
   const values = periods.map((p, i) => {
     let sum = 0;
     let found = 0;
-    let source = null;
     for (const row of rows) {
       const v = row?.values?.[i];
       if (v && v.value != null && Number.isFinite(v.value)) {
         sum += v.value;
         found += 1;
         if (v.source?.tag) componentTags.add(v.source.tag);
-        if (!source) source = v.source;
       }
     }
-    return { period: p, value: found > 0 ? sum : null, source };
+    return derivedPoint(p, found === rows.length ? sum : null, rows.map((r) => r.values[i]), rows.map((r) => r.label).join(' + '), label);
   });
   return { key: label, label, values, format: 'currency', componentTags: Array.from(componentTags) };
 }
@@ -118,11 +134,7 @@ function ratioRows(numRow, denRow, label, periods) {
     const d = denRow?.values?.[i];
     const nOk = n && n.value != null && Number.isFinite(n.value);
     const dOk = d && d.value != null && Number.isFinite(d.value) && d.value !== 0;
-    return {
-      period: p,
-      value: nOk && dOk ? n.value / d.value : null,
-      source: nOk ? n.source : null,
-    };
+    return derivedPoint(p, nOk && dOk ? n.value / d.value : null, [n, d], `(${numRow.label}) / (${denRow.label})`, label);
   });
   return { key: label, label, values, format: 'ratio' };
 }
@@ -313,7 +325,7 @@ const BANDS = {
 
 function makeMetric({ id, label, pillar, format, row, periods, cik, bands, why, note = null, invertDeltaGood = false, extraSources = [] }) {
   const latest = latestPoint(row);
-  const prior = row ? pointAt(row, row.values.findIndex((v) => v === latest) + 1) : null;
+  const prior = consecutivePeriods(periods[1], periods[0], periods[0]?.kind) ? pointAt(row, 1) : null;
   const value = latest ? latest.value : null;
   const priorValue = prior ? prior.value : null;
   const z = bands ? bandZone(value, bands) : zone(value == null ? 'na' : 'info');
@@ -325,7 +337,7 @@ function makeMetric({ id, label, pillar, format, row, periods, cik, bands, why, 
       : null;
   const combinedSources = [...sourcesOf(cik, latest), ...extraSources];
   const seenTags = new Set();
-  const seriesOldestFirst = seriesOf(row, periods).slice(0, MAX_YEARS).reverse();
+  const seriesOldestFirst = seriesOf(row, periods).slice(0, MAX_YEARS).reverse().map((p) => ({ ...p, sources: sourcesOf(cik, p) }));
   return {
     id,
     label,
@@ -337,10 +349,19 @@ function makeMetric({ id, label, pillar, format, row, periods, cik, bands, why, 
     deltaGoodWhenDown: invertDeltaGood,
     zone: z,
     why,
+    formula: row?.values?.[0]?.formula || 'Reported SEC fact',
+    inputs: row?.values?.[0]?.inputs || [],
+    calculations: latest ? evidenceCalculations(latest) : [],
+    end: periods[0]?.end || null,
+    classification: value == null ? 'unavailable' : latest?.classification || 'calculated',
     note: [note, staleness].filter(Boolean).join(' ') || null,
     series: seriesOldestFirst, // oldest → newest for trend bars
-    trajectory: classifyTrajectory(seriesOldestFirst, invertDeltaGood),
-    sources: combinedSources.filter((s) => (seenTags.has(s.tag) ? false : (seenTags.add(s.tag), true))),
+    trajectory: bands ? classifyTrajectory(seriesOldestFirst, invertDeltaGood) : null,
+    sources: combinedSources.filter((s) => {
+      const key = [s.tag, s.start, s.end, s.accession, s.value].join(':');
+      if (seenTags.has(key)) return false;
+      seenTags.add(key); return true;
+    }),
   };
 }
 
@@ -350,13 +371,13 @@ const FINANCIAL_GROUPS = new Set([INDUSTRY_GROUPS.BANKING, INDUSTRY_GROUPS.INSUR
  * Main entry: assess risk from a companyfacts JSON + SIC code.
  * @returns {{ industry, periods, zScore, metrics, watchItems, notes }}
  */
-export function assessRisk(facts, sicCode, cik) {
+export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
   const group = classifyIndustry(sicCode);
   const isBank = group === INDUSTRY_GROUPS.BANKING;
   const isInsurer = group === INDUSTRY_GROUPS.INSURANCE;
   const isFinancial = FINANCIAL_GROUPS.has(group);
 
-  const allPeriods = extractAnnualPeriods(facts);
+  const allPeriods = basis === 'ttm' ? withPeriodKind(extractQuarterlyPeriods(facts), 'ttm') : extractAnnualPeriods(facts);
   const periods = allPeriods.slice(0, MAX_YEARS);
   const notes = [];
 
@@ -368,13 +389,17 @@ export function assessRisk(facts, sicCode, cik) {
       models: { zmijewski: null, beneish: null },
       metrics: [],
       watchItems: [],
-      notes: ['No annual (10-K) XBRL periods found for this filer. Newly public companies and foreign private issuers (20-F filers) may not expose us-gaap annual facts.'],
+      basis, stressInputs: {}, notes: ['No compatible reporting periods found in SEC company facts.'],
     };
   }
 
   // Pull every base row once. buildMetricRow applies industry tag overrides
   // (e.g. banks have no currentAssets — the override returns an empty chain).
-  const R = (key, label, format = 'currency') => buildMetricRow(facts, key, label, periods, format, group);
+  const R = (key, label, format = 'currency') => {
+    const row = buildMetricRow(facts, key, label, periods, format, group);
+    return { ...row, values: row.values.map((p) => ({ ...p, label })) };
+  };
+  const taggedRow = (tags, label) => ({ key: label, label, values: periods.map((p) => ({ period: p, label, ...(selectFinancialFact(facts, tags, p, 'USD') || { value: null }) })) });
 
   const rows = {
     totalAssets: R('totalAssets', 'Total assets'),
@@ -401,6 +426,25 @@ export function assessRisk(facts, sicCode, cik) {
     goodwill: R('goodwill', 'Goodwill'),
     intangibles: R('intangibles', 'Intangibles'),
   };
+  // Separate current and noncurrent debt concepts prevent overlapping totals.
+  rows.longTermDebt = taggedRow(['LongTermDebtNoncurrent'], 'Noncurrent debt');
+  rows.shortTermDebt = taggedRow(['DebtCurrent'], 'Current debt');
+  // Prefer cash excluding tagged restrictions. A narrow bank-cash fallback is
+  // explicit; never silently assume that an untagged restriction is zero.
+  if (isBank) {
+    const direct = taggedRow(['CashAndCashEquivalentsAtCarryingValue'], 'Cash and equivalents');
+    const total = taggedRow(['CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents'], 'Cash including restricted cash');
+    const restricted = taggedRow(['RestrictedCashAndCashEquivalents'], 'Restricted cash and equivalents');
+    const narrow = taggedRow(['CashAndDueFromBanks', 'Cash'], 'Narrow tagged cash balance');
+    rows.cash = { label: 'Tagged cash balance', key: 'cash', values: periods.map((p, i) => {
+      if (direct.values[i].value != null) return direct.values[i];
+      const a = total.values[i], b = restricted.values[i];
+      if (a.value != null && b.value != null && a.value >= b.value) return derivedPoint(p, a.value - b.value, [a, b], 'Cash including restricted cash − restricted cash and equivalents', 'Cash excluding tagged restrictions');
+      return narrow.values[i];
+    }) };
+  }
+  const stressKeys = ['totalAssets', 'equity', 'cash', 'operatingIncome', 'interestExpense'];
+  const stressInputs = Object.fromEntries(stressKeys.map((key) => [key, { value: latestPoint(rows[key])?.value ?? null, formula: latestPoint(rows[key])?.formula || latestPoint(rows[key])?.label || 'Unavailable', sources: sourcesOf(cik, latestPoint(rows[key])) }]));
 
   const metrics = [];
 
@@ -421,6 +465,8 @@ export function assessRisk(facts, sicCode, cik) {
     const provision = R('provisionForLoanLoss', 'Provision for credit losses');
     const npl = R('nonperformingLoans', 'Nonaccrual loans');
     const deposits = R('deposits', 'Deposits');
+    stressInputs.loans = { value: latestPoint(loansNet)?.value ?? null, sources: sourcesOf(cik, latestPoint(loansNet)) };
+    stressInputs.deposits = { value: latestPoint(deposits)?.value ?? null, sources: sourcesOf(cik, latestPoint(deposits)) };
 
     const grossLoans = sumRows([loansNet, allowance], 'Gross loans (net + allowance)', periods);
     const reserveCov = ratioRows(allowance, grossLoans, 'Allowance / gross loans', periods);
@@ -438,7 +484,7 @@ export function assessRisk(facts, sicCode, cik) {
         const f = htmFV.values[i];
         const a = htmAC.values[i];
         const ok = f?.value != null && a?.value != null;
-        return { period: p, value: ok ? f.value - a.value : null, source: ok ? a.source : null };
+        return derivedPoint(p, ok ? f.value - a.value : null, [f, a], 'HTM fair value − HTM carrying value', 'HTM mark');
       }),
     };
     const htmAdjEquityRow = {
@@ -447,8 +493,8 @@ export function assessRisk(facts, sicCode, cik) {
         const e = rows.equity.values[i];
         const t = rows.totalAssets.values[i];
         const u = htmUnrealizedRow.values[i];
-        const ok = e?.value != null && t?.value != null && t.value !== 0 && u?.value != null;
-        return { period: p, value: ok ? (e.value + u.value) / t.value : null, source: e?.source || null };
+        const ok = e?.value != null && t?.value != null && u?.value != null && t.value + u.value > 0;
+        return derivedPoint(p, ok ? (e.value + u.value) / (t.value + u.value) : null, [e, t, u], '(Equity + HTM mark) / (Assets + HTM mark)', 'Equity / assets after HTM mark');
       }),
     };
     const tangibleEquityRow = {
@@ -457,8 +503,8 @@ export function assessRisk(facts, sicCode, cik) {
         const e = rows.equity.values[i];
         const g = rows.goodwill.values[i];
         const n = rows.intangibles.values[i];
-        if (e?.value == null) return { period: p, value: null, source: null };
-        return { period: p, value: e.value - (g?.value || 0) - (n?.value || 0), source: e.source };
+        const ok = e?.value != null && g?.value != null && n?.value != null;
+        return derivedPoint(p, ok ? e.value - g.value - n.value : null, [e, g, n], 'Equity − goodwill − other intangibles', 'Tangible equity');
       }),
     };
     const texasDenomRow = sumRows([tangibleEquityRow, allowance], 'Tangible equity + ACL', periods);
@@ -629,7 +675,7 @@ export function assessRisk(facts, sicCode, cik) {
             const d = totalDebt.values[i];
             const c = rows.cash.values[i];
             const dOk = d?.value != null, cOk = c?.value != null;
-            return { period: p, value: dOk || cOk ? (d?.value || 0) - (c?.value || 0) : null, source: d?.source || c?.source || null };
+            return derivedPoint(p, dOk && cOk ? d.value - c.value : null, [d, c], 'Current debt + noncurrent debt − cash', 'Net debt');
           }),
         },
         periods, cik, bands: null, invertDeltaGood: true,
@@ -659,7 +705,7 @@ export function assessRisk(facts, sicCode, cik) {
       ),
     };
 
-    if (periods.length >= 2) {
+    if (periods.length >= 2 && consecutivePeriods(periods[1], periods[0], 'annual')) {
       const year = (i) => ({
         receivables: at(rows.receivables, i), revenue: at(rows.revenue, i), cogs: at(rows.cogs, i),
         currentAssets: at(rows.currentAssets, i), ppe: at(rows.ppe, i), securities: at(rows.securities, i),
@@ -668,7 +714,7 @@ export function assessRisk(facts, sicCode, cik) {
         netIncome: at(rows.netIncome, i), cfo: at(rows.ocf, i),
       });
       const bn = computeBeneish(year(0), year(1));
-      const bnRows = [rows.receivables, rows.revenue, rows.cogs, rows.currentAssets, rows.ppe, rows.securities,
+      const bnRows = [rows.receivables, rows.revenue, rows.cogs, rows.currentAssets, rows.ppe,
         rows.depreciation, rows.sga, rows.totalAssets, rows.currentLiabilities, rows.longTermDebt, rows.netIncome, rows.ocf];
       beneish = {
         ...bn,
@@ -693,12 +739,13 @@ export function assessRisk(facts, sicCode, cik) {
         const cf = rows.ocf.values[i];
         const ta = rows.totalAssets.values[i];
         const ok = ni?.value != null && cf?.value != null && ta?.value != null && ta.value !== 0;
-        return { period: p, value: ok ? (ni.value - cf.value) / ta.value : null, source: ni?.source || null };
+        return derivedPoint(p, ok ? (ni.value - cf.value) / ta.value : null, [ni, cf, ta], '(Net income − operating cash flow) / assets', 'Accruals / assets');
       }),
     };
     const grow = (row, i) => {
       const a = row.values[i];
-      const b = row.values[i + 1];
+      const b = row.values[i + (basis === 'ttm' ? 4 : 1)];
+      if (!a || !b || !consecutivePeriods(b.period, a.period, 'annual')) return null;
       return a?.value != null && b?.value != null && b.value > 0 ? a.value / b.value - 1 : null;
     };
     const recGapRow = {
@@ -706,7 +753,10 @@ export function assessRisk(facts, sicCode, cik) {
       values: periods.map((p, i) => {
         const gr = grow(rows.receivables, i);
         const gs = grow(rows.revenue, i);
-        return { period: p, value: gr != null && gs != null ? gr - gs : null, source: rows.receivables.values[i]?.source || null };
+        const j = i + (basis === 'ttm' ? 4 : 1);
+        return derivedPoint(p, gr != null && gs != null ? gr - gs : null,
+          [rows.receivables.values[i], rows.receivables.values[j], rows.revenue.values[i], rows.revenue.values[j]],
+          '(Current receivables / year-ago receivables − 1) − (current revenue / year-ago revenue − 1)', 'Receivables growth − revenue growth');
       }),
     };
     metrics.push(
@@ -751,8 +801,7 @@ export function assessRisk(facts, sicCode, cik) {
       values: periods.map((p, i) => {
         const ca = rows.currentAssets.values[i];
         const inv = rows.inventory.values[i];
-        if (ca?.value == null) return { period: p, value: null, source: null };
-        return { period: p, value: ca.value - (inv?.value || 0), source: ca.source };
+        return derivedPoint(p, ca?.value != null && inv?.value != null ? ca.value - inv.value : null, [ca, inv], 'Current assets − inventory', 'Quick assets');
       }),
     };
     const quickRatio = ratioRows(quickNum, rows.currentLiabilities, 'Quick ratio', periods);
@@ -769,7 +818,7 @@ export function assessRisk(facts, sicCode, cik) {
         id: 'quick_ratio', label: 'Quick ratio (ex-inventory)', pillar: 'liquidity', format: 'x',
         row: quickRatio, periods, cik, bands: BANDS.quickRatio,
         why: 'The stricter test: can near-cash assets alone cover current liabilities without selling a single unit of inventory.',
-        note: hasInventory ? null : 'No inventory tagged \u2014 quick ratio equals the current ratio for this filer.',
+        note: hasInventory ? null : 'Inventory is not tagged for this period. The quick ratio is unavailable; missing inventory is not assumed to be zero.',
       }),
       makeMetric({
         id: 'cash_to_assets', label: 'Cash / assets', pillar: 'liquidity', format: 'pct',
@@ -783,6 +832,7 @@ export function assessRisk(facts, sicCode, cik) {
   const netMargin = ratioRows(rows.netIncome, rows.revenue, 'Net margin', periods);
   const niSeries = seriesOf(rows.netIncome, periods);
   const lossYears = niSeries.filter((p) => p.value != null && p.value < 0).length;
+  const reportedYears = niSeries.filter((p) => p.value != null).length;
 
   metrics.push(
     makeMetric({
@@ -791,18 +841,26 @@ export function assessRisk(facts, sicCode, cik) {
       why: 'Earnings power is the first line of defense against every other risk on this page \u2014 leverage and thin liquidity are survivable while margins hold.',
     }),
     makeMetric({
-      id: 'loss_years', label: `Loss-making fiscal years (last ${niSeries.length})`, pillar: 'profitability', format: 'count',
+      id: 'loss_years', label: `Loss-making ${basis === 'ttm' ? 'TTM windows' : 'fiscal years'}`, pillar: 'profitability', format: 'count',
       row: rows.netIncome, periods, cik, bands: null,
       why: 'How often the bottom line has gone negative in the window shown. Repeated losses compound every credit metric above.',
-      note: lossYears > 0 ? `${lossYears} of the last ${niSeries.length} fiscal years closed at a net loss.` : 'No loss years in the window shown.',
+      note: `${lossYears} losses among ${reportedYears} reported ${basis === 'ttm' ? 'overlapping TTM windows' : 'fiscal years'}; ${niSeries.length - reportedYears} missing observations.`,
     }),
   );
   // overwrite value for the loss-years metric (count, not the raw net income)
   const lossMetric = metrics[metrics.length - 1];
-  lossMetric.value = lossYears;
+  lossMetric.value = reportedYears ? lossYears : null;
   lossMetric.prior = null;
   lossMetric.delta = null;
-  lossMetric.zone = lossYears === 0 ? zone('low') : lossYears === 1 ? zone('moderate') : lossYears === 2 ? zone('elevated') : zone('high');
+  lossMetric.zone = !reportedYears ? zone('na') : lossYears === 0 ? zone('low') : lossYears === 1 ? zone('moderate') : lossYears === 2 ? zone('elevated') : zone('high');
+  lossMetric.series = lossMetric.series.map((p) => ({ ...p, value: p.value == null ? null : Number(p.value < 0) }));
+  lossMetric.formula = 'Count of reported net-income observations below zero';
+  lossMetric.sources = sourcesOf(cik, ...rows.netIncome.values);
+  lossMetric.classification = reportedYears ? 'calculated' : 'unavailable';
+  lossMetric.trajectory = null;
+
+  // Academic models retain their annual estimation basis. TTM is for ratios.
+  if (basis !== 'annual') { zScore = null; zmijewski = null; beneish = null; }
 
   // ---------- watch items ----------
   const severityRank = { high: 0, elevated: 1 };
@@ -836,6 +894,8 @@ export function assessRisk(facts, sicCode, cik) {
   }
 
   return {
+    basis,
+    stressInputs,
     industry: { group, label: industryLabel(group), isFinancial, isBank },
     periods,
     zScore,
@@ -1008,7 +1068,7 @@ const BENEISH_LABELS = {
  * untagged; returns null with a missing list when the 5-variable core is short.
  */
 export function computeBeneish(curr, prev) {
-  const assumptions = [];
+  const assumptions = ['TATA uses (net income − operating cash flow) / assets as an accruals proxy; DEPI uses tagged depreciation and amortization. These differ from a strict replication of the original sample definitions.'];
   const missing = [];
   const num = (v) => (v != null && Number.isFinite(v) ? v : null);
   const pos = (v) => (num(v) != null && v > 0 ? v : null);
@@ -1036,11 +1096,9 @@ export function computeBeneish(curr, prev) {
     const soft = (y) => {
       const ta = pos(y.totalAssets), ca = num(y.currentAssets), pp = num(y.ppe);
       if (!ta || ca == null || pp == null) return null;
-      const sec = num(y.securities);
-      if (sec == null && !assumptions.includes('Short-term securities treated as 0 (not tagged).')) {
-        assumptions.push('Short-term securities treated as 0 (not tagged).');
-      }
-      return 1 - (ca + pp + (sec || 0)) / ta;
+      // Beneish (1999), Table 2: noncurrent assets other than PP&E / assets.
+      // Short-term securities are already included in current assets.
+      return 1 - (ca + pp) / ta;
     };
     const aT = soft(curr), aP = soft(prev);
     ix.AQI = aT != null && aP != null && aP > 0 ? aT / aP : null;
@@ -1077,10 +1135,7 @@ export function computeBeneish(curr, prev) {
       const ta = pos(y.totalAssets), cl = num(y.currentLiabilities);
       if (!ta || cl == null) return null;
       const ltd = num(y.longTermDebt);
-      if (ltd == null && !assumptions.includes('Long-term debt treated as 0 in LVGI (not tagged).')) {
-        assumptions.push('Long-term debt treated as 0 in LVGI (not tagged).');
-      }
-      return ((ltd || 0) + cl) / ta;
+      return ltd == null ? null : (ltd + cl) / ta;
     };
     const lT = lev(curr), lP = lev(prev);
     ix.LVGI = lT != null && lP != null && lP > 0 ? lT / lP : null;
@@ -1144,14 +1199,14 @@ export function computeBeneish(curr, prev) {
  * Returns null unless there is a streak of \u22652 consecutive steps one way.
  */
 export function classifyTrajectory(seriesOldestFirst, goodWhenDown = false) {
-  const vals = (seriesOldestFirst || [])
-    .map((p) => p.value)
-    .filter((v) => v != null && Number.isFinite(v));
+  const series = seriesOldestFirst || [];
+  const vals = series.map((p) => p.value);
   if (vals.length < 3) return null;
   const harmful = (a, b) => (goodWhenDown ? b > a : b < a); // step a -> b
   const beneficial = (a, b) => (goodWhenDown ? b < a : b > a);
   const lastA = vals[vals.length - 2];
   const lastB = vals[vals.length - 1];
+  if (!Number.isFinite(lastA) || !Number.isFinite(lastB)) return null;
   let type = null;
   if (harmful(lastA, lastB)) type = 'deteriorating';
   else if (beneficial(lastA, lastB)) type = 'improving';
@@ -1159,6 +1214,7 @@ export function classifyTrajectory(seriesOldestFirst, goodWhenDown = false) {
   let steps = 0;
   for (let i = vals.length - 1; i > 0; i--) {
     const a = vals[i - 1], b = vals[i];
+    if (!Number.isFinite(a) || !Number.isFinite(b) || !consecutivePeriods(series[i - 1], series[i], series[i].kind)) break;
     const same = type === 'deteriorating' ? harmful(a, b) : beneficial(a, b);
     if (!same) break;
     steps += 1;
@@ -1171,4 +1227,10 @@ export function classifyTrajectory(seriesOldestFirst, goodWhenDown = false) {
     years,
     label: `${type === 'deteriorating' ? 'worsening' : 'improving'} ${years}y`,
   };
+}
+
+function consecutivePeriods(a, b, kind = 'annual') {
+  if (!a?.end || !b?.end) return a?.fy != null && b?.fy - a.fy === 1;
+  const days = (Date.parse(b.end) - Date.parse(a.end)) / 86400000;
+  return kind === 'ttm' ? days >= 60 && days <= 120 : days >= 300 && days <= 400;
 }
