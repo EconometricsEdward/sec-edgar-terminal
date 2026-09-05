@@ -325,7 +325,7 @@ const BANDS = {
 
 function makeMetric({ id, label, pillar, format, row, periods, cik, bands, why, note = null, invertDeltaGood = false, extraSources = [] }) {
   const latest = latestPoint(row);
-  const prior = pointAt(row, 1);
+  const prior = consecutivePeriods(periods[1], periods[0], periods[0]?.kind) ? pointAt(row, 1) : null;
   const value = latest ? latest.value : null;
   const priorValue = prior ? prior.value : null;
   const z = bands ? bandZone(value, bands) : zone(value == null ? 'na' : 'info');

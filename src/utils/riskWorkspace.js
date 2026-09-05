@@ -1,5 +1,5 @@
 // Risk-page presentation and deterministic, before-tax sensitivity calculations.
-export const RISK_VERSION = 'risk-workspace-v2';
+export const RISK_VERSION = 'risk-workspace-v3';
 export const SCREEN_LABELS = { low: 'Within screen', moderate: 'Monitor', elevated: 'Review', high: 'Priority review', info: 'Context', na: 'Unavailable' };
 export const PILLAR_LABELS = { credit: 'Credit', capital: 'Capital', liquidity: 'Liquidity', profitability: 'Earnings', quality: 'Earnings quality' };
 

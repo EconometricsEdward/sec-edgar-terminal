@@ -127,3 +127,11 @@ test('CSV preserves negative numeric observations while escaping formula-like te
   const csv=riskHistoryCsv({ticker:'TEST'},{basis:'annual'},{label:'=unsafe',format:'usd',series:[{end:'2025-12-31',value:-15,sources:[]}]});
   assert.match(csv,/"-15"/); assert.match(csv,/"'=unsafe"/);
 });
+
+test('headline deltas do not label a skipped fiscal year as the prior year', () => {
+  const facts=bankFacts();
+  for (const concept of Object.values(facts['us-gaap'])) concept.units.USD=concept.units.USD.map((p)=>p.fy===2024?{...p,fy:2023,end:'2023-12-31',start:p.start?'2023-01-01':undefined,filed:'2024-02-01',accn:'0000000001-24-000001'}:p);
+  const p=decorateRiskProfile(assessRisk(facts,6021,1));
+  assert.equal(metric(p,'bank_equity_assets').delta,null);
+  assert.equal(metric(p,'bank_equity_assets').prior,null);
+});
