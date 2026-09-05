@@ -128,3 +128,8 @@ export function riskHistoryCsv(data, profile, metric) {
   const rows = [['Ticker', 'Metric', 'Basis', 'Period end', 'Value (raw; percentages as fractions)', 'Unit', 'SEC filing URLs'], ...metric.series.map((p) => [data.ticker, metric.label, profile.basis, p.end, p.value, metric.format, [...new Set(p.sources.map((s) => s.documentUrl).filter(Boolean))].join(' ')])];
   return rows.map((r) => r.map(quote).join(',')).join('\r\n');
 }
+
+// Keep the annual fields used by already-open, pre-workspace clients.
+export function riskResponseForVersion(data, version) {
+  return version ? data : { ...data, ...data.annual, filingScan: null };
+}

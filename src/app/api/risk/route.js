@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { assessRisk, scanRiskLanguage } from '../../../utils/riskAnalysis.js';
-import { decorateRiskProfile, RISK_VERSION } from '../../../utils/riskWorkspace.js';
+import { decorateRiskProfile, RISK_VERSION, riskResponseForVersion } from '../../../utils/riskWorkspace.js';
 import { getOperatingTicker } from '../../../utils/tickerMap.js';
 import { fetchFilingText } from '../../../utils/filingTextParser.js';
 import { secResearchJson, submissionRows } from '../../../utils/secResearchData.js';
@@ -46,10 +46,11 @@ export async function GET(request) {
   const rl = await checkRateLimit({ key: `rl:risk:${getClientIp(request)}`, windowMs: 60000, max: 20 });
   if (!rl.allowed) return rateLimitedResponse(rl);
   const scanOnly = params.get('include') === 'disclosures';
+  const profileResponse = (data) => response(riskResponseForVersion(data, params.get('v')));
   try {
     if (!scanOnly) {
       const cached = await warmGet(RISK_VERSION, ticker);
-      if (cached) return response(cached);
+      if (cached) return profileResponse(cached);
     }
     const entry = await getOperatingTicker(ticker);
     if (!entry) return NextResponse.json({ error: `No SEC operating company matched ${ticker}. Fund tickers are covered on the Funds page.` }, { status: 404 });
@@ -66,7 +67,7 @@ export async function GET(request) {
     const data = { ticker, cik, companyName: submissions.name || entry.name, sic: submissions.sic, sicDescription: submissions.sicDescription,
       annual, current, version: RISK_VERSION, generatedAt: new Date().toISOString() };
     await warmSet(RISK_VERSION, ticker, data, 900);
-    return response(data);
+    return profileResponse(data);
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Could not load the SEC risk profile. Please retry.' }, { status: 502 });
   }
