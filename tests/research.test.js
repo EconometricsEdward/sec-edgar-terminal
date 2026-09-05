@@ -82,3 +82,11 @@ test('bank MD&A narrative introduction is bounded before the financial statement
   assert.equal(mda.paragraphs.length, 2);
   assert.ok(!mda.paragraphs.some((p) => p.includes('must not be included')));
 });
+
+test('similar financial wording does not pair different business subjects', () => {
+  const oldText = "Item 2. Management's Discussion and Analysis\n\nServices gross margin percentage increased during the third quarter and first nine months due primarily to a different mix of services, partially offset by higher costs.";
+  const newText = "Item 2. Management's Discussion and Analysis\n\nProducts gross margin and gross margin percentage increased during the third quarter and first nine months primarily due to a different mix of products and tariff refunds, partially offset by higher costs.";
+  const result = compareDisclosureText(oldText, newText, '10-Q');
+  assert.ok(!result.changes.some((c) => c.type === 'modified'));
+  assert.deepEqual(new Set(result.changes.map((c) => c.type)), new Set(['added', 'removed']));
+});

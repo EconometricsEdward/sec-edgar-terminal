@@ -2,7 +2,7 @@ import { daysBetween } from './xbrlPeriods.js';
 import { buildMetricRow, extractAnnualPeriods, extractQuarterlyPeriods } from './xbrlParser.js';
 import { metricDefinitions } from './researchWorkspace.js';
 
-export const CHANGE_VERSION = 'filing-diff-v2-context-v2';
+export const CHANGE_VERSION = 'filing-diff-v3-context-v2';
 const REPORT = /^(10-K|10-Q|20-F|40-F)(\/A)?$/;
 const RISK_TERMS = [
   ['Liquidity and funding', /\bliquidity\b|\bfunding\b|\bdeposits?\b|\bcash runway\b/i],
@@ -35,6 +35,7 @@ export function selectFilingPair(filings, { comparison = 'year', baseline = '' }
 }
 
 const normalized = (s) => s.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const subject = (s) => normalized(s).split(' ').find((word) => word.length > 2 && !['the', 'and', 'our', 'its', 'this', 'that'].includes(word));
 const tokens = (s) => new Set(normalized(s).split(' ').filter((w) => w.length > 2));
 function similarity(a, b) {
   let common = 0;
@@ -85,7 +86,7 @@ export function extractResearchSections(text, form) {
       .filter((p) => !headingOnly.test(p));
     const seen = new Set();
     const paragraphs = all.filter((p) => { const key = normalized(p); if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, 220);
-    return { id: definition.id, label: definition.label, found: paragraphs.length > 0, referenceOnly: all.length > 0 && all.every((p) => /^(?:refer to|see |there (?:have been|were) no material changes)/i.test(p)), extraction, paragraphs, totalParagraphs: all.length, truncated: all.length > 220 };
+    return { id: definition.id, label: definition.label, found: paragraphs.length > 0, referenceOnly: all.length > 0 && all.every((p) => /^(?:refer to|see |there (?:have been|were) no material changes)|incorporated by reference|no material changes to/i.test(p)), extraction, paragraphs, totalParagraphs: all.length, truncated: all.length > 220 };
   });
   return sections;
 }
@@ -109,7 +110,7 @@ export function compareDisclosureText(priorText, currentText, priorForm, current
       const words = tokens(paragraph);
       let best = -1; let score = 0.52;
       for (let i = 0; i < old.paragraphs.length; i++) {
-        if (used.has(i)) continue;
+        if (used.has(i) || subject(paragraph) !== subject(old.paragraphs[i])) continue;
         const candidate = similarity(words, oldTokens[i]);
         if (candidate > score) { score = candidate; best = i; }
       }
