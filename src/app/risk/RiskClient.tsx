@@ -27,7 +27,10 @@ export default function RiskClient({ initialTicker = '' }: { initialTicker?: str
   const explorerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!query) return;
+    if (!query) { setData(null); setError(''); setLoading(false); return; }
+    if (!/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(query)) {
+      setData(null); setLoading(false); setError('Enter a valid company ticker (for example JPM or BRK.B).'); return;
+    }
     const controller = new AbortController();
     setLoading(true); setError(''); setData(null); setControls({}); setExported(false);
     fetch(`/api/risk?ticker=${encodeURIComponent(query)}&v=${RISK_VERSION}`, { signal: controller.signal })
@@ -36,7 +39,7 @@ export default function RiskClient({ initialTicker = '' }: { initialTicker?: str
         if (controller.signal.aborted) return;
         setData(body); setBasis(body.current.periods.length ? 'ttm' : 'annual');
         setSelected(''); setPillar('all'); setOnlyMissing(false); setTab('overview');
-      }).catch((err) => { if (!controller.signal.aborted) setError(err.message); })
+      }).catch((err) => { if (!controller.signal.aborted) setError(err.message === 'Failed to fetch' ? 'The risk service could not be reached. Please retry.' : err.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [query, retry]);
@@ -63,13 +66,13 @@ export default function RiskClient({ initialTicker = '' }: { initialTicker?: str
   const heroIds = profile?.industry.isBank ? ['bank_equity_assets', 'provision_rate', 'loans_deposits', 'reserve_coverage'] : profile?.industry.isFinancial ? ['ins_equity_assets', 'loss_ratio', 'liab_to_assets', 'net_margin'] : ['interest_coverage', 'liab_to_assets', 'current_ratio', 'net_margin'];
 
   return <div className={s.page}>
-    <header className={s.pageHeader}>
+    <div className={s.pageHeader}>
       <div><div className={s.eyebrow}><ShieldCheck size={15} /> Company risk research</div><h1>See the pressure points.</h1><p>Understand what changed, inspect the evidence, and test what could happen next.</p></div>
       <form className={s.search} onSubmit={(e) => { e.preventDefault(); search(input); }}>
         <label htmlFor="risk-ticker">Company ticker</label>
         <div><Search size={17} /><input id="risk-ticker" value={input} onChange={(e) => setInput(e.target.value)} placeholder="JPM, AAPL, BAC…" maxLength={12} autoComplete="off" spellCheck={false} /><button type="submit" disabled={!input.trim()} aria-label="Load risk profile"><ArrowRight size={18} /></button></div>
       </form>
-    </header>
+    </div>
     {loading && <div className={s.loading} role="status"><Loader2 className={s.spin} size={24} /><h2>Building {query}’s risk profile</h2><p>Matching SEC reporting periods and tracing calculation inputs.</p><div className={s.skeletons}>{[1,2,3,4].map((n) => <span key={n} />)}</div></div>}
     {error && <div className={s.empty} role="alert"><CircleAlert /><h2>We couldn’t load this company</h2><p>{error}</p><button className={s.button} onClick={() => setRetry((n) => n + 1)}>Try again</button></div>}
     {!query && !data && <div className={s.empty}><ShieldCheck size={34} /><h2>Start with a company you follow</h2><p>A source-linked view of credit, capital, liquidity, and earnings. No account required.</p><div className={s.actions}>{['JPM','BAC','AAPL','F'].map((t) => <button className={s.button} onClick={() => search(t)} key={t}>{t}<ArrowUpRight size={14} /></button>)}</div></div>}
