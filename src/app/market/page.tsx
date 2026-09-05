@@ -4,9 +4,9 @@ import { buildPageMetadata } from '../../utils/siteMetadata';
 
 export const metadata: Metadata = {
   ...buildPageMetadata({
-    title: 'Market Overview — SEC Market Risk Atlas',
+    title: 'Market Overview — SEC Fundamentals, Sector Heatmap & Company Screener',
     description:
-      'A research-grade SEC filing market map with trade-book exposure, market-risk weather, asset-class exposure indexes, and derivatives exposure signals across public-company filings.',
+      'Explore SEC company fundamentals with a market briefing, sector heatmap, company screener, peer comparisons, source-linked financial history, and saved research views.',
     path: '/market',
   }),
 };

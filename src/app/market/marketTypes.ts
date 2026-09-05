@@ -1,0 +1,12 @@
+export type Basis = 'annual' | 'ttm';
+export type MarketView = { tab: string; basis: Basis; cohort: string; query: string; screen: string; sort: string; direction: string; metric: string; statistic: string; selected: string[] };
+export type Period = { end: string; start?: string | null; filed: string; form: string; accession: string; fy: number; fp: string };
+export type Company = { version: string; ticker: string; name: string; cik: string; sic: string; cohorts: string[]; observedAt: string; metrics: Record<Basis, Record<string, number | null>>; reports: Record<Basis, Period | null> };
+export type Cohort = { id: string; label: string; title: string; description: string; tickers: string[]; disclosureTerms: string };
+export type Saved = { version: number; watchlist: string[]; views: { name: string; query: string }[]; baselines: Record<string, Company> };
+export type Stats = { count: number; total: number; median: number | null; mean: number | null; positive: number; negative: number; positivePct: number | null };
+export type MarketData = { version: string; generatedAt: string; requested: number; companies: Company[]; cohorts: Cohort[]; failures: { ticker: string; reason: string }[]; historyPersistence: boolean; observations: { observedAt: string; companies: number; tickers: string[]; revenueGrowth: Stats; netMargin: Stats }[] };
+export type Source = { tag: string; taxonomy: string; unit: string; start: string | null; end: string; filed: string; accession: string; value: number; revised?: boolean };
+export type Input = { value: number | null; classification: string; formula: string | null; sources: Source[]; calculations: { value: number; formula: string; start: string; end: string; unit: string }[] };
+export type Evidence = { period: Period; inputs: Record<string, Input>; metrics: Record<string, number | null>; priorRevenue: (Input & { period: Period }) | null };
+export type CompanyDetail = Company & { evidence: Record<Basis, Evidence[]> };
