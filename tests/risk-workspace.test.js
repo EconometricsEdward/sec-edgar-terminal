@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assessRisk, classifyTrajectory } from '../src/utils/riskAnalysis.js';
-import { decorateRiskProfile, runRiskStress, riskDelta, riskBrief, riskHistoryCsv } from '../src/utils/riskWorkspace.js';
+import { decorateRiskProfile, runRiskStress, riskDelta, riskBrief, riskHistoryCsv, riskResponseForVersion } from '../src/utils/riskWorkspace.js';
 
 function bankFacts({ missingAllowance = false, missingCurrentEquity = false } = {}) {
   const values = { Assets: 1000, Liabilities: 900, StockholdersEquity: 100, CashAndDueFromBanks: 80, FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss: 500, FinancingReceivableAllowanceForCreditLossExcludingAccruedInterest: 20, Deposits: 800, DebtSecuritiesHeldToMaturityAmortizedCostAfterAllowanceForCreditLoss: 200, HeldToMaturitySecuritiesFairValue: 160, NetIncomeLoss: 15 };
@@ -134,4 +134,14 @@ test('headline deltas do not label a skipped fiscal year as the prior year', () 
   const p=decorateRiskProfile(assessRisk(facts,6021,1));
   assert.equal(metric(p,'bank_equity_assets').delta,null);
   assert.equal(metric(p,'bank_equity_assets').prior,null);
+});
+
+test('unversioned Risk responses retain the annual contract for already-open clients', () => {
+  const annual=bank(), current={...annual,basis:'ttm'};
+  const data={ticker:'TEST',annual,current};
+  const legacy=riskResponseForVersion(data,null);
+  assert.equal(legacy.ticker,'TEST'); assert.equal(legacy.industry.isBank,true);
+  assert.equal(legacy.metrics,annual.metrics); assert.equal(legacy.periods,annual.periods);
+  assert.equal(legacy.models,annual.models); assert.equal(legacy.filingScan,null);
+  assert.equal(riskResponseForVersion(data,'risk-workspace-v3'),data);
 });
