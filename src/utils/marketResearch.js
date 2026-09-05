@@ -1,4 +1,4 @@
-export const MARKET_VERSION = 'market-research-v1';
+export const MARKET_VERSION = 'market-research-v2';
 export const MARKET_SAVED_KEY = 'edgar:market-research:v1';
 export const MARKET_METRICS = [
   { key: 'revenueGrowth', label: 'Revenue growth', unit: 'pct', formula: '(Revenue / prior-year revenue − 1) × 100', inputs: ['revenue'], growth: true },

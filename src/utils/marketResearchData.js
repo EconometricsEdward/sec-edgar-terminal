@@ -1,10 +1,29 @@
 import { buildMetricRow, extractAnnualPeriods, extractQuarterlyPeriods } from './xbrlParser.js';
-import { withPeriodKind, daysBetween } from './xbrlPeriods.js';
+import { withPeriodKind, daysBetween, selectFinancialFact } from './xbrlPeriods.js';
+import { classifyIndustry, INDUSTRY_GROUPS } from './industry.js';
 import { evidenceSources, evidenceCalculations } from './researchEvidence.js';
 import { MARKET_METRICS, MARKET_VERSION, isNumber } from './marketResearch.js';
 
 const INPUTS = [...new Set(MARKET_METRICS.flatMap((m) => m.inputs))];
 const percent = (a, b) => isNumber(a) && isNumber(b) && b > 0 ? a / b * 100 : null;
+
+// Revenue denominators must represent the full business, never a partial gross
+// interest or premium line from the general statement display's fallbacks.
+export function marketRevenuePoint(facts, period, sic) {
+  const industry = classifyIndustry(sic);
+  if (industry === INDUSTRY_GROUPS.BANKING) {
+    const direct = selectFinancialFact(facts, ['RevenuesNetOfInterestExpense'], period);
+    if (direct) return direct;
+    const interest = buildMetricRow(facts, 'netInterestIncome', '', [period], 'currency', sic).values[0];
+    const other = buildMetricRow(facts, 'noninterestIncome', '', [period], 'currency', sic).values[0];
+    if (!isNumber(interest.value) || !isNumber(other.value)) return { value: null, classification: 'unavailable' };
+    return { value: interest.value + other.value, classification: 'calculated', formula: 'Net interest income + noninterest income',
+      sources: [...evidenceSources(interest), ...evidenceSources(other)],
+      calculations: [interest, other].flatMap((p) => [...evidenceCalculations(p), ...(p.formula ? [{ value: p.value, formula: p.formula, start: period.start, end: period.end, unit: 'USD' }] : [])]) };
+  }
+  if (industry === INDUSTRY_GROUPS.INSURANCE) return selectFinancialFact(facts, ['Revenues', 'Revenue'], period) || { value: null, classification: 'unavailable' };
+  return buildMetricRow(facts, 'revenue', '', [period], 'currency', sic).values[0];
+}
 export function marketPeriodMetrics(inputs, priorInputs) {
   const v = (key) => inputs[key]?.value ?? null;
   const previous = priorInputs?.revenue?.value;
@@ -20,7 +39,7 @@ export function marketPeriodMetrics(inputs, priorInputs) {
 }
 
 function buildBasis(facts, periods, sic, limit) {
-  const rows = Object.fromEntries(INPUTS.map((key) => [key, buildMetricRow(facts, key, key, periods, 'currency', sic).values]));
+  const rows = Object.fromEntries(INPUTS.map((key) => [key, key === 'revenue' ? periods.map((p) => marketRevenuePoint(facts, p, sic)) : buildMetricRow(facts, key, key, periods, 'currency', sic).values]));
   const points = periods.map((period, i) => ({ period, inputs: Object.fromEntries(INPUTS.map((key) => {
     const point = rows[key][i];
     return [key, { value: point.value, classification: point.classification || 'unavailable', formula: point.formula || null,
@@ -42,7 +61,8 @@ export function buildMarketCompany({ ticker, cik, name, sic, facts }, cohorts, o
   if (!annual.length && !ttm.length) throw new Error('No supported annual or quarterly financial contexts.');
   const metrics = { annual: annual[0]?.metrics || {}, ttm: ttm[0]?.metrics || {} };
   const reports = { annual: annual[0]?.period || null, ttm: ttm[0]?.period || null };
-  return { version: MARKET_VERSION, ticker, cik, name, sic, cohorts, observedAt, metrics, reports, evidence: { annual, ttm } };
+  return { version: MARKET_VERSION, ticker, cik, name, sic, cohorts, observedAt, metrics, reports,
+    revenueBasis: classifyIndustry(sic) === INDUSTRY_GROUPS.BANKING ? 'Bank net revenue after interest expense' : 'Reported total revenue', evidence: { annual, ttm } };
 }
 export function marketCompanySummary(company) {
   const { evidence: _evidence, ...summary } = company;

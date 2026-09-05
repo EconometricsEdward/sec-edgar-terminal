@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMarketCompany, marketPeriodMetrics, marketCompanySummary } from '../src/utils/marketResearchData.js';
+import { buildMarketCompany, marketPeriodMetrics, marketCompanySummary, marketRevenuePoint } from '../src/utils/marketResearchData.js';
 import { MARKET_VERSION, DEFAULT_MARKET_VIEW, metricStats, selectMarketCompanies, parseMarketView, marketViewQuery, parseMarketSaved, baselineChanges, marketTrendPoints, marketCsv, formatMarket, isOlderReport } from '../src/utils/marketResearch.js';
 
 const inputs = (values) => Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { value }]));
@@ -9,6 +9,22 @@ function company(ticker, values, end = '2026-06-30') {
 }
 const obs = (val, start, end, fp, fy) => ({ val, start, end, fp, fy, form: fp === 'FY' ? '10-K' : '10-Q', filed: `${Number(end.slice(0, 4)) + (fp === 'FY' ? 1 : 0)}-${fp === 'FY' ? '02-01' : `${String(Number(end.slice(5, 7)) + 1).padStart(2, '0')}-25`}`, accn: `0000000001-${String(fy).slice(-2)}-00000${fp === 'FY' ? 4 : fp.slice(1)}` });
 const make = (facts) => buildMarketCompany({ ticker: 'TEST', cik: '0000000001', name: 'Test', sic: '3571', facts }, ['software'], '2026-09-05T00:00:00Z');
+
+test('Bank revenue uses net revenue and never gross interest income as the denominator', () => {
+  const period = { kind: 'annual', end: '2025-12-31', start: '2025-01-01', fy: 2025, fp: 'FY' };
+  const facts = { 'us-gaap': Object.fromEntries([['InterestIncomeOperating', 100], ['RevenuesNetOfInterestExpense', 60], ['InterestIncomeExpenseNet', 40], ['NoninterestIncome', 20]].map(([tag, val]) => [tag, { units: { USD: [obs(val, '2025-01-01', '2025-12-31', 'FY', 2025)] } }])) };
+  assert.equal(marketRevenuePoint(facts, period, '6021').value, 60);
+  delete facts['us-gaap'].RevenuesNetOfInterestExpense;
+  const calculated = marketRevenuePoint(facts, period, '6021');
+  assert.equal(calculated.value, 60); assert.equal(calculated.sources.length, 2);
+  delete facts['us-gaap'].NoninterestIncome;
+  assert.equal(marketRevenuePoint(facts, period, '6021').value, null);
+});
+test('Insurance premium income alone cannot substitute total revenue', () => {
+  const period = { kind: 'annual', end: '2025-12-31', start: '2025-01-01', fy: 2025, fp: 'FY' };
+  const facts = { 'us-gaap': { PremiumsEarnedNet: { units: { USD: [obs(70, '2025-01-01', '2025-12-31', 'FY', 2025)] } } } };
+  assert.equal(marketRevenuePoint(facts, period, '6311').value, null);
+});
 
 test('Market ratios require every component, retain zero, and reject nonpositive denominators', () => {
   const missing = marketPeriodMetrics(inputs({ revenue: 100, operatingCashFlow: 20, totalAssets: 200 }));
