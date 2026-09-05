@@ -1,66 +1,875 @@
-'use client';
-import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { ArrowLeft, ArrowUpRight, Bookmark, Download, RefreshCw, Share2, ShieldCheck } from 'lucide-react';
-import { ASSET_LABELS } from '../../../utils/fundResearch';
-import { ageDays, money, number, pct, researchBrief, useFundShelf } from '../fundUi';
-import type { Exposure, Fund, Holding } from '../fundTypes';
-import s from '../fund.module.css';
+"use client";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  Bookmark,
+  Download,
+  RefreshCw,
+  Share2,
+  ShieldCheck,
+} from "lucide-react";
+import { ASSET_LABELS } from "../../../utils/fundResearch";
+import {
+  ageDays,
+  money,
+  number,
+  pct,
+  researchBrief,
+  useFundShelf,
+} from "../fundUi";
+import type { Exposure, Fund, Holding } from "../fundTypes";
+import s from "../fund.module.css";
 const assetLabels: Record<string, string> = ASSET_LABELS;
 export default function FundClient({ urlTicker }: { urlTicker: string }) {
   const params = useSearchParams();
-  const [tab, setTab] = useState(['overview', 'holdings', 'sources', 'notebook'].includes(params.get('tab') || '') ? params.get('tab')! : 'overview');
-  const [accession, setAccession] = useState(params.get('accession') || '');
-  const [query, setQuery] = useState(params.get('q') || ''), [draftQuery, setDraftQuery] = useState(params.get('q') || '');
-  const [asset, setAsset] = useState(params.get('asset') || ''), [country, setCountry] = useState(params.get('country') || '');
-  const [sort, setSort] = useState(params.get('sort') || 'value'), [direction, setDirection] = useState(params.get('direction') || 'desc');
-  const [page, setPage] = useState(Math.max(1, Number(params.get('page')) || 1));
-  const [data, setData] = useState<Fund | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState('');
-  const [retry, setRetry] = useState(0), [message, setMessage] = useState(''), [detail, setDetail] = useState<Holding | null>(null);
-  const [notes, setNotes] = useState(''), [notesReady, setNotesReady] = useState(false);
+  const [tab, setTab] = useState(
+    ["overview", "holdings", "sources", "notebook"].includes(
+      params.get("tab") || "",
+    )
+      ? params.get("tab")!
+      : "overview",
+  );
+  const [accession, setAccession] = useState(params.get("accession") || "");
+  const [query, setQuery] = useState(params.get("q") || ""),
+    [draftQuery, setDraftQuery] = useState(params.get("q") || "");
+  const [asset, setAsset] = useState(params.get("asset") || ""),
+    [country, setCountry] = useState(params.get("country") || "");
+  const [sort, setSort] = useState(params.get("sort") || "value"),
+    [direction, setDirection] = useState(params.get("direction") || "desc");
+  const [page, setPage] = useState(
+    Math.max(1, Number(params.get("page")) || 1),
+  );
+  const [data, setData] = useState<Fund | null>(null),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState("");
+  const [retry, setRetry] = useState(0),
+    [message, setMessage] = useState(""),
+    [detail, setDetail] = useState<Holding | null>(null);
+  const [notes, setNotes] = useState(""),
+    [notesReady, setNotesReady] = useState(false);
   const shelf = useFundShelf();
   const evidenceRef = useRef<HTMLElement>(null);
-  useEffect(() => { if (detail) evidenceRef.current?.focus(); }, [detail]);
-  const apiParams = new URLSearchParams({ v: '2', ticker: urlTicker, q: query, asset, country, sort, direction, page: String(page), ...(accession ? { accession } : {}) });
-  const apiQuery = apiParams.toString();
-  useEffect(() => { if (draftQuery === query) return; const timer = setTimeout(() => { setQuery(draftQuery); setPage(1); }, 350); return () => clearTimeout(timer); }, [draftQuery, query]);
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true); setError(''); setDetail(null);
-    fetch(`/api/fund?${apiQuery}`, { signal: controller.signal }).then(async res => { const json = await res.json(); if (!res.ok) throw new Error(json.error || 'The fund request failed.'); if (!controller.signal.aborted) setData(json); }).catch(err => { if (!controller.signal.aborted) setError(err.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    if (detail) evidenceRef.current?.focus();
+  }, [detail]);
+  const apiParams = new URLSearchParams({
+    v: "2",
+    ticker: urlTicker,
+    q: query,
+    asset,
+    country,
+    sort,
+    direction,
+    page: String(page),
+    ...(accession ? { accession } : {}),
+  });
+  const apiQuery = apiParams.toString();
+  useEffect(() => {
+    if (draftQuery === query) return;
+    const timer = setTimeout(() => {
+      setQuery(draftQuery);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [draftQuery, query]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    setDetail(null);
+    fetch(`/api/fund?${apiQuery}`, { signal: controller.signal })
+      .then(async (res) => {
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "The fund request failed.");
+        if (!controller.signal.aborted) setData(json);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setError(err.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     return () => controller.abort();
   }, [apiQuery, retry]);
-  useEffect(() => { const p = new URLSearchParams(apiQuery); p.delete('ticker'); p.delete('v'); for (const [k, v] of [...p.entries()]) if (!v || k === 'page' && v === '1' || k === 'sort' && v === 'value' || k === 'direction' && v === 'desc') p.delete(k); if (tab !== 'overview') p.set('tab', tab); window.history.replaceState(null, '', `/fund/${urlTicker}${p.size ? `?${p}` : ''}`); }, [apiQuery, tab, urlTicker]);
-  useEffect(() => { try { setNotes(localStorage.getItem(`edgar-fund-notes:${urlTicker}`) || ''); } catch { setMessage('Research notes cannot be loaded in this browser.'); } setNotesReady(true); }, [urlTicker]);
-  useEffect(() => { if (!detail) return; const close = (e: KeyboardEvent) => { if (e.key === 'Escape') setDetail(null); }; window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close); }, [detail]);
-  const copy = async (text: string, success: string) => { try { await navigator.clipboard.writeText(text); setMessage(success); } catch { setMessage('Copy failed. You can use the address bar or download the research brief.'); } };
-  const downloadBrief = () => { if (!data) return; const url = URL.createObjectURL(new Blob([researchBrief(data, notes)], { type: 'text/markdown' })); const a = document.createElement('a'); a.href = url; a.download = `${urlTicker}-${data.asOf}-research.md`; a.click(); URL.revokeObjectURL(url); setMessage('Research brief download started.'); };
-  const reset = () => { setDraftQuery(''); setQuery(''); setAsset(''); setCountry(''); setSort('value'); setDirection('desc'); setPage(1); };
-  const chooseExposure = (key: string, dimension: 'asset' | 'country') => { reset(); if (dimension === 'asset') setAsset(key); else setCountry(key); setTab('holdings'); };
-  return <div className={s.page}>
-    <Link className={s.backLink} href="/fund"><ArrowLeft size={15} /> All funds</Link>
-    <header className={s.profileHeader}><div><p className={s.eyebrow}>SEC portfolio research</p><h1>{urlTicker}<span>{data?.name || 'Reading the portfolio'}</span></h1><p className={s.muted}>{data?.registrant}</p></div><div className={s.actions}><button className={s.secondary} disabled={!shelf.ready} aria-pressed={shelf.saved.includes(urlTicker)} onClick={() => shelf.toggle(urlTicker)}><Bookmark size={15} fill={shelf.saved.includes(urlTicker) ? 'currentColor' : 'none'} />{shelf.saved.includes(urlTicker) ? 'Saved' : 'Save fund'}</button><button className={s.secondary} onClick={() => copy(window.location.href, 'Fund view link copied.')}><Share2 size={15} /> Share view</button><Link className={s.secondary} href={`/fund?compare=${urlTicker},${urlTicker === 'SPY' ? 'VOO' : 'SPY'}`}>Compare fund <ArrowUpRight size={15} /></Link></div></header>
-    <p role="status" className={s.status}>{message || shelf.storageError}</p>
-    {error && <div role="alert" className={s.notice}><h2>Portfolio data could not be loaded</h2><p>{error}</p><button className={s.secondary} onClick={() => setRetry(n => n + 1)}><RefreshCw size={14} /> Retry</button></div>}
-    {loading && !data && <p role="status" className={s.loading}>Reading the SEC portfolio and verifying its identity…</p>}
-    {data?.status === 'unavailable' && !loading && <section className={s.empty}><h2>Portfolio coverage unavailable</h2><p>{data.reason}</p>{data.secUrl && <a className={s.secondary} href={data.secUrl} target="_blank" rel="noreferrer">Browse this filer on SEC.gov ↗</a>}<button className={s.secondary} onClick={() => setRetry(n => n + 1)}>Retry lookup</button></section>}
-    {data?.status === 'ready' && !error && <>
-      {loading && <p role="status" className={s.status}>Updating the portfolio view…</p>}
-      <div className={s.provenance}><span><ShieldCheck size={16} /> {data.identity}</span><span>Portfolio <b>{data.asOf}</b></span><span>Filed <b>{data.filingDate}</b></span><span className={ageDays(data.asOf) > 180 ? s.warningText : ''}>{ageDays(data.asOf)} days old</span><a href={data.sourceUrl} target="_blank" rel="noreferrer">Open source XML ↗</a></div>
-      <div className={s.statsGrid}><Stat label="Portfolio net assets" value={money(data.fundInfo.netAssets)} note="All share classes in the reported series" /><Stat label="Reported positions" value={number(data.summary.count)} note={`${number(data.summary.valuedCount)} with USD values · no 100-row cap`} /><Stat label="Top 10 positive weights" value={pct(data.summary.top10Weight)} note="Sum as a share of portfolio net assets" /><Stat label="Largest positive position" value={pct(data.summary.largest?.pctOfNav)} note={data.summary.largest?.name || 'Unavailable'} /></div>
-      <div className={s.profileTools}><nav aria-label="Fund research sections" className={s.tabs}>{['overview', 'holdings', 'sources', 'notebook'].map(t => <button key={t} aria-current={tab === t ? 'page' : undefined} className={tab === t ? s.active : ''} onClick={() => setTab(t)}>{t === 'notebook' ? 'Research notebook' : t}</button>)}</nav><label className={s.reportSelect}>Portfolio report<select aria-label="Portfolio report" value={accession || data.accession} onChange={e => { setAccession(e.target.value); setPage(1); }}>
-        {data.reports.map(r => <option key={r.accession} value={r.accession}>{r.reportDate || 'Period unlisted'} · filed {r.filingDate}{r.form.endsWith('/A') ? ' · amended' : ''}</option>)}
-      </select></label></div>
-      {tab === 'overview' && <><div className={s.twoColumns}><section className={s.panel}><p className={s.eyebrow}>Portfolio composition</p><h2>What the fund holds</h2><p className={s.caption}>USD fair value ÷ reported net assets. Click a category to inspect its positions.</p><ExposureBars rows={data.summary.assets} labels={assetLabels} onSelect={key => chooseExposure(key, 'asset')} /><p className={s.caption}>Asset categories come from the filing. Derivative fair value does not measure notional or economic exposure.</p></section><section className={s.panel}><p className={s.eyebrow}>Reported investment countries</p><h2>Where positions are classified</h2><p className={s.caption}>Country codes from N-PORT; not a measure of revenue geography.</p><ExposureBars rows={data.summary.countries} onSelect={key => chooseExposure(key, 'country')} /></section></div><section className={s.panel}><p className={s.eyebrow}>Read the balance sheet alongside the holdings</p><div className={s.miniStats}><Stat label="Total assets" value={money(data.fundInfo.totAssets)} note="Reported in fundInfo" /><Stat label="Total liabilities" value={money(data.fundInfo.totLiabs)} note="Reported in fundInfo" /><Stat label="Sum of position values" value={money(data.summary.value)} note={`${pct(data.summary.weightTotal)} summed reported/calculated NAV weights`} /><Stat label="Cash outside reported positions" value={money(data.fundInfo.cash)} note="cshNotRptdInCorD; may not equal all cash" /></div><p className={s.caption}>Positions need not sum to 100% of net assets: liabilities, cash, receivables, short positions, and derivatives can affect the relationship. Missing values stay unavailable. {data.summary.count - data.summary.weightCount} positions have no usable weight.</p></section></>}
-      {tab === 'holdings' && <section className={s.panel}><div className={s.sectionHeading}><div><p className={s.eyebrow}>Complete reported portfolio</p><h2>Follow every position</h2><p>Search issuer names, security titles, tickers, CUSIPs, or ISINs.</p></div><a className={s.secondary} href={`/api/fund?${apiQuery}&format=csv`} onClick={() => setMessage('Holdings CSV download requested. Includes all matching positions and SEC source columns.')}><Download size={15} /> Export matching CSV</a></div><div className={s.holdingFilters}><label>Search holdings<input value={draftQuery} maxLength={100} onChange={e => setDraftQuery(e.target.value)} placeholder="NVIDIA, Treasury, CUSIP…" /></label><label>Asset category<select value={asset} onChange={e => { setAsset(e.target.value); setPage(1); }}><option value="">All categories</option>{data.summary.assets.map(a => <option key={a.key} value={a.key}>{assetLabels[a.key] || a.key} ({a.count})</option>)}</select></label><label>Country<select value={country} onChange={e => { setCountry(e.target.value); setPage(1); }}><option value="">All countries</option>{data.summary.countries.map(a => <option key={a.key} value={a.key}>{a.key} ({a.count})</option>)}</select></label><label>Sort by<select value={`${sort}:${direction}`} onChange={e => { const [key, dir] = e.target.value.split(':'); setSort(key); setDirection(dir); setPage(1); }}><option value="value:desc">USD value · high to low</option><option value="value:asc">USD value · low to high</option><option value="pctOfNav:desc">NAV weight · high to low</option><option value="name:asc">Holding name · A to Z</option><option value="balance:desc">Balance · high to low</option></select></label><button className={s.secondary} onClick={reset}>Reset</button></div><div className={s.resultLine}><span>{number(data.pagination.total)} matching / {number(data.summary.count)} reported positions</span><span>Portfolio date: {data.asOf}</span></div><div className={s.tableWrap}><table className={s.table}><caption>SEC-reported positions · click a holding for its source details</caption><thead><tr><th scope="col">Holding / identifier</th><th scope="col">Asset / country</th><th scope="col">Balance / units</th><th scope="col">USD fair value</th><th scope="col">% of net assets</th></tr></thead><tbody>{data.holdings.map(h => <tr key={h.id}><th scope="row"><button className={s.holdingName} onClick={() => setDetail(h)}>{h.name} <ArrowUpRight size={12} /></button><small>{h.cusip && h.cusip !== 'N/A' ? h.cusip : h.isin || h.title || 'Identifier unavailable'}{h.tickerSymbol ? ` · ${h.tickerSymbol}` : ''}</small></th><td>{assetLabels[h.assetCat] || h.assetCat}<small>{h.invCountry} · {h.payoffProfile || 'Profile unlisted'}</small></td><td>{number(h.balance)}<small>{h.units === 'NS' ? 'Shares' : h.units === 'PA' ? 'Principal amount' : h.units === 'NC' ? 'Contracts' : h.units || 'Units unlisted'}</small></td><td>{money(h.value)}</td><td>{pct(h.pctOfNav)}<small>{h.weightSource}</small></td></tr>)}</tbody></table>{!data.holdings.length && <div className={s.empty}><h3>No positions match these filters.</h3><button className={s.secondary} onClick={reset}>Show all holdings</button></div>}</div><div className={s.pagination}><button className={s.secondary} disabled={data.pagination.page <= 1} onClick={() => setPage(data.pagination.page - 1)}>Previous</button><span>Page {data.pagination.page} of {data.pagination.pageCount} · 50 per page</span><button className={s.secondary} disabled={data.pagination.page >= data.pagination.pageCount} onClick={() => setPage(data.pagination.page + 1)}>Next</button></div>{detail && <section ref={evidenceRef} tabIndex={-1} className={s.evidence} aria-label="Holding source details"><div className={s.sectionHeading}><h3>{detail.name}</h3><button className={s.secondary} onClick={() => setDetail(null)}>Close details</button></div><dl><dt>Security title</dt><dd>{detail.title || 'Unavailable'}</dd><dt>Identifiers</dt><dd>CUSIP {detail.cusip || '—'} · ISIN {detail.isin || '—'}</dd><dt>USD fair value</dt><dd>{number(detail.value)} · valUSD</dd><dt>Weight</dt><dd>{pct(detail.pctOfNav)} · {detail.weightSource === 'reported' ? 'pctVal in N-PORT' : detail.weightSource === 'calculated' ? 'valUSD ÷ portfolio net assets × 100' : 'Unavailable'}</dd><dt>Portfolio date / filing</dt><dd>{data.asOf} / {data.accession}</dd></dl><a href={data.sourceUrl} target="_blank" rel="noreferrer">Inspect N-PORT XML on SEC.gov ↗</a><p className={s.caption}>Search the source for the identifier above. Reported position #{detail.id} in XML order.</p></section>}</section>}
-      {tab === 'sources' && <section className={s.panel}><p className={s.eyebrow}>Evidence and identity</p><h2>Trace this portfolio to the filing</h2><dl className={s.sourceDetails}><dt>Registrant</dt><dd>{data.registrant} · CIK {data.cik}</dd><dt>Portfolio series</dt><dd>{data.seriesId || 'Not assigned'} · {data.name}</dd><dt>Ticker share class</dt><dd>{data.classId || 'Not assigned'} · {data.ticker}</dd><dt>Net asset source</dt><dd>{data.fundInfo.netAssetsSource}; portfolio totals may include other share classes.</dd><dt>Selected filing</dt><dd>{data.form} · {data.accession} · filed {data.filingDate}</dd><dt>Retrieved</dt><dd>{data.retrievedAt}</dd></dl><div className={s.actions}><a className={s.primary} href={data.filingUrl} target="_blank" rel="noreferrer">SEC filing index ↗</a><a className={s.secondary} href={data.sourceUrl} target="_blank" rel="noreferrer">Raw portfolio XML ↗</a><a className={s.secondary} href={data.secUrl} target="_blank" rel="noreferrer">Browse fund filings ↗</a></div><h3 className={s.subheading}>Recent registrant filings</h3><p className={s.caption}>This list belongs to the registrant and can include other series. Portfolio data above is independently matched to the selected series.</p><div className={s.tableWrap}><table className={s.table}><thead><tr><th scope="col">Form</th><th scope="col">Filed</th><th scope="col">Report date</th><th scope="col">SEC filing</th></tr></thead><tbody>{data.filings.map(f => <tr key={f.accession}><th scope="row">{f.form}</th><td>{f.filingDate}</td><td>{f.reportDate || '—'}</td><td><a href={f.url} target="_blank" rel="noreferrer">{f.accession} ↗</a></td></tr>)}</tbody></table></div></section>}
-      {tab === 'notebook' && <section className={s.panel}><p className={s.eyebrow}>Keep the evidence with your thinking</p><h2>Your fund research notebook</h2><p className={s.caption}>Notes stay in this browser. Downloads include the selected portfolio date, identifiers, and SEC source links.</p><label className={s.notesLabel} htmlFor="fund-notes">Research notes<textarea id="fund-notes" value={notes} disabled={!notesReady} maxLength={12000} rows={8} onChange={e => { setNotes(e.target.value); try { localStorage.setItem(`edgar-fund-notes:${urlTicker}`, e.target.value); setMessage('Notes saved in this browser.'); } catch { setMessage('Notes could not be saved. Download the brief to keep a copy.'); } }} placeholder="What stands out? Which positions or concentrations need a closer look?" /></label><div className={s.actions}><button className={s.primary} onClick={downloadBrief}><Download size={15} /> Download research brief</button><button className={s.secondary} onClick={() => copy(researchBrief(data, notes), 'Source-linked research brief copied.')}>Copy brief</button><a className={s.secondary} href={`/api/fund?v=2&ticker=${urlTicker}&accession=${data.accession}&format=csv`}>Download full holdings CSV</a></div></section>}
-      <details className={s.method}><summary>Methodology, coverage, and disclosure timing</summary><p>All invstOrSec positions in the selected public N-PORT XML are retained, including zero and negative values. Display pagination and filters do not change the full-portfolio summaries. Top 10 concentration sums the ten largest positive position weights; it is not issuer-level concentration. Asset and country breakdowns divide fair values by reported net assets. Missing figures are not treated as zero.</p><p>When the SEC ticker directory provides a series ID, it must match the filing. A ticker can be one of several share classes in a portfolio. This page does not report live prices, ETF-only AUM, share-class expense ratios, or investment returns. Report availability varies by fund structure and SEC publication schedule.</p><a href="https://www.sec.gov/data-research/sec-markets-data/form-n-port-data-sets" target="_blank" rel="noreferrer">SEC N-PORT documentation ↗</a></details>
-    </>}
-  </div>;
+  useEffect(() => {
+    const p = new URLSearchParams(apiQuery);
+    p.delete("ticker");
+    p.delete("v");
+    for (const [k, v] of [...p.entries()])
+      if (
+        !v ||
+        (k === "page" && v === "1") ||
+        (k === "sort" && v === "value") ||
+        (k === "direction" && v === "desc")
+      )
+        p.delete(k);
+    if (tab !== "overview") p.set("tab", tab);
+    window.history.replaceState(
+      null,
+      "",
+      `/fund/${urlTicker}${p.size ? `?${p}` : ""}`,
+    );
+  }, [apiQuery, tab, urlTicker]);
+  useEffect(() => {
+    try {
+      setNotes(localStorage.getItem(`edgar-fund-notes:${urlTicker}`) || "");
+    } catch {
+      setMessage("Research notes cannot be loaded in this browser.");
+    }
+    setNotesReady(true);
+  }, [urlTicker]);
+  useEffect(() => {
+    if (!detail) return;
+    const close = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDetail(null);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [detail]);
+  const copy = async (text: string, success: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage(success);
+    } catch {
+      setMessage(
+        "Copy failed. You can use the address bar or download the research brief.",
+      );
+    }
+  };
+  const downloadBrief = () => {
+    if (!data) return;
+    const url = URL.createObjectURL(
+      new Blob([researchBrief(data, notes)], { type: "text/markdown" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${urlTicker}-${data.asOf}-research.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMessage("Research brief download started.");
+  };
+  const reset = () => {
+    setDraftQuery("");
+    setQuery("");
+    setAsset("");
+    setCountry("");
+    setSort("value");
+    setDirection("desc");
+    setPage(1);
+  };
+  const chooseExposure = (key: string, dimension: "asset" | "country") => {
+    reset();
+    if (dimension === "asset") setAsset(key);
+    else setCountry(key);
+    setTab("holdings");
+  };
+  return (
+    <div className={s.page}>
+      <Link className={s.backLink} href="/fund">
+        <ArrowLeft size={15} /> All funds
+      </Link>
+      <header className={s.profileHeader}>
+        <div>
+          <p className={s.eyebrow}>SEC portfolio research</p>
+          <h1>
+            {urlTicker}
+            <span>{data?.name || "Reading the portfolio"}</span>
+          </h1>
+          <p className={s.muted}>{data?.registrant}</p>
+        </div>
+        <div className={s.actions}>
+          <button
+            className={s.secondary}
+            disabled={!shelf.ready}
+            aria-pressed={shelf.saved.includes(urlTicker)}
+            onClick={() => shelf.toggle(urlTicker)}
+          >
+            <Bookmark
+              size={15}
+              fill={shelf.saved.includes(urlTicker) ? "currentColor" : "none"}
+            />
+            {shelf.saved.includes(urlTicker) ? "Saved" : "Save fund"}
+          </button>
+          <button
+            className={s.secondary}
+            onClick={() => copy(window.location.href, "Fund view link copied.")}
+          >
+            <Share2 size={15} /> Share view
+          </button>
+          <Link
+            className={s.secondary}
+            href={`/fund?compare=${urlTicker},${urlTicker === "SPY" ? "VOO" : "SPY"}`}
+          >
+            Compare fund <ArrowUpRight size={15} />
+          </Link>
+        </div>
+      </header>
+      <p role="status" className={s.status}>
+        {message || shelf.storageError}
+      </p>
+      {error && (
+        <div role="alert" className={s.notice}>
+          <h2>Portfolio data could not be loaded</h2>
+          <p>{error}</p>
+          <button
+            className={s.secondary}
+            onClick={() => setRetry((n) => n + 1)}
+          >
+            <RefreshCw size={14} /> Retry
+          </button>
+        </div>
+      )}
+      {loading && !data && (
+        <p role="status" className={s.loading}>
+          Reading the SEC portfolio and verifying its identity…
+        </p>
+      )}
+      {data?.status === "unavailable" && !loading && (
+        <section className={s.empty}>
+          <h2>Portfolio coverage unavailable</h2>
+          <p>{data.reason}</p>
+          {data.secUrl && (
+            <a
+              className={s.secondary}
+              href={data.secUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Browse this filer on SEC.gov ↗
+            </a>
+          )}
+          <button
+            className={s.secondary}
+            onClick={() => setRetry((n) => n + 1)}
+          >
+            Retry lookup
+          </button>
+        </section>
+      )}
+      {data?.status === "ready" && !error && (
+        <>
+          {loading && (
+            <p role="status" className={s.status}>
+              Updating the portfolio view…
+            </p>
+          )}
+          <div className={s.provenance}>
+            <span>
+              <ShieldCheck size={16} /> {data.identity}
+            </span>
+            <span>
+              Portfolio <b>{data.asOf}</b>
+            </span>
+            <span>
+              Filed <b>{data.filingDate}</b>
+            </span>
+            <span className={ageDays(data.asOf) > 180 ? s.warningText : ""}>
+              {ageDays(data.asOf)} days old
+            </span>
+            <a href={data.sourceUrl} target="_blank" rel="noreferrer">
+              Open source XML ↗
+            </a>
+          </div>
+          <div className={s.statsGrid}>
+            <Stat
+              label="Portfolio net assets"
+              value={money(data.fundInfo.netAssets)}
+              note="All share classes in the reported series"
+            />
+            <Stat
+              label="Reported positions"
+              value={number(data.summary.count)}
+              note={`${number(data.summary.valuedCount)} with USD values · no 100-row cap`}
+            />
+            <Stat
+              label="Top 10 positive weights"
+              value={pct(data.summary.top10Weight)}
+              note="Sum as a share of portfolio net assets"
+            />
+            <Stat
+              label="Largest positive position"
+              value={pct(data.summary.largest?.pctOfNav)}
+              note={data.summary.largest?.name || "Unavailable"}
+            />
+          </div>
+          <div className={s.profileTools}>
+            <nav aria-label="Fund research sections" className={s.tabs}>
+              {["overview", "holdings", "sources", "notebook"].map((t) => (
+                <button
+                  key={t}
+                  aria-current={tab === t ? "page" : undefined}
+                  className={tab === t ? s.active : ""}
+                  onClick={() => setTab(t)}
+                >
+                  {t === "notebook" ? "Research notebook" : t}
+                </button>
+              ))}
+            </nav>
+            <label className={s.reportSelect}>
+              Portfolio report
+              <select
+                aria-label="Portfolio report"
+                value={accession || data.accession}
+                onChange={(e) => {
+                  setAccession(e.target.value);
+                  setPage(1);
+                }}
+              >
+                {data.reports.map((r) => (
+                  <option key={r.accession} value={r.accession}>
+                    {r.reportDate || "Period unlisted"} · filed {r.filingDate}
+                    {r.form.endsWith("/A") ? " · amended" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {tab === "overview" && (
+            <>
+              <div className={s.twoColumns}>
+                <section className={s.panel}>
+                  <p className={s.eyebrow}>Portfolio composition</p>
+                  <h2>What the fund holds</h2>
+                  <p className={s.caption}>
+                    USD fair value ÷ reported net assets. Click a category to
+                    inspect its positions.
+                  </p>
+                  <ExposureBars
+                    rows={data.summary.assets}
+                    labels={assetLabels}
+                    onSelect={(key) => chooseExposure(key, "asset")}
+                  />
+                  <p className={s.caption}>
+                    Asset categories come from the filing. Derivative fair value
+                    does not measure notional or economic exposure.
+                  </p>
+                </section>
+                <section className={s.panel}>
+                  <p className={s.eyebrow}>Reported investment countries</p>
+                  <h2>Where positions are classified</h2>
+                  <p className={s.caption}>
+                    Country codes from N-PORT; not a measure of revenue
+                    geography.
+                  </p>
+                  <ExposureBars
+                    rows={data.summary.countries}
+                    onSelect={(key) => chooseExposure(key, "country")}
+                  />
+                </section>
+              </div>
+              <section className={s.panel}>
+                <p className={s.eyebrow}>
+                  Read the balance sheet alongside the holdings
+                </p>
+                <div className={s.miniStats}>
+                  <Stat
+                    label="Total assets"
+                    value={money(data.fundInfo.totAssets)}
+                    note="Reported in fundInfo"
+                  />
+                  <Stat
+                    label="Total liabilities"
+                    value={money(data.fundInfo.totLiabs)}
+                    note="Reported in fundInfo"
+                  />
+                  <Stat
+                    label="Sum of position values"
+                    value={money(data.summary.value)}
+                    note={`${pct(data.summary.weightTotal)} summed reported/calculated NAV weights`}
+                  />
+                  <Stat
+                    label="Cash outside reported positions"
+                    value={money(data.fundInfo.cash)}
+                    note="cshNotRptdInCorD; may not equal all cash"
+                  />
+                </div>
+                <p className={s.caption}>
+                  Positions need not sum to 100% of net assets: liabilities,
+                  cash, receivables, short positions, and derivatives can affect
+                  the relationship. Missing values stay unavailable.{" "}
+                  {data.summary.count - data.summary.weightCount} positions have
+                  no usable weight.
+                </p>
+              </section>
+            </>
+          )}
+          {tab === "holdings" && (
+            <section className={s.panel}>
+              <div className={s.sectionHeading}>
+                <div>
+                  <p className={s.eyebrow}>Complete reported portfolio</p>
+                  <h2>Follow every position</h2>
+                  <p>
+                    Search issuer names, security titles, tickers, CUSIPs, or
+                    ISINs.
+                  </p>
+                </div>
+                <a
+                  className={s.secondary}
+                  href={`/api/fund?${apiQuery}&format=csv`}
+                  onClick={() =>
+                    setMessage(
+                      "Holdings CSV download requested. Includes all matching positions and SEC source columns.",
+                    )
+                  }
+                >
+                  <Download size={15} /> Export matching CSV
+                </a>
+              </div>
+              <div className={s.holdingFilters}>
+                <label>
+                  Search holdings
+                  <input
+                    value={draftQuery}
+                    maxLength={100}
+                    onChange={(e) => setDraftQuery(e.target.value)}
+                    placeholder="NVIDIA, Treasury, CUSIP…"
+                  />
+                </label>
+                <label>
+                  Asset category
+                  <select
+                    value={asset}
+                    onChange={(e) => {
+                      setAsset(e.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">All categories</option>
+                    {data.summary.assets.map((a) => (
+                      <option key={a.key} value={a.key}>
+                        {assetLabels[a.key] || a.key} ({a.count})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Country
+                  <select
+                    value={country}
+                    onChange={(e) => {
+                      setCountry(e.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">All countries</option>
+                    {data.summary.countries.map((a) => (
+                      <option key={a.key} value={a.key}>
+                        {a.key} ({a.count})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Sort by
+                  <select
+                    value={`${sort}:${direction}`}
+                    onChange={(e) => {
+                      const [key, dir] = e.target.value.split(":");
+                      setSort(key);
+                      setDirection(dir);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="value:desc">USD value · high to low</option>
+                    <option value="value:asc">USD value · low to high</option>
+                    <option value="pctOfNav:desc">
+                      NAV weight · high to low
+                    </option>
+                    <option value="name:asc">Holding name · A to Z</option>
+                    <option value="balance:desc">Balance · high to low</option>
+                  </select>
+                </label>
+                <button className={s.secondary} onClick={reset}>
+                  Reset
+                </button>
+              </div>
+              <div className={s.resultLine}>
+                <span>
+                  {number(data.pagination.total)} matching /{" "}
+                  {number(data.summary.count)} reported positions
+                </span>
+                <span>Portfolio date: {data.asOf}</span>
+              </div>
+              <div className={s.tableWrap}>
+                <table className={s.table}>
+                  <caption>
+                    SEC-reported positions · click a holding for its source
+                    details
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Holding / identifier</th>
+                      <th scope="col">Asset / country</th>
+                      <th scope="col">Balance / units</th>
+                      <th scope="col">USD fair value</th>
+                      <th scope="col">% of net assets</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.holdings.map((h) => (
+                      <tr key={h.id}>
+                        <th scope="row">
+                          <button
+                            className={s.holdingName}
+                            onClick={() => setDetail(h)}
+                          >
+                            {h.name} <ArrowUpRight size={12} />
+                          </button>
+                          <small>
+                            {h.cusip && h.cusip !== "N/A"
+                              ? h.cusip
+                              : h.isin || h.title || "Identifier unavailable"}
+                            {h.tickerSymbol ? ` · ${h.tickerSymbol}` : ""}
+                          </small>
+                        </th>
+                        <td>
+                          {assetLabels[h.assetCat] || h.assetCat}
+                          <small>
+                            {h.invCountry} ·{" "}
+                            {h.payoffProfile || "Profile unlisted"}
+                          </small>
+                        </td>
+                        <td>
+                          {number(h.balance)}
+                          <small>
+                            {h.units === "NS"
+                              ? "Shares"
+                              : h.units === "PA"
+                                ? "Principal amount"
+                                : h.units === "NC"
+                                  ? "Contracts"
+                                  : h.units || "Units unlisted"}
+                          </small>
+                        </td>
+                        <td>{money(h.value)}</td>
+                        <td>
+                          {pct(h.pctOfNav)}
+                          <small>{h.weightSource}</small>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!data.holdings.length && (
+                  <div className={s.empty}>
+                    <h3>No positions match these filters.</h3>
+                    <button className={s.secondary} onClick={reset}>
+                      Show all holdings
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className={s.pagination}>
+                <button
+                  className={s.secondary}
+                  disabled={data.pagination.page <= 1}
+                  onClick={() => setPage(data.pagination.page - 1)}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {data.pagination.page} of {data.pagination.pageCount} ·
+                  50 per page
+                </span>
+                <button
+                  className={s.secondary}
+                  disabled={data.pagination.page >= data.pagination.pageCount}
+                  onClick={() => setPage(data.pagination.page + 1)}
+                >
+                  Next
+                </button>
+              </div>
+              {detail && (
+                <section
+                  ref={evidenceRef}
+                  tabIndex={-1}
+                  className={s.evidence}
+                  aria-label="Holding source details"
+                >
+                  <div className={s.sectionHeading}>
+                    <h3>{detail.name}</h3>
+                    <button
+                      className={s.secondary}
+                      onClick={() => setDetail(null)}
+                    >
+                      Close details
+                    </button>
+                  </div>
+                  <dl>
+                    <dt>Security title</dt>
+                    <dd>{detail.title || "Unavailable"}</dd>
+                    <dt>Identifiers</dt>
+                    <dd>
+                      CUSIP {detail.cusip || "—"} · ISIN {detail.isin || "—"}
+                    </dd>
+                    <dt>USD fair value</dt>
+                    <dd>{number(detail.value)} · valUSD</dd>
+                    <dt>Weight</dt>
+                    <dd>
+                      {pct(detail.pctOfNav)} ·{" "}
+                      {detail.weightSource === "reported"
+                        ? "pctVal in N-PORT"
+                        : detail.weightSource === "calculated"
+                          ? "valUSD ÷ portfolio net assets × 100"
+                          : "Unavailable"}
+                    </dd>
+                    <dt>Portfolio date / filing</dt>
+                    <dd>
+                      {data.asOf} / {data.accession}
+                    </dd>
+                  </dl>
+                  <a href={data.sourceUrl} target="_blank" rel="noreferrer">
+                    Inspect N-PORT XML on SEC.gov ↗
+                  </a>
+                  <p className={s.caption}>
+                    Search the source for the identifier above. Reported
+                    position #{detail.id} in XML order.
+                  </p>
+                </section>
+              )}
+            </section>
+          )}
+          {tab === "sources" && (
+            <section className={s.panel}>
+              <p className={s.eyebrow}>Evidence and identity</p>
+              <h2>Trace this portfolio to the filing</h2>
+              <dl className={s.sourceDetails}>
+                <dt>Registrant</dt>
+                <dd>
+                  {data.registrant} · CIK {data.cik}
+                </dd>
+                <dt>Portfolio series</dt>
+                <dd>
+                  {data.seriesId || "Not assigned"} · {data.name}
+                </dd>
+                <dt>Ticker share class</dt>
+                <dd>
+                  {data.classId || "Not assigned"} · {data.ticker}
+                </dd>
+                <dt>Net asset source</dt>
+                <dd>
+                  {data.fundInfo.netAssetsSource}; portfolio totals may include
+                  other share classes.
+                </dd>
+                <dt>Selected filing</dt>
+                <dd>
+                  {data.form} · {data.accession} · filed {data.filingDate}
+                </dd>
+                <dt>Retrieved</dt>
+                <dd>{data.retrievedAt}</dd>
+              </dl>
+              <div className={s.actions}>
+                <a
+                  className={s.primary}
+                  href={data.filingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  SEC filing index ↗
+                </a>
+                <a
+                  className={s.secondary}
+                  href={data.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Raw portfolio XML ↗
+                </a>
+                <a
+                  className={s.secondary}
+                  href={data.secUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Browse fund filings ↗
+                </a>
+              </div>
+              <h3 className={s.subheading}>Recent registrant filings</h3>
+              <p className={s.caption}>
+                This list belongs to the registrant and can include other
+                series. Portfolio data above is independently matched to the
+                selected series.
+              </p>
+              <div className={s.tableWrap}>
+                <table className={s.table}>
+                  <thead>
+                    <tr>
+                      <th scope="col">Form</th>
+                      <th scope="col">Filed</th>
+                      <th scope="col">Report date</th>
+                      <th scope="col">SEC filing</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.filings.map((f) => (
+                      <tr key={f.accession}>
+                        <th scope="row">{f.form}</th>
+                        <td>{f.filingDate}</td>
+                        <td>{f.reportDate || "—"}</td>
+                        <td>
+                          <a href={f.url} target="_blank" rel="noreferrer">
+                            {f.accession} ↗
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+          {tab === "notebook" && (
+            <section className={s.panel}>
+              <p className={s.eyebrow}>Keep the evidence with your thinking</p>
+              <h2>Your fund research notebook</h2>
+              <p className={s.caption}>
+                Notes stay in this browser. Downloads include the selected
+                portfolio date, identifiers, and SEC source links.
+              </p>
+              <label className={s.notesLabel} htmlFor="fund-notes">
+                Research notes
+                <textarea
+                  id="fund-notes"
+                  value={notes}
+                  disabled={!notesReady}
+                  maxLength={12000}
+                  rows={8}
+                  onChange={(e) => {
+                    setNotes(e.target.value);
+                    try {
+                      localStorage.setItem(
+                        `edgar-fund-notes:${urlTicker}`,
+                        e.target.value,
+                      );
+                      setMessage("Notes saved in this browser.");
+                    } catch {
+                      setMessage(
+                        "Notes could not be saved. Download the brief to keep a copy.",
+                      );
+                    }
+                  }}
+                  placeholder="What stands out? Which positions or concentrations need a closer look?"
+                />
+              </label>
+              <div className={s.actions}>
+                <button className={s.primary} onClick={downloadBrief}>
+                  <Download size={15} /> Download research brief
+                </button>
+                <button
+                  className={s.secondary}
+                  onClick={() =>
+                    copy(
+                      researchBrief(data, notes),
+                      "Source-linked research brief copied.",
+                    )
+                  }
+                >
+                  Copy brief
+                </button>
+                <a
+                  className={s.secondary}
+                  href={`/api/fund?v=2&ticker=${urlTicker}&accession=${data.accession}&format=csv`}
+                >
+                  Download full holdings CSV
+                </a>
+              </div>
+            </section>
+          )}
+          <details className={s.method}>
+            <summary>Methodology, coverage, and disclosure timing</summary>
+            <p>
+              All invstOrSec positions in the selected public N-PORT XML are
+              retained, including zero and negative values. Display pagination
+              and filters do not change the full-portfolio summaries. Top 10
+              concentration sums the ten largest positive position weights; it
+              is not issuer-level concentration. Asset and country breakdowns
+              divide fair values by reported net assets. Missing figures are not
+              treated as zero.
+            </p>
+            <p>
+              When the SEC ticker directory provides a series ID, it must match
+              the filing. A ticker can be one of several share classes in a
+              portfolio. This page does not report live prices, ETF-only AUM,
+              share-class expense ratios, or investment returns. Report
+              availability varies by fund structure and SEC publication
+              schedule.
+            </p>
+            <a
+              href="https://www.sec.gov/data-research/sec-markets-data/form-n-port-data-sets"
+              target="_blank"
+              rel="noreferrer"
+            >
+              SEC N-PORT documentation ↗
+            </a>
+          </details>
+        </>
+      )}
+    </div>
+  );
 }
-function Stat({ label, value, note }: { label: string; value: string; note: string }) { return <div className={s.stat}><span>{label}</span><b>{value}</b><small>{note}</small></div>; }
-function ExposureBars({ rows, labels = {}, onSelect }: { rows: Exposure[]; labels?: Record<string, string>; onSelect: (key: string) => void }) {
-  const [all, setAll] = useState(false); const visible = all ? rows : rows.slice(0, 8);
-  return <><div className={s.exposures}>{visible.map(row => <button key={row.key} onClick={() => onSelect(row.key)} aria-label={`Inspect ${labels[row.key] || row.key} holdings`}><span><b>{labels[row.key] || row.key}</b><small>{row.count.toLocaleString()} positions</small><strong>{pct(row.pctOfNav)}</strong></span><i><i style={{ width: `${Math.min(100, Math.abs(row.pctOfNav || 0))}%`, background: (row.pctOfNav || 0) < 0 ? 'var(--fund-red)' : undefined }} /></i></button>)}</div>{rows.length > 8 && <button className={s.secondary} onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show all ${rows.length} countries`}</button>}</>;
+function Stat({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  note: string;
+}) {
+  return (
+    <div className={s.stat}>
+      <span>{label}</span>
+      <b>{value}</b>
+      <small>{note}</small>
+    </div>
+  );
+}
+function ExposureBars({
+  rows,
+  labels = {},
+  onSelect,
+}: {
+  rows: Exposure[];
+  labels?: Record<string, string>;
+  onSelect: (key: string) => void;
+}) {
+  const [all, setAll] = useState(false);
+  const visible = all ? rows : rows.slice(0, 8);
+  return (
+    <>
+      <div className={s.exposures}>
+        {visible.map((row) => (
+          <button
+            key={row.key}
+            onClick={() => onSelect(row.key)}
+            aria-label={`Inspect ${labels[row.key] || row.key} holdings`}
+          >
+            <span>
+              <b>{labels[row.key] || row.key}</b>
+              <small>{row.count.toLocaleString()} positions</small>
+              <strong>{pct(row.pctOfNav)}</strong>
+            </span>
+            <i>
+              <i
+                style={{
+                  width: `${Math.min(100, Math.abs(row.pctOfNav || 0))}%`,
+                  background:
+                    (row.pctOfNav || 0) < 0 ? "var(--fund-red)" : undefined,
+                }}
+              />
+            </i>
+          </button>
+        ))}
+      </div>
+      {rows.length > 8 && (
+        <button className={s.secondary} onClick={() => setAll(!all)}>
+          {all ? "Show fewer" : `Show all ${rows.length} countries`}
+        </button>
+      )}
+    </>
+  );
 }

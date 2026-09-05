@@ -1,4 +1,102 @@
-export type Holding = { id: number; name: string; title: string | null; cusip: string | null; isin: string | null; tickerSymbol: string | null; balance: number | null; units: string | null; value: number | null; pctOfNav: number | null; weightSource: string; assetCat: string; invCountry: string; payoffProfile: string | null };
-export type Exposure = { key: string; count: number; value: number | null; pctOfNav: number | null };
-export type Fund = { ticker: string; cik: string; seriesId: string | null; classId: string | null; name: string; registrant: string; family: string | null; status: string; reason?: string; secUrl: string; identity: string; asOf: string; accession: string; filingDate: string; form: string; sourceUrl: string; filingUrl: string; retrievedAt: string; fundInfo: { totAssets: number | null; totLiabs: number | null; netAssets: number | null; netAssetsSource: string; cash: number | null }; holdings: Holding[]; summary: { count: number; valuedCount: number; weightCount: number; value: number | null; weightTotal: number | null; top10Weight: number | null; largest: Holding | null; derivativeCount: number; assets: Exposure[]; countries: Exposure[] }; pagination: { page: number; pageCount: number; total: number; portfolioTotal: number }; reports: { accession: string; filingDate: string; reportDate: string | null; form: string }[]; filings: { accession: string; form: string; filingDate: string; reportDate: string | null; url: string }[] };
-export type Overlap = { left: string; right: string; leftAsOf: string; rightAsOf: string; samePeriod: boolean; samePortfolio: boolean; overlap: number; count: number; leftEligibleWeight: number; rightEligibleWeight: number; leftExcludedCount: number; rightExcludedCount: number; rows: { key: string; name: string; leftWeight: number; rightWeight: number; overlap: number }[] };
+export type Holding = {
+  id: number;
+  name: string;
+  title: string | null;
+  cusip: string | null;
+  isin: string | null;
+  tickerSymbol: string | null;
+  balance: number | null;
+  units: string | null;
+  value: number | null;
+  pctOfNav: number | null;
+  weightSource: string;
+  assetCat: string;
+  invCountry: string;
+  payoffProfile: string | null;
+};
+export type Exposure = {
+  key: string;
+  count: number;
+  value: number | null;
+  pctOfNav: number | null;
+};
+export type Fund = {
+  ticker: string;
+  cik: string;
+  seriesId: string | null;
+  classId: string | null;
+  name: string;
+  registrant: string;
+  family: string | null;
+  status: string;
+  reason?: string;
+  secUrl: string;
+  identity: string;
+  asOf: string;
+  accession: string;
+  filingDate: string;
+  form: string;
+  sourceUrl: string;
+  filingUrl: string;
+  retrievedAt: string;
+  fundInfo: {
+    totAssets: number | null;
+    totLiabs: number | null;
+    netAssets: number | null;
+    netAssetsSource: string;
+    cash: number | null;
+  };
+  holdings: Holding[];
+  summary: {
+    count: number;
+    valuedCount: number;
+    weightCount: number;
+    value: number | null;
+    weightTotal: number | null;
+    top10Weight: number | null;
+    largest: Holding | null;
+    derivativeCount: number;
+    assets: Exposure[];
+    countries: Exposure[];
+  };
+  pagination: {
+    page: number;
+    pageCount: number;
+    total: number;
+    portfolioTotal: number;
+  };
+  reports: {
+    accession: string;
+    filingDate: string;
+    reportDate: string | null;
+    form: string;
+  }[];
+  filings: {
+    accession: string;
+    form: string;
+    filingDate: string;
+    reportDate: string | null;
+    url: string;
+  }[];
+};
+export type Overlap = {
+  left: string;
+  right: string;
+  leftAsOf: string;
+  rightAsOf: string;
+  samePeriod: boolean;
+  samePortfolio: boolean;
+  overlap: number;
+  count: number;
+  leftEligibleWeight: number;
+  rightEligibleWeight: number;
+  leftExcludedCount: number;
+  rightExcludedCount: number;
+  rows: {
+    key: string;
+    name: string;
+    leftWeight: number;
+    rightWeight: number;
+    overlap: number;
+  }[];
+};
