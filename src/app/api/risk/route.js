@@ -1,160 +1,73 @@
-// ============================================================================
-// api/risk — multi-pillar risk profile for a company, from SEC primary data.
-//
-// GET /api/risk?ticker=JPM
-//
-// Pipeline:
-//   1. ticker → CIK (operating companies only)
-//   2. fetch companyfacts (XBRL) + submissions (SIC code, recent filings) in parallel
-//   3. assessRisk(facts, sic) — pure engine in utils/riskAnalysis.js
-//   4. scan the latest 10-K's text for credit-risk language (going concern,
-//      covenant, material weakness, …) with paragraph excerpts, source-linked
-//
-// The XBRL facts change at most quarterly and the language scan is tied to a
-// specific accession, so the response is edge-cached for hours, not minutes.
-// ============================================================================
-
 import { NextResponse } from 'next/server';
 import { assessRisk, scanRiskLanguage } from '../../../utils/riskAnalysis.js';
+import { decorateRiskProfile, RISK_VERSION } from '../../../utils/riskWorkspace.js';
 import { getOperatingTicker } from '../../../utils/tickerMap.js';
-import { fetchFilingText, buildFilingUrl } from '../../../utils/filingTextParser.js';
+import { fetchFilingText } from '../../../utils/filingTextParser.js';
+import { secResearchJson, submissionRows } from '../../../utils/secResearchData.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
+import { warmGet, warmSet } from '../../../utils/warmCache.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+const response = (data) => NextResponse.json(data, { headers: { 'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=900' } });
 
-const DEFAULT_USER_AGENT = 'EDGAR Terminal research-tool (secedgarterminal.com)';
-
-async function fetchSecJson(url, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': process.env.SEC_USER_AGENT || DEFAULT_USER_AGENT,
-        'Accept': 'application/json',
-      },
-      signal: controller.signal,
-    });
-    if (!res.ok) return { error: `HTTP ${res.status}`, data: null };
-    return { error: null, data: await res.json() };
-  } catch (err) {
-    return { error: err?.name === 'AbortError' ? 'SEC request timed out' : err.message, data: null };
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-/** Pick the most recent original 10-K from a submissions JSON. */
-function latestTenK(submissions) {
-  const recent = submissions?.filings?.recent;
-  if (!recent?.accessionNumber) return null;
-  for (let i = 0; i < recent.accessionNumber.length; i++) {
-    if (recent.form[i] === '10-K') {
-      return {
-        accession: recent.accessionNumber[i],
-        form: recent.form[i],
-        filingDate: recent.filingDate[i],
-        reportDate: recent.reportDate[i],
-        primaryDoc: recent.primaryDocument[i],
-      };
+// The long document scan is requested separately, so it cannot delay ratios.
+async function readAnnualDisclosure(submissions, cik) {
+  let filings = submissionRows(submissions.filings?.recent, cik);
+  let annual = filings.find((f) => f.form === '10-K');
+  let limited = false;
+  if (!annual) {
+    const files = [...(submissions.filings?.files || [])].sort((a, b) => (b.filingTo || '').localeCompare(a.filingTo || ''));
+    limited = files.length > 4;
+    for (const file of files.slice(0, 4)) {
+      if (!/^CIK\d{10}-submissions-\d+\.json$/.test(file.name)) continue;
+      try {
+        const res = await fetch(`https://data.sec.gov/submissions/${file.name}`, { headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com' }, signal: AbortSignal.timeout(6000) });
+        if (!res.ok) { limited = true; continue; }
+        filings = filings.concat(submissionRows(await res.json(), cik));
+        annual = filings.filter((f) => f.form === '10-K').sort((a, b) => b.filingDate.localeCompare(a.filingDate))[0];
+        if (annual) break;
+      } catch { limited = true; }
     }
   }
-  return null;
+  if (!annual) return { error: `No original 10-K located${limited ? ' within the bounded filing-history search' : ' in available submissions'}. Foreign annual forms are not scanned.`, terms: [], historyLimited: limited };
+  const cached = await warmGet(`${RISK_VERSION}-scan`, annual.accession);
+  if (cached) return cached;
+  const text = await fetchFilingText(cik, annual.accession, annual.primaryDoc);
+  const scan = { ...annual, url: annual.documentUrl, historyLimited: limited, error: text.error || (!text.text ? 'The filing text was empty.' : null), terms: text.text ? scanRiskLanguage(text.text) : [] };
+  if (!scan.error) await warmSet(`${RISK_VERSION}-scan`, annual.accession, scan, 86400);
+  return scan;
 }
 
 export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const tickerRaw = searchParams.get('ticker');
-  if (!tickerRaw) {
-    return NextResponse.json({ error: 'ticker parameter required' }, { status: 400 });
-  }
-  const ticker = tickerRaw.trim().toUpperCase();
-
-  // Each request costs two SEC JSON fetches plus one full filing-text fetch.
-  const ip = getClientIp(request);
-  const rl = await checkRateLimit({ key: `rl:risk:${ip}`, windowMs: 60_000, max: 15 });
+  const params = new URL(request.url).searchParams;
+  const ticker = (params.get('ticker') || '').trim().toUpperCase();
+  if (!/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(ticker)) return NextResponse.json({ error: 'Enter a valid company ticker (for example JPM or BRK.B).' }, { status: 400 });
+  const rl = await checkRateLimit({ key: `rl:risk:${getClientIp(request)}`, windowMs: 60000, max: 20 });
   if (!rl.allowed) return rateLimitedResponse(rl);
-
-  let entry;
+  const scanOnly = params.get('include') === 'disclosures';
   try {
-    entry = await getOperatingTicker(ticker);
-  } catch (err) {
-    return NextResponse.json({ error: `Ticker lookup failed: ${err.message}` }, { status: 502 });
-  }
-  if (!entry) {
-    return NextResponse.json(
-      {
-        error: `Ticker not found among SEC operating companies: ${ticker}. Fund tickers (ETFs, mutual funds) are covered on the Funds page.`,
-        ticker,
-      },
-      { status: 404 },
-    );
-  }
-
-  const cik = entry.cik;
-  const cikPadded = String(cik).padStart(10, '0');
-
-  const [factsRes, subsRes] = await Promise.all([
-    fetchSecJson(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cikPadded}.json`),
-    fetchSecJson(`https://data.sec.gov/submissions/CIK${cikPadded}.json`),
-  ]);
-
-  if (factsRes.error || !factsRes.data?.facts) {
-    return NextResponse.json(
-      { error: `Could not load XBRL company facts from SEC: ${factsRes.error || 'no facts in response'}`, ticker, cik },
-      { status: 502 },
-    );
-  }
-
-  const sic = subsRes.data?.sic || null;
-  const sicDescription = subsRes.data?.sicDescription || null;
-  const companyName = subsRes.data?.name || entry.name;
-
-  // Pure computation over the facts.
-  const risk = assessRisk(factsRes.data.facts, sic, cik);
-
-  // Credit-language scan of the latest 10-K (non-fatal if it can't be read).
-  let filingScan = null;
-  const tenK = subsRes.error ? null : latestTenK(subsRes.data);
-  if (tenK) {
-    const textInfo = await fetchFilingText(cik, tenK.accession, tenK.primaryDoc);
-    if (textInfo.error || !textInfo.text) {
-      filingScan = {
-        form: tenK.form,
-        filingDate: tenK.filingDate,
-        url: buildFilingUrl(cik, tenK.accession, tenK.primaryDoc),
-        error: `Could not read the filing text: ${textInfo.error || 'empty document'}`,
-        terms: [],
-      };
-    } else {
-      filingScan = {
-        form: tenK.form,
-        filingDate: tenK.filingDate,
-        reportDate: tenK.reportDate,
-        url: buildFilingUrl(cik, tenK.accession, tenK.primaryDoc),
-        accession: tenK.accession,
-        terms: scanRiskLanguage(textInfo.text),
-        error: null,
-      };
+    if (!scanOnly) {
+      const cached = await warmGet(RISK_VERSION, ticker);
+      if (cached) return response(cached);
     }
+    const entry = await getOperatingTicker(ticker);
+    if (!entry) return NextResponse.json({ error: `No SEC operating company matched ${ticker}. Fund tickers are covered on the Funds page.` }, { status: 404 });
+    const cik = String(entry.cik).padStart(10, '0');
+    const [submissions, company] = await Promise.all([
+      secResearchJson(`/submissions/CIK${cik}.json`),
+      scanOnly ? Promise.resolve(null) : secResearchJson(`/api/xbrl/companyfacts/CIK${cik}.json`),
+    ]);
+    if (scanOnly) return response({ ticker, filingScan: await readAnnualDisclosure(submissions, cik) });
+    // A missing classification must never silently apply industrial models to a bank.
+    if (!submissions.sic || !company?.facts) throw new Error('SEC industry classification or company facts are unavailable. Please retry.');
+    const annual = decorateRiskProfile(assessRisk(company.facts, submissions.sic, cik));
+    const current = decorateRiskProfile(assessRisk(company.facts, submissions.sic, cik, { basis: 'ttm' }));
+    const data = { ticker, cik, companyName: submissions.name || entry.name, sic: submissions.sic, sicDescription: submissions.sicDescription,
+      annual, current, version: RISK_VERSION, generatedAt: new Date().toISOString() };
+    await warmSet(RISK_VERSION, ticker, data, 900);
+    return response(data);
+  } catch (error) {
+    return NextResponse.json({ error: error.message || 'Could not load the SEC risk profile. Please retry.' }, { status: 502 });
   }
-
-  return NextResponse.json(
-    {
-      ticker,
-      cik,
-      companyName,
-      sic,
-      sicDescription,
-      ...risk,
-      filingScan,
-      generatedAt: new Date().toISOString(),
-    },
-    {
-      headers: {
-        'Cache-Control': 'public, s-maxage=21600, stale-while-revalidate=86400',
-      },
-    },
-  );
 }
