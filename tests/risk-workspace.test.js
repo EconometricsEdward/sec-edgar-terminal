@@ -122,3 +122,8 @@ test('bank cash excludes explicitly tagged restrictions before a narrow cash fal
   delete facts['us-gaap'].RestrictedCashAndCashEquivalents;
   assert.equal(assessRisk(facts,6021,1).stressInputs.cash.value,80);
 });
+
+test('CSV preserves negative numeric observations while escaping formula-like text', () => {
+  const csv=riskHistoryCsv({ticker:'TEST'},{basis:'annual'},{label:'=unsafe',format:'usd',series:[{end:'2025-12-31',value:-15,sources:[]}]});
+  assert.match(csv,/"-15"/); assert.match(csv,/"'=unsafe"/);
+});

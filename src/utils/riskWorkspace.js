@@ -124,7 +124,7 @@ export function riskBrief(data, profile, stress) {
 }
 
 export function riskHistoryCsv(data, profile, metric) {
-  const quote = (s) => `"${String(s ?? '').replace(/^[=+@-]/, "'$&").replaceAll('"', '""')}"`;
+  const quote = (s) => `"${(typeof s === 'number' ? String(s) : String(s ?? '').replace(/^[=+@-]/, "'$&")).replaceAll('"', '""')}"`;
   const rows = [['Ticker', 'Metric', 'Basis', 'Period end', 'Value (raw; percentages as fractions)', 'Unit', 'SEC filing URLs'], ...metric.series.map((p) => [data.ticker, metric.label, profile.basis, p.end, p.value, metric.format, [...new Set(p.sources.map((s) => s.documentUrl).filter(Boolean))].join(' ')])];
   return rows.map((r) => r.map(quote).join(',')).join('\r\n');
 }
