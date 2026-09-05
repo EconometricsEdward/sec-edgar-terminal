@@ -70,8 +70,10 @@ export function exportResearchBrief({ ticker, name, cik, notes, snapshot, eviden
     `Exported ${new Date().toISOString()}. Data observed ${snapshot.observedAt}.`,
     `Reporting period: ${snapshot.period ? periodLabel(snapshot.period) : 'Unavailable'}.`,
     '## Financial snapshot',
-    '| Metric | Value | Basis | Source evidence |', '| --- | ---: | --- | --- |',
-    ...snapshot.metrics.map((m) => `| ${clean(m.label)} | ${formatValue(m.value, m.format)} | ${clean(m.classification)}${m.formula ? `: ${clean(m.formula)}` : ''} | ${clean(sources(m))} |`),
+    [
+      '| Metric | Value | Basis | Source evidence |', '| --- | ---: | --- | --- |',
+      ...snapshot.metrics.map((m) => `| ${clean(m.label)} | ${formatValue(m.value, m.format)} | ${clean(m.classification)}${m.formula ? `: ${clean(m.formula)}` : ''} | ${clean(sources(m))} |`),
+    ].join('\n'),
     '\n## Analyst notes', notes || 'No notes saved.',
     '\n## Selected evidence',
     ...evidence.map((e) => `### ${e.label}\n${e.text || ''}\n${e.point ? `${formatValue(e.point.value, e.format || 'currency')} — ${e.point.formula || e.point.source?.formula || ''}\n${evidenceCalculations(e.point).map((c) => `${c.start} to ${c.end}: ${c.value} ${c.unit} = ${c.formula}`).join('; ')}\n${sources(e.point)}` : ''}\n${e.url || ''}`),

@@ -58,6 +58,7 @@ test('review changes ignore incompatible units, period bases, and older parser v
 test('research export retains notes, selected excerpts, reporting period, and SEC accessions', () => {
   const text = exportResearchBrief({ ticker: 'JPM', name: 'Example', cik: '19617', notes: 'Review deposit funding.', evidence: [{ label: 'Funding passage', text: b, url: 'https://www.sec.gov/example' }], snapshot: { observedAt: '2026-09-05', period: { fp: 'Q2', fy: 2026 }, metrics: [{ label: 'Deposits', value: 100, format: 'currency', source: { tag: 'Deposits', accession: '0000019617-26-000002', end: '2026-06-30', unit: 'USD', filed: '2026-08-01' } }] } });
   assert.match(text, /Review deposit funding/); assert.match(text, /Funding passage/); assert.match(text, /000001961726000002/); assert.match(text, /Q2 26/);
+  assert.match(text, /\| Metric \| Value \| Basis \| Source evidence \|\n\| --- \| ---: \| --- \| --- \|\n\| Deposits \|/);
 });
 
 test('calculated ratio evidence retains reported inputs without relabeling their values', async () => {
