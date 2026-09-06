@@ -1,6 +1,6 @@
-import type { Metadata } from 'next';
-import AnalysisClient from './AnalysisWorkspace';
-import { buildPageMetadata } from '../../../utils/siteMetadata';
+import type { Metadata } from "next";
+import AnalysisClient from "./AnalysisWorkspace";
+import { buildPageMetadata } from "../../../utils/siteMetadata";
 
 // ============================================================================
 // Route configuration
@@ -46,18 +46,20 @@ interface CompanyMeta {
 async function getCompanyMeta(ticker: string): Promise<CompanyMeta | null> {
   const userAgent = process.env.SEC_USER_AGENT;
   if (!userAgent) {
-    console.error('[analysis/[ticker]] SEC_USER_AGENT env var is not set');
+    console.error("[analysis/[ticker]] SEC_USER_AGENT env var is not set");
     return null;
   }
 
   try {
-    const res = await fetch('https://www.sec.gov/files/company_tickers.json', {
-      headers: { 'User-Agent': userAgent },
+    const res = await fetch("https://www.sec.gov/files/company_tickers.json", {
+      headers: { "User-Agent": userAgent },
       next: { revalidate: 86400 },
     });
 
     if (!res.ok) {
-      console.error(`[analysis/[ticker]] ticker-map fetch returned ${res.status}`);
+      console.error(
+        `[analysis/[ticker]] ticker-map fetch returned ${res.status}`,
+      );
       return null;
     }
 
@@ -68,7 +70,7 @@ async function getCompanyMeta(ticker: string): Promise<CompanyMeta | null> {
       if (entry?.ticker?.toUpperCase() === upper) {
         return {
           ticker: upper,
-          cik: String(entry.cik_str).padStart(10, '0'),
+          cik: String(entry.cik_str).padStart(10, "0"),
           name: entry.title || upper,
           sicDescription: null,
           exchange: null,
@@ -78,7 +80,7 @@ async function getCompanyMeta(ticker: string): Promise<CompanyMeta | null> {
 
     return null;
   } catch (err) {
-    console.error('[analysis/[ticker]] ticker-map fetch failed:', err);
+    console.error("[analysis/[ticker]] ticker-map fetch failed:", err);
     return null;
   }
 }
@@ -87,7 +89,9 @@ async function getCompanyMeta(ticker: string): Promise<CompanyMeta | null> {
 // generateMetadata — the SEO payoff. Per-page title/description/canonical
 // renders server-side so Googlebot sees correct metadata before any JS runs.
 // ============================================================================
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
   const { ticker } = await params;
   const upper = ticker.toUpperCase();
   const meta = await getCompanyMeta(upper);
@@ -101,7 +105,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   const title = `${meta.name} (${upper}) — Financial Analysis & Ratios`;
-  const description = `10-year financial analysis for ${meta.name} (${upper}). Revenue, net income, operating margin, ROE, ROA, industry-specific ratios, reporting freshness, and disclosure risk radar sourced directly from SEC XBRL filings and SEC EDGAR search links. Includes stock chart with filing markers, insider trading, and institutional holders.`;
+  const description = `Analyze ${meta.name} (${upper}) with SEC financial statements, growth and seasonality, profit bridges, cash quality, funding analysis, custom ratios, and transparent scenarios. Compare source evidence and export a financial research brief.`;
 
   return buildPageMetadata({
     title,
@@ -119,21 +123,23 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 // ============================================================================
 function buildJsonLd(meta: CompanyMeta): object {
   return {
-    '@context': 'https://schema.org',
-    '@type': 'Corporation',
+    "@context": "https://schema.org",
+    "@type": "Corporation",
     name: meta.name,
     tickerSymbol: meta.ticker,
     identifier: {
-      '@type': 'PropertyValue',
-      propertyID: 'SEC CIK',
+      "@type": "PropertyValue",
+      propertyID: "SEC CIK",
       value: meta.cik,
     },
     ...(meta.sicDescription && { industry: meta.sicDescription }),
     url: `https://secedgarterminal.com/analysis/${meta.ticker}`,
-    sameAs: [`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${meta.cik}`],
+    sameAs: [
+      `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${meta.cik}`,
+    ],
     subjectOf: {
-      '@type': 'WebPage',
-      '@id': `https://secedgarterminal.com/analysis/${meta.ticker}`,
+      "@type": "WebPage",
+      "@id": `https://secedgarterminal.com/analysis/${meta.ticker}`,
       name: `${meta.name} Financial Analysis`,
       description: `SEC XBRL financial data and analysis for ${meta.name}`,
     },
@@ -153,7 +159,10 @@ function CompanyIdentityShell({ meta }: { meta: CompanyMeta }) {
         }
       `}</style>
 
-      <section id="analysis-server-intro" className="professional-card mb-6 overflow-hidden p-5 sm:p-6 lg:p-8">
+      <section
+        id="analysis-server-intro"
+        className="professional-card mb-6 overflow-hidden p-5 sm:p-6 lg:p-8"
+      >
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             <div className="eyebrow">Company analysis workspace</div>
@@ -174,7 +183,8 @@ function CompanyIdentityShell({ meta }: { meta: CompanyMeta }) {
               )}
             </div>
             <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-400">
-              Loading the source-linked XBRL workspace through EDGAR Terminal&apos;s SEC proxy. The server-rendered shell resolves company identity without caching the full SEC submissions feed.
+              Preparing financial statements, analytical tools, and the source
+              filings behind the numbers.
             </p>
           </div>
 

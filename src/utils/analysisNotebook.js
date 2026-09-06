@@ -2,7 +2,7 @@ export const ANALYSIS_SETTINGS = {
   basis: "annual",
   end: "latest",
   asOf: "",
-  view: "statements",
+  view: "overview",
   statement: "income",
   display: "reported",
   units: "millions",
@@ -12,10 +12,35 @@ export const ANALYSIS_SETTINGS = {
   chart: [],
   indexed: false,
   years: 8,
+  movementScope: "income",
+  movementSort: "absolute",
+  movementThreshold: 0,
+  growthMetric: "",
+  profitMetric: "netIncome",
+  scenarioRevenue: 0,
+  scenarioMargin: 0,
+  scenarioLoss: 0,
+  scenarioFunding: 0,
+  formulaA: "operatingCashFlow",
+  formulaB: "capex",
+  formulaC: "revenue",
+  formulaOp: "subtractRatio",
+  formulaScale: "percent",
+  briefTitle: "",
+  briefSections: [
+    "summary",
+    "metrics",
+    "history",
+    "coverage",
+    "notes",
+    "evidence",
+  ],
+  briefMetrics: [],
 };
 const choices = {
   basis: ["annual", "quarter", "ytd", "ttm"],
   view: [
+    "overview",
     "statements",
     "changes",
     "trends",
@@ -24,10 +49,18 @@ const choices = {
     "drivers",
     "notebook",
     "extended",
+    "capital",
+    "scenarios",
+    "formula",
   ],
   statement: ["income", "balance", "cashflow", "ratios"],
   display: ["reported", "common"],
   units: ["millions", "billions", "raw", "auto"],
+  movementScope: ["income", "balance", "cashflow", "ratios"],
+  movementSort: ["absolute", "growth"],
+  formulaOp: ["ratio", "add", "subtract", "subtractRatio"],
+  formulaScale: ["percent", "multiple"],
+  profitMetric: ["netIncome", "operatingIncome", "grossProfit"],
 };
 const validDate = (v) =>
   /^\d{4}-\d{2}-\d{2}$/.test(v || "") &&
@@ -46,14 +79,53 @@ export function normalizeAnalysisSettings(input = {}) {
     ["year", "previous"].includes(out.baseline) || validDate(out.baseline)
       ? out.baseline
       : "year";
-  for (const key of ["pins", "chart"])
+  for (const key of ["pins", "chart", "briefMetrics"])
     out[key] = [
       ...new Set(
         (Array.isArray(out[key]) ? out[key] : []).filter((v) =>
           /^[A-Za-z][A-Za-z0-9]{0,60}$/.test(v),
         ),
       ),
-    ].slice(0, key === "chart" ? 3 : 12);
+    ].slice(0, key === "chart" ? 3 : key === "briefMetrics" ? 24 : 12);
+  for (const [key, min, max] of [
+    ["movementThreshold", 0, 1e15],
+    ["scenarioRevenue", -50, 50],
+    ["scenarioMargin", -20, 20],
+    ["scenarioLoss", 0, 20],
+    ["scenarioFunding", 0, 50],
+  ]) {
+    const value = Number(out[key]);
+    out[key] = Number.isFinite(value)
+      ? Math.min(max, Math.max(min, value))
+      : ANALYSIS_SETTINGS[key];
+  }
+  if (out.movementScope === "ratios") out.movementSort = "absolute";
+  for (const key of ["formulaA", "formulaB", "formulaC", "growthMetric"])
+    out[key] =
+      typeof out[key] === "string" &&
+      /^[A-Za-z][A-Za-z0-9]{0,60}$/.test(out[key])
+        ? out[key]
+        : ANALYSIS_SETTINGS[key];
+  out.briefTitle =
+    typeof out.briefTitle === "string" ? out.briefTitle.slice(0, 160) : "";
+  out.briefSections = [
+    ...new Set(
+      (Array.isArray(out.briefSections)
+        ? out.briefSections
+        : ANALYSIS_SETTINGS.briefSections
+      ).filter((v) =>
+        [
+          "summary",
+          "metrics",
+          "history",
+          "coverage",
+          "notes",
+          "evidence",
+          "sources",
+        ].includes(v),
+      ),
+    ),
+  ];
   out.search = String(out.search || "").slice(0, 80);
   out.indexed = out.indexed === true || out.indexed === "true";
   out.years = [4, 8, 12].includes(Number(out.years)) ? Number(out.years) : 8;
@@ -62,8 +134,9 @@ export function normalizeAnalysisSettings(input = {}) {
 export function readAnalysisSettings(search) {
   const params = new URLSearchParams(search);
   const input = Object.fromEntries(params);
-  for (const key of ["pins", "chart"])
-    input[key] = (params.get(key) || "").split(",").filter(Boolean);
+  for (const key of ["pins", "chart", "briefMetrics", "briefSections"])
+    if (params.has(key))
+      input[key] = (params.get(key) || "").split(",").filter(Boolean);
   // Older deep links retain access to their original panels.
   if (
     [
@@ -87,8 +160,31 @@ export function analysisPath(ticker, settings) {
   }
   return `/analysis/${encodeURIComponent(ticker)}${params.size ? `?${params}` : ""}`;
 }
+export function analysisCollectionSettings(item, settings) {
+  const original = item.analysisSettings;
+  const period = item.point?.period || {};
+  const asOf =
+    original === null
+      ? typeof period.asOf === "string"
+        ? period.asOf
+        : null
+      : original && Object.hasOwn(original, "asOf")
+        ? typeof original.asOf === "string"
+          ? original.asOf
+          : null
+        : typeof period.asOf === "string"
+          ? period.asOf
+          : settings.asOf;
+  return {
+    basis: period.kind || original?.basis || settings.basis,
+    end: period.end || original?.end || settings.end,
+    asOf,
+  };
+}
 export function analysisValue(value, format = "currency", units = "auto") {
   if (!Number.isFinite(value)) return "—";
+  if (format === "days")
+    return `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })} days`;
   const decimals =
     format === "eps" || format === "percent" || format === "decimal"
       ? 2

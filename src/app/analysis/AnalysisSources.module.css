@@ -1,0 +1,439 @@
+.observatory {
+  min-width: 0;
+  border: 1px solid var(--analysis-border);
+  border-radius: 12px;
+  padding: 24px;
+  background: var(--analysis-panel);
+}
+.heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.heading > svg {
+  color: var(--analysis-accent);
+  flex-shrink: 0;
+}
+.heading p {
+  max-width: 800px;
+  color: var(--analysis-muted);
+  font-size: 13px;
+}
+.eyebrow {
+  font-size: 10px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--analysis-accent) !important;
+  font-weight: 750;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.stats article {
+  background: var(--analysis-bg);
+  border: 1px solid var(--analysis-border);
+  padding: 15px;
+  border-radius: 8px;
+}
+.stats span {
+  display: block;
+  font-size: 11px;
+  color: var(--analysis-muted);
+}
+.stats strong {
+  display: block;
+  font-size: 27px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 6px;
+}
+.stats small {
+  color: var(--analysis-muted);
+  font-size: 16px;
+  font-weight: 500;
+}
+.note {
+  color: var(--analysis-muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 22px 0 15px;
+}
+.filters label {
+  flex: 1 1 180px;
+  font-size: 11px;
+}
+.filters .search {
+  flex: 2 1 240px;
+}
+.search span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 10px;
+  color: var(--analysis-muted);
+}
+.legend [data-kind="reported"] {
+  color: #61c8a9;
+}
+.legend [data-kind="calculated"] {
+  color: #85b9f9;
+}
+.tableScroll {
+  margin: 13px 0 24px;
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid var(--analysis-border);
+  border-radius: 8px;
+  max-height: 590px;
+}
+.tableScroll th {
+  font-size: 11px;
+}
+.tableScroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--analysis-raised);
+}
+.tableScroll thead th:first-child {
+  z-index: 4;
+}
+.tableScroll th small {
+  display: block;
+  font-size: 9px;
+  color: var(--analysis-muted);
+  font-weight: 400;
+}
+.tableScroll th:first-child {
+  min-width: 190px;
+  max-width: 260px;
+  white-space: normal;
+}
+.tableScroll td {
+  padding: 5px !important;
+}
+.cell {
+  width: 100%;
+  min-width: 92px;
+  display: flex !important;
+  flex-direction: column;
+  gap: 1px !important;
+  padding: 8px !important;
+  background: var(--analysis-bg) !important;
+  border: 1px solid transparent !important;
+}
+.cell > span {
+  font-size: 9px;
+  font-weight: 650;
+  color: var(--analysis-muted);
+}
+.cell strong {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.cell[data-kind="reported"] > span {
+  color: #61c8a9;
+}
+.cell[data-kind="calculated"] > span {
+  color: #85b9f9;
+}
+.cell[data-kind="missing"] {
+  border-style: dashed !important;
+  border-color: var(--analysis-border) !important;
+}
+.cell[data-selected="true"] {
+  border-color: var(--analysis-border) !important;
+}
+.cell:hover {
+  border-color: var(--analysis-accent) !important;
+}
+.provenance,
+.ledger {
+  border-top: 1px solid var(--analysis-border);
+  margin-top: 24px;
+  padding-top: 24px;
+}
+.provenance > p {
+  color: var(--analysis-muted);
+  font-size: 12px;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  padding: 16px 0;
+}
+.facts dt {
+  font-size: 10px;
+  color: var(--analysis-muted);
+}
+.facts dd {
+  font-size: 13px;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.filingList {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+.filingList li {
+  padding: 12px 0;
+  border-top: 1px solid var(--analysis-border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+}
+.filingList code,
+.filingList small {
+  display: block;
+  color: var(--analysis-muted);
+}
+.filingList a,
+.history a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+.count {
+  color: var(--analysis-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  padding-top: 8px;
+}
+.ledgerItems {
+  margin-top: 15px;
+}
+.ledgerEntry {
+  border: 1px solid var(--analysis-border);
+  border-radius: 8px;
+  margin: 8px 0;
+  padding: 14px;
+  background: var(--analysis-bg);
+}
+.ledgerEntry summary {
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.ledgerEntry summary::before {
+  content: "+";
+  color: var(--analysis-accent);
+  font-size: 17px;
+}
+.ledgerEntry[open] summary::before {
+  content: "−";
+}
+.ledgerEntry summary > span:first-of-type {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ledgerEntry summary > span:last-child {
+  color: var(--analysis-muted);
+  font-size: 10px;
+}
+.ledgerEntry summary small {
+  display: block;
+  color: var(--analysis-muted);
+  font-size: 10px;
+  margin-top: 3px;
+}
+.ledgerEntry > code {
+  display: block;
+  color: var(--analysis-muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  margin-top: 15px;
+}
+.history {
+  list-style: none;
+  padding: 0 0 0 12px;
+  margin: 16px 0;
+  border-left: 2px solid var(--analysis-border);
+}
+.history li {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  margin-bottom: 17px;
+  padding-left: 8px;
+}
+.history code {
+  font-size: 10px;
+  color: var(--analysis-muted);
+  overflow-wrap: anywhere;
+}
+.historyDate {
+  font-size: 10px;
+  color: var(--analysis-muted);
+}
+.uses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.uses button {
+  font-size: 10px !important;
+  padding: 5px 8px !important;
+}
+.more {
+  margin-top: 15px;
+  font-size: 12px !important;
+}
+.empty {
+  padding: 22px 0;
+  font-size: 12px;
+  color: var(--analysis-muted);
+}
+.comparison {
+  border: 1px solid var(--analysis-border);
+  background: var(--analysis-bg);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 18px 0;
+}
+.comparison h3 {
+  margin: 0 0 10px !important;
+  font-size: 13px !important;
+}
+.comparison label {
+  font-size: 11px;
+}
+.comparisonCards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.comparisonCard {
+  min-width: 0;
+  background: var(--analysis-panel);
+  border: 1px solid var(--analysis-border);
+  border-radius: 6px;
+  padding: 9px;
+}
+.comparisonCard > span,
+.comparisonCard small {
+  font-size: 9px;
+  color: var(--analysis-muted);
+  display: block;
+}
+.comparisonCard > strong {
+  display: block;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+  margin: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+.comparisonCard .dates {
+  font-size: 10px;
+  color: var(--analysis-text);
+  margin: 5px 0;
+  overflow-wrap: anywhere;
+}
+.comparisonCard ul {
+  list-style: none;
+  padding: 0;
+  font-size: 9px;
+  margin: 5px 0;
+}
+.comparisonCard li {
+  border-top: 1px solid var(--analysis-border);
+  padding-top: 6px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+.comparisonCard a {
+  font-size: 9px;
+  display: inline;
+}
+.comparisonCard code {
+  font-size: 8px;
+  display: block;
+  color: var(--analysis-muted);
+}
+.comparisonCard summary {
+  font-size: 9px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+.delta {
+  border-top: 1px solid var(--analysis-border);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+.delta strong {
+  display: block;
+  font-size: 15px;
+}
+.delta p {
+  font-size: 10px;
+  color: var(--analysis-muted);
+  margin: 5px 0 !important;
+}
+.comparisonNote {
+  font-size: 10px;
+  color: var(--analysis-muted);
+}
+.comparisonCollect {
+  width: 100%;
+  margin-top: 12px;
+  font-size: 11px !important;
+}
+:global(html[data-theme-mode="light"]) .legend [data-kind="reported"],
+:global(html[data-theme-mode="light"]) .cell[data-kind="reported"] > span {
+  color: #157052;
+}
+:global(html[data-theme-mode="light"]) .legend [data-kind="calculated"],
+:global(html[data-theme-mode="light"]) .cell[data-kind="calculated"] > span {
+  color: #235ea2;
+}
+@media (max-width: 1050px) {
+  .stats,
+  .facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .observatory {
+    padding: 16px;
+  }
+  .stats {
+    gap: 7px;
+  }
+  .stats article {
+    padding: 11px;
+  }
+  .stats strong {
+    font-size: 23px;
+  }
+  .tableScroll th:first-child {
+    min-width: 135px;
+    max-width: 170px;
+  }
+  .heading > svg {
+    display: none;
+  }
+}

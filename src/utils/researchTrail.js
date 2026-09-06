@@ -38,6 +38,7 @@ function visitTitle(path) {
     (tool === "compare" ? url.pathname.split("/")[2] : "") ||
     (tool === "disclosures" ? url.searchParams.get("query")?.slice(0, 60) : "");
   const labels = {
+    overview: "Overview",
     notebook: "Notebook",
     statements: "Statements",
     changes: "Changes",
@@ -46,6 +47,9 @@ function visitTitle(path) {
     checks: "Data checks",
     drivers: "Return drivers",
     extended: "More research",
+    capital: "Capital & funding",
+    scenarios: "Scenarios",
+    formula: "Custom ratios",
     timeline: "Timeline",
     holdings: "Holdings",
     sources: "Sources",

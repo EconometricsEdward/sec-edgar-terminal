@@ -13,6 +13,7 @@ import {
   Share2,
 } from "lucide-react";
 import CompanySearch from "../CompanySearch";
+import AnalysisOverview from "../AnalysisOverview";
 import AnalysisInspector from "../AnalysisInspector";
 import { useWorkspace } from "../../../components/research/WorkspaceProvider";
 import {
@@ -24,9 +25,9 @@ import {
 } from "../../../utils/analysisResearch.js";
 import {
   ANALYSIS_SETTINGS,
+  analysisCollectionSettings,
   analysisPath,
   analysisValue,
-  exportAnalysisBrief,
   exportAnalysisCsv,
   normalizeAnalysisSettings,
   readAnalysisSettings,
@@ -39,13 +40,27 @@ const AnalysisChart = dynamic(() => import("../AnalysisChart"), {
 const ExtendedAnalysis = dynamic(() => import("./AnalysisClient"), {
   loading: () => <p role="status">Loading extended research tools…</p>,
 });
+const AnalysisGrowthLab = dynamic(() => import("../AnalysisGrowthLab"));
+const AnalysisProfitBridge = dynamic(() => import("../AnalysisProfitBridge"));
+const AnalysisCashLab = dynamic(() => import("../AnalysisCashLab"));
+const AnalysisCapitalLab = dynamic(() => import("../AnalysisCapitalLab"));
+const AnalysisScenarioLab = dynamic(() => import("../AnalysisScenarioLab"));
+const AnalysisFormulaLab = dynamic(() => import("../AnalysisFormulaLab"));
+const AnalysisSourceObservatory = dynamic(
+  () => import("../AnalysisSourceObservatory"),
+);
+const AnalysisBriefComposer = dynamic(() => import("../AnalysisBriefComposer"));
 const views = [
+  ["overview", "Overview"],
   ["statements", "Statements"],
   ["changes", "Changes"],
-  ["trends", "Trends"],
-  ["cash", "Cash & capital"],
+  ["trends", "Growth & trends"],
+  ["cash", "Cash quality"],
+  ["capital", "Capital & funding"],
   ["drivers", "Return drivers"],
-  ["checks", "Data checks"],
+  ["scenarios", "Scenarios"],
+  ["formula", "Custom ratios"],
+  ["checks", "Sources & checks"],
   ["notebook", "Notebook"],
   ["extended", "More research"],
 ];
@@ -219,7 +234,9 @@ function Workspace(props: any) {
           cik: data?.cik,
           saved: true,
           ...w.companies[ticker],
-          ...patchValue,
+          ...(typeof patchValue === "function"
+            ? patchValue(w.companies[ticker] || {})
+            : patchValue),
         },
       },
     }));
@@ -229,15 +246,30 @@ function Workspace(props: any) {
     return ok;
   }
   function collect(item: any) {
-    const evidence = saved?.evidence || [];
-    const id = `${item.label}:${item.point?.period?.kind}:${item.point?.period?.end}:${settings.asOf}`;
+    const collectedSettings = analysisCollectionSettings(item, settings);
+    const id = JSON.stringify([
+      item.label,
+      item.format,
+      item.point?.period?.kind,
+      item.point?.period?.start,
+      item.point?.period?.end,
+      collectedSettings.asOf,
+      item.point?.formula,
+      item.point?.value,
+      item.point?.note,
+    ]);
     save(
-      {
+      (current: any) => ({
         evidence: [
-          ...evidence.filter((e) => e.analysisId !== id),
-          { ...item, analysisId: id, collectedAt: new Date().toISOString() },
+          ...(current.evidence || []).filter((e) => e.analysisId !== id),
+          {
+            ...item,
+            analysisId: id,
+            analysisSettings: collectedSettings,
+            collectedAt: new Date().toISOString(),
+          },
         ].slice(-100),
-      },
+      }),
       "Evidence and note collected in your notebook.",
     );
   }
@@ -248,6 +280,11 @@ function Workspace(props: any) {
       definition: data.definitions.find((d) => d.key === key),
       point: override || data.metrics[key]?.[index],
     });
+  }
+  function inspectSelection(next: any) {
+    evidenceTrigger.current = document.activeElement as HTMLElement;
+    setStatus("");
+    setSelection(next);
   }
   function closeInspector() {
     setSelection(null);
@@ -341,13 +378,6 @@ function Workspace(props: any) {
           <small title="Different values were filed for this context">↺</small>
         )}
       </button>
-    );
-  }
-  function exportBrief() {
-    downloadText(
-      `${ticker}-${period?.end || "analysis"}-research-brief.html`,
-      exportAnalysisBrief(data, settings, index, notes, saved?.evidence || []),
-      "text/html",
     );
   }
   function markReviewed() {
@@ -692,6 +722,41 @@ function Workspace(props: any) {
           </div>
           <div className={styles.workspaceGrid} data-inspector={!!selection}>
             <div className={styles.content}>
+              {settings.view === "overview" && (
+                <AnalysisOverview
+                  data={data}
+                  settings={settings}
+                  index={index}
+                  onInspect={inspectSelection}
+                  onPatch={patch}
+                />
+              )}
+              {settings.view === "capital" && (
+                <AnalysisCapitalLab
+                  data={data}
+                  settings={settings}
+                  index={index}
+                  onInspect={inspectSelection}
+                />
+              )}
+              {settings.view === "scenarios" && (
+                <AnalysisScenarioLab
+                  data={data}
+                  settings={settings}
+                  index={index}
+                  onInspect={inspectSelection}
+                  onPatch={patch}
+                />
+              )}
+              {settings.view === "formula" && (
+                <AnalysisFormulaLab
+                  data={data}
+                  settings={settings}
+                  index={index}
+                  onInspect={inspectSelection}
+                  onPatch={patch}
+                />
+              )}
               {settings.view === "statements" && (
                 <>
                   <div className={styles.kpis}>
@@ -840,248 +905,286 @@ function Workspace(props: any) {
                 </>
               )}
               {settings.view === "changes" && (
-                <section className={styles.panel}>
-                  <p className={styles.eyebrow}>Explain the movement</p>
-                  <h2>What changed in the financials?</h2>
-                  {statementControls()}
-                  <p className={styles.muted}>
-                    {period.end} versus{" "}
-                    {beforePeriod?.end || "an unavailable comparison period"}.
-                    Percentages use a positive prior base; ratios change in
-                    percentage points. Incompatible durations remain
-                    unavailable. These are financial changes, not risk scores.
-                  </p>
-                  <div className={styles.tableScroll}>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Metric</th>
-                          <th>{period.end}</th>
-                          <th>{beforePeriod?.end || "Prior period"}</th>
-                          <th>Change</th>
-                          <th>Context</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredRows.map((d) => {
-                          const point = data.metrics[d.key][index];
-                          const prior = data.metrics[d.key][beforeIndex];
-                          const change = analysisChange(point, prior, d.format);
-                          return (
-                            <tr key={d.key}>
-                              <th scope="row">{d.label}</th>
-                              <td>{valueButton(d.key, index)}</td>
-                              <td>
-                                {beforeIndex >= 0
-                                  ? valueButton(d.key, beforeIndex)
-                                  : "—"}
-                              </td>
-                              <td>
-                                {changeText(change, d.format, settings.units)}
-                                {change.percent != null && (
-                                  <small>{change.percent.toFixed(1)}%</small>
-                                )}
-                              </td>
-                              <td className={styles.contextCell}>
-                                {change.reason ||
-                                  (point.sources?.some((s) => s.revised)
-                                    ? "Revised source context — inspect the filing history."
-                                    : "Compatible reporting periods.")}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  <p className={styles.muted}>
-                    For passage-level changes between filings, open More
-                    research → What changed?
-                  </p>
-                </section>
-              )}
-              {settings.view === "trends" && (
-                <section className={styles.panel}>
-                  <p className={styles.eyebrow}>Explore the trajectory</p>
-                  <h2>Build a financial trend</h2>
-                  <div className={styles.tools}>
-                    <label className={styles.checkLabel}>
-                      <input
-                        type="checkbox"
-                        checked={settings.indexed}
-                        onChange={(e) => patch({ indexed: e.target.checked })}
-                      />
-                      Index to 100
-                    </label>
-                    <span className={styles.muted}>
-                      Select up to three metrics. Chart uses the selected ending
-                      period and visible-period setting.
-                    </span>
-                  </div>
-                  <details>
-                    <summary>
-                      Choose chart metrics ({settings.chart.length || 2}/3)
-                    </summary>
-                    <div className={styles.metricPicker}>
-                      {definitions
-                        .filter(
-                          (d) => !["checks", "drivers"].includes(d.category),
-                        )
-                        .map((d) => {
-                          const keys = settings.chart.length
-                            ? settings.chart
-                            : [
-                                data.revenueKey || "premiumsEarned",
-                                "netIncome",
-                              ];
-                          return (
-                            <label key={d.key}>
-                              <input
-                                type="checkbox"
-                                checked={keys.includes(d.key)}
-                                disabled={
-                                  (!keys.includes(d.key) && keys.length >= 3) ||
-                                  (keys.includes(d.key) && keys.length === 1)
-                                }
-                                onChange={() =>
-                                  patch({
-                                    chart: keys.includes(d.key)
-                                      ? keys.filter((k) => k !== d.key)
-                                      : [...keys, d.key],
-                                  })
-                                }
-                              />
-                              {d.label}
-                            </label>
-                          );
-                        })}
-                    </div>
-                  </details>
-                  <AnalysisChart
+                <>
+                  <AnalysisProfitBridge
                     data={data}
                     settings={settings}
                     index={index}
+                    onInspect={inspectSelection}
+                    onPatch={patch}
                   />
-                  <div className={styles.tableScroll}>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Period ending</th>
-                          {(settings.chart.length
-                            ? settings.chart
-                            : [data.revenueKey || "premiumsEarned", "netIncome"]
-                          ).map((key) => (
-                            <th key={key}>
-                              {definitions.find((d) => d.key === key)?.label}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {displayedPeriods.map((p, offset) => (
-                          <tr key={p.end}>
-                            <th scope="row">{p.end}</th>
+                  <section className={styles.panel}>
+                    <p className={styles.eyebrow}>Explain the movement</p>
+                    <h2>What changed in the financials?</h2>
+                    {statementControls()}
+                    <p className={styles.muted}>
+                      {period.end} versus{" "}
+                      {beforePeriod?.end || "an unavailable comparison period"}.
+                      Percentages use a positive prior base; ratios change in
+                      percentage points. Incompatible durations remain
+                      unavailable. These are financial changes, not risk scores.
+                    </p>
+                    <div className={styles.tableScroll}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Metric</th>
+                            <th>{period.end}</th>
+                            <th>{beforePeriod?.end || "Prior period"}</th>
+                            <th>Change</th>
+                            <th>Context</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredRows.map((d) => {
+                            const point = data.metrics[d.key][index];
+                            const prior = data.metrics[d.key][beforeIndex];
+                            const change = analysisChange(
+                              point,
+                              prior,
+                              d.format,
+                            );
+                            return (
+                              <tr key={d.key}>
+                                <th scope="row">{d.label}</th>
+                                <td>{valueButton(d.key, index)}</td>
+                                <td>
+                                  {beforeIndex >= 0
+                                    ? valueButton(d.key, beforeIndex)
+                                    : "—"}
+                                </td>
+                                <td>
+                                  {changeText(change, d.format, settings.units)}
+                                  {change.percent != null && (
+                                    <small>{change.percent.toFixed(1)}%</small>
+                                  )}
+                                </td>
+                                <td className={styles.contextCell}>
+                                  {change.reason ||
+                                    (point.sources?.some((s) => s.revised)
+                                      ? "Revised source context — inspect the filing history."
+                                      : "Compatible reporting periods.")}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className={styles.muted}>
+                      For passage-level changes between filings, open More
+                      research → What changed?
+                    </p>
+                  </section>
+                </>
+              )}
+              {settings.view === "trends" && (
+                <>
+                  <AnalysisGrowthLab
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    onInspect={inspectSelection}
+                    onPatch={patch}
+                  />
+                  <section className={styles.panel}>
+                    <p className={styles.eyebrow}>Explore the trajectory</p>
+                    <h2>Build a financial trend</h2>
+                    <div className={styles.tools}>
+                      <label className={styles.checkLabel}>
+                        <input
+                          type="checkbox"
+                          checked={settings.indexed}
+                          onChange={(e) => patch({ indexed: e.target.checked })}
+                        />
+                        Index to 100
+                      </label>
+                      <span className={styles.muted}>
+                        Select up to three metrics. Chart uses the selected
+                        ending period and visible-period setting.
+                      </span>
+                    </div>
+                    <details>
+                      <summary>
+                        Choose chart metrics ({settings.chart.length || 2}/3)
+                      </summary>
+                      <div className={styles.metricPicker}>
+                        {definitions
+                          .filter(
+                            (d) => !["checks", "drivers"].includes(d.category),
+                          )
+                          .map((d) => {
+                            const keys = settings.chart.length
+                              ? settings.chart
+                              : [
+                                  data.revenueKey || "premiumsEarned",
+                                  "netIncome",
+                                ];
+                            return (
+                              <label key={d.key}>
+                                <input
+                                  type="checkbox"
+                                  checked={keys.includes(d.key)}
+                                  disabled={
+                                    (!keys.includes(d.key) &&
+                                      keys.length >= 3) ||
+                                    (keys.includes(d.key) && keys.length === 1)
+                                  }
+                                  onChange={() =>
+                                    patch({
+                                      chart: keys.includes(d.key)
+                                        ? keys.filter((k) => k !== d.key)
+                                        : [...keys, d.key],
+                                    })
+                                  }
+                                />
+                                {d.label}
+                              </label>
+                            );
+                          })}
+                      </div>
+                    </details>
+                    <AnalysisChart
+                      data={data}
+                      settings={settings}
+                      index={index}
+                    />
+                    <div className={styles.tableScroll}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Period ending</th>
                             {(settings.chart.length
                               ? settings.chart
                               : [
                                   data.revenueKey || "premiumsEarned",
                                   "netIncome",
                                 ]
-                            )
-                              .filter((key) => data.metrics[key])
-                              .map((key) => (
-                                <td key={key}>
-                                  {valueButton(key, index + offset)}
-                                </td>
-                              ))}
+                            ).map((key) => (
+                              <th key={key}>
+                                {definitions.find((d) => d.key === key)?.label}
+                              </th>
+                            ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
+                        </thead>
+                        <tbody>
+                          {displayedPeriods.map((p, offset) => (
+                            <tr key={p.end}>
+                              <th scope="row">{p.end}</th>
+                              {(settings.chart.length
+                                ? settings.chart
+                                : [
+                                    data.revenueKey || "premiumsEarned",
+                                    "netIncome",
+                                  ]
+                              )
+                                .filter((key) => data.metrics[key])
+                                .map((key) => (
+                                  <td key={key}>
+                                    {valueButton(key, index + offset)}
+                                  </td>
+                                ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                </>
               )}
               {settings.view === "cash" && (
-                <section className={styles.panel}>
-                  <p className={styles.eyebrow}>Follow the cash</p>
-                  <h2>Earnings, cash conversion & capital allocation</h2>
-                  {data.lens !== "corporate" && (
-                    <p className={styles.notice}>
-                      For financial institutions, lending, deposits, and
-                      investments affect cash flows. OCF less PP&E purchases is
-                      not a measure of distributable cash or regulatory capital.
-                    </p>
-                  )}
-                  <div className={styles.bridgeGrid}>
-                    {[
-                      [
-                        "From earnings to operating cash",
+                <>
+                  <AnalysisCashLab
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    onInspect={inspectSelection}
+                  />
+                  <section className={styles.panel}>
+                    <p className={styles.eyebrow}>Follow the cash</p>
+                    <h2>Earnings, cash conversion & capital allocation</h2>
+                    {data.lens !== "corporate" && (
+                      <p className={styles.notice}>
+                        For financial institutions, lending, deposits, and
+                        investments affect cash flows. OCF less PP&E purchases
+                        is not a measure of distributable cash or regulatory
+                        capital.
+                      </p>
+                    )}
+                    <div className={styles.bridgeGrid}>
+                      {[
                         [
-                          ["netIncome", "Starting earnings"],
-                          ["cashAdjustments", "Residual adjustment"],
-                          ["operatingCashFlow", "Operating cash result"],
-                        ],
-                      ],
-                      [
-                        "After investment and shareholder returns",
-                        [
-                          ["operatingCashFlow", "Operating cash"],
-                          ["capex", "Less PP&E purchases"],
-                          ["freeCashFlow", "Cash after PP&E"],
-                          ["dividendsPaid", "Less reported dividends"],
-                          ["stockRepurchased", "Less common buybacks"],
-                          ["cashAfterReturns", "Remaining cash in this bridge"],
-                        ],
-                      ],
-                      [
-                        "Reported investing and financing",
-                        [
-                          ["investingCashFlow", "Net investing flow"],
-                          ["financingCashFlow", "Net financing flow"],
+                          "From earnings to operating cash",
                           [
-                            "netLongTermDebt",
-                            "Long-term proceeds less repayments",
+                            ["netIncome", "Starting earnings"],
+                            ["cashAdjustments", "Residual adjustment"],
+                            ["operatingCashFlow", "Operating cash result"],
                           ],
                         ],
-                      ],
-                    ].map(([title, rows]: any) => (
-                      <article className={styles.bridge} key={title}>
-                        <h3>{title}</h3>
-                        {rows.map(([key, label]) => {
-                          const val = data.metrics[key]?.[index]?.value;
-                          const scale = Math.max(
-                            ...rows.map(([k]) =>
-                              Math.abs(data.metrics[k]?.[index]?.value || 0),
-                            ),
-                            1,
-                          );
-                          return (
-                            <div key={key}>
-                              <span>{label}</span>
-                              {valueButton(key, index)}
-                              <div className={styles.barTrack}>
-                                <div
-                                  style={{
-                                    width: `${(Math.abs(val || 0) / scale) * 100}%`,
-                                  }}
-                                  data-negative={val < 0}
-                                />
+                        [
+                          "After investment and shareholder returns",
+                          [
+                            ["operatingCashFlow", "Operating cash"],
+                            ["capex", "Less PP&E purchases"],
+                            ["freeCashFlow", "Cash after PP&E"],
+                            ["dividendsPaid", "Less reported dividends"],
+                            ["stockRepurchased", "Less common buybacks"],
+                            [
+                              "cashAfterReturns",
+                              "Remaining cash in this bridge",
+                            ],
+                          ],
+                        ],
+                        [
+                          "Reported investing and financing",
+                          [
+                            ["investingCashFlow", "Net investing flow"],
+                            ["financingCashFlow", "Net financing flow"],
+                            [
+                              "netLongTermDebt",
+                              "Long-term proceeds less repayments",
+                            ],
+                          ],
+                        ],
+                      ].map(([title, rows]: any) => (
+                        <article className={styles.bridge} key={title}>
+                          <h3>{title}</h3>
+                          {rows.map(([key, label]) => {
+                            const val = data.metrics[key]?.[index]?.value;
+                            const scale = Math.max(
+                              ...rows.map(([k]) =>
+                                Math.abs(data.metrics[k]?.[index]?.value || 0),
+                              ),
+                              1,
+                            );
+                            return (
+                              <div key={key}>
+                                <span>{label}</span>
+                                {valueButton(key, index)}
+                                <div className={styles.barTrack}>
+                                  <div
+                                    style={{
+                                      width: `${(Math.abs(val || 0) / scale) * 100}%`,
+                                    }}
+                                    data-negative={val < 0}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </article>
-                    ))}
-                  </div>
-                  <p className={styles.muted}>
-                    The earnings-to-cash adjustment is a residual covering all
-                    noncash items and working-capital movements; it does not
-                    assign causes. The allocation bridge excludes other
-                    investing and financing flows and does not represent the
-                    change in the cash balance. Missing components keep
-                    calculated totals unavailable.
-                  </p>
-                </section>
+                            );
+                          })}
+                        </article>
+                      ))}
+                    </div>
+                    <p className={styles.muted}>
+                      The earnings-to-cash adjustment is a residual covering all
+                      noncash items and working-capital movements; it does not
+                      assign causes. The allocation bridge excludes other
+                      investing and financing flows and does not represent the
+                      change in the cash balance. Missing components keep
+                      calculated totals unavailable.
+                    </p>
+                  </section>
+                </>
               )}
               {settings.view === "drivers" && (
                 <section className={styles.panel}>
@@ -1161,103 +1264,111 @@ function Workspace(props: any) {
                 </section>
               )}
               {settings.view === "checks" && (
-                <section className={styles.panel}>
-                  <p className={styles.eyebrow}>Trust through verification</p>
-                  <h2>Coverage, reconciliation & filing history</h2>
-                  <div className={styles.kpis}>
-                    <article>
-                      <span>Available metrics</span>
-                      <strong>
-                        {checks.available} / {checks.total}
-                      </strong>
-                    </article>
-                    <article>
-                      <span>Calculated metrics</span>
-                      <strong>{checks.calculated}</strong>
-                    </article>
-                    <article>
-                      <span>Revised input contexts</span>
-                      <strong>{checks.revised}</strong>
-                    </article>
-                  </div>
-                  <div className={styles.checks}>
-                    {checks.checks.map((c) => (
-                      <article key={c.key}>
-                        <span className={styles.badge} data-state={c.status}>
-                          {c.status}
-                        </span>
-                        <h3>{c.title}</h3>
-                        {valueButton(c.key, index)}
-                        <p className={styles.muted}>
-                          {c.status === "Incomplete"
-                            ? "One or more required inputs are missing. The check cannot be completed."
-                            : `Rounding tolerance: ${analysisValue(c.tolerance)}. A residual can reflect scope differences or tagging; it is a review prompt, not an accounting error determination.`}
-                        </p>
+                <>
+                  <AnalysisSourceObservatory
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    onInspect={inspectSelection}
+                  />
+                  <section className={styles.panel}>
+                    <p className={styles.eyebrow}>Trust through verification</p>
+                    <h2>Coverage, reconciliation & filing history</h2>
+                    <div className={styles.kpis}>
+                      <article>
+                        <span>Available metrics</span>
+                        <strong>
+                          {checks.available} / {checks.total}
+                        </strong>
                       </article>
-                    ))}
-                  </div>
-                  <details open>
-                    <summary>
-                      Unavailable metrics ({checks.missing.length})
-                    </summary>
-                    <p className={styles.muted}>
-                      Unavailable is distinct from zero. This extract does not
-                      substitute custom company tags or different currencies.
-                    </p>
-                    <div className={styles.metricPicker}>
-                      {checks.missing.map((d) => (
-                        <button
-                          key={d.key}
-                          onClick={() => inspect(d.key, index)}
-                        >
-                          {d.label}
-                          <ArrowUpRight size={13} />
-                        </button>
+                      <article>
+                        <span>Calculated metrics</span>
+                        <strong>{checks.calculated}</strong>
+                      </article>
+                      <article>
+                        <span>Revised input contexts</span>
+                        <strong>{checks.revised}</strong>
+                      </article>
+                    </div>
+                    <div className={styles.checks}>
+                      {checks.checks.map((c) => (
+                        <article key={c.key}>
+                          <span className={styles.badge} data-state={c.status}>
+                            {c.status}
+                          </span>
+                          <h3>{c.title}</h3>
+                          {valueButton(c.key, index)}
+                          <p className={styles.muted}>
+                            {c.status === "Incomplete"
+                              ? "One or more required inputs are missing. The check cannot be completed."
+                              : `Rounding tolerance: ${analysisValue(c.tolerance)}. A residual can reflect scope differences or tagging; it is a review prompt, not an accounting error determination.`}
+                          </p>
+                        </article>
                       ))}
                     </div>
-                  </details>
-                  <details>
-                    <summary>
-                      Recent reports and events within the filing cutoff
-                    </summary>
-                    <p className={styles.muted}>
-                      Loaded SEC submissions feed; older input sources remain
-                      accessible in the inspector even when absent from this
-                      list.
-                    </p>
-                    <div className={styles.tableScroll}>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Form</th>
-                            <th>Reporting date</th>
-                            <th>Filed</th>
-                            <th>Accession</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.filings.slice(0, 30).map((f) => (
-                            <tr key={f.accession}>
-                              <th>
-                                <a
-                                  href={f.documentUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  {f.form} <ExternalLink size={12} />
-                                </a>
-                              </th>
-                              <td>{f.reportDate || "Not supplied"}</td>
-                              <td>{f.filingDate}</td>
-                              <td>{f.accession}</td>
+                    <details open>
+                      <summary>
+                        Unavailable metrics ({checks.missing.length})
+                      </summary>
+                      <p className={styles.muted}>
+                        Unavailable is distinct from zero. This extract does not
+                        substitute custom company tags or different currencies.
+                      </p>
+                      <div className={styles.metricPicker}>
+                        {checks.missing.map((d) => (
+                          <button
+                            key={d.key}
+                            onClick={() => inspect(d.key, index)}
+                          >
+                            {d.label}
+                            <ArrowUpRight size={13} />
+                          </button>
+                        ))}
+                      </div>
+                    </details>
+                    <details>
+                      <summary>
+                        Recent reports and events within the filing cutoff
+                      </summary>
+                      <p className={styles.muted}>
+                        Loaded SEC submissions feed; older input sources remain
+                        accessible in the inspector even when absent from this
+                        list.
+                      </p>
+                      <div className={styles.tableScroll}>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Form</th>
+                              <th>Reporting date</th>
+                              <th>Filed</th>
+                              <th>Accession</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </details>
-                  <p className={styles.muted}>{data.note}</p>
-                </section>
+                          </thead>
+                          <tbody>
+                            {data.filings.slice(0, 30).map((f) => (
+                              <tr key={f.accession}>
+                                <th>
+                                  <a
+                                    href={f.documentUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    {f.form} <ExternalLink size={12} />
+                                  </a>
+                                </th>
+                                <td>{f.reportDate || "Not supplied"}</td>
+                                <td>{f.filingDate}</td>
+                                <td>{f.accession}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                    <p className={styles.muted}>{data.note}</p>
+                  </section>
+                </>
               )}
               {settings.view === "notebook" && (
                 <section className={styles.panel}>
@@ -1291,10 +1402,7 @@ function Workspace(props: any) {
                       <Check size={15} />
                       Mark reviewed
                     </button>
-                    <button onClick={exportBrief}>
-                      <Download size={15} />
-                      Export readable brief
-                    </button>
+
                     <button
                       onClick={() =>
                         downloadText(
@@ -1330,6 +1438,14 @@ function Workspace(props: any) {
                       Save notes
                     </button>
                   </div>
+                  <AnalysisBriefComposer
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    notes={notes}
+                    evidence={saved?.evidence || []}
+                    onPatch={patch}
+                  />
                   <section className={styles.subpanel}>
                     <h3>Saved financial views</h3>
                     <form
@@ -1410,8 +1526,9 @@ function Workspace(props: any) {
                         {saved.analysisBaseline.version !== data.version ||
                         saved.analysisBaseline.basis !== data.basis ? (
                           <p className={styles.notice}>
-                            Select the same reporting basis as your saved review
-                            to compare figures.
+                            {saved.analysisBaseline.version !== data.version
+                              ? "The financial model has changed since this review. Your saved evidence is preserved. Review the current financials before saving a new baseline."
+                              : "Select the same reporting basis as your saved review to compare figures."}
                           </p>
                         ) : (
                           <ul className={styles.savedList}>
@@ -1477,6 +1594,9 @@ function Workspace(props: any) {
                                   evidenceTrigger.current =
                                     document.activeElement as HTMLElement;
                                   setSelection({
+                                    analysisSettings:
+                                      e.analysisSettings ?? null,
+                                    notes: e.notes || e.text || "",
                                     definition: {
                                       label: e.label,
                                       format: e.format || "currency",
@@ -1552,6 +1672,9 @@ function Workspace(props: any) {
               <AnalysisInspector
                 key={`${selection.definition.key || selection.definition.label}:${selection.point?.period?.end}:${selection.point?.formula}`}
                 selection={selection}
+                data={data}
+                settings={settings}
+                index={index}
                 close={closeInspector}
                 save={collect}
                 status={status}

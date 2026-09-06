@@ -124,6 +124,16 @@ function settings(value) {
     "form",
     "item",
     "status",
+    "movementScope",
+    "movementSort",
+    "growthMetric",
+    "profitMetric",
+    "formulaA",
+    "formulaB",
+    "formulaC",
+    "formulaOp",
+    "formulaScale",
+    "briefTitle",
   ])
     optionalText(value[key], `Saved setting ${key}`);
   if (value.forms !== undefined)
@@ -133,7 +143,15 @@ function settings(value) {
           value.forms.every((v) => typeof v === "string")),
       "Saved forms are invalid.",
     );
-  for (const key of ["depth", "years"])
+  for (const key of [
+    "depth",
+    "years",
+    "movementThreshold",
+    "scenarioRevenue",
+    "scenarioMargin",
+    "scenarioLoss",
+    "scenarioFunding",
+  ])
     requireShape(
       value[key] === undefined ||
         (typeof value[key] === "number" && Number.isFinite(value[key])),
@@ -150,7 +168,14 @@ function settings(value) {
         ["include", "exclude", "only"].includes(value.amendments),
       "Saved amendments setting is invalid.",
     );
-  for (const key of ["pins", "chart", "metrics", "excluded"])
+  for (const key of [
+    "pins",
+    "chart",
+    "metrics",
+    "excluded",
+    "briefMetrics",
+    "briefSections",
+  ])
     if (value[key] !== undefined)
       requireShape(
         array(value[key], key, 1000).every((v) => typeof v === "string"),
@@ -675,8 +700,12 @@ function entriesFor(source, data, store = {}) {
         p.ticker,
         p.label,
         [pointSummary(p.point), p.notes, p.tags].filter(Boolean).join(" · "),
-        compareDestination(peers, { ...p.settings, view: "notebook" }) === "/compare"
-          ? pathWithSettings(`/compare/${p.ticker}`, { ...p.settings, view: "notebook" })
+        compareDestination(peers, { ...p.settings, view: "notebook" }) ===
+          "/compare"
+          ? pathWithSettings(`/compare/${p.ticker}`, {
+              ...p.settings,
+              view: "notebook",
+            })
           : compareDestination(peers, { ...p.settings, view: "notebook" }),
         p.savedAt,
         p.id,
