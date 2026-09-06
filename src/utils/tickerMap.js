@@ -170,3 +170,19 @@ export async function getOperatingTickers(tickers) {
   }
   return out;
 }
+
+/** Resolve before searching; never choose an associated security's first alias. */
+export async function resolveDisclosureCompany(value) {
+  const requested = String(value || '').trim();
+  if (/^\d{1,10}$/.test(requested)) return { ticker: requested.padStart(10, '0'), cik: requested.padStart(10, '0'), name: '' };
+  const index = await getCached('operating');
+  const ticker = requested.toUpperCase();
+  if (index[ticker]) return { ...index[ticker], ticker };
+  const normalized = requested.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (normalized.length < 3) throw new Error(`No SEC company matched ${requested}. Use its ticker or CIK.`);
+  const matches = Object.entries(index).filter(([, entry]) => entry.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized);
+  const ciks = [...new Set(matches.map(([, entry]) => entry.cik))];
+  if (ciks.length !== 1) throw new Error(`Company identity is unresolved for ${requested}. Use an exact ticker or CIK.`);
+  // A name resolves to the issuer's CIK, not an arbitrarily selected share class.
+  return { ticker: ciks[0], cik: ciks[0], name: matches[0][1].name };
+}

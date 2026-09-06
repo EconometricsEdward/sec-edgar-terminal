@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { buildKeywordDefinitions } from '../../../utils/disclosureKeywords.js';
+import { resolveDisclosureCompany } from '../../../utils/tickerMap.js';
+import { parseDisclosureQuery, quoteTerm } from '../../../utils/disclosureQuery.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -27,6 +29,7 @@ const ALLOWED_FORMS = new Set([
   '40-F',
   'N-CSR',
   'NPORT-P',
+  '10-K/A', '10-Q/A', '8-K/A', '20-F/A', '40-F/A', '6-K', '6-K/A', 'S-1/A', 'S-3/A', 'S-4/A', 'N-CSR/A', 'NPORT-P/A', 'DEF 14A/A', 'DEFM14A/A',
 ]);
 
 function parsePositiveInt(value, fallback, max) {
@@ -68,7 +71,7 @@ function parseMatchMode(value) {
 }
 
 function buildSecQuery(terms, matchMode = 'any') {
-  return terms.map(quoteSearchTerm).join(matchMode === 'all' ? ' AND ' : ' OR ');
+  return terms.map(quoteSearchTerm).join(matchMode === 'all' ? ' ' : ' OR ');
 }
 
 function buildFallbackQueries(terms, matchMode) {
@@ -76,7 +79,7 @@ function buildFallbackQueries(terms, matchMode) {
   return terms.map(quoteSearchTerm);
 }
 
-function buildSearchParams({ secQuery, forms, startDate, endDate, from, size }) {
+function buildSearchParams({ secQuery, forms, startDate, endDate, from, size, ciks = [] }) {
   return new URLSearchParams({
     q: secQuery,
     forms: forms.join(','),
@@ -85,6 +88,7 @@ function buildSearchParams({ secQuery, forms, startDate, endDate, from, size }) 
     enddt: endDate,
     from: String(from),
     size: String(size),
+    ...(ciks.length ? { ciks: ciks.join(',') } : {}),
   });
 }
 
@@ -109,7 +113,7 @@ function hitKey(hit) {
   return `${hit.accession}:${hit.documentName}:${hit.cik}`;
 }
 
-async function fetchSearchPage({ secQuery, forms, startDate, endDate, from, size, signal }) {
+async function fetchSearchPage({ secQuery, forms, startDate, endDate, from, size, signal, ciks = [] }) {
   const params = buildSearchParams({
     secQuery,
     forms,
@@ -117,6 +121,7 @@ async function fetchSearchPage({ secQuery, forms, startDate, endDate, from, size
     endDate,
     from,
     size,
+    ciks,
   });
   const requestUrl = `${SEC_SEARCH_URL}?${params}`;
   const response = await fetch(requestUrl, {
@@ -215,10 +220,12 @@ function buildDocumentUrl(cik, accession, documentName) {
   return `https://www.sec.gov/Archives/edgar/data/${cikInt}/${accession.replace(/-/g, '')}/${documentName}`;
 }
 
-function normalizeHit(hit, rank) {
+function normalizeHit(hit, rank, focusTerms = []) {
   const source = hit?._source || {};
-  const cik = String(source.ciks?.[0] || '').padStart(10, '0');
-  const displayName = source.display_names?.[0] || '';
+  const focusedIndex = (source.ciks || []).findIndex((cik) => focusTerms.some((f) => f.cik === String(cik).padStart(10, '0')));
+  const issuerIndex = Math.max(0, focusedIndex);
+  const cik = String(source.ciks?.[issuerIndex] || '').padStart(10, '0');
+  const displayName = source.display_names?.[issuerIndex] || source.display_names?.[0] || '';
   const display = parseDisplayName(displayName, cik);
   const accession = source.adsh || '';
   const documentName = documentNameFromHit(hit);
@@ -229,6 +236,7 @@ function normalizeHit(hit, rank) {
     rank,
     score: hit?._score || 0,
     cik,
+    requestedTicker: focusTerms.find((f) => f.cik === cik)?.ticker || null,
     companyName: display.companyName,
     tickers: display.tickers,
     displayName,
@@ -274,6 +282,7 @@ function buildSummary(hits, { focusApplied }) {
     const company = companyMap.get(companyKey) || {
       cik: hit.cik,
       companyName: hit.companyName || 'Unknown filer',
+      requestedTicker: hit.requestedTicker || null,
       tickers: [],
       hits: 0,
       forms: {},
@@ -368,7 +377,11 @@ function buildSummary(hits, { focusApplied }) {
 export async function GET(request) {
   const url = new URL(request.url);
   const rawQuery = url.searchParams.get('query') || url.searchParams.get('keywords') || '';
-  const parsed = buildKeywordDefinitions(rawQuery);
+  const expression = url.searchParams.get('expression');
+  let advanced;
+  try { advanced = expression ? parseDisclosureQuery(expression) : null; }
+  catch (error) { return NextResponse.json({ error: error.message }, { status: 400 }); }
+  const parsed = advanced ? { terms: advanced.positive, definitions: advanced.positive, rejected: [] } : buildKeywordDefinitions(rawQuery);
 
   if (parsed.definitions.length === 0) {
     return NextResponse.json(
@@ -384,11 +397,21 @@ export async function GET(request) {
   const months = parsePositiveInt(url.searchParams.get('months'), DEFAULT_MONTHS, MAX_MONTHS);
   const forms = parseForms(url.searchParams.get('forms'));
   const rawFocus = url.searchParams.get('focus') || url.searchParams.get('ticker') || url.searchParams.get('cik') || url.searchParams.get('company') || '';
-  const focusTerms = parseFocusTerms(rawFocus);
+  let focusTerms = parseFocusTerms(rawFocus);
+  if (rawFocus.split(',').filter((s) => s.trim()).length > MAX_FOCUS_TERMS) return NextResponse.json({ error: 'Focus the index on at most five companies.' }, { status: 400 });
+  try {
+    focusTerms = await Promise.all(focusTerms.map(async (focus) => {
+      const resolved = await resolveDisclosureCompany(focus.raw);
+      return { ...focus, cik: resolved.cik, ticker: /^\d+$/.test(resolved.ticker) ? null : resolved.ticker };
+    }));
+  } catch (error) { return NextResponse.json({ error: error.message }, { status: 400 }); }
   const matchMode = parseMatchMode(url.searchParams.get('match') || url.searchParams.get('matchMode'));
   const startDate = url.searchParams.get('startdt') || isoDate(monthsAgo(months));
   const endDate = url.searchParams.get('enddt') || isoDate(new Date());
-  const secQuery = buildSecQuery(parsed.terms, matchMode);
+  if (![startDate, endDate].every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d)) && new Date(d).toISOString().slice(0, 10) === d) || startDate > endDate) return NextResponse.json({ error: 'Provide a valid filing-date range.' }, { status: 400 });
+  // The SEC grammar does not recognize explicit AND or guarantee nested groups.
+  // Discover a superset, then verify the full expression in the filing reader.
+  const secQuery = advanced ? advanced.positive.map(quoteTerm).join(' OR ') : buildSecQuery(parsed.terms, matchMode);
   const pageSize = focusTerms.length ? FOCUS_PAGE_SIZE : limit;
   const maxPages = focusTerms.length ? MAX_FOCUS_PAGES : 1;
 
@@ -419,6 +442,7 @@ export async function GET(request) {
           from,
           size: pageSize,
           signal: controller.signal,
+          ciks: focusTerms.map((f) => f.cik),
         });
         sourceUrls.push(requestUrl);
 
@@ -436,7 +460,7 @@ export async function GET(request) {
         timedOut = timedOut || Boolean(data?.timed_out);
 
         const normalizedPage = hits
-          .map((hit, index) => normalizeHit(hit, from + index + 1))
+          .map((hit, index) => normalizeHit(hit, from + index + 1, focusTerms))
           .filter((hit) => hit.documentUrl);
         normalizedPages.push(...normalizedPage);
 
@@ -461,7 +485,7 @@ export async function GET(request) {
     try {
       await runSearchPages(secQuery);
     } catch (err) {
-      fallbackQueries = buildFallbackQueries(parsed.terms, matchMode);
+      fallbackQueries = advanced ? [] : buildFallbackQueries(parsed.terms, matchMode);
       if (!fallbackQueries.length) throw err;
 
       normalizedPages.length = 0;
@@ -536,17 +560,21 @@ export async function GET(request) {
             : null,
         },
         query: {
-          raw: rawQuery,
+          raw: expression || rawQuery,
           terms: parsed.terms,
           rejected: parsed.rejected,
           secQuery,
           fallbackSecQueries: usedFallback ? fallbackQueries : [],
           matchMode,
+          candidateSearch: Boolean(advanced),
+          verification: advanced ? 'Positive-term index candidates. The full Boolean query, paragraph scope, and section filter are verified only when a document is reviewed.' : 'SEC index matches; filing text has not been fetched.',
         },
         focus: {
           raw: rawFocus,
           terms: focusTerms.map((focus) => focus.raw),
           applied: focusTerms.length > 0,
+          resolved: focusTerms.map((f) => ({ requested: f.raw, ticker: f.ticker, cik: f.cik })),
+          constrainedAtSource: focusTerms.length > 0,
           matchedHits: focusTerms.length ? focusedHits.length : null,
           searchedHits: normalizedHits.length,
           pagesSearched: sourceUrls.length,

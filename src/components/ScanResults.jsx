@@ -642,7 +642,7 @@ function EdgarIndexCompanyRow({ company, terms, matchMode }) {
 }
 
 function getPrimaryTicker(company) {
-  return (company.tickers || []).find(Boolean) || null;
+  return company.requestedTicker || (company.tickers || []).find(Boolean) || null;
 }
 
 function collectPrimaryTickers(companies, max = 5) {
@@ -1262,16 +1262,16 @@ function CompareSummaryTable({ results }) {
               label="Filings With Matches"
               values={results.map((r) => r.filingsWithMatches)}
               format="number"
-              higherIsBetter={true}
+              higherIsBetter={null}
             />
             <CompareRow
               label="Total Matches"
               values={results.map((r) => r.totalMatches)}
               format="number"
-              higherIsBetter={true}
+              higherIsBetter={null}
             />
             <CompareRow
-              label="First Mention"
+              label="First observed in search"
               values={results.map((r) => r.firstMention || '—')}
               format="date-first"
             />
@@ -1442,7 +1442,7 @@ function SummaryBar({ result }) {
       />
       <SummaryCard
         icon={Clock}
-        label="First Mention"
+        label="First observed in search"
         value={result.firstMention || '—'}
       />
       <SummaryCard

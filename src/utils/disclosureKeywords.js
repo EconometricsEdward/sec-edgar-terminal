@@ -74,6 +74,7 @@ export function buildKeywordDefinitions(rawQuery) {
 
 export function disclosureSignature({ terms, depth, matchMode = 'any' }) {
   return JSON.stringify({
+    coverageVersion: 2,
     terms: [...terms].map((term) => term.toLowerCase()).sort(),
     depth,
     matchMode: matchMode === 'all' ? 'all' : 'any',
