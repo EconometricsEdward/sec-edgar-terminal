@@ -1,5 +1,5 @@
 // One grammar shared by the browser and server. Never silently broaden a query.
-export const QUERY_VERSION = "disclosures-v1";
+export const QUERY_VERSION = "disclosures-v2";
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export const quoteTerm = (s) => `"${String(s).replace(/["\\]/g, " ").trim()}"`;
 

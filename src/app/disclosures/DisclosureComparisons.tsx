@@ -52,7 +52,7 @@ export function DisclosureMatrix({
                   {row.ticker}
                   <small>
                     {row.error ||
-                      `${row.reviewed}/${row.attempted} reviewed${row.missing ? " · partial" : ""}`}
+                      `${row.reviewed}/${row.attempted} reviewed${row.missing || row.bounded ? " · partial" : ""}`}
                   </small>
                 </th>
                 {row.cells.map((cell) => (
@@ -141,6 +141,17 @@ export function DisclosureTrends({
         filings do not create new periods. Broader coverage is not evidence of
         increasing risk.
       </p>
+      {companies.some((c) => c.limited || c.historyLimited) && (
+        <p className={s.warning}>
+          Review depth or historical-source limits omit periods for{" "}
+          {companies
+            .filter((c) => c.limited || c.historyLimited)
+            .map((c) => c.ticker)
+            .join(", ")}
+          . Only reporting periods found in inspected history are displayed;
+          omitted periods are unknown.
+        </p>
+      )}
       {!rows.length ? (
         <div className={s.empty}>
           No {form} reporting periods in the reviewed sample. Search that form

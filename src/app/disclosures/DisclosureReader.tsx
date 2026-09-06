@@ -40,6 +40,7 @@ export default function DisclosureReader({
   notebook,
   onCollect,
   onLabel,
+  onReviewed,
   close,
 }: {
   filing: Filing;
@@ -53,6 +54,7 @@ export default function DisclosureReader({
     collection: string,
   ) => void;
   onLabel: (id: string, label: string) => void;
+  onReviewed?: (filing: Filing) => void;
   close: () => void;
 }) {
   const [data, setData] = useState<Filing | null>(null);
@@ -89,7 +91,12 @@ export default function DisclosureReader({
           throw new Error(result.error || "Could not open this filing.");
         return result;
       })
-      .then(setData)
+      .then((result) => {
+        if (!abort.signal.aborted) {
+          setData(result);
+          if (result.page === 1) onReviewed?.(result);
+        }
+      })
       .catch((error) => {
         if (!abort.signal.aborted) setError(error.message);
       })
@@ -102,6 +109,7 @@ export default function DisclosureReader({
     filing.cik,
     filing.primaryDoc,
     filing.ticker,
+    onReviewed,
     page,
     retry,
     settings,
@@ -194,7 +202,10 @@ export default function DisclosureReader({
           <p className={s.muted}>
             {data.matchCount || 0} matching passages · {data.removedCount || 0}{" "}
             prior passages unmatched in current sections · {data.unchanged || 0}{" "}
-            repeated.
+            repeated.{" "}
+            {data.queryRemovedCount
+              ? `${data.queryRemovedCount} prior matches were revised without the query language.`
+              : ""}
           </p>
           <details className={s.method}>
             <summary>Comparison & extraction coverage</summary>

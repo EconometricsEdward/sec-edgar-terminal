@@ -71,9 +71,29 @@ const subject = (s) =>
     .filter(
       (w) =>
         w.length > 2 &&
-        !["the", "and", "our", "its", "this", "that", "for", "with"].includes(
-          w,
-        ),
+        !/^\d+$/.test(w) &&
+        ![
+          "the",
+          "and",
+          "our",
+          "its",
+          "this",
+          "that",
+          "for",
+          "with",
+          "january",
+          "february",
+          "march",
+          "april",
+          "may",
+          "june",
+          "july",
+          "august",
+          "september",
+          "october",
+          "november",
+          "december",
+        ].includes(w),
     )
     .slice(0, 2)
     .join(" ");
@@ -420,15 +440,51 @@ export function compareDisclosurePassages(
         current.sections.some((s) => s.id === p.sectionId) &&
         !amendment,
     )
-    .map((p) => ({
-      ...p,
-      change: "removed",
-      priorText: p.text,
-      text: "",
-      reasons: [
-        "Prior matching paragraph was not matched in the current section; removal does not prove resolution.",
-      ],
-    }));
+    .map((p) => {
+      const oldWords = words(p.text);
+      const head = subject(p.text);
+      let replacement = null;
+      let best = 0.48;
+      for (const next of current.paragraphs) {
+        if (
+          next.sectionId !== p.sectionId ||
+          subject(next.text) !== head ||
+          current.matches.some((match) => match.index === next.index)
+        )
+          continue;
+        const nextWords = words(next.text);
+        let overlap = 0;
+        for (const word of oldWords) if (nextWords.has(word)) overlap++;
+        const score =
+          overlap / Math.max(1, oldWords.size + nextWords.size - overlap);
+        if (score > best) {
+          replacement = next;
+          best = score;
+        }
+      }
+      return replacement
+        ? {
+            ...p,
+            ...replacement,
+            change: "revised",
+            priorText: p.text,
+            queryNoLongerMatches: true,
+            beforeContext: "",
+            afterContext: "",
+            reasons: [
+              "A similar current paragraph no longer satisfies the query. Compare both versions before drawing a conclusion.",
+            ],
+          }
+        : {
+            ...p,
+            change: "removed",
+            priorText: p.text,
+            text: "",
+            reasons: [
+              "Prior matching paragraph was not matched in the current section; removal does not prove resolution.",
+            ],
+          };
+    });
   return {
     matches: changed,
     removed,
@@ -487,6 +543,7 @@ export function buildDisclosureMatrix(companies, requested = []) {
       attempted: filings.length,
       missing: filings.length - reviewed.length,
       error: company?.error || (!company ? "Not yet searched" : ""),
+      bounded: Boolean(company?.limited || company?.historyLimited),
       cells: DISCLOSURE_TOPICS.map((t) => ({
         ...t,
         hits: reviewed.filter((f) => f.topics?.[t.id] > 0).length,

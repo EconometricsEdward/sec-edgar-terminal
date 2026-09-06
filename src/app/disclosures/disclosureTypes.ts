@@ -42,6 +42,14 @@ export type Filing = {
   reason?: string;
   matchCount?: number;
   removedCount?: number;
+  queryRemovedCount?: number;
+  signals?: {
+    maxRelevance: number;
+    closestTerms: number | null;
+    concrete: number;
+    recognized: number;
+    languages: Record<string, number>;
+  };
   topics?: Record<string, number>;
   previews?: Passage[];
   additions?: number;

@@ -120,6 +120,12 @@ export default function DisclosureSearchClient({
   const [companies, setCompanies] = useState<CompanyScan[]>([]);
   const [index, setIndex] = useState<any>(null);
   const [verified, setVerified] = useState<Filing[]>([]);
+  const recordVerified = useCallback((filing: Filing) => {
+    setVerified((items) => [
+      ...items.filter((f) => filingEvidenceId(f) !== filingEvidenceId(filing)),
+      { ...filing, previews: filing.matches?.slice(0, 3), matches: undefined },
+    ]);
+  }, []);
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -426,9 +432,10 @@ export default function DisclosureSearchClient({
     (f) =>
       (f.matched ||
         f.status === "index-candidate" ||
-        (tab === "changes" && (f.removedCount || 0) > 0)) &&
+        (tab === "changes" &&
+          (f.removedCount || 0) + (f.revisions || 0) > 0)) &&
       (companyFilter === "all" || f.ticker === companyFilter) &&
-      (language === "all" || f.previews?.some((p) => p.label === language)) &&
+      (language === "all" || (f.signals?.languages[language] || 0) > 0) &&
       (tab !== "changes" ||
         (f.additions || 0) + (f.revisions || 0) + (f.removedCount || 0) > 0),
   );
@@ -443,18 +450,13 @@ export default function DisclosureSearchClient({
       );
     if (sort === "proximity")
       return (
-        Math.min(...ap.map((p) => p.proximity ?? Infinity)) -
-        Math.min(...bp.map((p) => p.proximity ?? Infinity))
+        (a.signals?.closestTerms ?? Infinity) -
+        (b.signals?.closestTerms ?? Infinity)
       );
     if (sort === "specificity")
-      return (
-        Number(bp.some((p) => p.concrete)) - Number(ap.some((p) => p.concrete))
-      );
+      return (b.signals?.concrete || 0) - (a.signals?.concrete || 0);
     if (sort === "section")
-      return (
-        Number(bp.some((p) => p.sectionId !== "other")) -
-        Number(ap.some((p) => p.sectionId !== "other"))
-      );
+      return (b.signals?.recognized || 0) - (a.signals?.recognized || 0);
     return (
       Math.max(0, ...bp.map((p) => p.relevance)) -
         Math.max(0, ...ap.map((p) => p.relevance)) ||
@@ -655,9 +657,12 @@ export default function DisclosureSearchClient({
                   ],
                   [
                     filings.filter((f) => f.status !== "reviewed").length +
-                      companies.filter((c) => c.error).length,
+                      companies.filter(
+                        (c) => c.error || c.limited || c.historyLimited,
+                      ).length +
+                      Math.max(0, requested.length - companies.length),
                     "Coverage gaps",
-                    "Fetch failures, unavailable sections or issuers",
+                    "Source gaps, pending issuers & bounded histories",
                   ],
                 ]
               : [
@@ -965,7 +970,7 @@ export default function DisclosureSearchClient({
                     </select>
                   </label>
                   <label>
-                    Wording label
+                    Automated wording
                     <select
                       value={language}
                       onChange={(e) => setLanguage(e.target.value)}
@@ -1076,6 +1081,7 @@ export default function DisclosureSearchClient({
               filing={reader.filing}
               settings={reader.settings}
               changesOnly={tab === "changes"}
+              onReviewed={active?.mode === "index" ? recordVerified : undefined}
               notebook={notebook}
               onCollect={collect}
               onLabel={setLabel}

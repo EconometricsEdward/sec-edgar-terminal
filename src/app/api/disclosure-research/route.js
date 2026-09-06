@@ -52,9 +52,27 @@ export async function GET(request) {
             page,
           )
         : await scanDisclosureCompany(ticker, settings);
-    return Response.json(data, {
-      headers: { "Cache-Control": "private, no-store" },
-    });
+    const bytes = new TextEncoder().encode(JSON.stringify(data));
+    const headers = {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    };
+    if (bytes.length <= 3500000) return new Response(bytes, { headers });
+    // Preserve unusually large quotations without a buffered function-response limit.
+    let offset = 0;
+    return new Response(
+      new ReadableStream({
+        pull(controller) {
+          if (offset >= bytes.length) {
+            controller.close();
+            return;
+          }
+          controller.enqueue(bytes.subarray(offset, offset + 32768));
+          offset += 32768;
+        },
+      }),
+      { headers },
+    );
   } catch (error) {
     return Response.json(
       { error: error.message || "SEC disclosure review failed." },

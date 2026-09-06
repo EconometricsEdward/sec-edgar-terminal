@@ -247,6 +247,43 @@ test("Boilerplate disappears from changes while financial wording keeps both ver
     after.matches[0].text,
   );
 });
+test("Changing a leading reporting date does not create a false new paragraph", () => {
+  const body =
+    "As of December 31, 2024, the Firm had high quality liquid assets of $834 billion and unencumbered marketable securities of $594 billion, resulting in approximately $1.4 trillion of liquidity sources.";
+  const before = analyzeDisclosure(filingText(body), "10-K", q("liquidity"), {
+    section: "risk",
+  });
+  const after = analyzeDisclosure(
+    filingText(body.replace("2024", "2025").replace("$834", "$915")),
+    "10-K",
+    q("liquidity"),
+    { section: "risk" },
+  );
+  assert.equal(
+    compareDisclosurePassages(after, before).matches[0].change,
+    "revised",
+  );
+});
+test("Query language revised away is shown with the current and prior wording", () => {
+  const before = analyzeDisclosure(
+    filingText(paragraph),
+    "10-K",
+    q("liquidity"),
+    { section: "risk" },
+  );
+  const after = analyzeDisclosure(
+    filingText(paragraph.replace("liquidity", "cash")),
+    "10-K",
+    q("liquidity"),
+    { section: "risk" },
+  );
+  const diff = compareDisclosurePassages(after, before);
+  assert.equal(after.matched, false);
+  assert.equal(diff.removed[0].change, "revised");
+  assert.equal(diff.removed[0].queryNoLongerMatches, true);
+  assert.match(diff.removed[0].text, /cash/);
+  assert.match(diff.removed[0].priorText, /liquidity/);
+});
 test("Partial amendments do not turn omitted paragraphs into removals or additions", () => {
   const before = analyzeDisclosure(
     filingText(paragraph),

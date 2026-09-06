@@ -228,8 +228,8 @@ function compactPassage(p) {
     index: p.index,
     sectionId: p.sectionId,
     section: p.section,
-    text: p.text.slice(0, 700),
-    previewTruncated: p.text.length > 700,
+    text: (p.text || p.priorText || "").slice(0, 700),
+    previewTruncated: (p.text || p.priorText || "").length > 700,
     matchedTerms: p.matchedTerms,
     proximity: p.proximity,
     concrete: p.concrete,
@@ -291,7 +291,8 @@ async function inspectFiling(company, filing, settings, compare = true) {
     status: analysis.status,
     matched: analysis.matched,
     matchCount: analysis.matches.length,
-    removedCount: removed.length,
+    removedCount: removed.filter((p) => p.change === "removed").length,
+    queryRemovedCount: removed.filter((p) => p.queryNoLongerMatches).length,
     topics: analysis.topics,
     sections: analysis.sections,
     extraction: analysis.extraction,
@@ -299,8 +300,23 @@ async function inspectFiling(company, filing, settings, compare = true) {
     comparisonError,
     unchanged,
     matches,
+    signals: {
+      maxRelevance: Math.max(0, ...matches.map((p) => p.relevance)),
+      closestTerms:
+        Math.min(...matches.map((p) => p.proximity ?? Infinity)) === Infinity
+          ? null
+          : Math.min(...matches.map((p) => p.proximity ?? Infinity)),
+      concrete: matches.filter((p) => p.concrete).length,
+      recognized: matches.filter((p) => p.sectionId !== "other").length,
+      languages: Object.fromEntries(
+        [...new Set(matches.map((p) => p.label))].map((label) => [
+          label,
+          matches.filter((p) => p.label === label).length,
+        ]),
+      ),
+    },
     additions: analysis.matches.filter((p) => p.change === "added").length,
-    revisions: analysis.matches.filter((p) => p.change === "revised").length,
+    revisions: matches.filter((p) => p.change === "revised").length,
     reason:
       analysis.status === "section-unavailable"
         ? "Requested section was not identified; no conclusion about absence of the query."
