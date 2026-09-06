@@ -80,9 +80,7 @@ function VintageRequest({ data, settings, index, onInspect, onPatch }: any) {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("meaningful");
-  const [localDate, setLocalDate] = useState(settings.vintageDate || "");
   const request = useRef<AbortController | null>(null);
-  const date = onPatch ? settings.vintageDate || "" : localDate;
   const currentCutoff = data.asOf ?? settings.asOf ?? "";
   const today = new Date().toISOString().slice(0, 10);
   const limit = currentCutoff && currentCutoff < today ? currentCutoff : today;
@@ -120,19 +118,26 @@ function VintageRequest({ data, settings, index, onInspect, onPatch }: any) {
     request.current = null;
     setLoading(false);
   };
-  async function compare(event: React.FormEvent) {
+  async function compare(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Read the submitted control, including values entered by the native date
+    // picker, before any state update. Saved settings are a committed cutoff,
+    // not the draft value while a user types a partial date.
+    const requested = String(
+      new FormData(event.currentTarget).get("vintageDate") || "",
+    );
     cancel();
     setSnapshot(null);
-    const validation = validateVintageDate(date, currentCutoff);
+    const validation = validateVintageDate(requested, currentCutoff);
     setError(validation);
     if (validation) return;
+    onPatch?.({ vintageDate: requested });
     const controller = new AbortController();
     request.current = controller;
     setLoading(true);
     try {
       const response = await fetch(
-        `/api/analysis-research?${new URLSearchParams({ ticker: data.ticker, basis: data.basis, asOf: date })}`,
+        `/api/analysis-research?${new URLSearchParams({ ticker: data.ticker, basis: data.basis, asOf: requested })}`,
         { signal: controller.signal },
       );
       const result = await response.json();
@@ -149,7 +154,7 @@ function VintageRequest({ data, settings, index, onInspect, onPatch }: any) {
       )
         throw new Error("The earlier snapshot was incomplete. Try again.");
       if (!controller.signal.aborted && request.current === controller)
-        setSnapshot({ data: historical, cutoff: date });
+        setSnapshot({ data: historical, cutoff: requested });
     } catch (cause: any) {
       if (!controller.signal.aborted && request.current === controller)
         setError(
@@ -204,15 +209,15 @@ function VintageRequest({ data, settings, index, onInspect, onPatch }: any) {
           Earlier filing cutoff
           <input
             type="date"
-            value={date}
+            name="vintageDate"
+            key={settings.vintageDate || ""}
+            defaultValue={settings.vintageDate || ""}
             required
             max={maxDate}
-            onChange={(event) => {
+            onChange={() => {
               cancel();
               setSnapshot(null);
               setError("");
-              if (onPatch) onPatch({ vintageDate: event.target.value });
-              else setLocalDate(event.target.value);
             }}
             aria-describedby="analysis-vintage-context"
           />
