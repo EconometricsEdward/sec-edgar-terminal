@@ -1,6 +1,8 @@
-import type { Metadata } from 'next';
-import CompareClient, { type PreloadedCompany } from './CompareClient';
-import { buildPageMetadata } from '../../../utils/siteMetadata';
+import type { Metadata } from "next";
+import { normalizeCompareTickers } from "../../../utils/compareNotebook.js";
+import { getOperatingTickers } from "../../../utils/tickerMap.js";
+import CompareClient, { type PreloadedCompany } from "./CompareClient";
+import { buildPageMetadata } from "../../../utils/siteMetadata";
 
 // ============================================================================
 // Route configuration
@@ -10,87 +12,33 @@ import { buildPageMetadata } from '../../../utils/siteMetadata';
 // ============================================================================
 export const revalidate = 3600;
 
-const MAX_COMPANIES = 5;
-
-// ============================================================================
-// Types
-// ============================================================================
-interface CompanyTickerEntry {
-  cik_str: number;
-  ticker: string;
-  title: string;
-}
-
-interface CompanyTickersFile {
-  [key: string]: CompanyTickerEntry;
-}
-
 interface PageProps {
   params: Promise<{ tickers: string }>;
 }
-
-// ============================================================================
-// Parse comma-delimited tickers from the URL
-//
-// Handles both literal commas and percent-encoded commas (%2C). Caps at
-// MAX_COMPANIES, filters empties, normalizes to upper case.
-// ============================================================================
 function parseTickers(raw: string): string[] {
-  const decoded = decodeURIComponent(raw || '');
-  const seen = new Set<string>();
-
-  return decoded
-    .split(',')
-    .map((t) => t.trim().toUpperCase())
-    .filter((ticker) => {
-      if (!ticker || seen.has(ticker)) return false;
-      seen.add(ticker);
-      return true;
-    })
-    .slice(0, MAX_COMPANIES);
+  return normalizeCompareTickers(raw);
 }
-
-// ============================================================================
-// Server-side ticker map fetch (cached at the CDN for 1 day)
-// ============================================================================
-async function getTickerMap(): Promise<Map<string, { cik: string; name: string }>> {
-  const userAgent = process.env.SEC_USER_AGENT;
-  if (!userAgent) return new Map();
-
-  try {
-    const res = await fetch('https://www.sec.gov/files/company_tickers.json', {
-      headers: { 'User-Agent': userAgent },
-      next: { revalidate: 86400 },
-    });
-    if (!res.ok) return new Map();
-    const data = (await res.json()) as CompanyTickersFile;
-    const map = new Map<string, { cik: string; name: string }>();
-    for (const entry of Object.values(data)) {
-      if (entry?.ticker && entry.cik_str) {
-        map.set(entry.ticker.toUpperCase(), {
-          cik: String(entry.cik_str).padStart(10, '0'),
-          name: entry.title,
-        });
-      }
-    }
-    return map;
-  } catch (err) {
-    console.error('[compare/[tickers]] ticker-map fetch failed:', err);
-    return new Map();
-  }
-}
-
 // ============================================================================
 // Resolve each requested ticker to a company name + CIK. Used for both
 // metadata and to pre-populate the client with name/cik so the client
 // doesn't have to wait for the ticker map before rendering.
 // ============================================================================
-async function resolveCompanies(tickers: string[]): Promise<PreloadedCompany[]> {
+async function resolveCompanies(
+  tickers: string[],
+): Promise<PreloadedCompany[]> {
   if (tickers.length === 0) return [];
-  const map = await getTickerMap();
+  let entries: Record<string, { cik: string; name: string }> = {};
+  try {
+    entries = (await getOperatingTickers(tickers)) as Record<
+      string,
+      { cik: string; name: string }
+    >;
+  } catch {
+    /* The client can retry an unavailable SEC directory. */
+  }
   return tickers
     .map((ticker) => {
-      const entry = map.get(ticker);
+      const entry = entries[ticker];
       if (!entry) return null;
       return { ticker, cik: entry.cik, name: entry.name };
     })
@@ -100,29 +48,31 @@ async function resolveCompanies(tickers: string[]): Promise<PreloadedCompany[]> 
 // ============================================================================
 // generateMetadata — per-comparison title, description, canonical
 // ============================================================================
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
   const { tickers: rawTickers } = await params;
   const tickers = parseTickers(rawTickers);
 
   if (tickers.length === 0) {
     return buildPageMetadata({
-      title: 'Peer Comparison — Compare SEC Filings & Financials',
+      title: "Peer Comparison — Compare SEC Filings & Financials",
       description:
-        'Compare up to 5 public companies side-by-side. 10 years of financial data from SEC XBRL filings.',
-      path: '/compare',
+        "Compare up to 5 public companies side-by-side. 10 years of financial data from SEC XBRL filings.",
+      path: "/compare",
     });
   }
 
-  const tickersVsLabel = tickers.join(' vs ');
-  const tickersPath = tickers.join(',');
+  const tickersVsLabel = tickers.join(" vs ");
+  const tickersPath = tickers.join(",");
 
   // Try to enrich the description with company names if they resolve, but
   // don't block the response if SEC is slow — fall back to ticker symbols.
   const companies = await resolveCompanies(tickers);
   const namedDescription =
     companies.length > 0
-      ? `Compare ${companies.map((c) => c.name).join(', ')} (${tickersVsLabel}) side-by-side across 10 fiscal years. Revenue, net income, margins, ROE, ROA, and growth rates from SEC XBRL filings.`
-      : `Compare ${tickersVsLabel} side-by-side across 10 fiscal years. Revenue, net income, margins, ROE, ROA, and growth rates from SEC XBRL filings.`;
+      ? `Compare ${companies.map((c) => c.name).join(", ")} (${tickersVsLabel}) side-by-side across 10 fiscal years. Aligned annual, quarterly, and trailing-year financials, industry-aware metrics, peer benchmarks, and original SEC filing evidence.`
+      : `Compare ${tickersVsLabel} side-by-side across 10 fiscal years. Aligned annual, quarterly, and trailing-year financials, industry-aware metrics, peer benchmarks, and original SEC filing evidence.`;
 
   const title = `${tickersVsLabel} — Side-by-Side Financial Comparison`;
   return buildPageMetadata({
