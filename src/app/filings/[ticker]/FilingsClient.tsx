@@ -1,1232 +1,1390 @@
-'use client';
+"use client";
 
-import { useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import {
-  FileText, ExternalLink, Calendar, Hash, Filter, ChevronDown, ChevronRight,
-  Link as LinkIcon, AlertCircle, BarChart3, X, GitCompare, Search,
-  ShieldCheck, type LucideIcon,
-} from 'lucide-react';
-import { getItemsInfo } from '../../../utils/formItems.js';
-import { PEER_GROUPS } from '../../../utils/peerGroups.js';
-import { classifyIndustry, industryLabel } from '../../../utils/industry.js';
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  ArrowDownToLine,
+  ArrowUpRight,
+  BookOpen,
+  Bookmark,
+  Check,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  FileText,
+  History,
+  LayoutList,
+  ListChecks,
+  RefreshCw,
+  Search,
+  Share2,
+  ShieldCheck,
+  X,
+} from "lucide-react";
+import CompanySearch from "../CompanySearch";
+import { TickerContext } from "../../../contexts/TickerContext";
+import { getItemsInfo } from "../../../utils/formItems.js";
+import {
+  FILINGS_SETTINGS,
+  FILING_FAMILIES,
+  readFilingsSettings,
+  normalizeFilingsSettings,
+  filingPath,
+  filterFilings,
+  mergeFilings,
+  selectFilingBaseline,
+} from "../../../utils/filingsResearch.js";
+import {
+  FILINGS_NOTEBOOK_KEY,
+  emptyFilingsNotebook,
+  readFilingsNotebook,
+  writeFilingsNotebook,
+  exportFilingsCsv,
+} from "../../../utils/filingsNotebook.js";
+import styles from "../filings.module.css";
 
-// ============================================================================
-// Types — exported so the server page can import them
-// ============================================================================
-export interface FilingEntry {
-  accession: string;
-  form: string;
-  filingDate: string;
-  reportDate: string;
-  year: number;
-  quarter: string;
-  primaryDoc: string;
-  primaryDescription: string;
-  size?: number;
-  items?: string;
-  documentUrl: string;
-}
-
-export interface CompanyInfo {
-  name: string;
-  cik: string;
-  sic?: string;
-  sicCode?: string;
-  exchanges: string;
-  tickers: string;
-  fiscalYearEnd?: string;
-  stateOfIncorporation?: string;
-  ein?: string;
-}
-
-interface PeerGroupPreset {
-  id: string;
-  label: string;
-  description: string;
-  tickers: string[];
-}
-
-interface FilingsClientProps {
-  ticker: string;
-  company: CompanyInfo | null;
-  filings: FilingEntry[];
-  errorMessage: string | null;
-}
-
-// ============================================================================
-// Form-type color mapping — same palette as the old code, reused by both the
-// filter chips and the filing cards so users see visual continuity
-// ============================================================================
-function formColor(form: string): string {
-  if (form.startsWith('10-K'))
-    return 'bg-amber-900/40 text-amber-200 border-amber-700/50';
-  if (form.startsWith('10-Q'))
-    return 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
-  if (form.startsWith('8-K'))
-    return 'bg-rose-900/40 text-rose-200 border-rose-700/50';
-  if (form.includes('DEF 14A') || form.includes('PRE 14A'))
-    return 'bg-violet-900/40 text-violet-200 border-violet-700/50';
-  if (form.startsWith('S-'))
-    return 'bg-sky-900/40 text-sky-200 border-sky-700/50';
-  if (form.startsWith('4') || form.startsWith('3') || form.startsWith('5'))
-    return 'bg-teal-900/40 text-teal-200 border-teal-700/50';
-  if (form.startsWith('SC 13'))
-    return 'bg-fuchsia-900/40 text-fuchsia-200 border-fuchsia-700/50';
-  return 'bg-stone-800/60 text-stone-300 border-stone-600/50';
-}
-
-// Version of formColor used for unselected filter chips — muted palette so
-// the selected chip (which uses full formColor) reads as "on"
-function chipIdleColor(): string {
-  return 'bg-stone-900 text-stone-400 border-stone-800 hover:border-stone-600 hover:text-stone-200';
-}
-
-function formatSize(bytes?: number): string {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1048576).toFixed(1)} MB`;
-}
-
-const ANNUAL_FORMS = new Set(['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A']);
-const QUARTERLY_FORMS = new Set(['10-Q', '10-Q/A', '6-K']);
-const CURRENT_FORMS = new Set(['8-K', '8-K/A', '6-K']);
-const PROXY_FORMS = new Set(['DEF 14A', 'DEF 14A/A', 'PRE 14A', 'PRE 14A/A']);
-const INSIDER_FORMS = new Set(['3', '3/A', '4', '4/A', '5', '5/A']);
-
-const HIGH_SIGNAL_8K_ITEMS = new Set([
-  '1.03',
-  '2.01',
-  '2.02',
-  '2.03',
-  '2.05',
-  '2.06',
-  '3.01',
-  '3.03',
-  '4.01',
-  '5.02',
-  '5.03',
-  '8.01',
-]);
-
-const PEER_GROUP_PRESETS = PEER_GROUPS as PeerGroupPreset[];
-
-const INDUSTRY_PEER_GROUP_IDS: Record<string, string[]> = {
-  banking: ['big-banks', 'regional-banks'],
-  insurance: ['insurance'],
-  oil_gas: ['big-oil'],
-  airlines: ['us-airlines'],
-  tech: ['mega-tech', 'semiconductors'],
-  retail: ['mega-retail'],
-  pharma: ['big-pharma'],
-  manufacturing: ['semiconductors', 'ev-autos'],
-  general: [],
+const FilingReader = dynamic(() => import("./FilingReader"), {
+  loading: () => (
+    <p className={styles.empty} role="status">
+      Opening the filing reader…
+    </p>
+  ),
+});
+const FilingsNotebook = dynamic(() => import("./FilingsNotebook"), {
+  loading: () => (
+    <p className={styles.empty} role="status">
+      Opening your review workspace…
+    </p>
+  ),
+});
+const PAGE_SIZE = 25;
+const FORM_TITLES: Record<string, string> = {
+  "10-K": "Annual report",
+  "10-Q": "Quarterly report",
+  "8-K": "Current report",
+  "6-K": "Foreign issuer report",
+  "20-F": "Foreign issuer annual report",
+  "40-F": "Canadian issuer annual report",
+  "4": "Insider ownership change",
+  "3": "Initial insider ownership",
+  "5": "Annual insider ownership",
+  "DEF 14A": "Definitive proxy statement",
+  DEFM14A: "Merger proxy statement",
+  "PRE 14A": "Preliminary proxy statement",
+  "S-1": "Registration statement",
+  "S-3": "Shelf registration",
+  "424B2": "Prospectus supplement",
+  "424B3": "Prospectus supplement",
+  "424B5": "Prospectus supplement",
 };
-
-const FILING_DISCLOSURE_THEMES = [
-  {
-    title: 'Risk Factor Follow-Up',
-    query: 'risk factors,material adverse,uncertainty',
-    detail: 'Find recent risk language that may explain the newest annual or quarterly filing.',
-  },
-  {
-    title: 'Liquidity And Capital',
-    query: 'liquidity,cash flow,credit facility,debt maturities',
-    detail: 'Check financing, cash flow, debt maturity, and capital availability disclosures.',
-  },
-  {
-    title: 'Revenue Quality',
-    query: 'revenue recognition,customer concentration,demand,backlog',
-    detail: 'Search for customer, demand, backlog, and revenue-recognition language.',
-  },
-  {
-    title: 'Material Events',
-    query: 'material agreement,impairment,restructuring,cybersecurity',
-    detail: 'Look for event-driven disclosures that often appear around 8-Ks and 10-Qs.',
-  },
-];
-
-function filingDateTime(filing: FilingEntry): number {
-  const time = new Date(filing.filingDate).getTime();
-  return Number.isFinite(time) ? time : 0;
+const formatDate = (value: string) => value || "Not supplied";
+function download(name: string, content: string, type: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function errorText(error: any) {
+  return error?.name === "AbortError"
+    ? "The request timed out. Please try again."
+    : error?.message || "The request could not be completed.";
 }
 
-function findLatestFiling(
-  filings: FilingEntry[],
-  predicate: (filing: FilingEntry) => boolean
-): FilingEntry | null {
-  return [...filings]
-    .filter(predicate)
-    .sort((a, b) => filingDateTime(b) - filingDateTime(a))[0] || null;
-}
+export default function FilingsClient({ ticker }: { ticker: string }) {
+  const router = useRouter();
+  const context = useContext(TickerContext);
+  const setTicker = context?.setTicker;
+  const setCompany = context?.setCompany;
+  const [settings, setSettings] = useState<any>(FILINGS_SETTINGS);
+  const [ready, setReady] = useState(false);
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(0);
+  const [loadedArchives, setLoadedArchives] = useState<Record<string, any>>({});
+  const [archiveLoading, setArchiveLoading] = useState("");
+  const [archiveErrors, setArchiveErrors] = useState<Record<string, string>>(
+    {},
+  );
+  const [notebook, setNotebook] = useState<any>(emptyFilingsNotebook);
+  const [storageReady, setStorageReady] = useState(false);
+  const [storageError, setStorageError] = useState("");
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<any>(null);
+  const [comparison, setComparison] = useState<"year" | "previous">("year");
+  const [status, setStatus] = useState("");
+  const [viewName, setViewName] = useState("");
+  const [dateError, setDateError] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const archiveAbort = useRef<AbortController | null>(null);
+  const generation = useRef(0);
 
-function filingAgeDays(filing?: FilingEntry | null): number | null {
-  if (!filing) return null;
-  const time = filingDateTime(filing);
-  if (!time) return null;
-  return Math.max(0, Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000)));
-}
-
-function formatAgeDays(days: number | null): string {
-  if (days == null) return 'N/A';
-  if (days === 0) return 'Today';
-  if (days === 1) return '1 day';
-  return `${days} days`;
-}
-
-function isProxyFiling(filing: FilingEntry): boolean {
-  return PROXY_FORMS.has(filing.form) || filing.form.includes('DEF 14A') || filing.form.includes('PRE 14A');
-}
-
-function filingsSince(filings: FilingEntry[], days: number): FilingEntry[] {
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  return filings.filter((filing) => filingDateTime(filing) >= cutoff);
-}
-
-function submissionsFeedUrl(cik?: string) {
-  return cik ? `https://data.sec.gov/submissions/CIK${cik}.json` : null;
-}
-
-function FilingPulsePanel({ filings, cik }: { filings: FilingEntry[]; cik?: string }) {
-  const pulse = useMemo(() => {
-    const latestAny = findLatestFiling(filings, () => true);
-    const latestAnnual = findLatestFiling(filings, (filing) => ANNUAL_FORMS.has(filing.form));
-    const latestQuarterly = findLatestFiling(filings, (filing) => QUARTERLY_FORMS.has(filing.form));
-    const latestCurrent = findLatestFiling(filings, (filing) => CURRENT_FORMS.has(filing.form));
-    const latestProxy = findLatestFiling(filings, isProxyFiling);
-    const last90 = filingsSince(filings, 90);
-    const last365 = filingsSince(filings, 365);
-
-    const countFamily = (
-      label: string,
-      predicate: (filing: FilingEntry) => boolean
-    ) => {
-      const matches = last365.filter(predicate);
-      return {
-        label,
-        count: matches.length,
-        latest: findLatestFiling(matches, () => true),
-      };
+  useEffect(() => {
+    function readUrl() {
+      setSettings(readFilingsSettings(window.location.search));
+      setPage(1);
+    }
+    readUrl();
+    setReady(true);
+    window.addEventListener("popstate", readUrl);
+    return () => window.removeEventListener("popstate", readUrl);
+  }, []);
+  useEffect(() => {
+    function read() {
+      try {
+        setNotebook(
+          readFilingsNotebook(localStorage.getItem(FILINGS_NOTEBOOK_KEY)),
+        );
+        setStorageError("");
+      } catch (e) {
+        setStorageError(errorText(e));
+      } finally {
+        setStorageReady(true);
+      }
+    }
+    function sync(e: StorageEvent) {
+      if (e.key === FILINGS_NOTEBOOK_KEY || e.key === null) read();
+    }
+    read();
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
+  const updateNotebook = useCallback(
+    (update: (current: any) => any): boolean => {
+      if (!storageReady) {
+        setStorageError("Your browser workspace is still loading.");
+        return false;
+      }
+      try {
+        const next = writeFilingsNotebook(localStorage, update);
+        setNotebook(next);
+        setStorageError("");
+        return true;
+      } catch (e) {
+        setStorageError(errorText(e));
+        return false;
+      }
+    },
+    [storageReady],
+  );
+  const updateCompany = useCallback(
+    (update: (current: any) => any) =>
+      updateNotebook((current) => ({
+        ...current,
+        companies: {
+          ...current.companies,
+          [ticker]: update(
+            current.companies[ticker] || {
+              records: {},
+              evidence: [],
+              views: [],
+            },
+          ),
+        },
+      })),
+    [ticker, updateNotebook],
+  );
+  useEffect(() => {
+    const controller = new AbortController();
+    const current = ++generation.current;
+    archiveAbort.current?.abort();
+    setLoading(true);
+    setError("");
+    setArchiveLoading("");
+    setArchiveErrors({});
+    setLoadedArchives({});
+    async function load() {
+      try {
+        const response = await fetch(
+          `/api/filings-research?ticker=${encodeURIComponent(ticker)}`,
+          { signal: controller.signal },
+        );
+        const result = await response.json();
+        if (!response.ok)
+          throw new Error(
+            result.error || `Request returned HTTP ${response.status}.`,
+          );
+        if (controller.signal.aborted || generation.current !== current) return;
+        if (result.kind === "fund" && result.redirect) {
+          router.replace(result.redirect);
+          return;
+        }
+        setData(result);
+        setTicker?.(ticker);
+        setCompany?.({
+          name: result.name,
+          cik: result.cik,
+          sic: result.sicDescription,
+          sicNumber: result.sic,
+          exchanges: result.exchange,
+        });
+      } catch (e) {
+        if (!controller.signal.aborted) setError(errorText(e));
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      controller.abort();
+      archiveAbort.current?.abort();
     };
+  }, [ticker, refresh, router, setTicker, setCompany]);
+  useEffect(() => {
+    if (!ready) return;
+    const path = filingPath(ticker, settings);
+    if (window.location.pathname + window.location.search !== path)
+      window.history.replaceState(null, "", path);
+  }, [ticker, settings, ready]);
+  // A fixed desktop reader stays clear of both navigation bars even in short views.
+  useEffect(() => {
+    const root = rootRef.current;
+    const controls = controlsRef.current;
+    const grid = gridRef.current;
+    if (!root || !controls) return;
+    let frame = 0;
+    const header = document.querySelector("body header");
+    function measure() {
+      frame = 0;
+      if (!root || !controls) return;
+      const headerBottom = Math.max(
+        0,
+        header?.getBoundingClientRect().bottom || 0,
+      );
+      root.style.setProperty("--filings-header", `${headerBottom + 8}px`);
+      const top = Math.max(
+        controls.getBoundingClientRect().bottom + 12,
+        grid?.getBoundingClientRect().top || 0,
+        headerBottom + 12,
+      );
+      root.style.setProperty("--filings-reader-top", `${top}px`);
+      root.style.setProperty(
+        "--filings-reader-right",
+        `${Math.max(0, document.documentElement.clientWidth - root.getBoundingClientRect().right)}px`,
+      );
+    }
+    function schedule() {
+      if (!frame) frame = requestAnimationFrame(measure);
+    }
+    const observer = new ResizeObserver(schedule);
+    observer.observe(controls);
+    observer.observe(root);
+    if (header) observer.observe(header);
+    measure();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      cancelAnimationFrame(frame);
+    };
+  }, [loading, selected, settings.view]);
 
-    const eventSignals = last365
-      .filter((filing) => filing.form.startsWith('8-K'))
-      .map((filing) => {
-        const items = getItemsInfo(filing.items || '');
-        return { filing, items };
-      })
-      .filter(({ items }) => items.some((item) => HIGH_SIGNAL_8K_ITEMS.has(item.code)))
-      .sort((a, b) => filingDateTime(b.filing) - filingDateTime(a.filing))
-      .slice(0, 3);
-
-    return {
-      latestAny,
-      latestAnnual,
-      latestQuarterly,
-      latestCurrent,
-      latestProxy,
-      last90Count: last90.length,
-      last365Count: last365.length,
-      familyMix: [
-        countFamily('Annual', (filing) => ANNUAL_FORMS.has(filing.form)),
-        countFamily('Quarterly', (filing) => QUARTERLY_FORMS.has(filing.form)),
-        countFamily('Current Reports', (filing) => CURRENT_FORMS.has(filing.form)),
-        countFamily('Proxy', isProxyFiling),
-        countFamily('Insider', (filing) => INSIDER_FORMS.has(filing.form)),
+  const filings = useMemo(
+    () =>
+      mergeFilings(
+        data?.filings || [],
+        ...Object.values(loadedArchives).map((a: any) => a.filings || []),
+      ),
+    [data, loadedArchives],
+  );
+  const research = notebook.companies[ticker] || {
+    records: {},
+    evidence: [],
+    views: [],
+  };
+  const records = research.records;
+  const filtered = useMemo(
+    () => filterFilings(filings, settings, records),
+    [filings, settings, records],
+  );
+  const formOptions = useMemo(
+    () => [...new Set(filings.map((f: any) => f.form))].sort() as string[],
+    [filings],
+  );
+  const archives = data?.archives || [];
+  const loadedCount = Object.keys(loadedArchives).length;
+  const remaining = archives.filter((a: any) => !loadedArchives[a.name]);
+  const coverage = useMemo(
+    () => ({
+      loadedFilings: filings.length,
+      earliest: filings.at(-1)?.filingDate || "",
+      latest: filings[0]?.filingDate || "",
+      archivesLoaded: loadedCount,
+      archivesAvailable: archives.length,
+      remainingArchives: remaining.length,
+      failedArchives: Object.entries(archiveErrors).map(([name, error]) => ({
+        name,
+        error,
+      })),
+      omittedArchives: data?.coverage?.omittedArchives || 0,
+      omittedRecords:
+        (data?.coverage?.omittedRecords || 0) +
+        Object.values(loadedArchives).reduce(
+          (sum: number, a: any) => sum + (a.coverage?.omittedRecords || 0),
+          0,
+        ),
+      observedAt: data?.observedAt || "",
+      note: "Counts describe loaded SEC filing records, not documents read. Recent submissions plus explicitly loaded archives; exhibits are linked through each SEC filing index.",
+    }),
+    [
+      filings,
+      loadedCount,
+      archives.length,
+      remaining.length,
+      archiveErrors,
+      loadedArchives,
+      data,
+    ],
+  );
+  const pair = useMemo(
+    () =>
+      selected
+        ? selectFilingBaseline(
+            selected,
+            mergeFilings(
+              filings,
+              Object.values(records)
+                .map((r: any) => r.filing)
+                .filter(Boolean),
+            ),
+            { comparison },
+          )
+        : null,
+    [selected, filings, comparison, records],
+  );
+  const reviewedCount = filings.filter(
+    (f: any) => records[f.accession]?.reviewedAt,
+  ).length;
+  const queuedCount = Object.values(records).filter(
+    (r: any) => r.queued,
+  ).length;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visible = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+  const monthRows = useMemo(() => {
+    const months = new Map<string, number>();
+    for (const filing of filtered) {
+      const m = filing.filingDate.slice(0, 7);
+      months.set(m, (months.get(m) || 0) + 1);
+    }
+    return [...months].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [filtered]);
+  function changeSettings(patch: any) {
+    setSettings((s: any) => normalizeFilingsSettings({ ...s, ...patch }));
+    setPage(1);
+    setDateError("");
+    setStatus("");
+  }
+  async function loadArchive(name: string) {
+    if (archiveLoading) return;
+    const controller = new AbortController();
+    archiveAbort.current = controller;
+    const current = generation.current;
+    setArchiveLoading(name);
+    setArchiveErrors((s) => {
+      const n = { ...s };
+      delete n[name];
+      return n;
+    });
+    try {
+      const response = await fetch(
+        `/api/filings-research?ticker=${encodeURIComponent(ticker)}&archive=${encodeURIComponent(name)}`,
+        { signal: controller.signal },
+      );
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error || "Could not load the SEC archive.");
+      if (!controller.signal.aborted && current === generation.current) {
+        setLoadedArchives((s) => ({ ...s, [name]: result }));
+        setStatus(
+          `Loaded ${result.filings.length.toLocaleString()} records from the selected SEC archive.`,
+        );
+      }
+    } catch (e) {
+      if (!controller.signal.aborted && current === generation.current)
+        setArchiveErrors((s) => ({ ...s, [name]: errorText(e) }));
+    } finally {
+      if (!controller.signal.aborted && current === generation.current)
+        setArchiveLoading("");
+    }
+  }
+  function filingWithIdentity(filing: any) {
+    return { ...filing, ticker, cik: data?.cik || filing.cik };
+  }
+  function toggleQueue(filing: any) {
+    const queued = !records[filing.accession]?.queued;
+    const ok = updateCompany((c) => ({
+      ...c,
+      records: {
+        ...c.records,
+        [filing.accession]: {
+          ...c.records[filing.accession],
+          queued,
+          reviewedAt: c.records[filing.accession]?.reviewedAt || "",
+          notes: c.records[filing.accession]?.notes || "",
+          filing: filingWithIdentity(filing),
+        },
+      },
+    }));
+    if (ok)
+      setStatus(
+        queued
+          ? "Filing added to your review queue."
+          : "Filing removed from your review queue.",
+      );
+  }
+  function toggleReviewed(filing: any) {
+    const reviewedAt = records[filing.accession]?.reviewedAt
+      ? ""
+      : new Date().toISOString();
+    const ok = updateCompany((c) => ({
+      ...c,
+      records: {
+        ...c.records,
+        [filing.accession]: {
+          ...c.records[filing.accession],
+          queued: reviewedAt
+            ? false
+            : c.records[filing.accession]?.queued || false,
+          reviewedAt,
+          notes: c.records[filing.accession]?.notes || "",
+          filing: filingWithIdentity(filing),
+        },
+      },
+    }));
+    if (ok)
+      setStatus(
+        reviewedAt
+          ? "This filing accession is marked reviewed."
+          : "This filing accession is marked unreviewed.",
+      );
+  }
+  function collect(filing: any, paragraph: any) {
+    const known =
+      filings.find((f: any) => f.accession === filing.accession) ||
+      records[filing.accession]?.filing;
+    const ok = updateCompany((c) => ({
+      ...c,
+      evidence: c.evidence.some(
+        (e: any) =>
+          e.filing.accession === filing.accession &&
+          e.paragraph.text === paragraph.text &&
+          e.paragraph.section === paragraph.section,
+      )
+        ? c.evidence
+        : [
+            ...c.evidence,
+            {
+              id: crypto.randomUUID(),
+              filing: filingWithIdentity({
+                ...filing,
+                archive: filing.archive || known?.archive || "",
+              }),
+              paragraph: {
+                text: paragraph.text,
+                index: paragraph.index,
+                section: paragraph.section || "Unclassified",
+                ...(paragraph.part
+                  ? { part: paragraph.part, parts: paragraph.parts }
+                  : {}),
+                ...(paragraph.version
+                  ? { version: paragraph.version, change: paragraph.change }
+                  : {}),
+              },
+              notes: "",
+              tags: [],
+            },
+          ],
+    }));
+    if (ok) setStatus("Passage saved to your review workspace.");
+  }
+  function saveView(e: React.FormEvent) {
+    e.preventDefault();
+    const name = viewName.trim();
+    if (!name) {
+      setStatus("Give this view a name before saving.");
+      return;
+    }
+    const ok = updateCompany((c) => ({
+      ...c,
+      views: [
+        ...c.views,
+        {
+          id: crypto.randomUUID(),
+          name,
+          settings: normalizeFilingsSettings(settings),
+          createdAt: new Date().toISOString(),
+        },
       ],
-      eventSignals,
-    };
-  }, [filings]);
-
-  const feedUrl = submissionsFeedUrl(cik);
-  const cards = [
-    {
-      key: 'latest',
-      label: 'Latest Filing',
-      filing: pulse.latestAny,
-      fallback: 'No dated filing found',
-    },
-    {
-      key: 'annual',
-      label: 'Annual Report',
-      filing: pulse.latestAnnual,
-      fallback: 'No annual report in recent feed',
-    },
-    {
-      key: 'quarterly',
-      label: 'Quarterly Update',
-      filing: pulse.latestQuarterly,
-      fallback: 'No quarterly update in recent feed',
-    },
-    {
-      key: 'current',
-      label: 'Current Report',
-      filing: pulse.latestCurrent,
-      fallback: 'No current report in recent feed',
-    },
-    {
-      key: 'proxy',
-      label: 'Proxy Statement',
-      filing: pulse.latestProxy,
-      fallback: 'No proxy statement in recent feed',
-    },
-  ];
-
-  return (
-    <section className="mb-6 border-2 border-stone-800 bg-stone-950/60">
-      <div className="border-b border-stone-800 px-4 py-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] font-black text-stone-400">
-            <FileText className="w-4 h-4 text-amber-400" />
-            Filing Pulse
-          </div>
-          <p className="mt-1 text-[11px] text-stone-500 max-w-2xl">
-            Latest filing timestamps, trailing activity, and material 8-K item codes from SEC submissions.
-          </p>
-        </div>
-        {feedUrl && (
-          <a
-            href={feedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-sky-300 hover:text-sky-200 transition-colors"
-            title="Open SEC submissions feed"
-          >
-            SEC submissions feed
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        )}
-      </div>
-
-      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-5">
-        {cards.map((card) => (
-          <FilingPulseCard
-            key={card.key}
-            label={card.label}
-            filing={card.filing}
-            fallback={card.fallback}
-          />
-        ))}
-      </div>
-
-      <div className="grid gap-0 border-t border-stone-800 lg:grid-cols-[1.05fr_1.4fr]">
-        <div className="border-b border-stone-800 p-4 lg:border-b-0 lg:border-r">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-[10px] uppercase tracking-[0.2em] font-black text-stone-500">
-              SEC Feed Activity
-            </div>
-            {feedUrl && (
-              <a
-                href={feedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[10px] uppercase tracking-[0.14em] text-stone-500 hover:text-sky-300 transition-colors"
-              >
-                Source JSON
-              </a>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FilingPulseMetric
-              label="Last 90 Days"
-              value={pulse.last90Count}
-              detail="Recent SEC submissions"
-              sourceUrl={feedUrl}
-            />
-            <FilingPulseMetric
-              label="Last 12 Months"
-              value={pulse.last365Count}
-              detail="Trailing filing volume"
-              sourceUrl={feedUrl}
-            />
-          </div>
-
-          <div className="mt-4">
-            <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-black text-stone-500">
-              12-Month Filing Mix
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {pulse.familyMix.map((family) => (
-                <FilingFamilyChip key={family.label} family={family} />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4">
-          <div className="mb-3 text-[10px] uppercase tracking-[0.2em] font-black text-stone-500">
-            Recent High-Signal 8-K Items
-          </div>
-          {pulse.eventSignals.length > 0 ? (
-            <div className="space-y-2">
-              {pulse.eventSignals.map(({ filing, items }) => (
-                <a
-                  key={filing.accession}
-                  href={filing.documentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block border border-stone-800 bg-stone-900/30 px-3 py-2.5 hover:border-rose-700/70 hover:bg-rose-950/10 transition-colors group"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-black text-stone-100">
-                      {filing.form} filed {filing.filingDate}
-                    </span>
-                    <ExternalLink className="w-3.5 h-3.5 text-stone-600 group-hover:text-rose-300" />
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {items
-                      .filter((item) => HIGH_SIGNAL_8K_ITEMS.has(item.code))
-                      .map((item) => (
-                        <span
-                          key={`${filing.accession}-${item.code}`}
-                          className="px-1.5 py-0.5 bg-rose-950/40 border border-rose-800/50 text-rose-200 text-[9px] font-bold uppercase tracking-wider"
-                          title={`8-K Item ${item.code}`}
-                        >
-                          {item.code} / {item.label}
-                        </span>
-                      ))}
-                  </div>
-                  <div className="mt-2 font-mono text-[10px] text-stone-600">
-                    {filing.accession}
-                  </div>
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="border border-dashed border-stone-800 px-3 py-5 text-center text-xs text-stone-500">
-              No recent high-signal 8-K item codes found in the SEC submissions feed.
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function FilingPulseCard({
-  label,
-  filing,
-  fallback,
-}: {
-  label: string;
-  filing?: FilingEntry | null;
-  fallback: string;
-}) {
-  const age = filingAgeDays(filing);
-  const body = (
-    <>
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] uppercase tracking-[0.18em] font-black text-stone-500">
-          {label}
-        </div>
-        {filing && (
-          <span className={`border px-1.5 py-0.5 text-[9px] font-black tracking-wider ${formColor(filing.form)}`}>
-            {filing.form}
-          </span>
-        )}
-      </div>
-      <div className="mt-3 text-2xl font-black tabular-nums text-stone-100">
-        {formatAgeDays(age)}
-      </div>
-      <div className="mt-2 text-xs leading-relaxed text-stone-400">
-        {filing ? (
-          <>
-            Filed {filing.filingDate}
-            {filing.reportDate && <span className="block text-stone-500">Period {filing.reportDate}</span>}
-            <span className="block font-mono text-[10px] text-stone-600">{filing.accession}</span>
-          </>
-        ) : (
-          fallback
-        )}
-      </div>
-    </>
-  );
-
-  if (!filing?.documentUrl) {
-    return (
-      <div className="border border-stone-800 bg-stone-900/30 p-3">
-        {body}
-      </div>
+    }));
+    if (ok) {
+      setViewName("");
+      setStatus("Search view saved. Reopen it from your review workspace.");
+    }
+  }
+  async function share() {
+    const url = window.location.origin + filingPath(ticker, settings);
+    try {
+      await navigator.clipboard.writeText(url);
+      setStatus(
+        "Link copied with the current search and filters. Private notes are not included.",
+      );
+    } catch {
+      setStatus(
+        "Copy the current browser address to share these search settings.",
+      );
+    }
+  }
+  function alignResults(target: HTMLElement | null) {
+    if (!target) return;
+    const offset =
+      window.innerWidth > 900
+        ? controlsRef.current?.getBoundingClientRect().height || 0
+        : 0;
+    const header =
+      document.querySelector("body header")?.getBoundingClientRect().bottom ||
+      0;
+    window.scrollTo({
+      top: Math.max(
+        0,
+        window.scrollY +
+          target.getBoundingClientRect().top -
+          offset -
+          header -
+          24,
+      ),
+      behavior: "instant",
+    });
+  }
+  function openFiling(filing: any) {
+    setSelected(filing);
+    setStatus("");
+    requestAnimationFrame(() => alignResults(gridRef.current));
+  }
+  function changePage(next: number) {
+    setPage(next);
+    requestAnimationFrame(() =>
+      alignResults(document.getElementById("filings-results-heading")),
     );
   }
-
-  return (
-    <a
-      href={filing.documentUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="border border-stone-800 bg-stone-900/30 p-3 hover:border-amber-600/70 hover:bg-amber-950/10 transition-colors group"
-      title={`Open ${filing.form} filed ${filing.filingDate} on SEC.gov`}
-    >
-      {body}
-      <div className="mt-3 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-stone-600 group-hover:text-amber-300">
-        Open source
-        <ExternalLink className="w-3 h-3" />
-      </div>
-    </a>
-  );
-}
-
-function FilingPulseMetric({
-  label,
-  value,
-  detail,
-  sourceUrl,
-}: {
-  label: string;
-  value: number;
-  detail: string;
-  sourceUrl: string | null;
-}) {
-  const content = (
-    <>
-      <div className="text-[10px] uppercase tracking-[0.18em] font-black text-stone-500">
-        {label}
-      </div>
-      <div className="mt-2 text-2xl font-black tabular-nums text-stone-100">{value}</div>
-      <div className="mt-1 text-[11px] text-stone-500">{detail}</div>
-    </>
-  );
-
-  if (!sourceUrl) {
-    return <div className="border border-stone-800 bg-stone-900/30 p-3">{content}</div>;
+  function applyMonth(month: string) {
+    const [year, m] = month.split("-").map(Number);
+    changeSettings({
+      start: `${month}-01`,
+      end: new Date(Date.UTC(year, m, 0)).toISOString().slice(0, 10),
+      view: "list",
+    });
   }
 
   return (
-    <a
-      href={sourceUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="border border-stone-800 bg-stone-900/30 p-3 hover:border-sky-700/70 hover:bg-sky-950/10 transition-colors"
-      title="Open SEC submissions feed"
-    >
-      {content}
-    </a>
-  );
-}
-
-function FilingFamilyChip({
-  family,
-}: {
-  family: { label: string; count: number; latest: FilingEntry | null };
-}) {
-  const content = (
-    <>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-[0.16em] font-black text-stone-500">
-          {family.label}
-        </span>
-        <span className="text-sm font-black tabular-nums text-stone-200">{family.count}</span>
-      </div>
-      <div className="mt-1 text-[10px] text-stone-600">
-        {family.latest ? `Latest ${family.latest.form} on ${family.latest.filingDate}` : 'No matching filing'}
-      </div>
-    </>
-  );
-
-  if (!family.latest?.documentUrl) {
-    return <div className="border border-stone-800 bg-stone-900/20 px-2.5 py-2">{content}</div>;
-  }
-
-  return (
-    <a
-      href={family.latest.documentUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="border border-stone-800 bg-stone-900/20 px-2.5 py-2 hover:border-sky-700/70 hover:text-sky-200 transition-colors"
-      title={`Open latest ${family.label} source filing`}
-    >
-      {content}
-    </a>
-  );
-}
-
-function disclosureSearchHref(query: string, ticker: string): string {
-  const params = new URLSearchParams({ query, focus: ticker });
-  return `/disclosures?${params.toString()}`;
-}
-
-function selectFilingPeerGroups(ticker: string, sicCode?: string): PeerGroupPreset[] {
-  const upperTicker = ticker.toUpperCase();
-  const industry = classifyIndustry(sicCode || '');
-  const byId = new Map(PEER_GROUP_PRESETS.map((preset) => [preset.id, preset]));
-  const selected: PeerGroupPreset[] = [];
-
-  const add = (preset?: PeerGroupPreset) => {
-    if (!preset || selected.some((item) => item.id === preset.id)) return;
-    selected.push(preset);
-  };
-
-  PEER_GROUP_PRESETS
-    .filter((preset) => preset.tickers.some((peerTicker) => peerTicker.toUpperCase() === upperTicker))
-    .forEach(add);
-
-  (INDUSTRY_PEER_GROUP_IDS[industry] || [])
-    .map((id) => byId.get(id))
-    .forEach(add);
-
-  return selected.slice(0, 3);
-}
-
-function peerCompareTickers(ticker: string, groupPreset: PeerGroupPreset): string[] {
-  const upperTicker = ticker.toUpperCase();
-  const tickers = groupPreset.tickers.map((peerTicker) => peerTicker.toUpperCase());
-  if (tickers.includes(upperTicker)) return tickers.slice(0, 5);
-  return [upperTicker, ...tickers.filter((peerTicker) => peerTicker !== upperTicker)].slice(0, 5);
-}
-
-function isExternalHref(href?: string | null): boolean {
-  return Boolean(href?.startsWith('http'));
-}
-
-type WorkbenchTone = 'amber' | 'sky' | 'emerald' | 'violet' | 'stone';
-
-function workbenchToneClass(tone: WorkbenchTone) {
-  const classes = {
-    amber: {
-      card: 'border-stone-800 hover:border-amber-500 hover:bg-amber-500/5',
-      icon: 'text-amber-400',
-      badge: 'border-amber-700/60 bg-amber-950/40 text-amber-200',
-      link: 'text-amber-300 group-hover:text-amber-200',
-    },
-    sky: {
-      card: 'border-stone-800 hover:border-sky-500 hover:bg-sky-500/5',
-      icon: 'text-sky-400',
-      badge: 'border-sky-700/60 bg-sky-950/40 text-sky-200',
-      link: 'text-sky-300 group-hover:text-sky-200',
-    },
-    emerald: {
-      card: 'border-stone-800 hover:border-emerald-500 hover:bg-emerald-500/5',
-      icon: 'text-emerald-400',
-      badge: 'border-emerald-700/60 bg-emerald-950/40 text-emerald-200',
-      link: 'text-emerald-300 group-hover:text-emerald-200',
-    },
-    violet: {
-      card: 'border-stone-800 hover:border-violet-500 hover:bg-violet-500/5',
-      icon: 'text-violet-400',
-      badge: 'border-violet-700/60 bg-violet-950/40 text-violet-200',
-      link: 'text-violet-300 group-hover:text-violet-200',
-    },
-    stone: {
-      card: 'border-stone-800 hover:border-stone-600 hover:bg-stone-800/30',
-      icon: 'text-stone-400',
-      badge: 'border-stone-700 bg-stone-950 text-stone-300',
-      link: 'text-stone-300 group-hover:text-stone-100',
-    },
-  };
-  return classes[tone];
-}
-
-function FilingResearchWorkbench({
-  ticker,
-  company,
-  filings,
-}: {
-  ticker: string;
-  company: CompanyInfo | null;
-  filings: FilingEntry[];
-}) {
-  const upperTicker = ticker.toUpperCase();
-  const research = useMemo(() => {
-    const peerGroups = selectFilingPeerGroups(upperTicker, company?.sicCode);
-    const primaryPeerGroup = peerGroups[0] || null;
-    const compareTickers = primaryPeerGroup
-      ? peerCompareTickers(upperTicker, primaryPeerGroup)
-      : [upperTicker];
-    const latestAnnual = findLatestFiling(filings, (filing) => ANNUAL_FORMS.has(filing.form));
-    const latestQuarterly = findLatestFiling(filings, (filing) => QUARTERLY_FORMS.has(filing.form));
-    const latestCurrent = findLatestFiling(filings, (filing) => CURRENT_FORMS.has(filing.form));
-    const sourceFeedUrl = submissionsFeedUrl(company?.cik);
-    const industry = classifyIndustry(company?.sicCode || '');
-
-    return {
-      peerGroups,
-      primaryPeerGroup,
-      compareTickers,
-      latestAnnual,
-      latestQuarterly,
-      latestCurrent,
-      sourceFeedUrl,
-      industry,
-    };
-  }, [company?.cik, company?.sicCode, filings, upperTicker]);
-
-  const primaryDisclosureHref = disclosureSearchHref(
-    'risk factors,liquidity,revenue recognition,material agreement',
-    upperTicker
-  );
-
-  const actions = [
-    {
-      key: 'analysis',
-      icon: BarChart3,
-      label: 'Financials',
-      title: 'Open XBRL analysis',
-      detail: research.latestAnnual
-        ? `Tie the filing trail to source-linked statement data from the latest ${research.latestAnnual.form}.`
-        : 'Tie the filing trail to source-linked statement data and ratios.',
-      href: `/analysis/${upperTicker}`,
-      badge: 'XBRL',
-      tone: 'amber' as const,
-    },
-    {
-      key: 'compare',
-      icon: GitCompare,
-      label: 'Peer Context',
-      title: research.primaryPeerGroup
-        ? `Compare ${research.primaryPeerGroup.label}`
-        : 'Open peer comparison',
-      detail: research.primaryPeerGroup
-        ? `Benchmark ${upperTicker} against ${research.compareTickers.join(', ')}.`
-        : `Start a comparison from ${upperTicker}, then add peers from the compare page.`,
-      href: `/compare/${research.compareTickers.join(',')}`,
-      badge: 'COMPARE',
-      tone: 'sky' as const,
-    },
-    {
-      key: 'disclosure',
-      icon: Search,
-      label: 'Narrative',
-      title: 'Search company disclosures',
-      detail: research.latestQuarterly
-        ? `Search recent SEC text around risks and operating language after the latest ${research.latestQuarterly.form}.`
-        : 'Search recent SEC text around risks, liquidity, revenue, and material events.',
-      href: primaryDisclosureHref,
-      badge: 'SEARCH',
-      tone: 'emerald' as const,
-    },
-    {
-      key: 'source-feed',
-      icon: ShieldCheck,
-      label: 'SEC Feed',
-      title: 'Open raw submissions feed',
-      detail: research.latestCurrent
-        ? `Verify the full SEC feed behind the latest ${research.latestCurrent.form} and filing history.`
-        : 'Verify the raw SEC submissions JSON behind this filing page.',
-      href: research.sourceFeedUrl,
-      badge: 'SOURCE',
-      tone: 'violet' as const,
-    },
-  ];
-
-  return (
-    <section className="mb-6 border-2 border-stone-800 bg-stone-950/50">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-stone-800 px-4 py-3">
+    <div ref={rootRef} className={styles.page} id="filings-workspace">
+      <section className={styles.companyHeader}>
         <div>
-          <div className="flex items-center gap-2">
-            <GitCompare className="w-4 h-4 text-sky-400" />
-            <h2 className="text-xs uppercase tracking-[0.22em] font-black text-stone-200">
-              Filing Research Workbench
-            </h2>
-          </div>
-          <p className="mt-1 text-[11px] text-stone-500">
-            Turn {company?.name || upperTicker} source filings into financial analysis, peer context, and focused SEC disclosure searches.
+          <p className={styles.eyebrow}>
+            <Link href="/filings">EDGAR / Filings</Link>
+          </p>
+          <h1>
+            <span>{ticker}</span> {data?.name || "Filing research workspace"}
+          </h1>
+          <p className={styles.muted}>
+            {data
+              ? `CIK ${data.cik} · ${data.exchange || "SEC registrant"}${data.sicDescription ? ` · ${data.sicDescription}` : ""}`
+              : "Resolving company identity and the SEC filing index."}
           </p>
         </div>
-        <div className="text-[10px] uppercase tracking-[0.18em] text-stone-500">
-          {industryLabel(research.industry)} context
+        <CompanySearch compact />
+      </section>
+      {loading && (
+        <div className={styles.loading} role="status">
+          <RefreshCw className={styles.spin} size={23} />
+          <h2>Loading the SEC filing index</h2>
+          <p>
+            Resolving {ticker} and retrieving recent submissions. Older archives
+            can be loaded from the coverage panel.
+          </p>
         </div>
-      </div>
-
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
-        <div>
-          <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
-            Next research paths
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {actions.map((action) => (
-              <WorkbenchActionCard key={action.key} action={action} />
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-2 text-[10px] uppercase tracking-[0.2em] font-bold text-stone-500">
-            Focused disclosure searches
-          </div>
-          <div className="space-y-2">
-            {FILING_DISCLOSURE_THEMES.map((theme) => (
-              <a
-                key={`${upperTicker}-${theme.title}`}
-                href={disclosureSearchHref(theme.query, upperTicker)}
-                className="group block border border-stone-800 bg-stone-900/30 px-3 py-3 transition-colors hover:border-emerald-500 hover:bg-emerald-500/5"
+      )}
+      {error && (
+        <section className={styles.error} role="alert">
+          <h2>Filings could not be loaded</h2>
+          <p>{error}</p>
+          <button onClick={() => setRefresh((v) => v + 1)}>
+            <RefreshCw size={15} /> Retry SEC request
+          </button>
+        </section>
+      )}
+      {data && !loading && !error && (
+        <>
+          <section
+            className={styles.summaryStrip}
+            aria-label="Loaded filing summary"
+          >
+            <div>
+              <span>Records indexed</span>
+              <strong>{filings.length.toLocaleString()}</strong>
+              <small>
+                {coverage.earliest} → {coverage.latest}
+              </small>
+            </div>
+            <button
+              onClick={() =>
+                changeSettings({
+                  family: "annual",
+                  form: "all",
+                  status: "all",
+                  start: "",
+                  end: "",
+                  query: "",
+                  item: "",
+                  amendments: "include",
+                  view: "list",
+                })
+              }
+            >
+              <span>Latest annual report</span>
+              <strong>
+                {filings.find((f: any) =>
+                  ["10-K", "20-F", "40-F"].includes(f.form),
+                )?.filingDate || "Not in loaded history"}
+              </strong>
+              <small>
+                Show annual filings <ArrowUpRight size={12} />
+              </small>
+            </button>
+            <button onClick={() => changeSettings({ view: "notebook" })}>
+              <span>Your review queue</span>
+              <strong>{queuedCount}</strong>
+              <small>
+                {reviewedCount.toLocaleString()} loaded accessions reviewed
+              </small>
+            </button>
+            <div>
+              <span>Archive coverage</span>
+              <strong>
+                {loadedCount} <small>/ {archives.length}</small>
+              </strong>
+              <small>
+                {remaining.length
+                  ? "Older SEC archives available"
+                  : "All listed archives loaded"}
+              </small>
+            </div>
+          </section>
+          <div className={styles.controls} ref={controlsRef}>
+            <div className={styles.controlsTop}>
+              <div
+                className={styles.tabs}
+                role="tablist"
+                aria-label="Filing workspace views"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-black text-stone-100 group-hover:text-emerald-300 transition-colors">
-                      {theme.title}
-                    </div>
-                    <p className="mt-1 text-[11px] leading-relaxed text-stone-500">
-                      {theme.detail}
-                    </p>
-                  </div>
-                  <Search className="w-3.5 h-3.5 shrink-0 text-stone-600 group-hover:text-emerald-300 transition-colors" />
-                </div>
-              </a>
-            ))}
-          </div>
-
-          {research.peerGroups.length > 1 && (
-            <div className="mt-3 border border-stone-800 bg-stone-900/20 px-3 py-3">
-              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] font-bold text-stone-500">
-                Other peer routes
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {research.peerGroups.slice(1).map((group) => (
-                  <a
-                    key={`${upperTicker}-${group.id}`}
-                    href={`/compare/${peerCompareTickers(upperTicker, group).join(',')}`}
-                    className="border border-stone-700 bg-stone-950/70 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400 transition-colors hover:border-sky-500 hover:text-sky-300"
+                {[
+                  ["list", "Filings", LayoutList],
+                  ["timeline", "Timeline", History],
+                  ["notebook", "Review workspace", ListChecks],
+                ].map(([view, label, Icon]: any) => (
+                  <button
+                    key={view}
+                    role="tab"
+                    aria-selected={settings.view === view}
+                    onClick={() => changeSettings({ view })}
                   >
-                    {group.label}
-                  </a>
+                    <Icon size={15} />
+                    {label}
+                    {view === "notebook" && research.evidence.length > 0 && (
+                      <small>{research.evidence.length}</small>
+                    )}
+                  </button>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="border-t border-stone-800 px-4 py-3 text-[11px] leading-relaxed text-stone-500">
-        Links stay inside public SEC-backed workflows. Analysis and comparison pages cite XBRL source facts; disclosure searches open SEC archive results for verification.
-      </div>
-    </section>
-  );
-}
-
-function WorkbenchActionCard({
-  action,
-}: {
-  action: {
-    icon: LucideIcon;
-    label: string;
-    title: string;
-    detail: string;
-    href: string | null;
-    badge: string;
-    tone: WorkbenchTone;
-  };
-}) {
-  const toneClass = workbenchToneClass(action.tone);
-  const external = isExternalHref(action.href);
-  const Icon = action.icon;
-  const content = (
-    <>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] font-black text-stone-500">
-            <Icon className={`w-3.5 h-3.5 ${toneClass.icon}`} />
-            {action.label}
-          </div>
-          <div className="mt-2 text-sm font-black leading-snug text-stone-100">
-            {action.title}
-          </div>
-        </div>
-        <span className={`shrink-0 border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${toneClass.badge}`}>
-          {action.badge}
-        </span>
-      </div>
-      <div className="mt-3 text-xs leading-relaxed text-stone-400">
-        {action.detail}
-      </div>
-      <div className={`mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-bold ${action.href ? toneClass.link : 'text-stone-600'}`}>
-        {action.href ? 'Open workflow' : 'Unavailable'}
-        {action.href && <ExternalLink className="w-3 h-3" />}
-      </div>
-    </>
-  );
-
-  if (!action.href) {
-    return (
-      <div className="border-2 border-stone-800 bg-stone-900/30 p-4 opacity-75">
-        {content}
-      </div>
-    );
-  }
-
-  return (
-    <a
-      href={action.href}
-      target={external ? '_blank' : undefined}
-      rel={external ? 'noopener noreferrer' : undefined}
-      className={`group block min-h-[162px] border-2 bg-stone-900/30 p-4 transition-colors ${toneClass.card}`}
-    >
-      {content}
-    </a>
-  );
-}
-
-// ============================================================================
-// Main client component
-// ============================================================================
-export default function FilingsClient({
-  ticker,
-  company,
-  filings,
-  errorMessage,
-}: FilingsClientProps) {
-  const router = useRouter();
-
-  // NEW: multi-select form-type filter. Empty set = "show all" (matches old
-  // "ALL" behavior). Each click on a chip toggles it in/out of the set.
-  const [selectedForms, setSelectedForms] = useState<Set<string>>(new Set());
-
-  const [expandedYears, setExpandedYears] = useState<Record<number, boolean>>(() => {
-    // Default: expand the top (most recent) year so the user sees filings
-    // immediately without having to click
-    if (filings.length === 0) return {};
-    const topYear = Math.max(...filings.map((f) => f.year));
-    return { [topYear]: true };
-  });
-  const [expandedQuarters, setExpandedQuarters] = useState<Record<string, boolean>>({});
-
-  // ==========================================================================
-  // Derived state
-  // ==========================================================================
-  const formTypes = useMemo(() => {
-    const counts = new Map<string, number>();
-    filings.forEach((f) => counts.set(f.form, (counts.get(f.form) || 0) + 1));
-    // Sort by count desc, then by form name asc
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([form, count]) => ({ form, count }));
-  }, [filings]);
-
-  const filteredFilings = useMemo(() => {
-    if (selectedForms.size === 0) return filings;
-    return filings.filter((f) => selectedForms.has(f.form));
-  }, [filings, selectedForms]);
-
-  const grouped = useMemo(() => {
-    const byYear: Record<number, Record<string, FilingEntry[]>> = {};
-    filteredFilings.forEach((f) => {
-      if (!byYear[f.year]) byYear[f.year] = {};
-      if (!byYear[f.year][f.quarter]) byYear[f.year][f.quarter] = [];
-      byYear[f.year][f.quarter].push(f);
-    });
-    return byYear;
-  }, [filteredFilings]);
-
-  const sortedYears = useMemo(
-    () => Object.keys(grouped).map(Number).sort((a, b) => b - a),
-    [grouped]
-  );
-
-  // ==========================================================================
-  // Handlers
-  // ==========================================================================
-  const toggleForm = (form: string) => {
-    setSelectedForms((prev) => {
-      const next = new Set(prev);
-      if (next.has(form)) next.delete(form);
-      else next.add(form);
-      return next;
-    });
-  };
-
-  const clearAllFilters = () => setSelectedForms(new Set());
-
-  const toggleYear = (y: number) =>
-    setExpandedYears((p) => ({ ...p, [y]: !p[y] }));
-
-  const toggleQuarter = (k: string) =>
-    setExpandedQuarters((p) => ({ ...p, [k]: !p[k] }));
-
-  const copyShareLink = () => {
-    const url = `${window.location.origin}/filings/${ticker}`;
-    navigator.clipboard.writeText(url);
-  };
-
-  const goToAnalysis = () => {
-    router.push(`/analysis/${ticker}`);
-  };
-
-  // ==========================================================================
-  // Render
-  // ==========================================================================
-
-  // Error state
-  if (errorMessage) {
-    return (
-      <div className="bg-rose-950/30 border-2 border-rose-900/60 px-4 py-3 mb-4 flex items-center gap-2">
-        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-        <span className="text-sm text-rose-200">{errorMessage}</span>
-      </div>
-    );
-  }
-
-  // Empty state (server found no filings)
-  if (filings.length === 0) {
-    return (
-      <div className="border-2 border-dashed border-stone-800 p-12 text-center">
-        <FileText className="w-12 h-12 text-stone-700 mx-auto mb-4" />
-        <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">
-          No filings found for {ticker}
-        </p>
-        <p className="text-stone-600 text-xs max-w-md mx-auto">
-          This company is registered with the SEC but has no recent filings.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {/* Company header */}
-      {company && (
-        <div className="mb-6">
-          <div className="flex items-baseline gap-3 mb-1 flex-wrap">
-            <span className="text-2xl font-black tracking-wider text-stone-100">
-              {ticker}
-            </span>
-            <span className="text-lg text-stone-300 font-bold">{company.name}</span>
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] uppercase tracking-widest text-stone-500">
-            <span>CIK: {company.cik}</span>
-            {company.sicCode && <span>SIC: {company.sicCode}</span>}
-            {company.sic && <span>{company.sic}</span>}
-            {company.exchanges !== 'N/A' && <span>Exchange: {company.exchanges}</span>}
-            {company.fiscalYearEnd && <span>FY End: {company.fiscalYearEnd}</span>}
-          </div>
-        </div>
-      )}
-
-      <FilingPulsePanel filings={filings} cik={company?.cik} />
-      <FilingResearchWorkbench ticker={ticker} company={company} filings={filings} />
-
-      {/* Multi-select filter row */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-2 mr-2">
-          <Filter className="w-4 h-4 text-stone-400" />
-          <span className="text-[10px] uppercase tracking-[0.25em] text-stone-400">
-            Form Type
-          </span>
-        </div>
-
-        {formTypes.map(({ form, count }) => {
-          const isSelected = selectedForms.has(form);
-          return (
-            <button
-              key={form}
-              onClick={() => toggleForm(form)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider border transition-colors ${
-                isSelected ? formColor(form) : chipIdleColor()
-              }`}
-              type="button"
-            >
-              <span>{form}</span>
-              <span className="text-[9px] opacity-70">{count}</span>
-            </button>
-          );
-        })}
-
-        {selectedForms.size > 0 && (
-          <button
-            onClick={clearAllFilters}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] uppercase tracking-wider text-stone-500 hover:text-amber-400 transition-colors"
-            type="button"
-          >
-            <X className="w-3 h-3" />
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Count + action buttons */}
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <div className="text-xs text-stone-500">
-          Showing {filteredFilings.length} of {filings.length}
-          {selectedForms.size > 0 && (
-            <span className="ml-2 text-amber-400">
-              · Filtering: {Array.from(selectedForms).join(', ')}
-            </span>
-          )}
-        </div>
-        <div className="ml-auto flex gap-1">
-          <button
-            onClick={copyShareLink}
-            className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
-            title="Copy shareable link"
-            type="button"
-          >
-            <LinkIcon className="w-3.5 h-3.5" />
-            Share
-          </button>
-          <button
-            onClick={goToAnalysis}
-            className="flex items-center gap-2 px-3 py-2 text-[11px] uppercase tracking-widest font-bold border-2 border-stone-800 text-stone-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
-            title="View financial analysis"
-            type="button"
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            View Financials
-          </button>
-        </div>
-      </div>
-
-      {/* Empty-filtered state */}
-      {sortedYears.length === 0 && (
-        <div className="border-2 border-dashed border-stone-800 p-10 text-center">
-          <Filter className="w-10 h-10 text-stone-700 mx-auto mb-3" />
-          <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">
-            No filings match the selected filters
-          </p>
-          <p className="text-stone-600 text-xs max-w-md mx-auto">
-            Try removing a form type or click Clear to see everything.
-          </p>
-        </div>
-      )}
-
-      {/* Filings tree */}
-      {sortedYears.length > 0 && (
-        <div className="space-y-3">
-          {sortedYears.map((year) => {
-            const quarters = grouped[year];
-            const yearCount = Object.values(quarters).reduce(
-              (s, arr) => s + arr.length,
-              0
-            );
-            const isOpen = expandedYears[year];
-            return (
-              <div key={year} className="border-2 border-stone-800">
-                <button
-                  onClick={() => toggleYear(year)}
-                  className="w-full flex items-center justify-between px-5 py-4 bg-stone-900 hover:bg-stone-800/80 transition-colors"
-                  type="button"
-                >
-                  <div className="flex items-center gap-3">
-                    {isOpen ? (
-                      <ChevronDown className="w-5 h-5 text-amber-500" />
-                    ) : (
-                      <ChevronRight className="w-5 h-5 text-amber-500" />
-                    )}
-                    <Calendar className="w-4 h-4 text-stone-400" />
-                    <span className="text-2xl font-black tracking-wider">{year}</span>
-                  </div>
-                  <span className="text-xs uppercase tracking-widest text-stone-400">
-                    {yearCount} {yearCount === 1 ? 'filing' : 'filings'}
-                  </span>
+              <div className={styles.actions}>
+                <button onClick={share} title="Copy this search view">
+                  <Share2 size={15} />
+                  <span>Share</span>
                 </button>
-
-                {isOpen && (
-                  <div className="border-t-2 border-stone-800">
-                    {(['Q1', 'Q2', 'Q3', 'Q4'] as const)
-                      .filter((q) => quarters[q])
-                      .map((q) => {
-                        const qKey = `${year}-${q}`;
-                        const qOpen = expandedQuarters[qKey] ?? true;
-                        const qFilings = [...quarters[q]].sort(
-                          (a, b) =>
-                            new Date(b.filingDate).getTime() -
-                            new Date(a.filingDate).getTime()
-                        );
-                        return (
-                          <div
-                            key={q}
-                            className="border-b border-stone-800 last:border-b-0"
+                <button
+                  onClick={() => setRefresh((v) => v + 1)}
+                  title="Refresh recent submissions and reset loaded archives"
+                >
+                  <RefreshCw size={15} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+            {settings.view !== "notebook" && (
+              <>
+                <div className={styles.filterLine}>
+                  <label className={styles.query}>
+                    <Search size={17} />
+                    <span className={styles.srOnly}>
+                      Search filing metadata
+                    </span>
+                    <input
+                      placeholder="Search form, description, accession, or event…"
+                      value={settings.query}
+                      onChange={(e) =>
+                        changeSettings({ query: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Form
+                    <select
+                      value={settings.form}
+                      onChange={(e) =>
+                        changeSettings({ form: e.target.value, family: "all" })
+                      }
+                    >
+                      <option value="all">All SEC forms</option>
+                      {settings.form !== "all" &&
+                        !formOptions.includes(settings.form) && (
+                          <option value={settings.form}>
+                            {settings.form} · not loaded
+                          </option>
+                        )}
+                      {formOptions.map((form) => (
+                        <option key={form}>{form}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Review status
+                    <select
+                      value={settings.status}
+                      onChange={(e) =>
+                        changeSettings({ status: e.target.value })
+                      }
+                    >
+                      <option value="all">All filings</option>
+                      <option value="unreviewed">Unreviewed</option>
+                      <option value="queued">Queued</option>
+                      <option value="reviewed">Reviewed</option>
+                    </select>
+                  </label>
+                  <label>
+                    Sort
+                    <select
+                      value={settings.sort}
+                      onChange={(e) => changeSettings({ sort: e.target.value })}
+                    >
+                      <option value="newest">Newest filed</option>
+                      <option value="oldest">Oldest filed</option>
+                      <option value="report">Reporting date</option>
+                      <option value="form">Form type</option>
+                    </select>
+                  </label>
+                </div>
+                <div
+                  className={styles.familyChips}
+                  aria-label="Filter filing family"
+                >
+                  {[
+                    { id: "all", label: "All filings" },
+                    ...FILING_FAMILIES,
+                  ].map((family: any) => (
+                    <button
+                      key={family.id}
+                      aria-pressed={
+                        settings.family === family.id && settings.form === "all"
+                      }
+                      onClick={() =>
+                        changeSettings({ family: family.id, form: "all" })
+                      }
+                    >
+                      {family.label}
+                    </button>
+                  ))}
+                  <details className={styles.advanced}>
+                    <summary>
+                      Dates &amp; events
+                      {settings.start ||
+                      settings.end ||
+                      settings.item ||
+                      settings.amendments !== "include"
+                        ? " •"
+                        : ""}
+                    </summary>
+                    <div className={styles.filterPopover}>
+                      <form
+                        key={`${settings.start}:${settings.end}`}
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const form = new FormData(e.currentTarget);
+                          const start = String(form.get("start") || "");
+                          const end = String(form.get("end") || "");
+                          if (start && end && start > end) {
+                            setDateError(
+                              "The start date must be on or before the end date.",
+                            );
+                            return;
+                          }
+                          changeSettings({ start, end });
+                        }}
+                      >
+                        <p className={styles.eyebrow}>Filed date window</p>
+                        <div className={styles.dateRange}>
+                          <label>
+                            Filed from
+                            <input
+                              type="date"
+                              name="start"
+                              defaultValue={settings.start}
+                            />
+                          </label>
+                          <label>
+                            Filed through
+                            <input
+                              type="date"
+                              name="end"
+                              defaultValue={settings.end}
+                            />
+                          </label>
+                        </div>
+                        <div className={styles.actions}>
+                          <button type="submit" className={styles.primary}>
+                            Apply dates
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              changeSettings({ start: "", end: "" })
+                            }
                           >
-                            <button
-                              onClick={() => toggleQuarter(qKey)}
-                              className="w-full flex items-center justify-between px-5 py-2.5 bg-stone-950 hover:bg-stone-900/60 transition-colors"
-                              type="button"
-                            >
-                              <div className="flex items-center gap-3">
-                                {qOpen ? (
-                                  <ChevronDown className="w-4 h-4 text-stone-500" />
-                                ) : (
-                                  <ChevronRight className="w-4 h-4 text-stone-500" />
-                                )}
-                                <span className="text-sm font-bold text-amber-500">
-                                  {q}
-                                </span>
-                                <span className="text-xs text-stone-500">
-                                  {q === 'Q1'
-                                    ? 'Jan–Mar'
-                                    : q === 'Q2'
-                                    ? 'Apr–Jun'
-                                    : q === 'Q3'
-                                    ? 'Jul–Sep'
-                                    : 'Oct–Dec'}
-                                </span>
-                              </div>
-                              <span className="text-xs text-stone-500">
-                                {qFilings.length}
+                            Clear dates
+                          </button>
+                        </div>
+                        {dateError && <p role="alert">{dateError}</p>}
+                      </form>
+                      <label>
+                        8-K event
+                        <select
+                          value={settings.item}
+                          onChange={(e) =>
+                            changeSettings({
+                              item: e.target.value,
+                              form: "all",
+                              family: e.target.value ? "current" : "all",
+                            })
+                          }
+                        >
+                          <option value="">Any event</option>
+                          {[
+                            ["1.01", "Material agreement"],
+                            ["1.03", "Bankruptcy"],
+                            ["1.05", "Cybersecurity incident"],
+                            ["2.02", "Earnings results"],
+                            ["2.03", "Financial obligation"],
+                            ["2.06", "Material impairment"],
+                            ["4.01", "Auditor change"],
+                            ["4.02", "Non-reliance on financials"],
+                            ["5.02", "Executive change"],
+                            ["5.07", "Shareholder vote"],
+                            ["9.01", "Financial statements / exhibits"],
+                          ].map(([code, label]) => (
+                            <option key={code} value={code}>
+                              {code} · {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Amendments
+                        <select
+                          value={settings.amendments}
+                          onChange={(e) =>
+                            changeSettings({ amendments: e.target.value })
+                          }
+                        >
+                          <option value="include">
+                            Include originals and amendments
+                          </option>
+                          <option value="exclude">Original filings only</option>
+                          <option value="only">Amendments only</option>
+                        </select>
+                      </label>
+                      <p>
+                        Event filters use SEC submission item codes. Older
+                        records may omit this metadata.
+                      </p>
+                    </div>
+                  </details>
+                </div>
+              </>
+            )}
+          </div>
+          <div
+            role="status"
+            aria-live="polite"
+            className={status ? styles.status : styles.srOnly}
+          >
+            {status}
+          </div>
+          {storageError && (
+            <p className={styles.error} role="alert">
+              Your saved workspace could not be updated: {storageError}
+            </p>
+          )}
+          <div
+            ref={gridRef}
+            className={`${styles.contentGrid} ${selected ? styles.withReader : ""}`}
+          >
+            <div className={styles.resultsArea}>
+              {settings.view === "notebook" ? (
+                <FilingsNotebook
+                  ticker={ticker}
+                  company={data}
+                  notebook={notebook}
+                  onUpdate={updateNotebook}
+                  onOpen={openFiling}
+                  onApplyView={(s: any) => changeSettings(s)}
+                  settings={settings}
+                  coverage={coverage}
+                />
+              ) : (
+                <>
+                  <section className={styles.coverage}>
+                    <details>
+                      <summary>
+                        <ShieldCheck size={16} />
+                        <strong>
+                          {remaining.length ||
+                          coverage.omittedRecords ||
+                          coverage.omittedArchives
+                            ? "Partial archive coverage"
+                            : "SEC index coverage"}
+                        </strong>
+                        <span>
+                          Recent feed + {loadedCount} of {archives.length} older
+                          archives
+                        </span>
+                      </summary>
+                      <p>
+                        {coverage.note}{" "}
+                        {coverage.omittedRecords > 0
+                          ? `${coverage.omittedRecords} malformed records were omitted.`
+                          : ""}{" "}
+                        {coverage.omittedArchives > 0
+                          ? `${coverage.omittedArchives} invalid archive entries could not be loaded.`
+                          : ""}
+                      </p>
+                      <p>
+                        Index observed{" "}
+                        {data.observedAt
+                          ? new Date(data.observedAt).toLocaleString()
+                          : "time unavailable"}
+                        . Fetch failures stay visible and can be retried.
+                      </p>
+                      <div className={styles.archiveList}>
+                        {archives.map((archive: any) => (
+                          <div key={archive.name}>
+                            <span>
+                              <strong>
+                                {archive.filingFrom} → {archive.filingTo}
+                              </strong>
+                              <small>
+                                {archive.filingCount == null
+                                  ? "Count unavailable"
+                                  : Number(
+                                      archive.filingCount,
+                                    ).toLocaleString()}{" "}
+                                SEC records · {archive.name}
+                              </small>
+                            </span>
+                            {loadedArchives[archive.name] ? (
+                              <span className={styles.success}>
+                                <Check size={15} />
+                                Loaded
                               </span>
-                            </button>
-
-                            {qOpen && (
-                              <div className="divide-y divide-stone-800/60">
-                                {qFilings.map((f) => {
-                                  const items =
-                                    f.form === '8-K' ? getItemsInfo(f.items || '') : [];
-                                  return (
-                                    <a
-                                      key={f.accession}
-                                      href={f.documentUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-start gap-4 px-5 py-3.5 hover:bg-amber-500/5 transition-colors group"
-                                    >
-                                      <div
-                                        className={`shrink-0 px-2.5 py-1 text-[11px] font-black border tracking-wider ${formColor(
-                                          f.form
-                                        )} min-w-[80px] text-center`}
-                                      >
-                                        {f.form}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                          <span className="text-sm font-bold text-stone-100 truncate">
-                                            {f.primaryDescription ||
-                                              f.primaryDoc ||
-                                              'Filing Document'}
-                                          </span>
-                                          <ExternalLink className="w-3.5 h-3.5 text-stone-500 group-hover:text-amber-500 transition-colors shrink-0" />
-                                        </div>
-                                        <div className="flex items-center gap-4 text-[11px] text-stone-500 uppercase tracking-wider">
-                                          <span className="flex items-center gap-1">
-                                            <Calendar className="w-3 h-3" />
-                                            Filed {f.filingDate}
-                                          </span>
-                                          {f.reportDate && (
-                                            <span>Period {f.reportDate}</span>
-                                          )}
-                                          {f.size && <span>{formatSize(f.size)}</span>}
-                                          <span className="flex items-center gap-1 truncate">
-                                            <Hash className="w-3 h-3" />
-                                            {f.accession}
-                                          </span>
-                                        </div>
-                                        {items.length > 0 && (
-                                          <div className="flex flex-wrap gap-1 mt-1.5">
-                                            {items.map(({ code, label }) => (
-                                              <span
-                                                key={code}
-                                                className="px-1.5 py-0.5 bg-rose-950/40 border border-rose-800/40 text-rose-200 text-[9px] font-bold uppercase tracking-wider"
-                                                title={`8-K Item ${code}`}
-                                              >
-                                                {code} · {label}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </a>
-                                  );
-                                })}
-                              </div>
+                            ) : (
+                              <button
+                                disabled={!!archiveLoading}
+                                onClick={() => loadArchive(archive.name)}
+                              >
+                                {archiveLoading === archive.name
+                                  ? "Loading…"
+                                  : archiveErrors[archive.name]
+                                    ? "Retry archive"
+                                    : "Load archive"}
+                              </button>
+                            )}
+                            {archiveErrors[archive.name] && (
+                              <p className={styles.archiveError} role="alert">
+                                {archiveErrors[archive.name]}
+                              </p>
                             )}
                           </div>
+                        ))}
+                      </div>
+                    </details>
+                    {remaining.length > 0 && (
+                      <button
+                        disabled={!!archiveLoading}
+                        onClick={() => loadArchive(remaining[0].name)}
+                      >
+                        <History size={15} />
+                        {archiveLoading
+                          ? "Loading archive…"
+                          : "Load next older archive"}
+                      </button>
+                    )}
+                  </section>
+                  {(settings.start ||
+                    settings.end ||
+                    settings.item ||
+                    settings.amendments !== "include" ||
+                    settings.status !== "all") && (
+                    <div className={styles.activeFilters}>
+                      <span>
+                        {settings.start || "Earliest loaded"} →{" "}
+                        {settings.end || "Latest loaded"}
+                        {settings.item ? ` · Item ${settings.item}` : ""}
+                        {settings.amendments !== "include"
+                          ? ` · Amendments: ${settings.amendments}`
+                          : ""}
+                        {settings.status !== "all"
+                          ? ` · ${settings.status}`
+                          : ""}
+                      </span>
+                      <button
+                        onClick={() =>
+                          changeSettings({
+                            ...FILINGS_SETTINGS,
+                            view: settings.view,
+                          })
+                        }
+                      >
+                        <X size={13} />
+                        Reset filters
+                      </button>
+                    </div>
+                  )}
+                  <div
+                    id="filings-results-heading"
+                    className={styles.resultHeading}
+                  >
+                    <div>
+                      <h2>
+                        {settings.view === "timeline"
+                          ? "Filing timeline"
+                          : "Company filings"}{" "}
+                        <span>{filtered.length.toLocaleString()}</span>
+                      </h2>
+                      <p>
+                        {settings.query
+                          ? "Search matches filing metadata. Open a filing to search its document."
+                          : "Filed date and reporting period are shown separately."}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        download(
+                          `${ticker}-filing-index.csv`,
+                          exportFilingsCsv({
+                            ticker,
+                            company: data,
+                            filings: filtered,
+                            records,
+                            settings,
+                            coverage,
+                          }),
+                          "text/csv;charset=utf-8",
+                        );
+                        setStatus(
+                          "CSV export prepared for the filtered filing index.",
+                        );
+                      }}
+                    >
+                      <ArrowDownToLine size={15} />
+                      Export index
+                    </button>
+                  </div>
+                  {settings.view === "timeline" && (
+                    <section className={styles.timeline}>
+                      <h3>Activity by filing month</h3>
+                      <p>
+                        Counts reflect {filtered.length.toLocaleString()}{" "}
+                        matching records in loaded history. Filing activity is
+                        not a risk score. Select a month to inspect its filings.
+                      </p>
+                      <div>
+                        {monthRows.slice(0, 36).map(([month, count]) => (
+                          <button
+                            key={month}
+                            onClick={() => applyMonth(month)}
+                            aria-label={`${month}: ${count} filings. Filter to this month.`}
+                          >
+                            <span>{month}</span>
+                            <i
+                              style={{
+                                width: `${Math.max(1, (count / Math.max(...monthRows.map((m) => m[1]))) * 100)}%`,
+                              }}
+                            />
+                            <strong>{count.toLocaleString()}</strong>
+                          </button>
+                        ))}
+                      </div>
+                      {monthRows.length > 36 && (
+                        <small>
+                          Showing the newest 36 matching months. Use filed-date
+                          filters to explore earlier periods.
+                        </small>
+                      )}
+                    </section>
+                  )}
+                  {filtered.length === 0 ? (
+                    <section className={styles.empty}>
+                      <Search size={30} />
+                      <h3>No loaded filings match these filters</h3>
+                      <p>
+                        {remaining.length
+                          ? "Older filings may be in the unloaded SEC archives. Load history or broaden your filters."
+                          : "Broaden the dates, form, event, or review filters."}
+                      </p>
+                      {settings.status === "queued" && queuedCount > 0 && (
+                        <p>
+                          Some queued records are saved from older archives.
+                          Open them in your review workspace.
+                        </p>
+                      )}
+                      <button onClick={() => changeSettings(FILINGS_SETTINGS)}>
+                        Clear all filters
+                      </button>
+                    </section>
+                  ) : (
+                    <div className={styles.filingList}>
+                      {visible.map((filing: any) => {
+                        const record = records[filing.accession];
+                        const items = getItemsInfo(filing.items || "");
+                        const form = filing.form.replace("/A", "");
+                        return (
+                          <article
+                            className={`${styles.filingRow} ${selected?.accession === filing.accession ? styles.selectedRow : ""}`}
+                            key={filing.accession}
+                          >
+                            <div className={styles.filingIdentity}>
+                              <button
+                                className={`${styles.formBadge} ${styles[filing.family] || ""}`}
+                                onClick={() => openFiling(filing)}
+                                aria-label={`Read ${filing.form} filed ${filing.filingDate}`}
+                              >
+                                {filing.form}
+                              </button>
+                              <div>
+                                <button
+                                  className={styles.filingTitle}
+                                  onClick={() => openFiling(filing)}
+                                >
+                                  {filing.primaryDescription ||
+                                    FORM_TITLES[form] ||
+                                    `${filing.form} filing`}
+                                </button>
+                                <div className={styles.filingMeta}>
+                                  <span>
+                                    <Clock size={12} />
+                                    Filed <strong>{filing.filingDate}</strong>
+                                  </span>
+                                  <span>
+                                    Period{" "}
+                                    <strong>
+                                      {formatDate(filing.reportDate)}
+                                    </strong>
+                                  </span>
+                                  {filing.isAmendment && (
+                                    <span className={styles.amendment}>
+                                      Amendment
+                                    </span>
+                                  )}
+                                  {record?.reviewedAt && (
+                                    <span className={styles.success}>
+                                      <CheckCheck size={13} />
+                                      Reviewed
+                                    </span>
+                                  )}
+                                </div>
+                                {items.length > 0 && (
+                                  <div className={styles.itemTags}>
+                                    {items.map((item: any) => (
+                                      <button
+                                        key={item.code}
+                                        onClick={() =>
+                                          changeSettings({
+                                            item: item.code,
+                                            family: "current",
+                                            form: "all",
+                                          })
+                                        }
+                                      >
+                                        {item.code}{" "}
+                                        {item.code === "2.03"
+                                          ? "Financial obligation"
+                                          : item.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                <small className={styles.accession}>
+                                  {filing.accession}
+                                  {filing.archive ? " · Archived index" : ""}
+                                </small>
+                              </div>
+                            </div>
+                            <div className={styles.rowActions}>
+                              <button
+                                className={styles.readButton}
+                                onClick={() => openFiling(filing)}
+                              >
+                                <BookOpen size={15} />
+                                Read
+                              </button>
+                              <button
+                                aria-label={`${record?.queued ? "Unqueue" : "Queue"} ${filing.accession}`}
+                                aria-pressed={!!record?.queued}
+                                onClick={() => toggleQueue(filing)}
+                                disabled={!storageReady}
+                              >
+                                <Bookmark size={15} />
+                              </button>
+                              <button
+                                aria-label={`${record?.reviewedAt ? "Mark unreviewed" : "Mark reviewed"} ${filing.accession}`}
+                                aria-pressed={!!record?.reviewedAt}
+                                onClick={() => toggleReviewed(filing)}
+                                disabled={!storageReady}
+                              >
+                                <Check size={15} />
+                              </button>
+                              <a
+                                href={filing.documentUrl || filing.indexUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={`Open ${filing.form} filed ${filing.filingDate} on SEC.gov`}
+                              >
+                                <ArrowUpRight size={16} />
+                              </a>
+                            </div>
+                          </article>
                         );
                       })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                    </div>
+                  )}
+                  {filtered.length > PAGE_SIZE && (
+                    <nav
+                      className={styles.pagination}
+                      aria-label="Filing result pages"
+                    >
+                      <span>
+                        {(currentPage - 1) * PAGE_SIZE + 1}–
+                        {Math.min(currentPage * PAGE_SIZE, filtered.length)} of{" "}
+                        {filtered.length.toLocaleString()}
+                      </span>
+                      <div>
+                        <button
+                          disabled={currentPage === 1}
+                          onClick={() => changePage(currentPage - 1)}
+                        >
+                          <ChevronLeft size={16} />
+                          Previous
+                        </button>
+                        <span>
+                          Page {currentPage} / {pageCount}
+                        </span>
+                        <button
+                          disabled={currentPage === pageCount}
+                          onClick={() => changePage(currentPage + 1)}
+                        >
+                          Next
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </nav>
+                  )}
+                  <form className={styles.saveView} onSubmit={saveView}>
+                    <label htmlFor="filings-view-name">
+                      <Bookmark size={16} />
+                      Keep these search settings
+                    </label>
+                    <input
+                      id="filings-view-name"
+                      value={viewName}
+                      maxLength={100}
+                      onChange={(e) => setViewName(e.target.value)}
+                      placeholder="e.g. Earnings and material events"
+                    />
+                    <button type="submit" disabled={!storageReady}>
+                      Save view
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+            {selected && (
+              <aside
+                className={styles.readerAside}
+                aria-label="Selected SEC filing"
+              >
+                <div className={styles.readerActions}>
+                  <button
+                    aria-pressed={!!records[selected.accession]?.queued}
+                    onClick={() => toggleQueue(selected)}
+                  >
+                    <Bookmark size={14} />
+                    {records[selected.accession]?.queued
+                      ? "Queued"
+                      : "Queue filing"}
+                  </button>
+                  <button
+                    aria-pressed={!!records[selected.accession]?.reviewedAt}
+                    onClick={() => toggleReviewed(selected)}
+                  >
+                    <CheckCheck size={14} />
+                    {records[selected.accession]?.reviewedAt
+                      ? "Reviewed"
+                      : "Mark reviewed"}
+                  </button>
+                </div>
+                <FilingReader
+                  key={selected.accession}
+                  ticker={ticker}
+                  filing={selected}
+                  archive={selected.archive}
+                  prior={pair?.prior}
+                  priorArchive={pair?.prior?.archive}
+                  comparisonBasis={comparison}
+                  onComparisonChange={setComparison}
+                  selectionReason={pair?.reason}
+                  onClose={() => setSelected(null)}
+                  onCollect={collect}
+                />
+              </aside>
+            )}
+          </div>
+          <p className={styles.bottomNote}>
+            <FileText size={14} />
+            Primary documents are read as extracted text. Use each filing’s SEC
+            index for exhibits and the original presentation.{" "}
+            <Link href={`/disclosures?tickers=${ticker}`}>
+              Search disclosure topics <ArrowUpRight size={12} />
+            </Link>
+          </p>
+        </>
       )}
-    </>
+    </div>
   );
 }
