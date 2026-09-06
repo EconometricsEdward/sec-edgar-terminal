@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { analysisChange } from "../src/utils/analysisResearch.js";
 import {
   growthCompatibility,
   growthPair,
@@ -143,6 +144,7 @@ test("actual reported flow durations override a misleading inferred annual windo
     growthCompatibility(a, b).reason,
     /actual reported flow durations/,
   );
+  assert.deepEqual(analysisChange(a, b, "currency"), growthCompatibility(a, b));
 });
 
 test("derived quarters retain cumulative inputs without rejecting the valid quarter duration", () => {

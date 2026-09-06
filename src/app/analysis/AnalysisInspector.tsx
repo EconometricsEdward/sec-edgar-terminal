@@ -152,7 +152,7 @@ export default function AnalysisInspector({
         {label || definition.label}
       </h2>
       <strong className={styles.bigValue}>
-        {analysisValue(point?.value, definition.format)}
+        {analysisValue(point?.value, definition.format, settings.units)}
       </strong>
       <p className={styles.muted}>
         {instant
