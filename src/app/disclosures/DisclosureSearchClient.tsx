@@ -930,7 +930,7 @@ export default function DisclosureSearchClient({
                     <h2>
                       {results.length}{" "}
                       {active.mode === "index"
-                        ? "candidate / verified filings"
+                        ? "candidate / verified documents"
                         : "matching filings"}
                     </h2>
                   </div>
@@ -1011,10 +1011,11 @@ export default function DisclosureSearchClient({
                 {results.slice(0, visibleCount).map((filing) => (
                   <article
                     className={s.resultCard}
-                    data-selected={
-                      reader?.filing.accession === filing.accession &&
-                      reader?.filing.cik === filing.cik
-                    }
+                    data-selected={Boolean(
+                      reader &&
+                        filingEvidenceId(reader.filing) ===
+                          filingEvidenceId(filing),
+                    )}
                     key={filingEvidenceId(filing)}
                   >
                     <button
@@ -1029,6 +1030,9 @@ export default function DisclosureSearchClient({
                       </div>
                       <p className={s.companyName}>{filing.companyName}</p>
                       <div className={s.resultMeta}>
+                        {active.mode === "index" && (
+                          <span>{filing.primaryDoc}</span>
+                        )}
                         <span>
                           {filing.status === "index-candidate"
                             ? "Index candidate · unverified"
