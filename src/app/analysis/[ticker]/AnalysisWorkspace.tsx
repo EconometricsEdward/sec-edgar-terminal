@@ -169,13 +169,40 @@ function Workspace(props: any) {
         "--analysis-controls-height",
         `${controls.current?.getBoundingClientRect().height || 80}px`,
       );
+      const rect = root.current?.getBoundingClientRect();
+      const contentTop =
+        root.current?.querySelector("[data-inspector]")?.getBoundingClientRect()
+          .top || 0;
+      const controlsBottom =
+        controls.current?.getBoundingClientRect().bottom || 0;
+      root.current?.style.setProperty(
+        "--analysis-reader-top",
+        `${Math.max(controlsBottom + 12, contentTop)}px`,
+      );
+      root.current?.style.setProperty(
+        "--analysis-reader-right",
+        `${Math.max(0, document.documentElement.clientWidth - (rect?.right || document.documentElement.clientWidth))}px`,
+      );
+    };
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
     };
     const observer = new ResizeObserver(measure);
     if (header) observer.observe(header);
     if (controls.current) observer.observe(controls.current);
+    if (root.current) observer.observe(root.current);
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
     measure();
-    return () => observer.disconnect();
-  }, []);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [selection?.definition?.key, settings.view]);
   const patch = useCallback((next: any) => {
     setSelection(null);
     setStatus("");
