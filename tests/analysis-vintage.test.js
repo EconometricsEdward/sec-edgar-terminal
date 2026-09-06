@@ -238,6 +238,18 @@ test("Latest-available metadata does not inherit a stale screen cutoff", () => {
   assert.equal(result.currentObservedAt, "2026-09-01T12:00:00.000Z");
 });
 
+test("Inputs filed after their stated snapshot cutoff cannot support a revision comparison", () => {
+  const before = earlier(100);
+  before.metrics.netIncome[0].sources[0].filed = "2025-03-02";
+  const row = compare(data(120), before).rows[0];
+  assert.equal(row.state, "incompatible");
+  assert.equal(row.delta, null);
+  assert.match(row.reason, /after its snapshot cutoff/);
+  const incomplete = earlier(120);
+  incomplete.metrics.netIncome[0].sources[0].accession = null;
+  assert.equal(compare(data(120), incomplete).rows[0].state, "incompatible");
+});
+
 test("Snapshot CSV includes only visible rows, both sources and settings, safe links and quoted text", () => {
   const current = data(120, {
     definitions: [{ ...definition, label: '=HYPERLINK("bad")\nquoted, label' }],

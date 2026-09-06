@@ -67,6 +67,9 @@ const completeSources = (point) => {
         source.taxonomy &&
         source.tag &&
         source.unit &&
+        Number.isFinite(source.value) &&
+        source.accession &&
+        validDate(source.filed) &&
         validDate(source.end) &&
         (!source.start ||
           (validDate(source.start) && source.start <= source.end)),
@@ -81,7 +84,31 @@ const missingPoint = (period, reason) => ({
   reason,
 });
 
-function classifyVintageRow(definition, beforeDefinition, current, before) {
+function classifyVintageRow(
+  definition,
+  beforeDefinition,
+  current,
+  before,
+  currentCutoff,
+  earlierCutoff,
+) {
+  if (
+    [
+      [current, currentCutoff],
+      [before, earlierCutoff],
+    ].some(
+      ([point, cutoff]) =>
+        finite(point) &&
+        uniqueAnalysisSources(point).some(
+          (source) => cutoff && source.filed > cutoff,
+        ),
+    )
+  )
+    return {
+      state: "incompatible",
+      reason:
+        "A retained input was filed after its snapshot cutoff. The comparison is withheld until its provenance is resolved.",
+    };
   if (!finite(current) && !finite(before))
     return {
       state: "missing",
@@ -101,14 +128,18 @@ function classifyVintageRow(definition, beforeDefinition, current, before) {
     };
 
   const sameValue = current.value === before.value;
+  if (!completeSources(current) || !completeSources(before))
+    return {
+      state: "incompatible",
+      reason:
+        "Reported source metadata is incomplete. A same-concept revision and its delta are not established.",
+    };
   const samePeriod =
     current.period?.end === before.period?.end &&
     current.period?.kind === before.period?.kind;
   const sameContexts =
-    completeSources(current) &&
-    completeSources(before) &&
     JSON.stringify(sourceContexts(current)) ===
-      JSON.stringify(sourceContexts(before));
+    JSON.stringify(sourceContexts(before));
   const sameFormula =
     (current.formula || "") === (before.formula || "") &&
     current.classification === before.classification;
@@ -267,6 +298,8 @@ export function buildAnalysisVintageComparison(
       beforeDefinition,
       currentPoint,
       before,
+      currentSettings.asOf,
+      earlierSettings.asOf,
     );
     return {
       definition: currentDefinition,
@@ -340,7 +373,8 @@ export function exportAnalysisVintageCsv(
     "Current observed at",
     "Earlier value",
     "Current value",
-    "Unit",
+    "Earlier unit",
+    "Current unit",
     "Compatible delta",
     "Compatible percent change",
     "Explanation",
@@ -370,6 +404,9 @@ export function exportAnalysisVintageCsv(
       comparison.currentObservedAt,
       row.before.value,
       row.current.value,
+      row.earlierDefinition.format === "currency"
+        ? "USD"
+        : row.earlierDefinition.format,
       row.definition.format === "currency" ? "USD" : row.definition.format,
       row.delta,
       row.percent,

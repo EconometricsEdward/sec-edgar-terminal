@@ -406,7 +406,9 @@ function VintageRequest({ data, settings, index, onInspect, onPatch }: any) {
                           >
                             {analysisValue(
                               row[side].value,
-                              row.definition.format,
+                              side === "before"
+                                ? row.earlierDefinition.format
+                                : row.definition.format,
                               settings.units,
                             )}
                           </button>
