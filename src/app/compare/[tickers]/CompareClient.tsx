@@ -115,6 +115,13 @@ export default function CompareClient({
   const { basis, asOf } = settings;
 
   useEffect(() => {
+    // Restore the actual route before URL synchronization. Next can reuse this
+    // client island across /compare and /compare/[tickers] navigation.
+    setTickers(
+      normalizeCompareTickers(
+        decodeURIComponent(window.location.pathname.split("/")[2] || ""),
+      ),
+    );
     setSettings(readCompareUrl(window.location.search));
     try {
       setNotebook(
