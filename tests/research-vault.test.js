@@ -698,9 +698,10 @@ test("rendered settings, source fields, baseline periods and timestamps reject n
   }
 });
 
-test("comparison evidence without a reproducible peer set opens the comparison tool rather than an invalid single-ticker route", () => {
+test("comparison evidence without a saved peer set opens its company's notebook and memo opens the global notebook", () => {
   const value = fixtures()[compareKey];
   value.searches = [];
   const vault = readResearchVault(storage({ [compareKey]: value }));
-  assert.ok(vault.entries.every((e) => e.href === "/compare"));
+  assert.equal(vault.entries.find((e) => e.type === "evidence").href, "/compare/JPM?basis=annual&view=notebook");
+  assert.equal(vault.entries.find((e) => e.type === "note").href, "/compare?view=notebook");
 });

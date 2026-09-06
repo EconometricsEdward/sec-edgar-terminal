@@ -127,7 +127,7 @@ export function safeInternalPath(value) {
   const tickers = match[2].split(",");
   if (match[1] === "compare") {
     if (
-      tickers.length < 2 ||
+      tickers.length < 1 ||
       tickers.length > 5 ||
       new Set(tickers.map((t) => t.toUpperCase())).size !== tickers.length
     )

@@ -55,3 +55,23 @@ test("recent research preserves corrupt storage and ignores unsafe legacy rows",
     [],
   );
 });
+
+test("resume links name the saved view so repeated companies stay distinguishable", () => {
+  let raw = null;
+  const storage = {
+    getItem: () => raw,
+    setItem: (_, value) => {
+      raw = value;
+    },
+  };
+  recordResearchVisit(storage, "/analysis/JPM?view=notebook");
+  recordResearchVisit(storage, "/filings/JPM?family=quarterly");
+  assert.equal(
+    readResearchTrail(storage)[0].title,
+    "Filings · JPM · Quarterly reports",
+  );
+  assert.equal(
+    readResearchTrail(storage)[1].title,
+    "Analysis · JPM · Notebook",
+  );
+});

@@ -649,7 +649,9 @@ function entriesFor(source, data, store = {}) {
         "",
         data.collectionName || "Peer research memo",
         data.notes,
-        compareDestination(firstPeers, { view: "notebook" }),
+        compareDestination(firstPeers, { view: "notebook" }) === "/compare"
+          ? "/compare?view=notebook"
+          : compareDestination(firstPeers, { view: "notebook" }),
       );
     for (const s of data.searches)
       add(
@@ -673,7 +675,9 @@ function entriesFor(source, data, store = {}) {
         p.ticker,
         p.label,
         [pointSummary(p.point), p.notes, p.tags].filter(Boolean).join(" · "),
-        compareDestination(peers, { ...p.settings, view: "notebook" }),
+        compareDestination(peers, { ...p.settings, view: "notebook" }) === "/compare"
+          ? pathWithSettings(`/compare/${p.ticker}`, { ...p.settings, view: "notebook" })
+          : compareDestination(peers, { ...p.settings, view: "notebook" }),
         p.savedAt,
         p.id,
       );
