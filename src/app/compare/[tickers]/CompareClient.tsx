@@ -790,20 +790,39 @@ export default function CompareClient({
             <SlidersHorizontal size={14} /> Metrics & research settings
           </summary>
           <div className={styles.inlineControls}>
-            <label>
-              Only facts filed by
-              <input
-                type="date"
-                value={settings.asOf}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) =>
-                  update({ asOf: e.target.value, period: "latest" })
+            <form
+              className={styles.cutoffForm}
+              onSubmit={(event) => {
+                event.preventDefault();
+                const date = String(
+                  new FormData(event.currentTarget).get("asOf") || "",
+                );
+                const normalized = normalizeCompareSettings({
+                  ...settings,
+                  asOf: date,
+                });
+                if (date && normalized.asOf !== date) {
+                  setError("Choose a valid filing cutoff no later than today.");
+                  return;
                 }
-              />
-            </label>
-            <button onClick={() => update({ asOf: "" })}>
-              Use latest filings
-            </button>
+                update({ asOf: date, period: "latest" });
+              }}
+            >
+              <label>
+                Only facts filed by
+                <input
+                  key={settings.asOf}
+                  name="asOf"
+                  type="date"
+                  defaultValue={settings.asOf}
+                  max={new Date().toISOString().slice(0, 10)}
+                />
+              </label>
+              <button type="submit">Apply cutoff</button>
+              <button type="button" onClick={() => update({ asOf: "" })}>
+                Use latest filings
+              </button>
+            </form>
             <label>
               Order companies by
               <select
