@@ -1,4 +1,6 @@
 .page {
+  --disc-header-height: 140px;
+  --disc-controls-height: 208px;
   --disc-bg: #151b24;
   --disc-raised: #202936;
   --disc-panel: #1a222e;
@@ -229,7 +231,7 @@
 }
 .searchBox {
   position: sticky;
-  top: 8px;
+  top: calc(var(--disc-header-height) + 8px);
   z-index: 25;
   background: var(--disc-bg);
   border: 1px solid var(--disc-border);
@@ -534,8 +536,10 @@
 }
 .reader {
   position: sticky;
-  top: 230px;
-  max-height: calc(100vh - 250px);
+  top: calc(var(--disc-header-height) + var(--disc-controls-height) + 20px);
+  max-height: calc(
+    100vh - var(--disc-header-height) - var(--disc-controls-height) - 40px
+  );
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;

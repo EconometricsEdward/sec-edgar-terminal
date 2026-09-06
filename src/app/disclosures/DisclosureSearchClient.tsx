@@ -149,6 +149,28 @@ export default function DisclosureSearchClient({
   const [saveName, setSaveName] = useState("");
   const [checking, setChecking] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const page = pageRef.current;
+    const header = document.querySelector("body > div > header");
+    const controls = page?.querySelector("form");
+    if (!page || !header || !controls) return;
+    const measure = () => {
+      page.style.setProperty(
+        "--disc-header-height",
+        `${header.getBoundingClientRect().height}px`,
+      );
+      page.style.setProperty(
+        "--disc-controls-height",
+        `${controls.getBoundingClientRect().height}px`,
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    observer.observe(controls);
+    measure();
+    return () => observer.disconnect();
+  }, []);
   const running = useRef(false);
   const notebookRef = useRef(notebook);
   useEffect(() => {
@@ -574,7 +596,7 @@ export default function DisclosureSearchClient({
       })),
     }));
   return (
-    <div className={s.page}>
+    <div className={s.page} ref={pageRef}>
       <header className={s.header}>
         <div>
           <span className={s.eyebrow}>
