@@ -8,6 +8,7 @@ import { validFilingDate } from "./filingsResearch.js";
 
 const MAX_DOCUMENT_BYTES = 24_000_000;
 const PAGE_SIZE = 8;
+const TEXT_CACHE_NAMESPACE = "filings-reader-text-v2";
 const cache = new Map();
 let nextRequest = 0;
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -89,7 +90,12 @@ export function extractFilingReaderText(raw, filename = "filing.htm") {
       /<h1[^>]*>\s*(?:access denied|request rate threshold)/i.test(raw))
     throw error("SEC did not return usable filing text. Open the original or try again.", 502);
   const xml = /\.xml$/i.test(filename) && !/<html\b/i.test(raw);
-  const cleaned = raw.replace(/<ix:hidden\b[^>]*>[\s\S]*?<\/ix:hidden>/gi, "")
+  // Inline XBRL headers contain thousands of hidden contexts, dimensions and
+  // units. Remove those containers before stripping tags, otherwise technical
+  // member names become apparent narrative paragraphs. Visible inline facts
+  // (nonFraction/nonNumeric) outside these containers remain readable.
+  const cleaned = raw.replace(/<(ix:header|ix:resources|ix:references|ix:hidden|xbrli:context|xbrli:unit)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<link:(schemaRef|linkbaseRef)\b[^>]*(?:\/>|>[\s\S]*?<\/link:\1\s*>)/gi, "")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<!DOCTYPE[\s\S]*?(?:\]>|>)/gi, "");
   const text = xml ? xmlFields(cleaned) : decodeEntities(cleaned);
@@ -126,7 +132,7 @@ export async function fetchReaderDocument(cik, filing, { signal } = {}) {
   const key = `${cik}:${filing.accession}:${filing.primaryDoc}`;
   const local = cache.get(key);
   if (local && local.expires > Date.now()) return local.value;
-  const cached = await warmGet("filings-reader-text-v1", key);
+  const cached = await warmGet(TEXT_CACHE_NAMESPACE, key);
   let value;
   if (cached?.gzip) {
     try {
@@ -150,7 +156,7 @@ export async function fetchReaderDocument(cik, filing, { signal } = {}) {
     if (/application\/pdf|image\/|application\/(?:zip|octet-stream)/i.test(contentType))
       throw error("SEC returned a non-text document. Open the original SEC document.", 422);
     value = extractFilingReaderText(await readBoundedFilingResponse(response), filing.primaryDoc);
-    await warmSet("filings-reader-text-v1", key, { gzip: gzipSync(value.text).toString("base64"), format: value.format }, 86400 * 7);
+    await warmSet(TEXT_CACHE_NAMESPACE, key, { gzip: gzipSync(value.text).toString("base64"), format: value.format }, 86400 * 7);
   }
   let size = value.text.length;
   for (const item of cache.values()) size += item.value.text.length;

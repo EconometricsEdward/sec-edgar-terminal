@@ -97,6 +97,23 @@ test("HTML extraction removes executable and hidden XBRL content while retaining
   assert.doesNotMatch(result.text, /secretScript|hiddenXbrlSecret|commentSecret|display:none|<p>/);
 });
 
+test("Inline XBRL headers and resources never become narrative while visible tagged values remain readable", () => {
+  const raw = `<html><body><ix:header><ix:references><link:schemaRef xlink:href="jpm-20241231.xsd"/></ix:references><ix:resources><xbrli:context id="hidden-context"><xbrli:entity><xbrli:identifier scheme="https://www.sec.gov/CIK">0000019617</xbrli:identifier><xbrli:segment><xbrldi:explicitMember dimension="jpm:BusinessSegmentAxis">jpm:CorporateInvestmentBankMember</xbrldi:explicitMember></xbrli:segment></xbrli:entity><xbrli:period><xbrli:startDate>hidden-start-date</xbrli:startDate><xbrli:endDate>hidden-end-date</xbrli:endDate></xbrli:period></xbrli:context><xbrli:unit id="usd"><xbrli:measure>iso4217:USD</xbrli:measure></xbrli:unit></ix:resources><ix:hidden><ix:nonNumeric>hidden-only-disclosure</ix:nonNumeric></ix:hidden></ix:header><p>JPMORGAN CHASE &amp; CO reported cash of <ix:nonFraction name="us-gaap:Cash" contextRef="hidden-context" unitRef="usd">215</ix:nonFraction> million for the period ending <ix:nonNumeric name="dei:DocumentPeriodEndDate">December 31, 2024</ix:nonNumeric>. This visible narrative must remain available for evidence review.</p></body></html>`;
+  const result = extractFilingReaderText(raw, "jpm-20241231.htm");
+  assert.equal(result.format, "text");
+  assert.match(result.text, /^JPMORGAN CHASE & CO reported cash of 215 million/);
+  assert.match(result.text, /period ending December 31, 2024/);
+  assert.match(result.text, /visible narrative must remain available/);
+  assert.doesNotMatch(result.text, /0000019617|CorporateInvestmentBankMember|hidden-start-date|hidden-end-date|iso4217:USD|hidden-only-disclosure|BusinessSegmentAxis/);
+});
+
+test("Standalone XBRL contexts, units and schema references are removed outside an inline header", () => {
+  const raw = `<html><body><ix:resources><xbrli:context><xbrli:entity><xbrli:identifier>resource-identifier-secret</xbrli:identifier></xbrli:entity></xbrli:context></ix:resources><xbrli:context id="legacy-context"><xbrli:entity><xbrli:identifier>legacy-identifier-secret</xbrli:identifier></xbrli:entity></xbrli:context><xbrli:unit id="legacy-unit"><xbrli:measure>legacy-unit-secret</xbrli:measure></xbrli:unit><link:schemaRef xlink:href="schema.xsd">schema-reference-secret</link:schemaRef><link:linkbaseRef xlink:href="labels.xml">linkbase-reference-secret</link:linkbaseRef><link:schemaRef xlink:href="other.xsd"/><p>${shared}</p></body></html>`;
+  const result = extractFilingReaderText(raw, "legacy.htm");
+  assert.equal(result.text, shared);
+  assert.doesNotMatch(result.text, /identifier-secret|unit-secret|reference-secret/);
+});
+
 test("Numeric entities preserve financial comparisons and supplementary Unicode after markup removal", () => {
   const result = extractFilingReaderText("<p>The financial covenant requires leverage &#x3c; 4.0 and coverage &#62; 1.5 during each reporting period. Encoded examples: &#128200; and &#x1F4C8;. Invalid scalars: &#xD800;, &#1114112;, and &#0;.</p>");
   assert.equal(result.text, "The financial covenant requires leverage < 4.0 and coverage > 1.5 during each reporting period. Encoded examples: 📈 and 📈. Invalid scalars: �, �, and �.");

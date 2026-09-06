@@ -462,7 +462,9 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
         ...c.records,
         [filing.accession]: {
           ...c.records[filing.accession],
-          queued: reviewedAt ? false : c.records[filing.accession]?.queued || false,
+          queued: reviewedAt
+            ? false
+            : c.records[filing.accession]?.queued || false,
           reviewedAt,
           notes: c.records[filing.accession]?.notes || "",
           filing: filingWithIdentity(filing),
@@ -1337,32 +1339,6 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                 className={styles.readerAside}
                 aria-label="Selected SEC filing"
               >
-                <div className={styles.readerTools}>
-                  <label>
-                    Comparison basis
-                    <select
-                      value={comparison}
-                      onChange={(e) =>
-                        setComparison(e.target.value as "year" | "previous")
-                      }
-                    >
-                      <option value="year">Same reporting season</option>
-                      <option value="previous">
-                        Previous same-form report
-                      </option>
-                    </select>
-                  </label>
-                  <button
-                    aria-label="Close selected filing"
-                    onClick={() => setSelected(null)}
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-                <p className={styles.pairReason}>
-                  {pair?.reason ||
-                    "Load older history to find a comparable report."}
-                </p>
                 <div className={styles.readerActions}>
                   <button
                     aria-pressed={!!records[selected.accession]?.queued}
@@ -1390,6 +1366,9 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                   archive={selected.archive}
                   prior={pair?.prior}
                   priorArchive={pair?.prior?.archive}
+                  comparisonBasis={comparison}
+                  onComparisonChange={setComparison}
+                  selectionReason={pair?.reason}
                   onClose={() => setSelected(null)}
                   onCollect={collect}
                 />

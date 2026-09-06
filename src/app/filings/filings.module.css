@@ -1207,3 +1207,20 @@
     display: block;
   }
 }
+
+/* Keep document space available while the reader controls remain in view. */
+.readerAside {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--filings-reader-top, 300px) - 16px);
+  overflow: hidden;
+}
+.readerActions {
+  flex-shrink: 0;
+  padding: 9px 13px;
+}
+@media (max-width: 900px) {
+  .readerAside {
+    height: 75vh;
+  }
+}

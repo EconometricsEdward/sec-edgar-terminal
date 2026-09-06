@@ -83,7 +83,7 @@ export async function loadFilingsCompany(input, { signal } = {}) {
   return {
     ticker, cik, kind: 'operating', name: submissions.name || identity.name,
     sic: submissions.sic == null ? '' : String(submissions.sic), sicDescription: submissions.sicDescription || '',
-    exchange: Array.isArray(submissions.exchanges) ? submissions.exchanges.filter((e) => typeof e === 'string').join(', ') : '',
+    exchange: Array.isArray(submissions.exchanges) ? [...new Set(submissions.exchanges.filter((e) => typeof e === 'string'))].join(', ') : '',
     filings, archives, omittedRecords, omittedArchives, coverage: { omittedRecords, omittedArchives },
     observedAt: new Date().toISOString(),
   };
