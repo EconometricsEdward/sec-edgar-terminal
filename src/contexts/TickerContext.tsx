@@ -1,7 +1,13 @@
-'use client';
+"use client";
 
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
-import { loadClassifiedTickerMap } from '../utils/tickerMapLoader.js';
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useCallback,
+  ReactNode,
+} from "react";
+import { loadClassifiedTickerMap } from "../utils/tickerMapLoader.js";
 
 // ============================================================================
 // Types
@@ -35,6 +41,9 @@ export interface TickerContextValue {
   setTickerMap: (m: TickerMap | null) => void;
   company: Company | null;
   setCompany: (c: Company | null) => void;
+  directoryStatus: "loading" | "ready" | "error";
+  directoryError: string;
+  refreshTickerMap: (force?: boolean) => Promise<void>;
 }
 
 // ============================================================================
@@ -50,29 +59,56 @@ export const TickerContext = createContext<TickerContextValue | null>(null);
 // ============================================================================
 
 export function TickerProvider({ children }: { children: ReactNode }) {
-  const [ticker, setTicker] = useState<string>('');
+  const [ticker, setTicker] = useState<string>("");
   const [tickerMap, setTickerMap] = useState<TickerMap | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
+  const [directoryStatus, setDirectoryStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [directoryError, setDirectoryError] = useState("");
+
+  const refreshTickerMap = useCallback(async (force = false) => {
+    setDirectoryStatus("loading");
+    setDirectoryError("");
+    try {
+      const map = await loadClassifiedTickerMap({ force });
+      setTickerMap(map as TickerMap);
+      setDirectoryStatus("ready");
+    } catch (error) {
+      setTickerMap(null);
+      setDirectoryStatus("error");
+      setDirectoryError(
+        error instanceof Error
+          ? error.message
+          : "The SEC ticker directory could not be loaded.",
+      );
+    }
+  }, []);
 
   // Preload the classified ticker map on mount. Same behavior as the old
   // App.jsx useEffect, just now lives with the context that owns it.
   useEffect(() => {
-    let cancelled = false;
-    loadClassifiedTickerMap()
-      .then((map) => {
-        if (!cancelled) setTickerMap(map as TickerMap);
-      })
-      .catch(() => {
-        // Silent — pages that need ticker data can retry
-      });
-    return () => {
-      cancelled = true;
+    void refreshTickerMap();
+    const refresh = () => {
+      void refreshTickerMap();
     };
-  }, []);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [refreshTickerMap]);
 
   return (
     <TickerContext.Provider
-      value={{ ticker, setTicker, tickerMap, setTickerMap, company, setCompany }}
+      value={{
+        ticker,
+        setTicker,
+        tickerMap,
+        setTickerMap,
+        company,
+        setCompany,
+        directoryStatus,
+        directoryError,
+        refreshTickerMap,
+      }}
     >
       {children}
     </TickerContext.Provider>

@@ -1,0 +1,47 @@
+/* Reading controls change prose and row spacing without scaling charts or their axes. */
+html[data-reading-text="large"]
+  main
+  :is(p, blockquote):not(table p, table blockquote) {
+  font-size: max(1em, 1rem) !important;
+  line-height: 1.8 !important;
+}
+
+html[data-reading-density="compact"] main :is(tbody td, thead th) {
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+html[data-reading-density="compact"] main article > p {
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+html[data-reading-density="compact"] main [data-research-row] {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+:is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--text-primary, #f8fafc) !important;
+  outline-offset: 3px !important;
+}
+
+html[data-reading-motion="reduced"] *,
+html[data-reading-motion="reduced"] *::before,
+html[data-reading-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-reading-motion="full"]) *,
+  html:not([data-reading-motion="full"]) *::before,
+  html:not([data-reading-motion="full"]) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

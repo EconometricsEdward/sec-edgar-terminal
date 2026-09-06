@@ -926,11 +926,7 @@
   color: var(--disc-muted) !important;
   opacity: 0.85;
 }
-@media (min-width: 768px) and (max-width: 1600px) {
-  .page {
-    margin-left: 64px;
-  }
-}
+
 @media (max-width: 1150px) {
   .workspace[data-reader="true"] {
     grid-template-columns: minmax(0, 1fr);

@@ -902,11 +902,7 @@
   background: #f1c94f;
   color: #192e43;
 }
-@media (min-width: 768px) and (max-width: 1600px) {
-  .page {
-    margin-left: 64px;
-  }
-}
+
 @media (max-width: 1200px) {
   .inspector {
     width: 315px;

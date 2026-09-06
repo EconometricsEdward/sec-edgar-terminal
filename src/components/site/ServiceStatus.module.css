@@ -1,0 +1,134 @@
+.root {
+  position: relative;
+  --service-bg: #172132;
+  --service-text: #eef2f7;
+  --service-muted: #bdc9d8;
+  --service-line: #415168;
+  color: var(--service-text);
+}
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--service-line);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  min-height: 36px;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #93a5bf;
+  flex-shrink: 0;
+}
+.dot[data-state="available"] {
+  background: #45d9a2;
+}
+.dot[data-state="degraded"],
+.dot[data-state="offline"] {
+  background: #f2bd58;
+}
+.dot[data-state="unavailable"] {
+  background: #f39198;
+}
+.panel {
+  position: absolute;
+  z-index: 65;
+  right: 0;
+  top: calc(100% + 10px);
+  width: min(365px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--service-line);
+  border-radius: 15px;
+  background: var(--service-bg);
+  box-shadow: 0 20px 60px #0005;
+  max-height: min(520px, 75dvh);
+  overflow-y: auto;
+}
+.panel h2 {
+  font-size: 16px;
+  font-weight: 750;
+}
+.panel p {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--service-muted);
+}
+.panel dl {
+  margin-top: 14px;
+  padding-block: 10px;
+  border-block: 1px solid var(--service-line);
+}
+.panel dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-block: 5px;
+  font-size: 12px;
+}
+.panel dd {
+  font-weight: 650;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 15px;
+  font-size: 12px;
+}
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  border: 1px solid var(--service-line);
+  border-radius: 8px;
+  padding: 8px;
+  min-height: 36px;
+}
+.actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.actions a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.root :is(button, a):focus-visible {
+  outline: 2px solid #f4c655;
+  outline-offset: 3px;
+}
+:global(html[data-theme-mode="light"]) .root {
+  --service-bg: #fff;
+  --service-text: #192b42;
+  --service-muted: #41536b;
+  --service-line: #b8c7d8;
+}
+:global(html[data-theme-mode="light"]) .dot[data-state="available"] {
+  background: #087554;
+}
+:global(html[data-theme-mode="light"]) .root :is(button, a):focus-visible {
+  outline-color: #235aa1;
+}
+@media (max-width: 600px) {
+  .label {
+    display: none;
+  }
+  .trigger {
+    padding: 8px;
+  }
+  .panel {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    top: 74px;
+    width: auto;
+  }
+}

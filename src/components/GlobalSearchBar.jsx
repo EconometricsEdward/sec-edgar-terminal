@@ -1,13 +1,28 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
 import {
-  Search, X, AlertCircle, FileSearch, Building2, Wallet as WalletIcon,
-  ArrowRight, Clock, Command, GitCompare, FileText, BarChart3,
-} from 'lucide-react';
-import { TickerContext } from '../contexts/TickerContext';
-import { loadClassifiedTickerMap } from '../utils/tickerMapLoader.js';
+  useState,
+  useEffect,
+  useRef,
+  useContext,
+  useCallback,
+  useId,
+  useMemo,
+} from "react";
+import { useRouter, usePathname } from "next/navigation";
+import {
+  Search,
+  X,
+  AlertCircle,
+  FileSearch,
+  Building2,
+  Wallet,
+  ArrowRight,
+  Clock,
+  ArrowLeft,
+  RefreshCw,
+} from "lucide-react";
+import { TickerContext } from "../contexts/TickerContext";
 import {
   routeSearch,
   getSuggestions,
@@ -15,674 +30,447 @@ import {
   loadRecentSearches,
   pushRecentSearch,
   clearRecentSearches,
-  DISCLOSURE_TOPIC_SHORTCUTS,
   disclosureTopicTerm,
   disclosureSearchPath,
-} from '../utils/searchRouter.js';
+} from "../utils/searchRouter.js";
+import { safeInternalPath } from "../utils/siteRoutes.js";
+import { tickerDirectoryCoverage } from "../utils/tickerMapLoader.js";
+import styles from "./site/GlobalSearch.module.css";
 
 export default function GlobalSearchBar() {
   const router = useRouter();
-  const pathname = usePathname() || '/';
-  const ctx = useContext(TickerContext);
-  const { tickerMap, setTickerMap } = ctx || { tickerMap: null, setTickerMap: () => {} };
-
-  const [input, setInput] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [highlightedIdx, setHighlightedIdx] = useState(0);
-  const [error, setError] = useState(null);
-  const [disambiguation, setDisambiguation] = useState(null);
-  const [recentSearches, setRecentSearches] = useState([]);
-  const [showRecent, setShowRecent] = useState(false);
+  const pathname = usePathname() || "/";
+  const context = useContext(TickerContext);
+  const {
+    tickerMap,
+    directoryStatus = "loading",
+    directoryError = "",
+    refreshTickerMap,
+  } = context || {};
+  const [input, setInput] = useState("");
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+  const [error, setError] = useState("");
+  const [destination, setDestination] = useState(null);
+  const [recent, setRecent] = useState([]);
   const inputRef = useRef(null);
+  const suppressFocus = useRef(false);
   const containerRef = useRef(null);
+  const id = useId();
+  const listId = `${id}-results`;
+  const hintId = `${id}-hint`;
+  const isCompare = input.includes(",");
+  const directoryCoverage = tickerDirectoryCoverage(tickerMap);
+  const { suggestions, completed } = useMemo(
+    () => getSuggestions(input, tickerMap, 7),
+    [input, tickerMap],
+  );
+  const items = destination
+    ? destination.options
+    : input.trim()
+      ? suggestions
+      : recent;
 
-  // Load classified ticker map on mount
-  useEffect(() => {
-    if (tickerMap && Object.keys(tickerMap).length > 0) return;
-    (async () => {
-      try {
-        const map = await loadClassifiedTickerMap();
-        setTickerMap(map);
-      } catch (err) {
-        console.warn('GlobalSearchBar: Could not load ticker map', err);
-      }
-    })();
-  }, [tickerMap, setTickerMap]);
-
-  useEffect(() => {
-    setRecentSearches(loadRecentSearches());
+  const close = useCallback(() => {
+    setOpen(false);
+    setDestination(null);
+    setHighlight(-1);
+    setError("");
   }, []);
-
+  const closeAndFocus = () => {
+    close();
+    if (document.activeElement !== inputRef.current) {
+      suppressFocus.current = true;
+      inputRef.current?.focus();
+    }
+  };
   useEffect(() => {
-    const handleClick = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setShowSuggestions(false);
-        setDisambiguation(null);
-        setShowRecent(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    setRecent(loadRecentSearches());
   }, []);
-
   useEffect(() => {
-    if (error) setError(null);
-  }, [input]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Ctrl+K / Cmd+K focuses the search bar
+    setInput("");
+    close();
+  }, [pathname, close]);
   useEffect(() => {
-    const handler = (e) => {
-      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
-      if (isCmdK) {
-        e.preventDefault();
+    const keyboard = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
         inputRef.current?.focus();
         inputRef.current?.select();
+        setOpen(true);
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", keyboard);
+    return () => window.removeEventListener("keydown", keyboard);
   }, []);
-
-  // Clear input when navigating
   useEffect(() => {
-    setInput('');
-    setShowSuggestions(false);
-    setDisambiguation(null);
-    setShowRecent(false);
-  }, [pathname]);
+    const outside = (event) => {
+      if (!containerRef.current?.contains(event.target)) close();
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [close]);
+  useEffect(() => {
+    setHighlight(-1);
+  }, [input, destination]);
 
-  const { suggestions, active, completed } = getSuggestions(input, tickerMap, 10);
-
-  const performNavigation = useCallback(
-    (path, originalQuery) => {
-      setInput('');
-      setShowSuggestions(false);
-      setShowRecent(false);
-      setError(null);
-      setDisambiguation(null);
-      pushRecentSearch({ query: originalQuery, path });
-      setRecentSearches(loadRecentSearches());
-      router.push(path);
-    },
-    [router]
-  );
-
-  // When a user picks a suggestion with a specific destination button
-  const handleSuggestionAction = (suggestion, actionType) => {
-    const isCompareMode = input.includes(',');
-    if (isCompareMode) {
-      // In compare mode, ADD to list regardless of action type
-      const parsed = parseActiveSegment(input);
-      const newCompleted = [...parsed.completed, suggestion.ticker];
-      const newInput = newCompleted.join(',') + ',';
-      setInput(newInput);
-      setShowSuggestions(true);
-      setHighlightedIdx(0);
-      inputRef.current?.focus();
+  const navigate = (path, query = input) => {
+    const target = safeInternalPath(path);
+    if (!target) {
+      setError("This saved search has an invalid destination.");
       return;
     }
-
-    // Single mode: navigate based on actionType
-    let path;
-    if (actionType === 'topic') path = disclosureSearchPath(disclosureTopicTerm(suggestion.ticker));
-    else if (actionType === 'filings') path = `/filings/${suggestion.ticker}`;
-    else if (actionType === 'fund') path = `/fund/${suggestion.ticker}`;
-    else if (actionType === 'analysis') path = `/analysis/${suggestion.ticker}`;
-    else {
-      // Default click on row body — use disambiguation flow
-      handleRowDefaultClick(suggestion);
-      return;
-    }
-    performNavigation(path, suggestion.ticker);
+    pushRecentSearch({ query, path: target });
+    setRecent(loadRecentSearches());
+    close();
+    setInput("");
+    router.push(target);
   };
-
-  // Default click on suggestion row (not on an action button)
-  const handleRowDefaultClick = (suggestion) => {
-    const isCompareMode = input.includes(',');
-    if (isCompareMode) {
-      const parsed = parseActiveSegment(input);
-      const newCompleted = [...parsed.completed, suggestion.ticker];
-      const newInput = newCompleted.join(',') + ',';
-      setInput(newInput);
-      setShowSuggestions(true);
-      setHighlightedIdx(0);
+  const decide = (query) => {
+    const decision = routeSearch(query, tickerMap);
+    if (decision.path) navigate(decision.path, query);
+    else if (decision.disambiguate) {
+      setDestination(decision.disambiguate);
+      setHighlight(-1);
+      setError("");
+      setOpen(true);
       inputRef.current?.focus();
-      return;
-    }
-
-    // Single mode — open disambiguation for the chosen ticker
-    const decision = routeSearch(suggestion.ticker, tickerMap);
-    if (decision.path) {
-      performNavigation(decision.path, suggestion.ticker);
-    } else if (decision.disambiguate) {
-      setShowSuggestions(false);
-      setDisambiguation(decision.disambiguate);
-    } else if (decision.error) {
-      // Shouldn't happen for a suggestion, but handle gracefully
+    } else {
       setError(decision.error);
+      setOpen(true);
     }
   };
-
-  const handleSubmit = () => {
+  const choose = (item) => {
+    if (destination) {
+      navigate(item.path, destination.ticker);
+      return;
+    }
+    if (!input.trim()) {
+      navigate(item.path, item.query);
+      return;
+    }
+    if (isCompare) {
+      if (item.isFund || item.type === "topic") {
+        setError("Choose a public company for company comparison.");
+        return;
+      }
+      const next = [
+        ...new Set([...parseActiveSegment(input).completed, item.ticker]),
+      ];
+      if (next.length > 5) {
+        setError("Compare supports up to 5 companies.");
+        return;
+      }
+      setInput(`${next.join(", ")}, `);
+      inputRef.current?.focus();
+      return;
+    }
+    if (item.type === "topic")
+      navigate(disclosureSearchPath(disclosureTopicTerm(item.ticker)), input);
+    else decide(item.ticker);
+  };
+  const submit = () => {
+    if (destination) {
+      if (items[highlight]) choose(items[highlight]);
+      return;
+    }
+    if (!input.trim() && highlight >= 0 && recent[highlight]) {
+      choose(recent[highlight]);
+      return;
+    }
+    // A complete ticker list submits immediately; a partial company name still autocompletes.
     const decision = routeSearch(input, tickerMap);
-    if (decision.path) {
-      performNavigation(decision.path, input);
-    } else if (decision.disambiguate) {
-      setShowSuggestions(false);
-      setShowRecent(false);
-      setDisambiguation(decision.disambiguate);
-    } else if (decision.error) {
-      setError(decision.error);
-      setShowSuggestions(false);
-      setShowRecent(false);
+    if (isCompare && decision.path) {
+      navigate(decision.path);
+      return;
     }
-  };
-
-  const handleRecentClick = (recent) => {
-    performNavigation(recent.path, recent.query);
-  };
-
-  const handleClearRecent = () => {
-    clearRecentSearches();
-    setRecentSearches([]);
-  };
-
-  const handleKeyDown = (e) => {
-    const activeList = showRecent && !input ? recentSearches : showSuggestions ? suggestions : [];
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (showRecent || showSuggestions) {
-        setHighlightedIdx((i) => Math.min(i + 1, activeList.length - 1));
-      } else if (!input && recentSearches.length > 0) {
-        setShowRecent(true);
-        setHighlightedIdx(0);
-      }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (showRecent || showSuggestions) {
-        setHighlightedIdx((i) => Math.max(i - 1, 0));
-      } else if (!input && recentSearches.length > 0) {
-        setShowRecent(true);
-        setHighlightedIdx(0);
-      }
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (showRecent && recentSearches.length > 0 && highlightedIdx < recentSearches.length) {
-        handleRecentClick(recentSearches[highlightedIdx]);
-      } else if (showSuggestions && suggestions.length > 0 && highlightedIdx < suggestions.length) {
-        // Pick the highlighted suggestion with default routing
-        handleRowDefaultClick(suggestions[highlightedIdx]);
-      } else {
-        handleSubmit();
-      }
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
-      setShowRecent(false);
-      setDisambiguation(null);
-      inputRef.current?.blur();
-    } else if (e.key === 'Tab' && showSuggestions && suggestions.length > 0) {
-      e.preventDefault();
-      handleRowDefaultClick(suggestions[highlightedIdx]);
+    if (highlight >= 0 && items[highlight]) {
+      choose(items[highlight]);
+      return;
     }
-  };
-
-  const handleDisambiguationPick = (path) => {
-    setDisambiguation(null);
-    pushRecentSearch({ query: input, path });
-    setRecentSearches(loadRecentSearches());
-    setInput('');
-    router.push(path);
-  };
-
-  const clearInput = () => {
-    setInput('');
-    setError(null);
-    setDisambiguation(null);
-    inputRef.current?.focus();
-  };
-
-  const handleFocus = () => {
-    if (input) {
-      setShowSuggestions(true);
-    } else if (recentSearches.length > 0) {
-      setShowRecent(true);
+    if (
+      !isCompare &&
+      !tickerMap?.[input.trim().toUpperCase()] &&
+      suggestions[0]?.type !== "topic" &&
+      suggestions[0]?.score >= 2000
+    ) {
+      choose(suggestions[0]);
+      return;
     }
+    decide(input);
   };
-
-  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
-  const isCompareMode = input.includes(',');
-  const syntaxHint = computeSyntaxHint(input, tickerMap, completed);
-  const showingDropdown =
-    (showSuggestions && suggestions.length > 0) ||
-    (showRecent && recentSearches.length > 0) ||
-    disambiguation ||
-    (showSuggestions && input.trim() && suggestions.length === 0 && active);
-
-  return (
-    <div ref={containerRef} className="relative">
-      <div className="flex gap-0">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500 pointer-events-none" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value.toUpperCase());
-              setShowSuggestions(true);
-              setShowRecent(false);
-              setHighlightedIdx(0);
-            }}
-            onFocus={handleFocus}
-            onKeyDown={handleKeyDown}
-            placeholder="Search any ticker, company, or SEC topic (AAPL, tariffs, AI, SPY)"
-            className="w-full bg-stone-900 border-2 border-stone-800 focus:border-amber-500 outline-none pl-10 pr-24 py-2.5 text-sm font-bold tracking-wider placeholder-stone-600 transition-colors"
-            autoComplete="off"
-            spellCheck="false"
-          />
-          {!input && (
-            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-stone-500 border border-stone-700 bg-stone-950 pointer-events-none">
-              <Command className="w-2.5 h-2.5" />
-              {isMac ? 'K' : 'Ctrl+K'}
-            </kbd>
-          )}
-          {input && (
-            <button
-              onClick={clearInput}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300"
-              aria-label="Clear search"
-              type="button"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-        <button
-          onClick={handleSubmit}
-          disabled={!input.trim()}
-          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-stone-800 disabled:text-stone-600 text-stone-950 font-black uppercase tracking-widest text-xs transition-colors flex items-center gap-1.5 border-2 border-amber-500 disabled:border-stone-800"
-          type="button"
-        >
-          Go
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* Syntax hint */}
-      {syntaxHint && !showingDropdown && (
-        <div className="mt-1.5 flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider">
-          <span className={`inline-flex items-center gap-1.5 px-2 py-1 border ${syntaxHint.color}`}>
-            {syntaxHint.icon}
-            {syntaxHint.label}
-          </span>
-          <span className="text-stone-600">{syntaxHint.tip}</span>
-        </div>
-      )}
-
-      {/* Error */}
-      {error && !disambiguation && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-rose-950/80 border-2 border-rose-800 px-3 py-2 flex items-center gap-2 z-40">
-          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-          <span className="text-xs text-rose-200">{error}</span>
-        </div>
-      )}
-
-      {/* Disambiguation */}
-      {disambiguation && (
-        <DisambiguationPopover
-          disambiguation={disambiguation}
-          onPick={handleDisambiguationPick}
-        />
-      )}
-
-      {/* Recent */}
-      {showRecent && !input && recentSearches.length > 0 && !disambiguation && (
-        <RecentDropdown
-          recentSearches={recentSearches}
-          highlightedIdx={highlightedIdx}
-          setHighlightedIdx={setHighlightedIdx}
-          onRecentClick={handleRecentClick}
-          onClear={handleClearRecent}
-        />
-      )}
-
-      {/* Suggestions */}
-      {showSuggestions && !disambiguation && suggestions.length > 0 && (
-        <SuggestionsDropdown
-          suggestions={suggestions}
-          highlightedIdx={highlightedIdx}
-          setHighlightedIdx={setHighlightedIdx}
-          isCompareMode={isCompareMode}
-          completed={completed}
-          onRowClick={handleRowDefaultClick}
-          onActionClick={handleSuggestionAction}
-        />
-      )}
-
-      {/* No results */}
-      {showSuggestions && !disambiguation && input.trim() && suggestions.length === 0 && active && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-stone-900 border-2 border-stone-700 px-3 py-3 z-40">
-          <span className="text-xs text-stone-500">
-            No matches for "{active}". Press Enter to search SEC disclosures for this topic.
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================================
-// Sub-components
-// ============================================================================
-
-function DisambiguationPopover({ disambiguation, onPick }) {
-  return (
-    <div className="absolute top-full left-0 right-0 mt-1 bg-stone-900 border-2 border-amber-700 shadow-2xl z-50">
-      <div className="px-3 py-2 border-b-2 border-stone-800 bg-amber-950/30">
-        <span className="text-[10px] uppercase tracking-[0.2em] text-amber-300 font-bold">
-          "{disambiguation.ticker}"{disambiguation.name ? ` · ${disambiguation.name}` : ''} — pick destination
-        </span>
-      </div>
-      <div className="divide-y divide-stone-800">
-        {disambiguation.options.map((opt, i) => {
-          const { TypeIcon, color } = getTypeVisuals(opt.type);
-          return (
-            <button
-              key={i}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onPick(opt.path);
-              }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-stone-800/60 transition-colors group"
-              type="button"
-            >
-              <TypeIcon className={`w-4 h-4 shrink-0 ${color}`} />
-              <span className="flex-1 text-sm text-stone-200 group-hover:text-stone-100">
-                {opt.label}
-              </span>
-              <ArrowRight className="w-4 h-4 text-stone-600 group-hover:text-amber-400 shrink-0" />
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function RecentDropdown({ recentSearches, highlightedIdx, setHighlightedIdx, onRecentClick, onClear }) {
-  return (
-    <div className="absolute top-full left-0 right-0 mt-1 bg-stone-900 border-2 border-stone-700 shadow-2xl z-50 max-h-96 overflow-y-auto">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b-2 border-stone-800 bg-stone-950/40">
-        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] text-stone-500 font-bold">
-          <Clock className="w-3 h-3" />
-          Recent
-        </span>
-        <button
-          onMouseDown={(e) => { e.preventDefault(); onClear(); }}
-          className="text-[10px] uppercase tracking-wider text-stone-600 hover:text-stone-400"
-          type="button"
-        >
-          Clear
-        </button>
-      </div>
-      {recentSearches.map((r, i) => (
-        <button
-          key={`${r.query}-${r.ts}`}
-          onMouseEnter={() => setHighlightedIdx(i)}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onRecentClick(r);
-          }}
-          className={`w-full flex items-center gap-3 px-3 py-2 text-left border-b border-stone-800 last:border-b-0 transition-colors ${
-            i === highlightedIdx
-              ? 'bg-amber-500/10 border-l-2 border-l-amber-500 pl-[10px]'
-              : 'hover:bg-stone-800/50'
-          }`}
-          type="button"
-        >
-          <Clock className="w-3.5 h-3.5 shrink-0 text-stone-500" />
-          <span className="flex-1 text-sm font-bold tracking-wider text-stone-200">{r.query}</span>
-          <span className="text-[10px] uppercase tracking-wider text-stone-600">
-            {r.path.replace(/^\//, '').split('/')[0]}
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function SuggestionsDropdown({
-  suggestions,
-  highlightedIdx,
-  setHighlightedIdx,
-  isCompareMode,
-  completed,
-  onRowClick,
-  onActionClick,
-}) {
-  return (
-    <div className="absolute top-full left-0 right-0 mt-1 bg-stone-900 border-2 border-stone-700 shadow-2xl z-50 max-h-[32rem] overflow-y-auto">
-      {isCompareMode && completed.length > 0 && (
-        <div className="px-3 py-1.5 border-b-2 border-stone-800 bg-emerald-950/30 flex items-center gap-2">
-          <GitCompare className="w-3 h-3 text-emerald-400" />
-          <span className="text-[10px] uppercase tracking-[0.2em] text-emerald-300 font-bold">
-            Compare mode · {completed.length}/5 added · pick next
-          </span>
-        </div>
-      )}
-      {suggestions.map((s, i) => {
-        const { TypeIcon, color, badgeColor, badgeLabel } = getTypeVisuals(s.type);
-        return (
-          <div
-            key={`${s.type}-${s.ticker}`}
-            onMouseEnter={() => setHighlightedIdx(i)}
-            className={`flex items-center gap-2 px-3 py-2 border-b border-stone-800 last:border-b-0 transition-colors ${
-              i === highlightedIdx
-                ? 'bg-amber-500/10 border-l-2 border-l-amber-500 pl-[10px]'
-                : 'hover:bg-stone-800/50'
-            }`}
-          >
-            {/* Row body: clicking here uses default routing (disambiguation in single mode, add in compare mode) */}
-            <button
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onRowClick(s);
-              }}
-              className="flex-1 flex items-center gap-3 min-w-0 text-left"
-              type="button"
-            >
-              <TypeIcon className={`w-3.5 h-3.5 shrink-0 ${color}`} />
-              <div className="flex-1 min-w-0 flex items-center gap-2">
-                <span className="text-sm font-black tracking-wider text-stone-100 shrink-0">
-                  {s.ticker}
-                </span>
-                <span className="text-xs text-stone-400 truncate">{s.name}</span>
-              </div>
-              {badgeLabel && (
-                <span
-                  className={`shrink-0 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 border ${badgeColor}`}
-                >
-                  {badgeLabel}
-                </span>
-              )}
-            </button>
-
-            {/* Inline action buttons (only in single mode) */}
-            {!isCompareMode && (
-              <div className="flex items-center gap-1 shrink-0">
-                {s.type === 'topic' ? (
-                  <ActionButton
-                    onClick={() => onActionClick(s, 'topic')}
-                    label="Search"
-                    icon={FileSearch}
-                    color="amber"
-                  />
-                ) : (
-                  <>
-                    <ActionButton
-                      onClick={() => onActionClick(s, 'filings')}
-                      label="Filings"
-                      icon={FileText}
-                      color="sky"
-                    />
-                    {s.type === 'fund' ? (
-                      <ActionButton
-                        onClick={() => onActionClick(s, 'fund')}
-                        label="Fund"
-                        icon={WalletIcon}
-                        color="emerald"
-                      />
-                    ) : (
-                      <ActionButton
-                        onClick={() => onActionClick(s, 'analysis')}
-                        label="Analysis"
-                        icon={BarChart3}
-                        color="amber"
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+  const handleKey = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeAndFocus();
+      return;
+    }
+    if (event.target !== inputRef.current) return; // Native Tab and button keyboard activation stay intact.
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setOpen(true);
+      if (items.length)
+        setHighlight((value) =>
+          event.key === "ArrowDown"
+            ? (value + 1) % items.length
+            : value <= 0
+              ? items.length - 1
+              : value - 1,
         );
-      })}
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      submit();
+    }
+  };
+  useEffect(() => {
+    if (open && highlight >= 0)
+      document
+        .getElementById(`${listId}-${highlight}`)
+        ?.scrollIntoView({ block: "nearest" });
+  }, [open, highlight, listId]);
+
+  const heading = destination
+    ? `${destination.ticker} · Choose a research tool`
+    : !input.trim()
+      ? "Recent research"
+      : isCompare
+        ? `Company comparison · ${completed.length}/5 selected`
+        : "Companies, funds and disclosure topics";
+  return (
+    <div
+      className={styles.search}
+      ref={containerRef}
+      onKeyDown={handleKey}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) close();
+      }}
+    >
+      <div className={styles.field}>
+        <Search size={17} aria-hidden="true" />
+        <label className={styles.srOnly} htmlFor={`${id}-input`}>
+          Search companies, funds, or disclosure topics
+        </label>
+        <input
+          id={`${id}-input`}
+          ref={inputRef}
+          value={input}
+          role="combobox"
+          aria-keyshortcuts="Control+k Meta+k"
+          maxLength={500}
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          aria-activedescendant={
+            open && highlight >= 0 && items[highlight]
+              ? `${listId}-${highlight}`
+              : undefined
+          }
+          aria-describedby={open ? hintId : undefined}
+          aria-haspopup="listbox"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="Company, ticker or disclosure topic"
+          onChange={(event) => {
+            setInput(event.target.value);
+            setDestination(null);
+            setError("");
+            setOpen(true);
+          }}
+          onFocus={() => {
+            if (suppressFocus.current) {
+              suppressFocus.current = false;
+              return;
+            }
+            setOpen(true);
+            setRecent(loadRecentSearches());
+          }}
+        />
+        {!input && (
+          <kbd className={styles.shortcut} aria-hidden="true">
+            Ctrl / ⌘ K
+          </kbd>
+        )}
+        {input && (
+          <button
+            type="button"
+            className={styles.iconButton}
+            aria-label="Clear global search"
+            onClick={() => {
+              setInput("");
+              setDestination(null);
+              setError("");
+              inputRef.current?.focus();
+            }}
+          >
+            <X size={16} />
+          </button>
+        )}
+        <button
+          type="button"
+          className={styles.go}
+          disabled={!input.trim()}
+          onClick={submit}
+          aria-label="Run global search"
+        >
+          <ArrowRight size={17} />
+        </button>
+      </div>
+      {open && (
+        <div className={styles.popup}>
+          <div className={styles.popupHeader}>
+            {destination && (
+              <button
+                type="button"
+                className={styles.iconButton}
+                aria-label="Back to search results"
+                onClick={() => {
+                  setDestination(null);
+                  inputRef.current?.focus();
+                }}
+              >
+                <ArrowLeft size={15} />
+              </button>
+            )}
+            <strong>{heading}</strong>
+            {!input.trim() && recent.length > 0 && (
+              <button
+                type="button"
+                className={styles.textButton}
+                onClick={() => {
+                  clearRecentSearches();
+                  setRecent([]);
+                }}
+              >
+                Clear recent
+              </button>
+            )}
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label="Close global search"
+              onClick={closeAndFocus}
+            >
+              <X size={15} />
+            </button>
+          </div>
+          {error && (
+            <p className={styles.error} role="alert">
+              <AlertCircle size={16} aria-hidden="true" />
+              {error}
+            </p>
+          )}
+          {directoryStatus !== "ready" && (
+            <div className={styles.directory} role="status">
+              <span>
+                {directoryStatus === "loading"
+                  ? "Loading the SEC company and fund directory…"
+                  : `Company directory unavailable. ${directoryError}`}
+              </span>
+              {directoryStatus === "error" && (
+                <button
+                  type="button"
+                  className={styles.textButton}
+                  onClick={() => void refreshTickerMap?.(true)}
+                >
+                  <RefreshCw size={13} />
+                  Retry directory
+                </button>
+              )}
+            </div>
+          )}
+          <div
+            id={listId}
+            role="listbox"
+            aria-label={heading}
+            className={styles.list}
+          >
+            {items.map((item, index) => {
+              const Icon = destination
+                ? ArrowRight
+                : !input.trim()
+                  ? Clock
+                  : item.type === "fund"
+                    ? Wallet
+                    : item.type === "topic"
+                      ? FileSearch
+                      : Building2;
+              const label = destination
+                ? item.shortLabel
+                : !input.trim()
+                  ? item.query
+                  : item.ticker;
+              const description = destination
+                ? item.label
+                : !input.trim()
+                  ? item.path
+                  : item.name;
+              return (
+                <button
+                  id={`${listId}-${index}`}
+                  key={`${item.path || item.ticker}-${index}`}
+                  role="option"
+                  aria-selected={highlight === index}
+                  type="button"
+                  className={`${styles.option} ${highlight === index ? styles.active : ""}`}
+                  onClick={() => choose(item)}
+                  onMouseEnter={() => setHighlight(index)}
+                  onFocus={() => setHighlight(index)}
+                >
+                  <Icon size={17} aria-hidden="true" />
+                  <span>
+                    <strong>{label}</strong>
+                    <small>{description}</small>
+                  </span>
+                  {!destination && input.trim() && (
+                    <em>
+                      {item.type === "topic"
+                        ? "Topic"
+                        : item.type === "fund"
+                          ? "Fund"
+                          : "Company"}
+                    </em>
+                  )}
+                  <ArrowRight size={14} aria-hidden="true" />
+                </button>
+              );
+            })}
+          </div>
+          {!items.length && (
+            <p className={styles.empty}>
+              {input.trim()
+                ? "No matching company or fund. You can search the words in SEC disclosures."
+                : "Start with a company, a fund, or a question. Recent searches stay in this browser."}
+            </p>
+          )}
+          {!destination && input.trim() && !isCompare && (
+            <button
+              type="button"
+              className={styles.topicButton}
+              onClick={() =>
+                navigate(
+                  disclosureSearchPath(disclosureTopicTerm(input)),
+                  input,
+                )
+              }
+            >
+              <FileSearch size={15} aria-hidden="true" />
+              Search disclosures for “{input.trim()}”
+            </button>
+          )}
+          <p id={hintId} className={styles.hint}>
+            {destination
+              ? "Choose the tool to open for this exact company."
+              : "Use commas to compare companies: AAPL, MSFT. Topic: liquidity searches disclosures directly."}
+            <span>↑ ↓ select · Enter open · Esc close · Tab move</span>
+            {directoryCoverage?.omittedSymbols > 0 && (
+              <span>
+                {directoryCoverage.omittedSymbols} SEC fund entries have
+                unavailable or unsupported ticker symbols.
+              </span>
+            )}
+          </p>
+        </div>
+      )}
     </div>
   );
-}
-
-function ActionButton({ onClick, label, icon: Icon, color }) {
-  const colorClasses = {
-    amber: 'border-amber-800/60 text-amber-300 hover:bg-amber-500 hover:text-stone-950 hover:border-amber-500',
-    sky: 'border-sky-800/60 text-sky-300 hover:bg-sky-500 hover:text-stone-950 hover:border-sky-500',
-    emerald: 'border-emerald-800/60 text-emerald-300 hover:bg-emerald-500 hover:text-stone-950 hover:border-emerald-500',
-  };
-  return (
-    <button
-      onMouseDown={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onClick();
-      }}
-      className={`flex items-center gap-1 px-2 py-1 border text-[10px] font-bold uppercase tracking-wider transition-colors ${colorClasses[color]}`}
-      type="button"
-      title={`Go to ${label}`}
-    >
-      <Icon className="w-2.5 h-2.5" />
-      {label}
-    </button>
-  );
-}
-
-// ============================================================================
-// Visual helpers
-// ============================================================================
-
-function getTypeVisuals(type) {
-  if (type === 'topic') {
-    return {
-      TypeIcon: FileSearch,
-      color: 'text-amber-400',
-      badgeColor: 'bg-amber-900/60 text-amber-300 border-amber-700/60',
-      badgeLabel: 'TOPIC',
-    };
-  }
-  if (type === 'fund') {
-    return {
-      TypeIcon: WalletIcon,
-      color: 'text-emerald-400',
-      badgeColor: 'bg-emerald-900/60 text-emerald-300 border-emerald-700/60',
-      badgeLabel: 'FUND',
-    };
-  }
-  if (type === 'filings') {
-    return {
-      TypeIcon: FileText,
-      color: 'text-sky-400',
-      badgeColor: '',
-      badgeLabel: null,
-    };
-  }
-  if (type === 'analysis') {
-    return {
-      TypeIcon: BarChart3,
-      color: 'text-amber-400',
-      badgeColor: '',
-      badgeLabel: null,
-    };
-  }
-  return {
-    TypeIcon: Building2,
-    color: 'text-sky-400',
-    badgeColor: '',
-    badgeLabel: null,
-  };
-}
-
-function computeSyntaxHint(input, tickerMap, completed) {
-  if (!input || !input.trim()) return null;
-
-  const isCompareMode = input.includes(',');
-  if (isCompareMode) {
-    const count = completed.length;
-    if (count >= 5) {
-      return {
-        label: `${count}/5 tickers`,
-        icon: <GitCompare className="w-2.5 h-2.5" />,
-        tip: 'Max reached — press Enter to compare',
-        color: 'bg-rose-950/40 text-rose-300 border-rose-800',
-      };
-    }
-    return {
-      label: `Compare · ${count}/5`,
-      icon: <GitCompare className="w-2.5 h-2.5" />,
-      tip: count >= 2 ? 'Press Enter to compare, or add more' : 'Add at least 2 tickers',
-      color: 'bg-emerald-950/40 text-emerald-300 border-emerald-800',
-    };
-  }
-
-  const normalized = input.trim().toUpperCase();
-  if (DISCLOSURE_TOPIC_SHORTCUTS.has(normalized)) {
-    const alsoSEC = tickerMap?.[normalized];
-    if (alsoSEC) {
-      return {
-        label: 'Ambiguous',
-        icon: <AlertCircle className="w-2.5 h-2.5" />,
-        tip: 'Matches a disclosure topic and a SEC ticker — press Enter to pick',
-        color: 'bg-amber-950/40 text-amber-300 border-amber-800',
-      };
-    }
-    return {
-      label: 'Disclosure',
-      icon: <FileSearch className="w-2.5 h-2.5" />,
-      tip: 'Press Enter to search SEC disclosures',
-      color: 'bg-amber-950/40 text-amber-300 border-amber-800',
-    };
-  }
-
-  const entry = tickerMap?.[normalized];
-  if (entry?.isFund) {
-    return {
-      label: 'Fund',
-      icon: <WalletIcon className="w-2.5 h-2.5" />,
-      tip: `${entry.name} — press Enter to pick Filings or Fund page`,
-      color: 'bg-emerald-950/40 text-emerald-300 border-emerald-800',
-    };
-  }
-  if (entry) {
-    return {
-      label: 'Company',
-      icon: <Building2 className="w-2.5 h-2.5" />,
-      tip: `${entry.name} — press Enter to pick Filings or Analysis`,
-      color: 'bg-sky-950/40 text-sky-300 border-sky-800',
-    };
-  }
-
-  return {
-    label: 'Disclosure',
-    icon: <FileSearch className="w-2.5 h-2.5" />,
-    tip: 'Press Enter to search SEC disclosures',
-    color: 'bg-amber-950/40 text-amber-300 border-amber-800',
-  };
 }
