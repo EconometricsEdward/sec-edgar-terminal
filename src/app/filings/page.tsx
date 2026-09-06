@@ -1,92 +1,106 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import { FileText, ArrowRight } from 'lucide-react';
-import { buildPageMetadata } from '../../utils/siteMetadata';
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { ArrowUpRight, Search, BookOpen, ListChecks } from "lucide-react";
+import { buildPageMetadata } from "../../utils/siteMetadata";
+import { validTicker } from "../../utils/researchWorkspace.js";
+import CompanySearch from "./CompanySearch";
+import styles from "./filings.module.css";
 
-// ============================================================================
-// Metadata — static, since this page has no dynamic ticker
-// ============================================================================
-export const metadata: Metadata = {
-  ...buildPageMetadata({
-    title: 'SEC Filings Browser — 10-K, 10-Q, 8-K, Form 4',
-    description:
-      'Search and browse SEC filings for every publicly traded U.S. company. Includes a source-linked filing pulse, form-type filters, year and quarter grouping, and direct links to SEC.gov.',
-    path: '/filings',
-  }),
-};
+export const metadata = buildPageMetadata({
+  title: "SEC Filings Browser — 10-K, 10-Q, 8-K, Form 4",
+  description:
+    "Search company filings, load older SEC archives, read source documents, compare reports, and build a filing review queue with exportable evidence.",
+  path: "/filings",
+});
 
-// ============================================================================
-// Featured tickers — same as landing page for consistency
-// ============================================================================
-const FEATURED_TICKERS = [
-  { ticker: 'AAPL', name: 'Apple Inc.', caption: 'Mega-cap tech' },
-  { ticker: 'JPM', name: 'JPMorgan Chase', caption: 'Big bank' },
-  { ticker: 'NVDA', name: 'NVIDIA Corp.', caption: 'Growth + insiders' },
-  { ticker: 'XOM', name: 'Exxon Mobil', caption: 'Oil & gas' },
-];
-
-// ============================================================================
-// Page — pure server component, zero client JS needed
-// ============================================================================
-export default function FilingsIndexPage() {
+export default async function FilingsIndexPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ticker?: string }>;
+}) {
+  const query = await searchParams;
+  const ticker = String(query.ticker || "")
+    .trim()
+    .toUpperCase();
+  if (validTicker(ticker)) redirect(`/filings/${encodeURIComponent(ticker)}`);
   return (
-    <>
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-2">
-          <FileText className="w-5 h-5 text-amber-500" />
-          <h1 className="text-xl font-black uppercase tracking-tight">
-            SEC Filings Browser
+    <div className={styles.page}>
+      <section className={styles.landing}>
+        <div>
+          <p className={styles.eyebrow}>EDGAR / Filing research</p>
+          <h1>
+            Find the filing.
+            <br />
+            <span>Read what matters.</span>
           </h1>
+          <p className={styles.lead}>
+            Go from a company’s SEC filing history to the passage behind your
+            research. Search, compare, and keep a clear record of what you’ve
+            reviewed.
+          </p>
+          <CompanySearch />
+          <p className={styles.muted}>
+            SEC primary sources · No account required · Research saved in your
+            browser
+          </p>
         </div>
-        <p className="text-xs text-stone-400 leading-relaxed max-w-3xl">
-          Complete filing history for every publicly traded U.S. company —
-          10-K, 10-Q, 8-K, Form 4, proxy statements, and more. Each company
-          page starts with a source-linked filing pulse, then groups every
-          filing by year and quarter with direct links to SEC.gov.
-        </p>
-      </div>
-
-      <div className="mb-6">
-        <div className="text-[10px] uppercase tracking-[0.25em] text-amber-400 font-bold mb-3">
-          Try it with a familiar company
+        <div className={styles.landingPreview}>
+          <p className={styles.eyebrow}>A focused research workflow</p>
+          {[
+            [
+              Search,
+              "01",
+              "Find the right report",
+              "Filter forms, filing dates, and 8-K events. Load older archives with visible coverage.",
+            ],
+            [
+              BookOpen,
+              "02",
+              "Read and compare",
+              "Search inside documents and compare supported reporting periods or amendments.",
+            ],
+            [
+              ListChecks,
+              "03",
+              "Build your evidence",
+              "Queue filings, keep notes, collect passages, and export a source-linked brief.",
+            ],
+          ].map(([Icon, number, title, copy]: any) => (
+            <div key={number}>
+              <Icon size={23} />
+              <span>{number}</span>
+              <h2>{title}</h2>
+              <p>{copy}</p>
+            </div>
+          ))}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {FEATURED_TICKERS.map((t) => (
-            <Link
-              key={t.ticker}
-              href={`/filings/${t.ticker}`}
-              className="group block border-2 border-stone-800 bg-stone-900/30 p-4 hover:border-amber-500 hover:text-amber-300 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <span className="text-xl md:text-2xl font-black tracking-wider text-stone-100 group-hover:text-current transition-colors">
-                  {t.ticker}
-                </span>
-                <ArrowRight className="w-4 h-4 text-stone-600 group-hover:text-current transition-colors" />
-              </div>
-              <div className="text-[11px] text-stone-400 mb-1 font-bold truncate">
-                {t.name}
-              </div>
-              <div className="text-[10px] text-stone-500 leading-tight">
-                {t.caption}
-              </div>
+      </section>
+      <section className={styles.panel}>
+        <div className={styles.sectionHeading}>
+          <div>
+            <p className={styles.eyebrow}>Start a review</p>
+            <h2>Choose a company</h2>
+          </div>
+          <span className={styles.muted}>
+            Fund tickers open the Funds workspace.
+          </span>
+        </div>
+        <div className={styles.companyGrid}>
+          {[
+            ["JPM", "JPMorgan Chase", "Annual reports and bank disclosures"],
+            ["AAPL", "Apple", "Quarterly reports and capital returns"],
+            ["NVDA", "NVIDIA", "Growth, governance, and insider filings"],
+            ["XOM", "Exxon Mobil", "Energy, investment, and material events"],
+          ].map(([symbol, name, description]) => (
+            <Link key={symbol} href={`/filings/${symbol}`}>
+              <ArrowUpRight size={20} />
+              <strong>{symbol}</strong>
+              <span>{name}</span>
+              <p>{description}</p>
             </Link>
           ))}
         </div>
-      </div>
-
-      <div className="border-2 border-dashed border-stone-800 p-12 text-center">
-        <FileText className="w-12 h-12 text-stone-700 mx-auto mb-4" />
-        <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">
-          Awaiting Query
-        </p>
-        <p className="text-stone-600 text-xs max-w-md mx-auto">
-          Use the search bar above to retrieve filings directly from SEC EDGAR,
-          or pick a featured company above.
-        </p>
-        <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
-          Mutual fund and ETF tickers are automatically routed to the Funds page.
-        </p>
-      </div>
-    </>
+      </section>
+    </div>
   );
 }
