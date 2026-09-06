@@ -1,0 +1,113 @@
+.control {
+  position: relative;
+}
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  color: var(--text-secondary);
+  background: var(--surface-panel);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  list-style: none;
+}
+.trigger::-webkit-details-marker {
+  display: none;
+}
+.control[open] .trigger {
+  border-color: var(--text-secondary);
+}
+.panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 9px);
+  z-index: 80;
+  width: min(318px, calc(100vw - 32px));
+  max-height: calc(100dvh - 90px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: 0 18px 60px var(--shadow-soft);
+}
+.heading {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 16px;
+}
+.heading strong {
+  font-size: 14px;
+}
+.heading span,
+.field small {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.field {
+  display: grid;
+  gap: 7px;
+  margin-top: 13px;
+  font-size: 12px;
+}
+.field > span {
+  font-weight: 650;
+}
+.field select {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font: inherit;
+}
+.field :global(.theme-tone-control) {
+  justify-content: space-between;
+  width: 100%;
+  border-radius: 6px;
+  box-shadow: none;
+  min-height: 38px;
+}
+.field :global(.theme-tone-range) {
+  width: 114px;
+}
+.field :global(.theme-tone-output) {
+  min-width: 58px;
+  text-align: right;
+  letter-spacing: 0.07em;
+}
+.reset {
+  margin-top: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+.message {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+@media (max-width: 420px) {
+  .trigger {
+    padding-inline: 9px;
+  }
+  .panel {
+    position: fixed;
+    right: 16px;
+    top: 74px;
+  }
+}

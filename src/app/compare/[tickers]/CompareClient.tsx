@@ -25,7 +25,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { TickerContext } from "../../../contexts/TickerContext";
-import { secFilesUrl } from "../../../utils/secApi.js";
+import { loadClassifiedTickerMap } from "../../../utils/tickerMapLoader.js";
 import { PEER_GROUPS } from "../../../utils/peerGroups.js";
 import {
   COMPARE_METRICS,
@@ -187,21 +187,9 @@ export default function CompareClient({
   useEffect(() => {
     if (tickerMap) return;
     const controller = new AbortController();
-    fetch(secFilesUrl("company_tickers.json"), { signal: controller.signal })
-      .then(async (r) => {
-        if (!r.ok)
-          throw new Error(
-            "Ticker suggestions are unavailable. You can still enter exact tickers.",
-          );
-        const map: any = {};
-        Object.values(await r.json()).forEach((entry: any) => {
-          map[entry.ticker.toUpperCase()] = {
-            ticker: entry.ticker.toUpperCase(),
-            cik: String(entry.cik_str).padStart(10, "0"),
-            name: entry.title,
-          };
-        });
-        setTickerMap(map);
+    loadClassifiedTickerMap()
+      .then((map) => {
+        if (!controller.signal.aborted) setTickerMap(map);
       })
       .catch((e) => {
         if (!controller.signal.aborted) setMessage(e.message);

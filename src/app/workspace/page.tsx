@@ -1,3 +1,11 @@
-import WorkspaceClient from './WorkspaceClient';
-export const metadata = { title: 'Saved research', description: 'Saved companies, review baselines, peer groups, and filing changes.' };
-export default function WorkspacePage() { return <WorkspaceClient />; }
+import WorkspaceClient from "./WorkspaceClient";
+import { buildPageMetadata } from "../../utils/siteMetadata";
+export const metadata = buildPageMetadata({
+  title: "Research Hub — Saved Evidence & Watchlists",
+  description:
+    "Find saved research across EDGAR Terminal, review company and fund watchlists, and back up your browser research.",
+  path: "/workspace",
+});
+export default function WorkspacePage() {
+  return <WorkspaceClient />;
+}

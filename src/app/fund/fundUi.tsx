@@ -1,6 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { Fund } from "./fundTypes";
+import {
+  FUND_SHELF_KEY,
+  parseFundShelf,
+  toggleFundShelf,
+} from "../../utils/workspaceReview.js";
 export function money(n: number | null | undefined) {
   return n == null || !Number.isFinite(n)
     ? "—"
@@ -30,34 +35,39 @@ export function useFundShelf() {
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState("");
   useEffect(() => {
-    try {
-      const value = JSON.parse(
-        localStorage.getItem("edgar-funds-shelf-v1") || "[]",
-      );
-      if (Array.isArray(value))
-        setSaved(
-          value
-            .filter(
-              (v) => typeof v === "string" && /^[A-Z0-9.-]{1,15}$/.test(v),
-            )
-            .slice(0, 30),
+    const read = () => {
+      try {
+        setSaved(parseFundShelf(localStorage.getItem(FUND_SHELF_KEY)));
+        setStorageError("");
+      } catch {
+        setStorageError(
+          "Saved funds could not be read. Existing browser data has been preserved.",
         );
-    } catch {
-      setStorageError("Saved funds are unavailable in this browser.");
-    }
-    setReady(true);
+      }
+      setReady(true);
+    };
+    const sync = (event: StorageEvent) => {
+      if (!event.key || event.key === FUND_SHELF_KEY) read();
+    };
+    read();
+    window.addEventListener("storage", sync);
+    window.addEventListener("research-storage", read);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("research-storage", read);
+    };
   }, []);
   const toggle = (ticker: string) => {
-    const next = saved.includes(ticker)
-      ? saved.filter((t) => t !== ticker)
-      : [...saved, ticker].slice(-30);
-    setSaved(next);
     try {
-      localStorage.setItem("edgar-funds-shelf-v1", JSON.stringify(next));
+      const next = toggleFundShelf(localStorage, ticker);
+      setSaved(next);
       setStorageError("");
-    } catch {
+      window.dispatchEvent(new Event("research-storage"));
+    } catch (error) {
       setStorageError(
-        "Could not save to this browser. Your selection lasts for this visit.",
+        error instanceof Error
+          ? error.message
+          : "Could not save this fund. Browser storage may be unavailable.",
       );
     }
   };
