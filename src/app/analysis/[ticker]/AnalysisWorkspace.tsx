@@ -4,6 +4,9 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
+  ChartNoAxesCombined,
+  ChevronLeft,
+  ChevronRight,
   Bookmark,
   Check,
   Download,
@@ -14,6 +17,13 @@ import {
 } from "lucide-react";
 import CompanySearch from "../CompanySearch";
 import AnalysisOverview from "../AnalysisOverview";
+import AnalysisMetricFinder from "../AnalysisMetricFinder";
+import { useAnalysisNotes } from "../useAnalysisNotes";
+import {
+  analysisRows,
+  exportVisibleAnalysisCsv,
+} from "../../../utils/analysisRows.js";
+import { resolveChartKeys } from "../../../utils/analysisChart.js";
 import AnalysisInspector from "../AnalysisInspector";
 import { useWorkspace } from "../../../components/research/WorkspaceProvider";
 import {
@@ -73,6 +83,10 @@ const AnalysisBriefComposer = dynamic(
   () => import("../AnalysisBriefComposer"),
   { loading: AnalysisToolLoading },
 );
+const AnalysisVintageComparison = dynamic(
+  () => import("../AnalysisVintageComparison"),
+  { loading: AnalysisToolLoading },
+);
 const views = [
   ["overview", "Overview"],
   ["statements", "Statements"],
@@ -120,16 +134,21 @@ function Workspace(props: any) {
   const [loading, setLoading] = useState(true);
   const [selection, setSelection] = useState<any>(null);
   const [status, setStatus] = useState("");
-  const [notes, setNotes] = useState("");
   const [viewName, setViewName] = useState("");
   const [extended, setExtended] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const controls = useRef<HTMLDivElement>(null);
   const evidenceTrigger = useRef<HTMLElement | null>(null);
-  const notesLoaded = useRef(false);
   const cache = useRef(new Map<string, any>());
   const workspace = useWorkspace();
   const saved = workspace.data.companies[ticker];
+  const notebook = useAnalysisNotes({
+    ticker,
+    name: data?.name || props.preloadedCompanyName || ticker,
+    cik: data?.cik,
+    workspace,
+  });
+  const { notes, setNotes } = notebook;
   useEffect(() => {
     const read = () => {
       setSettings(readAnalysisSettings(window.location.search));
@@ -190,12 +209,6 @@ function Workspace(props: any) {
       controller.abort();
     };
   }, [hydrated, ticker, settings.basis, settings.asOf, retry]);
-  useEffect(() => {
-    if (workspace.ready && !notesLoaded.current) {
-      setNotes(saved?.notes || "");
-      notesLoaded.current = true;
-    }
-  }, [workspace.ready, saved?.notes]);
   useEffect(() => {
     const header = document.querySelector("body header");
     const measure = () => {
@@ -337,19 +350,16 @@ function Workspace(props: any) {
   const beforePeriod = data?.periods[beforeIndex];
   const checks = data && index >= 0 ? analysisChecks(data, index) : null;
   const definitions = data?.definitions || [];
-  const filteredRows = definitions
-    .filter((d) =>
-      settings.search
-        ? `${d.label} ${d.key}`
-            .toLowerCase()
-            .includes(settings.search.toLowerCase())
-        : d.category === settings.statement || settings.pins.includes(d.key),
-    )
-    .sort(
-      (a, b) =>
-        Number(settings.pins.includes(b.key)) -
-        Number(settings.pins.includes(a.key)),
-    );
+  const filteredRows = analysisRows(
+    data,
+    settings.view === "changes"
+      ? { ...settings, display: "reported" }
+      : settings,
+    index,
+  );
+  const chartSelection: { keys: string[]; discardedKeys: string[] } = data
+    ? resolveChartKeys(data, settings)
+    : { keys: [], discardedKeys: [] };
   const displayedPeriods =
     data?.periods.slice(
       Math.max(0, index),
@@ -404,6 +414,7 @@ function Workspace(props: any) {
     );
   }
   function markReviewed() {
+    if (!notebook.flush()) return;
     save(
       {
         analysisBaseline: {
@@ -417,7 +428,6 @@ function Workspace(props: any) {
           observedAt: data.observedAt,
         },
         analysisReviewedAt: new Date().toISOString(),
-        notes,
       },
       "Review baseline and notes saved.",
     );
@@ -447,24 +457,26 @@ function Workspace(props: any) {
           />
         </label>
         <label>
-          Compare with
+          Show rows
           <select
-            value={settings.baseline}
-            onChange={(e) => patch({ baseline: e.target.value })}
+            value={settings.rowScope}
+            onChange={(e) => patch({ rowScope: e.target.value })}
           >
-            <option value="year">Same period last year</option>
-            <option value="previous" disabled={settings.basis === "ytd"}>
-              Previous reporting period
-            </option>
-            {data.periods
-              .filter((p) => p.end < period.end)
-              .map((p) => (
-                <option key={p.end} value={p.end}>
-                  {p.end}
-                </option>
-              ))}
+            <option value="all">Statement + pinned metrics</option>
+            <option value="pins">Pinned metrics only</option>
+            <option value="available">Available values</option>
+            <option value="missing">Missing values</option>
+            <option value="changed">Changed values</option>
           </select>
         </label>
+        {(settings.search || settings.rowScope !== "all") && (
+          <button onClick={() => patch({ search: "", rowScope: "all" })}>
+            Clear filters
+          </button>
+        )}
+        <span className={styles.muted} role="status">
+          {filteredRows.length} metric rows
+        </span>
       </div>
     );
   }
@@ -545,7 +557,36 @@ function Workspace(props: any) {
               <option value="raw">Full values</option>
             </select>
           </label>
+          <label>
+            Compare with
+            <select
+              value={settings.baseline}
+              disabled={!period}
+              onChange={(e) => patch({ baseline: e.target.value })}
+            >
+              <option value="year">Same period last year</option>
+              <option value="previous" disabled={settings.basis === "ytd"}>
+                Previous reporting period
+              </option>
+              {data?.periods
+                .filter((p) => p.end < period?.end)
+                .map((p) => (
+                  <option key={p.end} value={p.end}>
+                    {p.end} · {p.fp}
+                  </option>
+                ))}
+            </select>
+          </label>
           <div className={styles.actions}>
+            {data && period && (
+              <AnalysisMetricFinder
+                data={data}
+                settings={settings}
+                index={index}
+                onInspect={inspectSelection}
+                onPatch={patch}
+              />
+            )}
             <details className={styles.savePopover}>
               <summary>Save view</summary>
               <form
@@ -738,10 +779,34 @@ function Workspace(props: any) {
                   : "Latest available filed values."}
               </span>
             </div>
-            <button onClick={() => patch({ view: "checks" })}>
-              {checks.available}/{checks.total} metrics available{" "}
-              <ArrowUpRight size={14} />
-            </button>
+            <div className={styles.periodActions}>
+              <span>
+                Comparison:{" "}
+                {beforePeriod
+                  ? `${beforePeriod.end} · ${beforePeriod.fp}`
+                  : "No comparable period available"}
+              </span>
+              <div>
+                <button
+                  disabled={index + 1 >= data.periods.length}
+                  onClick={() => patch({ end: data.periods[index + 1].end })}
+                  aria-label="Older reporting period"
+                >
+                  <ChevronLeft size={14} /> Older
+                </button>
+                <button
+                  disabled={index <= 0}
+                  onClick={() => patch({ end: data.periods[index - 1].end })}
+                  aria-label="Newer reporting period"
+                >
+                  Newer <ChevronRight size={14} />
+                </button>
+                <button onClick={() => patch({ view: "checks" })}>
+                  {checks.available}/{checks.total} metrics available{" "}
+                  <ArrowUpRight size={14} />
+                </button>
+              </div>
+            </div>
           </div>
           <div className={styles.workspaceGrid} data-inspector={!!selection}>
             <div className={styles.content}>
@@ -800,7 +865,7 @@ function Workspace(props: any) {
                             {valueButton(key, index)}
                             <small>
                               {beforePeriod
-                                ? `${changeText(change, d.format)} vs ${beforePeriod.end}`
+                                ? `${changeText(change, d.format, settings.units)} vs ${beforePeriod.end}`
                                 : "Comparable prior period unavailable"}
                             </small>
                           </article>
@@ -814,20 +879,27 @@ function Workspace(props: any) {
                         <h2>
                           {settings.search
                             ? "Metric search results"
-                            : statementNames[settings.statement]}
+                            : settings.rowScope === "pins"
+                              ? "Pinned research metrics"
+                              : statementNames[settings.statement]}
                         </h2>
                       </div>
                       <button
                         onClick={() =>
                           downloadText(
-                            `${ticker}-financial-evidence.csv`,
-                            exportAnalysisCsv(data, settings),
+                            `${ticker}-visible-financial-evidence.csv`,
+                            exportVisibleAnalysisCsv(
+                              data,
+                              settings,
+                              index,
+                              filteredRows,
+                            ),
                             "text/csv",
                           )
                         }
                       >
                         <Download size={15} />
-                        Evidence CSV
+                        Visible evidence CSV
                       </button>
                     </div>
                     {statementControls()}
@@ -892,6 +964,20 @@ function Workspace(props: any) {
                                     <Pin size={13} />
                                   </button>
                                   {d.label}
+                                  <button
+                                    className={styles.rowTrend}
+                                    aria-label={`Chart ${d.label}`}
+                                    title={`Explore ${d.label} through time`}
+                                    onClick={() =>
+                                      patch({
+                                        view: "trends",
+                                        chart: [d.key],
+                                        growthMetric: d.key,
+                                      })
+                                    }
+                                  >
+                                    <ChartNoAxesCombined size={14} />
+                                  </button>
                                 </th>
                                 {displayedPeriods.map((p, offset) => (
                                   <td key={p.end}>
@@ -920,8 +1006,9 @@ function Workspace(props: any) {
                     </div>
                     {!filteredRows.length && (
                       <p className={styles.notice}>
-                        No metrics match this search. Try “cash”, “equity”, or
-                        “margin”.
+                        {settings.rowScope === "pins"
+                          ? "Pin metrics from the table or metric finder to build a focused research view."
+                          : "No metrics match these filters. Clear filters or search another metric."}
                       </p>
                     )}
                   </section>
@@ -930,6 +1017,13 @@ function Workspace(props: any) {
               {settings.view === "changes" && (
                 <>
                   <AnalysisProfitBridge
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    onInspect={inspectSelection}
+                    onPatch={patch}
+                  />
+                  <AnalysisVintageComparison
                     data={data}
                     settings={settings}
                     index={index}
@@ -1014,13 +1108,18 @@ function Workspace(props: any) {
                     <p className={styles.eyebrow}>Explore the trajectory</p>
                     <h2>Build a financial trend</h2>
                     <div className={styles.tools}>
-                      <label className={styles.checkLabel}>
-                        <input
-                          type="checkbox"
-                          checked={settings.indexed}
-                          onChange={(e) => patch({ indexed: e.target.checked })}
-                        />
-                        Index to 100
+                      <label>
+                        Chart measure
+                        <select
+                          value={settings.chartMode}
+                          onChange={(e) => patch({ chartMode: e.target.value })}
+                        >
+                          <option value="reported">Reported values</option>
+                          <option value="indexed">Index to 100</option>
+                          <option value="yearChange">
+                            Same-season yearly change
+                          </option>
+                        </select>
                       </label>
                       <span className={styles.muted}>
                         Select up to three metrics. Chart uses the selected
@@ -1029,7 +1128,7 @@ function Workspace(props: any) {
                     </div>
                     <details>
                       <summary>
-                        Choose chart metrics ({settings.chart.length || 2}/3)
+                        Choose chart metrics ({chartSelection.keys.length}/3)
                       </summary>
                       <div className={styles.metricPicker}>
                         {definitions
@@ -1037,12 +1136,7 @@ function Workspace(props: any) {
                             (d) => !["checks", "drivers"].includes(d.category),
                           )
                           .map((d) => {
-                            const keys = settings.chart.length
-                              ? settings.chart
-                              : [
-                                  data.revenueKey || "premiumsEarned",
-                                  "netIncome",
-                                ];
+                            const keys = chartSelection.keys;
                             return (
                               <label key={d.key}>
                                 <input
@@ -1071,47 +1165,8 @@ function Workspace(props: any) {
                       data={data}
                       settings={settings}
                       index={index}
+                      onInspect={inspectSelection}
                     />
-                    <div className={styles.tableScroll}>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Period ending</th>
-                            {(settings.chart.length
-                              ? settings.chart
-                              : [
-                                  data.revenueKey || "premiumsEarned",
-                                  "netIncome",
-                                ]
-                            ).map((key) => (
-                              <th key={key}>
-                                {definitions.find((d) => d.key === key)?.label}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {displayedPeriods.map((p, offset) => (
-                            <tr key={p.end}>
-                              <th scope="row">{p.end}</th>
-                              {(settings.chart.length
-                                ? settings.chart
-                                : [
-                                    data.revenueKey || "premiumsEarned",
-                                    "netIncome",
-                                  ]
-                              )
-                                .filter((key) => data.metrics[key])
-                                .map((key) => (
-                                  <td key={key}>
-                                    {valueButton(key, index + offset)}
-                                  </td>
-                                ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
                   </section>
                 </>
               )}
@@ -1445,22 +1500,59 @@ function Workspace(props: any) {
                       maxLength={50000}
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
+                      onBlur={() => notebook.flush()}
+                      disabled={!notebook.ready}
                       placeholder="Your thesis, open questions, and next steps…"
                     />
                   </label>
                   <div className={styles.sectionHeading}>
                     <p className={styles.muted}>
-                      Stored in this browser. Existing company notes and
-                      evidence are preserved. Export a portable copy before
-                      changing browsers.
+                      Notes save automatically in this browser. Export a
+                      portable copy before changing browsers.
+                      <span className={styles.noteStatus} role="status">
+                        {
+                          {
+                            loading: "Loading saved notes…",
+                            idle: "Ready",
+                            saving: "Saving…",
+                            saved: "All edits saved",
+                            unavailable:
+                              "Not saved. Keep this page open and export your draft.",
+                            conflict:
+                              "Notes changed in another view. Your draft is preserved here.",
+                          }[notebook.status]
+                        }
+                      </span>
                     </p>
                     <button
-                      onClick={() => save({ notes }, "Research notes saved.")}
-                      disabled={!workspace.ready}
+                      onClick={() => notebook.flush()}
+                      disabled={
+                        !notebook.ready || notebook.status === "conflict"
+                      }
                     >
                       Save notes
                     </button>
                   </div>
+                  {notebook.status === "conflict" && (
+                    <div className={styles.notice}>
+                      <p>
+                        A newer saved note is available. Choose which version to
+                        keep.
+                      </p>
+                      <details>
+                        <summary>Read the saved version</summary>
+                        <pre className={styles.noteConflict}>
+                          {notebook.conflictNotes}
+                        </pre>
+                      </details>
+                      <button onClick={notebook.saveDraft}>
+                        Keep my draft
+                      </button>{" "}
+                      <button onClick={notebook.useSaved}>
+                        Use saved notes
+                      </button>
+                    </div>
+                  )}
                   <AnalysisBriefComposer
                     data={data}
                     settings={settings}
@@ -1514,7 +1606,11 @@ function Workspace(props: any) {
                     <ul className={styles.savedList}>
                       {(saved?.analysisViews || []).map((v, i) => (
                         <li key={i}>
-                          <button onClick={() => patch(v.settings)}>
+                          <button
+                            onClick={() =>
+                              patch(normalizeAnalysisSettings(v.settings))
+                            }
+                          >
                             {v.name} · {v.settings.basis}
                           </button>
                           <button

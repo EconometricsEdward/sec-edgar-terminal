@@ -561,6 +561,31 @@ export function analysisBaseline(periods, index, mode) {
   );
 }
 
+const comparisonDate = (value) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(value || "") &&
+  Number.isFinite(Date.parse(value)) &&
+  new Date(value).toISOString().slice(0, 10) === value;
+const comparisonDuration = (window) =>
+  comparisonDate(window?.start) && comparisonDate(window?.end)
+    ? daysBetween(window.start, window.end) + 1
+    : NaN;
+
+// Direct facts can have a different duration from the inferred period. Several
+// cumulative or quarterly operands, however, describe a calculated output:
+// comparing their longest raw input would mislabel a valid quarter or TTM.
+function comparisonFlowWindow(point) {
+  const sources = evidenceSources(point).filter(
+    (source) => source.start != null,
+  );
+  if (!sources.length) return null;
+  return sources.every(
+    (source) =>
+      source.start === sources[0].start && source.end === sources[0].end,
+  )
+    ? sources[0]
+    : point.period;
+}
+
 export function analysisChange(current, before, format) {
   if (!finite(current) || !finite(before))
     return {
@@ -570,21 +595,58 @@ export function analysisChange(current, before, format) {
     };
   const a = current.period,
     b = before.period;
-  const flow = [...evidenceSources(current), ...evidenceSources(before)].some(
-    (s) => s.start,
-  );
+  const flowSources = [
+    ...evidenceSources(current),
+    ...evidenceSources(before),
+  ].filter((source) => source.start != null);
+  const flow = flowSources.length > 0;
+  const durations = [a, b].map(comparisonDuration);
   if (
-    a?.kind !== b?.kind ||
+    !a?.kind ||
+    a.kind !== b?.kind ||
+    !comparisonDate(a.end) ||
+    !comparisonDate(b?.end) ||
     (flow &&
-      (!a?.start ||
-        !b?.start ||
-        Math.abs(daysBetween(a.start, a.end) - daysBetween(b.start, b.end)) >
-          14))
+      (durations.some(
+        (duration) => !Number.isFinite(duration) || duration <= 0,
+      ) ||
+        Math.abs(durations[0] - durations[1]) > 14))
   )
     return {
       delta: null,
       percent: null,
       reason: "The reporting durations are not comparable.",
+    };
+  if (
+    flowSources.some((source) => {
+      const duration = comparisonDuration(source);
+      return !Number.isFinite(duration) || duration <= 0;
+    })
+  )
+    return {
+      delta: null,
+      percent: null,
+      reason: "An actual reported flow duration is invalid or unavailable.",
+    };
+  const windows = [current, before].map(comparisonFlowWindow);
+  if (flow && !windows.every((window) => window?.start && window?.end))
+    return {
+      delta: null,
+      percent: null,
+      reason: "Both observations need a known flow duration.",
+    };
+  const reportedDurations = windows.map(comparisonDuration);
+  if (
+    flow &&
+    (reportedDurations.some(
+      (duration) => !Number.isFinite(duration) || duration <= 0,
+    ) ||
+      Math.abs(reportedDurations[0] - reportedDurations[1]) > 14)
+  )
+    return {
+      delta: null,
+      percent: null,
+      reason: "The actual reported flow durations differ by more than 14 days.",
     };
   const delta = current.value - before.value;
   return {

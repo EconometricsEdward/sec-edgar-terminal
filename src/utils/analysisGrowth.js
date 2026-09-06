@@ -4,7 +4,6 @@ import {
   calculateAnalysisPoint,
 } from "./analysisResearch.js";
 import { daysBetween } from "./xbrlPeriods.js";
-import { evidenceSources } from "./researchEvidence.js";
 
 const finite = (point) => Number.isFinite(point?.value);
 const unavailable = (period, reason) => ({
@@ -18,49 +17,8 @@ const definition = (data, key) =>
   data.definitions.find((item) => item.key === key);
 const pointAt = (data, key, index) => data.metrics[key]?.[index];
 
-// Direct observations can differ from inferred periods. Cumulative inputs to
-// derived standalone quarters must not be mistaken for their output duration.
-function flowWindow(point) {
-  const sources = evidenceSources(point).filter((source) => source.start);
-  if (!sources.length) return null;
-  if (
-    sources.every(
-      (source) =>
-        source.start === sources[0].start && source.end === sources[0].end,
-    )
-  )
-    return { start: sources[0].start, end: sources[0].end };
-  return point.period;
-}
-
 export function growthCompatibility(current, before, format = "currency") {
-  const change = analysisChange(current, before, format);
-  if (change.delta == null) return change;
-  const windows = [flowWindow(current), flowWindow(before)];
-  if (windows.some(Boolean)) {
-    if (!windows.every((window) => window?.start && window?.end))
-      return {
-        delta: null,
-        percent: null,
-        reason: "Both observations need a known flow duration.",
-      };
-    const durations = windows.map(
-      (window) => daysBetween(window.start, window.end) + 1,
-    );
-    if (
-      durations.some(
-        (duration) => !Number.isFinite(duration) || duration <= 0,
-      ) ||
-      Math.abs(durations[0] - durations[1]) > 14
-    )
-      return {
-        delta: null,
-        percent: null,
-        reason:
-          "The actual reported flow durations differ by more than 14 days.",
-      };
-  }
-  return change;
+  return analysisChange(current, before, format);
 }
 
 export function growthPair(data, key, index) {
@@ -197,13 +155,11 @@ export function fiscalSeasonality(data, key, index, yearLimit = 6) {
         duplicate: false,
       };
   });
-  const rows = [...groups.values()]
-    .slice(0, yearLimit)
-    .map((row) => ({
-      ...row,
-      available: row.cells.filter((cell) => finite(cell?.point)).length,
-      observed: row.cells.filter(Boolean).length,
-    }));
+  const rows = [...groups.values()].slice(0, yearLimit).map((row) => ({
+    ...row,
+    available: row.cells.filter((cell) => finite(cell?.point)).length,
+    observed: row.cells.filter(Boolean).length,
+  }));
   return { rows, reason: null };
 }
 

@@ -11,6 +11,9 @@ export const ANALYSIS_SETTINGS = {
   pins: [],
   chart: [],
   indexed: false,
+  chartMode: "reported",
+  rowScope: "all",
+  vintageDate: "",
   years: 8,
   movementScope: "income",
   movementSort: "absolute",
@@ -54,6 +57,8 @@ const choices = {
     "formula",
   ],
   statement: ["income", "balance", "cashflow", "ratios"],
+  rowScope: ["all", "pins", "available", "missing", "changed"],
+  chartMode: ["reported", "indexed", "yearChange"],
   display: ["reported", "common"],
   units: ["millions", "billions", "raw", "auto"],
   movementScope: ["income", "balance", "cashflow", "ratios"],
@@ -75,6 +80,11 @@ export function normalizeAnalysisSettings(input = {}) {
       ? out.asOf
       : "";
   out.end = validDate(out.end) ? out.end : "latest";
+  out.vintageDate =
+    validDate(out.vintageDate) &&
+    out.vintageDate < (out.asOf || new Date().toISOString().slice(0, 10))
+      ? out.vintageDate
+      : "";
   out.baseline =
     ["year", "previous"].includes(out.baseline) || validDate(out.baseline)
       ? out.baseline
@@ -127,7 +137,10 @@ export function normalizeAnalysisSettings(input = {}) {
     ),
   ];
   out.search = String(out.search || "").slice(0, 80);
-  out.indexed = out.indexed === true || out.indexed === "true";
+  if (!Object.hasOwn(input, "chartMode"))
+    out.chartMode =
+      out.indexed === true || out.indexed === "true" ? "indexed" : "reported";
+  out.indexed = out.chartMode === "indexed";
   out.years = [4, 8, 12].includes(Number(out.years)) ? Number(out.years) : 8;
   return out;
 }
@@ -183,6 +196,8 @@ export function analysisCollectionSettings(item, settings) {
 }
 export function analysisValue(value, format = "currency", units = "auto") {
   if (!Number.isFinite(value)) return "—";
+  if (format === "percentagePoints" || format === "index")
+    return `${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${format === "percentagePoints" ? "pp" : "index"}`;
   if (format === "days")
     return `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })} days`;
   const decimals =

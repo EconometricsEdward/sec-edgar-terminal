@@ -334,6 +334,33 @@
 .periodBanner button {
   font-size: 11px;
 }
+.periodActions {
+  text-align: right;
+}
+.periodActions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.page .rowTrend {
+  padding: 4px;
+  margin-left: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--analysis-accent);
+  vertical-align: middle;
+}
+.noteStatus {
+  display: block;
+  margin-top: 5px;
+}
+.noteConflict {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
 .workspaceGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
