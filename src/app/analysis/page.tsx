@@ -6,7 +6,7 @@ import styles from "./analysis.module.css";
 export const metadata = buildPageMetadata({
   title: "Financial Analysis — SEC XBRL Data",
   description:
-    "Explore source-linked financial statements, compare reporting periods, inspect filing revisions, and build a financial research brief with bank, insurance, and corporate analysis.",
+    "Explain financial movements, examine growth and cash quality, test scenarios, build custom ratios, and compose source-linked research briefs from SEC filings.",
   path: "/analysis",
 });
 export default function AnalysisIndexPage() {
@@ -16,14 +16,14 @@ export default function AnalysisIndexPage() {
         <div>
           <p className={styles.eyebrow}>EDGAR / Financial analysis</p>
           <h1>
-            Understand the numbers.
+            From financial data
             <br />
-            <span>Follow the evidence.</span>
+            <span>to a defensible view.</span>
           </h1>
           <p className={styles.lead}>
-            From a company’s financial statements to the filing behind every
-            figure. A focused workspace for earnings, cash flow, capital, and
-            the changes that deserve a closer look.
+            Explain what changed, follow the cash, and test your assumptions. A
+            complete financial workbench with business-specific analysis and the
+            SEC evidence behind every reported input.
           </p>
           <CompanySearch />
           <p className={styles.muted}>
@@ -37,20 +37,20 @@ export default function AnalysisIndexPage() {
             [
               Layers,
               "01",
-              "Read the financials",
-              "One period basis across statements, ratios, and charts.",
+              "Find the movement",
+              "Prioritized changes, growth persistence, and fiscal seasonality.",
             ],
             [
               GitCompareArrows,
               "02",
-              "Explain the movement",
-              "Comparable periods, cash bridges, and return drivers.",
+              "Test the explanation",
+              "Profit bridges, cash quality, custom ratios, and transparent scenarios.",
             ],
             [
               ScanLine,
               "03",
-              "Verify and collect",
-              "Trace formulas to SEC inputs and export your evidence.",
+              "Make the case",
+              "Compare source evidence, inspect revisions, and compose your research brief.",
             ],
           ].map(([Icon, number, title, copy]: any) => (
             <div key={number}>

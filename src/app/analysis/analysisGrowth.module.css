@@ -1,0 +1,180 @@
+.heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 8px 0 16px;
+}
+.heading label {
+  min-width: 220px;
+  max-width: 100%;
+}
+.stats,
+.profitEnds {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+.profitEnds {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.stats article,
+.profitEnds article {
+  padding: 17px;
+  background: var(--analysis-bg);
+  border: 1px solid var(--analysis-border);
+  border-radius: 10px;
+  min-width: 0;
+}
+.stats article > span,
+.profitEnds article > span {
+  display: block;
+  color: var(--analysis-muted);
+  font-size: 11px;
+}
+.number.number {
+  display: block;
+  font-size: clamp(20px, 2vw, 29px);
+  font-weight: 750;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--analysis-accent);
+  text-align: left;
+  white-space: normal;
+}
+.plainNumber {
+  display: block;
+  font-size: 29px;
+  color: var(--analysis-text);
+  padding: 8px 0;
+}
+.tableWrap {
+  width: 100%;
+  overflow-x: auto;
+  margin: 18px 0 26px;
+  border: 1px solid var(--analysis-border);
+  border-radius: 8px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.table caption {
+  text-align: left;
+  padding: 12px 16px;
+  background: var(--analysis-bg);
+  color: var(--analysis-muted);
+}
+.table th,
+.table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--analysis-border);
+  text-align: left;
+  vertical-align: top;
+}
+.table thead th {
+  background: var(--analysis-raised);
+  color: var(--analysis-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+.cell.cell {
+  border: 0;
+  background: transparent;
+  color: var(--analysis-accent);
+  padding: 2px 0;
+  text-align: left;
+  display: block;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cell.cell:hover,
+.number.number:hover {
+  text-decoration: underline;
+}
+.explanation {
+  min-width: 210px;
+  max-width: 310px;
+  color: var(--analysis-muted);
+  font-size: 11px;
+}
+.absent {
+  color: var(--analysis-muted);
+  font-size: 11px;
+}
+.bridge {
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--analysis-border);
+  border-radius: 10px;
+  padding: 20px;
+}
+.bridgeRow {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(120px, 2fr) minmax(90px, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+.bridgeRow > span {
+  font-size: 12px;
+}
+.signedTrack {
+  height: 34px;
+  position: relative;
+  border-radius: 3px;
+  background: var(--analysis-bg);
+}
+.zeroLine {
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  height: 42px;
+  width: 1px;
+  background: var(--analysis-muted);
+}
+.positiveBar,
+.negativeBar {
+  position: absolute;
+  top: 4px;
+  height: 26px;
+  border-radius: 3px;
+}
+.positiveBar {
+  left: 50%;
+  background: var(--analysis-accent);
+}
+.negativeBar {
+  right: 50%;
+  background: var(--analysis-muted);
+}
+@media (max-width: 980px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .stats,
+  .profitEnds {
+    grid-template-columns: 1fr;
+  }
+  .heading label {
+    width: 100%;
+  }
+  .bridgeRow {
+    grid-template-columns: 1fr minmax(100px, 1fr);
+    gap: 8px;
+  }
+  .bridgeRow > span {
+    grid-column: 1 / -1;
+  }
+  .bridge {
+    padding: 14px;
+  }
+}

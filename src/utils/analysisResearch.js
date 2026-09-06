@@ -17,7 +17,7 @@ import {
 } from "./xbrlPeriods.js";
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
 
-export const ANALYSIS_VERSION = `analysis-v1.1:${FINANCIAL_DATA_VERSION}`;
+export const ANALYSIS_VERSION = `analysis-v1.2:${FINANCIAL_DATA_VERSION}`;
 const finite = (p) => Number.isFinite(p?.value);
 const missing = (
   period,
@@ -172,6 +172,44 @@ export function buildAnalysisCompany(company, settings = {}) {
     "EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
     "EffectOfExchangeRateOnCashAndCashEquivalents",
   ]);
+  // Working-capital cycle denominators need the balance immediately before the
+  // selected flow starts, not the previous visible report (especially for YTD).
+  if (lens === "corporate") {
+    for (const [key, label] of [
+      ["receivables", "receivables"],
+      ["inventory", "inventory"],
+      ["accountsPayable", "accounts payable"],
+    ]) {
+      const openingKey = `opening${key[0].toUpperCase()}${key.slice(1)}`;
+      add(
+        {
+          key: openingKey,
+          label: `Opening ${label}`,
+          values: periods.map((p) => {
+            if (!p.start)
+              return missing(
+                p,
+                "The selected reporting duration has no known opening date.",
+              );
+            const opening = buildMetricRow(
+              company.facts,
+              key,
+              `Opening ${label}`,
+              [{ ...p, end: previousDay(p.start) }],
+              "currency",
+              industry,
+            ).values[0];
+            return {
+              ...opening,
+              period: p,
+              note: `Balance as of ${previousDay(p.start)}, immediately before the selected reporting duration.`,
+            };
+          }),
+        },
+        "workingCapitalInputs",
+      );
+    }
+  }
   const derive = (
     key,
     label,

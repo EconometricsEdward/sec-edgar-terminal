@@ -1,0 +1,211 @@
+.stack {
+  display: grid;
+  gap: 20px;
+}
+.intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 25px;
+  padding: 28px;
+  border: 1px solid var(--analysis-border);
+  border-radius: 12px;
+  background: linear-gradient(
+    120deg,
+    var(--analysis-panel),
+    var(--analysis-bg)
+  );
+  position: relative;
+  overflow: hidden;
+}
+.intro::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--analysis-accent);
+}
+.intro h2 {
+  font-size: 30px;
+}
+.intro p {
+  color: var(--analysis-muted);
+}
+.coverage {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 190px;
+}
+.coverage strong {
+  font-size: 30px;
+}
+.coverage strong span {
+  font-size: 17px;
+  color: var(--analysis-muted);
+}
+.coverage > span {
+  font-size: 11px;
+  color: var(--analysis-muted);
+}
+.coverage button {
+  font-size: 11px;
+  margin-top: 6px;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.metrics article {
+  padding: 18px;
+  border: 1px solid var(--analysis-border);
+  background: var(--analysis-panel);
+  border-radius: 9px;
+  min-width: 0;
+}
+.metrics article > span {
+  font-size: 11px;
+  color: var(--analysis-muted);
+}
+.metrics article button {
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  font-size: 25px;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.metrics article button svg {
+  color: var(--analysis-accent);
+  flex-shrink: 0;
+}
+.metrics article small {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.mainGrid > section {
+  min-width: 0;
+}
+.side {
+  display: grid;
+  gap: 20px;
+}
+.movements {
+  padding: 0;
+  list-style: none;
+  margin: 15px 0;
+}
+.movements li {
+  border-top: 1px solid var(--analysis-border);
+}
+.movements li > button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  padding: 14px 0;
+  background: none;
+  gap: 16px;
+}
+.movements li > button > span {
+  flex: 1;
+}
+.movements strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.movements strong[data-direction="down"] {
+  color: var(--analysis-text);
+}
+.movements strong[data-direction="up"] {
+  color: var(--analysis-accent);
+}
+.paths {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+}
+.paths button {
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+  justify-content: flex-start;
+  background: none;
+  padding: 12px 0;
+}
+.paths button > span {
+  flex: 1;
+}
+.paths button > svg {
+  flex-shrink: 0;
+  color: var(--analysis-accent);
+}
+.paths small {
+  line-height: 1.5;
+  margin-top: 3px;
+}
+:global([data-inspector="true"]) .mainGrid {
+  grid-template-columns: 1fr;
+}
+:global([data-inspector="true"]) .side {
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 900px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+  .side {
+    grid-template-columns: 1fr 1fr;
+  }
+  .intro h2 {
+    font-size: 25px;
+  }
+}
+@media (max-width: 600px) {
+  .intro {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 22px;
+  }
+  .coverage {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .coverage > span {
+    flex: 1;
+  }
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metrics article {
+    padding: 13px;
+  }
+  .metrics article button {
+    font-size: 19px;
+  }
+  .side,
+  :global([data-inspector="true"]) .side {
+    grid-template-columns: 1fr;
+  }
+  .movements li > button {
+    gap: 8px;
+  }
+  .movements strong {
+    font-size: 11px;
+  }
+}
