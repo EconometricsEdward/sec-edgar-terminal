@@ -1,16 +1,16 @@
-import type { Metadata } from 'next';
-import CompareClient from './[tickers]/CompareClient';
-import { buildPageMetadata } from '../../utils/siteMetadata';
+import type { Metadata } from "next";
+import CompareClient from "./[tickers]/CompareClient";
+import { buildPageMetadata } from "../../utils/siteMetadata";
 
 // ============================================================================
 // Metadata — static, since this page has no ticker list yet
 // ============================================================================
 export const metadata: Metadata = {
   ...buildPageMetadata({
-    title: 'Peer Comparison — Compare SEC Filings & Financials',
+    title: "Peer Comparison — Compare SEC Filings & Financials",
     description:
-      'Compare up to 5 public companies side-by-side. 10 years of financial data, head-to-head snapshot tables, industry-aware ratios from SEC XBRL filings.',
-    path: '/compare',
+      "Compare five public companies using aligned annual, quarterly, and trailing-year financials, industry-aware metrics, peer medians, trends, source evidence, and exportable research.",
+    path: "/compare",
   }),
 };
 
