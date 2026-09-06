@@ -913,7 +913,8 @@ function Workspace(props: any) {
                                 type="checkbox"
                                 checked={keys.includes(d.key)}
                                 disabled={
-                                  !keys.includes(d.key) && keys.length >= 3
+                                  (!keys.includes(d.key) && keys.length >= 3) ||
+                                  (keys.includes(d.key) && keys.length === 1)
                                 }
                                 onChange={() =>
                                   patch({
@@ -1403,10 +1404,12 @@ function Workspace(props: any) {
                                     <span>
                                       {d.label}
                                       <small>
-                                        {previous?.period?.end ===
-                                        current?.period?.end
-                                          ? "Same period: possible revision"
-                                          : "Different reporting periods"}
+                                        {change.delta === 0
+                                          ? "Unchanged"
+                                          : previous?.period?.end ===
+                                              current?.period?.end
+                                            ? "Same-period value changed"
+                                            : "Different reporting periods"}
                                       </small>
                                     </span>
                                     <span>

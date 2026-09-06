@@ -882,7 +882,7 @@
   font-size: 11px;
   color: var(--analysis-muted);
 }
-:global(html[data-theme-tone="light"]) .page {
+:global(html[data-theme-mode="light"]) .page {
   --analysis-bg: #f7f9fc;
   --analysis-panel: #fff;
   --analysis-raised: #edf2f8;
@@ -899,8 +899,8 @@
 :global(html[data-theme-tone]) .page input::placeholder {
   color: var(--analysis-muted) !important;
 }
-:global(html[data-theme-tone="light"]) .page .primary,
-:global(html[data-theme-tone="light"]) .searchField button {
+:global(html[data-theme-mode="light"]) .page .primary,
+:global(html[data-theme-mode="light"]) .searchField button {
   background: #f1c94f;
   color: #192e43;
 }

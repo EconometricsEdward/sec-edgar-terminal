@@ -97,7 +97,8 @@ export function analysisValue(value, format = "currency", units = "auto") {
         : 2;
   if (format === "percent")
     return `${value.toLocaleString("en-US", { maximumFractionDigits: decimals, minimumFractionDigits: decimals })}%`;
-  if (format === "decimal") return `${value.toFixed(2)}×`;
+  if (format === "decimal")
+    return `${value.toFixed(Math.abs(value) < 0.1 && value !== 0 ? 4 : 2)}×`;
   if (format === "eps") return `$${value.toFixed(2)}`;
   const scale =
     units === "millions"
@@ -156,7 +157,9 @@ export function exportAnalysisCsv(data, settings) {
         point.value,
         d.format === "currency" ? "USD" : d.format,
         data.basis,
-        point.period?.start,
+        point.sources?.length && point.sources.every((s) => !s.start)
+          ? null
+          : point.period?.start,
         point.period?.end,
         settings.asOf || "Latest available",
         point.classification,
@@ -190,7 +193,7 @@ export function exportAnalysisBrief(
   evidence = [],
 ) {
   const pointText = (point, format) =>
-    `<strong>${html(analysisValue(point?.value, format))}</strong><p>${html(point?.period?.start || "Instant")} → ${html(point?.period?.end)} · ${html(point?.classification)}. ${html(point?.formula || point?.reason || "")}</p><ul>${(point?.sources || []).map((s) => `<li>${html(s.tag)}: ${html(s.value)} ${html(s.unit)}; ${html(s.start || "Instant")} → ${html(s.end)}; filed ${html(s.filed)}; accession ${html(s.accession)}. <a href="${html(/^https:\/\/www.sec.gov\//.test(s.documentUrl || "") ? s.documentUrl : "")}">SEC source</a></li>`).join("")}</ul>`;
+    `<strong>${html(analysisValue(point?.value, format))}</strong><p>${html(point?.sources?.length && point.sources.every((s) => !s.start) ? "Instant" : point?.period?.start || "Start unavailable")} → ${html(point?.period?.end)} · ${html(point?.classification)}. ${html(point?.formula || point?.reason || "")}</p><ul>${(point?.sources || []).map((s) => `<li>${html(s.tag)}: ${html(s.value)} ${html(s.unit)}; ${html(s.start || "Instant")} → ${html(s.end)}; filed ${html(s.filed)}; accession ${html(s.accession)}. <a href="${html(/^https:\/\/www.sec.gov\//.test(s.documentUrl || "") ? s.documentUrl : "")}">SEC source</a></li>`).join("")}</ul>`;
   return `<!doctype html><html lang="en"><meta charset="utf-8"><title>${html(data.ticker)} financial research brief</title><style>body{font:16px/1.6 system-ui;max-width:950px;margin:40px auto;padding:24px;color:#192a3b}h1,h2{line-height:1.2}section{border-top:1px solid #ccc;padding:18px 0}li{overflow-wrap:anywhere}pre{white-space:pre-wrap;font:inherit}a{color:#075cab}@media print{section{break-inside:avoid}}</style><h1>${html(data.name)} (${html(data.ticker)})</h1><p>SEC CIK ${html(data.cik)} · ${html(data.basis)} · period ending ${html(data.periods[index]?.end)}<br>Filing cutoff: ${html(settings.asOf || "Latest available")} · data observed ${html(data.observedAt)}</p><p>${html(data.note)}</p><h2>Research notes</h2><pre>${html(notes)}</pre><h2>Selected-period financials</h2>${data.definitions
     .filter((d) =>
       ["income", "balance", "cashflow", "ratios"].includes(d.category),

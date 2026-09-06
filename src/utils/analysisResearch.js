@@ -17,7 +17,7 @@ import {
 } from "./xbrlPeriods.js";
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
 
-export const ANALYSIS_VERSION = `analysis-v1:${FINANCIAL_DATA_VERSION}`;
+export const ANALYSIS_VERSION = `analysis-v1.1:${FINANCIAL_DATA_VERSION}`;
 const finite = (p) => Number.isFinite(p?.value);
 const missing = (
   period,
@@ -379,6 +379,44 @@ export function buildAnalysisCompany(company, settings = {}) {
       "drivers",
     );
   }
+  const order =
+    lens === "banking"
+      ? [
+          "bankRevenue",
+          "netInterestIncome",
+          "noninterestIncome",
+          "provisionForLoanLoss",
+          "noninterestExpense",
+          "pretaxIncome",
+          "incomeTax",
+          "netIncome",
+          "epsBasic",
+          "epsDiluted",
+          "sharesDiluted",
+          "interestExpense",
+          "cash",
+          "shortTermInvestments",
+          "loans",
+          "allowanceForLoanLoss",
+          "totalAssets",
+          "deposits",
+          "totalLiabilities",
+          "stockholdersEquity",
+        ]
+      : lens === "insurance"
+        ? [
+            "premiumsEarned",
+            "investmentIncome",
+            "pretaxIncome",
+            "incomeTax",
+            "netIncome",
+            "epsBasic",
+            "epsDiluted",
+            "sharesDiluted",
+          ]
+        : [];
+  for (const [key, definition] of Object.entries(definitions))
+    definition.order = order.includes(key) ? order.indexOf(key) : 100;
   const history = new Map();
   const enrich = (source) => {
     const id = [
@@ -447,7 +485,7 @@ export function buildAnalysisCompany(company, settings = {}) {
     ...comparison,
     version: ANALYSIS_VERSION,
     metrics,
-    definitions: Object.values(definitions),
+    definitions: Object.values(definitions).sort((a, b) => a.order - b.order),
     revenueKey,
     highlights: defaultMetrics(lens).slice(0, 6),
     filings: (company.filings || [])

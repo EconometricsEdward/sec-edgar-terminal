@@ -10,6 +10,8 @@ export default function AnalysisInspector({
   status,
 }: any) {
   const { definition, point, label } = selection;
+  const instant =
+    point?.sources?.length > 0 && point.sources.every((s) => !s.start);
   const [notes, setNotes] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -36,7 +38,9 @@ export default function AnalysisInspector({
         {analysisValue(point?.value, definition.format)}
       </strong>
       <p className={styles.muted}>
-        {point?.period?.kind} · {point?.period?.start || "Instant"} →{" "}
+        {instant
+          ? "As of"
+          : `${point?.period?.kind} · ${point?.period?.start || "Start unavailable"} →`}{" "}
         {point?.period?.end}
       </p>
       <span className={styles.badge}>
