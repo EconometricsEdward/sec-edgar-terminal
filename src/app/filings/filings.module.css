@@ -1224,3 +1224,7 @@
     height: 75vh;
   }
 }
+/* When the page is near its top or the viewport is short, allow the whole
+   reader to scroll instead of squeezing its document body to zero height. */
+.readerAside { overflow-y: auto; }
+.readerAside > section { min-height: 500px; flex-shrink: 0; }
