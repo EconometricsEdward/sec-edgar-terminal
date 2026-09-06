@@ -40,16 +40,42 @@ const AnalysisChart = dynamic(() => import("../AnalysisChart"), {
 const ExtendedAnalysis = dynamic(() => import("./AnalysisClient"), {
   loading: () => <p role="status">Loading extended research tools…</p>,
 });
-const AnalysisGrowthLab = dynamic(() => import("../AnalysisGrowthLab"));
-const AnalysisProfitBridge = dynamic(() => import("../AnalysisProfitBridge"));
-const AnalysisCashLab = dynamic(() => import("../AnalysisCashLab"));
-const AnalysisCapitalLab = dynamic(() => import("../AnalysisCapitalLab"));
-const AnalysisScenarioLab = dynamic(() => import("../AnalysisScenarioLab"));
-const AnalysisFormulaLab = dynamic(() => import("../AnalysisFormulaLab"));
+const labLoading = {
+  loading: () => (
+    <section className={styles.panel} role="status">
+      Loading analysis tool…
+    </section>
+  ),
+};
+const AnalysisGrowthLab = dynamic(
+  () => import("../AnalysisGrowthLab"),
+  labLoading,
+);
+const AnalysisProfitBridge = dynamic(
+  () => import("../AnalysisProfitBridge"),
+  labLoading,
+);
+const AnalysisCashLab = dynamic(() => import("../AnalysisCashLab"), labLoading);
+const AnalysisCapitalLab = dynamic(
+  () => import("../AnalysisCapitalLab"),
+  labLoading,
+);
+const AnalysisScenarioLab = dynamic(
+  () => import("../AnalysisScenarioLab"),
+  labLoading,
+);
+const AnalysisFormulaLab = dynamic(
+  () => import("../AnalysisFormulaLab"),
+  labLoading,
+);
 const AnalysisSourceObservatory = dynamic(
   () => import("../AnalysisSourceObservatory"),
+  labLoading,
 );
-const AnalysisBriefComposer = dynamic(() => import("../AnalysisBriefComposer"));
+const AnalysisBriefComposer = dynamic(
+  () => import("../AnalysisBriefComposer"),
+  labLoading,
+);
 const views = [
   ["overview", "Overview"],
   ["statements", "Statements"],
