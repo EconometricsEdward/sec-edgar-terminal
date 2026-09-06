@@ -1148,8 +1148,8 @@ function CapitalAllocationPanel({
       const debtIssued = num(issuedPoint);
       const debtRepaid = outflow(repaidPoint);
       const fcf = ocf != null && capex != null ? ocf - capex : null;
-      const cashReturned = dividends != null || buybacks != null ? (dividends || 0) + (buybacks || 0) : null;
-      const netDebtIssued = debtIssued != null || debtRepaid != null ? (debtIssued || 0) - (debtRepaid || 0) : null;
+      const cashReturned = dividends != null && buybacks != null ? dividends + buybacks : null;
+      const netDebtIssued = debtIssued != null && debtRepaid != null ? debtIssued - debtRepaid : null;
       const payoutRatio = (outflowValue: number | null, incomeValue: number | null) => (
         outflowValue != null && incomeValue != null && incomeValue > 0
           ? (outflowValue / incomeValue) * 100
@@ -3098,8 +3098,8 @@ function AnalystChecklist({
         });
       }
 
-      const cashReturned = magnitude(point('stockRepurchased')) != null || magnitude(point('dividendsPaid')) != null
-        ? (magnitude(point('stockRepurchased')) || 0) + (magnitude(point('dividendsPaid')) || 0)
+      const cashReturned = magnitude(point('stockRepurchased')) != null && magnitude(point('dividendsPaid')) != null
+        ? magnitude(point('stockRepurchased'))! + magnitude(point('dividendsPaid'))!
         : null;
       const returnFcf = fcf != null && fcf > 0 ? pct(cashReturned, fcf) : null;
       if (returnFcf != null) {
@@ -8391,7 +8391,7 @@ function PerShareEconomicsPanel({
       const dividends = magnitude(dividendPoint);
       const priorShares = num(priorSharesPoint);
       const fcf = ocf != null && capex != null ? ocf - capex : null;
-      const cashReturned = buybacks != null || dividends != null ? (buybacks || 0) + (dividends || 0) : null;
+      const cashReturned = buybacks != null && dividends != null ? buybacks + dividends : null;
 
       return {
         revenuePoint,

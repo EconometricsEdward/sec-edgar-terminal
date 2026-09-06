@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
-import AnalysisClient from './AnalysisClient';
+import AnalysisClient from './AnalysisWorkspace';
 import { buildPageMetadata } from '../../../utils/siteMetadata';
 
 // ============================================================================
 // Route configuration
 //
 // The server now resolves only lightweight ticker metadata for SEO and first
-// paint. Heavy submissions and XBRL payloads stay in the /api/sec client path,
+// paint. Financial statements are compacted by /api/analysis-research on the server,
 // which avoids writing large SEC submissions JSON into the Next.js Data Cache.
 // ============================================================================
 export const revalidate = 3600;

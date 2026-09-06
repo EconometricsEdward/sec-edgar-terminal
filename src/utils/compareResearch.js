@@ -241,9 +241,9 @@ function derived(metric, period, points, beginning) {
     );
   const [a, b, c] = points.map((p) => p.value);
   const factor =
-    period.kind === "quarter" && period.start
+    ["quarter", "ytd"].includes(period.kind) && period.start
       ? 365 / (daysBetween(period.start, period.end) + 1)
-      : period.kind === "quarter"
+      : ["quarter", "ytd"].includes(period.kind)
         ? null
         : 1;
   let value;
@@ -275,8 +275,8 @@ function derived(metric, period, points, beginning) {
     formula: metric.formula,
     note:
       ["roe", "roa", "provisionLoans"].includes(metric.key) &&
-      period.kind === "quarter"
-        ? "Standalone-quarter income is annualized using 365 / days in the quarter."
+      ["quarter", "ytd"].includes(period.kind)
+        ? "Income is annualized using 365 / days in the selected reporting duration."
         : null,
     sources: inputs.flatMap(evidenceSources),
     calculations: inputs.flatMap((p) => [
