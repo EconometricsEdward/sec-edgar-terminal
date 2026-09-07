@@ -1,379 +1,508 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { ArrowRight, Bookmark, Layers3, Search, Share2, X } from "lucide-react";
 import {
-  ArrowRight,
-  Bookmark,
-  Layers3,
-  Search,
-  ShieldCheck,
-  X,
-} from "lucide-react";
-import { FUND_CATALOG } from "../../utils/fundResearch";
-import { money, pct, useFundShelf } from "./fundUi";
-import FundComparison from "./FundComparison";
-import type { Fund } from "./fundTypes";
-import s from "./fund.module.css";
+  normalizeFundWorkspaceSettings,
+  readFundWorkspaceSettings,
+  fundWorkspacePath,
+  validFundTicker,
+} from "../../utils/fundWorkspaceSettings.js";
+import {
+  fundUniverse,
+  fundSnapshotKey,
+  screenFunds,
+} from "../../utils/fundScreener.js";
+import {
+  createFundEvidence,
+  fundEvidenceKey,
+  FUND_EVIDENCE_LIMIT,
+} from "../../utils/fundBoards.js";
+import { useFundShelf } from "./fundUi";
+import useFundSnapshots from "./useFundSnapshots";
+import FundScreener from "./FundScreener";
+import base from "./fund.module.css";
+import s from "./FundWorkspace.module.css";
+const loading = () => (
+  <p role="status" className={s.notice}>
+    Opening this fund research tool…
+  </p>
+);
+const FundComparison = dynamic(() => import("./FundComparison"), { loading });
+const FundSecurityFinder = dynamic(() => import("./FundSecurityFinder"), {
+  loading,
+});
+const FundAllocationLab = dynamic(() => import("./FundAllocationLab"), {
+  loading,
+});
+const FundChanges = dynamic(() => import("./FundChanges"), { loading });
+const FundResearchBoards = dynamic(() => import("./FundResearchBoards"), {
+  loading,
+});
+const views = [
+  ["discover", "Discover & screen"],
+  ["security", "Find a security"],
+  ["compare", "Compare portfolios"],
+  ["allocation", "Allocation lab"],
+  ["changes", "Report changes"],
+  ["boards", "Research boards"],
+];
 export default function FundsWorkspace() {
-  const router = useRouter(),
-    params = useSearchParams();
-  const [query, setQuery] = useState(params.get("q") || "");
-  const [category, setCategory] = useState(
-    params.get("category") || "All funds",
+  const params = useSearchParams();
+  const [settings, setSettings] = useState<any>(() =>
+    readFundWorkspaceSettings(params.toString()),
   );
-  const [selected, setSelected] = useState<string[]>(() =>
-    [
-      ...new Set(
-        (params.get("compare") || "")
-          .split(",")
-          .filter((t) => /^[A-Z0-9.-]{1,15}$/.test(t)),
-      ),
-    ].slice(0, 3),
-  );
-  const [compareOpen, setCompareOpen] = useState(
-    Boolean(params.get("compare")),
-  );
-  const [loaded, setLoaded] = useState<Record<string, Fund>>({});
-  const [loading, setLoading] = useState(""),
-    [error, setError] = useState("");
+  const [tickerDraft, setTickerDraft] = useState("");
   const [message, setMessage] = useState("");
+  const [evidence, setEvidence] = useState<any[]>([]);
+  const [visited, setVisited] = useState<string[]>([settings.view]);
+  const evidenceRef = useRef<any[]>([]);
   const shelf = useFundShelf();
+  const snapshots = useFundSnapshots();
+  const queryString = params.toString();
   useEffect(() => {
-    const p = new URLSearchParams();
-    if (query) p.set("q", query);
-    if (category !== "All funds") p.set("category", category);
-    if (selected.length) p.set("compare", selected.join(","));
-    window.history.replaceState(null, "", `/fund${p.size ? `?${p}` : ""}`);
-  }, [query, category, selected]);
-  const funds = useMemo(
+    const read = () =>
+      setSettings(readFundWorkspaceSettings(window.location.search));
+    window.addEventListener("popstate", read);
+    return () => window.removeEventListener("popstate", read);
+  }, []);
+  useEffect(() => {
+    const path = fundWorkspacePath(settings);
+    if (window.location.pathname + window.location.search !== path)
+      window.history.replaceState(null, "", path);
+  }, [settings]);
+  // Same-route links can change the URL without remounting this workspace.
+  const lastQuery = useRef(queryString);
+  useEffect(() => {
+    if (lastQuery.current === queryString) return;
+    lastQuery.current = queryString;
+    const incoming = readFundWorkspaceSettings(queryString);
+    setSettings((current: any) =>
+      fundWorkspacePath(current) === fundWorkspacePath(incoming)
+        ? current
+        : incoming,
+    );
+  }, [queryString]);
+  const patch = useCallback((next: any) => {
+    setSettings((current: any) =>
+      normalizeFundWorkspaceSettings({ ...current, ...next }),
+    );
+    return true;
+  }, []);
+  const universe = useMemo(
     () =>
-      FUND_CATALOG.filter(
-        (f) =>
-          (category === "All funds" ||
-            (category === "Saved funds" && shelf.saved.includes(f.ticker)) ||
-            category === f.category) &&
-          `${f.ticker} ${f.name} ${f.family} ${f.focus}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
+      fundUniverse(
+        shelf.saved,
+        settings.tickers,
+        snapshots.states,
+        settings.reportMap,
       ),
-    [category, query, shelf.saved],
+    [shelf.saved, settings.tickers, snapshots.states, settings.reportMap],
   );
-  const toggleCompare = (ticker: string) => {
-    if (selected.includes(ticker))
-      setSelected(selected.filter((t) => t !== ticker));
-    else if (selected.length < 3) setSelected([...selected, ticker]);
-    else setMessage("Compare up to three funds. Remove one to add another.");
-  };
-  async function loadSnapshots() {
-    setError("");
-    for (const f of funds) {
-      if (loaded[f.ticker]) continue;
-      setLoading(f.ticker);
-      try {
-        const response = await fetch(`/api/fund?v=2&ticker=${f.ticker}`);
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
-        setLoaded((current) => ({ ...current, [f.ticker]: data }));
-      } catch (err) {
-        setError(
-          `${f.ticker}: ${err instanceof Error ? err.message : "Unable to load snapshot"}`,
-        );
-        break;
-      }
-    }
-    setLoading("");
+  const screen = useMemo(
+    () => screenFunds(universe, settings, shelf.saved),
+    [universe, settings, shelf.saved],
+  );
+  const currentSnapshots = settings.tickers
+    .map(
+      (ticker: string) =>
+        snapshots.states[fundSnapshotKey(ticker, settings.reportMap)],
+    )
+    .filter((state: any) => state?.status === "ready")
+    .map((state: any) => state.data);
+  const {
+    states: snapshotStates,
+    load: loadSnapshots,
+    progress: snapshotProgress,
+  } = snapshots;
+  const selectedKey = settings.tickers
+    .map((ticker: string) => fundSnapshotKey(ticker, settings.reportMap))
+    .join(",");
+  useEffect(() => {
+    if (settings.view !== "boards" || snapshotProgress.busy) return;
+    const missing = settings.tickers.filter(
+      (ticker: string) =>
+        !snapshotStates[fundSnapshotKey(ticker, settings.reportMap)],
+    );
+    if (missing.length) void loadSnapshots(missing, settings.reportMap);
+  }, [
+    settings.view,
+    selectedKey,
+    settings.tickers,
+    settings.reportMap,
+    snapshotStates,
+    loadSnapshots,
+    snapshotProgress.busy,
+  ]);
+  function toggle(ticker: string) {
+    if (settings.tickers.includes(ticker))
+      patch({
+        tickers: settings.tickers.filter((value: string) => value !== ticker),
+      });
+    else if (settings.tickers.length < 4)
+      patch({ tickers: [...settings.tickers, ticker] });
+    else
+      setMessage(
+        "Choose up to four funds. Remove a selection before adding another.",
+      );
   }
+  function addTicker() {
+    const ticker = tickerDraft.trim().toUpperCase();
+    if (!validFundTicker(ticker)) {
+      setMessage(
+        "Enter one fund ticker, such as VOO or SCHD. Names and strategies can be searched in Discover & screen.",
+      );
+      return;
+    }
+    if (settings.tickers.includes(ticker)) {
+      setMessage(`${ticker} is already selected.`);
+      return;
+    }
+    if (settings.tickers.length >= 4) {
+      setMessage("Four funds are selected. Remove one before adding another.");
+      return;
+    }
+    patch({ tickers: [...settings.tickers, ticker] });
+    setTickerDraft("");
+    setMessage(
+      `${ticker} added. Its portfolio identity and coverage are checked when you load its report.`,
+    );
+  }
+  function pin(input: any) {
+    try {
+      const item = createFundEvidence(input),
+        id = fundEvidenceKey(item);
+      if (
+        evidenceRef.current.some((entry: any) => fundEvidenceKey(entry) === id)
+      ) {
+        setMessage("This exact evidence is already pinned.");
+        return true;
+      }
+      if (evidenceRef.current.length >= FUND_EVIDENCE_LIMIT) {
+        setMessage(
+          "You have 40 pinned evidence items. Remove an item or save a board before starting another collection.",
+        );
+        return false;
+      }
+      evidenceRef.current = [...evidenceRef.current, item];
+      setEvidence(evidenceRef.current);
+      setMessage(
+        `Pinned: ${item.title}. Save it in Research boards to retain it after leaving the page.`,
+      );
+      return true;
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Evidence could not be pinned.",
+      );
+      return false;
+    }
+  }
+  function restoreEvidence(items: any[]) {
+    try {
+      if (items.length > FUND_EVIDENCE_LIMIT)
+        throw new Error("A board supports at most 40 evidence items.");
+      const next = items.map(createFundEvidence);
+      evidenceRef.current = next;
+      setEvidence(next);
+      return true;
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Saved evidence could not be restored.",
+      );
+      return false;
+    }
+  }
+  function openView(view: string) {
+    setVisited((current) =>
+      current.includes(view) ? current : [...current, view],
+    );
+    patch({ view });
+    setMessage("");
+  }
+  const common = {
+    tickers: settings.tickers,
+    settings,
+    onPatch: patch,
+    onEvidence: pin,
+    onFunds: snapshots.ingest,
+  };
+  const panels: any = {
+    discover: (
+      <>
+        <div className={s.discoveryControls}>
+          <label className={s.searchLabel}>
+            <Search size={17} />
+            <input
+              aria-label="Search funds by ticker, name, family, or strategy"
+              placeholder="Search a name, ticker or strategy…"
+              value={settings.query}
+              onChange={(e) => patch({ query: e.target.value })}
+            />
+          </label>
+          <div
+            className={s.categories}
+            role="group"
+            aria-label="Fund categories"
+          >
+            {[
+              "All funds",
+              "US equity",
+              "International",
+              "Fixed income",
+              "Saved funds",
+            ].map((category) => (
+              <button
+                type="button"
+                key={category}
+                aria-pressed={settings.category === category}
+                onClick={() => patch({ category, family: "" })}
+              >
+                {category}
+                {category === "Saved funds" ? ` (${shelf.saved.length})` : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+        <FundScreener
+          screen={screen}
+          settings={settings}
+          onPatch={patch}
+          shelf={shelf}
+          snapshots={snapshots}
+          onSelect={toggle}
+          onEvidence={pin}
+          families={[...new Set(universe.map((fund: any) => fund.family))]}
+        />
+      </>
+    ),
+    security: settings.tickers.length ? (
+      <FundSecurityFinder {...common} />
+    ) : null,
+    compare:
+      settings.tickers.length >= 2 ? <FundComparison {...common} /> : null,
+    allocation: settings.tickers.length ? (
+      <FundAllocationLab {...common} />
+    ) : null,
+    changes: settings.tickers.length ? <FundChanges {...common} /> : null,
+    boards: (
+      <FundResearchBoards
+        settings={settings}
+        onPatch={patch}
+        evidence={evidence}
+        snapshots={currentSnapshots}
+        onRestoreEvidence={restoreEvidence}
+        onClearEvidence={() => {
+          evidenceRef.current = [];
+          setEvidence([]);
+        }}
+      />
+    ),
+  };
   return (
-    <div className={s.page}>
+    <div className={`${base.page} ${s.workspace}`}>
       <header className={s.hero}>
         <div>
           <p className={s.eyebrow}>
-            <Layers3 size={15} /> Fund research workspace
+            <Layers3 size={15} />
+            Portfolio research · SEC N-PORT
           </p>
           <h1>
-            Know what’s
+            See beyond
             <br />
-            <em>inside the fund.</em>
+            <em>the fund ticker.</em>
           </h1>
           <p className={s.lead}>
-            Follow the holdings. Understand concentration. Compare the
-            portfolios behind the tickers, with every number grounded in an SEC
-            filing.
+            Screen reported portfolios, find shared positions, and understand
+            what a fund mix actually holds. Keep the dates, assumptions and
+            evidence with your research.
           </p>
-          <div className={s.trust}>
-            <ShieldCheck size={15} /> SEC series verification <span>·</span>{" "}
-            Complete reported positions <span>·</span> No account needed
-          </div>
         </div>
-        <aside className={s.heroNote}>
-          <span className={s.eyebrow}>Your research, in three steps</span>
-          <ol>
-            <li>
-              <b>Discover</b>
-              <span>Find a strategy or enter a fund ticker.</span>
-            </li>
-            <li>
-              <b>Look inside</b>
-              <span>Inspect all positions and their sources.</span>
-            </li>
-            <li>
-              <b>Compare</b>
-              <span>See where two portfolios overlap.</span>
-            </li>
-          </ol>
+        <aside>
+          <span>One connected research workflow</span>
           <p>
-            Public disclosures are historical snapshots. Check the portfolio
-            date before comparing.
+            Find funds → inspect securities → compare or combine → save the
+            evidence.
           </p>
+          <small>
+            Historical SEC disclosures. Portfolio dates and coverage stay
+            visible throughout.
+          </small>
         </aside>
       </header>
-      <form
-        className={s.searchBar}
-        onSubmit={(e) => {
-          e.preventDefault();
-          const ticker = query.trim().toUpperCase();
-          if (/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(ticker))
-            router.push(`/fund/${ticker}`);
-          else
-            setMessage(
-              "Enter a fund ticker to open a profile, or use the matching cards below.",
-            );
-        }}
-      >
-        <Search size={20} />
-        <label className={s.srOnly} htmlFor="fund-search">
-          Find a fund by ticker, name, or strategy
-        </label>
-        <input
-          id="fund-search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Find a fund by ticker, name, or strategy…"
-          maxLength={100}
-        />
-        <button className={s.primary} type="submit">
-          Open ticker <ArrowRight size={16} />
-        </button>
-      </form>
-      <div className={s.filters} role="group" aria-label="Fund categories">
-        {[
-          "All funds",
-          "US equity",
-          "International",
-          "Fixed income",
-          "Saved funds",
-        ].map((c) => (
-          <button
-            key={c}
-            type="button"
-            aria-pressed={category === c}
-            className={category === c ? s.active : ""}
-            onClick={() => setCategory(c)}
+      <section className={s.selection} aria-label="Funds selected for research">
+        <div className={s.heading}>
+          <div>
+            <p className={s.eyebrow}>
+              Your research selection · {settings.tickers.length}/4
+            </p>
+            <h2>
+              {settings.tickers.length
+                ? settings.tickers.join(" / ")
+                : "Start with a few funds."}
+            </h2>
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              addTicker();
+            }}
+            className={s.addForm}
           >
-            {c}
-            {c === "Saved funds" ? ` (${shelf.saved.length})` : ""}
-          </button>
-        ))}
-      </div>
-      {shelf.saved.length > 0 && (
-        <section className={s.shelf} aria-label="Saved fund shelf">
-          <Bookmark size={16} />
-          <b>Research shelf</b>
-          {shelf.saved.map((t) => (
-            <span key={t}>
-              <Link href={`/fund/${t}`}>{t}</Link>
-              <button
-                aria-label={`Remove saved ${t}`}
-                onClick={() => shelf.toggle(t)}
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ))}
-          <small>Saved in this browser</small>
-        </section>
-      )}
-      <div className={s.sectionHeading}>
-        <div>
-          <p className={s.eyebrow}>Explore the portfolio universe</p>
-          <h2>
-            {category === "All funds" ? "Start with a strategy" : category}
-          </h2>
-          <p>
-            {funds.length} curated funds match. Open any other fund by its
-            ticker.
-          </p>
+            <label htmlFor="fund-add-ticker" className={s.srOnly}>
+              Add a fund ticker to research
+            </label>
+            <input
+              id="fund-add-ticker"
+              value={tickerDraft}
+              onChange={(e) => setTickerDraft(e.target.value)}
+              placeholder="Any fund ticker"
+              maxLength={15}
+            />
+            <button type="submit">
+              Add ticker <ArrowRight size={14} />
+            </button>
+          </form>
         </div>
-        <button
-          className={s.secondary}
-          onClick={loadSnapshots}
-          disabled={Boolean(loading) || !funds.length}
-        >
-          {loading ? `Reading ${loading}…` : "Load SEC snapshots"}
-        </button>
-      </div>
-      <p role="status" className={s.status}>
-        {message ||
-          shelf.storageError ||
-          (loading
-            ? "Reading portfolio reports sequentially. Each card shows its own reporting date."
-            : "")}
-      </p>
-      {error && (
-        <p role="alert" className={s.notice}>
-          {error} You can retry loading snapshots.
-        </p>
-      )}
-      <div className={s.cardGrid}>
-        {funds.map((f) => {
-          const snapshot = loaded[f.ticker];
-          return (
-            <article className={s.fundCard} key={f.ticker}>
-              <div className={s.cardTop}>
-                <span className={s.category}>{f.category}</span>
-                <button
-                  aria-label={`${shelf.saved.includes(f.ticker) ? "Unsave" : "Save"} ${f.ticker}`}
-                  aria-pressed={shelf.saved.includes(f.ticker)}
-                  onClick={() => shelf.toggle(f.ticker)}
-                  disabled={!shelf.ready}
-                >
-                  <Bookmark
-                    size={17}
-                    fill={
-                      shelf.saved.includes(f.ticker) ? "currentColor" : "none"
-                    }
-                  />
-                </button>
-              </div>
-              <Link href={`/fund/${f.ticker}`} className={s.cardLink}>
-                <h3>
-                  {f.ticker}
-                  <ArrowRight size={21} />
-                </h3>
-                <p>{f.name}</p>
-              </Link>
-              <span className={s.muted}>
-                {f.family} · {f.focus}
-              </span>
-              {snapshot?.status === "ready" ? (
-                <div className={s.cardStats}>
-                  <span>
-                    Portfolio net assets
-                    <b>{money(snapshot.fundInfo.netAssets)}</b>
-                  </span>
-                  <span>
-                    Top 10 positions<b>{pct(snapshot.summary.top10Weight)}</b>
-                  </span>
-                  <small>
-                    As of {snapshot.asOf} ·{" "}
-                    {snapshot.summary.count.toLocaleString()} positions
-                    <br />
-                    Series-level totals, including other share classes where
-                    applicable.
-                  </small>
-                </div>
-              ) : (
-                <p className={s.cardHint}>
-                  {snapshot
-                    ? snapshot.reason
-                    : "Open for verified holdings, concentration, and source filings."}
-                </p>
-              )}
-              <button
-                className={s.compareToggle}
-                aria-pressed={selected.includes(f.ticker)}
-                onClick={() => toggleCompare(f.ticker)}
+        <div className={s.selectionDetail}>
+          {settings.tickers.map((ticker: string) => (
+            <div className={s.selectedFund} key={ticker}>
+              <Link
+                href={`/fund/${ticker}${settings.reportMap[ticker] ? `?accession=${settings.reportMap[ticker]}` : ""}`}
               >
-                {selected.includes(f.ticker)
-                  ? "✓ Added to comparison"
-                  : "+ Add to comparison"}
+                {ticker}
+              </Link>
+              <small>
+                {settings.reportMap[ticker]
+                  ? `Report ${settings.reportMap[ticker]}`
+                  : "Latest available report"}
+              </small>
+              <button
+                type="button"
+                aria-label={`Remove ${ticker} from research selection`}
+                onClick={() => toggle(ticker)}
+              >
+                <X size={13} />
               </button>
-            </article>
-          );
-        })}
-      </div>
-      {!funds.length && (
-        <div className={s.empty}>
-          <h3>No curated funds match this view.</h3>
-          <p>
-            Use “Open ticker” to research another fund, or reset the filters.
-          </p>
+            </div>
+          ))}
+        </div>
+        <div className={s.toolbar}>
           <button
-            className={s.secondary}
+            type="button"
+            disabled={!settings.tickers.length || snapshots.progress.busy}
+            onClick={() =>
+              snapshots.load(settings.tickers, settings.reportMap, true)
+            }
+          >
+            Load selected snapshots
+          </button>
+          <button
+            type="button"
+            disabled={
+              snapshots.progress.busy ||
+              (!Object.keys(settings.reportMap).length &&
+                !settings.changeAfter &&
+                !settings.changeBefore)
+            }
             onClick={() => {
-              setQuery("");
-              setCategory("All funds");
+              patch({ reportMap: {}, changeAfter: "", changeBefore: "" });
+              void snapshots.load(settings.tickers, {}, true);
+              setMessage(
+                "Report choices cleared. Refreshing selected snapshots and resolving the latest available filings.",
+              );
             }}
           >
-            Reset filters
-          </button>
-        </div>
-      )}
-      <section className={s.compareTray} aria-label="Fund comparison selection">
-        <div>
-          <span className={s.eyebrow}>Compare portfolios</span>
-          <p>
-            {selected.length
-              ? selected.join("  /  ")
-              : "Choose two or three funds above."}
-          </p>
-        </div>
-        <div className={s.actions}>
-          {selected.map((t) => (
-            <button
-              className={s.secondary}
-              key={t}
-              onClick={() => toggleCompare(t)}
-              aria-label={`Remove ${t} from comparison`}
-            >
-              {t} <X size={13} />
-            </button>
-          ))}
-          <button
-            className={s.primary}
-            disabled={selected.length < 2}
-            onClick={() => setCompareOpen(true)}
-          >
-            Compare {selected.length || ""} funds <ArrowRight size={15} />
+            Use latest reports
           </button>
           <button
-            className={s.secondary}
+            type="button"
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(window.location.href);
-                setMessage("Fund view link copied.");
-              } catch {
                 setMessage(
-                  "Could not copy. Use the address bar to share this view.",
+                  "Fund view copied. Notes and pinned evidence stay private until you export or save a board.",
                 );
+              } catch {
+                setMessage("Copy failed. You can share the address bar URL.");
               }
             }}
           >
-            Share view
+            <Share2 size={14} />
+            Share research view
+          </button>
+          <button type="button" onClick={() => openView("boards")}>
+            <Bookmark size={14} />
+            {evidence.length} pinned evidence
           </button>
         </div>
+        <nav className={s.nav} aria-label="Fund workspace tools">
+          {views.map(([view, label]) => (
+            <button
+              type="button"
+              key={view}
+              aria-current={settings.view === view ? "page" : undefined}
+              aria-pressed={settings.view === view}
+              onClick={() => openView(view)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
       </section>
-      {compareOpen && selected.length >= 2 && (
-        <FundComparison key={selected.join(",")} tickers={selected} />
+      {shelf.saved.length > 0 && (
+        <div className={s.shelf} aria-label="Saved fund shelf">
+          <Bookmark size={14} />
+          <strong>Saved funds</strong>
+          {shelf.saved.map((ticker) => (
+            <button
+              type="button"
+              key={ticker}
+              onClick={() => {
+                if (!settings.tickers.includes(ticker)) toggle(ticker);
+                else openView("discover");
+              }}
+              aria-label={`Research saved ${ticker}`}
+            >
+              {ticker}
+            </button>
+          ))}
+          <small>Saved in this browser</small>
+        </div>
       )}
-      <details className={s.method}>
-        <summary>How to read this workspace</summary>
-        <p>
-          Snapshots come from public N-PORT filings. The portfolio date and
-          filing date are different: holdings can be months old. Not every fund
-          structure reports on N-PORT. Net assets belong to the reported
-          portfolio or series and may combine multiple share classes. Curated
-          strategy labels are navigation aids.
+      {(message || shelf.storageError) && (
+        <p role="status" className={s.notice}>
+          {shelf.storageError || message}
         </p>
-        <a
-          href="https://www.sec.gov/data-research/sec-markets-data/form-n-port-data-sets"
-          target="_blank"
-          rel="noreferrer"
-        >
-          SEC N-PORT scope and documentation ↗
-        </a>
-      </details>
+      )}
+      {views.map(
+        ([view]) =>
+          (visited.includes(view) || view === settings.view) && (
+            <div key={view} hidden={settings.view !== view} className={s.panel}>
+              {panels[view] || (
+                <section className={s.empty}>
+                  <h2>
+                    {view === "compare"
+                      ? "Choose at least two funds to compare."
+                      : "Choose a fund to begin."}
+                  </h2>
+                  <p>
+                    Add any fund ticker above, or select funds from the
+                    screener.
+                  </p>
+                  <button type="button" onClick={() => openView("discover")}>
+                    Browse funds
+                  </button>
+                </section>
+              )}
+            </div>
+          ),
+      )}
     </div>
   );
 }

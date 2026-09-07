@@ -1,0 +1,160 @@
+.panel {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+.muted {
+  color: var(--fund-muted);
+  font-size: 13px;
+}
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.3fr 2fr;
+  gap: 14px;
+  align-items: end;
+}
+.search {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+.search label {
+  flex: 1;
+  min-width: 0;
+}
+.reports {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.report {
+  border: 1px solid var(--fund-line);
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  background: var(--fund-bg);
+}
+.report > b {
+  font-size: 18px;
+}
+.report p,
+.report a {
+  font-size: 12px;
+  color: var(--fund-muted);
+}
+.report a {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.matrix td {
+  padding: 8px;
+}
+.cell {
+  width: 100%;
+  min-width: 105px;
+  border: 1px solid var(--fund-line);
+  background: var(--fund-raised);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--fund-text);
+  font-weight: 700;
+}
+.cell[aria-pressed="true"] {
+  border-color: var(--fund-gold);
+}
+.cell small {
+  display: block;
+  font-size: 10px;
+  color: var(--fund-muted);
+  font-weight: 400;
+}
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.summary > div {
+  border-left: 3px solid var(--fund-gold);
+  padding-left: 14px;
+}
+.summary b {
+  font-size: 23px;
+}
+.summary b small {
+  font-size: 11px;
+  font-weight: 400;
+}
+.summary p {
+  color: var(--fund-muted);
+  font-size: 12px;
+}
+.coverage {
+  border: 1px solid var(--fund-line);
+  padding: 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--fund-muted);
+}
+.coverage summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--fund-text);
+}
+.coverage p {
+  margin-top: 10px !important;
+}
+.resultsHeading,
+.pagination,
+.links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pagination {
+  justify-content: center;
+}
+.links a {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+.inline {
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  border: 0;
+  padding: 4px;
+  font-size: 12px;
+}
+@media (max-width: 1100px) {
+  .controls {
+    grid-template-columns: 1fr 1fr;
+  }
+  .summary b {
+    font-size: 19px;
+  }
+}
+@media (max-width: 620px) {
+  .controls,
+  .summary {
+    grid-template-columns: 1fr;
+  }
+  .search {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .reports {
+    grid-template-columns: 1fr;
+  }
+  .panel {
+    gap: 18px;
+  }
+  .summary {
+    gap: 20px;
+  }
+}
