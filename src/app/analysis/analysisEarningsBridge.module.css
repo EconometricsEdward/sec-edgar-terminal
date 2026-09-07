@@ -1,0 +1,23 @@
+.identity {
+  padding: 12px 14px;
+  color: var(--analysis-text);
+  font-size: 12px;
+  line-height: 1.7;
+  background: var(--analysis-bg);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.details {
+  margin-top: 20px;
+}
+.details summary {
+  cursor: pointer;
+  color: var(--analysis-accent);
+  font-size: 13px;
+  font-weight: 650;
+}
+.details summary:focus-visible {
+  outline: 2px solid var(--analysis-accent);
+  outline-offset: 5px;
+  border-radius: 2px;
+}

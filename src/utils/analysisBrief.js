@@ -35,6 +35,18 @@ export const BRIEF_SECTIONS = [
       "Saved figures and notes, including evidence from other financial views.",
   },
   {
+    key: "questions",
+    label: "Research questions and conclusions",
+    description:
+      "Your question board with statuses and its original evidence snapshots.",
+  },
+  {
+    key: "thresholds",
+    label: "Personal financial thresholds",
+    description:
+      "Your conditions and their current source-linked evaluations; not risk ratings.",
+  },
+  {
     key: "sources",
     label: "Detailed source appendix",
     description:
@@ -106,6 +118,8 @@ export function buildAnalysisBrief(
   index,
   notes = "",
   evidence = [],
+  questions = [],
+  ruleEvaluations = [],
 ) {
   if (!data?.periods?.[index])
     throw new Error(
@@ -222,6 +236,78 @@ export function buildAnalysisBrief(
         };
       })
     : [];
+  const researchQuestions = sections.includes("questions")
+    ? (Array.isArray(questions) ? questions : []).map((question) => ({
+        id: text(question.id),
+        title: text(question.title),
+        conclusion: text(question.conclusion),
+        status: text(question.status),
+        updatedAt: text(question.updatedAt),
+        reviewedAt: text(question.reviewedAt),
+        evidence: (Array.isArray(question.evidence)
+          ? question.evidence
+          : []
+        ).map((entry) => ({
+          ...record(
+            {
+              label: entry.label || "Question evidence",
+              format: entry.format || "currency",
+            },
+            entry.point,
+            {},
+            "Question evidence",
+            entry.notes || entry.text,
+          ),
+          originalCutoff:
+            typeof entry.analysisSettings?.asOf === "string"
+              ? entry.analysisSettings.asOf || "Latest available when collected"
+              : text(entry.point?.period?.asOf) ||
+                "Not recorded; may have used latest available",
+          collectedAt: text(entry.collectedAt),
+        })),
+      }))
+    : [];
+  const thresholds = sections.includes("thresholds")
+    ? (Array.isArray(ruleEvaluations) ? ruleEvaluations : []).map(
+        (evaluation) => ({
+          ...record(
+            {
+              ...evaluation.definition,
+              label:
+                evaluation.rule?.label ||
+                evaluation.definition?.label ||
+                "Personal threshold",
+              format: evaluation.format || evaluation.definition?.format,
+            },
+            evaluation.selection?.point || evaluation.point,
+            evaluation.period || period,
+            "Personal threshold",
+            evaluation.reason,
+          ),
+          value: Number.isFinite(evaluation.measuredValue)
+            ? evaluation.measuredValue
+            : null,
+          classification: Number.isFinite(evaluation.measuredValue)
+            ? text(
+                (evaluation.selection?.point || evaluation.point)
+                  ?.classification,
+              ) || "calculated"
+            : "unavailable",
+          reason: Number.isFinite(evaluation.measuredValue)
+            ? ""
+            : text(evaluation.reason),
+          formatted: analysisValue(
+            evaluation.measuredValue,
+            evaluation.format || evaluation.definition?.format,
+            settings.units || "auto",
+          ),
+          rule: evaluation.rule || {},
+          evaluationStatus: text(evaluation.status),
+          evaluationReason: text(evaluation.reason),
+          originalCutoff: text(evaluation.asOf) || "Latest available",
+        }),
+      )
+    : [];
   return {
     title:
       text(settings.briefTitle).trim().slice(0, 160) ||
@@ -247,12 +333,21 @@ export function buildAnalysisBrief(
     selectedTotal: definitions.length,
     notes: text(notes),
     evidence: collected,
+    questions: researchQuestions,
+    thresholds,
     sources,
     path: analysisPath(data.ticker, { ...settings, end: period.end }),
   };
 }
 
 const h = escapeBriefHtml;
+const thresholdCondition = (mode) =>
+  ({
+    above: "Value above",
+    below: "Value below",
+    changeAbove: "Absolute change above",
+    changeBelow: "Absolute change below",
+  })[mode] || text(mode);
 const link = (url, label) =>
   url
     ? `<a href="${h(url)}" target="_blank" rel="noopener noreferrer">${h(label)}</a>`
@@ -289,6 +384,8 @@ export function analysisBriefHtml(model) {
     ? `<p>${h(model.quality.available)} of ${h(model.quality.total)} standard statement and ratio metrics are available; ${h(model.quality.calculated)} are calculated. ${h(model.quality.revised)} source contexts contain different filed values. A revision can reflect a reporting change and does not establish an error.</p>${model.checks.map((check) => `<article><h3>${h(check.title)} · ${h(check.status)}</h3>${pointHtml(check.record)}<p class="metadata">Reconciliation tolerance: ${h(analysisValue(check.tolerance, "currency", "raw"))}. ${check.status === "Incomplete" ? "This check cannot be completed with the available inputs." : "A reconciled extract is not an audit of the filed statements."}</p></article>`).join("")}<p>Missing metrics: ${h(model.quality.missing.map((d) => d.label).join(", ") || "None in this standard metric set")}</p><p>${h(model.note)}</p>`
     : "";
   const evidence = `<p class="metadata">Collected evidence retains its original dates and values and can come from other financial views. The report cutoff above does not re-filter these saved figures; an original cutoff is shown only when it was stored.</p>${model.evidence.length ? model.evidence.map((record) => `<article><h3>${h(record.label)}</h3>${pointHtml(record)}<p class="metadata">Original filing cutoff: ${h(record.originalCutoff)}${record.collectedAt ? ` · collected ${h(record.collectedAt)}` : ""}</p>${record.notes ? `<pre>${h(record.notes)}</pre>` : ""}</article>`).join("") : "<p>No collected evidence was supplied.</p>"}`;
+  const questions = `<p class="metadata">Questions, conclusions and status labels reflect the researcher's judgment. Attached evidence is preserved at its original period and filing cutoff, independently of this report's current settings.</p>${model.questions.length ? model.questions.map((question) => `<article><h3>${h(question.title)}</h3><p class="metadata">${h(question.status === "resolved" ? "Resolved by researcher" : question.status)} · updated ${h(question.updatedAt)}${question.reviewedAt ? ` · resolved ${h(question.reviewedAt)}` : ""}</p><pre>${h(question.conclusion || "No conclusion recorded.")}</pre>${question.evidence.length ? question.evidence.map((entry) => `<h4>${h(entry.label)}</h4>${pointHtml(entry)}<p class="metadata">Original filing cutoff: ${h(entry.originalCutoff)}${entry.collectedAt ? ` · collected ${h(entry.collectedAt)}` : ""}</p>${entry.notes ? `<pre>${h(entry.notes)}</pre>` : ""}`).join("") : "<p>No financial evidence attached.</p>"}</article>`).join("") : "<p>No research questions were supplied.</p>"}`;
+  const thresholds = `<p class="metadata">These are personal research conditions, not financial risk ratings or determinations of covenant compliance. A condition not met is distinct from an unavailable evaluation. Thresholds and comparisons retain their chosen basis. When an evaluation is unavailable, any cited inputs describe the currently selected period and do not establish that the condition was evaluated.</p>${model.thresholds.length ? model.thresholds.map((entry) => `<article><h3>${h(entry.label)} · ${h(entry.evaluationStatus === "matched" ? "Condition met" : entry.evaluationStatus === "clear" ? "Condition not met" : "Unavailable")}</h3><p>${h(entry.rule.metric)} · ${h(entry.rule.basis)} basis · ${h(thresholdCondition(entry.rule.mode))} ${h(analysisValue(entry.rule.threshold, entry.format, model.units))}${entry.rule.mode?.startsWith("change") ? ` · comparison ${h(entry.rule.baseline)}` : ""}</p>${pointHtml(entry)}<p>${h(entry.evaluationReason)}</p></article>`).join("") : "<p>No personal thresholds were supplied.</p>"}`;
   const sources = model.sources.length
     ? sectionHtml(
         "Source references",
@@ -299,6 +396,8 @@ export function analysisBriefHtml(model) {
     ...model.rows.flatMap((row) => row.points),
     ...model.checks.map((check) => check.record),
     ...model.evidence,
+    ...model.questions.flatMap((question) => question.evidence),
+    ...model.thresholds,
   ];
   const calculations = records
     .filter((record) => record.calculations.length)
@@ -314,7 +413,7 @@ export function analysisBriefHtml(model) {
         `<article><h3>Source [${source.reference}] · ${h(source.tag)}</h3><ul>${(source.revisions || []).map((r) => `<li>Filed ${h(r.filed)}: ${h(r.value)} ${h(source.unit)}; ${h(r.form)}; accession ${h(r.accession || r.accn || "Unavailable")}. ${link(safeBriefSecUrl(r.documentUrl), "SEC revision")}</li>`).join("")}</ul></article>`,
     )
     .join("");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${h(model.title)}</title><style>body{font:15px/1.6 system-ui,sans-serif;color:#1c2939;background:#fff;max-width:1040px;margin:0 auto;padding:32px}h1,h2,h3{line-height:1.25}h1{font-size:30px;margin:10px 0}h2{font-size:21px}h3{font-size:16px}p{margin:8px 0}header{border-bottom:3px solid #334c68;padding-bottom:20px}section{border-bottom:1px solid #ccd4dd;padding:14px 0}article{margin:16px 0;break-inside:avoid}.metadata,small{color:#48586b;font-size:12px}.brand{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}a{color:#125c9a;overflow-wrap:anywhere}.reference{font-size:11px;white-space:nowrap}.highlights{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px}.highlights article{border-left:3px solid #b7c8d8;padding-left:14px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}.missing{color:#704700}.table-wrap{overflow:auto}table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}th,td{padding:9px 7px;border:1px solid #d0d8e1;text-align:left;vertical-align:top;overflow-wrap:anywhere}thead th{background:#eef3f8}small{display:block;line-height:1.5;margin-top:4px}.sources{list-style:none;padding:0;font-size:11px}.sources li{margin:8px 0;overflow-wrap:anywhere;break-inside:avoid}footer{padding-top:20px;font-size:12px}@media print{body{padding:0;font-size:10pt;max-width:none}h1{font-size:22pt}h2{break-after:avoid}thead{display:table-header-group}tr{break-inside:avoid}.table-wrap{overflow:visible}a{color:inherit}.metadata,small{font-size:9pt}.sources{font-size:8pt}}@page{size:auto;margin:16mm}</style></head><body><header><p class="brand">EDGAR Terminal · financial research</p><h1>${h(model.title)}</h1><p>${h(model.name)} (${h(model.ticker)}) · SEC CIK ${h(model.cik)} · ${h(model.lens)} financial lens</p><p>${h(model.basis)} basis · selected period ${h(model.period.start || "Start unavailable")} → ${h(model.period.end)}<br>Filing cutoff: ${h(model.asOf)} · requested end: ${h(model.requestedEnd)}<br>Data observed: ${h(model.observedAt)} · display units: ${h(model.units)}</p><p class="metadata">Normalized reported and calculated values; missing values remain missing. Table display settings such as common size do not alter this brief's reported metric units.</p></header>${include("summary", sectionHtml("Research summary", summary))}${include("metrics", sectionHtml("Selected-period metrics", selected))}${include("history", sectionHtml("Financial history", history))}${include("coverage", sectionHtml("Data quality and coverage", coverage))}${include("notes", sectionHtml("Private research notes", `<pre>${h(model.notes || "No research notes supplied.")}</pre>`))}${include("evidence", sectionHtml("Collected evidence", evidence))}${sources}${include("sources", sectionHtml("Detailed source appendix", calculations + revisions || "<p>No intermediate calculations or revision histories are available for these selections.</p>"))}<footer><p>${link(`https://secedgarterminal.com${model.path}`, "Reopen the configured financial view")}. Latest-available inputs can change as new filings arrive.</p><p>Notes and collected evidence are included only when selected. They remain private to your browser until you share this exported file. To save a PDF, open this HTML file in your browser and choose Print → Save as PDF.</p></footer></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${h(model.title)}</title><style>body{font:15px/1.6 system-ui,sans-serif;color:#1c2939;background:#fff;max-width:1040px;margin:0 auto;padding:32px}h1,h2,h3{line-height:1.25}h1{font-size:30px;margin:10px 0}h2{font-size:21px}h3{font-size:16px}p{margin:8px 0}header{border-bottom:3px solid #334c68;padding-bottom:20px}section{border-bottom:1px solid #ccd4dd;padding:14px 0}article{margin:16px 0;break-inside:avoid}.metadata,small{color:#48586b;font-size:12px}.brand{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}a{color:#125c9a;overflow-wrap:anywhere}.reference{font-size:11px;white-space:nowrap}.highlights{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px}.highlights article{border-left:3px solid #b7c8d8;padding-left:14px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}.missing{color:#704700}.table-wrap{overflow:auto}table{border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed}th,td{padding:9px 7px;border:1px solid #d0d8e1;text-align:left;vertical-align:top;overflow-wrap:anywhere}thead th{background:#eef3f8}small{display:block;line-height:1.5;margin-top:4px}.sources{list-style:none;padding:0;font-size:11px}.sources li{margin:8px 0;overflow-wrap:anywhere;break-inside:avoid}footer{padding-top:20px;font-size:12px}@media print{body{padding:0;font-size:10pt;max-width:none}h1{font-size:22pt}h2{break-after:avoid}thead{display:table-header-group}tr{break-inside:avoid}.table-wrap{overflow:visible}a{color:inherit}.metadata,small{font-size:9pt}.sources{font-size:8pt}}@page{size:auto;margin:16mm}</style></head><body><header><p class="brand">EDGAR Terminal · financial research</p><h1>${h(model.title)}</h1><p>${h(model.name)} (${h(model.ticker)}) · SEC CIK ${h(model.cik)} · ${h(model.lens)} financial lens</p><p>${h(model.basis)} basis · selected period ${h(model.period.start || "Start unavailable")} → ${h(model.period.end)}<br>Filing cutoff: ${h(model.asOf)} · requested end: ${h(model.requestedEnd)}<br>Data observed: ${h(model.observedAt)} · display units: ${h(model.units)}</p><p class="metadata">Normalized reported and calculated values; missing values remain missing. Table display settings such as common size do not alter this brief's reported metric units.</p></header>${include("summary", sectionHtml("Research summary", summary))}${include("metrics", sectionHtml("Selected-period metrics", selected))}${include("history", sectionHtml("Financial history", history))}${include("coverage", sectionHtml("Data quality and coverage", coverage))}${include("notes", sectionHtml("Private research notes", `<pre>${h(model.notes || "No research notes supplied.")}</pre>`))}${include("evidence", sectionHtml("Collected evidence", evidence))}${include("questions", sectionHtml("Research questions and conclusions", questions))}${include("thresholds", sectionHtml("Personal financial thresholds", thresholds))}${sources}${include("sources", sectionHtml("Detailed source appendix", calculations + revisions || "<p>No intermediate calculations or revision histories are available for these selections.</p>"))}<footer><p>${link(`https://secedgarterminal.com${model.path}`, "Reopen the configured financial view")}. Latest-available inputs can change as new filings arrive.</p><p>Notes, questions, thresholds and collected evidence are included only when selected. They remain private to your browser until you share this exported file. To save a PDF, open this HTML file in your browser and choose Print → Save as PDF.</p></footer></body></html>`;
 }
 
 const csvCell = (value) => {
@@ -364,11 +463,42 @@ export function analysisBriefCsv(model) {
     "Research notes",
     "Report settings URL",
     "Evidence collected at",
+    "Question ID",
+    "Research question",
+    "Question conclusion",
+    "Question status",
+    "Question updated at",
+    "Question resolved at",
+    "Threshold metric",
+    "Threshold basis",
+    "Threshold condition",
+    "Threshold raw value",
+    "Threshold comparison",
+    "Threshold evaluation",
+    "Threshold explanation",
   ];
   const records = [
     ...model.rows.flatMap((row) => row.points),
     ...model.checks.map((check) => check.record),
     ...model.evidence,
+    ...model.questions.flatMap((question) =>
+      (question.evidence.length
+        ? question.evidence
+        : [
+            {
+              kind: "Research question",
+              label: "",
+              value: null,
+              format: "",
+              period: {},
+              classification: "Researcher note",
+              refs: [],
+              calculations: [],
+            },
+          ]
+      ).map((entry) => ({ ...entry, question })),
+    ),
+    ...model.thresholds,
   ];
   const rows = records.flatMap((record) =>
     (record.refs.length ? record.refs : [null]).map((ref) => {
@@ -386,7 +516,13 @@ export function analysisBriefCsv(model) {
         record.instant ? "Instant" : record.period.start,
         record.period.end,
         model.asOf,
-        record.kind === "Collected evidence" ? record.originalCutoff : "",
+        [
+          "Collected evidence",
+          "Question evidence",
+          "Personal threshold",
+        ].includes(record.kind)
+          ? record.originalCutoff
+          : "",
         model.requestedEnd,
         model.observedAt,
         record.classification,
@@ -408,6 +544,19 @@ export function analysisBriefCsv(model) {
         model.sections.includes("notes") ? model.notes : "",
         `https://secedgarterminal.com${model.path}`,
         record.collectedAt,
+        record.question?.id,
+        record.question?.title,
+        record.question?.conclusion,
+        record.question?.status,
+        record.question?.updatedAt,
+        record.question?.reviewedAt,
+        record.rule?.metric,
+        record.rule?.basis,
+        record.rule?.mode,
+        record.rule?.threshold,
+        record.rule?.baseline,
+        record.evaluationStatus,
+        record.evaluationReason,
       ];
     }),
   );

@@ -19,6 +19,8 @@ export default function AnalysisBriefComposer({
   index,
   notes,
   evidence = [],
+  questions = [],
+  ruleEvaluations = [],
   onPatch,
 }: any) {
   const [filter, setFilter] = useState("");
@@ -27,8 +29,17 @@ export default function AnalysisBriefComposer({
   const metrics = briefMetricKeys(data, settings);
   const sections = briefSectionKeys(settings);
   const report = useMemo(
-    () => buildAnalysisBrief(data, settings, index, notes, evidence),
-    [data, settings, index, notes, evidence],
+    () =>
+      buildAnalysisBrief(
+        data,
+        settings,
+        index,
+        notes,
+        evidence,
+        questions,
+        ruleEvaluations,
+      ),
+    [data, settings, index, notes, evidence, questions, ruleEvaluations],
   );
   const html = useMemo(
     () => (preview ? analysisBriefHtml(report) : ""),
@@ -166,8 +177,8 @@ export default function AnalysisBriefComposer({
       <p className={styles.description}>
         The history table includes up to four periods ending{" "}
         {data.periods[index].end}. Compact citations always retain SEC tags,
-        values, filing dates and accessions. Notes and saved evidence are
-        included only when their sections are selected.
+        values, filing dates and accessions. Notes, questions, thresholds and
+        saved evidence are included only when their sections are selected.
       </p>
       <div className={styles.actions}>
         <button
@@ -198,6 +209,8 @@ export default function AnalysisBriefComposer({
                 "history",
                 "coverage",
                 "evidence",
+                "questions",
+                "thresholds",
               ].includes(key),
             )
           }

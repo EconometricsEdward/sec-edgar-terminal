@@ -1,3 +1,5 @@
+import { validateAnalysisRules } from "./analysisRules.js";
+import { validateAnalysisQuestions } from "./analysisQuestions.js";
 import { readFilingsNotebook } from "./filingsNotebook.js";
 
 export const RESEARCH_STORAGE_EVENT = "research-storage";
@@ -366,6 +368,17 @@ export function validateResearchStore(key, raw) {
           optionalText(e.collectedAt, "Evidence collection date");
           evidencePoint(e.point);
         });
+      if (company.analysisRules !== undefined)
+        validateAnalysisRules(company.analysisRules);
+      if (company.analysisQuestions !== undefined)
+        validateAnalysisQuestions(company.analysisQuestions, (e) => {
+          optionalText(e.label, "Question evidence label");
+          optionalText(e.notes, "Question evidence notes");
+          optionalText(e.format, "Question evidence format");
+          optionalText(e.collectedAt, "Question evidence collection date");
+          evidencePoint(e.point);
+          if (e.analysisSettings) settings(e.analysisSettings);
+        });
       if (company.analysisViews !== undefined)
         objects(company.analysisViews, "Financial views", 1000).forEach((v) => {
           optionalText(v.name, "View name");
@@ -635,6 +648,32 @@ function entriesFor(source, data, store = {}) {
           `/analysis/${t}?view=notebook`,
           c.analysisReviewedAt || c.reviewedAt,
           t,
+        );
+      for (const question of c.analysisQuestions || [])
+        add(
+          "note",
+          t,
+          question.title,
+          [
+            question.status,
+            question.conclusion,
+            `${question.evidence.length} evidence snapshots`,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          `/analysis/${t}?view=notebook`,
+          question.reviewedAt || question.updatedAt,
+          `${t}:question:${question.id}`,
+        );
+      for (const rule of c.analysisRules || [])
+        add(
+          "search",
+          t,
+          rule.label,
+          `${rule.basis} · ${rule.metric} · ${rule.mode} ${rule.threshold}`,
+          `/analysis/${t}?basis=${rule.basis}`,
+          rule.updatedAt,
+          `${t}:threshold:${rule.id}`,
         );
       for (const [i, e] of (c.evidence || []).entries())
         add(
