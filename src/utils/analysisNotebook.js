@@ -1,3 +1,12 @@
+import {
+  SCENARIO_DEFAULTS,
+  normalizeScenarioSettings,
+} from "./analysisScenarios.js";
+import {
+  GOAL_SEEK_DEFAULTS,
+  normalizeGoalSeekSettings,
+} from "./analysisGoalSeek.js";
+
 export const ANALYSIS_SETTINGS = {
   basis: "annual",
   end: "latest",
@@ -20,10 +29,10 @@ export const ANALYSIS_SETTINGS = {
   movementThreshold: 0,
   growthMetric: "",
   profitMetric: "netIncome",
-  scenarioRevenue: 0,
-  scenarioMargin: 0,
-  scenarioLoss: 0,
-  scenarioFunding: 0,
+  ...SCENARIO_DEFAULTS,
+  ...GOAL_SEEK_DEFAULTS,
+  scenarioTab: "model",
+  scenarioCase: "",
   formulaA: "operatingCashFlow",
   formulaB: "capex",
   formulaC: "revenue",
@@ -44,6 +53,7 @@ export const ANALYSIS_SETTINGS = {
 };
 const choices = {
   basis: ["annual", "quarter", "ytd", "ttm"],
+  scenarioTab: ["model", "sensitivity", "targets", "cases"],
   view: [
     "overview",
     "statements",
@@ -74,7 +84,22 @@ const validDate = (v) =>
   Number.isFinite(Date.parse(v)) &&
   new Date(v).toISOString().slice(0, 10) === v;
 export function normalizeAnalysisSettings(input = {}) {
-  const out = { ...ANALYSIS_SETTINGS, ...input };
+  const out = Object.fromEntries(
+    Object.entries(ANALYSIS_SETTINGS).map(([key, value]) => [
+      key,
+      Object.hasOwn(input, key) ? input[key] : value,
+    ]),
+  );
+  Object.assign(
+    out,
+    normalizeScenarioSettings(input),
+    normalizeGoalSeekSettings(input),
+  );
+  out.scenarioCase =
+    typeof out.scenarioCase === "string" &&
+    /^[A-Za-z0-9_-]{1,100}$/.test(out.scenarioCase)
+      ? out.scenarioCase
+      : "";
   for (const [key, values] of Object.entries(choices))
     if (!values.includes(out[key])) out[key] = ANALYSIS_SETTINGS[key];
   out.asOf =
@@ -99,13 +124,7 @@ export function normalizeAnalysisSettings(input = {}) {
         ),
       ),
     ].slice(0, key === "chart" ? 3 : key === "briefMetrics" ? 24 : 12);
-  for (const [key, min, max] of [
-    ["movementThreshold", 0, 1e15],
-    ["scenarioRevenue", -50, 50],
-    ["scenarioMargin", -20, 20],
-    ["scenarioLoss", 0, 20],
-    ["scenarioFunding", 0, 50],
-  ]) {
+  for (const [key, min, max] of [["movementThreshold", 0, 1e15]]) {
     const value = Number(out[key]);
     out[key] = Number.isFinite(value)
       ? Math.min(max, Math.max(min, value))
@@ -192,7 +211,15 @@ export function analysisCollectionSettings(item, settings) {
         : typeof period.asOf === "string"
           ? period.asOf
           : settings.asOf;
+  const scenarioSettings =
+    original?.view === "scenarios" ||
+    (!original &&
+      /^Hypothetical:/.test(item.point?.formula || "") &&
+      settings.view === "scenarios")
+      ? normalizeAnalysisSettings(original || settings)
+      : {};
   return {
+    ...scenarioSettings,
     basis: period.kind || original?.basis || settings.basis,
     end: period.end || original?.end || settings.end,
     asOf,

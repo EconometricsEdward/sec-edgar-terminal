@@ -5,7 +5,16 @@ import {
   goalSeekUnits,
   solveOperatingGoal,
   solveAssetLossGoal,
+  GOAL_SEEK_DEFAULTS,
+  normalizeGoalSeekSettings,
+  goalSeekInput,
+  goalSeekDraft,
+  goalSeekDraftPatch,
+  operatingGoalApplication,
+  assetLossGoalApplication,
+  buildScenarioHeadroom,
 } from "../src/utils/analysisGoalSeek.js";
+import { buildAnalysisScenario } from "../src/utils/analysisScenarios.js";
 
 const period = {
   start: "2025-01-01",
@@ -83,7 +92,7 @@ test("Required revenue solves the target and retains baseline provenance plus ex
   assert.equal(result.selection.point.value * 0.15, result.target);
 });
 
-test("Required margin supports losses and does not clamp mathematically large targets", () => {
+test("Required margin supports losses but rejects targets implying negative operating costs", () => {
   const loss = solveOperatingGoal(
     company(),
     { mode: "margin", targetIncome: "-50", assumedRevenue: "500" },
@@ -98,11 +107,8 @@ test("Required margin supports losses and does not clamp mathematically large ta
     0,
     "millions",
   );
-  assert.equal(high.selection.point.value, 200);
-  assert.match(
-    high.selection.point.note,
-    /does not .*establish business feasibility/,
-  );
+  assert.equal(high.selection, null);
+  assert.match(high.reason, /negative operating costs/);
 });
 
 test("Goal-seek preserves explicit zero but rejects blank, nonfinite and nonpositive denominators", () => {
@@ -276,4 +282,333 @@ test("Asset-loss solver withholds a nonfinite baseline ratio", () => {
   assert.equal(result.status, "unavailable");
   assert.equal(result.loss, null);
   assert.match(result.reason, /numerical range/);
+});
+
+function bank() {
+  const data = company("banking");
+  for (const [key, value] of Object.entries({ cash: 1e8, deposits: 1e9 })) {
+    data.definitions.push({ key, label: key, format: "currency" });
+    data.metrics[key] = [
+      {
+        value,
+        period,
+        classification: "reported",
+        sources: [
+          {
+            tag: key,
+            taxonomy: "us-gaap",
+            unit: "USD",
+            value,
+            end: period.end,
+            filed: "2026-02-01",
+            accession: "0000000001-26-000001",
+          },
+        ],
+      },
+    ];
+  }
+  return data;
+}
+const close = (a, b) =>
+  assert.ok(
+    Math.abs(a - b) <= Math.max(1, Math.abs(b)) * 1e-12,
+    `${a} should equal ${b}`,
+  );
+
+test("Persisted target fields contain canonical USD and survive display unit changes and a fresh setup", () => {
+  const data = company();
+  const draft = {
+    ...goalSeekDraft(data, 0, {}, "millions"),
+    targetIncome: "120.5",
+    assumedRevenue: "850.25",
+    assumedMargin: "15",
+  };
+  const patch = goalSeekDraftPatch(draft, "millions");
+  assert.equal(patch.goalTargetIncome, "120500000");
+  assert.equal(patch.goalAssumedRevenue, "850250000");
+  const saved = normalizeGoalSeekSettings(
+    JSON.parse(
+      JSON.stringify({
+        ...patch,
+        goalOperatingSolved: true,
+        goalAssetSolved: true,
+      }),
+    ),
+  );
+  assert.equal(goalSeekDraft(data, 0, saved, "millions").targetIncome, "120.5");
+  assert.equal(
+    goalSeekDraft(data, 0, saved, "billions").targetIncome,
+    "0.1205",
+  );
+  assert.equal(goalSeekDraft(data, 0, saved, "raw").targetIncome, "120500000");
+  assert.equal(goalSeekDraft(data, 0, saved, "auto").targetIncome, "120500000");
+  assert.equal(saved.goalOperatingSolved, true);
+  assert.equal(saved.goalAssetSolved, true);
+  close(
+    solveOperatingGoal(data, goalSeekInput(data, 0, saved), 0).target,
+    120.5e6,
+  );
+  // Changing denomination without editing does not rewrite canonical values.
+  assert.deepEqual(
+    goalSeekDraftPatch(
+      goalSeekDraft(data, 0, saved, "billions"),
+      "billions",
+      [],
+    ),
+    { goalMode: "revenue" },
+  );
+});
+
+test("Draft normalization preserves blanks, zero, negative and unfinished numbers without admitting user notes", () => {
+  for (const raw of ["", "-", ".", "1e-", "-12.50", "0", "0.0"]) {
+    const settings = normalizeGoalSeekSettings({ goalTargetIncome: raw });
+    assert.equal(settings.goalTargetIncome, raw);
+    assert.equal(goalSeekInput(company(), 0, settings).targetIncome, raw);
+  }
+  assert.equal(
+    normalizeGoalSeekSettings({ goalTargetIncome: " " }).goalTargetIncome,
+    "",
+  );
+  assert.equal(
+    normalizeGoalSeekSettings({
+      goalTargetIncome: "private investment notes",
+      goalMode: "unknown",
+      goalOperatingSolved: "false",
+    }).goalTargetIncome,
+    null,
+  );
+  assert.deepEqual(normalizeGoalSeekSettings(null), GOAL_SEEK_DEFAULTS);
+  assert.equal(
+    normalizeGoalSeekSettings({ goalOperatingSolved: "true" })
+      .goalOperatingSolved,
+    true,
+  );
+  const draft = {
+    ...goalSeekDraft(company(), 0, {}, "millions"),
+    targetIncome: "",
+  };
+  const restored = goalSeekInput(
+    company(),
+    0,
+    goalSeekDraftPatch(draft, "millions"),
+  );
+  assert.equal(restored.targetIncome, "");
+  assert.match(
+    solveOperatingGoal(company(), restored, 0).reason,
+    /finite target/,
+  );
+});
+
+test("Overflowing denominated input remains invalid across commits and never resets to the baseline", () => {
+  const data = company();
+  const draft = {
+    ...goalSeekDraft(data, 0, {}, "millions"),
+    targetIncome: "1e308",
+  };
+  const settings = normalizeGoalSeekSettings(
+    goalSeekDraftPatch(draft, "millions"),
+  );
+  assert.equal(settings.goalTargetIncome, "1e314");
+  assert.match(
+    solveOperatingGoal(data, goalSeekInput(data, 0, settings), 0).reason,
+    /finite target/,
+  );
+  assert.equal(
+    goalSeekDraft(data, 0, settings, "millions").targetIncome,
+    "1e+308",
+  );
+});
+
+test("Revenue and margin solutions apply explicit margin assumptions and reproduce the income target", () => {
+  const data = company();
+  for (const input of [
+    { mode: "revenue", targetIncome: "120000000", assumedMargin: "15" },
+    { mode: "margin", targetIncome: "120000000", assumedRevenue: "850000000" },
+    { mode: "margin", targetIncome: "-50000000", assumedRevenue: "500000000" },
+  ]) {
+    const application = operatingGoalApplication(data, input, 0, {
+      scenarioModel: "cost",
+      scenarioLoss: 4,
+    });
+    assert.equal(application.reason, null);
+    assert.equal(application.patch.scenarioModel, "margin");
+    assert.equal(application.patch.scenarioLoss, undefined);
+    const actual = application.preview.operating.rows.find(
+      (row) => row.key === "OperatingIncome",
+    ).selection.point.value;
+    close(actual, Number(input.targetIncome));
+    assert.equal(application.preview.settings.scenarioLoss, 4);
+    const restored = buildAnalysisScenario(
+      data,
+      JSON.parse(JSON.stringify(application.patch)),
+      0,
+    );
+    close(
+      restored.operating.rows.find((row) => row.key === "OperatingIncome")
+        .selection.point.value,
+      Number(input.targetIncome),
+    );
+  }
+});
+
+test("Solved assumptions outside scenario limits and impossible costs cannot be silently applied", () => {
+  const data = company();
+  const tooLarge = operatingGoalApplication(
+    data,
+    { mode: "revenue", targetIncome: "1000000000", assumedMargin: "10" },
+    0,
+  );
+  assert.match(tooLarge.reason, /outside the scenario range/);
+  assert.equal(tooLarge.patch, null);
+  const impossible = operatingGoalApplication(
+    data,
+    {
+      mode: "margin",
+      targetIncome: "2000000000",
+      assumedRevenue: "1000000000",
+    },
+    0,
+  );
+  assert.match(impossible.reason, /negative operating costs/);
+  assert.equal(impossible.patch, null);
+  data.metrics.stockholdersEquity[0].value = 600e6;
+  const loss = assetLossGoalApplication(data, { targetEquityRatio: "0" }, 0);
+  assert.match(loss.reason, /outside the scenario range/);
+  assert.equal(loss.patch, null);
+});
+
+test("Asset-loss application retains precise boundary and explicitly removes funding assumptions", () => {
+  const data = bank();
+  const applied = assetLossGoalApplication(
+    data,
+    { targetEquityRatio: "5" },
+    0,
+    {
+      scenarioFunding: 5,
+      scenarioReplacementFunding: 3,
+      scenarioCashAvailable: 50,
+    },
+  );
+  assert.equal(applied.reason, null);
+  assert.equal(applied.patch.scenarioFunding, 0);
+  assert.equal(applied.patch.scenarioReplacementFunding, 0);
+  assert.equal(applied.preview.settings.scenarioCashAvailable, 50);
+  close(applied.patch.scenarioLoss, 5.263157894736842);
+  close(
+    applied.preview.balance.rows.find((row) => row.key === "EquityAssets")
+      .selection.point.value,
+    5,
+  );
+  const below = assetLossGoalApplication(data, { targetEquityRatio: "12" }, 0);
+  assert.equal(below.patch, null);
+  assert.match(below.reason, /does not attain/);
+});
+
+test("Current-scenario floor check includes existing losses and explicit funding instead of resetting to baseline", () => {
+  const data = bank();
+  const settings = {
+    goalEquityFloor: "5",
+    scenarioLoss: 2,
+    scenarioFunding: 5,
+    scenarioCashAvailable: 50,
+    scenarioReplacementFunding: 2,
+  };
+  const check = buildScenarioHeadroom(data, settings, 0);
+  assert.equal(check.reason, null);
+  assert.equal(check.status, "headroom");
+  close(check.baselineRatio, 10);
+  close(check.currentAssets, 1.93e9);
+  close(check.currentEquity, 160e6);
+  close(check.remainingLoss, (160e6 - 0.05 * 1.93e9) / 0.95);
+  close(
+    ((check.currentEquity - check.remainingLoss) /
+      (check.currentAssets - check.remainingLoss)) *
+      100,
+    5,
+  );
+  assert.ok(
+    check.remainingLoss <
+      solveAssetLossGoal(data, { targetEquityRatio: "5" }, 0).loss,
+  );
+  assert.equal(check.rows[2].point.sources.length, 4);
+  assert.ok(check.rows[2].point.calculations.length >= 2);
+  assert.match(check.rows[2].point.note, /Replacement funding = 2%/);
+  assert.equal(check.cash.reason, null);
+  close(check.cash.remaining, 20e6);
+  assert.deepEqual(
+    check.cash.rows.map((row) => row.point.value),
+    [50e6, 20e6, 50e6, 20e6],
+  );
+});
+
+test("Floor headroom reports already-below and at-floor cases without negative capacity", () => {
+  const data = company();
+  const below = buildScenarioHeadroom(
+    data,
+    { goalEquityFloor: "5", scenarioLoss: 7 },
+    0,
+  );
+  assert.equal(below.status, "alreadyBelow");
+  assert.equal(below.remainingLoss, 0);
+  assert.match(
+    below.rows[2].point.note,
+    /zero headroom does not mean the floor is attained/,
+  );
+  const applied = assetLossGoalApplication(data, { targetEquityRatio: "5" }, 0);
+  const at = buildScenarioHeadroom(
+    data,
+    { ...applied.patch, goalEquityFloor: "5" },
+    0,
+  );
+  assert.equal(at.status, "atTarget");
+  assert.equal(at.remainingLoss, 0);
+});
+
+test("Funding gaps withhold balance headroom while displaying the explicit cash shortfall", () => {
+  const check = buildScenarioHeadroom(
+    bank(),
+    {
+      goalEquityFloor: "5",
+      scenarioFunding: 20,
+      scenarioCashAvailable: 50,
+      scenarioReplacementFunding: 2,
+    },
+    0,
+  );
+  assert.equal(check.status, "unavailable");
+  assert.equal(check.rows.length, 0);
+  assert.match(check.reason, /exceeds usable/);
+  assert.equal(check.cash.reason, null);
+  assert.equal(check.cash.remaining, 0);
+  close(check.cash.gap, 130e6);
+});
+
+test("Missing banking funding evidence permits an independent loss check but never invents cash capacity", () => {
+  const check = buildScenarioHeadroom(
+    company("banking"),
+    { goalEquityFloor: "5" },
+    0,
+  );
+  assert.equal(check.reason, null);
+  assert.equal(check.status, "headroom");
+  assert.equal(check.cash.remaining, null);
+  assert.ok(check.cash.reason);
+  assert.equal(check.rows[2].point.sources.length, 2);
+});
+
+test("Noncash-asset limits block an impossible applied boundary and qualify current floor arithmetic", () => {
+  const data = bank();
+  data.metrics.cash[0].value = 1.95e9;
+  data.metrics.cash[0].sources[0].value = 1.95e9;
+  const application = assetLossGoalApplication(
+    data,
+    { targetEquityRatio: "5" },
+    0,
+  );
+  assert.equal(application.patch, null);
+  assert.match(application.reason, /exceeds reported noncash assets/);
+  const check = buildScenarioHeadroom(data, { goalEquityFloor: "5" }, 0);
+  assert.equal(check.reason, null);
+  assert.match(check.capacityNote, /exceeds the remaining noncash assets/);
+  close(check.remainingNoncash, 50e6);
 });

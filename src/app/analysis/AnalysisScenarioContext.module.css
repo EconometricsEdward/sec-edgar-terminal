@@ -1,0 +1,240 @@
+.context {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+  min-width: 0;
+}
+.baseline,
+.panel {
+  border: 1px solid var(--analysis-border);
+  border-radius: 10px;
+  background: var(--analysis-bg);
+  min-width: 0;
+}
+.baseline {
+  padding: 17px 18px;
+}
+.title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.title p,
+.panel summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.title p {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--analysis-accent);
+}
+.title strong {
+  font-size: 13px;
+}
+.metadata {
+  display: grid;
+  grid-template-columns: 1fr 1.7fr 1fr 1.5fr;
+  gap: 12px;
+  margin: 15px 0;
+}
+.metadata div {
+  min-width: 0;
+}
+.metadata dt {
+  color: var(--analysis-muted);
+  font-size: 10px;
+  margin-bottom: 5px;
+}
+.metadata dd {
+  margin: 0;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.readiness summary,
+.panel summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+.readiness summary {
+  color: var(--analysis-accent);
+  padding: 4px 0;
+}
+.panel summary {
+  padding: 14px 17px;
+}
+.panel summary > span {
+  margin-right: 14px;
+}
+.panel summary > small {
+  color: var(--analysis-muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+.panel[open] > summary {
+  border-bottom: 1px solid var(--analysis-border);
+}
+.panelBody {
+  padding: 2px 17px 14px;
+}
+.note,
+.reason {
+  font-size: 11px;
+  color: var(--analysis-muted);
+  line-height: 1.65;
+}
+.reason {
+  margin: 10px 0 0;
+}
+.inputs,
+.cases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.inputs article,
+.cases article {
+  padding: 13px;
+  border: 1px solid var(--analysis-border);
+  border-radius: 8px;
+  background: var(--analysis-panel);
+  min-width: 0;
+}
+.inputTitle {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.inputTitle h4,
+.cases h4 {
+  font-size: 12px;
+  margin: 0 0 9px;
+}
+.ready,
+.unavailable {
+  font-size: 9px;
+  color: var(--analysis-muted);
+  white-space: nowrap;
+}
+.ready {
+  color: var(--analysis-accent);
+}
+.inputs small,
+.table small {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--analysis-muted);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+.sourceValue.sourceValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--analysis-accent);
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.sourceValue.sourceValue:hover {
+  text-decoration: underline;
+}
+.sourceValue:focus-visible,
+.context summary:focus-visible {
+  outline: 2px solid var(--analysis-accent);
+  outline-offset: 4px;
+}
+.coverage {
+  display: flex;
+  gap: 8px 20px;
+  flex-wrap: wrap;
+  color: var(--analysis-muted);
+  font-size: 11px;
+}
+.tableWrap {
+  margin-top: 12px;
+  overflow: auto;
+  border: 1px solid var(--analysis-border);
+  border-radius: 8px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.table caption {
+  text-align: left;
+  padding: 12px;
+  font-weight: 600;
+  color: var(--analysis-muted);
+}
+.table th,
+.table td {
+  padding: 11px;
+  vertical-align: top;
+  text-align: left;
+  border-top: 1px solid var(--analysis-border);
+  min-width: 115px;
+}
+.table thead {
+  background: var(--analysis-raised);
+}
+.caseAssumptions {
+  font-size: 11px;
+  line-height: 1.6;
+  font-weight: 600;
+  margin: 0;
+}
+.cases article {
+  display: flex;
+  flex-direction: column;
+}
+.cases button {
+  margin-top: auto;
+  align-self: flex-start;
+  font-size: 11px;
+}
+.applied {
+  margin: 10px 0 0;
+  color: var(--analysis-accent);
+  font-size: 11px;
+}
+.applied:empty {
+  display: none;
+}
+@media (max-width: 800px) {
+  .metadata {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .panel summary > small {
+    display: block;
+    margin-top: 5px;
+  }
+}
+@media (max-width: 460px) {
+  .metadata {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+  .inputs,
+  .cases {
+    grid-template-columns: 1fr;
+  }
+  .baseline,
+  .panelBody {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}

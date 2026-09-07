@@ -70,9 +70,12 @@ const AnalysisCashLab = dynamic(() => import("../AnalysisCashLab"), {
 const AnalysisCapitalLab = dynamic(() => import("../AnalysisCapitalLab"), {
   loading: AnalysisToolLoading,
 });
-const AnalysisScenarioLab = dynamic(() => import("../AnalysisScenarioLab"), {
-  loading: AnalysisToolLoading,
-});
+const AnalysisScenarioWorkspace = dynamic(
+  () => import("../AnalysisScenarioWorkspace"),
+  {
+    loading: AnalysisToolLoading,
+  },
+);
 const AnalysisFormulaLab = dynamic(() => import("../AnalysisFormulaLab"), {
   loading: AnalysisToolLoading,
 });
@@ -96,9 +99,6 @@ const AnalysisEarningsBridge = dynamic(
   () => import("../AnalysisEarningsBridge"),
   { loading: AnalysisToolLoading },
 );
-const AnalysisGoalSeek = dynamic(() => import("../AnalysisGoalSeek"), {
-  loading: AnalysisToolLoading,
-});
 const AnalysisThresholds = dynamic(() => import("../AnalysisThresholds"), {
   loading: AnalysisToolLoading,
 });
@@ -155,6 +155,10 @@ function Workspace(props: any) {
   const [status, setStatus] = useState("");
   const [viewName, setViewName] = useState("");
   const [extended, setExtended] = useState(false);
+  const [scenarioOpened, setScenarioOpened] = useState(false);
+  useEffect(() => {
+    if (settings.view === "scenarios") setScenarioOpened(true);
+  }, [settings.view]);
   const root = useRef<HTMLDivElement>(null);
   const controls = useRef<HTMLDivElement>(null);
   const evidenceTrigger = useRef<HTMLElement | null>(null);
@@ -865,23 +869,28 @@ function Workspace(props: any) {
                   onInspect={inspectSelection}
                 />
               )}
-              {settings.view === "scenarios" && (
-                <>
-                  <AnalysisGoalSeek
-                    key={`${data.ticker}:${period.end}:${settings.units}:${settings.asOf}:${settings.basis}`}
-                    data={data}
-                    settings={settings}
-                    index={index}
-                    onInspect={inspectSelection}
-                  />
-                  <AnalysisScenarioLab
+              {(settings.view === "scenarios" || scenarioOpened) && (
+                <div hidden={settings.view !== "scenarios"}>
+                  <AnalysisScenarioWorkspace
                     data={data}
                     settings={settings}
                     index={index}
                     onInspect={inspectSelection}
                     onPatch={patch}
+                    cases={saved?.analysisScenarios || []}
+                    ready={workspace.ready && !workspace.error}
+                    onSaveCases={(updater: any) =>
+                      save(
+                        (current: any) => ({
+                          analysisScenarios: updater(
+                            current.analysisScenarios || [],
+                          ),
+                        }),
+                        "Scenario cases updated.",
+                      )
+                    }
                   />
-                </>
+                </div>
               )}
               {settings.view === "formula" && (
                 <AnalysisFormulaLab

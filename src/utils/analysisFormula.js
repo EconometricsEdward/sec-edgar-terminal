@@ -28,6 +28,12 @@ export function formulaDefinitions(data) {
   return (data.definitions || []).filter((d) => d.format === "currency");
 }
 
+const validLabDate = (value) =>
+  typeof value === "string" &&
+  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  Number.isFinite(Date.parse(value)) &&
+  new Date(Date.parse(value)).toISOString().slice(0, 10) === value;
+
 export function labInput(data, key, index) {
   const definition = (data.definitions || []).find((d) => d.key === key);
   const point = data.metrics?.[key]?.[index];
@@ -41,6 +47,13 @@ export function labInput(data, key, index) {
       point?.reason ||
       "A required reported input is unavailable; it is not assumed to be zero.";
   else if (
+    !validLabDate(period?.end) ||
+    (period?.start &&
+      (!validLabDate(period.start) || period.start > period.end))
+  )
+    reason =
+      "The selected reporting period has missing, invalid, or reversed dates.";
+  else if (
     !period ||
     !point.period ||
     point.period.end !== period.end ||
@@ -51,14 +64,18 @@ export function labInput(data, key, index) {
       "The input does not share the selected reporting period and basis.";
   else if (!sources.length || sources.some((s) => s.unit !== "USD"))
     reason = "Every input requires reviewable USD source evidence.";
+  else if (sources.some((s) => !Number.isFinite(s.value)))
+    reason = "Every reported source input requires a finite numeric value.";
   else if (
     sources.some(
       (s) =>
-        !s.end || !Number.isFinite(Date.parse(s.end)) || s.end > period.end,
+        !validLabDate(s.end) ||
+        s.end > period.end ||
+        (s.start && (!validLabDate(s.start) || s.start > s.end)),
     )
   )
     reason =
-      "A source date is missing, invalid, or falls after the selected reporting date.";
+      "A source date is missing, invalid, reversed, or falls after the selected reporting date.";
   else if (
     !(point.classification === "calculated" && point.formula) &&
     sources.some(
