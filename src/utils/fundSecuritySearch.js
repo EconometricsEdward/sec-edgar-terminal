@@ -11,6 +11,14 @@ const text = (value) =>
     .replace(/\s+/g, " ");
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 
+// Preserve small, non-zero weights that would otherwise look like no holding.
+export function securityWeight(value) {
+  if (!finite(value)) return "Unavailable";
+  if (value === 0) return "0.00%";
+  if (Math.abs(value) < 0.01) return value < 0 ? "−<0.01%" : "<0.01%";
+  return `${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+}
+
 export function normalizeFundSecuritySearch(input = {}) {
   return {
     query: String(input.query ?? "")
@@ -56,6 +64,20 @@ function aggregate(positions, key) {
     known: finite(sum) ? sum : null,
     missing,
     count: known.length,
+  };
+}
+
+function positionTotals(positions) {
+  const value = aggregate(positions, "value");
+  const weight = aggregate(positions, "pctOfNav");
+  return {
+    positionCount: positions.length,
+    value: value.total,
+    knownValue: value.known,
+    missingValueCount: value.missing,
+    pctOfNav: weight.total,
+    knownWeight: weight.known,
+    missingWeightCount: weight.missing,
   };
 }
 
@@ -149,6 +171,39 @@ export function searchFundHoldings(portfolios = [], input = {}) {
     searchedPositions: portfolio.holdings?.length || 0,
     matchedPositions: matchedCounts[i],
   }));
+  // Summarize the complete result BEFORE the API paginates securities. Keep
+  // security identities separate and never add percentages across funds.
+  const exposureByFund = portfolios.map((portfolio, index) => {
+    const positions = rows.flatMap((row) =>
+      row.funds
+        .filter((fund) => fund.ticker === portfolio.ticker)
+        .flatMap((fund) => fund.positions.map((holding) => ({ holding }))),
+    );
+    const assets = [
+      ...new Set(positions.map(({ holding }) => holding.assetCat || "UNKNOWN")),
+    ];
+    return {
+      ...coverage[index],
+      ...positionTotals(positions),
+      categories: assets.map((asset) => ({
+        asset,
+        ...positionTotals(
+          positions.filter(
+            ({ holding }) => (holding.assetCat || "UNKNOWN") === asset,
+          ),
+        ),
+      })),
+      stockPositionCount: positions.filter(
+        ({ holding }) => holding.assetCat === "EC",
+      ).length,
+      derivativeCount: positions.filter(({ holding }) =>
+        /^D(IR|CR|FE|E|CO|O)$/.test(holding.assetCat || ""),
+      ).length,
+      nonLongCount: positions.filter(
+        ({ holding }) => text(holding.payoffProfile) !== "long",
+      ).length,
+    };
+  });
   const sameDate =
     new Set(portfolios.map((portfolio) => portfolio.asOf || "unknown")).size <=
     1;
@@ -162,6 +217,7 @@ export function searchFundHoldings(portfolios = [], input = {}) {
     settings,
     rows,
     coverage,
+    exposureByFund,
     totalGroups: rows.length,
     matchedFunds: matchedCounts.filter((count) => count > 0).length,
     matchedPositions: matchedCounts.reduce((total, count) => total + count, 0),
@@ -232,6 +288,13 @@ export function searchFundHoldingsCsv(result) {
     "matched_positions",
     "notes",
     "sec_source",
+    "summary_asset_category",
+    "summary_complete_usd_value",
+    "summary_known_usd_subtotal",
+    "summary_missing_values",
+    "summary_complete_nav_weight_pct",
+    "summary_known_weight_subtotal_pct",
+    "summary_missing_weights",
   ];
   const rows = [headers];
   const add = (entry) =>
@@ -247,6 +310,29 @@ export function searchFundHoldingsCsv(result) {
       ),
     );
   add({ record_type: "methodology", notes: result.methodology });
+  for (const fund of result.exposureByFund || []) {
+    for (const summary of [{ ...fund, asset: "" }, ...fund.categories]) {
+      add({
+        record_type: summary.asset ? "asset_summary" : "fund_summary",
+        fund_ticker: fund.ticker,
+        portfolio_as_of: fund.asOf,
+        filed: fund.filingDate,
+        accession: fund.accession,
+        sec_series: fund.seriesId,
+        sec_source: fund.sourceUrl,
+        matched_positions: summary.positionCount,
+        summary_asset_category: summary.asset,
+        summary_complete_usd_value: summary.value,
+        summary_known_usd_subtotal: summary.knownValue,
+        summary_missing_values: summary.missingValueCount,
+        summary_complete_nav_weight_pct: summary.pctOfNav,
+        summary_known_weight_subtotal_pct: summary.knownWeight,
+        summary_missing_weights: summary.missingWeightCount,
+        notes:
+          "All search matches within this fund only; not verified issuer exposure. Derivative fair value is not underlying exposure. No match does not prove zero exposure.",
+      });
+    }
+  }
   if (!result.sameDate)
     add({
       record_type: "warning",
