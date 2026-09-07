@@ -14,6 +14,7 @@ export const FUND_WORKSPACE_DEFAULTS = {
   reportMap: {},
   allocations: {},
   securityQuery: "",
+  securityScope: "all",
   securityAsset: "",
   securityCountry: "",
   comparisonLeft: "",
@@ -44,6 +45,7 @@ const choices = {
   direction: ["asc", "desc"],
   layout: ["table", "cards"],
   coverage: ["all", "ready", "missing", "unloaded"],
+  securityScope: ["all", "selected"],
   comparisonScope: ["all", "shared", "left", "right"],
   changeScope: ["all", "added", "removed", "changed"],
 };

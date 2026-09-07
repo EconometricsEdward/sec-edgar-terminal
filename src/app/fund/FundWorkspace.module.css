@@ -486,3 +486,50 @@
     gap: 10px;
   }
 }
+
+.hero[hidden] {
+  display: none;
+}
+.securityScope {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.securityScope button {
+  border: 1px solid var(--fund-line);
+  background: var(--fund-panel);
+  color: var(--fund-text);
+  padding: 10px 16px;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.securityScope button[aria-pressed="true"] {
+  border-color: var(--fund-gold);
+  color: var(--fund-gold);
+  background: var(--fund-raised);
+}
+.securityScope button:focus-visible {
+  outline: 2px solid var(--fund-gold);
+  outline-offset: 3px;
+}
+.optionalComparison {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  color: var(--fund-muted);
+  font-size: 0.875rem;
+}
+.optionalComparison button {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--fund-line);
+  border-radius: 8px;
+  color: var(--fund-text);
+  background: var(--fund-raised);
+}
