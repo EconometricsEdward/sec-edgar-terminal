@@ -1,6 +1,8 @@
 import { validateCompareWorkspace } from "./compareWorkspace.js";
 import { validateAnalysisRules } from "./analysisRules.js";
 import { validateAnalysisQuestions } from "./analysisQuestions.js";
+import { validateScenarioCases } from "./analysisScenarioCases.js";
+import { analysisPath } from "./analysisNotebook.js";
 import { readFilingsNotebook } from "./filingsNotebook.js";
 
 export const RESEARCH_STORAGE_EVENT = "research-storage";
@@ -141,6 +143,14 @@ function settings(value) {
     "formulaScale",
     "briefTitle",
     "comparison",
+    "scenarioModel",
+    "scenarioTab",
+    "scenarioCase",
+    "goalMode",
+    "goalTargetIncome",
+    "goalAssumedRevenue",
+    "goalAssumedMargin",
+    "goalEquityFloor",
   ])
     optionalText(value[key], `Saved setting ${key}`);
   if (value.comparison !== undefined)
@@ -163,13 +173,22 @@ function settings(value) {
     "scenarioMargin",
     "scenarioLoss",
     "scenarioFunding",
+    "scenarioVariableCost",
+    "scenarioCostChange",
+    "scenarioCashAvailable",
+    "scenarioReplacementFunding",
   ])
     requireShape(
       value[key] === undefined ||
         (typeof value[key] === "number" && Number.isFinite(value[key])),
       `Saved setting ${key} must be a number.`,
     );
-  for (const key of ["indexed", "descending"])
+  for (const key of [
+    "indexed",
+    "descending",
+    "goalOperatingSolved",
+    "goalAssetSolved",
+  ])
     requireShape(
       value[key] === undefined || typeof value[key] === "boolean",
       `Saved setting ${key} must be a flag.`,
@@ -377,6 +396,14 @@ export function validateResearchStore(key, raw) {
         });
       if (company.analysisRules !== undefined)
         validateAnalysisRules(company.analysisRules);
+      if (company.analysisScenarios !== undefined) {
+        validateScenarioCases(company.analysisScenarios, evidencePoint);
+        for (const entry of company.analysisScenarios)
+          requireShape(
+            entry.context.ticker === t,
+            "Scenario company does not match its saved company.",
+          );
+      }
       if (company.analysisQuestions !== undefined)
         validateAnalysisQuestions(company.analysisQuestions, (e) => {
           optionalText(e.label, "Question evidence label");
@@ -736,6 +763,35 @@ function entriesFor(source, data, store = {}) {
           pathWithSettings(`/analysis/${t}`, v.settings),
           v.savedAt,
           `${t}:${i}`,
+        );
+      for (const entry of c.analysisScenarios || [])
+        add(
+          "search",
+          t,
+          entry.name,
+          [
+            "Saved hypothetical scenario",
+            `${entry.context.basis} ending ${entry.context.period.end}`,
+            entry.snapshot.corporate
+              ? entry.settings.scenarioModel === "cost"
+                ? "Fixed and variable cost model"
+                : "Revenue and margin model"
+              : entry.snapshot.banking
+                ? "Balance and funding sensitivity"
+                : "Asset and equity sensitivity",
+            entry.context.asOf ? `Filings through ${entry.context.asOf}` : "",
+            entry.notes,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          analysisPath(t, {
+            ...entry.settings,
+            view: "scenarios",
+            scenarioTab: "cases",
+            scenarioCase: entry.id,
+          }),
+          entry.updatedAt,
+          `${t}:scenario:${entry.id}`,
         );
     }
     for (const [i, g] of (data.peerGroups || []).entries())

@@ -125,6 +125,66 @@
 .sourceGrid button {
   justify-self: start;
 }
+.preview {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--analysis-accent);
+  border-radius: 9px;
+  background: var(--analysis-bg);
+}
+.preview h4,
+.cashCheck h4 {
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+.preview dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 14px;
+  margin: 0 0 18px;
+}
+.preview dl > div {
+  display: grid;
+  gap: 5px;
+}
+.preview dt,
+.metrics span {
+  color: var(--analysis-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.preview dd {
+  margin: 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+.metrics > div {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--analysis-border);
+  border-radius: 8px;
+}
+.metrics button {
+  justify-self: start;
+  max-width: 100%;
+  font-size: 20px;
+  color: var(--analysis-accent);
+  font-variant-numeric: tabular-nums;
+}
+.cashCheck {
+  border-top: 1px solid var(--analysis-border);
+  padding-top: 20px;
+  margin-top: 24px;
+}
 @media (max-width: 600px) {
   .lab {
     padding: 16px;

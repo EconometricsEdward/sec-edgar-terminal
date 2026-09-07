@@ -1,292 +1,317 @@
 "use client";
-import { FlaskConical, ArrowUpRight, RotateCcw } from "lucide-react";
-import {
-  buildAnalysisScenario,
-  SCENARIO_DEFAULTS,
-} from "../../utils/analysisScenarios.js";
+import { ArrowUpRight, Check, RotateCcw } from "lucide-react";
+import { SCENARIO_LIMITS } from "../../utils/analysisScenarios.js";
+import { SCENARIO_FIELDS } from "../../utils/analysisScenarioEditing.js";
 import { analysisValue } from "../../utils/analysisNotebook.js";
-import styles from "./labs.module.css";
+import styles from "./AnalysisScenarioWorkspace.module.css";
 
 export default function AnalysisScenarioLab({
-  data,
   settings,
-  index,
+  scenario,
+  drafts,
+  errors,
+  onDraft,
+  onApply,
+  onDiscard,
   onInspect,
-  onPatch,
 }: any) {
-  const scenario = buildAnalysisScenario(data, settings, index);
   const value = (amount: any, format = "currency") =>
     analysisValue(amount, format, settings.units);
-  const control = (
-    key: string,
-    title: string,
-    min: number,
-    max: number,
-    suffix: string,
-    help: string,
-  ) => (
-    <div className={styles.assumption}>
-      <label htmlFor={`lab-${key}`}>
-        {title}
-        <span className={styles.controlValue}>
-          {scenario.settings[key] > 0 ? "+" : ""}
-          {scenario.settings[key]}
-          {suffix}
-        </span>
-      </label>
-      <input
-        id={`lab-${key}`}
-        type="range"
-        min={min}
-        max={max}
-        step={0.25}
-        value={scenario.settings[key]}
-        onChange={(e) => onPatch({ [key]: Number(e.target.value) })}
-        aria-valuetext={`${scenario.settings[key]} ${suffix === " pp" ? "percentage points" : "percent"}`}
-      />
-      <label className={styles.exactInput}>
-        Exact assumption ({suffix.trim()})
+  const dirty = Object.keys(drafts).length > 0;
+  const model = drafts.scenarioModel ?? scenario.settings.scenarioModel;
+  const control = (key: string, help: string) => {
+    const field = SCENARIO_FIELDS[key];
+    const [min, max] = SCENARIO_LIMITS[key];
+    const raw = drafts[key] ?? String(scenario.settings[key]);
+    const numeric = Number(raw);
+    return (
+      <div className={styles.control} key={key}>
+        <label htmlFor={`scenario-${key}`}>
+          {field.label} <span>({field.unit})</span>
+        </label>
         <input
-          type="number"
+          id={`scenario-${key}`}
+          type="text"
+          inputMode="decimal"
+          value={raw}
+          onChange={(e) => onDraft(key, e.target.value)}
+          aria-invalid={!!errors[key]}
+          aria-describedby={`scenario-help-${key}`}
+          autoComplete="off"
+        />
+        <input
+          type="range"
           min={min}
           max={max}
           step={0.25}
-          value={scenario.settings[key]}
-          onChange={(e) =>
-            onPatch({
-              [key]: e.target.value === "" ? 0 : Number(e.target.value),
-            })
+          value={
+            Number.isFinite(numeric) && raw.trim()
+              ? Math.min(max, Math.max(min, numeric))
+              : scenario.settings[key]
           }
+          onChange={(e) => onDraft(key, e.target.value)}
+          aria-label={`${field.label} slider`}
+          aria-valuetext={`${raw} ${field.unit}`}
         />
-      </label>
-      <p className={styles.small}>{help}</p>
-    </div>
-  );
-  const resultTable = (rows: any[]) => (
-    <div className={styles.tableScroll}>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Measure</th>
-            <th scope="col">Baseline</th>
-            <th scope="col">Hypothetical result</th>
-            <th scope="col">Change</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.key}>
-              <th scope="row">{row.label}</th>
-              <td>{value(row.baseline, row.format)}</td>
-              <td>
-                <button
-                  onClick={() => onInspect(row.selection)}
-                  aria-label={`Inspect hypothetical ${row.label.toLowerCase()}`}
-                >
-                  {value(row.selection.point.value, row.format)}
-                  <ArrowUpRight size={13} />
-                </button>
-              </td>
-              <td>
-                {Number.isFinite(row.selection.point.value) &&
-                Number.isFinite(row.baseline)
-                  ? row.format === "percent"
-                    ? `${row.selection.point.value - row.baseline >= 0 ? "+" : ""}${(row.selection.point.value - row.baseline).toFixed(2)} pp`
-                    : value(
-                        row.selection.point.value - row.baseline,
-                        row.format,
-                      )
-                  : "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-  const sources = (inputs: any[]) => (
-    <details className={styles.method}>
-      <summary>Inspect reported baseline inputs</summary>
-      <div className={styles.inputCards}>
-        {inputs.map((input) => (
-          <article key={input.key}>
-            <h3>{input.definition?.label || input.key}</h3>
-            <button
-              onClick={() =>
-                onInspect({
-                  definition: input.definition || {
-                    key: input.key,
-                    label: input.key,
-                    format: "currency",
-                  },
-                  point: input.point || {
-                    value: null,
-                    period: scenario.period,
-                    reason: input.reason,
-                    sources: [],
-                  },
-                })
-              }
-            >
-              {value(input.point?.value)}
-              <ArrowUpRight size={13} />
-            </button>
-            {input.reason && <p className={styles.small}>{input.reason}</p>}
-          </article>
-        ))}
+        <p id={`scenario-help-${key}`}>{errors[key] || help}</p>
+        {errors[key] && (
+          <small>
+            Supported range: {min} to {max} {field.unit}.
+          </small>
+        )}
       </div>
-    </details>
-  );
+    );
+  };
+  const results = (exercise: any) =>
+    exercise.reason ? (
+      <p className={styles.notice} role="status">
+        {exercise.reason}
+      </p>
+    ) : (
+      <div className={styles.tableScroll}>
+        <table>
+          <caption>
+            Committed assumptions · inspect any hypothetical result for its
+            formula and SEC inputs
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Measure</th>
+              <th scope="col">Reported baseline</th>
+              <th scope="col">Hypothetical</th>
+              <th scope="col">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {exercise.rows.map((row: any) => (
+              <tr key={row.key}>
+                <th scope="row">{row.label}</th>
+                <td>{value(row.baseline, row.format)}</td>
+                <td>
+                  <button
+                    type="button"
+                    onClick={() => onInspect(row.selection)}
+                    aria-label={`Inspect hypothetical ${row.label.toLowerCase()}`}
+                  >
+                    {value(row.selection.point.value, row.format)}
+                    <ArrowUpRight size={12} aria-hidden="true" />
+                  </button>
+                </td>
+                <td>
+                  {Number.isFinite(row.baseline) &&
+                  Number.isFinite(row.selection.point.value)
+                    ? value(
+                        row.selection.point.value - row.baseline,
+                        row.format === "percent"
+                          ? "percentagePoints"
+                          : row.format,
+                      )
+                    : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   return (
-    <section className={styles.lab} aria-labelledby="scenario-lab-heading">
+    <section
+      className={styles.editor}
+      aria-label="Scenario assumptions and results"
+    >
       <div className={styles.heading}>
         <div>
-          <p className={styles.eyebrow}>
-            <FlaskConical size={14} /> Transparent sensitivity lab
-          </p>
-          <h2 id="scenario-lab-heading">What would move the numbers?</h2>
+          <p className={styles.eyebrow}>Build a testable case</p>
+          <h3>Assumptions you can explain</h3>
         </div>
-        <button onClick={() => onPatch(SCENARIO_DEFAULTS)}>
-          <RotateCcw size={14} /> Reset assumptions
-        </button>
+        <span className={styles.badge}>
+          {dirty ? "Unapplied edits" : "Results up to date"}
+        </span>
       </div>
-      <p className={styles.intro}>
-        Start from {data.ticker}'s reported{" "}
-        {scenario.period?.label || scenario.period?.end} figures. Change a few
-        explicit assumptions and see their mechanical effect. Open any
-        hypothetical result to preserve the calculation and source evidence.
+      <p className={styles.muted}>
+        Edit assumptions, then apply them together. Every result below uses the
+        last applied values. Operating and balance-sheet exercises are
+        independent.
       </p>
-      <p className={styles.notice}>
-        Hypothetical sensitivities, not forecasts. These exercises do not model
-        probability, taxes, regulatory capital, management actions, or secondary
-        effects.
-      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onApply();
+        }}
+      >
+        {scenario.operating && (
+          <fieldset className={styles.fieldset}>
+            <legend>Operating sensitivity</legend>
+            <label className={styles.modelChoice} htmlFor="scenario-model">
+              Operating model
+              <select
+                id="scenario-model"
+                value={model}
+                onChange={(e) => onDraft("scenarioModel", e.target.value)}
+              >
+                <option value="margin">Revenue and operating margin</option>
+                <option value="cost">Fixed and variable operating costs</option>
+              </select>
+            </label>
+            <p className={styles.muted}>
+              {model === "cost"
+                ? "Implied costs are reported revenue less operating income. You choose the variable share; fixed costs hold constant before the cost-change assumption. This split is a modeling assumption."
+                : "Change revenue and add percentage points to the reported operating margin. The resulting costs are implied by those assumptions."}
+            </p>
+            <div className={styles.controls}>
+              {control(
+                "scenarioRevenue",
+                "Relative change from reported revenue; price and volume are not separated.",
+              )}
+              {model === "cost" ? (
+                <>
+                  {control(
+                    "scenarioVariableCost",
+                    "Share of implied baseline costs that moves proportionately with revenue. The remainder is fixed.",
+                  )}
+                  {control(
+                    "scenarioCostChange",
+                    "Applies to both fixed and volume-adjusted variable costs. The margin-change assumption is inactive.",
+                  )}
+                </>
+              ) : (
+                control(
+                  "scenarioMargin",
+                  "Percentage points added to operating income / revenue; distinct from a percentage change.",
+                )
+              )}
+            </div>
+          </fieldset>
+        )}
+        <fieldset className={styles.fieldset}>
+          <legend>
+            {scenario.banking
+              ? "Asset loss and bank funding"
+              : "Asset loss and shareholder equity"}
+          </legend>
+          <div className={styles.controls}>
+            {control(
+              "scenarioLoss",
+              "A new noncash write-down charged fully to shareholder equity, with no tax benefit or allowance absorption.",
+            )}
+            {scenario.banking && (
+              <>
+                {control(
+                  "scenarioFunding",
+                  "Share of baseline deposits withdrawn. Payment is limited to usable cash plus the borrowing assumption below.",
+                )}
+                {control(
+                  "scenarioCashAvailable",
+                  "Only this share of reported cash can fund withdrawals. Remaining cash stays on the balance sheet.",
+                )}
+                {control(
+                  "scenarioReplacementFunding",
+                  "Explicit new borrowing, measured against baseline deposits. It increases cash, assets and debt, not deposits or equity. Availability and interest cost are not modeled.",
+                )}
+              </>
+            )}
+          </div>
+        </fieldset>
+        <div className={styles.applyBar}>
+          <button className={styles.primary} type="submit" disabled={!dirty}>
+            <Check size={15} aria-hidden="true" />
+            Apply assumptions
+          </button>
+          <button type="button" disabled={!dirty} onClick={onDiscard}>
+            <RotateCcw size={14} aria-hidden="true" />
+            Discard edits
+          </button>
+          <span>
+            {dirty
+              ? "Unsaved assumption drafts do not affect calculations or exports."
+              : "You can share these applied assumptions using the page URL."}
+          </span>
+        </div>
+      </form>
       {scenario.operating && (
         <section
-          className={styles.exercise}
-          aria-labelledby="operating-sensitivity-heading"
+          className={styles.results}
+          aria-labelledby="scenario-operating-results"
         >
-          <div className={styles.heading}>
-            <div>
-              <p className={styles.eyebrow}>
-                Exercise 01 · Operating sensitivity
-              </p>
-              <h3 id="operating-sensitivity-heading">
-                Revenue × operating margin
-              </h3>
-            </div>
-            <span className={styles.badge}>Selected reporting duration</span>
-          </div>
-          <div className={styles.assumptions}>
-            {control(
-              "scenarioRevenue",
-              "Revenue change",
-              -50,
-              50,
-              "%",
-              "Relative change from reported revenue. No price/volume attribution is assumed.",
-            )}
-            {control(
-              "scenarioMargin",
-              "Operating margin change",
-              -20,
-              20,
-              " pp",
-              "Added to reported operating income / revenue. Costs are implied; net income and cash flow are not modeled.",
-            )}
-          </div>
-          {scenario.operating.reason ? (
-            <p className={styles.notice} role="status">
-              {scenario.operating.reason}
+          <h3 id="scenario-operating-results">
+            Operating results ·{" "}
+            {scenario.settings.scenarioModel === "cost"
+              ? "cost model"
+              : "margin model"}
+          </h3>
+          {results(scenario.operating)}
+          {scenario.operating.costs && (
+            <p className={styles.muted}>
+              Baseline fixed costs: {value(scenario.operating.costs.fixed)} ·
+              variable costs: {value(scenario.operating.costs.variable)} ·
+              hypothetical total costs:{" "}
+              {value(scenario.operating.costs.hypothetical)}
             </p>
-          ) : (
-            resultTable(scenario.operating.rows)
           )}
-          {sources(scenario.operating.inputs)}
         </section>
       )}
       <section
-        className={styles.exercise}
-        aria-labelledby="balance-sensitivity-heading"
+        className={styles.results}
+        aria-labelledby="scenario-balance-results"
       >
-        <div className={styles.heading}>
-          <div>
-            <p className={styles.eyebrow}>
-              Exercise {scenario.corporate ? "02" : "01"} · Balance sensitivity
-            </p>
-            <h3 id="balance-sensitivity-heading">
-              {scenario.banking
-                ? "Asset loss and cash-funded deposit withdrawals"
-                : "Incremental asset loss and shareholder equity"}
-            </h3>
-          </div>
-          <span className={styles.badge}>Static ending balances</span>
-        </div>
-        <div className={styles.assumptions}>
-          {control(
-            "scenarioLoss",
-            "Incremental loss / baseline assets",
-            0,
-            20,
-            "%",
-            "A new noncash asset write-down charged fully to shareholder equity. No tax benefit or absorption by existing allowances.",
-          )}
-          {scenario.banking &&
-            control(
-              "scenarioFunding",
-              "Deposit withdrawal",
-              0,
-              50,
-              "%",
-              "Share of reported deposits paid entirely from reported cash. No securities sales, new funding, or withdrawal probabilities are assumed.",
-            )}
-        </div>
-        {(scenario.balance.loss !== null || scenario.banking) && (
-          <div className={styles.assumptionTotals}>
-            <span>
-              Assumed loss <strong>{value(scenario.balance.loss)}</strong>
-            </span>
-            {scenario.banking && (
+        <h3 id="scenario-balance-results">Balance-sheet results</h3>
+        <div className={styles.totals}>
+          <span>
+            Assumed asset loss <strong>{value(scenario.balance.loss)}</strong>
+          </span>
+          {scenario.banking && (
+            <>
               <span>
-                Assumed cash payment{" "}
+                Usable starting cash{" "}
+                <strong>{value(scenario.balance.usableCash)}</strong>
+              </span>
+              <span>
+                New borrowing{" "}
+                <strong>{value(scenario.balance.borrowing)}</strong>
+              </span>
+              <span>
+                Deposit payments{" "}
                 <strong>{value(scenario.balance.withdrawal)}</strong>
               </span>
-            )}
-          </div>
+            </>
+          )}
+        </div>
+        {results(scenario.balance)}
+        {(scenario.balance.fundingGap ?? 0) > 0 && (
+          <p className={styles.notice}>
+            Unfunded withdrawal amount:{" "}
+            <strong>{value(scenario.balance.fundingGap)}</strong>. Ending
+            balances are unavailable until funding assumptions cover the
+            payment.
+          </p>
         )}
-        {scenario.balance.reason ? (
-          <div className={styles.notice} role="status">
-            <p>{scenario.balance.reason}</p>
-            {(scenario.balance.fundingGap ?? 0) > 0 && (
-              <p>
-                Cash shortfall under this assumption:{" "}
-                <strong>{value(scenario.balance.fundingGap)}</strong>.
-                Hypothetical ending balances are withheld.
-              </p>
-            )}
-          </div>
-        ) : (
-          resultTable(scenario.balance.rows)
+        {scenario.banking && !scenario.balance.funding?.available && (
+          <p className={styles.muted}>{scenario.balance.funding?.reason}</p>
         )}
-        <p className={styles.small}>{scenario.balance.note}</p>
-        {sources(scenario.balance.inputs)}
+        <p className={styles.muted}>{scenario.balance.note}</p>
       </section>
+      {scenario.diagnostics
+        .filter((item: any) => item.status !== "error")
+        .map((item: any) => (
+          <p key={item.key} className={styles.notice}>
+            {item.message}
+          </p>
+        ))}
       <details className={styles.method}>
-        <summary>Assumptions, limits, and how to use these results</summary>
+        <summary>Read the modeling boundaries</summary>
         <p>
-          Each exercise is independent. Operating sensitivity does not flow into
-          the balance sheet exercise. No balance is replenished automatically,
-          and a missing input never becomes zero. Negative hypothetical equity
-          is displayed as arithmetic, not translated into a default probability
-          or solvency determination.
+          These are hypothetical arithmetic exercises, not forecasts or
+          probabilities. Operating income does not flow into the separate
+          balance exercise. Neither model estimates net income, cash flow,
+          taxes, interest expense, collateral needs, borrowing capacity,
+          management responses, covenant compliance or regulatory capital.
+          Equity means reported shareholder equity. Negative equity is shown as
+          arithmetic.
         </p>
         <p>
-          The shareholder equity / assets ratio uses the same reported balances
-          as the baseline and is not a regulatory capital calculation. Reported
-          cash is an upper-bound input to this simple exercise; the model does
-          not verify that the full amount is unrestricted or available for
-          withdrawals. Saved evidence explicitly retains the hypothetical label,
-          assumptions, selected period, and original SEC inputs.
+          Control ranges limit the exercise, not the range of possible real
+          outcomes. An unavailable input remains unavailable. Inspect results to
+          review each equation and the original SEC source inputs.
         </p>
       </details>
     </section>

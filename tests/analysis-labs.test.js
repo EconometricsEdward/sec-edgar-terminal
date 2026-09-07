@@ -9,6 +9,7 @@ import {
 import {
   buildAnalysisScenario,
   normalizeScenarioSettings,
+  SCENARIO_DEFAULTS,
 } from "../src/utils/analysisScenarios.js";
 
 const period = {
@@ -161,10 +162,11 @@ test("Formula inputs are bounded keys and whitelisted operators, never executabl
       scenarioFunding: 12.345,
     }),
     {
+      ...SCENARIO_DEFAULTS,
       scenarioRevenue: 0,
       scenarioMargin: -20,
       scenarioLoss: 20,
-      scenarioFunding: 12.35,
+      scenarioFunding: 12.345,
     },
   );
 });
@@ -266,8 +268,15 @@ test("Lab operands distinguish opening balances from ending balances and scenari
   );
   assert.equal(formula.inputs[0].basis, "opening balance");
   assert.match(formula.point.reason, /measurement basis/);
+  const independent = buildAnalysisScenario(company, {}, 0).balance;
+  assert.equal(independent.reason, null);
+  assert.match(independent.funding.reason, /ending balances/);
+  assert.equal(
+    independent.rows.find((row) => row.key === "Assets").selection.point.value,
+    2000,
+  );
   assert.match(
-    buildAnalysisScenario(company, {}, 0).balance.reason,
+    buildAnalysisScenario(company, { scenarioFunding: 1 }, 0).balance.reason,
     /ending balances/,
   );
   const ratio = buildFormulaPoint(

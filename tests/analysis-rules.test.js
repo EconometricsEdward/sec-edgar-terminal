@@ -23,6 +23,7 @@ const fixture = (format = "currency") => ({
         {
           tag: "NetIncomeLoss",
           unit: "USD",
+          value: i ? 100 : 80,
           start: period.start,
           end: period.end,
           filed: `${2026 - i}-02-01`,
