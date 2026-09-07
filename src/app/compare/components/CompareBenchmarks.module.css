@@ -1,0 +1,119 @@
+.notice {
+  border: 1px solid var(--compare-warning);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: var(--compare-warning);
+}
+.summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 24px;
+}
+.summary > div {
+  border: 1px solid var(--compare-border);
+  border-radius: 10px;
+  background: var(--compare-raised);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.summary span {
+  color: var(--compare-muted);
+  font-size: 12px;
+}
+.summary strong {
+  font-size: clamp(18px, 1.5vw, 24px);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.distribution {
+  border: 1px solid var(--compare-border);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 22px;
+}
+.distributionHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.distributionHead span,
+.caption {
+  color: var(--compare-muted);
+  font-size: 12px;
+}
+.plotRow {
+  display: grid;
+  grid-template-columns: 110px minmax(40px, 1fr) 150px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.plotRow > span {
+  font-size: 12px;
+}
+.plotRow > button {
+  justify-self: end;
+}
+.track {
+  position: relative;
+  background: var(--compare-border);
+  height: 2px;
+}
+.peerDot,
+.focusDot {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  top: -4.5px;
+  transform: translateX(-50%);
+  background: var(--compare-link);
+}
+.focusDot {
+  background: var(--compare-accent);
+  width: 14px;
+  height: 14px;
+  top: -6px;
+}
+.median {
+  position: absolute;
+  top: -13px;
+  height: 28px;
+  border-left: 2px dashed var(--compare-muted);
+}
+.quartile {
+  position: absolute;
+  height: 20px;
+  top: -9px;
+  background: color-mix(in srgb, var(--compare-link) 18%, transparent);
+}
+.caption {
+  margin: 22px 0 0 !important;
+}
+@media (max-width: 900px) {
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .summary {
+    grid-template-columns: 1fr;
+  }
+  .distribution {
+    padding: 13px;
+  }
+  .plotRow {
+    grid-template-columns: 80px minmax(35px, 1fr) 94px;
+    gap: 8px;
+  }
+  .plotRow > button {
+    font-size: 11px;
+    padding: 8px 2px;
+  }
+}

@@ -1,0 +1,72 @@
+.precision {
+  background: var(--compare-bg);
+  border: 1px solid var(--compare-border);
+  border-radius: 7px;
+  padding: 12px;
+  display: grid;
+  gap: 5px;
+}
+.precision span {
+  color: var(--compare-muted);
+  font-size: 11px;
+}
+.precision code {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  color: var(--compare-text);
+}
+.notice {
+  padding: 10px;
+  background: var(--compare-raised);
+  border-left: 2px solid var(--compare-accent);
+  color: var(--compare-text);
+}
+.share {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 9px;
+}
+.share button,
+.share a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--compare-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--compare-bg);
+  color: var(--compare-link);
+  font-size: 11px;
+}
+.share a {
+  border: 0;
+  padding-left: 0;
+}
+.share button:focus-visible,
+.share a:focus-visible {
+  outline: 2px solid var(--compare-link);
+  outline-offset: 3px;
+}
+.feedback {
+  margin: 12px 0;
+  padding: 10px;
+  background: var(--compare-bg);
+  color: var(--compare-text);
+}
+.feedback textarea {
+  width: 100%;
+  resize: vertical;
+  background: var(--compare-panel);
+  border: 1px solid var(--compare-border);
+  color: var(--compare-text);
+  padding: 8px;
+  font: 11px/1.6 monospace;
+}
+.setting {
+  display: contents;
+}
+.sourceValue {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

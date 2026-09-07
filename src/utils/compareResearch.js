@@ -11,9 +11,10 @@ import {
 } from "./xbrlPeriods.js";
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
 import { classifyIndustry } from "./industry.js";
+import { comparePointQuality, comparePairQuality } from "./compareQuality.js";
 
-export const COMPARE_VERSION = `compare-v1:${FINANCIAL_DATA_VERSION}`;
-export const MAX_COMPARE_COMPANIES = 5;
+export const COMPARE_VERSION = `compare-v2:${FINANCIAL_DATA_VERSION}`;
+export const MAX_COMPARE_COMPANIES = 12;
 const raw = (key, label, lenses, category = "Scale") => ({
   key,
   label,
@@ -162,14 +163,17 @@ export const METRIC_BY_KEY = Object.fromEntries(
 
 export function companyLens(sic) {
   const code = Number(sic);
-  // Broker-dealers can have banking subsidiaries. Their actual source coverage
-  // is retained; this lens is not a claim of identical business models.
-  if (code >= 6000 && code <= 6299) return "banking";
+  // Securities brokers do not automatically receive deposit-taking-bank ratios.
+  if (code >= 6000 && code <= 6199) return "banking";
   return classifyIndustry(sic) === "insurance" ? "insurance" : "corporate";
 }
 export function inferLens(companies) {
   const groups = new Set(
-    companies.filter((c) => c.data).map((c) => c.data.lens),
+    companies
+      .filter((c) => c.data)
+      .map((c) =>
+        c.data.businessModel === "broker-dealer" ? "common" : c.data.lens,
+      ),
   );
   return groups.size === 1 ? [...groups][0] : "common";
 }
@@ -238,6 +242,16 @@ function derived(metric, period, points, beginning) {
     return unavailable(
       period,
       "One or more required reported inputs are missing.",
+    );
+  const inputIssue = points
+    .map((point, index) =>
+      comparePointQuality(point, metric.inputs[index], period),
+    )
+    .find((quality) => !quality.valid);
+  if (inputIssue)
+    return unavailable(
+      period,
+      `A required input is incompatible: ${inputIssue.reason}`,
     );
   const [a, b, c] = points.map((p) => p.value);
   const factor =
@@ -378,6 +392,14 @@ export function buildCompareCompany(
     cik: company.cik,
     sic: company.sic,
     lens,
+    businessModel:
+      Number(company.sic) >= 6200 && Number(company.sic) <= 6299
+        ? "broker-dealer"
+        : lens,
+    lensNote:
+      Number(company.sic) >= 6200 && Number(company.sic) <= 6299
+        ? "Securities brokers use common financials by default. Deposit-taking-bank ratios are not assumed to describe their business model."
+        : null,
     basis,
     asOf,
     observedAt: new Date().toISOString(),
@@ -465,63 +487,76 @@ export function median(values) {
 }
 export function metricComparison(entries, key, benchmark = "median") {
   const metric = METRIC_BY_KEY[key];
-  const cells = entries.map((c) => ({
-    ticker: c.ticker,
-    cik: c.data?.cik,
-    name: c.data?.name,
-    period: c.period,
-    point: c.index >= 0 ? c.data.metrics[key]?.[c.index] : null,
-    status: c.error
-      ? "fetch failed"
-      : c.loading
-        ? "loading"
-        : c.period
-          ? "reviewed"
-          : "period unavailable",
-  }));
+  const cells = entries.map((c) => {
+    const point = c.index >= 0 ? c.data?.metrics[key]?.[c.index] : null;
+    return {
+      ticker: c.ticker,
+      cik: c.data?.cik,
+      name: c.data?.name,
+      period: c.period,
+      point,
+      quality: comparePointQuality(point, key, c.period),
+      status: c.error
+        ? "fetch failed"
+        : c.loading
+          ? "loading"
+          : c.period
+            ? "reviewed"
+            : "period unavailable",
+    };
+  });
   const available = cells.filter((c) => Number.isFinite(c.point?.value));
-  const ends = available.map((c) => c.period.end).sort();
-  const durations = available
-    .map((c) =>
-      c.period.start ? daysBetween(c.period.start, c.period.end) + 1 : null,
-    )
+  const compatible = available.filter((c) => c.quality.valid);
+  const ends = compatible.map((c) => c.period.end).sort();
+  const durations = compatible
+    .map((c) => c.quality.durationDays)
     .filter(Number.isFinite);
+  const basisMismatch =
+    new Set(compatible.map((c) => c.period.kind || "unknown")).size > 1;
   const periodMismatch =
     ends.length > 1 &&
     (daysBetween(ends[0], ends.at(-1)) > 45 ||
       (durations.length > 1 &&
         Math.max(...durations) - Math.min(...durations) > 14));
-  const reason = periodMismatch
-    ? "Reporting dates differ by more than 45 days or durations by more than 14 days."
-    : available.length < 2
-      ? "At least two comparable issuers are required."
-      : null;
+  const reason = basisMismatch
+    ? "Reporting bases differ; annual, quarterly and trailing-year observations cannot enter the same benchmark."
+    : periodMismatch
+      ? "Reporting dates differ by more than 45 days or durations by more than 14 days."
+      : compatible.length < 2
+        ? "At least two comparable issuers are required."
+        : null;
   const eligible = !reason;
   const peerMedian = eligible
-    ? median(available.map((c) => c.point.value))
+    ? median(compatible.map((c) => c.point.value))
     : null;
   const reference = eligible
     ? benchmark === "median"
       ? peerMedian
-      : (available.find((c) => c.ticker === benchmark)?.point.value ?? null)
+      : (compatible.find((c) => c.ticker === benchmark)?.point.value ?? null)
     : null;
+  const definitionsDiffer =
+    new Set(compatible.map((c) => c.quality.concepts.join("|"))).size > 1;
   return {
     metric,
     cells: cells.map((c) => ({
       ...c,
       delta:
-        reference != null && c.point?.value != null
-          ? c.point.value - reference
-          : null,
+        reference != null && c.quality.valid ? c.point.value - reference : null,
       rank:
-        eligible && c.point?.value != null
-          ? 1 + available.filter((v) => v.point.value > c.point.value).length
+        eligible && c.quality.valid
+          ? 1 + compatible.filter((v) => v.point.value > c.point.value).length
           : null,
     })),
     count: available.length,
+    eligibleCount: compatible.length,
+    excludedCount: available.length - compatible.length,
     total: cells.length,
     peerMedian,
     reference,
+    definitionsDiffer,
+    definitionNote: definitionsDiffer
+      ? "Source concepts differ across these issuers. Review their definitions; date compatibility does not establish identical accounting scope."
+      : null,
     reason:
       reason ||
       (reference == null
@@ -547,7 +582,7 @@ export function growthBetween(current, prior, format = "currency") {
 }
 export function historicGrowth(company, key, index) {
   const points = company.metrics[key] || [];
-  const current = points[index];
+  const current = index >= 0 ? points[index] : null;
   if (!current)
     return {
       yoy: { value: null, reason: "No current observation." },
@@ -567,16 +602,24 @@ export function historicGrowth(company, key, index) {
         ) <= 16,
     );
   const metric = METRIC_BY_KEY[key];
+  const yoyQuality = comparePairQuality(current, prior, key);
+  const cagrQuality = comparePairQuality(current, start, key);
   const elapsed = start
     ? daysBetween(start.period.end, current.period.end) / 365.25
     : null;
   const cagr =
-    metric.format === "currency" && start?.value > 0 && current.value > 0
+    metric.format === "currency" &&
+    cagrQuality.valid &&
+    start?.value > 0 &&
+    current.value > 0
       ? (Math.pow(current.value / start.value, 1 / elapsed) - 1) * 100
       : null;
   return {
-    yoy: growthBetween(current, prior, metric.format),
+    yoy: yoyQuality.valid
+      ? growthBetween(current, prior, metric.format)
+      : { value: null, reason: yoyQuality.reason },
     cagr,
+    cagrReason: cagrQuality.valid ? null : cagrQuality.reason,
     prior,
     start,
   };
@@ -589,11 +632,11 @@ export function trendSeries(
   { basis = "annual", years = 5, mode = "absolute" } = {},
 ) {
   const allPoints = entries
-    .filter((c) => c.data)
+    .filter((c) => c.data && c.period && c.index >= 0)
     .map((c) => ({
       ...c,
       points: (c.data.metrics[key] || []).filter(
-        (p) => !c.period || p.period.end <= c.period.end,
+        (p) => p.period.end <= c.period.end,
       ),
     }));
   const observed = [
@@ -625,7 +668,19 @@ export function trendSeries(
     const points = allPoints.map((c) =>
       c.points.find((p) => periodBucket(p.period, basis) === b),
     );
-    if (!points.length || !points.every((p) => p?.value > 0)) return false;
+    if (
+      !points.length ||
+      !points.every((p) => p?.value > 0 && comparePointQuality(p, key).valid)
+    )
+      return false;
+    const durations = points
+      .map((p) => comparePointQuality(p, key).durationDays)
+      .filter(Number.isFinite);
+    if (
+      durations.length > 1 &&
+      Math.max(...durations) - Math.min(...durations) > 14
+    )
+      return false;
     const dates = points.map((p) => p.period.end).sort();
     return daysBetween(dates[0], dates.at(-1)) <= 45;
   });
@@ -640,7 +695,10 @@ export function trendSeries(
       );
       row[c.ticker] =
         mode === "indexed"
-          ? sharedBase && bucket >= sharedBase && point?.value != null
+          ? sharedBase &&
+            bucket >= sharedBase &&
+            point?.value != null &&
+            comparePairQuality(point, base, key).valid
             ? (point.value / base.value) * 100
             : null
           : (point?.value ?? null);
@@ -654,7 +712,7 @@ export function trendSeries(
     note:
       mode === "indexed"
         ? sharedBase
-          ? `100 = ${sharedBase}; first shared positive observation with reporting ends within 45 days. Earlier points are omitted.`
+          ? `100 = ${sharedBase}; first shared positive observation with reporting ends within 45 days and durations within 14 days. Incompatible observations remain gaps.`
           : "No shared positive base with comparable reporting dates exists; indexing is unavailable."
         : "Gaps remain gaps. Calendar buckets group reporting ends; actual reporting dates appear in the data table.",
   };

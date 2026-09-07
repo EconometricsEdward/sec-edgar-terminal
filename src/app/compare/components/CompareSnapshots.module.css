@@ -1,0 +1,116 @@
+.capture,
+.controls {
+  display: flex;
+  gap: 14px;
+  align-items: end;
+  flex-wrap: wrap;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--compare-border);
+}
+.capture label,
+.controls label {
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+  flex: 1;
+  color: var(--compare-muted);
+  font-size: 12px;
+}
+.capture input,
+.controls select {
+  border: 1px solid var(--compare-border);
+  background: var(--compare-bg);
+  color: var(--compare-text);
+  border-radius: 7px;
+  padding: 10px 12px;
+  min-height: 42px;
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+}
+.capture small {
+  flex-basis: 100%;
+}
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.buttons button,
+.undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--compare-border);
+  background: var(--compare-raised);
+  color: var(--compare-text);
+  padding: 9px 12px;
+  border-radius: 7px;
+}
+.context,
+.notice,
+.empty {
+  margin: 16px 24px !important;
+  color: var(--compare-muted);
+  font-size: 13px;
+}
+.notice {
+  padding: 12px;
+  background: var(--compare-raised);
+  border-left: 3px solid var(--compare-accent);
+  color: var(--compare-text);
+}
+.undo {
+  margin: 0 24px 16px;
+}
+.summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 24px 16px;
+}
+.summary button {
+  border: 1px solid var(--compare-border);
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: var(--compare-bg);
+  color: var(--compare-muted);
+  font-size: 11px;
+}
+.summary button[aria-pressed="true"] {
+  border-color: var(--compare-accent);
+  color: var(--compare-text);
+}
+.summary strong {
+  color: var(--compare-accent);
+  margin-right: 3px;
+}
+.capture input:focus-visible,
+.controls select:focus-visible,
+.buttons button:focus-visible,
+.undo:focus-visible,
+.summary button:focus-visible {
+  outline: 2px solid var(--compare-link);
+  outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .capture,
+  .controls {
+    padding: 16px;
+  }
+  .capture label,
+  .controls label {
+    min-width: 100%;
+  }
+  .context,
+  .notice,
+  .empty {
+    margin: 16px !important;
+  }
+  .summary {
+    padding: 0 16px 16px;
+  }
+  .buttons {
+    width: 100%;
+  }
+}

@@ -1,0 +1,76 @@
+.mode {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 240px;
+  max-width: 100%;
+}
+.description {
+  color: var(--compare-muted);
+  padding: 0 22px;
+  font-size: 12px;
+}
+.track {
+  height: 5px;
+  background: var(--compare-border);
+  max-width: 180px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.track span {
+  display: block;
+  height: 100%;
+  background: var(--compare-link);
+}
+.track span.negative {
+  background: var(--compare-accent);
+}
+button.raw {
+  background: transparent;
+  padding: 3px 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--compare-muted);
+  font-size: 11px;
+  text-align: left;
+}
+button.raw:hover {
+  color: var(--compare-link);
+}
+.definitions {
+  border-top: 1px solid var(--compare-border);
+  padding: 18px 22px;
+  font-size: 12px;
+}
+.definitions summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.definitionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+.definitionGrid > div {
+  border: 1px solid var(--compare-border);
+  padding: 14px;
+  border-radius: 8px;
+  min-width: 0;
+}
+.definitionGrid small {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .mode {
+    min-width: 0;
+    width: 100%;
+  }
+  .description {
+    padding: 0 14px;
+  }
+  .definitions {
+    padding: 14px;
+  }
+}

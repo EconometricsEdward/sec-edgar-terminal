@@ -23,6 +23,11 @@ import {
   NotebookPen,
   Loader2,
   CheckCircle2,
+  ShieldCheck,
+  History,
+  Target,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import { TickerContext } from "../../../contexts/TickerContext";
 import { loadClassifiedTickerMap } from "../../../utils/tickerMapLoader.js";
@@ -31,6 +36,7 @@ import {
   COMPARE_METRICS,
   METRIC_BY_KEY,
   COMPARE_VERSION,
+  MAX_COMPARE_COMPANIES,
   inferLens,
   defaultMetrics,
   comparisonSelection,
@@ -50,6 +56,19 @@ import {
   comparisonPin,
   exportCompareCsv,
 } from "../../../utils/compareNotebook.js";
+import { RESEARCH_STORAGE_EVENT } from "../../../utils/researchVault.js";
+import { planComparePeers } from "../../../utils/compareWorkspace.js";
+import { researchMetricComparison } from "../../../utils/compareBenchmarks.js";
+import {
+  readCompareEvidencePointer,
+  resolveCompareEvidencePointer,
+} from "../../../utils/compareEvidenceLinks.js";
+import CompareQualityDesk from "../components/CompareQualityDesk";
+import CompareBenchmarks from "../components/CompareBenchmarks";
+import CompareMovements from "../components/CompareMovements";
+import CompareCommonSize from "../components/CompareCommonSize";
+import CompareFormula from "../components/CompareFormula";
+import CompareSnapshots from "../components/CompareSnapshots";
 import CompareTable from "../components/CompareTable";
 import { CompareTrends, CompareMap } from "../components/CompareCharts";
 import CompareInspector from "../components/CompareInspector";
@@ -69,12 +88,15 @@ export type { PreloadedCompany } from "../compareTypes";
 const LENSES = {
   auto: "Automatic lens",
   common: "Common financials",
-  banking: "Banks & brokers",
+  banking: "Bank financials",
   corporate: "Corporate financials",
   insurance: "Insurance",
 };
 const VIEWS = [
   { key: "table", label: "Comparison", icon: Table2 },
+  { key: "benchmarks", label: "Focus & peers", icon: Target },
+  { key: "changes", label: "Changes", icon: History },
+  { key: "quality", label: "Comparability", icon: ShieldCheck },
   { key: "trends", label: "Trends & growth", icon: TrendingUp },
   { key: "map", label: "Peer map", icon: ScatterChart },
   { key: "notebook", label: "Research notebook", icon: NotebookPen },
@@ -109,6 +131,11 @@ export default function CompareClient({
   const [saveName, setSaveName] = useState("");
   const [showSave, setShowSave] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [groupMode, setGroupMode] = useState("replace");
+  const [notebookOpened, setNotebookOpened] = useState(false);
+  const [pointer, setPointer] = useState<any>(null);
+  const [pointerResolved, setPointerResolved] = useState(false);
+  const colorMap = useRef(new Map<string, string>());
   const pageRef = useRef<HTMLDivElement>(null);
   const cache = useRef(new Map<string, any>());
   const peerKey = tickers.join(",");
@@ -123,6 +150,8 @@ export default function CompareClient({
       ),
     );
     setSettings(readCompareUrl(window.location.search));
+    setPointer(readCompareEvidencePointer(window.location.search));
+    setPointerResolved(false);
     try {
       setNotebook(
         parseCompareNotebook(localStorage.getItem(COMPARE_STORAGE_KEY)),
@@ -140,6 +169,8 @@ export default function CompareClient({
         ),
       );
       setSettings(readCompareUrl(window.location.search));
+      setPointer(readCompareEvidencePointer(window.location.search));
+      setPointerResolved(false);
       setEvidence(null);
     };
     const storage = (event: StorageEvent) => {
@@ -152,17 +183,46 @@ export default function CompareClient({
           );
         }
     };
+    const restored = () => {
+      try {
+        setNotebook(
+          parseCompareNotebook(localStorage.getItem(COMPARE_STORAGE_KEY)),
+        );
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? e.message
+            : "Restored notebook could not be read.",
+        );
+      }
+    };
+    window.addEventListener(RESEARCH_STORAGE_EVENT, restored);
     window.addEventListener("popstate", pop);
     window.addEventListener("storage", storage);
     return () => {
+      window.removeEventListener(RESEARCH_STORAGE_EVENT, restored);
       window.removeEventListener("popstate", pop);
       window.removeEventListener("storage", storage);
     };
   }, []);
   useEffect(() => {
-    if (ready)
-      window.history.replaceState(null, "", comparePath(tickers, settings));
-  }, [ready, tickers, settings]);
+    if (ready) {
+      const url = new URL(
+        comparePath(tickers, settings),
+        window.location.origin,
+      );
+      if (pointer)
+        for (const [key, value] of new URLSearchParams(
+          window.location.search,
+        )) {
+          if (key.startsWith("obs")) url.searchParams.set(key, value);
+        }
+      window.history.replaceState(null, "", url.pathname + url.search);
+    }
+  }, [ready, tickers, settings, pointer]);
+  useEffect(() => {
+    if (settings.view === "notebook") setNotebookOpened(true);
+  }, [settings.view]);
   useEffect(() => {
     const page = pageRef.current,
       header = document.querySelector("body > div > header"),
@@ -206,10 +266,19 @@ export default function CompareClient({
       if (old && Date.now() - Date.parse(old.observedAt) > 300000)
         cache.current.delete(cacheKey(ticker));
     }
+    for (const ticker of peers)
+      if (!colorMap.current.has(ticker)) {
+        const used = new Set(colorMap.current.values());
+        colorMap.current.set(
+          ticker,
+          COLORS.find((color) => !used.has(color)) ||
+            COLORS[colorMap.current.size % COLORS.length],
+        );
+      }
     setCompanies(
-      peers.map((ticker, index) => ({
+      peers.map((ticker) => ({
         ticker,
-        color: COLORS[index % COLORS.length],
+        color: colorMap.current.get(ticker),
         data: cache.current.get(cacheKey(ticker)) || null,
         error: null,
         loading: !cache.current.has(cacheKey(ticker)),
@@ -273,7 +342,15 @@ export default function CompareClient({
       normalizeCompareSettings({ ...previous, ...patch }),
     );
     setEvidence(null);
+    setPointer(null);
   }, []);
+  const inspectEvidence = useCallback(
+    (item: CompareEvidence) => {
+      setEvidence({ ...item, settings: item.settings || settings });
+      setPointer(null);
+    },
+    [settings],
+  );
   const mutate = useCallback((change: (n: any) => any) => {
     try {
       setNotebook(writeCompareNotebook(localStorage, change));
@@ -309,6 +386,15 @@ export default function CompareClient({
     () => comparisonSelection(companies, settings),
     [companies, settings],
   );
+  useEffect(() => {
+    const active = selection.entries;
+    if (!active.length) return;
+    if (!active.some((entry) => entry.ticker === settings.focus)) {
+      setSettings((previous) =>
+        normalizeCompareSettings({ ...previous, focus: active[0].ticker }),
+      );
+    }
+  }, [selection.entries, settings.focus]);
   const entries = useMemo(
     () =>
       settings.sort === "peers"
@@ -360,18 +446,18 @@ export default function CompareClient({
       .slice(0, 6) as any[];
   }, [input, tickerMap, tickers]);
   const addTickers = (value: string | string[]) => {
-    const additions = normalizeCompareTickers(value);
-    if (!additions.length) {
-      setError("Enter a ticker or choose a company suggestion.");
+    const plan = planComparePeers(
+      tickers,
+      value,
+      "append",
+      MAX_COMPARE_COMPANIES,
+    );
+    if (plan.error) {
+      setError(plan.error);
       return;
     }
-    if ([...new Set([...tickers, ...additions])].length > 5) {
-      setError(
-        "This workspace supports five issuers. Remove an issuer before adding another.",
-      );
-      return;
-    }
-    setTickers((old) => normalizeCompareTickers([...old, ...additions]));
+    setTickers(plan.tickers);
+    setPointer(null);
     setInput("");
     setFocused(false);
     setError("");
@@ -385,7 +471,17 @@ export default function CompareClient({
     else addTickers(input);
   };
   const preset = (group: any) => {
-    setTickers(normalizeCompareTickers(group.tickers));
+    const plan = planComparePeers(
+      tickers,
+      group.tickers,
+      groupMode,
+      MAX_COMPARE_COMPANIES,
+    );
+    if (plan.error) {
+      setError(plan.error);
+      return;
+    }
+    setTickers(plan.tickers);
     update({
       excluded: [],
       benchmark: "median",
@@ -423,7 +519,11 @@ export default function CompareClient({
   };
   const saveEvidence = () => {
     if (!evidence?.cell.point || !evidence.cell.period) return;
-    const pin = comparisonPin(evidence.cell, evidence.metric, settings);
+    const pin = comparisonPin(
+      evidence.cell,
+      evidence.metric,
+      evidence.settings || settings,
+    );
     const saved = mutate((n) => {
       if (n.pins.some((p: any) => p.id === pin.id)) return n;
       if (n.pins.length >= 100)
@@ -439,7 +539,7 @@ export default function CompareClient({
   };
   const exportTable = () => {
     const pins = metrics.flatMap((metric) =>
-      metricComparison(entries, metric.key, settings.benchmark).cells.map(
+      researchMetricComparison(entries, metric.key, settings).cells.map(
         (cell) => ({
           ...comparisonPin(
             {
@@ -490,7 +590,50 @@ export default function CompareClient({
     0,
   );
   const totalCells = entries.length * metrics.length;
-  const roe = metricComparison(entries, "roe");
+  const roe = researchMetricComparison(entries, "roe", settings);
+
+  useEffect(() => {
+    if (
+      !pointer ||
+      pointerResolved ||
+      !ready ||
+      !entries.length ||
+      entries.some((entry) => entry.loading)
+    )
+      return;
+    const resolved = resolveCompareEvidencePointer(
+      pointer,
+      entries,
+      metrics,
+      settings,
+    );
+    setPointerResolved(true);
+    if (resolved.evidence) setEvidence(resolved.evidence);
+    else
+      setMessage(
+        resolved.reason ||
+          "The linked observation could not be verified. Inspect the current evidence before using it.",
+      );
+  }, [pointer, pointerResolved, ready, entries, metrics, settings]);
+  const loadSaved = (item: any) => {
+    cache.current.clear();
+    setRetry((value) => value + 1);
+    setTickers(normalizeCompareTickers(item.tickers));
+    update({ ...normalizeCompareSettings(item.settings), view: "table" });
+    setSaveName(item.name);
+    setMessage(`Loaded ${item.name}; SEC data will refresh as needed.`);
+  };
+  const reorderPeer = (index: number, direction: number) => {
+    setTickers((old) => {
+      const next = [...old];
+      [next[index], next[index + direction]] = [
+        next[index + direction],
+        next[index],
+      ];
+      return next;
+    });
+    update({ sort: "peers" });
+  };
 
   return (
     <div ref={pageRef} className={styles.page}>
@@ -515,7 +658,7 @@ export default function CompareClient({
         </div>
       </div>
       <section
-        className={styles.controls}
+        className={`${styles.controls} ${settings.view === "notebook" ? styles.staticControls : ""}`}
         data-compare-controls
         aria-label="Comparison controls"
       >
@@ -569,7 +712,9 @@ export default function CompareClient({
             <button
               className={styles.primary}
               type="submit"
-              disabled={!input.trim() || tickers.length >= 5}
+              disabled={
+                !input.trim() || tickers.length >= MAX_COMPARE_COMPANIES
+              }
             >
               <Plus size={15} /> Add
             </button>
@@ -693,6 +838,7 @@ export default function CompareClient({
               onChange={(e) => update({ benchmark: e.target.value })}
             >
               <option value="median">Selected-issuer median</option>
+              <option value="peers">Other peers (excludes focus)</option>
               {tickers.map((t) => (
                 <option key={t} value={t}>
                   {t}
@@ -755,6 +901,16 @@ export default function CompareClient({
           <summary>
             Curated peer groups <span>12 starting points</span>
           </summary>
+          <label className={styles.groupMode}>
+            Apply a peer group
+            <select
+              value={groupMode}
+              onChange={(e) => setGroupMode(e.target.value)}
+            >
+              <option value="replace">Replace current companies</option>
+              <option value="append">Add to current companies</option>
+            </select>
+          </label>
           <div className={styles.presetGrid}>
             {PEER_GROUPS.map((g) => (
               <button
@@ -871,104 +1027,179 @@ export default function CompareClient({
       </div>
       {!!tickers.length && (
         <>
-          <div className={styles.companyGrid}>
-            {tickers.map((ticker, i) => {
-              const company = issuerCompanies.find((c) => c.ticker === ticker);
-              const data = company?.data;
-              const excluded = settings.excluded.includes(ticker);
-              const name =
-                data?.name ||
-                preloadedCompanies.find((c) => c.ticker === ticker)?.name ||
-                "Resolving SEC issuer…";
-              return (
-                <article
-                  key={ticker}
-                  className={`${styles.companyCard} ${excluded || company?.duplicate ? styles.excluded : ""}`}
-                  style={{ borderTopColor: COLORS[i % COLORS.length] }}
-                >
-                  <div className={styles.companyTitle}>
-                    <strong>{ticker}</strong>
-                    <button
-                      aria-label={`Remove ${ticker}`}
-                      onClick={() => {
-                        setTickers((old) => old.filter((t) => t !== ticker));
-                        update({
-                          excluded: settings.excluded.filter(
-                            (t) => t !== ticker,
-                          ),
-                          benchmark:
-                            settings.benchmark === ticker
-                              ? "median"
-                              : settings.benchmark,
-                        });
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                  <p>{name}</p>
-                  {company?.loading ? (
-                    <small>
-                      <Loader2 size={12} className={styles.spin} /> Loading SEC
-                      data…
-                    </small>
-                  ) : company?.error ? (
-                    <>
-                      <p className={styles.warning}>{company.error}</p>
+          <details className={styles.peerManager} open={tickers.length <= 5}>
+            <summary>
+              Manage {tickers.length} / {MAX_COMPARE_COMPANIES} companies{" "}
+              <span>
+                {companies.filter((company) => company.loading).length} loading
+                · {companies.filter((company) => company.error).length} failed ·{" "}
+                {
+                  settings.excluded.filter((ticker) => tickers.includes(ticker))
+                    .length
+                }{" "}
+                excluded
+              </span>
+            </summary>
+            <div className={styles.peerActions}>
+              <button
+                onClick={() => update({ excluded: [] })}
+                disabled={!settings.excluded.length}
+              >
+                Include all companies
+              </button>
+              <span>
+                Move peers to set table order. Duplicate SEC issuers count once.
+              </span>
+            </div>
+            <div className={styles.companyGrid}>
+              {tickers.map((ticker, i) => {
+                const company = issuerCompanies.find(
+                  (c) => c.ticker === ticker,
+                );
+                const data = company?.data;
+                const excluded = settings.excluded.includes(ticker);
+                const name =
+                  data?.name ||
+                  preloadedCompanies.find((c) => c.ticker === ticker)?.name ||
+                  "Resolving SEC issuer…";
+                return (
+                  <article
+                    key={ticker}
+                    className={`${styles.companyCard} ${excluded || company?.duplicate ? styles.excluded : ""}`}
+                    style={{
+                      borderTopColor:
+                        company?.color || COLORS[i % COLORS.length],
+                    }}
+                  >
+                    <div className={styles.companyTitle}>
+                      <strong>{ticker}</strong>
                       <button
+                        aria-label={`Remove ${ticker}`}
                         onClick={() => {
-                          cache.current.delete(`${ticker}:${basis}:${asOf}`);
-                          setRetry((v) => v + 1);
+                          setTickers((old) => old.filter((t) => t !== ticker));
+                          update({
+                            excluded: settings.excluded.filter(
+                              (t) => t !== ticker,
+                            ),
+                            benchmark:
+                              settings.benchmark === ticker
+                                ? "median"
+                                : settings.benchmark,
+                          });
                         }}
                       >
-                        <RefreshCw size={13} /> Retry {ticker}
+                        <X size={14} />
                       </button>
-                    </>
-                  ) : (
-                    data && (
+                    </div>
+                    <div className={styles.peerOrder}>
+                      <button
+                        aria-label={`Move ${ticker} earlier`}
+                        disabled={i === 0}
+                        onClick={() => reorderPeer(i, -1)}
+                      >
+                        <ArrowLeft size={13} />
+                      </button>
+                      <span>Position {i + 1}</span>
+                      <button
+                        aria-label={`Move ${ticker} later`}
+                        disabled={i === tickers.length - 1}
+                        onClick={() => reorderPeer(i, 1)}
+                      >
+                        <ArrowRight size={13} />
+                      </button>
+                    </div>
+                    <p>{name}</p>
+                    {company?.loading ? (
+                      <small>
+                        <Loader2 size={12} className={styles.spin} /> Loading
+                        SEC data…
+                      </small>
+                    ) : company?.error ? (
                       <>
-                        <small>
-                          CIK {data.cik} · SIC {data.sic || "Unknown"}
-                        </small>
-                        <small>
-                          {LENSES[data.lens]} · {data.periods.length} periods
-                        </small>
-                        <small>
-                          Retrieved{" "}
-                          {new Date(data.observedAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </small>
-                        {company?.duplicate ? (
-                          <p className={styles.warning}>
-                            Same CIK as an earlier ticker. This alias is
-                            excluded from peer statistics.
-                          </p>
-                        ) : (
-                          <label className={styles.include}>
-                            <input
-                              type="checkbox"
-                              checked={!excluded}
-                              onChange={() =>
-                                update({
-                                  excluded: excluded
-                                    ? settings.excluded.filter(
-                                        (t) => t !== ticker,
-                                      )
-                                    : [...settings.excluded, ticker],
-                                })
-                              }
-                            />{" "}
-                            Include in comparison
-                          </label>
-                        )}
+                        <p className={styles.warning}>{company.error}</p>
+                        <button
+                          onClick={() => {
+                            cache.current.delete(`${ticker}:${basis}:${asOf}`);
+                            setRetry((v) => v + 1);
+                          }}
+                        >
+                          <RefreshCw size={13} /> Retry {ticker}
+                        </button>
                       </>
-                    )
-                  )}
-                </article>
-              );
-            })}
+                    ) : (
+                      data && (
+                        <>
+                          <small>
+                            CIK {data.cik} · SIC {data.sic || "Unknown"}
+                          </small>
+                          <small>
+                            {LENSES[data.lens]} · {data.periods.length} periods
+                          </small>
+                          <small>
+                            Retrieved{" "}
+                            {new Date(data.observedAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </small>
+                          {company?.duplicate ? (
+                            <p className={styles.warning}>
+                              Same CIK as an earlier ticker. This alias is
+                              excluded from peer statistics.
+                            </p>
+                          ) : (
+                            <label className={styles.include}>
+                              <input
+                                type="checkbox"
+                                checked={!excluded}
+                                onChange={() =>
+                                  update({
+                                    excluded: excluded
+                                      ? settings.excluded.filter(
+                                          (t) => t !== ticker,
+                                        )
+                                      : [...settings.excluded, ticker],
+                                  })
+                                }
+                              />{" "}
+                              Include in comparison
+                            </label>
+                          )}
+                        </>
+                      )
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </details>
+          <div className={styles.focusRow}>
+            <label>
+              Focus company
+              <select
+                value={
+                  entries.some((entry) => entry.ticker === settings.focus)
+                    ? settings.focus
+                    : entries[0]?.ticker || ""
+                }
+                onChange={(e) => update({ focus: e.target.value })}
+              >
+                {entries.map((entry) => (
+                  <option key={entry.ticker} value={entry.ticker}>
+                    {entry.ticker}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p>
+              Use Focus & peers to see a benchmark that excludes this company,
+              its exact sample, and sensitivity to each peer.
+            </p>
+            <button
+              onClick={() => update({ view: "benchmarks", benchmark: "peers" })}
+            >
+              Study other peers
+            </button>
           </div>
           <div className={styles.summaryGrid}>
             <div>
@@ -993,7 +1224,11 @@ export default function CompareClient({
               </strong>
             </div>
             <div>
-              <small>Peer median ROE</small>
+              <small>
+                {settings.benchmark === "peers"
+                  ? "Other-peer median ROE"
+                  : "Selected-issuer median ROE"}
+              </small>
               <strong>{displayValue(roe.peerMedian, "percent")}</strong>
             </div>
           </div>
@@ -1056,7 +1291,7 @@ export default function CompareClient({
               ))}
             </nav>
             <button onClick={exportTable} disabled={!coverage}>
-              <Download size={14} /> Export table
+              <Download size={14} /> Export reported table
             </button>
           </div>
         </>
@@ -1066,9 +1301,9 @@ export default function CompareClient({
           <GitCompareArrows size={38} />
           <h2>Start with the right peers.</h2>
           <p>
-            Choose a group above or add up to five companies. Your comparison
-            will include aligned financials, peer benchmarks, historical trends,
-            and the evidence behind every value.
+            Choose a group above or add up to 12 companies. Your comparison will
+            include aligned financials, peer benchmarks, historical trends, and
+            the evidence behind every value.
           </p>
           <div className={styles.actions}>
             <button onClick={() => preset(PEER_GROUPS[0])}>
@@ -1077,11 +1312,9 @@ export default function CompareClient({
             <button onClick={() => preset(PEER_GROUPS[2])}>
               Compare technology leaders
             </button>
-            {notebook.searches.length > 0 && (
-              <button onClick={() => update({ view: "notebook" })}>
-                Open saved comparisons
-              </button>
-            )}
+            <button onClick={() => update({ view: "notebook" })}>
+              Open research notebook
+            </button>
           </div>
         </section>
       ) : (
@@ -1090,12 +1323,109 @@ export default function CompareClient({
         >
           <div className={styles.results}>
             {settings.view === "table" && (
-              <CompareTable
+              <>
+                <nav className={styles.subviews} aria-label="Comparison format">
+                  {[
+                    ["reported", "Reported metrics"],
+                    ["common-size", "Common size"],
+                    ["formula", "Custom metric"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      aria-current={
+                        settings.tableMode === key ? "page" : undefined
+                      }
+                      onClick={() => update({ tableMode: key })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+                {settings.tableMode === "reported" && (
+                  <CompareTable
+                    entries={entries}
+                    metrics={metrics}
+                    settings={settings}
+                    inspect={inspectEvidence}
+                  />
+                )}
+                {settings.tableMode === "common-size" && (
+                  <CompareCommonSize
+                    entries={entries}
+                    metrics={optionsWithSelected}
+                    settings={settings}
+                    update={update}
+                    inspect={inspectEvidence}
+                  />
+                )}
+                {settings.tableMode === "formula" && (
+                  <CompareFormula
+                    entries={entries}
+                    settings={settings}
+                    update={update}
+                    inspect={inspectEvidence}
+                  />
+                )}
+              </>
+            )}
+            {settings.view === "quality" && (
+              <CompareQualityDesk
                 entries={entries}
                 metrics={metrics}
                 settings={settings}
-                inspect={setEvidence}
+                inspect={inspectEvidence}
               />
+            )}
+            {settings.view === "benchmarks" && (
+              <CompareBenchmarks
+                entries={entries}
+                metrics={optionsWithSelected}
+                settings={settings}
+                update={update}
+                inspect={inspectEvidence}
+              />
+            )}
+            {settings.view === "changes" && (
+              <>
+                <nav className={styles.subviews} aria-label="Change analysis">
+                  {[
+                    ["periods", "Between reporting periods"],
+                    ["snapshots", "Since a saved snapshot"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      aria-current={
+                        settings.changeMode === key ? "page" : undefined
+                      }
+                      onClick={() => update({ changeMode: key })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+                {settings.changeMode === "periods" && (
+                  <CompareMovements
+                    companies={companies}
+                    entries={entries}
+                    metrics={optionsWithSelected}
+                    settings={settings}
+                    update={update}
+                    inspect={inspectEvidence}
+                  />
+                )}
+                {settings.changeMode === "snapshots" && (
+                  <CompareSnapshots
+                    notebook={notebook}
+                    mutate={mutate}
+                    entries={entries}
+                    metrics={metrics}
+                    settings={settings}
+                    tickers={tickers}
+                    inspect={inspectEvidence}
+                    load={loadSaved}
+                  />
+                )}
+              </>
             )}
             {settings.view === "trends" && (
               <CompareTrends
@@ -1103,7 +1433,7 @@ export default function CompareClient({
                 metrics={optionsWithSelected}
                 settings={settings}
                 update={update}
-                inspect={setEvidence}
+                inspect={inspectEvidence}
               />
             )}
             {settings.view === "map" && (
@@ -1112,35 +1442,29 @@ export default function CompareClient({
                 metrics={optionsWithSelected}
                 settings={settings}
                 update={update}
-                inspect={setEvidence}
+                inspect={inspectEvidence}
               />
             )}
-            {settings.view === "notebook" && (
-              <CompareNotebook
-                notebook={notebook}
-                mutate={mutate}
-                load={(item) => {
-                  cache.current.clear();
-                  setRetry((v) => v + 1);
-                  setTickers(normalizeCompareTickers(item.tickers));
-                  update({
-                    ...normalizeCompareSettings(item.settings),
-                    view: "table",
-                  });
-                  setSaveName(item.name);
-                  setMessage(
-                    `Loaded ${item.name}; SEC data will refresh as needed.`,
-                  );
-                }}
-                inspect={setEvidence}
-                notice={setMessage}
-              />
+            {(notebookOpened || settings.view === "notebook") && (
+              <div hidden={settings.view !== "notebook"}>
+                <CompareNotebook
+                  notebook={notebook}
+                  mutate={mutate}
+                  load={loadSaved}
+                  inspect={inspectEvidence}
+                  notice={setMessage}
+                />
+              </div>
             )}
           </div>
           {evidence && (
             <CompareInspector
               evidence={evidence}
-              close={() => setEvidence(null)}
+              close={() => {
+                setEvidence(null);
+                setPointer(null);
+              }}
+              tickers={tickers}
               save={saveEvidence}
             />
           )}
@@ -1173,11 +1497,12 @@ export default function CompareClient({
         </p>
         <p>
           A common end bucket does not guarantee identical business models or
-          reporting durations. Peer medians include all selected issuers with
-          compatible available values, with coverage shown for every row.
-          Statistics pause for date spreads greater than 45 days or duration
-          differences greater than 14 days. Original source tags and dates
-          remain reviewable.
+          reporting durations. The selected-issuer median includes compatible
+          available values. The other-peer benchmark excludes the focus company
+          and requires two other issuers. The Comparability desk shows
+          source-level coverage. Statistics pause for date spreads greater than
+          45 days or duration differences greater than 14 days. Original source
+          tags and dates remain reviewable.
         </p>
         <p>
           “Latest” uses the most recently filed compatible observation, which

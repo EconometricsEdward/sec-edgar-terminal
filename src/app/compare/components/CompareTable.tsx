@@ -1,9 +1,7 @@
 "use client";
+import { researchMetricComparison } from "../../../utils/compareBenchmarks.js";
 import { ArrowUpRight, Search } from "lucide-react";
-import {
-  metricComparison,
-  historicGrowth,
-} from "../../../utils/compareResearch.js";
+import { historicGrowth } from "../../../utils/compareResearch.js";
 import {
   displayValue,
   displayDelta,
@@ -34,7 +32,9 @@ export default function CompareTable({
             Choose a value to inspect its evidence. Differences are against{" "}
             {settings.benchmark === "median"
               ? "the selected-issuer median"
-              : settings.benchmark}
+              : settings.benchmark === "peers"
+                ? `other peers (excluding ${settings.focus || entries[0]?.ticker || "focus"})`
+                : settings.benchmark}
             .
           </p>
         </div>
@@ -70,16 +70,21 @@ export default function CompareTable({
                 </th>
               ))}
               <th scope="col">
-                Peer median<small>Includes selected issuers</small>
+                Peer median
+                <small>
+                  {settings.benchmark === "peers"
+                    ? `Excludes ${settings.focus || entries[0]?.ticker || "focus"}`
+                    : "Includes selected issuers"}
+                </small>
               </th>
             </tr>
           </thead>
           <tbody>
             {metrics.map((metric) => {
-              const comparison = metricComparison(
+              const comparison = researchMetricComparison(
                 entries,
                 metric.key,
-                settings.benchmark,
+                settings,
               );
               return (
                 <tr key={metric.key}>
@@ -87,8 +92,13 @@ export default function CompareTable({
                     <span>{metric.label}</span>
                     <small>
                       {metric.category} · {comparison.count}/{comparison.total}{" "}
-                      values
+                      reported values · {comparison.eligibleCount} eligible
                     </small>
+                    {comparison.definitionNote && (
+                      <small className={styles.warning}>
+                        {comparison.definitionNote}
+                      </small>
+                    )}
                     {comparison.reason && (
                       <small className={styles.warning}>
                         {comparison.reason}
@@ -114,17 +124,27 @@ export default function CompareTable({
                             ? "Input unavailable"
                             : cell.status}
                       </small>
+                      {cell.quality &&
+                        !cell.quality.valid &&
+                        cell.point?.value != null && (
+                          <small className={styles.warning}>
+                            {cell.quality.reason}
+                          </small>
+                        )}
                       {cell.delta != null && (
                         <small className={styles.difference}>
                           {displayDelta(cell.delta, metric.format)} vs{" "}
                           {settings.benchmark === "median"
                             ? "median"
-                            : settings.benchmark}
+                            : settings.benchmark === "peers"
+                              ? "other peers"
+                              : settings.benchmark}
                         </small>
                       )}
                       {cell.rank != null && (
                         <small>
-                          Numeric rank {cell.rank}/{comparison.count}
+                          Numeric rank {cell.rank}/
+                          {comparison.rankCount ?? comparison.eligibleCount}
                         </small>
                       )}
                     </td>
@@ -136,8 +156,11 @@ export default function CompareTable({
                     <small>
                       {comparison.peerMedian == null
                         ? "Comparison paused"
-                        : `${comparison.count} comparable issuers`}
+                        : `${comparison.benchmarkCount} comparable issuers`}
                     </small>
+                    {comparison.peerMedian != null && (
+                      <small>{comparison.benchmarkMembers.join(" · ")}</small>
+                    )}
                   </td>
                 </tr>
               );
@@ -148,8 +171,11 @@ export default function CompareTable({
       <div className={styles.panelFoot}>
         Ranks show largest to smallest values, including ties. They do not
         identify the best company or imply a risk score. Benchmarks require two
-        issuers, reporting ends within 45 days, and duration differences within
-        14 days.
+        {settings.benchmark === "peers"
+          ? " other issuers (excluding focus)"
+          : " issuers"}
+        , reporting ends within 45 days, and duration differences within 14
+        days.
       </div>
     </section>
   );
