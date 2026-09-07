@@ -145,6 +145,7 @@ export default function DisclosureQueryBar({
             <option value="10-K,10-Q">Reports · 10-K / 10-Q</option>
             <option value="10-Q">Quarterly · 10-Q</option>
             <option value="8-K">Events · 8-K</option>
+            <option value="20-F,40-F">Foreign annual · 20-F / 40-F</option>
             <option value="20-F,40-F,6-K">Foreign issuers</option>
             <option value="10-K,10-Q,8-K,S-1,S-3,S-4,DEF 14A,DEFM14A,20-F,40-F,N-CSR,NPORT-P">
               Broad filings
