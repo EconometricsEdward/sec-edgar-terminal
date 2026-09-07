@@ -1,0 +1,29 @@
+{
+  "schema_version": "edgar.portfolio.v1",
+  "name": "Fictional sample allocations — demonstration only",
+  "holdings": [
+    {
+      "ticker": "AAPL",
+      "weight_pct": 40,
+      "currency": "USD",
+      "as_of_date": "2026-09-01",
+      "notes": "Fictional sample allocation for demonstration only; not a recommendation or actual holdings."
+    },
+    {
+      "ticker": "MSFT",
+      "weight_pct": 35,
+      "currency": "USD",
+      "as_of_date": "2026-09-01",
+      "notes": "Fictional sample allocation for demonstration only; not a recommendation or actual holdings."
+    },
+    {
+      "ticker": "JPM",
+      "weight_pct": 25,
+      "currency": "USD",
+      "as_of_date": "2026-09-01",
+      "notes": "Fictional sample allocation for demonstration only; not a recommendation or actual holdings."
+    }
+  ],
+  "allocation": { "basis": "weights", "normalize": false },
+  "research": { "basis": "annual" }
+}

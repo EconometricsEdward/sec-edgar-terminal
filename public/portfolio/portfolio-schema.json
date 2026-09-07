@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://secedgarterminal.com/portfolio/portfolio-schema.json",
+  "title": "EDGAR Terminal portfolio input v1",
+  "description": "Human and AI input use the same review and research pipeline. Only a ticker or exact CIK is needed; company names are resolved through review. Allocations are optional. Shape-valid rows can still need identity or allocation review. Browser imports support at most 100 rows and 2 MB; the batch API documents smaller request limits.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "holdings"],
+  "properties": {
+    "schema_version": { "const": "edgar.portfolio.v1" },
+    "name": { "type": "string", "maxLength": 200 },
+    "action": { "enum": ["resolve", "research"] },
+    "holdings": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/holding" }
+    },
+    "allocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "enum": ["none", "weights", "market_value", "equal"],
+          "default": "none"
+        },
+        "normalize": {
+          "type": "boolean",
+          "default": false,
+          "description": "Explicit normalization choice. Original weights remain preserved; omitted balances are never assumed to be cash."
+        }
+      }
+    },
+    "research": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "basis": { "enum": ["annual", "ttm"], "default": "annual" }
+      }
+    },
+    "row_choices": {
+      "type": "array",
+      "maxItems": 100,
+      "description": "Optional explicit duplicate decisions using zero-based holding indices. Each index must occur once at most. A merge is submitted as an already-reviewed canonical holding.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["index", "duplicateChoice"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0, "maximum": 99 },
+          "duplicateChoice": { "enum": ["keep", "remove"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": { "type": ["string", "null"], "maxLength": 2000 },
+    "optional_number": {
+      "type": ["number", "string", "null"],
+      "maxLength": 2000
+    },
+    "holding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ticker": {
+          "$ref": "#/$defs/text",
+          "description": "A security ticker. Entering only tickers is sufficient for research."
+        },
+        "company_name": {
+          "$ref": "#/$defs/text",
+          "description": "Issuer/company name. Ambiguous names require a reviewable selection."
+        },
+        "cik": {
+          "$ref": "#/$defs/text",
+          "description": "Exact SEC issuer CIK as text; preserve leading zeroes. Different share classes can share one issuer CIK."
+        },
+        "exchange": {
+          "$ref": "#/$defs/text",
+          "description": "Optional supplied exchange for identification review."
+        },
+        "weight_pct": {
+          "$ref": "#/$defs/optional_number",
+          "description": "Percentage points: 12.5 means 12.5%. Optional and long-only. Negative or invalid values are flagged during review; weights are never silently normalized."
+        },
+        "market_value": {
+          "$ref": "#/$defs/optional_number",
+          "description": "Optional total position value, not the price of one share. Values require comparable dates and one common supplied currency to derive weights."
+        },
+        "shares": {
+          "$ref": "#/$defs/optional_number",
+          "description": "Optional long-only share quantity. Shares alone never determine portfolio weights."
+        },
+        "currency": {
+          "$ref": "#/$defs/text",
+          "description": "Currency of the supplied position value, for example USD. No automatic currency conversion."
+        },
+        "as_of_date": {
+          "$ref": "#/$defs/text",
+          "description": "Date represented by the supplied holdings or allocations, YYYY-MM-DD."
+        },
+        "notes": {
+          "$ref": "#/$defs/text",
+          "description": "Optional private user text. Browser research exports omit it unless explicitly included. Do not send private notes to the API unless necessary."
+        }
+      }
+    }
+  }
+}

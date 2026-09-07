@@ -1,9 +1,9 @@
 import WorkspaceClient from "./WorkspaceClient";
 import { buildPageMetadata } from "../../utils/siteMetadata";
 export const metadata = buildPageMetadata({
-  title: "Research Hub — Saved Evidence & Watchlists",
+  title: "Research Hub — Portfolio Research, Evidence & Watchlists",
   description:
-    "Find saved research across EDGAR Terminal, review company and fund watchlists, and back up your browser research.",
+    "Upload a portfolio or company list, research up to 100 issuers with SEC evidence, review allocations and filings, and export source-backed research. Browser-local portfolios, watchlists and backups.",
   path: "/workspace",
 });
 export default function WorkspacePage() {
