@@ -31,16 +31,19 @@ let fundCache = null;
 let operatingInFlight = null; // Promise<{ data, expiresAt }> — prevents thundering herd
 let fundInFlight = null;
 
-const OPERATING_URL = 'https://www.sec.gov/files/company_tickers.json';
-const FUND_URL = 'https://www.sec.gov/files/company_tickers_mf.json';
+const OPERATING_URL = "https://www.sec.gov/files/company_tickers.json";
+const FUND_URL = "https://www.sec.gov/files/company_tickers_mf.json";
 
 function getUserAgent() {
-  return process.env.SEC_USER_AGENT || 'SEC EDGAR Terminal research@secedgarterminal.com';
+  return (
+    process.env.SEC_USER_AGENT ||
+    "SEC EDGAR Terminal research@secedgarterminal.com"
+  );
 }
 
 async function fetchAndIndex(url, buildIndex) {
   const res = await fetch(url, {
-    headers: { 'User-Agent': getUserAgent() },
+    headers: { "User-Agent": getUserAgent() },
     // Even module-scope data shouldn't hang indefinitely
     signal: AbortSignal.timeout(15_000),
   });
@@ -61,7 +64,7 @@ function buildOperatingIndex(raw) {
   for (const entry of Object.values(raw)) {
     if (!entry?.ticker) continue;
     index[entry.ticker.toUpperCase()] = {
-      cik: String(entry.cik_str).padStart(10, '0'),
+      cik: String(entry.cik_str).padStart(10, "0"),
       name: entry.title,
     };
   }
@@ -79,7 +82,7 @@ function buildFundIndex(raw) {
     const symbol = row[3];
     if (!symbol) continue;
     index[String(symbol).toUpperCase()] = {
-      cik: String(row[0]).padStart(10, '0'),
+      cik: String(row[0]).padStart(10, "0"),
       seriesId: row[1],
       classId: row[2],
     };
@@ -88,7 +91,7 @@ function buildFundIndex(raw) {
 }
 
 async function getCached(which) {
-  const isOp = which === 'operating';
+  const isOp = which === "operating";
   const cache = isOp ? operatingCache : fundCache;
   const now = Date.now();
 
@@ -104,11 +107,13 @@ async function getCached(which) {
   const builder = isOp ? buildOperatingIndex : buildFundIndex;
   const promise = fetchAndIndex(url, builder);
 
-  if (isOp) operatingInFlight = promise; else fundInFlight = promise;
+  if (isOp) operatingInFlight = promise;
+  else fundInFlight = promise;
 
   try {
     const fresh = await promise;
-    if (isOp) operatingCache = fresh; else fundCache = fresh;
+    if (isOp) operatingCache = fresh;
+    else fundCache = fresh;
     return fresh.data;
   } catch (err) {
     // On failure, serve stale if we have it — better than nothing for a
@@ -119,7 +124,8 @@ async function getCached(which) {
     }
     throw err;
   } finally {
-    if (isOp) operatingInFlight = null; else fundInFlight = null;
+    if (isOp) operatingInFlight = null;
+    else fundInFlight = null;
   }
 }
 
@@ -130,7 +136,7 @@ async function getCached(which) {
  */
 export async function getOperatingTicker(ticker) {
   if (!ticker) return null;
-  const index = await getCached('operating');
+  const index = await getCached("operating");
   return index[ticker.toUpperCase()] || null;
 }
 
@@ -141,7 +147,7 @@ export async function getOperatingTicker(ticker) {
  */
 export async function getFundTicker(ticker) {
   if (!ticker) return null;
-  const index = await getCached('fund');
+  const index = await getCached("fund");
   return index[ticker.toUpperCase()] || null;
 }
 
@@ -151,9 +157,9 @@ export async function getFundTicker(ticker) {
  */
 export async function getAnyTicker(ticker) {
   const op = await getOperatingTicker(ticker);
-  if (op) return { ...op, kind: 'operating' };
+  if (op) return { ...op, kind: "operating" };
   const fund = await getFundTicker(ticker);
-  if (fund) return { ...fund, kind: 'fund' };
+  if (fund) return { ...fund, kind: "fund" };
   return null;
 }
 
@@ -162,7 +168,7 @@ export async function getAnyTicker(ticker) {
  * { TICKER: { cik, name } } for operating companies. Missing tickers are omitted.
  */
 export async function getOperatingTickers(tickers) {
-  const index = await getCached('operating');
+  const index = await getCached("operating");
   const out = {};
   for (const t of tickers) {
     const entry = index[String(t).toUpperCase()];
@@ -171,18 +177,48 @@ export async function getOperatingTickers(tickers) {
   return out;
 }
 
+/** The same cached SEC directories support security-first fund discovery. */
+export async function getOperatingDirectory() {
+  return getCached("operating");
+}
+
+export async function getFundSeriesTickers() {
+  const index = await getCached("fund");
+  const series = {};
+  for (const [ticker, fund] of Object.entries(index)) {
+    const key = `${fund.cik}:${fund.seriesId}`;
+    (series[key] ||= []).push(ticker);
+  }
+  for (const tickers of Object.values(series)) tickers.sort();
+  return series;
+}
+
 /** Resolve before searching; never choose an associated security's first alias. */
 export async function resolveDisclosureCompany(value) {
-  const requested = String(value || '').trim();
-  if (/^\d{1,10}$/.test(requested)) return { ticker: requested.padStart(10, '0'), cik: requested.padStart(10, '0'), name: '' };
-  const index = await getCached('operating');
+  const requested = String(value || "").trim();
+  if (/^\d{1,10}$/.test(requested))
+    return {
+      ticker: requested.padStart(10, "0"),
+      cik: requested.padStart(10, "0"),
+      name: "",
+    };
+  const index = await getCached("operating");
   const ticker = requested.toUpperCase();
   if (index[ticker]) return { ...index[ticker], ticker };
-  const normalized = requested.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (normalized.length < 3) throw new Error(`No SEC company matched ${requested}. Use its ticker or CIK.`);
-  const matches = Object.entries(index).filter(([, entry]) => entry.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized);
+  const normalized = requested.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (normalized.length < 3)
+    throw new Error(
+      `No SEC company matched ${requested}. Use its ticker or CIK.`,
+    );
+  const matches = Object.entries(index).filter(
+    ([, entry]) =>
+      entry.name.toLowerCase().replace(/[^a-z0-9]/g, "") === normalized,
+  );
   const ciks = [...new Set(matches.map(([, entry]) => entry.cik))];
-  if (ciks.length !== 1) throw new Error(`Company identity is unresolved for ${requested}. Use an exact ticker or CIK.`);
+  if (ciks.length !== 1)
+    throw new Error(
+      `Company identity is unresolved for ${requested}. Use an exact ticker or CIK.`,
+    );
   // A name resolves to the issuer's CIK, not an arbitrarily selected share class.
   return { ticker: ciks[0], cik: ciks[0], name: matches[0][1].name };
 }

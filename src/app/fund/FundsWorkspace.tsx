@@ -34,6 +34,9 @@ const FundComparison = dynamic(() => import("./FundComparison"), { loading });
 const FundSecurityFinder = dynamic(() => import("./FundSecurityFinder"), {
   loading,
 });
+const GlobalSecurityFinder = dynamic(() => import("./GlobalSecurityFinder"), {
+  loading,
+});
 const FundAllocationLab = dynamic(() => import("./FundAllocationLab"), {
   loading,
 });
@@ -232,6 +235,27 @@ export default function FundsWorkspace() {
     onEvidence: pin,
     onFunds: snapshots.ingest,
   };
+  const globalSecurity =
+    settings.view === "security" && settings.securityScope !== "selected";
+  function addDiscoveredFund(ticker: string, accession: string) {
+    if (settings.tickers.includes(ticker)) {
+      setMessage(`${ticker} is already in your comparison selection.`);
+      return;
+    }
+    if (settings.tickers.length >= 4) {
+      setMessage(
+        "Four funds are selected. Open Selected funds to remove one before adding another.",
+      );
+      return;
+    }
+    patch({
+      tickers: [...settings.tickers, ticker],
+      reportMap: { ...settings.reportMap, [ticker]: accession },
+    });
+    setMessage(
+      `${ticker} added to your comparison selection with the report shown.`,
+    );
+  }
   const panels: any = {
     discover: (
       <>
@@ -281,9 +305,40 @@ export default function FundsWorkspace() {
         />
       </>
     ),
-    security: settings.tickers.length ? (
-      <FundSecurityFinder {...common} />
-    ) : null,
+    security: (
+      <>
+        <div
+          className={s.securityScope}
+          role="group"
+          aria-label="Security search scope"
+        >
+          <button
+            type="button"
+            aria-pressed={settings.securityScope !== "selected"}
+            onClick={() => patch({ securityScope: "all" })}
+          >
+            All funds
+          </button>
+          <button
+            type="button"
+            aria-pressed={settings.securityScope === "selected"}
+            onClick={() => patch({ securityScope: "selected" })}
+          >
+            Selected funds ({settings.tickers.length})
+          </button>
+        </div>
+        {settings.securityScope === "selected" ? (
+          <FundSecurityFinder {...common} />
+        ) : (
+          <GlobalSecurityFinder
+            settings={settings}
+            onPatch={patch}
+            onAddFund={addDiscoveredFund}
+            selectedTickers={settings.tickers}
+          />
+        )}
+      </>
+    ),
     compare:
       settings.tickers.length >= 2 ? <FundComparison {...common} /> : null,
     allocation: settings.tickers.length ? (
@@ -306,7 +361,7 @@ export default function FundsWorkspace() {
   };
   return (
     <div className={`${base.page} ${s.workspace}`}>
-      <header className={s.hero}>
+      <header className={s.hero} hidden={settings.view === "security"}>
         <div>
           <p className={s.eyebrow}>
             <Layers3 size={15} />
@@ -336,110 +391,112 @@ export default function FundsWorkspace() {
         </aside>
       </header>
       <section className={s.selection} aria-label="Funds selected for research">
-        <div className={s.heading}>
-          <div>
-            <p className={s.eyebrow}>
-              Your research selection · {settings.tickers.length}/4
-            </p>
-            <h2>
-              {settings.tickers.length
-                ? settings.tickers.join(" / ")
-                : "Start with a few funds."}
-            </h2>
-          </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              addTicker();
-            }}
-            className={s.addForm}
-          >
-            <label htmlFor="fund-add-ticker" className={s.srOnly}>
-              Add a fund ticker to research
-            </label>
-            <input
-              id="fund-add-ticker"
-              value={tickerDraft}
-              onChange={(e) => setTickerDraft(e.target.value)}
-              placeholder="Any fund ticker"
-              maxLength={15}
-            />
-            <button type="submit">
-              Add ticker <ArrowRight size={14} />
-            </button>
-          </form>
-        </div>
-        <div className={s.selectionDetail}>
-          {settings.tickers.map((ticker: string) => (
-            <div className={s.selectedFund} key={ticker}>
-              <Link
-                href={`/fund/${ticker}${settings.reportMap[ticker] ? `?accession=${settings.reportMap[ticker]}` : ""}`}
-              >
-                {ticker}
-              </Link>
-              <small>
-                {settings.reportMap[ticker]
-                  ? `Report ${settings.reportMap[ticker]}`
-                  : "Latest available report"}
-              </small>
-              <button
-                type="button"
-                aria-label={`Remove ${ticker} from research selection`}
-                onClick={() => toggle(ticker)}
-              >
-                <X size={13} />
-              </button>
+        <div hidden={globalSecurity}>
+          <div className={s.heading}>
+            <div>
+              <p className={s.eyebrow}>
+                Your research selection · {settings.tickers.length}/4
+              </p>
+              <h2>
+                {settings.tickers.length
+                  ? settings.tickers.join(" / ")
+                  : "Start with a few funds."}
+              </h2>
             </div>
-          ))}
-        </div>
-        <div className={s.toolbar}>
-          <button
-            type="button"
-            disabled={!settings.tickers.length || snapshots.progress.busy}
-            onClick={() =>
-              snapshots.load(settings.tickers, settings.reportMap, true)
-            }
-          >
-            Load selected snapshots
-          </button>
-          <button
-            type="button"
-            disabled={
-              snapshots.progress.busy ||
-              (!Object.keys(settings.reportMap).length &&
-                !settings.changeAfter &&
-                !settings.changeBefore)
-            }
-            onClick={() => {
-              patch({ reportMap: {}, changeAfter: "", changeBefore: "" });
-              void snapshots.load(settings.tickers, {}, true);
-              setMessage(
-                "Report choices cleared. Refreshing selected snapshots and resolving the latest available filings.",
-              );
-            }}
-          >
-            Use latest reports
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(window.location.href);
-                setMessage(
-                  "Fund view copied. Notes and pinned evidence stay private until you export or save a board.",
-                );
-              } catch {
-                setMessage("Copy failed. You can share the address bar URL.");
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                addTicker();
+              }}
+              className={s.addForm}
+            >
+              <label htmlFor="fund-add-ticker" className={s.srOnly}>
+                Add a fund ticker to research
+              </label>
+              <input
+                id="fund-add-ticker"
+                value={tickerDraft}
+                onChange={(e) => setTickerDraft(e.target.value)}
+                placeholder="Any fund ticker"
+                maxLength={15}
+              />
+              <button type="submit">
+                Add ticker <ArrowRight size={14} />
+              </button>
+            </form>
+          </div>
+          <div className={s.selectionDetail}>
+            {settings.tickers.map((ticker: string) => (
+              <div className={s.selectedFund} key={ticker}>
+                <Link
+                  href={`/fund/${ticker}${settings.reportMap[ticker] ? `?accession=${settings.reportMap[ticker]}` : ""}`}
+                >
+                  {ticker}
+                </Link>
+                <small>
+                  {settings.reportMap[ticker]
+                    ? `Report ${settings.reportMap[ticker]}`
+                    : "Latest available report"}
+                </small>
+                <button
+                  type="button"
+                  aria-label={`Remove ${ticker} from research selection`}
+                  onClick={() => toggle(ticker)}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className={s.toolbar}>
+            <button
+              type="button"
+              disabled={!settings.tickers.length || snapshots.progress.busy}
+              onClick={() =>
+                snapshots.load(settings.tickers, settings.reportMap, true)
               }
-            }}
-          >
-            <Share2 size={14} />
-            Share research view
-          </button>
-          <button type="button" onClick={() => openView("boards")}>
-            <Bookmark size={14} />
-            {evidence.length} pinned evidence
-          </button>
+            >
+              Load selected snapshots
+            </button>
+            <button
+              type="button"
+              disabled={
+                snapshots.progress.busy ||
+                (!Object.keys(settings.reportMap).length &&
+                  !settings.changeAfter &&
+                  !settings.changeBefore)
+              }
+              onClick={() => {
+                patch({ reportMap: {}, changeAfter: "", changeBefore: "" });
+                void snapshots.load(settings.tickers, {}, true);
+                setMessage(
+                  "Report choices cleared. Refreshing selected snapshots and resolving the latest available filings.",
+                );
+              }}
+            >
+              Use latest reports
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(window.location.href);
+                  setMessage(
+                    "Fund view copied. Notes and pinned evidence stay private until you export or save a board.",
+                  );
+                } catch {
+                  setMessage("Copy failed. You can share the address bar URL.");
+                }
+              }}
+            >
+              <Share2 size={14} />
+              Share research view
+            </button>
+            <button type="button" onClick={() => openView("boards")}>
+              <Bookmark size={14} />
+              {evidence.length} pinned evidence
+            </button>
+          </div>
         </div>
         <nav className={s.nav} aria-label="Fund workspace tools">
           {views.map(([view, label]) => (
@@ -454,6 +511,18 @@ export default function FundsWorkspace() {
             </button>
           ))}
         </nav>
+        {globalSecurity && settings.tickers.length > 0 && (
+          <div className={s.optionalComparison}>
+            <span>Optional comparison: {settings.tickers.join(" / ")}</span>
+            <button
+              type="button"
+              disabled={settings.tickers.length < 2}
+              onClick={() => openView("compare")}
+            >
+              Compare selected funds
+            </button>
+          </div>
+        )}
       </section>
       {shelf.saved.length > 0 && (
         <div className={s.shelf} aria-label="Saved fund shelf">
