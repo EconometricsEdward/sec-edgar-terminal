@@ -101,7 +101,7 @@ const subject = (s) =>
 
 // A table-of-contents heading is not evidence that its narrative was reviewed.
 function hasForeignNarrative(body) {
-  return body.split(/\n\s*\n/).some((paragraph) => {
+  const narrative = body.split(/\n\s*\n/).map((paragraph) => {
     const lines = paragraph.trim().split(/\n/);
     const prose = lines
       .filter(
@@ -109,8 +109,23 @@ function hasForeignNarrative(body) {
           !/^\s*(?:item\s+\d|[A-Z][.\)]\s)|\.{3,}\s*\d*\s*$/i.test(line),
       )
       .join(" ");
-    return prose.length >= 180 && (prose.match(/\p{L}+/gu) || []).length >= 25;
+    return { prose, words: (prose.match(/\p{L}+/gu) || []).length };
   });
+  if (narrative.some(({ prose, words }) => prose.length >= 180 && words >= 25))
+    return true;
+  // Some 20-F HTML represents every printed line as a separate block. Keep
+  // substantial prose fragments together for this coverage check, without
+  // treating short contents labels or page numbers as narrative evidence.
+  const fragments = narrative.filter(
+    ({ prose, words }) => words >= 10 && /[a-z]/.test(prose),
+  );
+  const combined = fragments.map(({ prose }) => prose).join(" ");
+  return (
+    fragments.length >= 2 &&
+    combined.length >= 180 &&
+    fragments.reduce((sum, fragment) => sum + fragment.words, 0) >= 25 &&
+    /[.;](?:\s|$)/.test(combined)
+  );
 }
 
 /** Bounded heading extraction. Missing headings stay unknown, never zero matches. */
@@ -169,7 +184,10 @@ export function disclosurePassages(text, form = "") {
       ...text.matchAll(
         /(?:^|\n)[\t ]*(?:item[\t ]+3[\t .:—-]*D[\s.:—-]{0,12}|D[.)\t :—-]+[\s]{0,12})Risk[\s]{1,12}Factors\b[^\n]*/gim,
       ),
-    ];
+      // Issuers can omit the subsection letter. A standalone title remains
+      // eligible only within Item 3, never an inline reference elsewhere.
+      ...text.matchAll(/(?:^|\n)[\t ]*Risk[\t ]+Factors[\t ]*(?=\n|$)/gim),
+    ].sort((a, b) => a.index - b.index);
     for (const h of riskHeadings) {
       const direct = /^\s*item\s+3/i.test(h[0]);
       const preceding = headings.filter((item) => item.index <= h.index).at(-1);
@@ -372,6 +390,7 @@ export function analyzeDisclosure(
     ];
   });
   return {
+    form,
     status: sectionFound ? "reviewed" : "section-unavailable",
     paragraphs,
     matches,
@@ -490,11 +509,63 @@ export function selectDisclosureBaseline(
   };
 }
 
+function narrativeSegmentation(paragraphs) {
+  let boundaries = 0;
+  let continuations = 0;
+  const lengths = paragraphs.map(
+    (p) => (p.text.match(/\p{L}+/gu) || []).length,
+  );
+  for (let i = 0; i < paragraphs.length - 1; i++) {
+    // Exclude short headings, page numbers and most table cells. A lowercase
+    // continuation after an unfinished prose block is evidence of a line wrap.
+    if (lengths[i] < 8 || lengths[i + 1] < 4) continue;
+    boundaries++;
+    if (
+      !/[.!?;:][”’"')\]]*$/.test(paragraphs[i].text) &&
+      /^[a-z]/.test(paragraphs[i + 1].text)
+    )
+      continuations++;
+  }
+  return {
+    boundaries,
+    continuations,
+    share: boundaries ? continuations / boundaries : 0,
+  };
+}
+
+function foreignSegmentationMismatch(current, prior) {
+  if (
+    !/^20-F(?:\/A)?$/.test(current.form || "") ||
+    !/^20-F(?:\/A)?$/.test(prior.form || "")
+  )
+    return "";
+  const a = narrativeSegmentation(current.paragraphs);
+  const b = narrativeSegmentation(prior.paragraphs);
+  // Require repeated narrative evidence in both reports. The guard addresses
+  // a change of extraction layout, not the length of an individual quotation.
+  if (a.boundaries < 12 || b.boundaries < 12) return "";
+  if ((a.share >= 0.4 && b.share <= 0.1) || (b.share >= 0.4 && a.share <= 0.1))
+    return "Paragraph change comparison is unavailable because these 20-F reports use materially different text layouts: printed-line fragments versus complete paragraphs. Query matches were reviewed in each filing; compare the original SEC reports before identifying added or removed language.";
+  return "";
+}
+
 export function compareDisclosurePassages(
   current,
   prior,
   { amendment = false } = {},
 ) {
+  const comparisonError = foreignSegmentationMismatch(current, prior);
+  if (comparisonError)
+    return {
+      matches: current.matches.map((p) => ({
+        ...p,
+        change: "uncompared",
+        reasons: [...p.reasons, comparisonError],
+      })),
+      removed: [],
+      unchanged: 0,
+      comparisonError,
+    };
   const exact = new Map(
     prior.paragraphs.map((p) => [disclosureExactText(p.text), p]),
   );

@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseDisclosureQuery } from "../src/utils/disclosureQuery.js";
+import {
+  parseDisclosureQuery,
+  QUERY_VERSION,
+} from "../src/utils/disclosureQuery.js";
+import { stripHtml } from "../src/utils/filingTextParser.js";
 import {
   analyzeDisclosure,
   disclosurePassages,
@@ -82,6 +86,109 @@ test("Foreign section detection rejects a contents-only listing and preserves US
   assert.equal(analyze(us, "20-F", "mda").status, "section-unavailable");
   const q = `Item 2. Management discussion and analysis\n\n${prose}\n\nItem 3. Market Risk\n\n${operations}`;
   assert.equal(analyze(q, "10-Q", "mda").matches.length, 1);
+});
+
+test("TSM-style 20-F headings and printed-line HTML expose both narrative sections", () => {
+  // Reproduces heading/layout structure in TSM's 2025 report (synthetic prose):
+  // https://www.sec.gov/Archives/edgar/data/1046179/000162828026025362/tsm-20251231.htm
+  const lines = (value) =>
+    value
+      .match(/(?:\S+\s*){1,14}/g)
+      .map((line) => `<div>${line.trim()}</div>`)
+      .join("");
+  const html = `<div>ITEM 3.</div><div>KEY INFORMATION</div><div>Risk Factors</div><div>3</div><div>ITEM 4.</div><div>INFORMATION ON THE COMPANY</div><div>14</div><div>ITEM 5.</div><div>OPERATING AND FINANCIAL REVIEWS AND PROSPECTS</div><div>26</div><div>ITEM 6.</div><div>DIRECTORS</div><div>37</div><div>ITEM 3. KEY INFORMATION</div><div>Capitalization and Indebtedness</div><div>Not applicable.</div><div>Reasons for the Offer and Use of Proceeds</div><div>Not applicable.</div><div>Risk Factors</div>${lines(prose)}<div>ITEM 4. INFORMATION ON THE COMPANY</div>${lines(operations)}<div>ITEM 5. OPERATING AND FINANCIAL REVIEWS AND PROSPECTS</div>${lines(prose)}<div>ITEM 6. DIRECTORS, SENIOR MANAGEMENT AND EMPLOYEES</div>${lines(operations)}`;
+  const text = stripHtml(html);
+  for (const section of ["risk", "mda"]) {
+    const reviewed = analyze(text, "20-F", section);
+    assert.equal(reviewed.status, "reviewed");
+    assert.equal(reviewed.matches.length, 1);
+    assert.equal(
+      reviewed.paragraphs.some((p) =>
+        /Not applicable|DIRECTORS|INFORMATION ON THE COMPANY/.test(p.text),
+      ),
+      false,
+    );
+    assert.ok(
+      reviewed.paragraphs.every((p) => p.text.length < 180),
+      "The fixture exercises multiple short printed blocks, not an ordinary long paragraph.",
+    );
+  }
+  const contentsOnly = text.slice(0, text.indexOf("ITEM 3. KEY INFORMATION"));
+  assert.equal(
+    analyze(contentsOnly, "20-F", "risk").status,
+    "section-unavailable",
+  );
+  assert.equal(
+    analyze(contentsOnly, "20-F", "mda").status,
+    "section-unavailable",
+  );
+});
+
+test("Unlettered Risk Factors must be a standalone title inside Item 3", () => {
+  for (const text of [
+    `Item 3. Key Information\n\nPlease see our Risk Factors in another filing.\n\n${prose}\n\nItem 4. Company`,
+    `Item 3. Key Information\n\nNot applicable.\n\nItem 4. Company\n\nRisk Factors\n\n${prose}`,
+  ])
+    assert.equal(analyze(text, "20-F", "risk").status, "section-unavailable");
+  assert.equal(
+    analyze(
+      `Item 3. Key Information\n\nRisk Factors\n\n${prose}\n\nItem 4. Company`,
+      "40-F",
+      "risk",
+    ).status,
+    "section-unavailable",
+  );
+});
+
+test("20-F paragraph-layout changes retain reviewed matches and withhold false additions and removals", () => {
+  const paragraphs = Array.from(
+    { length: 20 },
+    (_, i) => `${prose} Our reporting sequence is ${i}.`,
+  );
+  const printed = paragraphs
+    .map((p) =>
+      p
+        .match(/(?:\S+\s*){1,14}/g)
+        .map((line) => line.trim())
+        .join("\n\n"),
+    )
+    .join("\n\n");
+  const report = (body) =>
+    `Item 3. Key Information\n\nRisk Factors\n\n${body}\n\nItem 4. Company`;
+  const current = analyze(report(printed), "20-F", "risk");
+  const prior = analyze(report(paragraphs.join("\n\n")), "20-F", "risk");
+  assert.equal(current.status, "reviewed");
+  assert.equal(prior.status, "reviewed");
+  assert.equal(current.matches.length, 20);
+  for (const [a, b] of [
+    [current, prior],
+    [prior, current],
+  ]) {
+    const diff = compareDisclosurePassages(a, b);
+    assert.match(
+      diff.comparisonError,
+      /printed-line fragments versus complete paragraphs/,
+    );
+    assert.equal(diff.removed.length, 0);
+    assert.equal(diff.unchanged, 0);
+    assert.equal(diff.matches.length, a.matches.length);
+    assert.ok(diff.matches.every((p) => p.change === "uncompared"));
+  }
+});
+
+test("Ordinary 20-F paragraph revisions and small samples remain comparable", () => {
+  const paragraph = `${prose} Our minimum liquidity facility amount is $200 million.`;
+  for (const count of [1, 20]) {
+    const report = (amount) =>
+      `Item 3.D. Risk Factors\n\n${paragraph.replace("$200", amount)}\n\n${Array.from({ length: count - 1 }, (_, i) => `${operations} Operating sequence ${i}.`).join("\n\n")}\n\nItem 4. Company`;
+    const current = analyze(report("$350"), "20-F", "risk");
+    const prior = analyze(report("$200"), "20-F", "risk");
+    const diff = compareDisclosurePassages(current, prior);
+    assert.equal(diff.comparisonError, undefined);
+    assert.equal(diff.matches[0].change, "revised");
+    assert.match(diff.matches[0].priorText, /\$200/);
+    assert.equal(diff.removed.length, 0);
+  }
 });
 
 const filing = (n, reportDate, filingDate, form = "10-Q") => ({
@@ -401,7 +508,7 @@ test("Live engine returns stable evidence revisions, continuation metadata and c
     const first = await scanDisclosureCompany(cik, settings);
     assert.equal(first.nextCursor, accessions[0]);
     assert.equal(first.remaining, 1);
-    assert.equal(first.version, "disclosures-v3");
+    assert.equal(first.version, QUERY_VERSION);
     assert.match(first.filings[0].evidenceRevision, /^[a-f0-9]{64}$/);
     const read = await readDisclosureDocument(
       cik,

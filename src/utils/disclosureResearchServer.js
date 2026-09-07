@@ -283,6 +283,7 @@ async function inspectFiling(
         const diff = compareDisclosurePassages(analysis, prior, {
           amendment: pair.kind === "amendment",
         });
+        comparisonError = diff.comparisonError || "";
         analysis.matches = diff.matches;
         removed = diff.removed;
         unchanged = diff.unchanged;
