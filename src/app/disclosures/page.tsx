@@ -44,7 +44,14 @@ export default async function DisclosuresPage({
         ? "index"
         : "companies",
   };
-  for (const key of ["start", "end", "forms", "section", "scope"] as const) {
+  for (const key of [
+    "start",
+    "end",
+    "forms",
+    "section",
+    "scope",
+    "comparison",
+  ] as const) {
     const value = firstParam(params[key]);
     if (value)
       (initial as Record<string, string | number | boolean>)[key] = value;

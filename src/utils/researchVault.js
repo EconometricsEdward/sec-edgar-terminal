@@ -139,8 +139,14 @@ function settings(value) {
     "formulaOp",
     "formulaScale",
     "briefTitle",
+    "comparison",
   ])
     optionalText(value[key], `Saved setting ${key}`);
+  if (value.comparison !== undefined)
+    requireShape(
+      ["annual-season", "previous-report", "none"].includes(value.comparison),
+      "Saved disclosure comparison is invalid.",
+    );
   if (value.forms !== undefined)
     requireShape(
       typeof value.forms === "string" ||
@@ -471,6 +477,7 @@ export function validateResearchStore(key, raw) {
         "Reviewed disclosure IDs must be text.",
       );
       objects(s.inbox, "Disclosure inbox").forEach((i) => {
+        if (i.searchSettings !== undefined) settings(i.searchSettings);
         requireShape(
           typeof i.id === "string" && typeof i.reviewed === "boolean",
           "Disclosure inbox item is invalid.",
@@ -508,6 +515,25 @@ export function validateResearchStore(key, raw) {
         typeof c.id === "string" && typeof c.name === "string",
         "Disclosure collection metadata is invalid.",
       );
+      if (c.brief !== undefined) {
+        requireShape(object(c.brief), "Disclosure brief is invalid.");
+        for (const [key, max] of Object.entries({
+          title: 160,
+          researchQuestion: 3000,
+          narrative: 12000,
+          conclusions: 12000,
+        }))
+          requireShape(
+            c.brief[key] === undefined ||
+              (typeof c.brief[key] === "string" && c.brief[key].length <= max),
+            `Disclosure brief ${key} is invalid.`,
+          );
+        requireShape(
+          c.brief.groupBy === undefined ||
+            ["order", "company", "topic"].includes(c.brief.groupBy),
+          "Disclosure brief grouping is invalid.",
+        );
+      }
       objects(c.items, "Disclosure evidence").forEach((e) => {
         for (const k of ["id", "ticker", "quote", "section", "notes", "tags"])
           requireShape(
@@ -535,6 +561,20 @@ export function validateResearchStore(key, raw) {
       data.labels === undefined || object(data.labels),
       "Disclosure labels are invalid.",
     );
+    if (data.reviewedFilings !== undefined) {
+      requireShape(
+        object(data.reviewedFilings) &&
+          Object.keys(data.reviewedFilings).length <= 2000,
+        "Disclosure review markers are invalid.",
+      );
+      for (const [id, timestamp] of Object.entries(data.reviewedFilings))
+        requireShape(
+          id.length <= 4000 &&
+            typeof timestamp === "string" &&
+            Number.isFinite(Date.parse(timestamp)),
+          "Disclosure review marker is invalid.",
+        );
+    }
   } else if (key === "edgar:market-research:v1") {
     requireShape(
       array(data.watchlist, "Market watchlist", 1000).every(ticker),

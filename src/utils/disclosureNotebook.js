@@ -37,6 +37,7 @@ export function updateDisclosureMonitor(
   saved,
   companies,
   now = new Date().toISOString(),
+  checkedSettings = saved.settings,
 ) {
   const reviewed = companies.flatMap((c) =>
     (c.filings || []).filter((f) => f.status === "reviewed"),
@@ -62,6 +63,7 @@ export function updateDisclosureMonitor(
       documentUrl: f.documentUrl,
       discoveredAt: now,
       reviewed: false,
+      ...(checkedSettings ? { searchSettings: { ...checkedSettings } } : {}),
       reason:
         f.filingDate < (saved.lastChecked || saved.createdAt).slice(0, 10)
           ? "Newly discovered historical match"

@@ -1,0 +1,69 @@
+.desk {
+  margin: 18px 0;
+}
+.toggle {
+  margin: 14px 0;
+  max-width: 100%;
+  text-align: left;
+}
+.rows {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.company {
+  border: 1px solid var(--disc-border);
+  border-radius: 10px;
+  padding: 16px;
+  min-width: 0;
+}
+.company h3 {
+  font-size: 16px;
+}
+.company h3 small {
+  display: block;
+  color: var(--disc-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.company p {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 8px 0;
+}
+.company span {
+  font-size: 12px;
+}
+.gap {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--disc-border);
+}
+.gap span {
+  overflow-wrap: anywhere;
+}
+.gap button {
+  flex-shrink: 0;
+}
+.partial,
+.failed {
+  color: var(--disc-accent);
+}
+.reviewed {
+  color: var(--disc-text);
+}
+.not-reviewed {
+  color: var(--disc-muted);
+}
+@media (max-width: 680px) {
+  .gap {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .company {
+    padding: 12px;
+  }
+}

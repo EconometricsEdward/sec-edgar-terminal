@@ -3,6 +3,7 @@ import {
   parseDisclosureQuery,
   termPattern,
 } from "./disclosureQuery.js";
+import { disclosureExactText } from "./disclosureQuantities.js";
 
 export const DISCLOSURE_TOPICS = [
   {
@@ -98,8 +99,23 @@ const subject = (s) =>
     .slice(0, 2)
     .join(" ");
 
+// A table-of-contents heading is not evidence that its narrative was reviewed.
+function hasForeignNarrative(body) {
+  return body.split(/\n\s*\n/).some((paragraph) => {
+    const lines = paragraph.trim().split(/\n/);
+    const prose = lines
+      .filter(
+        (line) =>
+          !/^\s*(?:item\s+\d|[A-Z][.\)]\s)|\.{3,}\s*\d*\s*$/i.test(line),
+      )
+      .join(" ");
+    return prose.length >= 180 && (prose.match(/\p{L}+/gu) || []).length >= 25;
+  });
+}
+
 /** Bounded heading extraction. Missing headings stay unknown, never zero matches. */
 export function disclosurePassages(text, form = "") {
+  const foreignAnnual = /^20-F(?:\/A)?$/.test(form);
   const headings = [
     ...text.matchAll(
       /(?:^|\n)\s*item\s+(\d+(?:\.\d{2}|[A-Z])?)\s*[.\-:—]?\s*/gim,
@@ -116,18 +132,66 @@ export function disclosurePassages(text, form = "") {
     if (/^8-K/.test(form) && /^\d\.\d{2}$/.test(item)) {
       id = `8k:${item}`;
       label = `8-K Item ${item}`;
-    } else if (item === "1A" && /risk\s+factors/i.test(title)) {
+    } else if (
+      !foreignAnnual &&
+      item === "1A" &&
+      /risk\s+factors/i.test(title)
+    ) {
       id = "risk";
       label = "Risk Factors";
     } else if (
+      !foreignAnnual &&
       item === (form.startsWith("10-Q") ? "2" : "7") &&
       /management.{0,12}discussion/i.test(title)
     ) {
       id = "mda";
       label = "MD&A";
+    } else if (
+      foreignAnnual &&
+      item === "5" &&
+      /operating\s+and\s+financial\s+review(?:\s+and\s+prospects)?/i.test(title)
+    ) {
+      id = "mda";
+      label = "Operating and Financial Review · 20-F Item 5";
     }
-    if (id && end - h.index > 200)
+    if (
+      id &&
+      end - h.index > 200 &&
+      (!foreignAnnual ||
+        hasForeignNarrative(text.slice(h.index + h[0].length, end)))
+    )
       ranges.push({ id, label, start: h.index, end });
+  }
+  if (foreignAnnual) {
+    // Item 3.D may be a full heading or a D. subsection inside Item 3.
+    // Requiring the subsection avoids treating all Key Information as Risk Factors.
+    const riskHeadings = [
+      ...text.matchAll(
+        /(?:^|\n)[\t ]*(?:item[\t ]+3[\t .:—-]*D[\s.:—-]{0,12}|D[.)\t :—-]+[\s]{0,12})Risk[\s]{1,12}Factors\b[^\n]*/gim,
+      ),
+    ];
+    for (const h of riskHeadings) {
+      const direct = /^\s*item\s+3/i.test(h[0]);
+      const preceding = headings.filter((item) => item.index <= h.index).at(-1);
+      if (!direct && preceding?.[1] !== "3") continue;
+      const nextItem = headings.find(
+        (item) => item.index > h.index + h[0].length,
+      );
+      let end = nextItem?.index ?? text.length;
+      // A subsequent lettered subsection is a hard boundary if one is present.
+      const nextSubsection =
+        /\n[\t ]*[E-Z][.)][\t ]+[A-Z][^\n]{0,140}(?:\n|$)/.exec(
+          text.slice(h.index + h[0].length, end),
+        );
+      if (nextSubsection) end = h.index + h[0].length + nextSubsection.index;
+      if (hasForeignNarrative(text.slice(h.index + h[0].length, end)))
+        ranges.push({
+          id: "risk",
+          label: "Risk Factors · 20-F Item 3.D",
+          start: h.index,
+          end,
+        });
+    }
   }
   // Bank reports sometimes introduce MD&A without a numbered narrative heading.
   const intro =
@@ -318,7 +382,35 @@ export function analyzeDisclosure(
   };
 }
 
-export function selectDisclosureBaseline(current, filings) {
+export function selectDisclosureBaseline(
+  current,
+  filings,
+  comparison = "annual-season",
+  baselineAccession = "",
+) {
+  if (baselineAccession) {
+    const selected = filings.find((f) => f.accession === baselineAccession);
+    const allowed =
+      selected &&
+      selectDisclosureBaseline(current, [selected], comparison).prior;
+    if (!allowed)
+      throw new Error(
+        "The requested comparison accession is not an eligible earlier report for this comparison.",
+      );
+    const pair = selectDisclosureBaseline(current, [selected], comparison);
+    return {
+      ...pair,
+      reason: `${pair.reason} Pinned to the accession in this passage link.`,
+    };
+  }
+  if (comparison === "none")
+    return {
+      prior: null,
+      kind: "none",
+      reason: "Comparison is turned off for this research search.",
+    };
+  if (!["annual-season", "previous-report"].includes(comparison))
+    throw new Error("Choose a supported filing comparison.");
   const baseForm = current.form.replace("/A", "");
   const older = filings.filter(
     (f) =>
@@ -330,8 +422,12 @@ export function selectDisclosureBaseline(current, filings) {
   );
   if (current.form.endsWith("/A")) {
     const prior = older
-      .filter((f) => f.reportDate === current.reportDate)
-      .sort((a, b) => b.filingDate.localeCompare(a.filingDate))[0];
+      .filter((f) => current.reportDate && f.reportDate === current.reportDate)
+      .sort(
+        (a, b) =>
+          b.filingDate.localeCompare(a.filingDate) ||
+          b.accession.localeCompare(a.accession),
+      )[0];
     return {
       prior: prior || null,
       kind: "amendment",
@@ -347,6 +443,31 @@ export function selectDisclosureBaseline(current, filings) {
       reason:
         "Event filings are not automatically paired with unrelated events.",
     };
+  if (comparison === "previous-report") {
+    const prior = older
+      .filter(
+        (f) =>
+          !f.form.endsWith("/A") &&
+          current.reportDate &&
+          f.reportDate &&
+          Number.isFinite(Date.parse(f.reportDate)) &&
+          Number.isFinite(Date.parse(current.reportDate)) &&
+          f.reportDate < current.reportDate,
+      )
+      .sort(
+        (a, b) =>
+          b.reportDate.localeCompare(a.reportDate) ||
+          b.filingDate.localeCompare(a.filingDate) ||
+          b.accession.localeCompare(a.accession),
+      )[0];
+    return {
+      prior: prior || null,
+      kind: "previous-report",
+      reason: prior
+        ? "Previous reporting period of the same form, using an original report. Quarter-to-quarter comparisons can contain seasonal differences."
+        : "No earlier reporting period of the same form was found in inspected history.",
+    };
+  }
   const prior = older
     .filter(
       (f) =>
@@ -374,9 +495,11 @@ export function compareDisclosurePassages(
   prior,
   { amendment = false } = {},
 ) {
-  const exact = new Map(prior.paragraphs.map((p) => [normalize(p.text), p]));
+  const exact = new Map(
+    prior.paragraphs.map((p) => [disclosureExactText(p.text), p]),
+  );
   const currentExact = new Set(
-    current.paragraphs.map((p) => normalize(p.text)),
+    current.paragraphs.map((p) => disclosureExactText(p.text)),
   );
   const used = new Set();
   const candidates = prior.paragraphs.map((p) => ({
@@ -385,7 +508,7 @@ export function compareDisclosurePassages(
     subject: subject(p.text),
   }));
   const changed = current.matches.map((p) => {
-    const same = exact.get(normalize(p.text));
+    const same = exact.get(disclosureExactText(p.text));
     if (same) {
       used.add(same.index);
       return { ...p, change: "unchanged", priorText: same.text };
@@ -397,7 +520,7 @@ export function compareDisclosurePassages(
     for (const old of candidates) {
       if (
         used.has(old.index) ||
-        currentExact.has(normalize(old.text)) ||
+        currentExact.has(disclosureExactText(old.text)) ||
         old.sectionId !== p.sectionId ||
         head !== old.subject
       )
@@ -435,7 +558,7 @@ export function compareDisclosurePassages(
     .filter(
       (p) =>
         !used.has(p.index) &&
-        !currentExact.has(normalize(p.text)) &&
+        !currentExact.has(disclosureExactText(p.text)) &&
         p.sectionId !== "other" &&
         current.sections.some((s) => s.id === p.sectionId) &&
         !amendment,

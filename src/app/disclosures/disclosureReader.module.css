@@ -1,0 +1,171 @@
+.filterPanel {
+  margin: 14px 0;
+  border: 1px solid var(--disc-border);
+  border-radius: 8px;
+  background: var(--disc-panel);
+}
+.filterPanel summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+.filterPanel summary span {
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--disc-muted);
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  margin: 0;
+  background: var(--disc-panel);
+  border-top: 1px solid var(--disc-border);
+  border-radius: 8px;
+}
+.filters label {
+  font-size: 11px;
+  color: var(--disc-muted);
+  min-width: 0;
+}
+.filters select,
+.filters input {
+  margin-top: 5px;
+  width: 100%;
+  min-width: 0;
+}
+.find {
+  grid-column: 1 / -1;
+}
+.find > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.find button {
+  flex: 0 0 auto;
+  margin-top: 5px;
+}
+.filterFooter {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--disc-muted);
+}
+.filterFooter p {
+  margin: 0;
+}
+.passage:focus {
+  outline: 2px solid var(--disc-link);
+  outline-offset: 5px;
+  border-radius: 4px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.actions button {
+  font-size: 11px;
+}
+.navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0;
+}
+.navigation p {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--disc-muted);
+  margin: 0;
+}
+.copyFallback {
+  padding: 12px;
+  margin: 12px 0;
+  border: 1px solid var(--disc-border);
+  border-radius: 6px;
+}
+.copyFallback textarea {
+  width: 100%;
+  min-height: 120px;
+  margin-top: 7px;
+  font-size: 11px;
+}
+.quantities {
+  margin: 16px 0;
+  padding: 12px;
+  background: var(--disc-panel);
+  border: 1px solid var(--disc-border);
+  border-radius: 7px;
+}
+.quantities summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+.note {
+  color: var(--disc-muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.quantityGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.quantityGrid section {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--disc-border);
+  border-radius: 5px;
+}
+.quantityGrid h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+.quantityGrid a {
+  font-size: 10px;
+}
+.quantityQuote {
+  font-size: 12px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.quantityGrid mark,
+.quantityLegend mark {
+  background: color-mix(in srgb, var(--disc-link) 14%, transparent);
+  color: var(--disc-text);
+  border-bottom: 2px solid var(--disc-link);
+  padding: 0 2px;
+}
+.quantityGrid mark[data-distinct="true"],
+.quantityLegend mark[data-distinct="true"] {
+  background: color-mix(in srgb, var(--disc-accent, #b7791f) 15%, transparent);
+  border-bottom: 2px dashed var(--disc-accent, #b7791f);
+}
+.quantityLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0;
+  font-size: 10px;
+}
+@media (max-width: 700px) {
+  .quantityGrid {
+    grid-template-columns: 1fr;
+  }
+  .filters {
+    grid-template-columns: 1fr;
+  }
+}

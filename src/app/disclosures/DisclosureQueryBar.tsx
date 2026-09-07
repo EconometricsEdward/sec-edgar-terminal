@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, SlidersHorizontal, Square, ArrowUpRight } from "lucide-react";
 import {
   buildAdvancedQuery,
@@ -11,6 +11,8 @@ import {
   DISCLOSURE_MARKET_MAP,
 } from "../../utils/disclosureUniverses.js";
 import type { SearchSettings } from "./disclosureTypes";
+import DisclosureQueryCoach from "./DisclosureQueryCoach";
+import { inspectDisclosureQuery } from "../../utils/disclosureQueryCoach.js";
 import s from "./disclosures.module.css";
 
 export default function DisclosureQueryBar({
@@ -32,6 +34,12 @@ export default function DisclosureQueryBar({
     exclude: "",
   });
   const [builderError, setBuilderError] = useState("");
+  const [previousQuery, setPreviousQuery] = useState<string | null>(null);
+  const queryInspection = useMemo(
+    () => inspectDisclosureQuery(settings.query),
+    [settings.query],
+  );
+  const builderQuery = useMemo(() => buildAdvancedQuery(builder), [builder]);
   const update = (
     key: keyof SearchSettings,
     value: string | number | boolean,
@@ -65,7 +73,7 @@ export default function DisclosureQueryBar({
       className={s.searchBox}
       onSubmit={(event) => {
         event.preventDefault();
-        onSearch(settings);
+        if (queryInspection.valid) onSearch(settings);
       }}
     >
       <div className={s.searchTop}>
@@ -75,13 +83,19 @@ export default function DisclosureQueryBar({
             <Search size={20} aria-hidden="true" />
             <input
               aria-label="Disclosure query"
+              aria-describedby="disclosure-query-feedback"
+              aria-invalid={!queryInspection.valid}
               value={settings.query}
               onChange={(e) => update("query", e.target.value)}
               placeholder="(liquidity OR covenant) AND (breach OR waiver)"
             />
           </div>
         </label>
-        <button className={s.primary} type="submit" disabled={busy}>
+        <button
+          className={s.primary}
+          type="submit"
+          disabled={busy || !queryInspection.valid}
+        >
           <Search size={16} /> {busy ? "Reviewing…" : "Search filings"}
         </button>
         {busy && (
@@ -90,6 +104,11 @@ export default function DisclosureQueryBar({
           </button>
         )}
       </div>
+      <DisclosureQueryCoach
+        query={settings.query}
+        scope={settings.scope}
+        onQueryChange={(query) => update("query", query)}
+      />
       <div className={s.filterRow}>
         <label>
           Research scope
@@ -186,6 +205,21 @@ export default function DisclosureQueryBar({
                 </select>
               </label>
               <label>
+                Compare language against
+                <select
+                  value={settings.comparison || "annual-season"}
+                  onChange={(e) => update("comparison", e.target.value)}
+                >
+                  <option value="annual-season">
+                    Comparable annual season
+                  </option>
+                  <option value="previous-report">
+                    Previous reporting period
+                  </option>
+                  <option value="none">No comparison · search only</option>
+                </select>
+              </label>
+              <label>
                 Filings per company
                 <select
                   value={settings.depth}
@@ -211,6 +245,13 @@ export default function DisclosureQueryBar({
               Exclusions apply to the selected scope. A section that cannot be
               identified is recorded as unavailable. Index discovery returns
               candidates; the reader verifies these filters.
+            </p>
+            <p className={s.muted}>
+              Comparable annual season pairs quarterly reports with the same
+              fiscal season in the prior year. Previous reporting period uses
+              the preceding same-form report for a different period. Annual
+              reports use the prior annual period; amendments are identified
+              separately. An unavailable comparison stays visibly unavailable.
             </p>
             <div className={s.builder}>
               <h3>Build an expression</h3>
@@ -247,20 +288,63 @@ export default function DisclosureQueryBar({
                 </label>
                 <button
                   type="button"
+                  disabled={!builderQuery.trim()}
                   onClick={() => {
                     try {
-                      const query = buildAdvancedQuery(builder);
-                      parseDisclosureQuery(query);
-                      update("query", query);
+                      parseDisclosureQuery(builderQuery);
+                      setPreviousQuery(settings.query);
+                      update("query", builderQuery);
                       setBuilderError("");
                     } catch (error) {
                       setBuilderError(error.message);
                     }
                   }}
                 >
-                  Use expression <ArrowUpRight size={14} />
+                  Replace query with builder <ArrowUpRight size={14} />
+                </button>
+                <button
+                  type="button"
+                  disabled={!builderQuery.trim() || !queryInspection.valid}
+                  onClick={() => {
+                    try {
+                      const combined = `(${settings.query}) AND (${builderQuery})`;
+                      parseDisclosureQuery(combined);
+                      setPreviousQuery(settings.query);
+                      update("query", combined);
+                      setBuilderError("");
+                    } catch (error) {
+                      setBuilderError(error.message);
+                    }
+                  }}
+                >
+                  Add builder with AND
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBuilder({ any: "", required: "", exclude: "" });
+                    setBuilderError("");
+                  }}
+                >
+                  Clear builder
                 </button>
               </div>
+              {builderQuery && (
+                <p className={s.muted}>
+                  Builder preview: <code>{builderQuery}</code>
+                </p>
+              )}
+              {previousQuery !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    update("query", previousQuery);
+                    setPreviousQuery(null);
+                  }}
+                >
+                  Undo last builder change
+                </button>
+              )}
               {builderError && (
                 <p role="alert" className={s.error}>
                   {builderError}

@@ -9,6 +9,7 @@ export type SearchSettings = {
   scope: "paragraph" | "document";
   depth: number;
   amendments: boolean;
+  comparison: "annual-season" | "previous-report" | "none";
 };
 export type Passage = {
   index: number;
@@ -72,6 +73,7 @@ export type Filing = {
   page?: number;
   pageSize?: number;
   observedAt?: string;
+  evidenceRevision?: string;
 };
 export type CompanyScan = {
   ticker: string;
@@ -91,6 +93,10 @@ export type CompanyScan = {
   observedAt?: string;
   checkedAt?: string;
   error?: string;
+  nextCursor?: string | null;
+  after?: string;
+  remaining?: number;
+  batchOffset?: number;
 };
 export type Evidence = {
   id: string;
@@ -114,7 +120,18 @@ export type Evidence = {
   notes: string;
   tags: string;
 };
-export type Collection = { id: string; name: string; items: Evidence[] };
+export type Collection = {
+  id: string;
+  name: string;
+  items: Evidence[];
+  brief?: {
+    title: string;
+    researchQuestion: string;
+    narrative: string;
+    conclusions: string;
+    groupBy: "order" | "company" | "topic";
+  };
+};
 export type SavedSearch = {
   id: string;
   name: string;
@@ -129,6 +146,7 @@ export type SavedSearch = {
     reviewed: boolean;
     reason: string;
     discoveredAt: string;
+    searchSettings?: SearchSettings;
   })[];
   lastCoverage?: {
     ticker: string;
@@ -144,6 +162,7 @@ export type DisclosureNotebook = {
   searches: SavedSearch[];
   collections: Collection[];
   labels: Record<string, { label: string; reviewed: boolean }>;
+  reviewedFilings?: Record<string, string>;
 };
 export const queryParams = (settings: SearchSettings) =>
   new URLSearchParams({
@@ -155,6 +174,7 @@ export const queryParams = (settings: SearchSettings) =>
     scope: settings.scope,
     depth: String(settings.depth),
     amendments: String(settings.amendments),
+    comparison: settings.comparison || "annual-season",
   });
 export const companyInputs = (value: string) => [
   ...new Set(
