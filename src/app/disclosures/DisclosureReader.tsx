@@ -497,9 +497,10 @@ export default function DisclosureReader({
             </p>
           )}
           <p className={s.muted}>
-            Showing {data.totalPassages || 0} of{" "}
+            {data.totalPassages || 0} of{" "}
             {data.unfilteredTotalPassages ?? data.totalPassages ?? 0}{" "}
-            query-matching passages after reader filters. {data.matchCount || 0}{" "}
+            query-matching passages remain after reader filters;{" "}
+            {data.matches?.length || 0} shown on this page. {data.matchCount || 0}{" "}
             matching passages · {data.removedCount || 0} prior passages
             unmatched in current sections · {data.unchanged || 0} repeated.{" "}
             {data.queryRemovedCount

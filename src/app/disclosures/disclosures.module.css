@@ -241,6 +241,15 @@
   padding: 16px 18px 10px;
   margin-bottom: 24px;
 }
+.page[data-research-view="collections"] .searchBox,
+.page[data-research-view="inbox"] .searchBox {
+  position: static;
+}
+.tabs button {
+  scroll-margin-top: calc(
+    var(--disc-header-height) + var(--disc-controls-height) + 28px
+  );
+}
 .searchTop {
   display: flex;
   align-items: flex-end;

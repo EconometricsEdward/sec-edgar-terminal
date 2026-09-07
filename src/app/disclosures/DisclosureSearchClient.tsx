@@ -786,7 +786,7 @@ export default function DisclosureSearchClient({
       })),
     }));
   return (
-    <div className={s.page} ref={pageRef}>
+    <div className={s.page} ref={pageRef} data-research-view={tab}>
       <header className={s.header}>
         <div>
           <span className={s.eyebrow}>
