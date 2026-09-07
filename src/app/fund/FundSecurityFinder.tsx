@@ -514,9 +514,11 @@ export default function FundSecurityFinder({
             </div>
             {result.totalGroups > 0 && !stockFunds && (
               <p className={s.notice}>
-                <b>No common-stock matches in these results.</b> The matching
-                positions are other security types, such as bonds. They do not
-                establish stock ownership.
+                <b>
+                  No positions are identified as common stock in these results.
+                </b>{" "}
+                Matches report other or unavailable security types, so they do
+                not establish stock ownership.
               </p>
             )}
             <div className={s.summaryIntro}>
