@@ -357,3 +357,143 @@ test("Brief defaults recover unknown industry selections and reject unavailable 
   assert.equal(report.sources.length, 0);
   assert.equal(report.rows.length, 0);
 });
+
+test("Research questions export conclusions and independent original-cutoff evidence, including unanswered questions", () => {
+  const data = fixture();
+  const questions = [
+    {
+      id: "question-one",
+      title: "Did cash support earnings?",
+      conclusion: "=Do not evaluate this formula",
+      status: "in-progress",
+      updatedAt: "2026-03-02T10:00:00Z",
+      evidence: [
+        {
+          label: "Earlier earnings snapshot",
+          format: "currency",
+          point: data.metrics.netIncome[2],
+          analysisSettings: { basis: "annual", asOf: "2024-03-01" },
+          collectedAt: "2024-03-02T10:00:00Z",
+        },
+      ],
+    },
+    {
+      id: "question-two",
+      title: "An open issue",
+      conclusion: "<script>private text</script>",
+      status: "open",
+      updatedAt: "2026-03-02T10:00:00Z",
+      evidence: [],
+    },
+  ];
+  const report = buildAnalysisBrief(
+    data,
+    settings({ briefSections: ["questions"] }),
+    0,
+    "",
+    [],
+    questions,
+  );
+  assert.equal(report.questions.length, 2);
+  assert.equal(report.questions[0].evidence[0].originalCutoff, "2024-03-01");
+  assert.equal(report.sources.length, 1);
+  const html = analysisBriefHtml(report),
+    csv = analysisBriefCsv(report);
+  assert.match(html, /Did cash support earnings/);
+  assert.match(html, /2024-03-01/);
+  assert.match(html, /&lt;script&gt;private text&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(csv, /"'=Do not evaluate this formula"/);
+  assert.match(csv, /question-two/);
+  assert.match(csv, /0000000001-2024-000001/);
+  const omitted = buildAnalysisBrief(
+    data,
+    settings({ briefSections: ["metrics"] }),
+    0,
+    "",
+    [],
+    questions,
+  );
+  for (const output of [analysisBriefHtml(omitted), analysisBriefCsv(omitted)])
+    assert.doesNotMatch(
+      output,
+      /Did cash support earnings|Earlier earnings snapshot|private text/,
+    );
+});
+
+test("Personal thresholds export measured values, missing status and original SEC evidence without implied risk scores", () => {
+  const data = fixture();
+  const rule = {
+    id: "earnings",
+    label: "Earnings below my threshold",
+    metric: "netIncome",
+    format: "currency",
+    basis: "annual",
+    mode: "below",
+    baseline: "year",
+    threshold: 0,
+  };
+  const evaluations = [
+    {
+      rule,
+      definition: data.definitions[0],
+      point: data.metrics.netIncome[0],
+      period: data.periods[0],
+      asOf: "2026-03-01",
+      format: "currency",
+      measuredValue: -25,
+      status: "matched",
+      reason: "",
+      selection: { point: data.metrics.netIncome[0] },
+    },
+    {
+      rule: {
+        ...rule,
+        id: "quarter",
+        label: "Quarter evidence needed",
+        basis: "quarter",
+      },
+      definition: data.definitions[0],
+      point: data.metrics.netIncome[0],
+      period: data.periods[0],
+      asOf: "2026-03-01",
+      format: "currency",
+      measuredValue: null,
+      status: "unavailable",
+      reason: "Switch to standalone quarter to evaluate this saved threshold.",
+    },
+  ];
+  const report = buildAnalysisBrief(
+    data,
+    settings({ briefSections: ["thresholds"] }),
+    0,
+    "",
+    [],
+    [],
+    evaluations,
+  );
+  assert.equal(report.thresholds[0].value, -25);
+  assert.equal(report.thresholds[1].value, null);
+  const html = analysisBriefHtml(report),
+    csv = analysisBriefCsv(report);
+  assert.match(html, /Condition met/);
+  assert.match(html, /Unavailable/);
+  assert.match(html, /not financial risk ratings/);
+  assert.match(csv, /Threshold raw value/);
+  assert.match(csv, /Switch to standalone quarter/);
+  assert.match(csv, /0000000001-2026-000001/);
+  const omitted = buildAnalysisBrief(
+    data,
+    settings({ briefSections: ["metrics"] }),
+    0,
+    "",
+    [],
+    [],
+    evaluations,
+  );
+  for (const output of [analysisBriefHtml(omitted), analysisBriefCsv(omitted)])
+    assert.doesNotMatch(
+      output,
+      /Quarter evidence needed|Earnings below my threshold/,
+    );
+});

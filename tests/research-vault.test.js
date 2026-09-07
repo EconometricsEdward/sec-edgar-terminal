@@ -702,6 +702,62 @@ test("comparison evidence without a saved peer set opens its company's notebook 
   const value = fixtures()[compareKey];
   value.searches = [];
   const vault = readResearchVault(storage({ [compareKey]: value }));
-  assert.equal(vault.entries.find((e) => e.type === "evidence").href, "/compare/JPM?basis=annual&view=notebook");
-  assert.equal(vault.entries.find((e) => e.type === "note").href, "/compare?view=notebook");
+  assert.equal(
+    vault.entries.find((e) => e.type === "evidence").href,
+    "/compare/JPM?basis=annual&view=notebook",
+  );
+  assert.equal(
+    vault.entries.find((e) => e.type === "note").href,
+    "/compare?view=notebook",
+  );
+});
+
+test("Analysis thresholds and question evidence remain validated and portable", () => {
+  const records = fixtures();
+  const company = records[workspaceKey].companies.JPM;
+  company.analysisRules = [
+    {
+      id: "rule-1",
+      label: "Cash review",
+      metric: "cash",
+      format: "currency",
+      basis: "annual",
+      mode: "below",
+      baseline: "year",
+      threshold: 1000,
+      updatedAt: now,
+    },
+  ];
+  company.analysisQuestions = [
+    {
+      id: "question-1",
+      title: "What supports the return?",
+      conclusion: "Review the capital base",
+      status: "in-progress",
+      evidence: [company.evidence[0]],
+      updatedAt: now,
+    },
+  ];
+  const validated = validateResearchStore(
+    workspaceKey,
+    JSON.stringify(records[workspaceKey]),
+  );
+  assert.deepEqual(
+    validated.companies.JPM.analysisQuestions,
+    company.analysisQuestions,
+  );
+  assert.deepEqual(
+    validated.companies.JPM.analysisRules,
+    company.analysisRules,
+  );
+  const copy = structuredClone(records[workspaceKey]);
+  copy.companies.JPM.analysisQuestions[0].evidence[0].point.sources[0].documentUrl =
+    "javascript:alert(1)";
+  assert.throws(() =>
+    validateResearchStore(workspaceKey, JSON.stringify(copy)),
+  );
+  company.analysisRules[0].threshold = "1000";
+  assert.throws(() =>
+    validateResearchStore(workspaceKey, JSON.stringify(records[workspaceKey])),
+  );
 });

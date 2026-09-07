@@ -1,0 +1,238 @@
+.heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 8px 0 16px;
+}
+.heading label {
+  min-width: 230px;
+  max-width: 100%;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+.stats article {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--analysis-border);
+  border-radius: 10px;
+  background: var(--analysis-bg);
+}
+.stats article > span,
+.stats small {
+  color: var(--analysis-muted);
+  font-size: 12px;
+}
+.stats small,
+.table small {
+  display: block;
+  margin-top: 5px;
+  font-weight: 400;
+}
+.value.value,
+.plainValue {
+  display: block;
+  color: var(--analysis-accent);
+  font-size: clamp(22px, 2.5vw, 32px);
+  font-weight: 750;
+  padding: 7px 0;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.plainValue {
+  color: var(--analysis-text);
+}
+.rangeValues {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+.rangeValues button,
+.cell.cell {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--analysis-accent);
+  font-variant-numeric: tabular-nums;
+}
+.rangeValues button {
+  font-size: 17px;
+  font-weight: 650;
+}
+.rangeValues > span {
+  color: var(--analysis-muted);
+  font-size: 12px;
+}
+.value.value:hover,
+.rangeValues button:hover,
+.cell.cell:hover {
+  text-decoration: underline;
+}
+.visual {
+  padding: 18px;
+  border: 1px solid var(--analysis-border);
+  border-radius: 10px;
+}
+.visual > p {
+  font-weight: 650;
+  margin: 0 0 14px;
+}
+.track {
+  height: 48px;
+  position: relative;
+  isolation: isolate;
+}
+.track::before {
+  content: "";
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 23px;
+  height: 2px;
+  background: var(--analysis-border);
+}
+.range {
+  position: absolute;
+  top: 18px;
+  min-width: 2px;
+  height: 12px;
+  background: var(--analysis-muted);
+  opacity: 0.4;
+  border-radius: 4px;
+}
+.medianDot.medianDot,
+.currentDot.currentDot {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  transform: translateX(-50%);
+  background: var(--analysis-raised);
+  border: 3px solid var(--analysis-muted);
+  border-radius: 50%;
+  top: 11px;
+}
+.currentDot.currentDot {
+  top: 0;
+  height: 28px;
+  width: 28px;
+  background: transparent;
+  border: 0;
+}
+.currentDot::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 2px;
+  background: var(--analysis-accent);
+  transform: rotate(45deg);
+}
+.medianDot:focus-visible,
+.currentDot:focus-visible {
+  outline: 2px solid var(--analysis-text);
+  outline-offset: 5px;
+  z-index: 2;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  font-size: 12px;
+  color: var(--analysis-muted);
+  margin-top: 6px;
+}
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.currentKey,
+.medianKey,
+.rangeKey {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: var(--analysis-accent);
+  transform: rotate(45deg);
+}
+.medianKey {
+  background: transparent;
+  border: 2px solid var(--analysis-muted);
+  border-radius: 50%;
+}
+.rangeKey {
+  width: 20px;
+  background: var(--analysis-muted);
+  opacity: 0.4;
+  transform: none;
+}
+.details {
+  margin-top: 20px;
+}
+.details summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 0;
+}
+.tableWrap {
+  margin-top: 10px;
+  overflow-x: auto;
+  border: 1px solid var(--analysis-border);
+  border-radius: 8px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.table caption {
+  padding: 12px;
+  text-align: left;
+  background: var(--analysis-bg);
+  color: var(--analysis-muted);
+}
+.table th,
+.table td {
+  padding: 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--analysis-border);
+}
+.table th {
+  white-space: nowrap;
+}
+.table thead {
+  background: var(--analysis-raised);
+}
+.table small,
+.footnote {
+  color: var(--analysis-muted);
+  font-size: 12px;
+}
+.footnote {
+  margin: 14px 0 0;
+  line-height: 1.7;
+}
+@media (max-width: 640px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+  .heading label {
+    width: 100%;
+    min-width: 0;
+  }
+  .rangeValues {
+    gap: 8px;
+  }
+}

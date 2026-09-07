@@ -25,7 +25,8 @@ const tools = [
   {
     key: "overview",
     label: "Overview",
-    intent: "Find the largest financial movements and start a review.",
+    intent:
+      "Find financial movements and check your personal financial thresholds.",
   },
   {
     key: "statements",
@@ -35,12 +36,14 @@ const tools = [
   {
     key: "changes",
     label: "Changes",
-    intent: "Compare financial statements against a reporting baseline.",
+    intent:
+      "Reconcile earnings changes into operating, tax and scope differences; compare filing vintages.",
   },
   {
     key: "trends",
     label: "Growth & trends",
-    intent: "Chart a metric, inspect CAGR and compare fiscal seasonality.",
+    intent:
+      "Compare a metric with its own historical median and range; chart growth and fiscal seasonality.",
   },
   {
     key: "cash",
@@ -61,7 +64,7 @@ const tools = [
     key: "scenarios",
     label: "Scenarios",
     intent:
-      "Test hypothetical revenue, margin, asset loss and deposit assumptions.",
+      "Solve backward from financial targets with goal seek; test revenue, margin, asset loss and deposit assumptions.",
   },
   {
     key: "formula",
@@ -77,7 +80,7 @@ const tools = [
     key: "notebook",
     label: "Notebook",
     intent:
-      "Review collected evidence, save views and export a research brief.",
+      "Track research questions and conclusions with evidence; save views and export a research brief.",
   },
   {
     key: "extended",

@@ -23,6 +23,7 @@ import {
   analysisRows,
   exportVisibleAnalysisCsv,
 } from "../../../utils/analysisRows.js";
+import { evaluateAnalysisRules } from "../../../utils/analysisRules.js";
 import { resolveChartKeys } from "../../../utils/analysisChart.js";
 import AnalysisInspector from "../AnalysisInspector";
 import { useWorkspace } from "../../../components/research/WorkspaceProvider";
@@ -85,6 +86,24 @@ const AnalysisBriefComposer = dynamic(
 );
 const AnalysisVintageComparison = dynamic(
   () => import("../AnalysisVintageComparison"),
+  { loading: AnalysisToolLoading },
+);
+const AnalysisHistoricalContext = dynamic(
+  () => import("../AnalysisHistoricalContext"),
+  { loading: AnalysisToolLoading },
+);
+const AnalysisEarningsBridge = dynamic(
+  () => import("../AnalysisEarningsBridge"),
+  { loading: AnalysisToolLoading },
+);
+const AnalysisGoalSeek = dynamic(() => import("../AnalysisGoalSeek"), {
+  loading: AnalysisToolLoading,
+});
+const AnalysisThresholds = dynamic(() => import("../AnalysisThresholds"), {
+  loading: AnalysisToolLoading,
+});
+const AnalysisResearchQuestions = dynamic(
+  () => import("../AnalysisResearchQuestions"),
   { loading: AnalysisToolLoading },
 );
 const views = [
@@ -811,13 +830,32 @@ function Workspace(props: any) {
           <div className={styles.workspaceGrid} data-inspector={!!selection}>
             <div className={styles.content}>
               {settings.view === "overview" && (
-                <AnalysisOverview
-                  data={data}
-                  settings={settings}
-                  index={index}
-                  onInspect={inspectSelection}
-                  onPatch={patch}
-                />
+                <>
+                  <AnalysisOverview
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    onInspect={inspectSelection}
+                    onPatch={patch}
+                  />
+                  <AnalysisThresholds
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    rules={saved?.analysisRules || []}
+                    ready={workspace.ready && !workspace.error}
+                    onPatch={patch}
+                    onInspect={inspectSelection}
+                    onSave={(update) =>
+                      save(
+                        (current) => ({
+                          analysisRules: update(current.analysisRules || []),
+                        }),
+                        "Financial thresholds saved.",
+                      )
+                    }
+                  />
+                </>
               )}
               {settings.view === "capital" && (
                 <AnalysisCapitalLab
@@ -828,13 +866,22 @@ function Workspace(props: any) {
                 />
               )}
               {settings.view === "scenarios" && (
-                <AnalysisScenarioLab
-                  data={data}
-                  settings={settings}
-                  index={index}
-                  onInspect={inspectSelection}
-                  onPatch={patch}
-                />
+                <>
+                  <AnalysisGoalSeek
+                    key={`${data.ticker}:${period.end}:${settings.units}:${settings.asOf}:${settings.basis}`}
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    onInspect={inspectSelection}
+                  />
+                  <AnalysisScenarioLab
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    onInspect={inspectSelection}
+                    onPatch={patch}
+                  />
+                </>
               )}
               {settings.view === "formula" && (
                 <AnalysisFormulaLab
@@ -1016,6 +1063,12 @@ function Workspace(props: any) {
               )}
               {settings.view === "changes" && (
                 <>
+                  <AnalysisEarningsBridge
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    onInspect={inspectSelection}
+                  />
                   <AnalysisProfitBridge
                     data={data}
                     settings={settings}
@@ -1097,6 +1150,12 @@ function Workspace(props: any) {
               )}
               {settings.view === "trends" && (
                 <>
+                  <AnalysisHistoricalContext
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    onInspect={inspectSelection}
+                  />
                   <AnalysisGrowthLab
                     data={data}
                     settings={settings}
@@ -1553,12 +1612,38 @@ function Workspace(props: any) {
                       </button>
                     </div>
                   )}
+                  <AnalysisResearchQuestions
+                    data={data}
+                    settings={settings}
+                    index={index}
+                    questions={saved?.analysisQuestions || []}
+                    evidence={saved?.evidence || []}
+                    ready={workspace.ready && !workspace.error}
+                    onInspect={inspectSelection}
+                    onSave={(update) =>
+                      save(
+                        (current) => ({
+                          analysisQuestions: update(
+                            current.analysisQuestions || [],
+                          ),
+                        }),
+                        "Research questions saved.",
+                      )
+                    }
+                  />
                   <AnalysisBriefComposer
                     data={data}
                     settings={settings}
                     index={index}
                     notes={notes}
                     evidence={saved?.evidence || []}
+                    questions={saved?.analysisQuestions || []}
+                    ruleEvaluations={evaluateAnalysisRules(
+                      data,
+                      settings,
+                      index,
+                      saved?.analysisRules || [],
+                    )}
                     onPatch={patch}
                   />
                   <section className={styles.subpanel}>

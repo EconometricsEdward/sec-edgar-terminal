@@ -1,0 +1,159 @@
+.panel {
+  border: 1px solid var(--analysis-border);
+  border-radius: 16px;
+  background: var(--analysis-panel);
+  padding: 24px;
+  margin-top: 24px;
+  color: var(--analysis-text);
+}
+.heading,
+.ruleTitle,
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.heading h2 {
+  font-size: 21px;
+  margin: 4px 0;
+}
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--analysis-accent);
+  font-size: 11px;
+  margin: 0;
+}
+.intro {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--analysis-muted);
+  max-width: 880px;
+}
+.note,
+.rule p,
+.rule small {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--analysis-muted);
+}
+.empty {
+  padding: 18px;
+  border: 1px dashed var(--analysis-border);
+  border-radius: 10px;
+  color: var(--analysis-muted);
+  font-size: 14px;
+}
+.form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px;
+  margin: 20px 0;
+  border: 1px solid var(--analysis-border);
+  border-radius: 12px;
+}
+.form label {
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--analysis-muted);
+}
+.form input,
+.form select {
+  min-width: 0;
+  width: 100%;
+  padding: 10px;
+  background: var(--analysis-bg);
+  color: var(--analysis-text);
+  border: 1px solid var(--analysis-border);
+  border-radius: 7px;
+  font: inherit;
+}
+.form .actions {
+  grid-column: 1/-1;
+  justify-content: flex-start;
+}
+.panel button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border: 1px solid var(--analysis-border);
+  border-radius: 7px;
+  background: var(--analysis-bg);
+  color: var(--analysis-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.panel button:hover {
+  border-color: var(--analysis-accent);
+}
+.panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.panel button:focus-visible,
+.form input:focus-visible,
+.form select:focus-visible {
+  outline: 2px solid var(--analysis-accent);
+  outline-offset: 3px;
+}
+.list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+.rule {
+  border: 1px solid var(--analysis-border);
+  padding: 18px;
+  border-radius: 10px;
+}
+.ruleTitle h3 {
+  font-size: 15px;
+  margin: 0;
+}
+.ruleTitle span {
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 4px;
+}
+.matched {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--analysis-text);
+}
+.clear {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--analysis-text);
+}
+.unavailable {
+  background: var(--analysis-bg);
+  color: var(--analysis-muted);
+}
+.rule .actions {
+  justify-content: flex-start;
+  margin: 12px 0;
+}
+.status {
+  font-size: 13px;
+  color: var(--analysis-accent);
+}
+@media (max-width: 760px) {
+  .panel {
+    padding: 16px;
+  }
+  .form {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+  .rule {
+    padding: 14px;
+  }
+  .actions button {
+    max-width: 100%;
+    text-align: left;
+  }
+}

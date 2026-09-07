@@ -1,0 +1,82 @@
+.guide {
+  margin: 18px 0;
+  border: 1px solid var(--analysis-border);
+  border-radius: 9px;
+  background: var(--analysis-bg);
+}
+.guide > summary {
+  cursor: pointer;
+  padding: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--analysis-text);
+}
+.guide > summary > svg {
+  vertical-align: -3px;
+  margin-right: 7px;
+  color: var(--analysis-accent);
+}
+.guide > summary > span {
+  display: block;
+  margin: 6px 0 0 23px;
+  color: var(--analysis-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.guide > summary:focus-visible,
+.guide a:focus-visible {
+  outline: 2px solid var(--analysis-accent);
+  outline-offset: 3px;
+}
+.body {
+  padding: 0 15px 16px;
+}
+.body dl {
+  display: block;
+  margin: 0;
+}
+.body dt {
+  margin: 15px 0 5px;
+  color: var(--analysis-text);
+  font-size: 11px;
+  font-weight: 750;
+}
+.body dd {
+  margin: 0;
+  color: var(--analysis-muted);
+  font-size: 12px;
+  line-height: 1.75;
+}
+.scope {
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--analysis-text);
+}
+.scope li + li {
+  margin-top: 7px;
+}
+.education {
+  margin: 13px 0;
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--analysis-muted);
+}
+.action {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--analysis-accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.reading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--analysis-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}

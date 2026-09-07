@@ -12,6 +12,7 @@ import {
 } from "../../utils/analysisSources.js";
 import styles from "./analysis.module.css";
 import sourceStyles from "./AnalysisSources.module.css";
+import AnalysisMetricGuide from "./AnalysisMetricGuide";
 
 function ComparisonFigure({ title, point, format, settings }: any) {
   const sources = uniqueAnalysisSources(point);
@@ -163,6 +164,12 @@ export default function AnalysisInspector({
       <span className={styles.badge}>
         {point?.classification || "Unavailable"}
       </span>
+      <AnalysisMetricGuide
+        definition={definition}
+        point={point}
+        data={data}
+        asOf={currentCollectionSettings?.asOf}
+      />
       {canCompare && (
         <section
           className={sourceStyles.comparison}

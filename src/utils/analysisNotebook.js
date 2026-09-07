@@ -37,6 +37,8 @@ export const ANALYSIS_SETTINGS = {
     "coverage",
     "notes",
     "evidence",
+    "questions",
+    "thresholds",
   ],
   briefMetrics: [],
 };
@@ -132,6 +134,8 @@ export function normalizeAnalysisSettings(input = {}) {
           "notes",
           "evidence",
           "sources",
+          "questions",
+          "thresholds",
         ].includes(v),
       ),
     ),
