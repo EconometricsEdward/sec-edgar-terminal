@@ -328,7 +328,14 @@ export default function FundsWorkspace() {
           </button>
         </div>
         {settings.securityScope === "selected" ? (
-          <FundSecurityFinder {...common} />
+          <FundSecurityFinder
+            {...common}
+            settings={{
+              ...settings,
+              securityAsset:
+                settings.securityAsset === "all" ? "" : settings.securityAsset,
+            }}
+          />
         ) : (
           <GlobalSecurityFinder
             settings={settings}
