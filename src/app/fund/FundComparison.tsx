@@ -83,7 +83,7 @@ type ResponseData = {
   pagination: { page: number; pageCount: number; total: number };
 };
 type Pin = {
-  kind: "coverage";
+  kind: "comparison";
   title: string;
   summary: string;
   values: { label: string; value: number | string | null; unit?: string }[];
@@ -184,7 +184,7 @@ export default function FundComparison({
   const pin = (row: Row) => {
     if (!result?.left || !result.right) return;
     onEvidence?.({
-      kind: "coverage",
+      kind: "comparison",
       title: `${row.name}: ${left} versus ${right}`,
       summary: `Eligible long security weights in ${result.left.asOf} and ${result.right.asOf} portfolios. ${row.ids.join("; ")}.`,
       values: [

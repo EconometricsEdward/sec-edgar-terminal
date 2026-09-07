@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bookmark,
   Download,
@@ -53,6 +53,8 @@ export default function FundResearchBoards({
   const [brief, setBrief] = useState<any>(null);
   const initialBoardId = useRef(settings.board);
   const initialLoaded = useRef(false);
+  const lastRequestedBoard = useRef(settings.board || "");
+  const [pendingBoardId, setPendingBoardId] = useState<string | null>(null);
   const previewRef = useRef<HTMLElement>(null);
   const dirty =
     name !== (baseline?.name || "") || notes !== (baseline?.notes || "");
@@ -61,6 +63,24 @@ export default function FundResearchBoards({
     : null;
   const conflict = Boolean(
     baseline && (!currentSaved || currentSaved.revision !== baseline.revision),
+  );
+  const loadRequestedBoard = useCallback(
+    (id: string) => {
+      const selected = store.boards.find((board: any) => board.id === id);
+      setBaseline(selected || null);
+      setName(selected?.name || "");
+      setNotes(selected?.notes || "");
+      setPendingBoardId(null);
+      setDeletePending(false);
+      setMessage(
+        selected
+          ? "Requested board opened. Its saved notes and capture are selected; current workspace pins have not been replaced. Use Restore board workspace and evidence when ready."
+          : id
+            ? "This requested board is not saved in this browser. The public research settings from the link remain available."
+            : "New board draft opened. Current workspace evidence is preserved.",
+      );
+    },
+    [store.boards],
   );
   useEffect(() => {
     const read = () => {
@@ -102,6 +122,32 @@ export default function FundResearchBoards({
       window.removeEventListener("research-storage", read);
     };
   }, []);
+  useEffect(() => {
+    if (!ready || storageError) return;
+    const requestedId = settings.board || "";
+    if (lastRequestedBoard.current === requestedId) return;
+    lastRequestedBoard.current = requestedId;
+    setDeletePending(false);
+    if (requestedId === (baseline?.id || "")) {
+      setPendingBoardId(null);
+      return;
+    }
+    if (dirty) {
+      setPendingBoardId(requestedId);
+      setMessage(
+        "The research URL requested a different board. Your unsaved name and notes are preserved; choose which board to edit below.",
+      );
+      return;
+    }
+    loadRequestedBoard(requestedId);
+  }, [
+    settings.board,
+    ready,
+    storageError,
+    baseline?.id,
+    dirty,
+    loadRequestedBoard,
+  ]);
   useEffect(() => {
     if (brief) previewRef.current?.focus();
   }, [brief]);
@@ -204,7 +250,7 @@ export default function FundResearchBoards({
     }
   }
   const html = brief ? fundBoardBriefHtml(brief) : "";
-  const canWrite = ready && !storageError;
+  const canWrite = ready && !storageError && pendingBoardId === null;
   return (
     <section className={s.panel} aria-label="Fund research boards">
       <div className={s.sectionHeading}>
@@ -230,6 +276,39 @@ export default function FundResearchBoards({
         <p role="alert" className={s.notice}>
           {storageError} Current notes and evidence can still be exported below.
         </p>
+      )}
+      {pendingBoardId !== null && (
+        <div role="alert" className={s.notice}>
+          <p>
+            The link requested{" "}
+            {store.boards.find((board: any) => board.id === pendingBoardId)
+              ?.name ||
+              (pendingBoardId ? "another saved board" : "a new board draft")}
+            , while you have unsaved edits to{" "}
+            {baseline?.name || "your current draft"}. Saving is paused until you
+            choose. Your current pins are preserved.
+          </p>
+          <div className={s.actions}>
+            <button
+              className={s.secondary}
+              onClick={() => {
+                onPatch({ board: baseline?.id || "" });
+                setPendingBoardId(null);
+                setMessage(
+                  "Current board edits retained. Public research settings remain as shown; restoring a saved board is a separate action.",
+                );
+              }}
+            >
+              Keep editing current board
+            </button>
+            <button
+              className={s.secondary}
+              onClick={() => loadRequestedBoard(pendingBoardId)}
+            >
+              Discard edits and open requested board
+            </button>
+          </div>
+        </div>
       )}
       <div className={b.layout}>
         <aside className={b.list} aria-label="Saved research boards">
@@ -317,7 +396,11 @@ export default function FundResearchBoards({
             >
               <Bookmark size={15} /> Save current workspace as new board
             </button>
-            <button className={s.secondary} onClick={() => preview()}>
+            <button
+              className={s.secondary}
+              disabled={pendingBoardId !== null}
+              onClick={() => preview()}
+            >
               <FileText size={15} /> Preview current workspace brief
             </button>
             {dirty && (
