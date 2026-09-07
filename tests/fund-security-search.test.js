@@ -4,6 +4,7 @@ import {
   searchFundHoldings,
   searchFundHoldingsCsv,
   securitySearchEvidence,
+  securityWeight,
 } from "../src/utils/fundSecuritySearch.js";
 
 const position = (patch = {}) => ({
@@ -200,4 +201,148 @@ test("CSV escapes spreadsheet formulas in reported names and search settings", (
     { query: "=HYPERLINK" },
   );
   assert.match(searchFundHoldingsCsv(result), /'=HYPERLINK/);
+});
+
+test("fund summaries cover all securities beyond page 50 and export the same totals", () => {
+  const holdings = Array.from({ length: 65 }, (_, i) =>
+    position({
+      cusip: String(i + 100000000),
+      isin: null,
+      pctOfNav: 0.1,
+      value: 100,
+    }),
+  );
+  const result = searchFundHoldings([
+    fund("AAA", holdings),
+    fund("BBB", [position({ pctOfNav: 2, value: 200 })]),
+  ]);
+  assert.equal(result.exposureByFund[0].positionCount, 65);
+  assert.ok(Math.abs(result.exposureByFund[0].pctOfNav - 6.5) < 1e-10);
+  assert.equal(result.exposureByFund[0].value, 6500);
+  assert.equal(result.exposureByFund[1].pctOfNav, 2);
+  assert.equal(result.pctOfNav, undefined);
+  const paged = { ...result, rows: result.rows.slice(0, 50) };
+  assert.equal(paged.exposureByFund[0].value, 6500);
+  const csv = searchFundHoldingsCsv(result);
+  assert.equal((csv.match(/"fund_summary",/g) || []).length, 2);
+  assert.equal((csv.match(/"asset_summary",/g) || []).length, 2);
+  assert.equal((csv.match(/"position",/g) || []).length, 66);
+});
+
+test("stock, bond and derivative summaries stay separate with missing subtotals preserved", () => {
+  const result = searchFundHoldings(
+    [
+      fund("AAA", [
+        position({ value: 100, pctOfNav: 10 }),
+        position({
+          cusip: "037833AL4",
+          isin: null,
+          assetCat: "DBT",
+          value: 40,
+          pctOfNav: 4,
+        }),
+        position({
+          cusip: null,
+          isin: null,
+          assetCat: "DE",
+          value: -5,
+          pctOfNav: -0.5,
+          payoffProfile: "Short",
+        }),
+        position({
+          cusip: null,
+          isin: null,
+          assetCat: "DBT",
+          value: null,
+          pctOfNav: null,
+        }),
+        position({
+          cusip: null,
+          isin: null,
+          assetCat: null,
+          value: 0,
+          pctOfNav: 0,
+        }),
+      ]),
+    ],
+    { query: "Apple" },
+  );
+  const summary = result.exposureByFund[0];
+  assert.equal(summary.value, null);
+  assert.equal(summary.knownValue, 135);
+  assert.equal(summary.pctOfNav, null);
+  assert.equal(summary.knownWeight, 13.5);
+  assert.equal(summary.missingWeightCount, 1);
+  assert.equal(summary.stockPositionCount, 1);
+  assert.equal(summary.derivativeCount, 1);
+  assert.equal(summary.categories.find((c) => c.asset === "EC").pctOfNav, 10);
+  assert.equal(
+    summary.categories.find((c) => c.asset === "DBT").pctOfNav,
+    null,
+  );
+  assert.ok(summary.categories.some((c) => c.asset === "UNKNOWN"));
+  const stocks = searchFundHoldings(
+    [fund("AAA", [position(), position({ assetCat: "DBT" })])],
+    { query: "Apple", asset: "EC" },
+  );
+  assert.equal(stocks.exposureByFund[0].positionCount, 1);
+});
+
+test("no match stays distinct from a reported zero and failed funds never enter summaries", () => {
+  const result = searchFundHoldings(
+    [fund("AAA", [position({ pctOfNav: 0, value: 0 })]), fund("BBB", [])],
+    { query: "Apple" },
+  );
+  assert.equal(result.exposureByFund[0].pctOfNav, 0);
+  assert.equal(result.exposureByFund[0].status, "matched");
+  assert.equal(result.exposureByFund[1].pctOfNav, null);
+  assert.equal(result.exposureByFund[1].status, "no-match");
+  const csv = searchFundHoldingsCsv({
+    ...result,
+    errors: [{ ticker: "BAD", message: "Unavailable" }],
+  });
+  assert.match(csv, /"not_searched".*"BAD"/);
+  assert.doesNotMatch(csv, /"fund_summary".*"BAD"/);
+});
+
+test("APPL remains a literal broad search and explicit Apple stocks excludes debt and Applied names", () => {
+  const holdings = [
+    position({ tickerSymbol: null }),
+    position({
+      name: "Applied Materials",
+      cusip: "038222105",
+      isin: null,
+      tickerSymbol: "AMAT",
+    }),
+    position({
+      assetCat: "DBT",
+      cusip: "037833AL4",
+      isin: null,
+      tickerSymbol: null,
+    }),
+  ];
+  assert.equal(
+    searchFundHoldings([fund("AAA", holdings)], { query: "APPL" }).totalGroups,
+    3,
+  );
+  assert.equal(
+    searchFundHoldings([fund("AAA", holdings)], { query: "AAPL" }).totalGroups,
+    0,
+  );
+  const explicit = searchFundHoldings([fund("AAA", holdings)], {
+    query: "Apple",
+    asset: "EC",
+  });
+  assert.equal(explicit.totalGroups, 1);
+  assert.equal(explicit.exposureByFund[0].stockPositionCount, 1);
+});
+
+test("small signed weights stay visibly nonzero while true zero and missing values remain distinct", () => {
+  assert.equal(securityWeight(0.004), "<0.01%");
+  assert.equal(securityWeight(-0.004), "−<0.01%");
+  assert.equal(securityWeight(0), "0.00%");
+  assert.equal(securityWeight(-0), "0.00%");
+  assert.equal(securityWeight(null), "Unavailable");
+  assert.equal(securityWeight(NaN), "Unavailable");
+  assert.equal(securityWeight(4.52), "4.52%");
 });

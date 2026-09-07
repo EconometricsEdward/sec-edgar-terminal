@@ -10,8 +10,9 @@ import { ASSET_LABELS } from "../../utils/fundResearch.js";
 import {
   searchFundHoldings,
   securitySearchEvidence,
+  securityWeight,
 } from "../../utils/fundSecuritySearch.js";
-import { money, pct } from "./fundUi";
+import { money } from "./fundUi";
 import type { Fund } from "./fundTypes";
 import s from "./FundSecurityFinder.module.css";
 
@@ -34,7 +35,55 @@ type SearchResponse = {
     total: number;
   };
 };
-const assetLabels: Record<string, string> = ASSET_LABELS;
+const assetLabels: Record<string, string> = {
+  ...ASSET_LABELS,
+  EC: "Common stock",
+  EP: "Preferred stock",
+  DBT: "Bonds / debt",
+  UNKNOWN: "Type unavailable",
+};
+const preciseMoney = (value: number | null) =>
+  value == null
+    ? "Unavailable"
+    : value.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 2,
+      });
+function HoldingValue({
+  value,
+  known,
+  missing,
+  weight = false,
+}: {
+  value: number | null;
+  known: number | null;
+  missing: number;
+  weight?: boolean;
+}) {
+  const format = weight ? securityWeight : money;
+  return (
+    <>
+      <strong
+        title={
+          value == null
+            ? undefined
+            : weight
+              ? `${value}% of fund net assets`
+              : preciseMoney(value)
+        }
+      >
+        {value == null ? "Unavailable" : format(value)}
+      </strong>
+      {missing > 0 && (
+        <small>
+          {missing} {weight ? "weights" : "values"} missing
+          {known == null ? "" : ` · Known subtotal ${format(known)}`}
+        </small>
+      )}
+    </>
+  );
+}
 
 function requestParams(
   tickers: string[],
@@ -83,6 +132,8 @@ export default function FundSecurityFinder({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [sort, setSort] = useState("weight");
+  const [showDetails, setShowDetails] = useState(false);
   const frozenReports = useRef<{ key: string; map: Record<string, string> }>({
     key: "",
     map: {},
@@ -223,52 +274,96 @@ export default function FundSecurityFinder({
       setExporting(false);
     }
   }
+  function submitSearch(
+    nextQuery = query,
+    nextAsset = asset,
+    nextCountry = country,
+  ) {
+    setMessage("");
+    setPage({ key: "", page: 1 });
+    setAttempt((value) => value + 1);
+    onPatch({
+      securityQuery: nextQuery.trim(),
+      securityAsset: nextAsset,
+      securityCountry: nextCountry,
+    });
+  }
+  const funds = [...(result?.exposureByFund || [])].sort((a, b) => {
+    if (sort === "name")
+      return String(a.ticker).localeCompare(String(b.ticker));
+    const key = sort === "value" ? "value" : "pctOfNav";
+    return (
+      Number(b.status === "matched") - Number(a.status === "matched") ||
+      Number(b[key] != null) - Number(a[key] != null) ||
+      (b[key] ?? 0) - (a[key] ?? 0) ||
+      String(a.ticker).localeCompare(String(b.ticker))
+    );
+  });
+  const largestWeight = Math.max(
+    0,
+    ...funds.map((fund) => Math.abs(fund.pctOfNav || 0)),
+  );
+  const stockFunds = funds.filter((fund) => fund.stockPositionCount > 0).length;
+  const submittedQuery = settings.securityQuery?.trim() || "";
+  const activeFilters = [
+    settings.securityAsset
+      ? assetLabels[settings.securityAsset] || settings.securityAsset
+      : "All security types",
+    settings.securityCountry || "All countries",
+  ];
   return (
     <section className={s.panel} aria-label="Security finder">
       <header className={s.header}>
         <div>
-          <p className={s.eyebrow}>Search inside your selected funds</p>
-          <h2>Who holds this security?</h2>
+          <p className={s.eyebrow}>Find a security</p>
+          <h2>Which funds hold it?</h2>
           <p>
-            Search every reported position by name, title, ticker, CUSIP, or
-            ISIN. See the supporting holdings and each fund’s share of net
-            assets.
+            Search a company or security to compare its reported holdings in
+            your selected funds. See how much each fund holds, then open the
+            supporting positions.
           </p>
         </div>
-        <Search size={26} aria-hidden="true" />
+        <Search size={28} aria-hidden="true" />
       </header>
+      <div className={s.scope}>
+        <b>
+          Searching {tickers.length} selected{" "}
+          {tickers.length === 1 ? "fund" : "funds"}
+        </b>
+        <span>{tickers.join(" · ") || "Add funds above"}</span>
+        <small>
+          Add or change funds in your research selection above. This search
+          covers that selection only.
+        </small>
+      </div>
       <form
         className={s.form}
         onSubmit={(event) => {
           event.preventDefault();
-          setMessage("");
-          setPage({ key: "", page: 1 });
-          setAttempt((value) => value + 1);
-          onPatch({
-            securityQuery: query.trim(),
-            securityAsset: asset,
-            securityCountry: country,
-          });
+          submitSearch();
         }}
       >
         <label>
-          Security name or identifier
+          Company, stock ticker or security identifier
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             maxLength={160}
             placeholder="Apple, AAPL, or 037833100…"
+            aria-describedby="security-search-help"
           />
         </label>
         <label>
-          Asset category
+          Security type
           <select
             value={asset}
             onChange={(event) => setAsset(event.target.value)}
           >
-            <option value="">All asset categories</option>
+            <option value="">All security types</option>
             {[
               ...new Set([
+                "EC",
+                "DBT",
                 ...(result?.options.assets || []),
                 ...(asset ? [asset] : []),
               ]),
@@ -297,23 +392,78 @@ export default function FundSecurityFinder({
           </select>
         </label>
         <button className={s.primary} type="submit" disabled={!tickers.length}>
-          <Search size={15} /> Search portfolios
+          <Search size={17} aria-hidden="true" /> Find holdings
         </button>
       </form>
-      <p className={s.help}>
-        All words must match reported text. Blank search shows all securities. A
-        name or ticker match does not confirm corporate issuer identity.
+      <div className={s.quickFilters} aria-label="Quick security filters">
+        <span>Show:</span>
+        {[
+          ["", "All securities"],
+          ["EC", "Stocks only"],
+          ["DBT", "Bonds only"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={asset === value}
+            disabled={!tickers.length}
+            onClick={() => {
+              setAsset(value);
+              submitSearch(query, value);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+        {(asset || country) && (
+          <button
+            type="button"
+            onClick={() => {
+              setAsset("");
+              setCountry("");
+              submitSearch(query, "", "");
+            }}
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+      <p id="security-search-help" className={s.help}>
+        Company names can match both shares and bonds. Choose “Stocks only” for
+        common shares. If a ticker finds nothing, try the company name; some SEC
+        records omit tickers.
       </p>
+      {query.trim().toUpperCase() === "APPL" && (
+        <div className={s.suggestion}>
+          <div>
+            <b>Looking for Apple stock?</b>
+            <p>
+              Apple’s ticker is AAPL. “APPL” is a text search and can also match
+              names such as Applied Materials.
+            </p>
+          </div>
+          <button
+            className={s.secondary}
+            onClick={() => {
+              setQuery("Apple");
+              setAsset("EC");
+              submitSearch("Apple", "EC");
+            }}
+          >
+            Search Apple · Stocks only
+          </button>
+        </div>
+      )}
       {dirty && (
-        <p className={s.notice}>
-          The results use your last submitted search. Submit to apply these
-          edits.
+        <p className={s.notice} role="status">
+          Search edits are ready. Select “Find holdings” to update the results
+          below.
         </p>
       )}
       {!tickers.length ? (
         <p className={s.empty}>
-          Add at least one fund to the research basket above to search its
-          complete SEC portfolio.
+          Add at least one fund to the research selection above to search its
+          SEC portfolio.
         </p>
       ) : error ? (
         <div role="alert" className={s.notice}>
@@ -326,76 +476,234 @@ export default function FundSecurityFinder({
           </button>
         </div>
       ) : !data ? (
-        <p role="status" className={s.empty}>
-          Searching complete portfolios for {tickers.join(", ")}…
-        </p>
+        <div role="status" className={s.empty}>
+          <b>Searching reported holdings…</b>
+          <p>
+            Reviewing the complete portfolios for {tickers.join(", ")}. Large
+            bond portfolios may take a moment.
+          </p>
+        </div>
       ) : (
         result && (
           <>
-            <div className={s.metrics} aria-label="Search coverage summary">
+            <div className={s.answerHeading}>
               <div>
-                <strong>{result.totalGroups.toLocaleString()}</strong>
-                <span>security groups / separate records</span>
+                <p className={s.eyebrow}>
+                  Results for{" "}
+                  {submittedQuery
+                    ? `“${submittedQuery}”`
+                    : "all reported securities"}
+                </p>
+                <h3>
+                  {result.matchedFunds} of {tickers.length} selected funds have
+                  matches
+                </h3>
+                <p>
+                  {activeFilters.join(" · ")} · {result.coverage.length} of{" "}
+                  {tickers.length} portfolios searched
+                </p>
               </div>
-              <div>
-                <strong>
-                  {result.matchedFunds} / {tickers.length}
-                </strong>
-                <span>selected funds with matches</span>
-              </div>
-              <div>
-                <strong>
-                  {result.coverage.length} / {tickers.length}
-                </strong>
-                <span>complete portfolios searched</span>
-              </div>
-              <div>
-                <strong>{result.matchedPositions.toLocaleString()}</strong>
-                <span>matching position records</span>
-              </div>
+              <button
+                className={s.secondary}
+                onClick={download}
+                disabled={exporting || !result.coverage.length}
+              >
+                <ArrowDownToLine size={16} aria-hidden="true" />
+                {exporting ? "Preparing CSV…" : "Export results"}
+              </button>
             </div>
-            <div className={s.coverage} aria-label="Coverage by fund">
-              {result.coverage.map((fund) => (
-                <article key={fund.ticker}>
-                  <b>{fund.ticker}</b>
-                  <span className={fund.status === "matched" ? s.good : ""}>
-                    {fund.matchedPositions
-                      ? `${fund.matchedPositions.toLocaleString()} matching positions`
-                      : "Searched · no matches"}
-                  </span>
-                  <small>
-                    {fund.searchedPositions.toLocaleString()} positions reviewed
-                    · {fund.asOf}
-                  </small>
-                  <a href={fund.sourceUrl} target="_blank" rel="noreferrer">
-                    Filed {fund.filingDate} <ArrowUpRight size={12} />
+            {result.totalGroups > 0 && !stockFunds && (
+              <p className={s.notice}>
+                <b>No common-stock matches in these results.</b> The matching
+                positions are other security types, such as bonds. They do not
+                establish stock ownership.
+              </p>
+            )}
+            <div className={s.summaryIntro}>
+              <div>
+                <h3>Holdings by fund</h3>
+                <p>
+                  Totals cover all matching securities in each fund, including
+                  results on other pages. A text match does not confirm a single
+                  company.
+                </p>
+              </div>
+              <label>
+                Sort funds
+                <select
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value)}
+                >
+                  <option value="weight">Largest % of fund</option>
+                  <option value="value">Largest USD holding</option>
+                  <option value="name">Fund ticker A–Z</option>
+                </select>
+              </label>
+            </div>
+            <div className={s.fundSummaries} aria-label="Holdings by fund">
+              {funds.map((fund) => (
+                <article key={fund.ticker} className={s.fundSummary}>
+                  <div className={s.fundIdentity}>
+                    <a
+                      href={`/fund/${encodeURIComponent(fund.ticker || "")}?accession=${encodeURIComponent(fund.accession || "")}`}
+                    >
+                      <b>{fund.ticker}</b>
+                      <ArrowUpRight size={15} aria-hidden="true" />
+                    </a>
+                    <span>{fund.name}</span>
+                    <small>
+                      Portfolio as of {fund.asOf || "date unavailable"}
+                    </small>
+                  </div>
+                  {fund.status === "matched" ? (
+                    <>
+                      <div className={s.amounts}>
+                        <div>
+                          <span>Share of fund net assets</span>
+                          <HoldingValue
+                            value={fund.pctOfNav}
+                            known={fund.knownWeight}
+                            missing={fund.missingWeightCount}
+                            weight
+                          />
+                          <div className={s.weightTrack} aria-hidden="true">
+                            <i
+                              className={
+                                fund.pctOfNav != null && fund.pctOfNav < 0
+                                  ? s.negative
+                                  : ""
+                              }
+                              style={{
+                                width: `${largestWeight && fund.pctOfNav != null ? (Math.abs(fund.pctOfNav) / largestWeight) * 100 : 0}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <span>Reported holding value</span>
+                          <HoldingValue
+                            value={fund.value}
+                            known={fund.knownValue}
+                            missing={fund.missingValueCount}
+                          />
+                        </div>
+                      </div>
+                      <div
+                        className={s.breakdown}
+                        aria-label={`${fund.ticker} holdings by security type`}
+                      >
+                        {fund.categories.map((category) => (
+                          <div key={category.asset}>
+                            <span>
+                              {assetLabels[category.asset] || category.asset}
+                            </span>
+                            <b
+                              title={
+                                category.pctOfNav == null
+                                  ? undefined
+                                  : `${category.pctOfNav}%`
+                              }
+                            >
+                              {securityWeight(category.pctOfNav)}
+                            </b>
+                            <small>
+                              {category.positionCount}{" "}
+                              {category.positionCount === 1
+                                ? "position"
+                                : "positions"}{" "}
+                              ·{" "}
+                              {category.value == null
+                                ? "Value unavailable"
+                                : money(category.value)}
+                            </small>
+                          </div>
+                        ))}
+                      </div>
+                      {!!fund.derivativeCount && (
+                        <p className={s.cardNote}>
+                          Includes derivative fair values, which do not measure
+                          exposure to the underlying stock.
+                        </p>
+                      )}
+                      {!!fund.nonLongCount && (
+                        <p className={s.cardNote}>
+                          Includes short or unspecified positions. Signed
+                          weights may offset one another.
+                        </p>
+                      )}
+                      <p className={s.cardNote}>
+                        {fund.matchedPositions} matching{" "}
+                        {fund.matchedPositions === 1 ? "position" : "positions"}{" "}
+                        ·{" "}
+                        {fund.stockPositionCount
+                          ? `${fund.stockPositionCount} common-stock ${fund.stockPositionCount === 1 ? "position" : "positions"}`
+                          : "No common-stock match"}
+                      </p>
+                    </>
+                  ) : (
+                    <div className={s.noMatch}>
+                      <b>No matching reported holdings</b>
+                      <p>
+                        {fund.searchedPositions.toLocaleString()} positions
+                        searched. This is not proof of zero exposure; try a
+                        company name or another identifier.
+                      </p>
+                    </div>
+                  )}
+                  <a
+                    className={s.source}
+                    href={fund.sourceUrl || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View SEC report{" "}
+                    <ArrowUpRight size={14} aria-hidden="true" />
+                    <span>Filed {fund.filingDate || "date unavailable"}</span>
                   </a>
                 </article>
               ))}
               {data.errors.map((failure) => (
-                <article key={failure.ticker} className={s.failed}>
-                  <b>{failure.ticker}</b>
-                  <span>Not searched · portfolio unavailable</span>
-                  <small>{failure.message}</small>
+                <article
+                  key={failure.ticker}
+                  className={`${s.fundSummary} ${s.failed}`}
+                >
+                  <div className={s.fundIdentity}>
+                    <b>{failure.ticker}</b>
+                  </div>
+                  <div className={s.noMatch}>
+                    <b>Not searched · report unavailable</b>
+                    <p>{failure.message}</p>
+                    <p>Exposure is unknown for this fund.</p>
+                  </div>
+                  <button
+                    className={s.secondary}
+                    onClick={() => setAttempt((value) => value + 1)}
+                  >
+                    Retry unavailable reports
+                  </button>
                 </article>
               ))}
             </div>
+            {!!result.matchedFunds && (
+              <p className={s.help}>
+                % of fund = reported position weight as a share of that fund’s
+                net assets. Bars compare the absolute weights above; they are
+                not a 0–100% scale. Percentages belong to separate funds and are
+                not added together.
+              </p>
+            )}
             {data.errors.length > 0 && (
               <p className={s.notice}>
-                Coverage is incomplete. An unavailable fund is not a fund with
-                no matches.{" "}
-                <button
-                  className={s.secondary}
-                  onClick={() => setAttempt((value) => value + 1)}
-                >
-                  Retry unavailable portfolios
-                </button>
+                Coverage is incomplete: {data.errors.length} selected{" "}
+                {data.errors.length === 1 ? "fund was" : "funds were"} not
+                searched. Unavailable reports are not treated as no matches.
               </p>
             )}
             {!result.sameDate && (
               <p className={s.notice}>
-                Portfolio dates differ. These holdings describe the dates shown
-                above and are not a single current market snapshot.
+                <b>Different portfolio dates.</b> Compare the dates beside each
+                fund. These are historical reported holdings, not today’s
+                holdings.
               </p>
             )}
             {result.sharedSeries.length > 0 && (
@@ -403,219 +711,298 @@ export default function FundSecurityFinder({
                 {result.sharedSeries
                   .map((group) => group.join(" / "))
                   .join("; ")}{" "}
-                share the same SEC portfolio series. Their share classes report
-                the same underlying portfolio; do not count them as independent
-                holdings.
+                share the same SEC portfolio series. These share classes are not
+                independent portfolios.
               </p>
             )}
-            <div className={s.toolbar}>
-              <p>
-                {result.unidentifiedPositions > 0 ||
-                result.conflictingPositions > 0
-                  ? `${result.unidentifiedPositions} unidentified and ${result.conflictingPositions} conflicting records are kept separate.`
-                  : "Securities are grouped using consistent CUSIP / ISIN links."}
-              </p>
-              <button
-                className={s.secondary}
-                onClick={download}
-                disabled={exporting || !result.coverage.length}
-              >
-                <ArrowDownToLine size={15} />
-                {exporting
-                  ? "Preparing complete CSV…"
-                  : "Export complete search"}
-              </button>
-            </div>
             {!result.rows.length ? (
-              <p className={s.empty}>
-                {result.coverage.length
-                  ? "No matching positions in the successfully searched reports. Try fewer words, another identifier, or broader filters."
-                  : "No selected portfolio was available to search. Retry or choose another fund."}
-              </p>
-            ) : (
-              <div className={s.results}>
-                {result.rows.map((row) => (
-                  <article className={s.result} key={row.key}>
-                    <div className={s.resultHeading}>
-                      <div>
-                        <h3>{row.name}</h3>
-                        <p>
-                          {row.ids.join(" · ") || "No usable CUSIP or ISIN"}
-                        </p>
-                        <small>
-                          {row.fundCount}{" "}
-                          {row.fundCount === 1 ? "fund" : "funds"} ·{" "}
-                          {row.positionCount} position records
-                          {row.identityStatus === "conflicting-identifiers"
-                            ? " · Conflicting identifiers; not combined"
-                            : row.identityStatus === "unidentified"
-                              ? " · Kept as a separate record"
-                              : ""}
-                        </small>
-                      </div>
-                      <button
-                        className={s.secondary}
-                        onClick={() => {
-                          const saved = onEvidence(
-                            securitySearchEvidence(row, {
-                              ...result,
-                              errors: data.errors,
-                            }),
-                          );
-                          setMessage(
-                            saved === false
-                              ? "Evidence was not saved. Check the research board storage message and retry."
-                              : `Pinned ${row.name} to your research board.`,
-                          );
-                        }}
-                      >
-                        <BookmarkPlus size={15} /> Pin evidence
-                      </button>
-                    </div>
-                    <div
-                      className={s.tableWrap}
-                      tabIndex={0}
-                      aria-label={`${row.name} holdings table`}
-                    >
-                      <table>
-                        <thead>
-                          <tr>
-                            <th scope="col">Fund / portfolio date</th>
-                            <th scope="col">Signed weight / NAV</th>
-                            <th scope="col">Reported USD value</th>
-                            <th scope="col">Evidence</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {row.funds.map((fund) => (
-                            <tr key={fund.ticker}>
-                              <th scope="row">
-                                {fund.ticker}
-                                <small>
-                                  {fund.asOf} · {fund.positionCount} records
-                                </small>
-                              </th>
-                              <td>
-                                {fund.pctOfNav == null
-                                  ? "Unavailable"
-                                  : pct(fund.pctOfNav)}
-                                {fund.missingWeightCount > 0 && (
-                                  <small>
-                                    {fund.missingWeightCount} weights missing
-                                    {fund.knownWeight == null
-                                      ? ""
-                                      : `; known subtotal ${pct(fund.knownWeight)}`}
-                                  </small>
-                                )}
-                              </td>
-                              <td>
-                                {fund.value == null
-                                  ? "Unavailable"
-                                  : money(fund.value)}
-                                {fund.missingValueCount > 0 && (
-                                  <small>
-                                    {fund.missingValueCount} values missing
-                                    {fund.knownValue == null
-                                      ? ""
-                                      : `; known subtotal ${money(fund.knownValue)}`}
-                                  </small>
-                                )}
-                              </td>
-                              <td>
-                                <a
-                                  href={fund.sourceUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  N-PORT source ↗
-                                </a>
-                                <small>Filed {fund.filingDate}</small>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <details className={s.positions}>
-                      <summary>
-                        Inspect {row.positionCount} reported position records
-                      </summary>
-                      {row.funds.map((fund) => (
-                        <div key={fund.ticker}>
-                          <h4>
-                            {fund.ticker} · {fund.asOf}
-                          </h4>
-                          {fund.positions.map((holding) => (
-                            <p key={holding.holdingIndex}>
-                              <b>{holding.name}</b>
-                              {holding.title ? ` · ${holding.title}` : ""}
-                              <span>
-                                {holding.tickerSymbol || "Ticker not reported"}{" "}
-                                ·{" "}
-                                {holding.cusip ||
-                                  holding.isin ||
-                                  "Identifier unavailable"}{" "}
-                                ·{" "}
-                                {assetLabels[holding.assetCat] ||
-                                  holding.assetCat ||
-                                  "Asset unavailable"}{" "}
-                                · {holding.invCountry || "Country unavailable"}{" "}
-                                ·{" "}
-                                {holding.payoffProfile || "Payoff unavailable"}
-                              </span>
-                              <span>
-                                {pct(holding.pctOfNav)} NAV ·{" "}
-                                {money(holding.value)} fair value
-                                {!holding.textMatched
-                                  ? " · Included through linked security identifiers"
-                                  : ""}
-                              </span>
-                            </p>
-                          ))}
-                        </div>
-                      ))}
-                    </details>
-                  </article>
-                ))}
+              <div className={s.empty}>
+                <b>
+                  {result.coverage.length
+                    ? "No securities match this search."
+                    : "No selected portfolio was available to search."}
+                </b>
+                <p>
+                  {result.coverage.length
+                    ? "Try the company name instead of a ticker, fewer words, or broader filters. You can also add another fund above."
+                    : "Retry an unavailable report or choose another fund above."}
+                </p>
+                {(settings.securityAsset || settings.securityCountry) && (
+                  <button
+                    className={s.secondary}
+                    onClick={() => {
+                      setAsset("");
+                      setCountry("");
+                      submitSearch(submittedQuery, "", "");
+                    }}
+                  >
+                    Search all types and countries
+                  </button>
+                )}
               </div>
-            )}
-            {data.pagination.pageCount > 1 && (
-              <nav className={s.pagination} aria-label="Security search pages">
-                <button
-                  className={s.secondary}
-                  disabled={data.pagination.page <= 1}
-                  onClick={() =>
-                    setPage({ key: searchKey, page: data.pagination.page - 1 })
-                  }
-                >
-                  Previous 50
-                </button>
-                <span>
-                  Page {data.pagination.page} of {data.pagination.pageCount} ·{" "}
-                  {data.pagination.total.toLocaleString()} groups / records
-                </span>
-                <button
-                  className={s.secondary}
-                  disabled={data.pagination.page >= data.pagination.pageCount}
-                  onClick={() =>
-                    setPage({ key: searchKey, page: data.pagination.page + 1 })
-                  }
-                >
-                  Next 50
-                </button>
-              </nav>
+            ) : (
+              <details
+                className={s.securities}
+                open={showDetails}
+                onToggle={(event) => setShowDetails(event.currentTarget.open)}
+              >
+                <summary>
+                  <span>
+                    Matching securities{" "}
+                    <b>{result.totalGroups.toLocaleString()}</b>
+                  </span>
+                  <small>Open individual holdings and pin evidence</small>
+                </summary>
+                <p className={s.help}>
+                  Each security stays separate, including different bonds from
+                  the same company.{" "}
+                  {result.unidentifiedPositions > 0 ||
+                  result.conflictingPositions > 0
+                    ? `${result.unidentifiedPositions} unidentified and ${result.conflictingPositions} conflicting records are kept separate.`
+                    : "Consistent CUSIP / ISIN identifiers link the same security across funds."}
+                </p>
+                <div className={s.results}>
+                  {result.rows.map((row) => {
+                    const positions = row.funds.flatMap(
+                      (fund) => fund.positions,
+                    );
+                    const categories = [
+                      ...new Set(positions.map((holding) => holding.assetCat)),
+                    ];
+                    const titles = [
+                      ...new Set(
+                        positions
+                          .map((holding) => holding.title)
+                          .filter(Boolean),
+                      ),
+                    ];
+                    return (
+                      <article className={s.result} key={row.key}>
+                        <div className={s.resultHeading}>
+                          <div>
+                            <div className={s.badges}>
+                              {categories.map((category) => (
+                                <span key={category}>
+                                  {assetLabels[category] ||
+                                    category ||
+                                    "Type unavailable"}
+                                </span>
+                              ))}
+                            </div>
+                            <h3>{row.name}</h3>
+                            {titles.length > 0 && (
+                              <p className={s.securityTitle}>
+                                {titles.join(" · ")}
+                              </p>
+                            )}
+                            <p>
+                              {row.ids.join(" · ") || "No usable CUSIP or ISIN"}
+                            </p>
+                            <small>
+                              {row.fundCount}{" "}
+                              {row.fundCount === 1 ? "fund" : "funds"} ·{" "}
+                              {row.positionCount}{" "}
+                              {row.positionCount === 1
+                                ? "position"
+                                : "positions"}
+                              {row.identityStatus === "conflicting-identifiers"
+                                ? " · Conflicting identifiers; not combined"
+                                : row.identityStatus === "unidentified"
+                                  ? " · Kept separate"
+                                  : ""}
+                            </small>
+                          </div>
+                          <button
+                            className={s.secondary}
+                            onClick={() => {
+                              const saved = onEvidence(
+                                securitySearchEvidence(row, {
+                                  ...result,
+                                  errors: data.errors,
+                                }),
+                              );
+                              setMessage(
+                                saved === false
+                                  ? "Evidence was not saved. Check the research board storage message and retry."
+                                  : `Pinned ${row.name} to your research board.`,
+                              );
+                            }}
+                          >
+                            <BookmarkPlus size={15} aria-hidden="true" /> Pin
+                            evidence
+                          </button>
+                        </div>
+                        <div
+                          className={s.tableWrap}
+                          tabIndex={0}
+                          role="region"
+                          aria-label={`${row.name} ${row.ids[0] || row.key} holdings table`}
+                        >
+                          <table>
+                            <thead>
+                              <tr>
+                                <th scope="col">Fund / portfolio date</th>
+                                <th scope="col">% of fund net assets</th>
+                                <th scope="col">Holding value (USD)</th>
+                                <th scope="col">SEC evidence</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {row.funds.map((fund) => (
+                                <tr key={fund.ticker}>
+                                  <th scope="row">
+                                    {fund.ticker}
+                                    <small>
+                                      {fund.asOf} · {fund.positionCount}{" "}
+                                      {fund.positionCount === 1
+                                        ? "position"
+                                        : "positions"}
+                                    </small>
+                                  </th>
+                                  <td>
+                                    <HoldingValue
+                                      value={fund.pctOfNav}
+                                      known={fund.knownWeight}
+                                      missing={fund.missingWeightCount}
+                                      weight
+                                    />
+                                  </td>
+                                  <td>
+                                    <HoldingValue
+                                      value={fund.value}
+                                      known={fund.knownValue}
+                                      missing={fund.missingValueCount}
+                                    />
+                                  </td>
+                                  <td>
+                                    <a
+                                      href={fund.sourceUrl || undefined}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      View report ↗
+                                    </a>
+                                    <small>Filed {fund.filingDate}</small>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <details className={s.positions}>
+                          <summary>
+                            Inspect {row.positionCount} reported{" "}
+                            {row.positionCount === 1 ? "position" : "positions"}
+                          </summary>
+                          {row.funds.map((fund) => (
+                            <div key={fund.ticker}>
+                              <h4>
+                                {fund.ticker} · {fund.asOf}
+                              </h4>
+                              {fund.positions.map((holding) => (
+                                <p key={holding.holdingIndex}>
+                                  <b>{holding.name}</b>
+                                  {holding.title ? ` · ${holding.title}` : ""}
+                                  <span>
+                                    {holding.tickerSymbol ||
+                                      "Ticker not reported"}{" "}
+                                    ·{" "}
+                                    {holding.cusip ||
+                                      holding.isin ||
+                                      "Identifier unavailable"}{" "}
+                                    ·{" "}
+                                    {assetLabels[holding.assetCat] ||
+                                      holding.assetCat ||
+                                      "Type unavailable"}{" "}
+                                    ·{" "}
+                                    {holding.invCountry ||
+                                      "Country unavailable"}{" "}
+                                    ·{" "}
+                                    {holding.payoffProfile ||
+                                      "Payoff unavailable"}
+                                  </span>
+                                  <span>
+                                    {securityWeight(holding.pctOfNav)} of fund
+                                    net assets ·{" "}
+                                    {holding.value == null
+                                      ? "Value unavailable"
+                                      : money(holding.value)}{" "}
+                                    fair value
+                                    {!holding.textMatched
+                                      ? " · Linked by security identifiers"
+                                      : ""}
+                                  </span>
+                                </p>
+                              ))}
+                            </div>
+                          ))}
+                        </details>
+                      </article>
+                    );
+                  })}
+                </div>
+                {data.pagination.pageCount > 1 && (
+                  <nav
+                    className={s.pagination}
+                    aria-label="Security search pages"
+                  >
+                    <button
+                      className={s.secondary}
+                      disabled={data.pagination.page <= 1}
+                      onClick={() =>
+                        setPage({
+                          key: searchKey,
+                          page: data.pagination.page - 1,
+                        })
+                      }
+                    >
+                      Previous {data.pagination.pageSize}
+                    </button>
+                    <span>
+                      Page {data.pagination.page} of {data.pagination.pageCount}{" "}
+                      · {data.pagination.total.toLocaleString()} matching
+                      securities
+                    </span>
+                    <button
+                      className={s.secondary}
+                      disabled={
+                        data.pagination.page >= data.pagination.pageCount
+                      }
+                      onClick={() =>
+                        setPage({
+                          key: searchKey,
+                          page: data.pagination.page + 1,
+                        })
+                      }
+                    >
+                      Next {data.pagination.pageSize}
+                    </button>
+                  </nav>
+                )}
+              </details>
             )}
             <details className={s.method}>
-              <summary>How search and totals work</summary>
+              <summary>Search coverage and calculation details</summary>
+              <div className={s.coverage}>
+                {result.coverage.map((fund) => (
+                  <p key={fund.ticker}>
+                    <b>{fund.ticker}</b> ·{" "}
+                    {fund.searchedPositions.toLocaleString()} positions searched
+                    · {fund.matchedPositions} matches · Portfolio {fund.asOf}
+                  </p>
+                ))}
+              </div>
               <p>{result.methodology}</p>
               <p>
-                A reported security identifier is not a corporate issuer
-                identifier. Separate share classes, debt issues, and securities
-                from one company can appear as different groups. Signed weights
-                can offset each other and can exceed 100% in leveraged
-                portfolios. Results are sorted by number of matching funds, then
-                security name. CSV exports every matching position, including
-                results beyond this page.
+                Fund summaries include every search match before pagination.
+                Different securities and unrelated company names can match the
+                same text. A reported security identifier is not a corporate
+                issuer identifier. Signed weights can exceed 100% or offset each
+                other. Stocks only means common equity; preferred shares and
+                equity derivatives are separate categories. Securities are
+                sorted by number of matching funds, then name. CSV includes all
+                matching positions, fund and asset-type summaries, report dates,
+                and coverage.
               </p>
             </details>
           </>
