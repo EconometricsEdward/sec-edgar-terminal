@@ -1,0 +1,156 @@
+.actions,
+.footer,
+.queue {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.previewFilter {
+  grid-column: 1/-1;
+}
+.previewFilter > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.help {
+  color: var(--disc-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.refine {
+  border: 1px solid var(--disc-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 12px 0;
+}
+.queue {
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--disc-border);
+  margin-bottom: 12px;
+}
+.queue p {
+  font-size: 12px;
+  color: var(--disc-muted);
+  flex: 1;
+  min-width: 190px;
+  margin: 0;
+}
+.card {
+  overflow: hidden;
+}
+.card .heading {
+  padding-bottom: 8px;
+}
+.body {
+  padding: 0 18px 18px;
+}
+.coverage {
+  display: inline-block;
+  font-size: 12px;
+  border-radius: 5px;
+  padding: 5px 8px;
+  background: var(--disc-panel);
+  margin: 4px 0 8px;
+}
+.coverage[data-state="candidate"] {
+  color: var(--disc-accent);
+  border: 1px dashed var(--disc-accent);
+}
+.coverage[data-state="gap"],
+.problem {
+  color: var(--disc-red);
+}
+.problem {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.changes {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.changes:empty {
+  display: none;
+}
+.changes span {
+  padding: 3px 7px;
+  border: 1px solid var(--disc-border);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--disc-muted);
+}
+.card .passage {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  text-align: left;
+  font-weight: 400;
+  background: var(--disc-panel);
+}
+.passageMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--disc-muted);
+  flex-wrap: wrap;
+}
+.passageMeta > span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.quote {
+  display: block;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--disc-text);
+  overflow-wrap: anywhere;
+}
+.ranking {
+  margin: 12px 0;
+}
+.ranking p {
+  font-size: 12px;
+  color: var(--disc-muted);
+}
+.footer {
+  justify-content: space-between;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+.footer button[aria-pressed="true"] {
+  color: var(--disc-good);
+  border-color: var(--disc-good);
+}
+@media (max-width: 560px) {
+  .filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .body {
+    padding: 0 12px 12px;
+  }
+  .actions {
+    width: 100%;
+  }
+  .actions button {
+    flex: 1;
+  }
+  .footer {
+    align-items: stretch;
+  }
+}

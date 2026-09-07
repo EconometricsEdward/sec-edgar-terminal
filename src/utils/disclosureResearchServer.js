@@ -81,6 +81,9 @@ export function disclosureSettings(params) {
   const depth = Number(params.get("depth") || 8);
   if (!Number.isInteger(depth) || depth < 1 || depth > 12)
     throw new Error("Review between 1 and 12 filings per company.");
+  const comparison = params.get("comparison") || "annual-season";
+  if (!["annual-season", "previous-report", "none"].includes(comparison))
+    throw new Error("Choose a supported filing comparison.");
   return {
     query,
     parsed,
@@ -90,6 +93,7 @@ export function disclosureSettings(params) {
     scope,
     forms,
     depth,
+    comparison,
     amendments: params.get("amendments") === "true",
   };
 }
@@ -240,7 +244,13 @@ function compactPassage(p) {
   };
 }
 
-async function inspectFiling(company, filing, settings, compare = true) {
+async function inspectFiling(
+  company,
+  filing,
+  settings,
+  compare = true,
+  baselineAccession = "",
+) {
   const text = await filingText(company.cik, filing);
   const analysis = analyzeDisclosure(
     text,
@@ -248,7 +258,12 @@ async function inspectFiling(company, filing, settings, compare = true) {
     settings.parsed,
     settings,
   );
-  const pair = selectDisclosureBaseline(filing, company.filings);
+  const pair = selectDisclosureBaseline(
+    filing,
+    company.filings,
+    settings.comparison,
+    baselineAccession,
+  );
   let removed = [];
   let unchanged = 0;
   let comparisonError = "";
@@ -268,6 +283,7 @@ async function inspectFiling(company, filing, settings, compare = true) {
         const diff = compareDisclosurePassages(analysis, prior, {
           amendment: pair.kind === "amendment",
         });
+        comparisonError = diff.comparisonError || "";
         analysis.matches = diff.matches;
         removed = diff.removed;
         unchanged = diff.unchanged;
@@ -284,6 +300,25 @@ async function inspectFiling(company, filing, settings, compare = true) {
     (a, b) => b.relevance - a.relevance,
   );
   return {
+    version: QUERY_VERSION,
+    evidenceRevision: signature({
+      version: QUERY_VERSION,
+      query: settings.query,
+      section: settings.section,
+      scope: settings.scope,
+      comparison: settings.comparison || "annual-season",
+      baseline: compare ? pair.prior?.accession || null : null,
+      status: analysis.status,
+      comparisonError,
+      paragraphs: analysis.paragraphs.length,
+      matches: matches.map((p) => ({
+        index: p.index,
+        sectionId: p.sectionId,
+        text: p.text,
+        priorText: p.priorText || "",
+        change: p.change,
+      })),
+    }),
     ...filing,
     ticker: company.ticker,
     cik: company.cik,
@@ -324,19 +359,51 @@ async function inspectFiling(company, filing, settings, compare = true) {
   };
 }
 
-export async function scanDisclosureCompany(input, settings) {
+/** An accession cursor remains stable when newer reports arrive between requests. */
+export function disclosureFilingBatch(filings, settings, after = "") {
+  if (after && !/^\d{10}-\d{2}-\d{6}$/.test(after))
+    throw new Error("Invalid filing continuation cursor.");
+  const eligible = filings
+    .filter(
+      (f) =>
+        f.filingDate >= settings.start &&
+        f.filingDate <= settings.end &&
+        settings.forms.includes(f.form.replace("/A", "")) &&
+        (settings.amendments || !f.form.endsWith("/A")),
+    )
+    .sort(
+      (a, b) =>
+        b.filingDate.localeCompare(a.filingDate) ||
+        b.accession.localeCompare(a.accession),
+    );
+  const previous = after
+    ? eligible.findIndex((f) => f.accession === after)
+    : -1;
+  if (after && previous < 0)
+    throw new Error(
+      "The continuation filing is not eligible for these search settings. Run the search again.",
+    );
+  const offset = previous + 1;
+  const selected = eligible.slice(offset, offset + settings.depth);
+  const remaining = Math.max(0, eligible.length - offset - selected.length);
+  return {
+    selected,
+    eligible: eligible.length,
+    after,
+    batchOffset: offset,
+    remaining,
+    nextCursor: remaining ? selected.at(-1)?.accession || null : null,
+  };
+}
+
+export async function scanDisclosureCompany(input, settings, after = "") {
   const company = await disclosureCompanyHistory(input, settings);
-  const eligible = company.filings.filter(
-    (f) =>
-      f.filingDate >= settings.start &&
-      f.filingDate <= settings.end &&
-      settings.forms.includes(f.form.replace("/A", "")) &&
-      (settings.amendments || !f.form.endsWith("/A")),
-  );
-  const selected = eligible.slice(0, settings.depth);
+  const batch = disclosureFilingBatch(company.filings, settings, after);
+  const selected = batch.selected;
   const key = signature({
     version: QUERY_VERSION,
     cik: company.cik,
+    after,
     settings: { ...settings, parsed: undefined },
     filings: selected.map((f) => f.accession),
   });
@@ -346,6 +413,13 @@ export async function scanDisclosureCompany(input, settings) {
       ...cached,
       ticker: company.ticker,
       filings: cached.filings.map((f) => ({ ...f, ticker: company.ticker })),
+      eligible: batch.eligible,
+      batchOffset: batch.batchOffset,
+      nextCursor: batch.nextCursor,
+      remaining: batch.remaining,
+      limited: batch.remaining > 0,
+      historyLimited: company.historyLimited,
+      historyIssues: company.historyIssues,
       checkedAt: new Date().toISOString(),
       cached: true,
     };
@@ -375,10 +449,15 @@ export async function scanDisclosureCompany(input, settings) {
   const reviewed = filings.filter((f) => f.status === "reviewed");
   const matching = reviewed.filter((f) => f.matched);
   const result = {
+    version: QUERY_VERSION,
     ...company,
     filings,
-    eligible: eligible.length,
-    limited: eligible.length > settings.depth,
+    eligible: batch.eligible,
+    after: batch.after,
+    batchOffset: batch.batchOffset,
+    nextCursor: batch.nextCursor,
+    remaining: batch.remaining,
+    limited: batch.remaining > 0,
     selected: selected.length,
     reviewed: reviewed.length,
     fetchFailed: filings.filter((f) => f.status === "fetch-failed").length,
@@ -402,6 +481,7 @@ export async function readDisclosureDocument(
   document,
   settings,
   page = 1,
+  options = {},
 ) {
   if (!/^\d{10}-\d{2}-\d{6}$/.test(accession))
     throw new Error("Invalid SEC accession.");
@@ -414,6 +494,10 @@ export async function readDisclosureDocument(
   // Index results may refer to exhibits. Validate the document name, preserve the
   // submission metadata, and do not compare an exhibit to a primary report.
   const exhibit = document && document !== filing.primaryDoc;
+  if (exhibit && options.baselineAccession)
+    throw new Error(
+      "An exhibit cannot use a primary report as its comparison baseline.",
+    );
   const selected = exhibit
     ? {
         ...filing,
@@ -421,7 +505,13 @@ export async function readDisclosureDocument(
         documentUrl: buildFilingUrl(company.cik, accession, document),
       }
     : filing;
-  const result = await inspectFiling(company, selected, settings, !exhibit);
+  const result = await inspectFiling(
+    company,
+    selected,
+    settings,
+    !exhibit,
+    options.baselineAccession || "",
+  );
   if (exhibit)
     result.pair = {
       prior: null,
@@ -429,16 +519,132 @@ export async function readDisclosureDocument(
       reason:
         "Exhibits are read individually and are not paired with a primary report.",
     };
-  const pageSize = 12;
-  const total = result.matches.length;
+  const selection = paginateDisclosurePassages(result.matches, page, options);
   return {
     ...result,
-    matches: result.matches.slice((page - 1) * pageSize, page * pageSize),
-    totalPassages: total,
-    page,
-    pageSize,
+    previews: result.matches.slice(0, 3).map(compactPassage),
+    ...selection,
     observedAt: new Date().toISOString(),
     query: settings.query,
     settings: { ...settings, parsed: undefined },
+  };
+}
+
+export function disclosureReaderOptions(params) {
+  const readerSection = params.get("readerSection") || "all";
+  if (
+    !["all", "other", "risk", "mda", "notes"].includes(readerSection) &&
+    !/^8k:\d\.\d{2}$/.test(readerSection)
+  )
+    throw new Error("Choose a recognized reader section.");
+  const readerChange = params.get("readerChange") || "all";
+  if (
+    ![
+      "all",
+      "changed",
+      "added",
+      "revised",
+      "removed",
+      "unchanged",
+      "unavailable",
+    ].includes(readerChange)
+  )
+    throw new Error("Choose a supported passage change filter.");
+  const readerLanguage = params.get("readerLanguage") || "all";
+  if (
+    ![
+      "all",
+      "Reported-event wording",
+      "Hypothetical wording",
+      "Mixed language",
+      "Unclassified wording",
+    ].includes(readerLanguage)
+  )
+    throw new Error("Choose a supported passage language filter.");
+  const readerFind = params.get("readerFind") || "";
+  if (readerFind.length > 200)
+    throw new Error("Keep the reader text filter within 200 characters.");
+  const passageIndex = params.has("passageIndex")
+    ? Number(params.get("passageIndex"))
+    : null;
+  if (
+    passageIndex !== null &&
+    (!/^\d+$/.test(params.get("passageIndex")) ||
+      !Number.isSafeInteger(passageIndex) ||
+      passageIndex < 0)
+  )
+    throw new Error("Choose a valid passage index.");
+  const passageSide = params.get("passageSide") || "current";
+  if (!["current", "prior"].includes(passageSide))
+    throw new Error("Choose the current or prior passage side.");
+  const baselineAccession = params.get("baselineAccession") || "";
+  if (baselineAccession && !/^\d{10}-\d{2}-\d{6}$/.test(baselineAccession))
+    throw new Error("Invalid comparison accession.");
+  return {
+    readerSection,
+    readerChange,
+    readerLanguage,
+    readerFind,
+    passageIndex,
+    passageSide,
+    baselineAccession,
+  };
+}
+
+/** Filter the complete reviewed document before resolving passage pagination. */
+export function paginateDisclosurePassages(matches, page = 1, options = {}) {
+  const {
+    readerSection = "all",
+    readerChange = "all",
+    readerLanguage = "all",
+    readerFind = "",
+    passageIndex = null,
+    passageSide = "current",
+  } = options;
+  const availableSections = [
+    ...new Map(
+      matches.map((p) => [p.sectionId, { id: p.sectionId, label: p.section }]),
+    ).values(),
+  ];
+  const find = readerFind.trim().toLocaleLowerCase();
+  const selected = matches.filter(
+    (p) =>
+      (readerSection === "all" || p.sectionId === readerSection) &&
+      (readerChange === "all" ||
+        (readerChange === "changed"
+          ? ["added", "revised", "removed"].includes(p.change)
+          : readerChange === "unavailable"
+            ? ["unmatched", "uncompared"].includes(p.change)
+            : p.change === readerChange)) &&
+      (readerLanguage === "all" || p.label === readerLanguage) &&
+      (!find ||
+        `${p.text || ""}\n${p.priorText || ""}`
+          .toLocaleLowerCase()
+          .includes(find)),
+  );
+  const pageSize = 12;
+  const position =
+    passageIndex === null
+      ? -1
+      : selected.findIndex(
+          (p) =>
+            p.index === passageIndex &&
+            (p.change === "removed" ? "prior" : "current") === passageSide,
+        );
+  const resolvedPage =
+    position >= 0
+      ? Math.floor(position / pageSize) + 1
+      : Math.max(1, Math.min(page, Math.ceil(selected.length / pageSize) || 1));
+  return {
+    matches: selected.slice(
+      (resolvedPage - 1) * pageSize,
+      resolvedPage * pageSize,
+    ),
+    totalPassages: selected.length,
+    unfilteredTotalPassages: matches.length,
+    availableSections,
+    requestedPassageFound: passageIndex === null ? undefined : position >= 0,
+    page: resolvedPage,
+    pageSize,
   };
 }

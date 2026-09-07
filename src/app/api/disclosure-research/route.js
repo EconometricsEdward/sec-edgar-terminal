@@ -2,6 +2,7 @@ import {
   disclosureSettings,
   scanDisclosureCompany,
   readDisclosureDocument,
+  disclosureReaderOptions,
 } from "../../../utils/disclosureResearchServer.js";
 import {
   checkRateLimit,
@@ -15,8 +16,15 @@ export const maxDuration = 300;
 export async function GET(request) {
   const params = new URL(request.url).searchParams;
   let settings;
+  let readerOptions;
   try {
     settings = disclosureSettings(params);
+    readerOptions = disclosureReaderOptions(params);
+    if (
+      params.get("after") &&
+      !/^\d{10}-\d{2}-\d{6}$/.test(params.get("after"))
+    )
+      throw new Error("Invalid filing continuation cursor.");
   } catch (error) {
     return Response.json({ error: error.message }, { status: 400 });
   }
@@ -50,8 +58,13 @@ export async function GET(request) {
             params.get("document") || "",
             settings,
             page,
+            readerOptions,
           )
-        : await scanDisclosureCompany(ticker, settings);
+        : await scanDisclosureCompany(
+            ticker,
+            settings,
+            params.get("after") || "",
+          );
     const bytes = new TextEncoder().encode(JSON.stringify(data));
     const headers = {
       "Cache-Control": "private, no-store",

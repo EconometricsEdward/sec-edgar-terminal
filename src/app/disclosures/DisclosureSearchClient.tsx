@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowUpRight,
-  RefreshCw,
 } from "lucide-react";
 import {
   legacyDisclosureQuery,
@@ -24,9 +23,21 @@ import {
   passageEvidenceId,
 } from "../../utils/disclosureNotebook.js";
 import DisclosureQueryBar from "./DisclosureQueryBar";
-import DisclosureReader, { Highlight } from "./DisclosureReader";
+import DisclosureReader from "./DisclosureReader";
+import DisclosureResults from "./DisclosureResults";
+import DisclosureCoverageDesk from "./DisclosureCoverageDesk";
+import { DisclosureInbox } from "./DisclosureInbox";
+import { parseDisclosureReaderState } from "../../utils/disclosureReaderState.js";
+import {
+  DISCLOSURE_SESSION_KEY,
+  disclosureSearchIdentity,
+  upsertDisclosureCompany,
+  replaceDisclosureFiling,
+  makeDisclosureSession,
+  readDisclosureSession,
+} from "../../utils/disclosureCoverage.js";
 import { DisclosureMatrix, DisclosureTrends } from "./DisclosureComparisons";
-import { DisclosureCollections, DisclosureInbox } from "./DisclosureLibrary";
+import { DisclosureCollections } from "./DisclosureLibrary";
 import {
   companyInputs,
   queryParams,
@@ -93,7 +104,7 @@ async function verifyFiling(
   );
   return {
     ...data,
-    previews: data.matches.slice(0, 3),
+    previews: data.previews || data.matches.slice(0, 3),
     matches: undefined,
   } as Filing;
 }
@@ -113,6 +124,7 @@ export default function DisclosureSearchClient({
     scope: "paragraph",
     depth: 6,
     amendments: false,
+    comparison: "annual-season",
     ...initial,
     query: legacyDisclosureQuery(initial.query || "liquidity"),
   }));
@@ -120,25 +132,16 @@ export default function DisclosureSearchClient({
   const [companies, setCompanies] = useState<CompanyScan[]>([]);
   const [index, setIndex] = useState<any>(null);
   const [verified, setVerified] = useState<Filing[]>([]);
-  const recordVerified = useCallback((filing: Filing) => {
-    setVerified((items) => [
-      ...items.filter((f) => filingEvidenceId(f) !== filingEvidenceId(filing)),
-      { ...filing, previews: filing.matches?.slice(0, 3), matches: undefined },
-    ]);
-  }, []);
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [tab, setTab] = useState("evidence");
-  const [sort, setSort] = useState("relevance");
-  const [companyFilter, setCompanyFilter] = useState("all");
-  const [visibleCount, setVisibleCount] = useState(24);
-  const [language, setLanguage] = useState("all");
   const [reader, setReader] = useState<{
     filing: Filing;
     settings: SearchSettings;
+    initialState?: any;
   } | null>(null);
   const [readerChoices, setReaderChoices] = useState<Filing[]>([]);
   const [notebook, setNotebook] = useState<DisclosureNotebook>(
@@ -146,6 +149,7 @@ export default function DisclosureSearchClient({
   );
   const [storageReady, setStorageReady] = useState(false);
   const [storageError, setStorageError] = useState("");
+  const [collectionsOpened, setCollectionsOpened] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [checking, setChecking] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -171,6 +175,128 @@ export default function DisclosureSearchClient({
     measure();
     return () => observer.disconnect();
   }, []);
+  const companiesRef = useRef<CompanyScan[]>([]);
+  const activeRef = useRef<SearchSettings | null>(null);
+  const evidenceTrigger = useRef<HTMLElement | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [restoredAt, setRestoredAt] = useState("");
+  useEffect(() => {
+    companiesRef.current = companies;
+  }, [companies]);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+  const recordVerified = useCallback(
+    (filing: Filing, readSettings?: SearchSettings) => {
+      if (
+        !activeRef.current ||
+        !readSettings ||
+        disclosureSearchIdentity(readSettings) !==
+          disclosureSearchIdentity(activeRef.current)
+      )
+        return;
+      const compact = {
+        ...filing,
+        previews: filing.previews || filing.matches?.slice(0, 3),
+        matches: undefined,
+      };
+      if (activeRef.current.mode === "index")
+        setVerified((items) => [
+          ...items.filter(
+            (f) => filingEvidenceId(f) !== filingEvidenceId(filing),
+          ),
+          compact,
+        ]);
+      else {
+        const next = replaceDisclosureFiling(companiesRef.current, compact);
+        companiesRef.current = next;
+        setCompanies(next);
+      }
+    },
+    [],
+  );
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const pointer = parseDisclosureReaderState(params);
+      if (pointer) {
+        setReader({
+          filing: pointer.filing,
+          settings: {
+            ...settings,
+            tickers: settings.tickers || pointer.filing.ticker,
+          },
+          initialState: pointer,
+        });
+        setNotice(
+          "Linked passage opened with its original search settings. A new company-wide scan has not been run.",
+        );
+      } else {
+        const snapshot = readDisclosureSession(
+          sessionStorage.getItem(DISCLOSURE_SESSION_KEY),
+        );
+        const explicit = [
+          "query",
+          "keywords",
+          "tickers",
+          "ticker",
+          "focus",
+          "company",
+          "cik",
+          "mode",
+          "start",
+          "end",
+          "forms",
+          "section",
+          "scope",
+          "depth",
+          "amendments",
+          "comparison",
+        ].some((k) => params.has(k));
+        if (
+          snapshot &&
+          (!explicit ||
+            disclosureSearchIdentity(snapshot.settings) ===
+              disclosureSearchIdentity(settings))
+        ) {
+          setSettings(snapshot.settings);
+          setActive(snapshot.settings);
+          activeRef.current = snapshot.settings;
+          setCompanies(snapshot.companies);
+          companiesRef.current = snapshot.companies;
+          setAliases(snapshot.aliases);
+          setRestoredAt(snapshot.savedAt);
+        }
+      }
+    } catch (error) {
+      setNotice(
+        `The previous result session could not be restored: ${error.message}. Run a new search; saved collections remain separate.`,
+      );
+    }
+    setSessionReady(true);
+    // Initial URL or tab session is restored once. Subsequent edits are draft search controls.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!sessionReady || active?.mode !== "companies") return;
+    const persist = () => {
+      try {
+        const serialized = makeDisclosureSession(active, companies, aliases);
+        if (serialized)
+          sessionStorage.setItem(DISCLOSURE_SESSION_KEY, serialized);
+      } catch {
+        setNotice(
+          "Results remain on this page, but this browser could not retain them across reload. Export the coverage ledger or save the query before leaving.",
+        );
+      }
+    };
+    const timer = setTimeout(persist, 350);
+    window.addEventListener("pagehide", persist);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("pagehide", persist);
+    };
+  }, [sessionReady, active, companies, aliases]);
   const running = useRef(false);
   const notebookRef = useRef(notebook);
   useEffect(() => {
@@ -204,26 +330,40 @@ export default function DisclosureSearchClient({
         setStorageError(
           "Browser storage is unavailable. Your changes were not saved.",
         );
-        return;
+        return false;
       }
       try {
         const next = writeDisclosureNotebook(localStorage, update);
         setNotebook(next);
         notebookRef.current = next;
         setStorageError("");
+        return true;
       } catch (error) {
         setStorageError(
           `Could not save: ${error.message}. Existing saved research has been retained.`,
         );
+        return false;
       }
     },
     [storageReady],
   );
-  const run = async (next: SearchSettings) => {
+  const run = async (
+    requestedSettings: SearchSettings,
+    options: { resume?: boolean; targets?: string[]; after?: string } = {},
+  ) => {
     if (running.current) return;
+    const next = {
+      ...requestedSettings,
+      comparison: requestedSettings.comparison || "annual-season",
+    };
+    const continuing = Boolean(
+      options.resume &&
+      active &&
+      disclosureSearchIdentity(next) === disclosureSearchIdentity(active),
+    );
+    let inputs = companyInputs(next.tickers);
     try {
       parseDisclosureQuery(next.query);
-      const inputs = companyInputs(next.tickers);
       if (
         next.mode === "companies" &&
         (!inputs.length ||
@@ -235,8 +375,23 @@ export default function DisclosureSearchClient({
         );
       if (next.mode === "index" && inputs.length > 5)
         throw new Error("Focus the index on at most five companies.");
+      if (continuing)
+        inputs =
+          options.targets ||
+          inputs.filter((t) => {
+            const c = companiesRef.current.find(
+              (c) => c.ticker === (aliases[t] || t),
+            );
+            return !c || Boolean(c.error);
+          });
     } catch (error) {
       setError(error.message);
+      return;
+    }
+    if (continuing && !inputs.length) {
+      setNotice(
+        "Every requested company has a completed scan. Open coverage actions to retry documents or review older filings.",
+      );
       return;
     }
     running.current = true;
@@ -245,16 +400,19 @@ export default function DisclosureSearchClient({
     setBusy(true);
     setError("");
     setNotice("");
-    setActive({ ...next });
-    setSettings({ ...next });
-    setCompanies([]);
-    setAliases({});
-    setIndex(null);
-    setVerified([]);
-    setReader(null);
-    setTab("evidence");
-    setCompanyFilter("all");
-    setVisibleCount(24);
+    setRestoredAt("");
+    setActive(next);
+    activeRef.current = next;
+    setSettings(next);
+    if (!continuing) {
+      setCompanies([]);
+      companiesRef.current = [];
+      setAliases({});
+      setIndex(null);
+      setVerified([]);
+      setReader(null);
+      setTab("evidence");
+    }
     const params = queryParams(next);
     params.set("tickers", next.tickers);
     params.set("mode", next.mode);
@@ -265,51 +423,56 @@ export default function DisclosureSearchClient({
           "Searching the SEC index with resolved company identities…",
         );
         setIndex(await indexSearch(next, controller.signal));
-      } else {
-        const inputs = companyInputs(next.tickers);
-        const completed: CompanyScan[] = [];
-        const seenCiks = new Set();
+      } else
         for (let i = 0; i < inputs.length; i++) {
           if (controller.signal.aborted) break;
           setProgress(
-            `${i + 1} / ${inputs.length} companies · ${inputs[i]} · reading filings and prior reports`,
+            `${i + 1} / ${inputs.length} companies · ${inputs[i]} · ${options.after ? "reviewing older filings" : "reading filings and prior reports"}`,
           );
           try {
-            const params = queryParams(next);
-            params.set("ticker", inputs[i]);
+            const request = queryParams(next);
+            request.set("ticker", inputs[i]);
+            if (options.after) request.set("after", options.after);
             const result = await jsonResponse(
-              await fetch(`/api/disclosure-research?${params}`, {
+              await fetch(`/api/disclosure-research?${request}`, {
                 signal: controller.signal,
               }),
             );
+            const merged = upsertDisclosureCompany(
+              companiesRef.current,
+              result,
+            );
+            companiesRef.current = merged;
+            setCompanies(merged);
             const canonical =
-              completed.find((c) => c.cik === result.cik)?.ticker ||
-              result.ticker;
+              merged.find((c) => c.cik === result.cik)?.ticker || result.ticker;
             setAliases((values) => ({ ...values, [inputs[i]]: canonical }));
-            if (!seenCiks.has(result.cik)) {
-              seenCiks.add(result.cik);
-              completed.push(result);
-            } else
-              setNotice(
-                "Aliases resolving to the same CIK are counted as one company.",
-              );
-            setCompanies([...completed]);
             const first = result.filings.find((f: Filing) => f.matched);
-            if (first)
+            if (first && !continuing)
               setReader(
-                (current) => current || { filing: first, settings: next },
+                (current) =>
+                  current || {
+                    filing: { ...first, ticker: canonical },
+                    settings: next,
+                  },
               );
           } catch (error) {
             if (controller.signal.aborted) break;
-            completed.push({
-              ticker: inputs[i],
-              error: error.message,
-              filings: [],
-            });
-            setCompanies([...completed]);
+            if (options.after) {
+              setError(
+                `Older filings for ${inputs[i]} could not be reviewed: ${error.message}. Earlier results and the continuation point remain available.`,
+              );
+            } else {
+              const updated = upsertDisclosureCompany(companiesRef.current, {
+                ticker: (continuing && aliases[inputs[i]]) || inputs[i],
+                error: error.message,
+                filings: [],
+              });
+              companiesRef.current = updated;
+              setCompanies(updated);
+            }
           }
         }
-      }
     } catch (error) {
       if (!controller.signal.aborted) setError(error.message);
     } finally {
@@ -317,8 +480,43 @@ export default function DisclosureSearchClient({
       setBusy(false);
       setProgress(
         controller.signal.aborted
-          ? "Stopped. Completed company results remain available; the rest were not reviewed."
-          : "Search complete. Review the coverage ledger for gaps and limits.",
+          ? "Stopped. Completed company results remain available. Use Resume in the coverage desk for unfinished companies."
+          : "Review complete. Use the coverage desk to inspect gaps and continue into older filings.",
+      );
+    }
+  };
+  const retryDocument = async (filing: Filing) => {
+    if (!active || running.current) return;
+    running.current = true;
+    setBusy(true);
+    setError("");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setProgress(
+      `Retrying ${filing.ticker} · ${filing.form} · ${filing.filingDate}`,
+    );
+    try {
+      const result = await verifyFiling(filing, active, controller.signal);
+      const updated = replaceDisclosureFiling(companiesRef.current, result);
+      companiesRef.current = updated;
+      setCompanies(updated);
+      setNotice(
+        result.status === "reviewed"
+          ? "Document reviewed. Coverage and query-match counts were updated; any remaining comparison gap stays visible."
+          : "The document was fetched, but its requested section is still unavailable. It remains outside the reviewed denominator.",
+      );
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setError(
+          `Retry failed: ${error.message}. The previous result remains available.`,
+        );
+    } finally {
+      running.current = false;
+      setBusy(false);
+      setProgress(
+        controller.signal.aborted
+          ? "Retry stopped; previous evidence retained."
+          : "Document retry finished.",
       );
     }
   };
@@ -386,17 +584,31 @@ export default function DisclosureSearchClient({
             }
           }
         }
-        changeNotebook((current) => ({
+        let applied = false;
+        const stored = changeNotebook((current) => ({
           ...current,
-          searches: current.searches.map((item) =>
-            item.id === saved.id
-              ? updateDisclosureMonitor(item, results)
-              : item,
-          ),
+          searches: current.searches.map((item) => {
+            if (
+              item.id !== saved.id ||
+              disclosureSearchIdentity(item.settings) !==
+                disclosureSearchIdentity(saved.settings)
+            )
+              return item;
+            applied = true;
+            return updateDisclosureMonitor(
+              item,
+              results,
+              new Date().toISOString(),
+              next,
+            );
+          }),
         }));
-        setNotice(
-          `Checked “${saved.name}”. New verified matches and coverage are in the inbox.`,
-        );
+        if (stored)
+          setNotice(
+            applied
+              ? `Checked “${saved.name}”. New verified matches and coverage are in the inbox.`
+              : "The saved query changed or was removed during this check. Its current monitoring history was retained; run the updated query to check it.",
+          );
       } catch (error) {
         if (!controller.signal.aborted)
           setError(
@@ -443,48 +655,6 @@ export default function DisclosureSearchClient({
             ) || indexFiling(hit),
         )
       : filings;
-  const terms = useMemo(() => {
-    try {
-      return parseDisclosureQuery(active?.query || "liquidity").positive;
-    } catch {
-      return [];
-    }
-  }, [active?.query]);
-  const results = allResults.filter(
-    (f) =>
-      (f.matched ||
-        f.status === "index-candidate" ||
-        (tab === "changes" &&
-          (f.removedCount || 0) + (f.revisions || 0) > 0)) &&
-      (companyFilter === "all" || f.ticker === companyFilter) &&
-      (language === "all" || (f.signals?.languages[language] || 0) > 0) &&
-      (tab !== "changes" ||
-        (f.additions || 0) + (f.revisions || 0) + (f.removedCount || 0) > 0),
-  );
-  results.sort((a, b) => {
-    const ap = a.previews || [];
-    const bp = b.previews || [];
-    if (sort === "date") return b.filingDate.localeCompare(a.filingDate);
-    if (sort === "added")
-      return (
-        (b.additions || 0) - (a.additions || 0) ||
-        (b.revisions || 0) - (a.revisions || 0)
-      );
-    if (sort === "proximity")
-      return (
-        (a.signals?.closestTerms ?? Infinity) -
-        (b.signals?.closestTerms ?? Infinity)
-      );
-    if (sort === "specificity")
-      return (b.signals?.concrete || 0) - (a.signals?.concrete || 0);
-    if (sort === "section")
-      return (b.signals?.recognized || 0) - (a.signals?.recognized || 0);
-    return (
-      Math.max(0, ...bp.map((p) => p.relevance)) -
-        Math.max(0, ...ap.map((p) => p.relevance)) ||
-      b.filingDate.localeCompare(a.filingDate)
-    );
-  });
   const unread = notebook.searches.reduce(
     (n, saved) => n + saved.inbox.filter((i) => !i.reviewed).length,
     0,
@@ -493,8 +663,28 @@ export default function DisclosureSearchClient({
     (n, c) => n + c.items.length,
     0,
   );
-  const open = (filing: Filing, next: SearchSettings) =>
-    setReader({ filing, settings: next });
+  const open = (
+    filing: Filing,
+    next: SearchSettings,
+    pointer?: { index: number; side: "current" | "prior" },
+  ) => {
+    evidenceTrigger.current = document.activeElement as HTMLElement;
+    setReader({ filing, settings: next, initialState: pointer });
+  };
+  const closeReader = () => {
+    setReader(null);
+    evidenceTrigger.current?.focus({ preventScroll: true });
+  };
+  const markResult = (id: string, reviewed: boolean) =>
+    changeNotebook((current) => {
+      const map = { ...current.reviewedFilings };
+      if (reviewed) map[id] = new Date().toISOString();
+      else delete map[id];
+      const entries = Object.entries(map)
+        .sort((a, b) => b[1].localeCompare(a[1]))
+        .slice(0, 2000);
+      return { ...current, reviewedFilings: Object.fromEntries(entries) };
+    });
   const collect = (
     filing: Filing,
     passage: Passage,
@@ -520,7 +710,7 @@ export default function DisclosureSearchClient({
       .filter((f) => f.status === "reviewed")
       .map(filingEvidenceId);
     const now = new Date().toISOString();
-    changeNotebook((current) => ({
+    const saved = changeNotebook((current) => ({
       ...current,
       searches: [
         ...current.searches,
@@ -537,7 +727,7 @@ export default function DisclosureSearchClient({
         },
       ],
     }));
-    setSaveName("");
+    if (saved) setSaveName("");
   };
   const verifyCandidates = async () => {
     if (!active || running.current) return;
@@ -596,7 +786,7 @@ export default function DisclosureSearchClient({
       })),
     }));
   return (
-    <div className={s.page} ref={pageRef}>
+    <div className={s.page} ref={pageRef} data-research-view={tab}>
       <header className={s.header}>
         <div>
           <span className={s.eyebrow}>
@@ -655,6 +845,7 @@ export default function DisclosureSearchClient({
             aria-current={tab === id ? "page" : undefined}
             onClick={() => {
               setTab(id);
+              if (id === "collections") setCollectionsOpened(true);
               setReader(null);
             }}
           >
@@ -763,74 +954,42 @@ export default function DisclosureSearchClient({
               </button>
             </div>
           </div>
-          <details className={s.coverage}>
-            <summary>Coverage ledger · what was actually reviewed</summary>
-            {active.mode === "index" ? (
-              <>
-                <p>
-                  {index?.focus?.constrainedAtSource
-                    ? `Company identity resolved before search: ${index.focus.resolved.map((f: any) => `${f.requested} → CIK ${f.cik}`).join("; ")}.`
-                    : "SEC-wide index discovery."}{" "}
-                  {index?.returnedHits || 0} candidate documents returned.
-                  Query, section, and paragraph filters require text
-                  verification.
+          {active.mode === "companies" ? (
+            <DisclosureCoverageDesk
+              settings={active}
+              companies={companies}
+              aliases={aliases}
+              busy={busy || Boolean(checking)}
+              restoredAt={restoredAt}
+              onResume={() => run(active, { resume: true })}
+              onRetry={(ticker) =>
+                run(active, { resume: true, targets: [ticker] })
+              }
+              onMore={(company) =>
+                run(active, {
+                  resume: true,
+                  targets: [company.ticker],
+                  after: company.nextCursor,
+                })
+              }
+              onRetryFiling={retryDocument}
+            />
+          ) : (
+            <details className={s.coverage}>
+              <summary>Index candidate coverage</summary>
+              <p>
+                {index?.returnedHits || 0} candidates returned. Full-query and
+                section filters require document verification; this candidate
+                sample cannot establish disclosure prevalence.
+              </p>
+              {verified.map((f) => (
+                <p key={filingEvidenceId(f)}>
+                  {f.ticker} · {f.form} · {f.filingDate}: {f.status}
+                  {f.reason ? ` — ${f.reason}` : ""}
                 </p>
-                {verified.map((f) => (
-                  <p key={filingEvidenceId(f)}>
-                    {f.ticker} · {f.form} · {f.filingDate}: {f.status}
-                    {f.reason ? ` — ${f.reason}` : ""}
-                    {f.status === "reviewed"
-                      ? f.matched
-                        ? " · query matched"
-                        : " · no full-query match"
-                      : ""}
-                  </p>
-                ))}
-              </>
-            ) : (
-              companies.map((company) => (
-                <div key={company.ticker}>
-                  <strong>
-                    {company.ticker} ·{" "}
-                    {company.companyName || "Identity / history unavailable"}
-                  </strong>
-                  <p>
-                    {company.error ||
-                      `${company.reviewed} reviewed / ${company.selected} selected from ${company.eligible} eligible filings in inspected history. ${company.fetchFailed} fetch failures; ${company.sectionUnavailable} sections unavailable.`}
-                  </p>
-                  {(company.limited || company.historyLimited) && (
-                    <p className={s.warning}>
-                      Bounded coverage:{" "}
-                      {company.limited ? "filing-depth limit reached. " : ""}
-                      {company.historyLimited
-                        ? "Not all eligible historical submissions were retrieved. "
-                        : ""}
-                      Increase depth or narrow the date window.
-                    </p>
-                  )}
-                  <p>
-                    First observed within this search:{" "}
-                    {company.firstObserved || "No verified match"}. Checked:{" "}
-                    {company.checkedAt
-                      ? new Date(company.checkedAt).toLocaleString()
-                      : "unavailable"}
-                    .
-                  </p>
-                  {company.filings
-                    .filter((f) => f.status !== "reviewed" || f.comparisonError)
-                    .map((f) => (
-                      <p key={f.accession}>
-                        {f.form} · {f.filingDate}:{" "}
-                        {f.reason || f.comparisonError}{" "}
-                        <button onClick={() => open(f, active)}>
-                          Retry / read source
-                        </button>
-                      </p>
-                    ))}
-                </div>
-              ))
-            )}
-          </details>
+              ))}
+            </details>
+          )}
         </>
       )}
       {tab === "inbox" && (
@@ -839,6 +998,7 @@ export default function DisclosureSearchClient({
           change={changeNotebook}
           check={checkSaved}
           checking={busy ? "active-search" : checking}
+          ready={storageReady && !storageError}
           open={open}
           load={(next) => {
             setSettings(next);
@@ -850,12 +1010,14 @@ export default function DisclosureSearchClient({
           }}
         />
       )}
-      {tab === "collections" && (
-        <DisclosureCollections
-          notebook={notebook}
-          change={changeNotebook}
-          notice={setNotice}
-        />
+      {collectionsOpened && (
+        <div hidden={tab !== "collections"}>
+          <DisclosureCollections
+            notebook={notebook}
+            change={changeNotebook}
+            notice={setNotice}
+          />
+        </div>
       )}
       {["matrix", "trends"].includes(tab) &&
         (!active || active.mode === "index" ? (
@@ -941,177 +1103,34 @@ export default function DisclosureSearchClient({
                 </button>
               </div>
             ) : (
-              <>
-                <div className={s.panelHeading}>
-                  <div>
-                    <span className={s.eyebrow}>
-                      {tab === "changes"
-                        ? "Added, revised & removed passages"
-                        : "Research results"}
-                    </span>
-                    <h2>
-                      {results.length}{" "}
-                      {active.mode === "index"
-                        ? "candidate / verified documents"
-                        : "matching filings"}
-                    </h2>
-                  </div>
-                  {active.mode === "index" && (
-                    <button disabled={busy} onClick={verifyCandidates}>
-                      <RefreshCw size={14} /> Verify next 12
-                    </button>
-                  )}
-                </div>
-                <div className={s.resultFilters}>
-                  <label>
-                    Sort by
-                    <select
-                      value={sort}
-                      onChange={(e) => setSort(e.target.value)}
-                    >
-                      <option value="relevance">Evidence relevance</option>
-                      <option value="date">Newest filing</option>
-                      <option value="added">Newly added language</option>
-                      <option value="section">Recognized section</option>
-                      <option value="proximity">Term proximity</option>
-                      <option value="specificity">Amounts & dates</option>
-                    </select>
-                  </label>
-                  <label>
-                    Company
-                    <select
-                      value={companyFilter}
-                      onChange={(e) => setCompanyFilter(e.target.value)}
-                    >
-                      <option value="all">All companies</option>
-                      {[...new Set(allResults.map((f) => f.ticker))].map(
-                        (t) => (
-                          <option key={t}>{t}</option>
-                        ),
-                      )}
-                    </select>
-                  </label>
-                  <label>
-                    Automated wording
-                    <select
-                      value={language}
-                      onChange={(e) => setLanguage(e.target.value)}
-                    >
-                      <option value="all">All wording</option>
-                      {[
-                        "Reported-event wording",
-                        "Hypothetical wording",
-                        "Mixed language",
-                        "Unclassified wording",
-                      ].map((label) => (
-                        <option key={label}>{label}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <p className={s.muted}>
-                  Ranking reflects term proximity, recognized sections, and
-                  concrete amounts or dates. Language labels describe wording
-                  and require review. Neither is a risk score.
-                </p>
-                {tab === "changes" && (
-                  <p className={s.muted}>
-                    Repeated wording is suppressed. Comparisons use the same
-                    reporting season; amendments compare to their original
-                    period. See the reader for baseline and extraction gaps.
-                  </p>
-                )}
-                {!results.length && (
-                  <div className={s.empty}>
-                    {busy
-                      ? "Completed reviews will appear here as each company finishes."
-                      : tab === "changes"
-                        ? "No added, revised, or removed matching passages in comparable sections. Check the coverage ledger for unavailable baselines."
-                        : "No verified matches in the selected filters. Check coverage before interpreting this as an absence of disclosure."}
-                  </div>
-                )}
-                {results.slice(0, visibleCount).map((filing) => (
-                  <article
-                    className={s.resultCard}
-                    data-selected={Boolean(
-                      reader &&
-                        filingEvidenceId(reader.filing) ===
-                          filingEvidenceId(filing),
-                    )}
-                    key={filingEvidenceId(filing)}
-                  >
-                    <button
-                      className={s.resultOpen}
-                      onClick={() => open(filing, active)}
-                    >
-                      <div className={s.row}>
-                        <strong>
-                          {filing.ticker} <span>{filing.form}</span>
-                        </strong>
-                        <span className={s.muted}>{filing.filingDate}</span>
-                      </div>
-                      <p className={s.companyName}>{filing.companyName}</p>
-                      <div className={s.resultMeta}>
-                        {active.mode === "index" && (
-                          <span>{filing.primaryDoc}</span>
-                        )}
-                        <span>
-                          {filing.status === "index-candidate"
-                            ? "Index candidate · unverified"
-                            : `${filing.matchCount || 0} matching passages`}
-                        </span>
-                        {(filing.additions || 0) > 0 && (
-                          <span>{filing.additions} added</span>
-                        )}
-                        {(filing.revisions || 0) > 0 && (
-                          <span>{filing.revisions} revised</span>
-                        )}
-                        {(filing.removedCount || 0) > 0 && (
-                          <span>{filing.removedCount} removed</span>
-                        )}
-                      </div>
-                      {filing.previews?.[0] && (
-                        <p className={s.preview}>
-                          <Highlight
-                            text={
-                              filing.previews[0].text ||
-                              filing.previews[0].priorText ||
-                              ""
-                            }
-                            terms={terms}
-                          />
-                          {filing.previews[0].previewTruncated ? "…" : ""}
-                        </p>
-                      )}
-                      <span className={s.readLink}>
-                        Read passages & compare wording{" "}
-                        <ArrowUpRight size={14} />
-                      </span>
-                    </button>
-                  </article>
-                ))}
-                {results.length > visibleCount && (
-                  <button
-                    className={s.loadMore}
-                    onClick={() => setVisibleCount((n) => n + 24)}
-                  >
-                    Show 24 more filings
-                  </button>
-                )}
-              </>
+              <DisclosureResults
+                key={disclosureSearchIdentity(active)}
+                filings={allResults}
+                settings={active}
+                changesOnly={tab === "changes"}
+                reviewedFilings={notebook.reviewedFilings || {}}
+                onReview={markResult}
+                open={open}
+                onVerifyCandidates={
+                  active.mode === "index" ? verifyCandidates : undefined
+                }
+                busy={busy || Boolean(checking)}
+                selectedId={reader ? filingEvidenceId(reader.filing) : ""}
+              />
             )}
           </section>
           {reader && (
             <DisclosureReader
-              key={`${filingEvidenceId(reader.filing)}:${reader.settings.query}:${tab}`}
+              key={`${filingEvidenceId(reader.filing)}:${disclosureSearchIdentity(reader.settings)}:${reader.initialState?.side}:${reader.initialState?.index}:${tab}`}
               filing={reader.filing}
               settings={reader.settings}
               changesOnly={tab === "changes"}
-              onReviewed={active?.mode === "index" ? recordVerified : undefined}
+              onReviewed={recordVerified}
+              initialState={reader.initialState}
               notebook={notebook}
               onCollect={collect}
               onLabel={setLabel}
-              close={() => setReader(null)}
+              close={closeReader}
             />
           )}
         </div>
@@ -1141,14 +1160,16 @@ export default function DisclosureSearchClient({
             </label>
           )}
           <DisclosureReader
-            key={`${filingEvidenceId(reader.filing)}:${reader.settings.query}`}
+            key={`${filingEvidenceId(reader.filing)}:${disclosureSearchIdentity(reader.settings)}:${reader.initialState?.side}:${reader.initialState?.index}`}
             filing={reader.filing}
             settings={reader.settings}
             changesOnly={false}
+            initialState={reader.initialState}
+            onReviewed={recordVerified}
             notebook={notebook}
             onCollect={collect}
             onLabel={setLabel}
-            close={() => setReader(null)}
+            close={closeReader}
           />
         </div>
       )}

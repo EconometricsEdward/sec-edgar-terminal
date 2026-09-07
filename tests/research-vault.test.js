@@ -761,3 +761,59 @@ test("Analysis thresholds and question evidence remain validated and portable", 
     validateResearchStore(workspaceKey, JSON.stringify(records[workspaceKey])),
   );
 });
+
+test("Disclosures brief drafts, original monitor windows and exact-evidence review markers survive backup", () => {
+  const data = fixtures();
+  const notebook = data[disclosuresKey];
+  notebook.collections[0].brief = {
+    title: "Bank liquidity review",
+    researchQuestion: "What changed?",
+    narrative: "Facilities need review.",
+    conclusions: "Compare the prior report.",
+    groupBy: "company",
+  };
+  notebook.reviewedFilings = { 'review-v1:["JPM", "liquidity"]': now };
+  notebook.searches[0].settings.comparison = "previous-report";
+  notebook.searches[0].inbox[0].searchSettings = {
+    ...notebook.searches[0].settings,
+    end: "2026-08-01",
+  };
+  assert.equal(readResearchVault(storage(data)).issues.length, 0);
+  assert.equal(imported(data).issues.length, 0);
+});
+
+test("Disclosures restored briefs, query snapshots and review markers reject malformed content", () => {
+  const changes = [
+    (n) => {
+      n.collections[0].brief = { narrative: {} };
+    },
+    (n) => {
+      n.collections[0].brief = { title: "x".repeat(161) };
+    },
+    (n) => {
+      n.collections[0].brief = { groupBy: "unknown" };
+    },
+    (n) => {
+      n.searches[0].settings.comparison = "random";
+    },
+    (n) => {
+      n.searches[0].inbox[0].searchSettings = { query: {} };
+    },
+    (n) => {
+      n.reviewedFilings = [];
+    },
+    (n) => {
+      n.reviewedFilings = { evidence: "not-a-date" };
+    },
+    (n) => {
+      n.reviewedFilings = Object.fromEntries(
+        Array.from({ length: 2001 }, (_, i) => [i, now]),
+      );
+    },
+  ];
+  for (const change of changes) {
+    const data = fixtures();
+    change(data[disclosuresKey]);
+    assert.ok(imported(data).issues.length > 0);
+  }
+});
