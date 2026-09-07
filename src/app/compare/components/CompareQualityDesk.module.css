@@ -1,0 +1,193 @@
+.desk {
+  border: 1px solid var(--compare-border);
+  border-radius: 14px;
+  background: var(--compare-panel);
+  padding: 22px;
+  margin: 20px 0;
+  min-width: 0;
+}
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.eyebrow {
+  color: var(--compare-accent);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.head p,
+.note {
+  color: var(--compare-muted);
+  max-width: 850px;
+}
+.desk button,
+.desk select {
+  border: 1px solid var(--compare-border);
+  color: var(--compare-text);
+  background: var(--compare-raised);
+  border-radius: 7px;
+  padding: 9px 12px;
+  font: inherit;
+}
+.desk button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+}
+.desk button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.desk button:focus-visible,
+.desk select:focus-visible,
+.desk summary:focus-visible,
+.scroll:focus-visible {
+  outline: 2px solid var(--compare-link);
+  outline-offset: 3px;
+}
+.summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+.summary span {
+  background: var(--compare-raised);
+  border: 1px solid var(--compare-border);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--compare-muted);
+  font-size: 12px;
+}
+.summary strong {
+  display: block;
+  font-size: 22px;
+  color: var(--compare-text);
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 20px 0;
+}
+.controls label {
+  display: grid;
+  gap: 5px;
+  color: var(--compare-muted);
+  font-size: 12px;
+}
+.metric {
+  border-top: 1px solid var(--compare-border);
+  padding: 12px 0;
+}
+.metric summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  align-items: center;
+  font-weight: 650;
+  padding: 4px;
+}
+.metric summary::before {
+  content: "+";
+  color: var(--compare-link);
+}
+.metric[open] summary::before {
+  content: "−";
+}
+.metric summary > span:first-of-type {
+  flex: 1;
+}
+.desk small {
+  display: block;
+  color: var(--compare-muted);
+}
+.tag {
+  padding: 4px 8px;
+  border: 1px solid var(--compare-border);
+  border-radius: 5px;
+  color: var(--compare-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.alert {
+  background: var(--compare-raised);
+  border-left: 3px solid var(--compare-warning);
+  color: var(--compare-warning);
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+.scroll {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+.scroll table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 760px;
+  font-size: 12px;
+  text-align: left;
+}
+.scroll th,
+.scroll td {
+  border-bottom: 1px solid var(--compare-border);
+  padding: 12px;
+  vertical-align: top;
+}
+.scroll thead th {
+  background: var(--compare-raised);
+  color: var(--compare-muted);
+}
+.scroll td {
+  min-width: 180px;
+  max-width: 330px;
+  overflow-wrap: anywhere;
+}
+.scroll p {
+  margin: 4px 0;
+}
+.scroll code {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.desk .inspect {
+  display: flex;
+  flex-wrap: wrap;
+  background: transparent;
+  padding: 5px;
+  justify-content: flex-start;
+}
+.inspect strong {
+  flex-basis: 100%;
+  text-align: left;
+  font-size: 15px;
+}
+.empty {
+  padding: 25px;
+  text-align: center;
+  color: var(--compare-muted);
+}
+@media (max-width: 700px) {
+  .desk {
+    padding: 14px;
+  }
+  .head {
+    flex-direction: column;
+  }
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metric summary {
+    flex-wrap: wrap;
+  }
+  .tag {
+    margin-left: 16px;
+  }
+}

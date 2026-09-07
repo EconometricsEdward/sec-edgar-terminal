@@ -40,7 +40,7 @@ const tools = [
     icon: GitCompareArrows,
     href: "/compare",
     number: "04",
-    text: "Line up as many as five peers, inspect reporting dates, and keep the evidence behind a comparison.",
+    text: "Line up as many as 12 companies, inspect reporting dates, and keep the evidence behind a comparison.",
   },
   {
     title: "Market",

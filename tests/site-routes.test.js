@@ -39,7 +39,7 @@ test("saved routes reject script, external, encoded-separator and invalid resear
     "/analysis/../about",
     "/analysis/%2e%2e/about",
     "/compare/JPM,JPM",
-    "/compare/A,B,C,D,E,F",
+    "/compare/A,B,C,D,E,F,G,H,I,J,K,L,M",
     "/fund/SPY,AAPL",
     "/analysis/%",
     null,
@@ -57,7 +57,17 @@ test("single-company peer-comparison starting views remain safe saved destinatio
   );
   assert.equal(safeInternalPath("/compare/JPM,"), null);
   assert.equal(safeInternalPath("/compare/JPM,JPM"), null);
-  assert.equal(safeInternalPath("/compare/A,B,C,D,E,F"), null);
+  assert.equal(safeInternalPath("/compare/A,B,C,D,E,F,G,H,I,J,K,L,M"), null);
+});
+
+test("twelve-company comparisons remain navigable through saved routes without dropping settings", () => {
+  const path =
+    "/compare/JPM,BAC,WFC,C,GS,MS,USB,PNC,TFC,COF,BK,STT?benchmark=peers&focus=JPM&view=benchmarks";
+  assert.equal(safeInternalPath(path), path);
+  assert.equal(
+    safeInternalPath("/compare/A,B,C,D,E,F"),
+    "/compare/A,B,C,D,E,F",
+  );
 });
 
 test("company identity follows the exact route and never picks a peer or a stale entity", () => {

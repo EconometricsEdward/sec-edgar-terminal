@@ -30,9 +30,40 @@ export type CompareSettings = {
   mode: string;
   sort: string;
   descending: boolean;
+  focus: string;
+  tableMode: string;
+  changeMode: string;
+  movementFrom: string;
+  movementMetric: string;
+  commonSize: string;
+  formulaA: string;
+  formulaB: string;
+  formulaC: string;
+  formulaOp: string;
+  formulaScale: string;
+  formulaLabel: string;
 };
-export type CompareEvidence = { cell: any; metric: any };
-export const COLORS = ["#e8b548", "#45b9cc", "#a598ef", "#ec9a8d", "#73c1a2"];
+export type CompareEvidence = {
+  cell: any;
+  metric: any;
+  settings?: CompareSettings;
+  snapshotName?: string;
+  capturedAt?: string;
+};
+export const COLORS = [
+  "#e8b548",
+  "#45b9cc",
+  "#a598ef",
+  "#ec9a8d",
+  "#73c1a2",
+  "#e8a9d6",
+  "#91b5f9",
+  "#b6c86b",
+  "#e99860",
+  "#7bd8cb",
+  "#c0a084",
+  "#c0c9df",
+];
 export function displayValue(
   value: number | null | undefined,
   format = "currency",

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   ...buildPageMetadata({
     title: "Peer Comparison — Compare SEC Filings & Financials",
     description:
-      "Compare five public companies using aligned annual, quarterly, and trailing-year financials, industry-aware metrics, peer medians, trends, source evidence, and exportable research.",
+      "Compare up to 12 public companies using aligned annual, quarterly, and trailing-year financials, industry-aware metrics, peer medians, trends, source evidence, and exportable research.",
     path: "/compare",
   }),
 };

@@ -50,7 +50,11 @@ const balanceFacts = () => ({
   StockholdersEquity: [annual(100, 2024, true), annual(140, 2025, true)],
   NetIncomeLoss: [annual(24)],
 });
-const period = (end = "2025-12-31", start = "2025-01-01", kind = "annual") => ({
+const period = (
+  end = "2025-12-31",
+  start = `${end.slice(0, 4)}-01-01`,
+  kind = "annual",
+) => ({
   end,
   start,
   kind,

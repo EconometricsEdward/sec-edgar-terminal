@@ -13,6 +13,7 @@
 // ============================================================================
 
 import { safeInternalPath } from "./siteRoutes.js";
+import { MAX_COMPARE_COMPANIES } from "./compareLimits.js";
 
 export const DISCLOSURE_TOPIC_LABELS = {
   AI: "artificial intelligence",
@@ -207,8 +208,10 @@ export function routeSearch(query, tickerMap) {
     if (tickers.length < 2) {
       return { error: "Compare mode requires at least 2 tickers" };
     }
-    if (tickers.length > 5) {
-      return { error: "Compare supports maximum 5 tickers" };
+    if (tickers.length > MAX_COMPARE_COMPANIES) {
+      return {
+        error: `Compare supports maximum ${MAX_COMPARE_COMPANIES} tickers`,
+      };
     }
 
     const topicsInList = tickers.filter(

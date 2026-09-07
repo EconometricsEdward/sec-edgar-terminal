@@ -1,8 +1,14 @@
+import { comparisonEvidenceIdentity } from "./compareEvidenceLinks.js";
 import {
   METRIC_BY_KEY,
   COMPARE_VERSION,
   MAX_COMPARE_COMPANIES,
 } from "./compareResearch.js";
+import {
+  DEFAULT_COMPARE_FORMULA,
+  normalizeCompareFormula,
+} from "./compareFormula.js";
+import { validateCompareWorkspace } from "./compareWorkspace.js";
 import { validTicker } from "./researchWorkspace.js";
 
 export const COMPARE_STORAGE_KEY = "edgar:compare-notebook:v1";
@@ -23,6 +29,13 @@ export const DEFAULT_COMPARE_SETTINGS = {
   mode: "absolute",
   sort: "peers",
   descending: true,
+  focus: "",
+  tableMode: "reported",
+  changeMode: "periods",
+  movementFrom: "previous",
+  movementMetric: "netIncome",
+  commonSize: "balance",
+  ...DEFAULT_COMPARE_FORMULA,
 };
 export function normalizeCompareTickers(value) {
   return [
@@ -58,7 +71,12 @@ export function normalizeCompareSettings(input = {}) {
       "corporate",
       "insurance",
     ]),
-    benchmark: validTicker(input.benchmark || "") ? input.benchmark : "median",
+    benchmark:
+      input.benchmark === "peers"
+        ? "peers"
+        : validTicker(input.benchmark || "")
+          ? input.benchmark
+          : "median",
     metrics: [
       ...new Set(
         (Array.isArray(input.metrics)
@@ -68,7 +86,15 @@ export function normalizeCompareSettings(input = {}) {
       ),
     ],
     excluded: normalizeCompareTickers(input.excluded),
-    view: choose("view", ["table", "trends", "map", "notebook"]),
+    view: choose("view", [
+      "table",
+      "trends",
+      "map",
+      "notebook",
+      "quality",
+      "benchmarks",
+      "changes",
+    ]),
     metric: metric("metric"),
     x: metric("x"),
     y: metric("y"),
@@ -79,6 +105,15 @@ export function normalizeCompareSettings(input = {}) {
         ? input.sort
         : "peers",
     descending: input.descending !== false && input.descending !== "false",
+    focus: validTicker(input.focus || "") ? input.focus : "",
+    tableMode: choose("tableMode", ["reported", "common-size", "formula"]),
+    changeMode: choose("changeMode", ["periods", "snapshots"]),
+    movementFrom: /^(19|20)\d{2}(-Q[1-4])?$/.test(input.movementFrom || "")
+      ? input.movementFrom
+      : "previous",
+    movementMetric: metric("movementMetric"),
+    commonSize: choose("commonSize", ["balance", "income"]),
+    ...normalizeCompareFormula(input),
   };
 }
 export function readCompareUrl(search) {
@@ -103,6 +138,7 @@ export const emptyCompareNotebook = () => ({
   collectionName: "Peer comparison research",
   notes: "",
   pins: [],
+  snapshots: [],
 });
 export function parseCompareNotebook(raw) {
   if (!raw) return emptyCompareNotebook();
@@ -115,32 +151,47 @@ export function parseCompareNotebook(raw) {
     throw new Error(
       "Saved comparison data could not be read. Existing data has been preserved.",
     );
+  validateCompareWorkspace(data);
   return data;
 }
 export function writeCompareNotebook(storage, update) {
   const result = update(
     parseCompareNotebook(storage.getItem(COMPARE_STORAGE_KEY)),
   );
+  validateCompareWorkspace(result);
   storage.setItem(COMPARE_STORAGE_KEY, JSON.stringify(result));
   return result;
 }
 export function comparisonPin(cell, metric, settings) {
+  const exactSettings = normalizeCompareSettings(settings);
+  const point = cell.point
+    ? JSON.parse(
+        JSON.stringify({
+          ...cell.point,
+          period: cell.point.period || cell.period,
+        }),
+      )
+    : null;
   return {
-    id: `${cell.cik}:${metric.key}:${cell.period.end}:${cell.period.kind}:${settings.asOf || "latest"}:${cell.point?.value}:${[...new Set((cell.point?.sources || []).map((s) => s.accession))].sort().join("-")}`,
+    id: comparisonEvidenceIdentity({ ...cell, point }, metric, exactSettings),
     ticker: cell.ticker,
     cik: cell.cik,
     name: cell.name,
     metric: metric.key,
     label: metric.label,
     format: metric.format,
-    point: cell.point,
-    settings: normalizeCompareSettings(settings),
+    category: metric.category || "Reported metric",
+    definition: metric.definition || metric.formula || "",
+    metricDefinition: JSON.parse(JSON.stringify(metric)),
+    point,
+    settings: exactSettings,
     version: COMPARE_VERSION,
     savedAt: new Date().toISOString(),
     notes: "",
     tags: "",
   };
 }
+
 const escapeHtml = (v) =>
   String(v ?? "").replace(
     /[&<>"']/g,

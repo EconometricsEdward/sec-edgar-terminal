@@ -1,3 +1,4 @@
+import { validateCompareWorkspace } from "./compareWorkspace.js";
 import { validateAnalysisRules } from "./analysisRules.js";
 import { validateAnalysisQuestions } from "./analysisQuestions.js";
 import { readFilingsNotebook } from "./filingsNotebook.js";
@@ -427,6 +428,7 @@ export function validateResearchStore(key, raw) {
         );
       });
   } else if (key === "edgar:compare-notebook:v1") {
+    validateCompareWorkspace(data);
     optionalText(data.notes, "Comparison notes");
     optionalText(data.collectionName, "Collection name");
     objects(data.searches, "Saved comparisons", 1000).forEach((s) => {
@@ -623,7 +625,7 @@ const joinedTickers = (values) =>
     .join(",");
 function compareDestination(values, settings = {}) {
   const peers = [...new Set(joinedTickers(values).split(",").filter(Boolean))];
-  return peers.length >= 2 && peers.length <= 5
+  return peers.length >= 2 && peers.length <= 12
     ? pathWithSettings(`/compare/${peers.join(",")}`, settings)
     : "/compare";
 }

@@ -103,6 +103,43 @@ test("company comparison deduplicates tickers and rejects funds, topics and inco
   assert.deepEqual(parseActiveSegment("AAPL, aapl, MSFT").completed, ["AAPL"]);
 });
 
+test("global search and recent destinations preserve all twelve peers and reject a thirteenth", () => {
+  const tickers = [
+    "JPM",
+    "BAC",
+    "WFC",
+    "C",
+    "GS",
+    "MS",
+    "USB",
+    "PNC",
+    "TFC",
+    "COF",
+    "BK",
+    "STT",
+    "FITB",
+  ];
+  const directory = Object.fromEntries(
+    tickers.map((ticker, index) => [
+      ticker,
+      { ticker, name: ticker, cik: String(index + 1), isFund: false },
+    ]),
+  );
+  const query = tickers.slice(0, 12).join(",");
+  const decision = routeSearch(query, directory);
+  assert.equal(decision.path, `/compare/${query}`);
+  assert.equal(
+    normalizeRecentSearches([{ query, path: decision.path, ts: 1 }])[0].path,
+    decision.path,
+  );
+  assert.match(routeSearch(tickers.join(","), directory).error, /maximum 12/);
+  directory.FITB.isFund = true;
+  assert.match(
+    routeSearch([...tickers.slice(0, 11), "FITB"].join(","), directory).error,
+    /does not support funds/,
+  );
+});
+
 test("recent searches reject executable, external and malformed paths and retain distinct tools for one company", () => {
   const entries = [
     { query: "AAPL", path: "/analysis/AAPL", ts: 3 },

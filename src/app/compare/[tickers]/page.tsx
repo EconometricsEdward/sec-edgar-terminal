@@ -58,7 +58,7 @@ export async function generateMetadata({
     return buildPageMetadata({
       title: "Peer Comparison — Compare SEC Filings & Financials",
       description:
-        "Compare up to 5 public companies side-by-side. 10 years of financial data from SEC XBRL filings.",
+        "Compare up to 12 public companies side-by-side. 10 years of financial data from SEC XBRL filings.",
       path: "/compare",
     });
   }

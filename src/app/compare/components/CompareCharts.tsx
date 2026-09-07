@@ -16,7 +16,6 @@ import {
 } from "recharts";
 import {
   trendSeries,
-  metricComparison,
   METRIC_BY_KEY,
   periodBucket,
 } from "../../../utils/compareResearch.js";
@@ -27,6 +26,7 @@ import {
   type CompareEvidence,
 } from "../compareTypes";
 import { GrowthTable } from "./CompareTable";
+import { compatibleMapSample } from "../../../utils/compareBenchmarks.js";
 import styles from "../compare.module.css";
 
 type Props = {
@@ -170,11 +170,14 @@ export function CompareTrends({
                 <tr key={row.bucket}>
                   <th scope="row">{row.bucket}</th>
                   {entries.map((c) => {
-                    const point = c.data?.metrics[metric.key]?.find(
-                      (p: any) =>
-                        periodBucket(p.period, settings.basis) === row.bucket &&
-                        (!c.period || p.period.end <= c.period.end),
-                    );
+                    const point =
+                      c.period &&
+                      c.index >= 0 &&
+                      c.data?.metrics[metric.key]?.find(
+                        (p: any) =>
+                          periodBucket(p.period, settings.basis) ===
+                            row.bucket && p.period.end <= c.period.end,
+                      );
                     return (
                       <td key={c.ticker}>
                         <button
@@ -226,25 +229,16 @@ export function CompareMap({
 }: Props) {
   const xMetric = METRIC_BY_KEY[settings.x],
     yMetric = METRIC_BY_KEY[settings.y];
-  const xComparison = metricComparison(entries, settings.x),
-    yComparison = metricComparison(entries, settings.y);
-  const plotted = entries.flatMap((c, i) => {
-    const x = c.data?.metrics[settings.x]?.[c.index],
-      y = c.data?.metrics[settings.y]?.[c.index];
-    return x?.value != null && y?.value != null
-      ? [
-          {
-            ticker: c.ticker,
-            x: x.value,
-            y: y.value,
-            color: c.color || COLORS[i % COLORS.length],
-            company: c,
-            xPoint: x,
-            yPoint: y,
-          },
-        ]
-      : [];
-  });
+  const sample = compatibleMapSample(entries, settings.x, settings.y);
+  const plotted = sample.plotted.map((row, index) => ({
+    ticker: row.entry.ticker,
+    x: row.x.point.value,
+    y: row.y.point.value,
+    color: row.entry.color || COLORS[index % COLORS.length],
+    company: row.entry,
+    xPoint: row.x.point,
+    yPoint: row.y.point,
+  }));
   return (
     <section className={styles.panel}>
       <div className={styles.sectionHead}>
@@ -252,12 +246,12 @@ export function CompareMap({
           <span className={styles.eyebrow}>03 / Peer map</span>
           <h2>Explore the tradeoffs.</h2>
           <p>
-            Choose any two metrics. Dashed lines show comparable peer medians;
-            dot size has no financial meaning.
+            Choose any two metrics. Both median guides use the same issuers with
+            usable values on both axes. Dot size has no financial meaning.
           </p>
         </div>
         <span className={styles.badge}>
-          {plotted.length}/{entries.length} issuers plotted
+          {sample.count}/{sample.total} unique issuers plotted
         </span>
       </div>
       <div className={styles.inlineControls}>
@@ -288,10 +282,16 @@ export function CompareMap({
           </select>
         </label>
       </div>
-      {(xComparison.reason || yComparison.reason) && (
+      {sample.reason ? (
         <p className={styles.chartNote}>
-          Median guides unavailable: {xComparison.reason || yComparison.reason}{" "}
-          Points retain their actual reporting dates below.
+          Median guides unavailable: {sample.reason} Points retain their actual
+          reporting dates below.
+        </p>
+      ) : (
+        <p className={styles.chartNote}>
+          Both guides: N = {sample.count} unique issuers ·{" "}
+          {sample.members.join(", ")}. Issuers with only one usable axis value
+          do not enter either median.
         </p>
       )}
       <div
@@ -337,16 +337,16 @@ export function CompareMap({
                 name,
               ]}
             />
-            {xComparison.peerMedian != null && (
+            {sample.xMedian != null && (
               <ReferenceLine
-                x={xComparison.peerMedian}
+                x={sample.xMedian}
                 stroke="var(--compare-muted)"
                 strokeDasharray="5 5"
               />
             )}
-            {yComparison.peerMedian != null && (
+            {sample.yMedian != null && (
               <ReferenceLine
-                y={yComparison.peerMedian}
+                y={sample.yMedian}
                 stroke="var(--compare-muted)"
                 strokeDasharray="5 5"
               />
@@ -428,8 +428,8 @@ export function CompareMap({
                 })}
                 <td>
                   {plotted.some((p) => p.ticker === c.ticker)
-                    ? "Both values available"
-                    : "Not plotted: missing input or filing"}
+                    ? "Both values usable; included in the plotted sample"
+                    : `Not plotted: ${sample.rows.find((row) => row.entry.ticker === c.ticker)?.reason || "missing input or filing"}`}
                 </td>
               </tr>
             ))}
