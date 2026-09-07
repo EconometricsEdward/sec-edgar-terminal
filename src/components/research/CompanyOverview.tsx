@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspace } from './WorkspaceProvider';
 import { useEvidence } from './EvidenceProvider';
-import { companySnapshot, exportResearchBrief, snapshotChanges, validTicker, RESEARCH_FORMS } from '../../utils/researchWorkspace.js';
+import { companySnapshot, exportResearchBrief, snapshotChanges, RESEARCH_FORMS } from '../../utils/researchWorkspace.js';
+import { planComparePeers } from '../../utils/compareWorkspace.js';
 import { extractAnnualPeriods, extractQuarterlyPeriods, formatValue, periodLabel, withPeriodKind } from '../../utils/xbrlParser.js';
 import { downloadText } from '../../utils/download.js';
 
@@ -40,8 +41,9 @@ export default function CompanyOverview({ ticker, company, facts, sic, filings, 
     downloadText(`${ticker}-research-brief.md`, text, 'text/markdown');
   }
   function savePeers() {
-    const tickers = [...new Set([ticker, ...peerInput.toUpperCase().split(/[\s,]+/).filter(Boolean)])];
-    if (tickers.length < 2 || tickers.length > 5 || !tickers.every(validTicker)) { setStatus('Enter one to four peer tickers; a comparison can contain up to five companies.'); return; }
+    const plan = planComparePeers([ticker], peerInput);
+    if (plan.error || plan.tickers.length < 2) { setStatus(plan.error || 'Enter at least one other company ticker.'); return; }
+    const tickers = plan.tickers;
     const name = peerName.trim().slice(0, 80) || `${ticker} peers`;
     const ok = workspace.update((w) => ({ ...w, peerGroups: [...w.peerGroups.filter((g) => g.name !== name), { name, tickers }].slice(-30) }));
     setStatus(ok ? 'Peer group saved.' : 'Could not save the peer group.');

@@ -1,7 +1,13 @@
 import { validTicker } from "./researchWorkspace.js";
+import { MAX_COMPARE_COMPANIES } from "./compareLimits.js";
 
 /** Validate the entire paste before applying it; never silently lose peers. */
-export function planComparePeers(current, input, mode = "append", limit = 12) {
+export function planComparePeers(
+  current,
+  input,
+  mode = "append",
+  limit = MAX_COMPARE_COMPANIES,
+) {
   const tokens = (
     Array.isArray(input) ? input : String(input || "").split(/[\s,;]+/)
   )

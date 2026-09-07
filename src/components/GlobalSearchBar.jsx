@@ -34,6 +34,7 @@ import {
   disclosureSearchPath,
 } from "../utils/searchRouter.js";
 import { safeInternalPath } from "../utils/siteRoutes.js";
+import { MAX_COMPARE_COMPANIES } from "../utils/compareLimits.js";
 import { tickerDirectoryCoverage } from "../utils/tickerMapLoader.js";
 import styles from "./site/GlobalSearch.module.css";
 
@@ -157,8 +158,8 @@ export default function GlobalSearchBar() {
       const next = [
         ...new Set([...parseActiveSegment(input).completed, item.ticker]),
       ];
-      if (next.length > 5) {
-        setError("Compare supports up to 5 companies.");
+      if (next.length > MAX_COMPARE_COMPANIES) {
+        setError(`Compare supports up to ${MAX_COMPARE_COMPANIES} companies.`);
         return;
       }
       setInput(`${next.join(", ")}, `);
@@ -234,7 +235,7 @@ export default function GlobalSearchBar() {
     : !input.trim()
       ? "Recent research"
       : isCompare
-        ? `Company comparison · ${completed.length}/5 selected`
+        ? `Company comparison · ${completed.length}/${MAX_COMPARE_COMPANIES} selected`
         : "Companies, funds and disclosure topics";
   return (
     <div

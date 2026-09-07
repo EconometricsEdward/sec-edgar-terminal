@@ -1,3 +1,5 @@
+import { MAX_COMPARE_COMPANIES } from "./compareLimits.js";
+
 /** Shared site navigation. Never infer an issuer from a peer group or a stale page. */
 export const SITE_TOOLS = Object.freeze([
   {
@@ -128,7 +130,7 @@ export function safeInternalPath(value) {
   if (match[1] === "compare") {
     if (
       tickers.length < 1 ||
-      tickers.length > 5 ||
+      tickers.length > MAX_COMPARE_COMPANIES ||
       new Set(tickers.map((t) => t.toUpperCase())).size !== tickers.length
     )
       return null;

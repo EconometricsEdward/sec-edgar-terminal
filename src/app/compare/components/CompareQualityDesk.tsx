@@ -125,7 +125,8 @@ export default function CompareQualityDesk({
           <strong>{usable}</strong> individually compatible values
         </span>
         <span>
-          <strong>{withValues - usable}</strong> available values needing review
+          <strong>{withValues - usable}</strong> values withheld for
+          incompatible inputs
         </span>
         <span>
           <strong>{allCells.length - withValues}</strong> missing observations
@@ -133,8 +134,10 @@ export default function CompareQualityDesk({
       </div>
       <p className={styles.note}>
         Compatibility checks dates, durations, currency, and evidence. It does
-        not establish identical accounting definitions. Values needing review
-        stay visible, while their benchmark contributions are withheld.
+        not establish identical accounting definitions. Values with incompatible
+        inputs stay visible, while their benchmark contributions are withheld.
+        Source revision flags remain reviewable even when dates and durations
+        are compatible.
       </p>
       <div className={styles.controls}>
         <label>
@@ -175,14 +178,16 @@ export default function CompareQualityDesk({
             <span>
               {row.metric.label}
               <small>
-                {row.count}/{row.total} available · {row.benchmarkCount}{" "}
-                in benchmark sample
+                {row.count}/{row.total} available · {row.benchmarkCount} in
+                benchmark sample
               </small>
             </span>
             <span className={styles.tag}>
               {row.reason
                 ? "Benchmark paused"
-                : row.definitionsDiffer || row.excludedCount
+                : row.definitionsDiffer ||
+                    row.excludedCount ||
+                    row.cells.some((cell) => cell.quality.issues.length > 0)
                   ? "Review definitions / inputs"
                   : "Inspect coverage"}
             </span>

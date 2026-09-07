@@ -12,9 +12,9 @@ import {
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
 import { classifyIndustry } from "./industry.js";
 import { comparePointQuality, comparePairQuality } from "./compareQuality.js";
+export { MAX_COMPARE_COMPANIES } from "./compareLimits.js";
 
 export const COMPARE_VERSION = `compare-v2:${FINANCIAL_DATA_VERSION}`;
-export const MAX_COMPARE_COMPANIES = 12;
 const raw = (key, label, lenses, category = "Scale") => ({
   key,
   label,

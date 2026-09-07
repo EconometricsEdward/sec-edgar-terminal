@@ -104,7 +104,7 @@ const jsonLd = {
     "SEC filings browser with archive coverage, integrated reader, and report comparisons",
     "Source-linked financial statements, period comparisons, and transparent calculations",
     "Industry-specific credit, liquidity, capital, and earnings risk analysis",
-    "Peer comparisons for up to five public companies",
+    "Peer comparisons for up to 12 public companies",
     "Disclosure queries, passage comparisons, and evidence collections",
     "Historical reported fund holdings and portfolio comparisons",
     "Connected watchlists, research notes, evidence search, and portable backups",
