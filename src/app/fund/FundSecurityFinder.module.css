@@ -1,0 +1,343 @@
+.panel {
+  color: var(--fund-text);
+  min-width: 0;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 23px;
+}
+.header > svg {
+  color: var(--fund-gold);
+}
+.header h2 {
+  font-size: clamp(23px, 2.6vw, 32px);
+  letter-spacing: -0.7px;
+}
+.header p:not(.eyebrow) {
+  color: var(--fund-muted);
+  max-width: 720px;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.eyebrow {
+  color: var(--fund-gold);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 10px !important;
+}
+.form {
+  display: grid;
+  grid-template-columns:
+    minmax(210px, 2fr) minmax(130px, 1fr) minmax(120px, 0.8fr)
+    auto;
+  gap: 12px;
+  align-items: end;
+}
+.form input,
+.form select {
+  font-size: 12px;
+}
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--fund-line);
+  border-radius: 8px;
+  padding: 10px 13px;
+  min-height: 42px;
+  font-size: 12px !important;
+  font-weight: 650;
+  white-space: nowrap;
+  background: var(--fund-panel);
+  color: var(--fund-text);
+}
+.primary {
+  background: #ffd24b;
+  color: #19202b;
+  border-color: #ffd24b;
+}
+.secondary:hover {
+  border-color: var(--fund-gold);
+}
+.help {
+  font-size: 11px;
+  color: var(--fund-muted);
+  margin: 10px 0 20px !important;
+  line-height: 1.6;
+}
+.notice {
+  background: var(--fund-raised);
+  border-left: 3px solid var(--fund-gold);
+  padding: 14px 17px;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 15px 0 !important;
+}
+.notice button {
+  margin-left: 10px;
+}
+.empty {
+  border: 1px dashed var(--fund-line);
+  padding: 32px;
+  border-radius: 10px;
+  color: var(--fund-muted);
+  text-align: center;
+  margin: 24px 0 !important;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 24px 0 14px;
+}
+.metrics > div {
+  padding: 17px;
+  border: 1px solid var(--fund-line);
+  background: var(--fund-panel);
+  border-radius: 10px;
+}
+.metrics strong {
+  display: block;
+  font-size: 27px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+.metrics span {
+  display: block;
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--fund-muted);
+}
+.coverage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.coverage article {
+  padding: 13px 15px;
+  border: 1px solid var(--fund-line);
+  border-radius: 8px;
+  background: var(--fund-panel);
+}
+.coverage b {
+  display: block;
+  margin-bottom: 5px;
+}
+.coverage span,
+.coverage small,
+.coverage a {
+  display: block;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.coverage small {
+  color: var(--fund-muted);
+}
+.coverage a {
+  color: var(--fund-gold);
+}
+.good {
+  color: var(--fund-green);
+}
+.failed {
+  border-style: dashed !important;
+}
+.failed > span {
+  color: var(--fund-red);
+}
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  margin: 23px 0 16px;
+}
+.toolbar p {
+  color: var(--fund-muted);
+  font-size: 12px;
+}
+.results {
+  display: grid;
+  gap: 15px;
+}
+.result {
+  background: var(--fund-panel);
+  border: 1px solid var(--fund-line);
+  border-radius: 11px;
+  overflow: hidden;
+}
+.resultHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 20px;
+  padding: 20px;
+}
+.resultHeading h3 {
+  font-size: 16px;
+  line-height: 1.5;
+}
+.resultHeading p {
+  color: var(--fund-gold);
+  font-size: 11px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+.resultHeading small {
+  display: block;
+  color: var(--fund-muted);
+  font-size: 11px;
+  margin-top: 5px;
+}
+.tableWrap {
+  overflow-x: auto;
+}
+.tableWrap table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+  min-width: 580px;
+  font-size: 12px;
+}
+.tableWrap th,
+.tableWrap td {
+  padding: 12px 20px;
+  border-top: 1px solid var(--fund-line);
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+.tableWrap thead {
+  background: var(--fund-raised);
+  color: var(--fund-muted);
+  font-size: 10px;
+}
+.tableWrap small {
+  display: block;
+  font-weight: normal;
+  color: var(--fund-muted);
+  font-size: 10px;
+  max-width: 230px;
+  line-height: 1.7;
+  margin-top: 4px;
+}
+.tableWrap a {
+  color: var(--fund-gold);
+}
+.positions {
+  padding: 13px 20px;
+  border-top: 1px solid var(--fund-line);
+  font-size: 12px;
+}
+.positions summary,
+.method summary {
+  cursor: pointer;
+  color: var(--fund-muted);
+  font-weight: 600;
+}
+.positions h4 {
+  margin: 16px 0 6px;
+}
+.positions p {
+  padding: 11px 0;
+  border-top: 1px solid var(--fund-line);
+  font-size: 11px;
+}
+.positions span {
+  display: block;
+  color: var(--fund-muted);
+  margin-top: 4px;
+}
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  margin-top: 20px;
+  font-size: 12px;
+}
+.method {
+  border-top: 1px solid var(--fund-line);
+  margin-top: 26px;
+  padding-top: 20px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.method p {
+  margin-top: 14px;
+  color: var(--fund-muted);
+}
+.message {
+  color: var(--fund-green);
+  font-size: 12px;
+  margin-top: 14px !important;
+}
+.message:empty {
+  display: none;
+}
+@media (max-width: 1050px) {
+  .form {
+    grid-template-columns: 2fr 1fr 1fr;
+  }
+  .form button {
+    grid-column: 1/-1;
+    justify-self: start;
+  }
+}
+@media (max-width: 700px) {
+  .form {
+    grid-template-columns: 1fr 1fr;
+  }
+  .form label:first-child {
+    grid-column: 1/-1;
+  }
+  .form button {
+    width: 100%;
+  }
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .metrics > div {
+    padding: 13px;
+  }
+  .resultHeading {
+    flex-direction: column;
+    padding: 16px;
+    gap: 13px;
+  }
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .pagination {
+    flex-wrap: wrap;
+  }
+  .pagination span {
+    order: -1;
+    width: 100%;
+    text-align: center;
+  }
+  .coverage {
+    grid-template-columns: 1fr 1fr;
+  }
+  .notice button {
+    margin-left: 0;
+    margin-top: 8px;
+  }
+}
+@media (max-width: 390px) {
+  .coverage {
+    grid-template-columns: 1fr;
+  }
+  .metrics strong {
+    font-size: 23px;
+  }
+}

@@ -4,6 +4,8 @@ import { validateAnalysisQuestions } from "./analysisQuestions.js";
 import { validateScenarioCases } from "./analysisScenarioCases.js";
 import { analysisPath } from "./analysisNotebook.js";
 import { readFilingsNotebook } from "./filingsNotebook.js";
+import { FUND_BOARDS_KEY, readFundBoards } from "./fundBoards.js";
+import { fundWorkspacePath } from "./fundWorkspaceSettings.js";
 
 export const RESEARCH_STORAGE_EVENT = "research-storage";
 export const RESEARCH_BACKUP_LIMIT = 16 * 1024 * 1024;
@@ -34,6 +36,12 @@ export const RESEARCH_STORES = [
     source: "Market",
   },
   { key: "edgar-funds-shelf-v1", label: "Saved funds", source: "Funds" },
+  {
+    key: FUND_BOARDS_KEY,
+    label: "Fund research boards",
+    source: "Funds",
+    kind: "fund-boards",
+  },
 ];
 const keys = new Set(RESEARCH_STORES.map((s) => s.key));
 const forbidden = new Set(["__proto__", "constructor", "prototype"]);
@@ -366,6 +374,10 @@ export function validateResearchStore(key, raw) {
     readFilingsNotebook(raw);
     return data;
   }
+  if (key === FUND_BOARDS_KEY) {
+    readFundBoards(raw);
+    return data;
+  }
   if (key === "edgar:research-workspace:v1") {
     requireShape(object(data.companies), "Company research is invalid.");
     requireShape(
@@ -694,6 +706,50 @@ function entriesFor(source, data, store = {}) {
         "",
         `fund:${store.ticker}`,
       );
+    return rows;
+  }
+  if (store.kind === "fund-boards") {
+    for (const board of data.boards) {
+      const href = fundWorkspacePath({
+        ...board.settings,
+        view: "boards",
+        board: board.id,
+      });
+      add(
+        "board",
+        board.settings.tickers.join(","),
+        board.name,
+        [
+          board.notes,
+          `${board.evidence.length} pinned findings; ${board.snapshots.length}/${board.settings.tickers.length} captured portfolio snapshots`,
+          ...board.evidence.map((entry) => `${entry.title}: ${entry.summary}`),
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        href,
+        board.updatedAt,
+        board.id,
+      );
+      for (const entry of board.evidence)
+        add(
+          "evidence",
+          entry.sources.map((source) => source.ticker).join(","),
+          `${board.name} · ${entry.title}`,
+          [
+            entry.summary,
+            ...entry.values.map(
+              (value) =>
+                `${value.label}: ${value.value === null ? "Unavailable" : value.value} ${value.unit}`,
+            ),
+            entry.methodology,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          href,
+          board.capturedAt,
+          `${board.id}:${entry.id}`,
+        );
+    }
     return rows;
   }
   if (source === "Analysis") {

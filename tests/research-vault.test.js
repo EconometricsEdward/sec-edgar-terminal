@@ -292,7 +292,7 @@ test("backup preserves exact store strings and unknown compatible fields without
   const raw = exportResearchBackup(s, now),
     backup = parseResearchBackup(raw);
   assert.equal(backup.stores[fundsKey], '[ "VTI" ]');
-  assert.equal(Object.keys(backup.stores).length, 6);
+  assert.equal(Object.keys(backup.stores).length, RESEARCH_STORES.length);
   assert.equal(raw.includes("private_unrelated"), false);
   assert.equal(
     JSON.parse(backup.stores[workspaceKey]).companies.JPM
@@ -537,7 +537,7 @@ test("disabled storage produces individual coverage issues and cannot export a m
     },
   };
   const vault = readResearchVault(unavailable);
-  assert.equal(vault.issues.length, 6);
+  assert.equal(vault.issues.length, RESEARCH_STORES.length);
   assert.equal(vault.entries.length, 0);
   assert.throws(() => exportResearchBackup(unavailable), /blocked/);
 });
