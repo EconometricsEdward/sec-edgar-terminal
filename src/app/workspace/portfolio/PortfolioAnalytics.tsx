@@ -386,6 +386,7 @@ export default function PortfolioAnalytics({
             if (next === "financial") setFinancialMode("distribution");
             if (next === "coverage") setCoverageMode("summary");
             changeArea(next);
+            areaButtons.current[next]?.focus();
           }}
           onInspectCompany={onInspectCompany}
         />

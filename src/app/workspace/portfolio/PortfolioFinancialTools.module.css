@@ -331,15 +331,21 @@
 }
 .root .check {
   display: flex;
+  flex-direction: row;
   gap: 10px;
   align-items: center;
   min-height: 34px;
   line-height: 1.5;
 }
-.check input {
+.root .check input[type="checkbox"] {
   accent-color: var(--f-gold);
   width: 17px;
+  min-width: 17px;
   height: 17px;
+  min-height: 17px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
 }
 .chartWrap {
   border: 1px solid var(--f-line);

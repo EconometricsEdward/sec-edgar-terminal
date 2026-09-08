@@ -103,15 +103,19 @@
 }
 .matrix .check {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 10px;
   line-height: 1.5;
 }
-.check input {
+.matrix .check input[type="checkbox"] {
   width: 17px;
+  min-width: 17px;
   min-height: 17px;
   height: 17px;
-  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
   accent-color: var(--pm-accent);
 }
 .summary {
