@@ -32,6 +32,7 @@ import { portfolioReviewPriorities } from "../../../utils/portfolioInsights.js";
 import {
   buildPortfolioResearchPackage,
   portfolioCsv,
+  portfolioAnalyticsCsv,
   portfolioMarkdown,
   portfolioXlsx,
   researchContext,
@@ -41,6 +42,7 @@ import { downloadText } from "../../../utils/download.js";
 import s from "./PortfolioResearch.module.css";
 import { rowMatchesPortfolioView } from "../../../utils/portfolioViews.js";
 import { advancePortfolioBaseline } from "../../../utils/portfolioChanges.js";
+import { PORTFOLIO_TABS } from "../../../utils/researchHubNavigation.js";
 
 const PortfolioImport = dynamic(() => import("./PortfolioImport"), {
   loading: () => <p role="status">Opening import and review…</p>,
@@ -48,6 +50,9 @@ const PortfolioImport = dynamic(() => import("./PortfolioImport"), {
 const PortfolioViews = dynamic(() => import("./PortfolioViews"));
 const CompanyFocus = dynamic(() => import("./CompanyFocus"));
 const PortfolioChanges = dynamic(() => import("./PortfolioChanges"));
+const PortfolioAnalytics = dynamic(() => import("./PortfolioAnalytics"), {
+  loading: () => <p role="status">Opening portfolio analytics…</p>,
+});
 const METRICS: [string, string][] = [
   ["revenue", "Revenue"],
   ["revenueGrowth", "Revenue growth"],
@@ -68,6 +73,9 @@ const METRICS: [string, string][] = [
   ["loanDeposits", "Loans / deposits"],
   ["premiumsEarned", "Insurance premiums earned"],
   ["investmentIncome", "Investment income"],
+  ["operatingMargin", "Operating margin"],
+  ["debtAssets", "Reported debt / assets"],
+  ["currentRatio", "Current ratio"],
 ];
 const DEFAULT_COLUMNS = [
   "revenue",
@@ -168,7 +176,7 @@ export default function PortfolioResearch({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [workingSnapshot, setWorkingSnapshot] = useState<any>(null);
-  const [tab, setTab] = useState("research");
+  const [tab, setTab] = useState("analytics");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [industryFilter, setIndustryFilter] = useState("");
@@ -435,9 +443,13 @@ export default function PortfolioResearch({
       // Opening the active portfolio must not reset its current import draft.
       if (request.portfolioId !== document?.id)
         selectPortfolio(request.portfolioId);
-      setTab("research");
+      setTab(
+        request.rowId || request.portfolioViewId ? "research" : "analytics",
+      );
       if (request.rowId) setFocusedRowId(request.rowId);
     }
+    if (PORTFOLIO_TABS.includes(request.portfolioTab))
+      setTab(request.portfolioTab);
     if (request.portfolioViewId) setTab("research");
     if (["new", "paste", "watchlist"].includes(request.action)) {
       editorOwner.current = documentKey(document);
@@ -470,6 +482,15 @@ export default function PortfolioResearch({
     workingSnapshot?.ownerKey === documentKey(document)
       ? workingSnapshot.snapshot
       : document?.snapshot;
+  function changePortfolioTab(value: string) {
+    if (!PORTFOLIO_TABS.includes(value)) return;
+    setTab(value);
+    const url = new URL(window.location.href);
+    url.searchParams.set("portfolioTab", value);
+    url.searchParams.delete("row");
+    url.searchParams.delete("portfolioView");
+    window.history.replaceState(window.history.state, "", url);
+  }
   const companies = useMemo(() => captured?.companies || [], [captured]);
   const companiesByCik = useMemo(
     () =>
@@ -765,6 +786,12 @@ export default function PortfolioResearch({
         downloadText(
           `${filename}.csv`,
           portfolioCsv(pack, columns),
+          "text/csv;charset=utf-8",
+        );
+      else if (format === "analytics")
+        downloadText(
+          `${filename}-analytics.csv`,
+          portfolioAnalyticsCsv(pack),
           "text/csv;charset=utf-8",
         );
       else if (format === "json")
@@ -1255,6 +1282,7 @@ export default function PortfolioResearch({
           </div>
           <nav className={s.tabs} aria-label="Portfolio research views">
             {[
+              ["analytics", "Portfolio analytics"],
               ["research", "Company research"],
               ["changes", "What changed"],
               ["allocation", "Allocation & coverage"],
@@ -1264,12 +1292,38 @@ export default function PortfolioResearch({
               <button
                 key={value}
                 aria-pressed={tab === value}
-                onClick={() => setTab(value)}
+                onClick={() => changePortfolioTab(value)}
               >
                 {label}
               </button>
             ))}
           </nav>
+          {tab === "analytics" && (
+            <>
+              <PortfolioAnalytics
+                key={document.id}
+                rows={rows}
+                settings={document.allocation}
+                companies={companies}
+                capturedAt={captured?.generated_at || null}
+                onInspectCompany={setFocusedRowId}
+                onReviewRows={() => openEditor("edit")}
+                onRefresh={() => run(false)}
+                refreshing={busy}
+              />
+              <div className={s.exportButtons}>
+                <button
+                  className={s.secondary}
+                  onClick={() => changePortfolioTab("exports")}
+                >
+                  <ArrowDownToLine size={16} /> Export analytics & evidence
+                </button>
+                <Link href="/workspace/portfolio-guide#analytics">
+                  How these analytics work ↗
+                </Link>
+              </div>
+            </>
+          )}
           {tab === "research" && (
             <>
               <PortfolioViews
@@ -2041,6 +2095,7 @@ export default function PortfolioResearch({
               <div className={s.exportButtons}>
                 {[
                   ["csv", "Company table CSV"],
+                  ["analytics", "Analytics summary CSV"],
                   ["xlsx", "Research workbook XLSX"],
                   ["json", "Structured JSON"],
                   ["md", "Research brief Markdown"],
@@ -2049,7 +2104,10 @@ export default function PortfolioResearch({
                   <button
                     key={format}
                     className={format === "copy" ? s.primary : s.secondary}
-                    disabled={selectedIds?.length === 0}
+                    disabled={
+                      selectedIds?.length === 0 ||
+                      (format === "analytics" && exportScope !== "all")
+                    }
                     onClick={() => exportResearch(format)}
                   >
                     {format === "copy" ? (
@@ -2064,8 +2122,10 @@ export default function PortfolioResearch({
               <p>
                 CSV follows your chosen financial columns and includes source
                 context. XLSX separates holdings, company research, portfolio
-                summary, sources, and coverage. Selected subsets retain their
-                original portfolio denominator.
+                summary, analytics, sources, and coverage. Full-portfolio
+                exports include concentration and financial distributions.
+                Select all portfolio rows for the analytics CSV. Selected
+                subsets retain their original portfolio denominator.
               </p>
               {copyFallback && (
                 <label className={s.copyArea}>
@@ -2098,7 +2158,7 @@ export default function PortfolioResearch({
           onClose={() => setFocusedRowId(null)}
           onInspectMetric={(key: string, point: any) => {
             setFocusedRowId(null);
-            setTab("research");
+            changePortfolioTab("research");
             setEvidence({ company: focusedCompany, key, point });
           }}
           onCreateBrief={draftBrief}

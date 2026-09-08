@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useEffect, useId, useRef } from "react";
 import { ArrowUpRight, FileText, X } from "lucide-react";
-import { portfolioNumber } from "../../../utils/portfolioModel.js";
+import {
+  portfolioNumber,
+  finiteFinancialMetric,
+} from "../../../utils/portfolioModel.js";
 import s from "./CompanyFocus.module.css";
 
 type Props = {
@@ -13,8 +16,8 @@ type Props = {
   allocations: any[];
   onClose: () => void;
   onInspectMetric: (key: string, point: any) => void;
-  onCreateBrief: (draft: any) => void;
-  onSaveFiling: (filing: any) => void;
+  onCreateBrief?: (draft: any) => void;
+  onSaveFiling?: (filing: any) => void;
 };
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -38,7 +41,7 @@ const percent = (value: number) =>
 const numberText = (value: number) =>
   value.toLocaleString("en-US", { maximumFractionDigits: 3 });
 function metricValue(point: any, compact = false) {
-  if (!finite(point?.value))
+  if (!finiteFinancialMetric(point))
     return point?.classification === "not_applicable"
       ? "Not applicable"
       : "Unavailable";
@@ -60,6 +63,13 @@ const METRICS: Record<string, [string, string][]> = {
     ["freeCashFlow", "Free cash flow"],
     ["cash", "Cash"],
     ["debt", "Reported debt"],
+    ["revenueGrowth", "Revenue growth"],
+    ["operatingMargin", "Operating margin"],
+    ["netMargin", "Net margin"],
+    ["roe", "Return on equity"],
+    ["roa", "Return on assets"],
+    ["debtAssets", "Reported debt / assets"],
+    ["currentRatio", "Current ratio"],
   ],
   banking: [
     ["bankRevenue", "Net interest + noninterest income"],
@@ -68,6 +78,7 @@ const METRICS: Record<string, [string, string][]> = {
     ["loans", "Reported net loans"],
     ["loanDeposits", "Net loans / deposits"],
     ["roe", "Return on equity"],
+    ["roa", "Return on assets"],
   ],
   insurance: [
     ["premiumsEarned", "Net premiums earned"],
@@ -268,30 +279,33 @@ export default function CompanyFocus({
         </div>
 
         <div className={s.actions}>
-          <button
-            className={s.primary}
-            type="button"
-            onClick={() => {
-              onClose();
-              onCreateBrief({
-                title: `Review ${name}`.slice(0, 200),
-                question: fund
-                  ? `What does the latest portfolio disclosure show about ${name}'s holdings and concentration?`
-                  : `What changed in ${name}'s latest SEC evidence, and what supports or challenges the research thesis?`,
-                cik,
-                ticker,
-                sources: filings.slice(0, 5).map((filing: any) => ({
-                  label: `${filing.form} · ${filing.filingDate}`,
-                  url: secUrl(filing.documentUrl),
-                  annotation: "context",
-                  origin: "Company focus",
-                  capturedAt: company?.retrievedAt || new Date().toISOString(),
-                })),
-              });
-            }}
-          >
-            <FileText size={17} /> Start a research brief
-          </button>
+          {onCreateBrief && (
+            <button
+              className={s.primary}
+              type="button"
+              onClick={() => {
+                onClose();
+                onCreateBrief({
+                  title: `Review ${name}`.slice(0, 200),
+                  question: fund
+                    ? `What does the latest portfolio disclosure show about ${name}'s holdings and concentration?`
+                    : `What changed in ${name}'s latest SEC evidence, and what supports or challenges the research thesis?`,
+                  cik,
+                  ticker,
+                  sources: filings.slice(0, 5).map((filing: any) => ({
+                    label: `${filing.form} · ${filing.filingDate}`,
+                    url: secUrl(filing.documentUrl),
+                    annotation: "context",
+                    origin: "Company focus",
+                    capturedAt:
+                      company?.retrievedAt || new Date().toISOString(),
+                  })),
+                });
+              }}
+            >
+              <FileText size={17} /> Start a research brief
+            </button>
+          )}
           {fund ? (
             <Link href={fundHref}>
               Open fund holdings <ArrowUpRight size={15} />
@@ -361,7 +375,7 @@ export default function CompanyFocus({
                   <article className={s.metric} key={key}>
                     <h4>{point?.label || label}</h4>
                     <strong>{metricValue(point, true)}</strong>
-                    {finite(point?.value) && (
+                    {finiteFinancialMetric(point) && (
                       <small>
                         {metricValue(point)}
                         {point.unit === "USD" ? " USD" : ""}
@@ -378,11 +392,11 @@ export default function CompanyFocus({
                           ? "Reported"
                           : point?.classification === "not_applicable"
                             ? "Not applicable"
-                            : finite(point?.value)
+                            : finiteFinancialMetric(point)
                               ? "SEC evidence"
                               : "Missing evidence"}
                     </p>
-                    {!finite(point?.value) && (
+                    {!finiteFinancialMetric(point) && (
                       <p>
                         {point?.reason || "No supported value was retrieved."}
                       </p>
@@ -498,19 +512,21 @@ export default function CompanyFocus({
                         : ""}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onSaveFiling({
-                        ...filing,
-                        cik,
-                        ticker,
-                        companyName: name,
-                      })
-                    }
-                  >
-                    Save filing
-                  </button>
+                  {onSaveFiling && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSaveFiling({
+                          ...filing,
+                          cik,
+                          ticker,
+                          companyName: name,
+                        })
+                      }
+                    >
+                      Save filing
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

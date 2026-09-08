@@ -1,3 +1,5 @@
+import { companyAvailable, finiteFinancialMetric } from "./portfolioModel.js";
+
 const DAY = 86400000;
 const valid = (value) => typeof value === "number" && Number.isFinite(value);
 /** Explicit review conditions, not a composite risk score. */
@@ -8,14 +10,41 @@ export function portfolioReviewPriorities(
   now = Date.now(),
 ) {
   const byCik = new Map(companies.map((company) => [company.cik, company]));
-  const weights = new Map(
-    allocation.allocations.map((entry) => [entry.rowId, entry.weightPct]),
-  );
   const priorities = [];
   const seen = new Set();
-  for (const row of rows.filter(
-    (entry) => !entry.excluded && entry.duplicateChoice !== "remove",
-  )) {
+  const active = rows.filter(
+    (entry) =>
+      !entry.excluded &&
+      !entry.mergedInto &&
+      entry.duplicateChoice !== "remove",
+  );
+  const coverageByRow = new Map();
+  // Use the selected allocation basis and original denominator. Share classes
+  // belong to one issuer; missing weights never become zero or get reweighted.
+  for (const issuer of allocation.issuers) {
+    const company = byCik.get(issuer.cik);
+    if (
+      issuer.kind !== "company" ||
+      company?.kind === "fund" ||
+      !valid(issuer.weightPct) ||
+      issuer.weightPct < 10 ||
+      companyAvailable(company)
+    )
+      continue;
+    const row = active.find(
+      (entry) =>
+        issuer.rowIds.includes(entry.id) &&
+        entry.resolution?.status === "resolved" &&
+        entry.resolution?.kind === "company",
+    );
+    if (!row) continue;
+    coverageByRow.set(row.id, {
+      weightPct: issuer.weightPct,
+      label: issuer.tickers.join(" / ") || issuer.name,
+      reason: `${issuer.weightPct.toFixed(2)}% allocation has no supported company financial evidence.${company?.filings?.length ? " Filings are available, but supported numeric financial facts are missing." : ""}${!allocation.allocationComplete || !issuer.weightComplete ? " This is a known subtotal; missing position weights are not estimated." : ""}`,
+    });
+  }
+  for (const row of active) {
     const identity = row.resolution || {};
     const name =
       identity.ticker ||
@@ -24,8 +53,7 @@ export function portfolioReviewPriorities(
       row.input.company_name ||
       "Unidentified row";
     const company = byCik.get(identity.cik);
-    const weight = weights.get(row.id);
-    if (identity.status !== "resolved")
+    if (identity.status !== "resolved") {
       priorities.push({
         key: `identity:${row.id}`,
         rowId: row.id,
@@ -34,22 +62,26 @@ export function portfolioReviewPriorities(
         kind: "identity",
         url: null,
       });
-    if (
-      valid(weight) &&
-      weight >= 10 &&
-      (!company ||
-        company.status === "failed" ||
-        company.status === "unsupported")
-    )
+      continue;
+    }
+    const coverage = coverageByRow.get(row.id);
+    if (coverage)
       priorities.push({
         key: `coverage:${row.id}`,
         rowId: row.id,
-        label: name,
-        reason: `${weight.toFixed(2)}% allocation has no supported company financial evidence.`,
+        label: coverage.label,
+        reason: coverage.reason,
+        weightPct: coverage.weightPct,
         kind: "coverage",
         url: null,
       });
-    if (!company || seen.has(company.cik)) continue;
+    if (
+      identity.kind !== "company" ||
+      !company ||
+      !["company", "foreign"].includes(company.kind) ||
+      seen.has(company.cik)
+    )
+      continue;
     seen.add(company.cik);
     const end = company.period?.end;
     const threshold = company.period?.kind === "ttm" ? 200 : 550;
@@ -91,7 +123,11 @@ export function portfolioReviewPriorities(
       ["operatingCashFlow", "Negative operating cash flow"],
     ]) {
       const point = company.metrics?.[key];
-      if (valid(point?.value) && point.value < 0)
+      if (
+        companyAvailable(company) &&
+        finiteFinancialMetric(point) &&
+        point.value < 0
+      )
         priorities.push({
           key: `metric:${company.cik}:${key}`,
           rowId: row.id,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   allocationSummary,
   companyAvailable,
@@ -18,6 +19,14 @@ import {
 import { hubDestination } from "../../../utils/researchHubNavigation.js";
 import s from "./demo.module.css";
 
+const PortfolioAnalytics = dynamic(
+  () => import("../portfolio/PortfolioAnalytics"),
+  {
+    loading: () => <p role="status">Opening example analytics…</p>,
+  },
+);
+const CompanyFocus = dynamic(() => import("../portfolio/CompanyFocus"));
+
 const METRICS: Record<string, string> = {
   revenue: "Revenue",
   netIncome: "Net income",
@@ -30,6 +39,12 @@ const METRICS: Record<string, string> = {
   deposits: "Deposits",
   loans: "Net loans",
   loanDeposits: "Loans / deposits",
+  operatingMargin: "Operating margin",
+  netMargin: "Net margin",
+  debtAssets: "Reported debt / assets",
+  currentRatio: "Current ratio",
+  roa: "Return on assets",
+  revenueGrowth: "Revenue growth",
   roe: "Return on equity",
   totalAssets: "Total assets",
 };
@@ -55,7 +70,9 @@ export default function DemoResults() {
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [area, setArea] = useState("companies");
+  const [area, setArea] = useState("analytics");
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+  const companyTabRef = useRef<HTMLButtonElement | null>(null);
   const [query, setQuery] = useState("");
   const [preset, setPreset] = useState("overview");
   const [limit, setLimit] = useState(20);
@@ -169,7 +186,10 @@ export default function DemoResults() {
       const { portfolio } = saveDemoPortfolio(localStorage, demo);
       // Re-enter the workspace with its saved portfolio route initialized.
       window.location.assign(
-        hubDestination("portfolios", { portfolioId: portfolio.id }),
+        hubDestination("portfolios", {
+          portfolioId: portfolio.id,
+          portfolioTab: "analytics",
+        }),
       );
     } catch (failure) {
       setSaveError(
@@ -267,6 +287,16 @@ export default function DemoResults() {
           )}
           <nav className={s.tabs} aria-label="Example result sections">
             <button
+              aria-pressed={area === "analytics"}
+              onClick={() => {
+                setArea("analytics");
+                setEvidence(null);
+              }}
+            >
+              Portfolio analytics
+            </button>
+            <button
+              ref={companyTabRef}
               aria-pressed={area === "companies"}
               onClick={() => {
                 setArea("companies");
@@ -296,7 +326,20 @@ export default function DemoResults() {
               Example follow-ups
             </button>
           </nav>
-          {area !== "followups" && (
+          {area === "analytics" && (
+            <PortfolioAnalytics
+              rows={rows}
+              settings={demo.input.allocation}
+              companies={companies}
+              capturedAt={demo.captured_at}
+              onInspectCompany={setFocusedRowId}
+              onReviewRows={openInHub}
+              onRefresh={openInHub}
+              refreshing={saving}
+              preview
+            />
+          )}
+          {(area === "companies" || area === "filings") && (
             <div className={s.filters}>
               <label>
                 Search{" "}
@@ -472,7 +515,9 @@ export default function DemoResults() {
                     <button
                       onClick={() => {
                         setEvidence(null);
-                        evidenceTrigger.current?.focus();
+                        if (evidenceTrigger.current?.isConnected)
+                          evidenceTrigger.current.focus();
+                        else companyTabRef.current?.focus();
                       }}
                       aria-label="Close example metric evidence"
                     >
@@ -623,6 +668,40 @@ export default function DemoResults() {
                 a subsequent research refresh.
               </p>
             </>
+          )}
+          {focusedRowId && rows.find((row: any) => row.id === focusedRowId) && (
+            <CompanyFocus
+              row={rows.find((row: any) => row.id === focusedRowId)}
+              company={
+                byCik[
+                  rows.find((row: any) => row.id === focusedRowId).resolution
+                    .cik
+                ]
+              }
+              relatedRows={rows.filter(
+                (row: any) =>
+                  row.resolution.cik ===
+                  rows.find((item: any) => item.id === focusedRowId).resolution
+                    .cik,
+              )}
+              allocations={allocation.allocations}
+              onClose={() => setFocusedRowId(null)}
+              onInspectMetric={(key: string, point: any) => {
+                const row = rows.find((item: any) => item.id === focusedRowId);
+                setFocusedRowId(null);
+                setArea("companies");
+                setPreset("overview");
+                setQuery(row.input.ticker || row.resolution.ticker || "");
+                setEvidence({
+                  company: {
+                    ...byCik[row.resolution.cik],
+                    ticker: row.input.ticker || row.resolution.ticker,
+                  },
+                  key,
+                  point,
+                });
+              }}
+            />
           )}
         </>
       )}

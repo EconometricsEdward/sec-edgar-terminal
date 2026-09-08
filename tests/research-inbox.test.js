@@ -354,6 +354,93 @@ test("a partial filings-only result leaves a known large allocation without fina
   );
 });
 
+test("issuer coverage combines share classes and preserves decisions on an unchanged condition", () => {
+  const p = portfolio(
+    [company({ status: "partial", metrics: {} })],
+    [
+      { ticker: "AAPL", weight_pct: 8 },
+      { ticker: "MSFT", weight_pct: 12 },
+    ],
+  );
+  // Distinct security identifiers with one verified issuer, like two share classes.
+  p.rows[1].resolution.cik = p.rows[0].resolution.cik;
+  p.allocation = { basis: "weights", normalize: false };
+  const initial = derive([p]);
+  const gaps = initial.items.filter((item) => item.kind === "coverage");
+  assert.equal(gaps.length, 1);
+  assert.match(gaps[0].reason, /^20.00% allocation/);
+  const storage = memory();
+  const states = updateResearchInbox(storage, {
+    id: gaps[0].id,
+    status: "reviewed",
+    now: stamp,
+  });
+  assert.equal(
+    derive([p], { states }).items.find((item) => item.kind === "coverage")
+      .status,
+    "reviewed",
+  );
+  p.rows[1].excluded = true;
+  assert.equal(
+    derive([p]).items.some((item) => item.kind === "coverage"),
+    false,
+  );
+});
+
+test("verified foreign operating issuers retain supported company inbox evidence", () => {
+  const foreign = portfolio([company({ kind: "foreign" })]);
+  assert.deepEqual(
+    derive([foreign])
+      .items.map((item) => item.kind)
+      .sort(),
+    ["filing", "metric"],
+  );
+  foreign.rows[0].resolution.status = "conflict";
+  assert.deepEqual(
+    derive([foreign]).items.map((item) => item.kind),
+    ["identity"],
+  );
+});
+
+test("unavailable negatives, stale identity matches, merged rows, and funds cannot create company inbox evidence", () => {
+  const unavailable = portfolio([
+    company({
+      metrics: {
+        revenue: { value: 100 },
+        netIncome: { value: -10, classification: "unavailable" },
+        stockholdersEquity: { value: -20, status: "not_applicable" },
+      },
+    }),
+  ]);
+  assert.equal(
+    derive([unavailable]).items.some((item) => item.kind === "metric"),
+    false,
+  );
+
+  const unresolved = portfolio(
+    [company()],
+    [{ ticker: "AAPL", weight_pct: 100 }],
+  );
+  unresolved.allocation = { basis: "weights", normalize: false };
+  unresolved.rows[0].resolution.status = "conflict";
+  assert.deepEqual(
+    derive([unresolved]).items.map((item) => item.kind),
+    ["identity"],
+  );
+
+  const merged = portfolio();
+  merged.rows[0].mergedInto = "another-position";
+  assert.deepEqual(derive([merged]).items, []);
+
+  const fund = portfolio(
+    [company({ kind: "fund" })],
+    [{ ticker: "AAPL", weight_pct: 100 }],
+  );
+  fund.rows[0].resolution.kind = "fund";
+  fund.allocation = { basis: "weights", normalize: false };
+  assert.deepEqual(derive([fund]).items, []);
+});
+
 test("brief source capture preserves recorded retrieval dates without inventing dates for legacy sources", () => {
   const retrievedAt = "2026-09-03T10:00:00.000Z";
   const capturedAt = "2026-09-02T08:00:00.000Z";

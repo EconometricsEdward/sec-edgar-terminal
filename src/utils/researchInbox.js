@@ -1,4 +1,4 @@
-import { allocationSummary, companyAvailable } from "./portfolioModel.js";
+import { allocationSummary } from "./portfolioModel.js";
 import { portfolioReviewPriorities } from "./portfolioInsights.js";
 
 export const RESEARCH_INBOX_KEY = "edgar:research-inbox:v1";
@@ -347,7 +347,7 @@ export function deriveResearchInbox({
         allocation,
         now,
       )) {
-        if (["filing", "coverage"].includes(priority.kind)) continue; // Every accession and financial-coverage gap is assessed below.
+        if (priority.kind === "filing") continue; // Every accession is assessed below.
         const row = rowsById.get(priority.rowId);
         if (!row) continue;
         if (
@@ -357,6 +357,25 @@ export function deriveResearchInbox({
         )
           continue;
         const company = byCik.get(row.resolution?.cik);
+        if (priority.kind === "coverage") {
+          push(
+            "coverage",
+            [
+              portfolio.id,
+              row.id,
+              row.resolution?.cik,
+              priority.weightPct,
+              priority.reason,
+              company?.period,
+            ],
+            {
+              ...detailsFor(row, company),
+              reason: priority.reason,
+              evidenceDate: dateText(company?.period?.end),
+            },
+          );
+          continue;
+        }
         const point = company?.metrics?.[priority.metric];
         const capturedSource = (point?.sources || company?.filings || []).find(
           (source) => source.documentUrl === priority.url,
@@ -407,39 +426,21 @@ export function deriveResearchInbox({
         });
       }
       const seenCompanies = new Set();
-      const weights = new Map(
-        allocation.allocations.map((entry) => [entry.rowId, entry.weightPct]),
-      );
       for (const row of portfolio.rows.filter(
-        (entry) => !entry.excluded && entry.duplicateChoice !== "remove",
+        (entry) =>
+          !entry.excluded &&
+          !entry.mergedInto &&
+          entry.duplicateChoice !== "remove" &&
+          entry.resolution?.status === "resolved" &&
+          entry.resolution?.kind === "company",
       )) {
         const company = byCik.get(row.resolution?.cik);
-        const weight = weights.get(row.id);
         if (
-          typeof weight === "number" &&
-          Number.isFinite(weight) &&
-          weight >= 10 &&
-          !companyAvailable(company)
-        ) {
-          const reason = `${weight.toFixed(2)}% allocation has no supported company financial evidence.${row.resolution?.kind === "fund" ? " Fund holdings can be researched in Funds." : company?.filings?.length ? " Filings are available, but supported numeric financial facts are missing." : ""}`;
-          push(
-            "coverage",
-            [
-              portfolio.id,
-              row.id,
-              row.resolution?.cik,
-              weight,
-              reason,
-              company?.period,
-            ],
-            {
-              ...detailsFor(row, company),
-              reason,
-              evidenceDate: dateText(company?.period?.end),
-            },
-          );
-        }
-        if (!company || seenCompanies.has(company.cik)) continue;
+          !company ||
+          !["company", "foreign"].includes(company.kind) ||
+          seenCompanies.has(company.cik)
+        )
+          continue;
         seenCompanies.add(company.cik);
         for (const filing of company.filings || []) {
           const filed = Date.parse(filing.filingDate);
