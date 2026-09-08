@@ -38,6 +38,7 @@ const displayDate = (value: string) =>
         year: "numeric",
         month: "short",
         day: "numeric",
+        ...(/^\d{4}-\d{2}-\d{2}$/.test(value) ? { timeZone: "UTC" } : {}),
       })
     : "";
 
