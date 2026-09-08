@@ -160,6 +160,28 @@
   display: inline-flex;
   min-height: 36px;
   align-items: center;
+  gap: 6px;
+}
+.demo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  border: 1px solid var(--pi-border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.demo > div:first-child {
+  max-width: 640px;
+}
+.importer .demo h3 {
+  margin: 0 0 5px;
+  font-size: 16px;
+}
+.importer .demo p {
+  margin: 0;
+  font-size: 13px;
 }
 .privacy {
   display: flex;

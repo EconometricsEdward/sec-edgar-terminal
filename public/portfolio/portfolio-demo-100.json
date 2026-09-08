@@ -1,0 +1,313 @@
+{
+  "schema_version": "edgar.portfolio.v1",
+  "name": "100-company research demo",
+  "holdings": [
+    {
+      "ticker": "AAPL"
+    },
+    {
+      "ticker": "MSFT"
+    },
+    {
+      "ticker": "NVDA"
+    },
+    {
+      "ticker": "ORCL"
+    },
+    {
+      "ticker": "ADBE"
+    },
+    {
+      "ticker": "CRM"
+    },
+    {
+      "ticker": "AMD"
+    },
+    {
+      "ticker": "INTC"
+    },
+    {
+      "ticker": "CSCO"
+    },
+    {
+      "ticker": "IBM"
+    },
+    {
+      "ticker": "AMZN"
+    },
+    {
+      "ticker": "TSLA"
+    },
+    {
+      "ticker": "HD"
+    },
+    {
+      "ticker": "LOW"
+    },
+    {
+      "ticker": "NKE"
+    },
+    {
+      "ticker": "MCD"
+    },
+    {
+      "ticker": "SBUX"
+    },
+    {
+      "ticker": "TGT"
+    },
+    {
+      "ticker": "TJX"
+    },
+    {
+      "ticker": "BKNG"
+    },
+    {
+      "ticker": "WMT"
+    },
+    {
+      "ticker": "COST"
+    },
+    {
+      "ticker": "PG"
+    },
+    {
+      "ticker": "KO"
+    },
+    {
+      "ticker": "PEP"
+    },
+    {
+      "ticker": "MDLZ"
+    },
+    {
+      "ticker": "CL"
+    },
+    {
+      "ticker": "KMB"
+    },
+    {
+      "ticker": "GIS"
+    },
+    {
+      "ticker": "KHC"
+    },
+    {
+      "ticker": "JPM"
+    },
+    {
+      "ticker": "BAC"
+    },
+    {
+      "ticker": "WFC"
+    },
+    {
+      "ticker": "C"
+    },
+    {
+      "ticker": "GS"
+    },
+    {
+      "ticker": "MS"
+    },
+    {
+      "ticker": "AXP"
+    },
+    {
+      "ticker": "SCHW"
+    },
+    {
+      "ticker": "USB"
+    },
+    {
+      "ticker": "PNC"
+    },
+    {
+      "ticker": "UNH"
+    },
+    {
+      "ticker": "JNJ"
+    },
+    {
+      "ticker": "LLY"
+    },
+    {
+      "ticker": "MRK"
+    },
+    {
+      "ticker": "ABBV"
+    },
+    {
+      "ticker": "ABT"
+    },
+    {
+      "ticker": "TMO"
+    },
+    {
+      "ticker": "DHR"
+    },
+    {
+      "ticker": "AMGN"
+    },
+    {
+      "ticker": "GILD"
+    },
+    {
+      "ticker": "CAT"
+    },
+    {
+      "ticker": "DE"
+    },
+    {
+      "ticker": "GE"
+    },
+    {
+      "ticker": "HON"
+    },
+    {
+      "ticker": "UPS"
+    },
+    {
+      "ticker": "FDX"
+    },
+    {
+      "ticker": "RTX"
+    },
+    {
+      "ticker": "LMT"
+    },
+    {
+      "ticker": "NOC"
+    },
+    {
+      "ticker": "GD"
+    },
+    {
+      "ticker": "XOM"
+    },
+    {
+      "ticker": "CVX"
+    },
+    {
+      "ticker": "COP"
+    },
+    {
+      "ticker": "EOG"
+    },
+    {
+      "ticker": "SLB"
+    },
+    {
+      "ticker": "OXY"
+    },
+    {
+      "ticker": "PSX"
+    },
+    {
+      "ticker": "VLO"
+    },
+    {
+      "ticker": "MPC"
+    },
+    {
+      "ticker": "KMI"
+    },
+    {
+      "ticker": "NEE"
+    },
+    {
+      "ticker": "DUK"
+    },
+    {
+      "ticker": "SO"
+    },
+    {
+      "ticker": "AEP"
+    },
+    {
+      "ticker": "EXC"
+    },
+    {
+      "ticker": "SRE"
+    },
+    {
+      "ticker": "XEL"
+    },
+    {
+      "ticker": "WEC"
+    },
+    {
+      "ticker": "ED"
+    },
+    {
+      "ticker": "D"
+    },
+    {
+      "ticker": "GOOGL"
+    },
+    {
+      "ticker": "META"
+    },
+    {
+      "ticker": "NFLX"
+    },
+    {
+      "ticker": "DIS"
+    },
+    {
+      "ticker": "CMCSA"
+    },
+    {
+      "ticker": "VZ"
+    },
+    {
+      "ticker": "T"
+    },
+    {
+      "ticker": "CHTR"
+    },
+    {
+      "ticker": "TTWO"
+    },
+    {
+      "ticker": "WBD"
+    },
+    {
+      "ticker": "LIN"
+    },
+    {
+      "ticker": "APD"
+    },
+    {
+      "ticker": "SHW"
+    },
+    {
+      "ticker": "FCX"
+    },
+    {
+      "ticker": "NEM"
+    },
+    {
+      "ticker": "NUE"
+    },
+    {
+      "ticker": "PLD"
+    },
+    {
+      "ticker": "AMT"
+    },
+    {
+      "ticker": "SPG"
+    },
+    {
+      "ticker": "O"
+    }
+  ],
+  "allocation": {
+    "basis": "none",
+    "normalize": false
+  },
+  "research": {
+    "basis": "annual"
+  }
+}

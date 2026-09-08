@@ -8,6 +8,7 @@ import {
   Bookmark,
   CheckCheck,
   ClipboardList,
+  Download,
   FileText,
   FolderOpen,
   Layers3,
@@ -230,6 +231,34 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
           </span>
         </div>
       </div>
+
+      <section className={s.demoCard} aria-labelledby="hub-demo-title">
+        <div className={s.demoCopy}>
+          <p className={s.eyebrow}>See what you can build</p>
+          <h3 id="hub-demo-title">Try a 100-company example</h3>
+          <p>
+            Download a prefilled ticker list and explore its captured SEC
+            research: company metrics, filing evidence, and coverage. No
+            allocations are assumed.
+          </p>
+        </div>
+        <div className={s.demoActions}>
+          <Link href="/workspace/demo" className={s.secondary} prefetch={false}>
+            Preview example results <ArrowRight size={16} aria-hidden="true" />
+          </Link>
+          <div
+            className={s.demoDownloads}
+            aria-label="Prefilled 100-ticker templates"
+          >
+            <a href="/portfolio/portfolio-demo-100.csv" download>
+              <Download size={14} aria-hidden="true" /> 100-ticker CSV
+            </a>
+            <a href="/portfolio/portfolio-demo-100.xlsx" download>
+              <Download size={14} aria-hidden="true" /> 100-ticker Excel
+            </a>
+          </div>
+        </div>
+      </section>
 
       {issues.length > 0 && (
         <div className={s.warning} role="status">

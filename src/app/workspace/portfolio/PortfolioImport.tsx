@@ -488,7 +488,7 @@ export default function PortfolioImport({
       <div className={s.entryGrid}>
         <div className={s.entryCard}>
           <Download size={21} aria-hidden="true" />
-          <strong>Download template</strong>
+          <strong>Download a blank template</strong>
           <p>Fill in tickers; add allocations only if useful.</p>
           <div className={s.inlineLinks}>
             <a href="/portfolio/portfolio-template.csv" download>
@@ -586,6 +586,27 @@ export default function PortfolioImport({
           </button>
         </div>
       </div>
+
+      <aside className={s.demo} aria-labelledby="portfolio-demo-title">
+        <div>
+          <h3 id="portfolio-demo-title">Try a 100-company example</h3>
+          <p>
+            Start with a prefilled ticker list, or see its captured research
+            before uploading. No allocations are assumed.
+          </p>
+        </div>
+        <div className={s.inlineLinks}>
+          <a href="/portfolio/portfolio-demo-100.csv" download>
+            <Download size={14} aria-hidden="true" /> 100-ticker CSV
+          </a>
+          <a href="/portfolio/portfolio-demo-100.xlsx" download>
+            <Download size={14} aria-hidden="true" /> 100-ticker Excel
+          </a>
+          <a href="/workspace/demo" target="_blank" rel="noopener noreferrer">
+            Preview example results (new tab) ↗
+          </a>
+        </div>
+      </aside>
 
       <div className={s.privacy}>
         <ShieldCheck size={17} aria-hidden="true" />
