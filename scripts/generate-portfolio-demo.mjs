@@ -1,0 +1,445 @@
+/**
+ * Rebuild the public, 100-company demonstration and its literal-value templates.
+ * node scripts/generate-portfolio-demo.mjs --refresh
+ * Without --refresh, only rebuilds templates from the ticker list below.
+ * --resume reuses this script's bounded public-data checkpoint after interruption.
+ */
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  PORTFOLIO_COLUMNS,
+  allocationSummary,
+  normalizePortfolioInput,
+} from "../src/utils/portfolioModel.js";
+import { createXlsxWorkbook, csvString } from "../src/utils/portfolioFiles.js";
+import {
+  createPortfolio,
+  validatePortfolios,
+} from "../src/utils/portfolioStorage.js";
+
+const output = fileURLToPath(new URL("../public/portfolio/", import.meta.url));
+const resultPath = path.join(output, "portfolio-demo-100-results.json");
+const checkpointPath = path.join(
+  os.tmpdir(),
+  "edgar-portfolio-demo-100-capture.json",
+);
+const endpoint = "https://secedgarterminal.com/api/v1/portfolio-research";
+const tickers = [
+  "AAPL",
+  "MSFT",
+  "NVDA",
+  "ORCL",
+  "ADBE",
+  "CRM",
+  "AMD",
+  "INTC",
+  "CSCO",
+  "IBM",
+  "AMZN",
+  "TSLA",
+  "HD",
+  "LOW",
+  "NKE",
+  "MCD",
+  "SBUX",
+  "TGT",
+  "TJX",
+  "BKNG",
+  "WMT",
+  "COST",
+  "PG",
+  "KO",
+  "PEP",
+  "MDLZ",
+  "CL",
+  "KMB",
+  "GIS",
+  "KHC",
+  "JPM",
+  "BAC",
+  "WFC",
+  "C",
+  "GS",
+  "MS",
+  "AXP",
+  "SCHW",
+  "USB",
+  "PNC",
+  "UNH",
+  "JNJ",
+  "LLY",
+  "MRK",
+  "ABBV",
+  "ABT",
+  "TMO",
+  "DHR",
+  "AMGN",
+  "GILD",
+  "CAT",
+  "DE",
+  "GE",
+  "HON",
+  "UPS",
+  "FDX",
+  "RTX",
+  "LMT",
+  "NOC",
+  "GD",
+  "XOM",
+  "CVX",
+  "COP",
+  "EOG",
+  "SLB",
+  "OXY",
+  "PSX",
+  "VLO",
+  "MPC",
+  "KMI",
+  "NEE",
+  "DUK",
+  "SO",
+  "AEP",
+  "EXC",
+  "SRE",
+  "XEL",
+  "WEC",
+  "ED",
+  "D",
+  "GOOGL",
+  "META",
+  "NFLX",
+  "DIS",
+  "CMCSA",
+  "VZ",
+  "T",
+  "CHTR",
+  "TTWO",
+  "WBD",
+  "LIN",
+  "APD",
+  "SHW",
+  "FCX",
+  "NEM",
+  "NUE",
+  "PLD",
+  "AMT",
+  "SPG",
+  "O",
+];
+const input = {
+  schema_version: "edgar.portfolio.v1",
+  name: "100-company research demo",
+  holdings: tickers.map((ticker) => ({ ticker })),
+  allocation: { basis: "none", normalize: false },
+  research: { basis: "annual" },
+};
+if (tickers.length !== 100 || new Set(tickers).size !== 100)
+  throw new Error("The demonstration requires exactly 100 unique tickers.");
+normalizePortfolioInput(input);
+
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function request(payload) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(115000),
+      });
+      const result = await response.json();
+      if (response.ok) return result;
+      if (response.status !== 429 && response.status < 500)
+        throw Object.assign(
+          new Error(result.error || `HTTP ${response.status}`),
+          { terminal: true },
+        );
+      if (attempt === 2)
+        throw new Error(result.error || `HTTP ${response.status}`);
+      const retryAfter = Number(response.headers.get("retry-after"));
+      await pause(
+        Math.min(
+          30000,
+          Number.isFinite(retryAfter) && retryAfter > 0
+            ? retryAfter * 1000
+            : 2000 * (attempt + 1),
+        ),
+      );
+    } catch (error) {
+      if (error.terminal || attempt === 2) throw error;
+      await pause(2000 * (attempt + 1));
+    }
+  }
+  throw new Error("The public research request could not be completed.");
+}
+
+function failedCompany(row, message) {
+  return {
+    cik: row.resolution.cik,
+    ticker: row.resolution.ticker,
+    name: row.resolution.name,
+    status: "failed",
+    kind: "company",
+    period: null,
+    metrics: {},
+    filings: [],
+    retrievedAt: null,
+    cache: { status: "unavailable", storedAt: null },
+    refreshStatus: "failed",
+    warnings: [message],
+  };
+}
+
+async function capture() {
+  let checkpoint;
+  if (process.argv.includes("--resume")) {
+    checkpoint = JSON.parse(await fs.readFile(checkpointPath, "utf8"));
+    if (JSON.stringify(checkpoint.tickers) !== JSON.stringify(tickers))
+      throw new Error("The checkpoint belongs to a different research input.");
+  } else {
+    const resolved = await request({ ...input, action: "resolve" });
+    if (
+      resolved.rows?.length !== 100 ||
+      resolved.rows.some(
+        (row) =>
+          row.resolution.status !== "resolved" ||
+          row.resolution.kind !== "company",
+      )
+    )
+      throw new Error(
+        `Every demonstration ticker must resolve to an operating company. Review: ${JSON.stringify(resolved.rows?.filter((row) => row.resolution.status !== "resolved" || row.resolution.kind !== "company").map((row) => ({ ticker: row.input.ticker, resolution: row.resolution })))}`,
+      );
+    if (new Set(resolved.rows.map((row) => row.resolution.cik)).size !== 100)
+      throw new Error(
+        "The demonstration contains duplicate issuer share classes.",
+      );
+    checkpoint = {
+      tickers,
+      startedAt: new Date().toISOString(),
+      rows: resolved.rows,
+      companies: [],
+      requests: [],
+    };
+  }
+  for (let offset = 0; offset < checkpoint.rows.length; offset += 5) {
+    const rows = checkpoint.rows.slice(offset, offset + 5);
+    if (
+      rows.every((row) =>
+        checkpoint.companies.some(
+          (company) => company.cik === row.resolution.cik,
+        ),
+      )
+    )
+      continue;
+    const holdings = rows.map((row) => ({
+      ticker: row.resolution.ticker,
+      cik: row.resolution.cik,
+    }));
+    const startedAt = new Date().toISOString();
+    let response;
+    let errorMessage;
+    try {
+      response = await request({
+        schema_version: input.schema_version,
+        action: "research",
+        holdings,
+        allocation: input.allocation,
+        research: input.research,
+      });
+    } catch (error) {
+      errorMessage = error.message;
+    }
+    for (const row of rows) {
+      const company = response?.companies?.find(
+        (item) => item.cik === row.resolution.cik,
+      );
+      const result = company
+        ? {
+            ...company,
+            refreshStatus:
+              company.status === "failed" ||
+              company.cache?.status === "unavailable"
+                ? "failed"
+                : company.cache?.status === "stale"
+                  ? "stale"
+                  : "checked",
+          }
+        : failedCompany(
+            row,
+            errorMessage ||
+              "The API response omitted this issuer. No financial values were invented.",
+          );
+      checkpoint.companies = checkpoint.companies.filter(
+        (item) => item.cik !== result.cik,
+      );
+      checkpoint.companies.push(result);
+    }
+    checkpoint.requests.push({
+      started_at: startedAt,
+      completed_at: new Date().toISOString(),
+      generated_at: response?.generated_at || null,
+      tickers: holdings.map((item) => item.ticker),
+      ...(errorMessage ? { error: errorMessage } : {}),
+    });
+    await fs.writeFile(checkpointPath, JSON.stringify(checkpoint));
+    console.log(
+      `Captured ${Math.min(offset + 5, 100)}/100: ${holdings.map((item) => item.ticker).join(", ")}`,
+    );
+  }
+  const companies = checkpoint.rows.map((row) =>
+    checkpoint.companies.find((company) => company.cik === row.resolution.cik),
+  );
+  const capturedAt = new Date().toISOString();
+  const snapshot = {
+    schema_version: input.schema_version,
+    generated_at: capturedAt,
+    basis: "annual",
+    companies,
+  };
+  const allocation = allocationSummary(
+    checkpoint.rows,
+    input.allocation,
+    Object.fromEntries(companies.map((company) => [company.cik, company])),
+  );
+  const reportingEnds = [
+    ...new Set(companies.map((company) => company.period?.end).filter(Boolean)),
+  ].sort();
+  const coverage = {
+    inputRows: checkpoint.rows.length,
+    resolvedRows: checkpoint.rows.length,
+    uniqueIssuers: companies.length,
+    researchedIssuers: companies.length,
+    ready: companies.filter((company) => company.status === "ready").length,
+    partial: companies.filter((company) => company.status === "partial").length,
+    failed: companies.filter((company) => company.status === "failed").length,
+    unsupported: companies.filter((company) => company.status === "unsupported")
+      .length,
+    staleCached: companies.filter(
+      (company) => company.cache?.status === "stale",
+    ).length,
+    financialEvidence: allocation.coverage.availableCompanies,
+    financialEvidencePct: allocation.coverage.companyPct,
+    filingCount: companies.reduce(
+      (total, company) => total + (company.filings?.length || 0),
+      0,
+    ),
+    reportingEnds,
+    mismatchedPeriods: reportingEnds.length > 1,
+    filingScope:
+      "Recent SEC submissions only; up to 30 relevant filings per issuer. No archived submission files are scanned.",
+  };
+  const result = {
+    schema_version: "edgar.portfolio.demo.v1",
+    title: input.name,
+    description:
+      "A format and research-workflow demonstration using 100 identifiable operating companies across industries. This selected list is not an index, a representative market sample, an investment recommendation or an actual portfolio.",
+    capture_started_at: checkpoint.startedAt,
+    captured_at: capturedAt,
+    input,
+    rows: checkpoint.rows,
+    snapshot,
+    coverage,
+    methodology: {
+      source:
+        "SEC EDGAR public company submissions and XBRL company facts, retrieved through the same Portfolio Research API used by the workspace.",
+      captureEndpoint: endpoint,
+      basis:
+        "Annual reporting basis; company fiscal periods may differ. Missing values remain unavailable, and financial-sector companies use the applicable analysis lens.",
+      allocation:
+        "Research universe with no weights, market values, shares or private notes. Company counts are not portfolio exposures.",
+      freshness:
+        "A captured example, not a live feed. Each company and metric retains its retrieval date, reporting period, source filings and calculation provenance. Refresh a local copy to request newer evidence.",
+      requests: checkpoint.requests,
+    },
+  };
+  const document = createPortfolio({
+    id: "portfolio-demo-100-validation",
+    name: input.name,
+    rows: result.rows,
+    allocation: input.allocation,
+    research: input.research,
+    snapshot,
+    now: capturedAt,
+  });
+  validatePortfolios({
+    version: 1,
+    portfolios: [document],
+    activeId: document.id,
+  });
+  await fs.writeFile(resultPath, `${JSON.stringify(result)}\n`);
+  console.log(
+    JSON.stringify({
+      coverage,
+      assetBytes: Buffer.byteLength(JSON.stringify(result)),
+      documentBytes: Buffer.byteLength(JSON.stringify(document)),
+    }),
+  );
+}
+
+async function writeTemplates() {
+  await fs.mkdir(output, { recursive: true });
+  const rows = [
+    PORTFOLIO_COLUMNS,
+    ...input.holdings.map((holding) =>
+      PORTFOLIO_COLUMNS.map((column) => holding[column] || ""),
+    ),
+  ];
+  await fs.writeFile(
+    path.join(output, "portfolio-demo-100.csv"),
+    csvString(rows).replace(/\r\n/g, "\n"),
+  );
+  await fs.writeFile(
+    path.join(output, "portfolio-demo-100.json"),
+    `${JSON.stringify(input, null, 2)}\n`,
+  );
+  await fs.writeFile(
+    path.join(output, "portfolio-demo-100.xlsx"),
+    createXlsxWorkbook([
+      { name: "Holdings", rows },
+      {
+        name: "Instructions",
+        rows: [
+          ["100-company research demo"],
+          [
+            "Start",
+            "Upload this workbook in Research Hub → Portfolio research. The Holdings sheet is prefilled with exactly 100 company tickers.",
+          ],
+          [
+            "Expected result",
+            "Review company financial metrics, reporting periods, SEC filing sources, coverage and industry groups. Open the captured example at https://secedgarterminal.com/workspace/demo.",
+          ],
+          [
+            "Scope",
+            "This is a selected demonstration list, not an index, a representative market sample, actual holdings or an investment recommendation.",
+          ],
+          [
+            "Optional fields",
+            "Ticker-only input is sufficient. Weights, market values, shares and private notes are intentionally blank. No equal-weight allocation is assumed.",
+          ],
+          [
+            "Dates",
+            "The example analysis is a dated capture. Running research retrieves current available public evidence; results and coverage may differ.",
+          ],
+          [
+            "Limits",
+            "The import supports at most 100 rows. Replace existing tickers before adding more. Cells contain literal values, with no formulas or macros.",
+          ],
+          [
+            "Privacy",
+            "Imported notes remain in your browser. Interactive research sends company identifiers, not private allocations or notes.",
+          ],
+        ],
+      },
+    ]),
+  );
+  console.log(
+    "Wrote matching CSV, XLSX and JSON templates with 100 ticker-only rows.",
+  );
+}
+
+await writeTemplates();
+if (process.argv.includes("--refresh") || process.argv.includes("--resume"))
+  await capture();
