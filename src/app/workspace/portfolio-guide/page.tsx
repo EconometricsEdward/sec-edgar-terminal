@@ -86,6 +86,7 @@ export default function PortfolioGuidePage() {
           <a href="#templates">Templates</a>
           <a href="#format">Input format</a>
           <a href="#allocation">Allocation choices</a>
+          <a href="#analytics">Portfolio analytics</a>
           <a href="#api">Batch API</a>
           <a href="#exports">Exports & privacy</a>
         </nav>
@@ -241,6 +242,55 @@ export default function PortfolioGuidePage() {
         </p>
       </section>
 
+      <section id="analytics">
+        <h2>Understand the list as a whole</h2>
+        <p>
+          Open Portfolio analytics in your saved portfolio, or explore the{" "}
+          <Link href="/workspace/demo">100-company example</Link>. Every chart
+          uses your included rows and the captured SEC evidence. Company links
+          open the financial measures, reporting periods and source filings.
+        </p>
+        <ul>
+          <li>
+            <strong>Concentration:</strong> see combined issuer exposure across
+            share classes and the SEC industry mix. Top-issuer percentages use
+            known original weights. Complete, reviewed allocations totaling 100%
+            also show an effective issuer count: 1 divided by the sum of squared
+            issuer weight fractions. Ten equally weighted issuers produce 10;
+            one issuer produces 1. This measures allocation concentration and
+            does not account for correlations or fund holdings.
+          </li>
+          <li>
+            <strong>Financial profile:</strong> compare company medians, the
+            middle 50% of observations and distributions for growth, margins,
+            leverage and selected banking measures. Each issuer counts once.
+            Medians describe companies with supported evidence, rather than an
+            investment return or an ownership share of company earnings. Missing
+            and not-applicable observations stay separate.
+          </li>
+          <li>
+            <strong>Scenario lab:</strong> apply hypothetical price changes to
+            all holdings, an issuer or a SEC industry. A 60% holding falling
+            20%, with the remaining 40% unchanged, contributes −12 percentage
+            points to modeled portfolio value. Scenarios require complete
+            reviewed allocations, or your explicit choice to try a temporary
+            equal-weight model. The temporary model does not edit saved weights.
+          </li>
+          <li>
+            <strong>Evidence coverage:</strong> inspect metric coverage,
+            reporting-date differences and the companies that need attention.
+            Missing financial evidence never becomes a zero value. Reported
+            periods can differ across issuers, including in the same chart.
+          </li>
+        </ul>
+        <p>
+          Scenario price changes are your assumptions. The calculation does not
+          estimate their likelihood, correlations, spillovers, trading costs or
+          liquidity. It is separate from historical SEC fundamentals. Download a
+          scenario CSV to retain its inputs and contributions.
+        </p>
+      </section>
+
       <section id="api">
         <h2>A bounded API for connected research tools</h2>
         <p>
@@ -344,9 +394,13 @@ export default function PortfolioGuidePage() {
         <p>
           Export the selected issuer table to CSV, or a captured research
           package to XLSX, JSON or Markdown. The workbook separates Holdings,
-          Company research, Portfolio summary, Sources, and Coverage &amp;
-          methodology. Copy research context produces the same source-backed
-          brief for another research tool without calling a model.
+          Company research, Portfolio summary, Sources, Coverage &amp;
+          methodology, and Analytics. An analytics CSV summarizes the full
+          portfolio; full JSON and Markdown packages include those calculations
+          too. Selected-row exports omit portfolio-wide analytics to keep the
+          selected scope and original weights clear. Copy research context
+          produces the same source-backed brief for another research tool
+          without calling a model.
         </p>
         <p>
           Research packages use <code>edgar.portfolio.research.v1</code>,

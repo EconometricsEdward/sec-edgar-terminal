@@ -3,11 +3,14 @@ import assert from "node:assert/strict";
 import { unzipSync, strFromU8 } from "fflate";
 import {
   buildPortfolioResearchPackage,
+  portfolioAnalyticsCsv,
   portfolioCsv,
   portfolioMarkdown,
   portfolioXlsx,
   researchContext,
 } from "../src/utils/portfolioExports.js";
+import { buildPortfolioAnalytics } from "../src/utils/portfolioAnalytics.js";
+import { parsePortfolioCsv } from "../src/utils/portfolioFiles.js";
 import {
   createPortfolioRows,
   resolvePortfolioRows,
@@ -244,6 +247,152 @@ test("share classes preserve positions while exporting one issuer research recor
     50,
   );
   assert.equal(result.coverage.selected_resolved_companies, 2);
+});
+
+test("full exports carry shared analytics with the captured snapshot and issuer denominator", () => {
+  const input = document([
+    { ticker: "AAA", weight_pct: 30, notes: "ANALYTICS_PRIVATE" },
+    { ticker: "AAB", weight_pct: 20 },
+    { ticker: "BBB", weight_pct: 50 },
+  ]);
+  const bundle = buildPortfolioResearchPackage(input);
+  const expected = buildPortfolioAnalytics(
+    input.rows,
+    input.allocation,
+    input.snapshot.companies,
+    { capturedAt: input.snapshot.generated_at },
+  );
+  assert.deepEqual(bundle.analytics, {
+    ...expected,
+    scope: "full_saved_document",
+    allocation_information: "included_where_supplied",
+  });
+  assert.doesNotMatch(JSON.stringify(bundle.analytics), /ANALYTICS_PRIVATE/);
+  assert.match(portfolioAnalyticsCsv(bundle), /research_captured_at/);
+  assert.match(portfolioAnalyticsCsv(bundle), /2026-09-07T15:00:00.000Z/);
+  assert.match(portfolioMarkdown(bundle), /## Portfolio analytics/);
+  assert.match(researchContext(bundle), /## Portfolio analytics/);
+  const files = unzipSync(portfolioXlsx(bundle));
+  assert.match(strFromU8(files["xl/workbook.xml"]), /name="Analytics"/);
+});
+
+test("analytics CSV copies issuer medians and coverage without averaging share classes twice", () => {
+  const input = document([
+    { ticker: "AAA", weight_pct: 30 },
+    { ticker: "AAB", weight_pct: 20 },
+    { ticker: "BBB", weight_pct: 50 },
+  ]);
+  input.snapshot.companies[0].metrics.netMargin = {
+    value: 10,
+    unit: "%",
+    classification: "calculated",
+    period: { end: "2025-12-31" },
+    sources: [source],
+  };
+  input.snapshot.companies[1].metrics.netMargin = {
+    value: 30,
+    unit: "%",
+    classification: "calculated",
+    period: { end: "2025-12-31" },
+    sources: [source],
+  };
+  const bundle = buildPortfolioResearchPackage(input);
+  const summary = bundle.analytics.metrics.find(
+    (metric) => metric.id === "netMargin",
+  );
+  const lines = portfolioAnalyticsCsv(bundle).split("\r\n");
+  const medianLine = lines.find((line) =>
+    line.startsWith("financial_distribution,netMargin.median,"),
+  );
+  const parsed = parsePortfolioCsv([lines[0], medianLine].join("\r\n"));
+  const record = Object.fromEntries(
+    parsed.headers.map((header, index) => [header, parsed.records[0][index]]),
+  );
+  assert.equal(summary.median, 20);
+  assert.equal(summary.availableCount, 2);
+  assert.equal(Number(record.value), summary.median);
+  assert.equal(Number(record.count), summary.availableCount);
+  assert.equal(Number(record.eligible_count), summary.eligibleCount);
+  assert.equal(Number(record.known_weight_pct), summary.coveredWeightPct);
+  assert.equal(record.unit, "%");
+  assert.equal(record.scope, "full_saved_document");
+  assert.match(portfolioMarkdown(bundle), /Net margin \(%\).*20.*2 \/ 2/);
+});
+
+test("selected analytics exports explain omission without exposing unselected issuers", () => {
+  const input = document(undefined, { basis: "weights", normalize: true });
+  input.rows[1].resolution.name = "UNSELECTED_ISSUER_SENTINEL";
+  input.snapshot.companies[1].name = "UNSELECTED_ISSUER_SENTINEL";
+  const bundle = buildPortfolioResearchPackage(input, {
+    selectedRowIds: [input.rows[0].id],
+  });
+  assert.deepEqual(bundle.analytics, {
+    scope: "not_included_for_selected_export",
+    reason:
+      "Portfolio-wide analytics require a full-portfolio export; this selected export retains its original weights.",
+  });
+  assert.equal(bundle.positions[0].analysis_weight_pct, 75);
+  for (const output of [
+    JSON.stringify(bundle),
+    portfolioAnalyticsCsv(bundle),
+    portfolioMarkdown(bundle),
+    researchContext(bundle),
+    Object.values(unzipSync(portfolioXlsx(bundle)))
+      .map(strFromU8)
+      .join(""),
+  ]) {
+    assert.doesNotMatch(output, /UNSELECTED_ISSUER_SENTINEL/);
+    assert.match(
+      output,
+      /Portfolio-wide analytics require a full-portfolio export/,
+    );
+  }
+});
+
+test("count-only analytics cannot retain allocation inputs, notes or private allocation dates", () => {
+  const input = document([
+    {
+      ticker: "AAA",
+      weight_pct: 87.6543,
+      market_value: 98765432,
+      shares: 34567,
+      currency: "XYZ",
+      as_of_date: "2023-02-17",
+      notes: "ANALYTICS_PRIVATE",
+    },
+    { ticker: "BBB", weight_pct: 12.3457 },
+  ]);
+  input.rows[0].originalInput = { ...input.rows[0].input };
+  const bundle = buildPortfolioResearchPackage(input, {
+    includeAllocations: false,
+  });
+  const publicRows = resolvePortfolioRows(
+    createPortfolioRows([{ ticker: "AAA" }, { ticker: "BBB" }]),
+    directory,
+  );
+  assert.deepEqual(bundle.analytics, {
+    ...buildPortfolioAnalytics(
+      publicRows,
+      { basis: "none", normalize: false },
+      input.snapshot.companies,
+      { capturedAt: input.snapshot.generated_at },
+    ),
+    scope: "full_saved_document",
+    allocation_information: "excluded_count_only",
+  });
+  for (const output of [
+    JSON.stringify(bundle),
+    portfolioAnalyticsCsv(bundle),
+    portfolioMarkdown(bundle),
+    researchContext(bundle),
+    Object.values(unzipSync(portfolioXlsx(bundle)))
+      .map(strFromU8)
+      .join(""),
+  ])
+    assert.doesNotMatch(
+      output,
+      /87\.6543|98765432|34567|2023-02-17|XYZ|ANALYTICS_PRIVATE/,
+    );
 });
 
 test("CSV and Markdown retain metric units, periods, formulas, input facts and safe SEC sources", () => {
