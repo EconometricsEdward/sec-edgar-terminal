@@ -1,0 +1,4 @@
+ticker,company_name,cik,exchange,weight_pct,market_value,shares,currency,as_of_date,notes
+AAPL,,,,40,,,USD,2026-09-01,Fictional sample allocation for demonstration only; not a recommendation or actual holdings.
+MSFT,,,,35,,,USD,2026-09-01,Fictional sample allocation for demonstration only; not a recommendation or actual holdings.
+JPM,,,,25,,,USD,2026-09-01,Fictional sample allocation for demonstration only; not a recommendation or actual holdings.

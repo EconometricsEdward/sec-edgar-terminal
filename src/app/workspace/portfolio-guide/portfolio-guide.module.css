@@ -1,0 +1,160 @@
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 30px 0 60px;
+  color: var(--text-primary, #e8edf5);
+  line-height: 1.65;
+}
+.page header {
+  margin-bottom: 34px;
+}
+.page h1 {
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.13;
+  letter-spacing: -0.035em;
+  margin: 12px 0 20px;
+}
+.page h2 {
+  font-size: 25px;
+  line-height: 1.25;
+  margin: 0 0 18px;
+}
+.page h3 {
+  font-size: 18px;
+  margin: 24px 0 10px;
+}
+.page p,
+.page li {
+  color: var(--text-secondary, #b1bfd0);
+  font-size: 15px;
+}
+.page p {
+  margin: 12px 0;
+}
+.page section {
+  border-top: 1px solid var(--border-color, #29364c);
+  padding-top: 30px;
+  margin-top: 32px;
+  scroll-margin-top: 150px;
+}
+.page a {
+  color: #ffd44b;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.page strong {
+  color: var(--text-primary, #e8edf5);
+}
+.page ul {
+  padding-left: 22px;
+  display: grid;
+  gap: 12px;
+}
+.eyebrow {
+  color: #ffd44b !important;
+  font-size: 11px !important;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-top: 24px !important;
+}
+.links,
+.downloads {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin: 20px 0;
+}
+.downloads a,
+.copyLine button {
+  border: 1px solid #44516a;
+  background: #152134;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  min-height: 44px;
+}
+.downloads a {
+  text-decoration: none;
+}
+.tableWrap {
+  overflow-x: auto;
+  margin: 22px 0;
+}
+.page table {
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 14px;
+  width: 100%;
+}
+.page caption {
+  text-align: left;
+  color: #b1bfd0;
+  margin-bottom: 12px;
+}
+.page th,
+.page td {
+  border-bottom: 1px solid #29364c;
+  padding: 13px 15px;
+  vertical-align: top;
+}
+.page th {
+  font-weight: 600;
+}
+.page td {
+  color: #b1bfd0;
+  min-width: 200px;
+}
+.page thead {
+  background: #152134;
+}
+.page code {
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+.example {
+  margin: 20px 0;
+}
+.copyLine {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.copyLine button {
+  cursor: pointer;
+  color: #ffd44b;
+}
+.copyLine span {
+  font-size: 13px;
+  color: #b1bfd0;
+}
+.example pre {
+  overflow-x: auto;
+  max-height: 420px;
+  background: #0c1525;
+  border: 1px solid #29364c;
+  border-radius: 8px;
+  padding: 18px;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.page :focus-visible {
+  outline: 2px solid #ffd44b;
+  outline-offset: 4px;
+}
+@media (max-width: 640px) {
+  .page {
+    padding-top: 16px;
+  }
+  .page th,
+  .page td {
+    padding: 10px;
+  }
+  .downloads {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

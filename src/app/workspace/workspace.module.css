@@ -9,6 +9,34 @@
   gap: 28px;
   padding: 12px 0 40px;
 }
+.hubTabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--hub-border);
+}
+.hubTabs button {
+  min-height: 44px;
+  padding: 11px 17px;
+  border: 1px solid var(--hub-border);
+  border-radius: 9px;
+  font-size: 14px;
+  color: var(--hub-text);
+}
+.hubTabs button[aria-pressed="true"] {
+  background: #f7c65a;
+  color: #172033;
+  border-color: #f7c65a;
+  font-weight: 700;
+}
+.legacyWorkspace {
+  display: grid;
+  gap: 28px;
+}
+.legacyWorkspace[hidden] {
+  display: none;
+}
 .heading,
 .sectionHeading {
   display: flex;

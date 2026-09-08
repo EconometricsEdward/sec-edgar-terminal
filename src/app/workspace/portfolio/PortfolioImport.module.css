@@ -1,0 +1,655 @@
+.importer {
+  --pi-text: var(--hub-text, #e8edf5);
+  --pi-muted: var(--hub-muted, #a1aec2);
+  --pi-panel: var(--hub-panel, #101a2b);
+  --pi-border: var(--hub-border, #344158);
+  --pi-accent: var(--hub-accent, #f7c65a);
+  display: grid;
+  gap: 20px;
+  color: var(--pi-text);
+  min-width: 0;
+}
+.header,
+.reviewHeading,
+.commitBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--pi-accent);
+}
+.importer h2 {
+  margin: 8px 0;
+  font-size: clamp(24px, 3vw, 32px);
+  letter-spacing: -0.03em;
+}
+.importer h3 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+.importer h4 {
+  font-size: 16px;
+  font-weight: 700;
+}
+.importer p {
+  color: var(--pi-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.importer label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+}
+.importer input:not([type="checkbox"]):not([type="file"]),
+.importer select,
+.importer textarea {
+  border: 1px solid var(--pi-border) !important;
+  border-radius: 8px;
+  padding: 10px 12px !important;
+  font-size: 16px !important;
+  line-height: 1.4;
+  background: var(--pi-panel) !important;
+  color: var(--pi-text) !important;
+  min-height: 44px;
+  width: 100%;
+  min-width: 0;
+  font-weight: 400;
+}
+.importer input::placeholder,
+.importer textarea::placeholder {
+  color: var(--pi-muted);
+  opacity: 0.85;
+}
+.importer textarea {
+  resize: vertical;
+}
+.nameLabel {
+  max-width: 560px;
+}
+.entryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.entryCard {
+  border: 1px solid var(--pi-border);
+  border-radius: 12px;
+  padding: 20px;
+  background: var(--pi-panel);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.entryCard > svg {
+  color: var(--pi-accent);
+}
+.entryCard > strong {
+  font-size: 16px;
+}
+.entryCard p {
+  font-size: 13px;
+  margin: 0 0 4px;
+  flex: 1;
+}
+.dropzone {
+  border-style: dashed;
+}
+.dragging {
+  border-color: var(--pi-accent);
+  box-shadow: 0 0 0 2px var(--pi-accent);
+}
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--pi-border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.4;
+}
+.primary {
+  background: var(--pi-accent);
+  color: #172033;
+  border-color: var(--pi-accent);
+}
+.secondary {
+  background: transparent;
+  color: var(--pi-text);
+}
+.importer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+.importer button:not(:disabled):hover {
+  filter: brightness(1.12);
+}
+.inlineLinks,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.inlineLinks a,
+.table a {
+  color: var(--pi-accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  font-size: 13px;
+}
+.inlineLinks a {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+}
+.privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.privacy > svg {
+  flex: 0 0 auto;
+  color: var(--pi-muted);
+  margin-top: 2px;
+}
+.privacy p {
+  font-size: 12px;
+  margin: 0;
+}
+.hint {
+  font-size: 12px !important;
+  margin: 0;
+}
+.pastePanel,
+.mapping {
+  background: var(--pi-panel);
+  border: 1px solid var(--pi-border);
+  border-radius: 12px;
+  padding: 22px;
+  display: grid;
+  gap: 16px;
+}
+.help {
+  border-top: 1px solid var(--pi-border);
+  border-bottom: 1px solid var(--pi-border);
+  padding: 14px 0;
+}
+.importer summary {
+  cursor: pointer;
+  color: var(--pi-accent);
+  font-size: 13px;
+  min-height: 32px;
+  line-height: 1.6;
+}
+.help > p,
+.help > .inlineLinks,
+.help > button {
+  margin-top: 14px;
+}
+.definitions {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+.definitions > div {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.definitions dt {
+  font-family: ui-monospace, monospace;
+  color: var(--pi-text);
+}
+.definitions dd {
+  color: var(--pi-muted);
+}
+.help pre {
+  margin-top: 16px;
+  overflow: auto;
+  max-height: 320px;
+  font-size: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--pi-panel);
+  border: 1px solid var(--pi-border);
+  line-height: 1.6;
+}
+.status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--pi-muted);
+}
+.status > span {
+  flex: 1;
+}
+.status > svg {
+  color: var(--pi-accent);
+  flex-shrink: 0;
+}
+.spinner {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.progress {
+  width: 100%;
+  height: 7px;
+  accent-color: var(--pi-accent);
+  border: 0;
+}
+.progress::-webkit-progress-bar {
+  background: var(--pi-border);
+  border-radius: 8px;
+}
+.progress::-webkit-progress-value {
+  background: var(--pi-accent);
+  border-radius: 8px;
+}
+.error {
+  background: #54253630;
+  border: 1px solid #a85265;
+  padding: 14px 16px;
+  border-radius: 8px;
+  color: #ffb6c1;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.mappingGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.mappingGrid label > strong {
+  overflow-wrap: anywhere;
+}
+.sample {
+  color: var(--pi-muted);
+  font-weight: 400;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.notice,
+.duplicatePanel {
+  border: 1px solid #8b7342;
+  border-radius: 10px;
+  padding: 18px;
+  background: #b9902f0b;
+  font-size: 13px;
+}
+.notice ul,
+.rowWarnings {
+  padding-left: 18px;
+  margin-top: 8px;
+  list-style: disc;
+  line-height: 1.6;
+  color: var(--pi-muted);
+}
+.review {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.reviewHeading p {
+  margin: 0;
+}
+.duplicatePanel > p {
+  margin: 6px 0 12px;
+}
+.duplicateGroup {
+  border-top: 1px solid var(--pi-border);
+  padding-top: 14px;
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+.duplicateGroup p {
+  margin: 0;
+}
+.filterBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.filterBar > label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.filterBar select {
+  width: auto;
+  min-width: 180px;
+}
+.filterBar > span {
+  font-size: 12px;
+  color: var(--pi-muted);
+}
+.tableWrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--pi-border);
+  border-radius: 10px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+  table-layout: fixed;
+  min-width: 740px;
+}
+.table th {
+  padding: 14px 16px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--pi-panel);
+  color: var(--pi-muted);
+  font-weight: 700;
+  border-bottom: 1px solid var(--pi-border);
+}
+.table th:first-child {
+  width: 34%;
+}
+.table th:nth-child(2) {
+  width: 34%;
+}
+.table th:nth-child(3) {
+  width: 32%;
+}
+.table td {
+  padding: 18px 16px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--pi-border);
+  overflow-wrap: anywhere;
+}
+.table tr:last-child td {
+  border-bottom: 0;
+}
+.table td > strong {
+  display: block;
+  line-height: 1.5;
+}
+.table p {
+  font-size: 12px;
+  margin: 9px 0 0;
+}
+.rowNumber {
+  display: block;
+  font-size: 11px;
+  color: var(--pi-muted);
+  margin-bottom: 4px;
+}
+.inputName {
+  font-size: 15px;
+}
+.rowDetails {
+  margin-top: 12px;
+}
+.rowDetails summary {
+  font-size: 12px;
+}
+.original {
+  background: var(--pi-panel);
+  padding: 10px;
+  border-radius: 6px;
+  margin: 8px 0 14px;
+  font-size: 11px;
+}
+.original > div {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  padding-top: 8px;
+  line-height: 1.5;
+}
+.original > div > span:first-child {
+  color: var(--pi-muted);
+}
+.original > div > span:last-child {
+  white-space: pre-wrap;
+}
+.rowEditor {
+  display: grid;
+  gap: 12px;
+}
+.rowEditor label {
+  font-size: 12px;
+}
+.allocationDetails {
+  margin-top: 14px;
+}
+.allocationPreview,
+.identifiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 10px;
+  color: var(--pi-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.allocationPreview {
+  flex-direction: column;
+}
+.identifiers {
+  font-family: ui-monospace, monospace;
+}
+.candidateChoice {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+.candidateChoice label {
+  font-size: 12px;
+}
+.candidateChoice > button {
+  justify-self: start;
+}
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 650;
+}
+.good {
+  color: #8dd4b3;
+  background: #45b9840b;
+}
+.attention {
+  color: #f7cd79;
+  background: #ddae480b;
+}
+.neutral {
+  color: var(--pi-muted);
+}
+.rowWarnings {
+  font-size: 12px;
+}
+.includeToggle {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 10px !important;
+  margin-top: 12px;
+  min-height: 40px;
+  cursor: pointer;
+  font-size: 12px !important;
+}
+.includeToggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--pi-accent);
+}
+.excluded {
+  background: #8592a207;
+}
+.excluded .inputName {
+  color: var(--pi-muted);
+}
+.proposedAction {
+  color: var(--pi-muted);
+}
+.commitBar {
+  padding: 20px;
+  background: var(--pi-panel);
+  border: 1px solid var(--pi-border);
+  border-radius: 10px;
+}
+.commitBar > div > strong {
+  font-size: 15px;
+}
+.commitBar p {
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+.commitBar > button {
+  flex-shrink: 0;
+}
+.empty {
+  padding: 20px;
+}
+.importer input.srOnly {
+  position: absolute;
+  height: 1px;
+  width: 1px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.importer
+  :is(
+    a,
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    pre,
+    .tableWrap
+  ):focus-visible {
+  outline: 2px solid var(--pi-accent) !important;
+  outline-offset: 3px;
+}
+.reviewHeading h3:focus {
+  outline: none;
+}
+:global(html[data-theme-mode="light"]) .importer {
+  --pi-text: #18283e;
+  --pi-muted: #51647b;
+  --pi-panel: #fff;
+  --pi-border: #ced9e6;
+  --pi-accent: #956100;
+}
+:global(html[data-theme-mode="light"]) .primary {
+  color: #fff;
+}
+:global(html[data-theme-mode="light"]) .good {
+  color: #146847;
+}
+:global(html[data-theme-mode="light"]) .attention {
+  color: #865300;
+}
+:global(html[data-theme-mode="light"]) .error {
+  color: #a61d36;
+}
+@media (max-width: 1050px) {
+  .entryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mappingGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .header,
+  .reviewHeading,
+  .commitBar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .entryGrid {
+    gap: 8px;
+  }
+  .entryCard {
+    padding: 14px;
+  }
+  .entryCard > strong {
+    font-size: 14px;
+  }
+  .entryCard p {
+    font-size: 12px;
+  }
+  .entryCard .secondary {
+    width: 100%;
+    padding: 9px;
+    font-size: 12px;
+  }
+  .entryCard .inlineLinks {
+    gap: 0 12px;
+  }
+  .privacy p {
+    font-size: 11px;
+  }
+  .mappingGrid {
+    grid-template-columns: 1fr;
+  }
+  .pastePanel,
+  .mapping,
+  .commitBar {
+    padding: 16px;
+  }
+  .definitions > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .commitBar > button {
+    width: 100%;
+  }
+  .filterBar > label {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

@@ -6,6 +6,7 @@ import { analysisPath } from "./analysisNotebook.js";
 import { readFilingsNotebook } from "./filingsNotebook.js";
 import { FUND_BOARDS_KEY, readFundBoards } from "./fundBoards.js";
 import { fundWorkspacePath } from "./fundWorkspaceSettings.js";
+import { PORTFOLIOS_KEY, readPortfolios } from "./portfolioStorage.js";
 
 export const RESEARCH_STORAGE_EVENT = "research-storage";
 export const RESEARCH_BACKUP_LIMIT = 16 * 1024 * 1024;
@@ -41,6 +42,12 @@ export const RESEARCH_STORES = [
     label: "Fund research boards",
     source: "Funds",
     kind: "fund-boards",
+  },
+  {
+    key: PORTFOLIOS_KEY,
+    label: "Portfolio research and private allocations",
+    source: "Portfolios",
+    kind: "portfolios",
   },
 ];
 const keys = new Set(RESEARCH_STORES.map((s) => s.key));
@@ -358,6 +365,8 @@ export function validateResearchStore(key, raw) {
     return raw;
   }
   const data = JSON.parse(raw);
+  // Portfolios also contain a validated internal fund-workflow destination.
+  if (key === PORTFOLIOS_KEY) return readPortfolios(raw);
   inspectTree(data);
   if (key === "edgar-funds-shelf-v1") {
     requireShape(
@@ -682,6 +691,26 @@ const pointSummary = (point) =>
       ]
         .filter(Boolean)
         .join(" · ");
+function companyEvidenceDestination(t, evidence) {
+  if (!/^\d{10}$/.test(t)) return `/analysis/${t}?view=notebook`;
+  // CIK-only issuers have no supported ticker route in Analysis. Open their saved
+  // SEC evidence directly; a source-free note stays in the searchable library.
+  try {
+    const url = new URL(evidence.url);
+    if (
+      typeof evidence.url === "string" &&
+      url.protocol === "https:" &&
+      ["sec.gov", "www.sec.gov", "data.sec.gov"].includes(url.hostname) &&
+      !url.username &&
+      !url.password &&
+      !url.port
+    )
+      return evidence.url;
+  } catch {
+    /* A missing source remains accessible in the local library. */
+  }
+  return "/workspace?view=library";
+}
 function entriesFor(source, data, store = {}) {
   const rows = [];
   const add = (type, t, title, text, href, date = "", id = "") =>
@@ -752,6 +781,64 @@ function entriesFor(source, data, store = {}) {
     }
     return rows;
   }
+  if (store.kind === "portfolios") {
+    for (const portfolio of data.portfolios) {
+      // Only a browser-local document ID enters the route, never positions or notes.
+      const href = `/workspace?view=portfolios&portfolio=${encodeURIComponent(portfolio.id)}`;
+      const active = portfolio.rows.filter(
+        (row) => !row.excluded && row.duplicateChoice !== "remove",
+      );
+      const resolved = active.filter(
+        (row) => row.resolution.status === "resolved",
+      );
+      const captured = portfolio.snapshot?.companies?.length || 0;
+      const allocationLabel = {
+        none: "Research universe; no portfolio weights",
+        weights: "User-supplied percentage weights",
+        market_value: "Position-value weighting",
+        equal: "Explicit equal-weight assumption",
+      }[portfolio.allocation.basis];
+      add(
+        "portfolio",
+        resolved
+          .map((row) => row.resolution.ticker)
+          .filter(ticker)
+          .join(","),
+        portfolio.name,
+        `${active.length} included positions; ${resolved.length} resolved; ${captured} captured company results. ${allocationLabel}. ${portfolio.research.basis.toUpperCase()} reporting basis.`,
+        href,
+        portfolio.updatedAt,
+        portfolio.id,
+      );
+      for (const row of portfolio.rows) {
+        const input = row.input;
+        const resolvedTicker = ticker(row.resolution.ticker)
+          ? row.resolution.ticker
+          : ticker(input.ticker)
+            ? input.ticker
+            : "";
+        add(
+          "position",
+          resolvedTicker,
+          `${portfolio.name} · ${row.resolution.name || input.company_name || resolvedTicker || "Unresolved position"}`,
+          [
+            row.resolution.status,
+            row.excluded || row.duplicateChoice === "remove"
+              ? "Excluded from research"
+              : "Included in research",
+            input.notes,
+            ...(row.resolution.warnings || []),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          href,
+          portfolio.updatedAt,
+          `${portfolio.id}:${row.id}`,
+        );
+      }
+    }
+    return rows;
+  }
   if (source === "Analysis") {
     for (const [t, c] of Object.entries(data.companies)) {
       if (c.saved)
@@ -806,7 +893,7 @@ function entriesFor(source, data, store = {}) {
           t,
           e.label || "Collected financial evidence",
           [pointSummary(e.point), e.notes, e.text].filter(Boolean).join(" · "),
-          `/analysis/${t}?view=notebook`,
+          companyEvidenceDestination(t, e),
           e.collectedAt || e.point?.period?.end,
           `${t}:${i}`,
         );
@@ -1139,7 +1226,7 @@ export function parseResearchBackup(raw) {
   );
   requireShape(
     Object.keys(data.stores).length > 0 &&
-      Object.keys(data.stores).length <= 256 &&
+      Object.keys(data.stores).length <= RESEARCH_STORES.length + 250 &&
       Object.keys(data.stores).every(allowedKey),
     "Backup contains an unknown research store or too many fund notebooks.",
   );

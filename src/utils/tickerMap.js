@@ -182,6 +182,11 @@ export async function getOperatingDirectory() {
   return getCached("operating");
 }
 
+/** Public SEC fund identities; portfolio imports keep funds separate from issuers. */
+export async function getFundDirectory() {
+  return getCached("fund");
+}
+
 export async function getFundSeriesTickers() {
   const index = await getCached("fund");
   const series = {};

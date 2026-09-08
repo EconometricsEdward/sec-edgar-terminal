@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -28,6 +29,11 @@ import {
 } from "../../utils/workspaceReview.js";
 import styles from "./workspace.module.css";
 
+const PortfolioResearch = dynamic(
+  () => import("./portfolio/PortfolioResearch"),
+  { loading: () => <p role="status">Opening Portfolio Research…</p> },
+);
+
 export default function WorkspaceClient() {
   const { data, ready, error, update } = useWorkspace();
   const [ticker, setTicker] = useState("");
@@ -39,8 +45,15 @@ export default function WorkspaceClient() {
   const [status, setStatus] = useState("");
   const [storageError, setStorageError] = useState("");
   const [filter, setFilter] = useState("all");
+  const [hubView, setHubView] = useState("portfolios");
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
+    const requestedView = new URLSearchParams(window.location.search).get(
+      "view",
+    );
+    if (["watchlist", "library"].includes(requestedView || ""))
+      setHubView(requestedView!);
+    else if (window.location.hash === "#research-vault") setHubView("library");
     const read = () => {
       const failures: string[] = [];
       try {
@@ -257,253 +270,289 @@ export default function WorkspaceClient() {
           <span className={styles.eyebrow}>Your research, connected</span>
           <h1>Research Hub</h1>
           <p>
-            Follow companies and funds, pick up a review, and find the evidence
-            you have already saved.
+            Research a portfolio or company list, follow your watchlists, and
+            keep the evidence behind your work.
           </p>
         </div>
-        <Link href="#research-vault" className={styles.secondary}>
+        <Link
+          href="#research-vault"
+          className={styles.secondary}
+          onClick={() => setHubView("library")}
+        >
           Find saved evidence <ArrowUpRight size={16} />
         </Link>
       </div>
-      <div className={styles.summary} aria-label="Saved research overview">
-        <div>
-          <Bookmark size={18} />
-          <strong>{ready ? companies.length : "—"}</strong>
-          <span>Companies followed</span>
-        </div>
-        <div>
-          <Wallet size={18} />
-          <strong>{ready ? funds.length : "—"}</strong>
-          <span>Funds on your shelf</span>
-        </div>
-        <div>
-          <CheckCircle2 size={18} />
-          <strong>
-            {ready ? companies.filter((c) => c.review.reviewedAt).length : "—"}
-          </strong>
-          <span>Companies with a review</span>
-        </div>
+      <nav className={styles.hubTabs} aria-label="Research Hub areas">
+        {[
+          ["portfolios", "Portfolio Research"],
+          ["watchlist", "Watchlists"],
+          ["library", "Saved research & backups"],
+        ].map(([view, label]) => (
+          <button
+            key={view}
+            type="button"
+            aria-pressed={hubView === view}
+            onClick={() => setHubView(view)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div hidden={hubView !== "portfolios"}>
+        <PortfolioResearch watchlist={watchlist} />
       </div>
-      <section className={styles.panel} aria-labelledby="watchlist-title">
-        <div className={styles.sectionHeading}>
+      <div hidden={hubView !== "watchlist"} className={styles.legacyWorkspace}>
+        <div className={styles.summary} aria-label="Saved research overview">
           <div>
-            <h2 id="watchlist-title">Your watchlist</h2>
-            <p>
-              Saved companies from Workspace and Market, plus your Funds shelf.
-            </p>
+            <Bookmark size={18} />
+            <strong>{ready ? companies.length : "—"}</strong>
+            <span>Companies followed</span>
           </div>
-          <div className={styles.actions}>
-            {busy ? (
-              <button className={styles.secondary} onClick={cancel}>
-                Stop checking
-              </button>
-            ) : (
-              <button
-                className={styles.secondary}
-                disabled={!ready || !companies.length}
-                onClick={() => checkCompanies()}
-              >
-                <RefreshCw size={15} /> Check company filings
-              </button>
-            )}
+          <div>
+            <Wallet size={18} />
+            <strong>{ready ? funds.length : "—"}</strong>
+            <span>Funds on your shelf</span>
+          </div>
+          <div>
+            <CheckCircle2 size={18} />
+            <strong>
+              {ready
+                ? companies.filter((c) => c.review.reviewedAt).length
+                : "—"}
+            </strong>
+            <span>Companies with a review</span>
           </div>
         </div>
-        <div className={styles.toolbar}>
-          <form onSubmit={saveEntity}>
-            <label htmlFor="watch-ticker" className={styles.srOnly}>
-              Company or fund ticker to save
+        <section className={styles.panel} aria-labelledby="watchlist-title">
+          <div className={styles.sectionHeading}>
+            <div>
+              <h2 id="watchlist-title">Your watchlist</h2>
+              <p>
+                Saved companies from Workspace and Market, plus your Funds
+                shelf.
+              </p>
+            </div>
+            <div className={styles.actions}>
+              {busy ? (
+                <button className={styles.secondary} onClick={cancel}>
+                  Stop checking
+                </button>
+              ) : (
+                <button
+                  className={styles.secondary}
+                  disabled={!ready || !companies.length}
+                  onClick={() => checkCompanies()}
+                >
+                  <RefreshCw size={15} /> Check company filings
+                </button>
+              )}
+            </div>
+          </div>
+          <div className={styles.toolbar}>
+            <form onSubmit={saveEntity}>
+              <label htmlFor="watch-ticker" className={styles.srOnly}>
+                Company or fund ticker to save
+              </label>
+              <Search size={17} aria-hidden="true" />
+              <input
+                id="watch-ticker"
+                value={ticker}
+                onChange={(e) => setTicker(e.target.value)}
+                placeholder="Save a ticker: JPM, VOO…"
+                maxLength={15}
+                autoComplete="off"
+              />
+              <button className={styles.primary} disabled={!ready || saving}>
+                {saving ? "Resolving…" : "Save ticker"}
+              </button>
+            </form>
+            <label>
+              Show
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              >
+                <option value="all">All saved entities</option>
+                <option value="company">Companies</option>
+                <option value="fund">Funds</option>
+                <option value="attention">Needs attention</option>
+              </select>
             </label>
-            <Search size={17} aria-hidden="true" />
-            <input
-              id="watch-ticker"
-              value={ticker}
-              onChange={(e) => setTicker(e.target.value)}
-              placeholder="Save a ticker: JPM, VOO…"
-              maxLength={15}
-              autoComplete="off"
-            />
-            <button className={styles.primary} disabled={!ready || saving}>
-              {saving ? "Resolving…" : "Save ticker"}
-            </button>
-          </form>
-          <label>
-            Show
-            <select value={filter} onChange={(e) => setFilter(e.target.value)}>
-              <option value="all">All saved entities</option>
-              <option value="company">Companies</option>
-              <option value="fund">Funds</option>
-              <option value="attention">Needs attention</option>
-            </select>
-          </label>
-        </div>
-        <p role="status" className={styles.status}>
-          {error || storageError || status}
-        </p>
-        {!ready && <p role="status">Loading your watchlist…</p>}
-        {ready && !watchlist.length && (
-          <div className={styles.empty}>
-            <Bookmark size={28} />
-            <h3>Start with a company or fund you follow</h3>
-            <p>
-              Save a ticker above. In Analysis, use “Mark reviewed” to preserve
-              a financial baseline. Your notes stay in this browser.
-            </p>
-            <Link href="/analysis/JPM" prefetch={false}>
-              Explore JPMorgan analysis <ArrowUpRight size={15} />
-            </Link>
           </div>
-        )}
-        {ready && watchlist.length > 0 && !visible.length && (
-          <p className={styles.empty}>No saved entities match this filter.</p>
-        )}
-        <div className={styles.companyGrid}>
-          {visible.map((row: any) => {
-            const result = results[row.ticker];
-            const review = companyReview(data.companies[row.ticker]);
-            const href =
-              row.kind === "fund"
-                ? `/fund/${row.ticker}`
-                : `/analysis/${row.ticker}`;
-            return (
-              <article
-                key={`${row.kind}:${row.ticker}`}
-                className={styles.company}
-              >
-                <div className={styles.companyTitle}>
-                  <Link href={href} prefetch={false}>
-                    {row.ticker}
-                    <ArrowUpRight size={17} />
-                  </Link>
-                  <span>
-                    {row.kind === "fund" ? "Fund" : row.sources.join(" + ")}
-                  </span>
-                </div>
-                <h3>
-                  {result?.name ||
-                    row.name ||
-                    (row.kind === "fund" ? "Saved fund" : "Saved company")}
-                </h3>
-                {row.kind === "fund" ? (
-                  <p>
-                    Review historical reported holdings and portfolio
-                    concentration in Funds.
-                  </p>
-                ) : (
-                  <>
+          <p role="status" className={styles.status}>
+            {error || storageError || status}
+          </p>
+          {!ready && <p role="status">Loading your watchlist…</p>}
+          {ready && !watchlist.length && (
+            <div className={styles.empty}>
+              <Bookmark size={28} />
+              <h3>Start with a company or fund you follow</h3>
+              <p>
+                Save a ticker above. In Analysis, use “Mark reviewed” to
+                preserve a financial baseline. Your notes stay in this browser.
+              </p>
+              <Link href="/analysis/JPM" prefetch={false}>
+                Explore JPMorgan analysis <ArrowUpRight size={15} />
+              </Link>
+            </div>
+          )}
+          {ready && watchlist.length > 0 && !visible.length && (
+            <p className={styles.empty}>No saved entities match this filter.</p>
+          )}
+          <div className={styles.companyGrid}>
+            {visible.map((row: any) => {
+              const result = results[row.ticker];
+              const review = companyReview(data.companies[row.ticker]);
+              const href =
+                row.kind === "fund"
+                  ? `/fund/${row.ticker}`
+                  : `/analysis/${row.ticker}`;
+              return (
+                <article
+                  key={`${row.kind}:${row.ticker}`}
+                  className={styles.company}
+                >
+                  <div className={styles.companyTitle}>
+                    <Link href={href} prefetch={false}>
+                      {row.ticker}
+                      <ArrowUpRight size={17} />
+                    </Link>
+                    <span>
+                      {row.kind === "fund" ? "Fund" : row.sources.join(" + ")}
+                    </span>
+                  </div>
+                  <h3>
+                    {result?.name ||
+                      row.name ||
+                      (row.kind === "fund" ? "Saved fund" : "Saved company")}
+                  </h3>
+                  {row.kind === "fund" ? (
                     <p>
-                      {review.reviewedAt ? (
-                        <>
-                          Reviewed{" "}
-                          <strong>{review.reviewedAt.slice(0, 10)}</strong>
-                          {review.period
-                            ? ` · ${review.basis} ending ${review.period}`
-                            : ""}
-                          {review.asOf ? ` · filing cutoff ${review.asOf}` : ""}
-                        </>
-                      ) : (
-                        "No company review baseline yet. Open Analysis and mark a period reviewed."
-                      )}
+                      Review historical reported holdings and portfolio
+                      concentration in Funds.
                     </p>
-                    {result?.error && (
-                      <p className={styles.failure} role="alert">
-                        {result.error}
-                      </p>
-                    )}
-                    {result?.coverage && (
-                      <div className={styles.checkResult}>
-                        <strong>
-                          {result.count == null
-                            ? "Recent filings loaded · establish a review baseline in Analysis"
-                            : `${result.coverage.completeSinceReview ? "" : "At least "}${result.count} report/event filings after ${result.since}`}
-                        </strong>
-                        <p>
-                          {result.coverage.loaded.toLocaleString()} metadata
-                          records checked ·{" "}
-                          {result.coverage.from || "No dated records"}
-                          {result.coverage.to
-                            ? ` to ${result.coverage.to}`
-                            : ""}
-                          .{" "}
-                          {result.coverage.archiveOverlap
-                            ? "Unloaded archives overlap this review window."
-                            : "Archive documents are not included."}
-                          {result.coverage.omitted > 0
-                            ? ` ${result.coverage.omitted} invalid records or archives were omitted.`
-                            : ""}
-                        </p>
-                        {result.sameDay > 0 && (
-                          <p>
-                            {result.sameDay} filing(s) on the review date are
-                            excluded; filing dates cannot establish whether they
-                            arrived before your review.
-                          </p>
-                        )}
-                        {result.filings.length > 0 && (
-                          <ul>
-                            {result.filings.slice(0, 3).map((filing: any) => (
-                              <li key={filing.accession}>
-                                <a
-                                  href={filing.documentUrl || filing.indexUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  {filing.form} · {filing.filingDate}{" "}
-                                  <ArrowUpRight size={12} />
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        <small>
-                          Checked{" "}
-                          {result.observedAt?.slice(0, 19).replace("T", " ")}{" "}
-                          UTC
-                        </small>
-                      </div>
-                    )}
-                  </>
-                )}
-                <div className={styles.rowActions}>
-                  <Link href={href} prefetch={false}>
-                    {row.kind === "fund" ? "Open holdings" : "Open analysis"}
-                  </Link>
-                  {row.kind === "company" && (
+                  ) : (
                     <>
-                      <Link prefetch={false} href={`/filings/${row.ticker}`}>
-                        Filings
-                      </Link>
-                      <button
-                        disabled={busy}
-                        onClick={() => checkCompanies([row])}
-                      >
-                        Check filings
-                      </button>
+                      <p>
+                        {review.reviewedAt ? (
+                          <>
+                            Reviewed{" "}
+                            <strong>{review.reviewedAt.slice(0, 10)}</strong>
+                            {review.period
+                              ? ` · ${review.basis} ending ${review.period}`
+                              : ""}
+                            {review.asOf
+                              ? ` · filing cutoff ${review.asOf}`
+                              : ""}
+                          </>
+                        ) : (
+                          "No company review baseline yet. Open Analysis and mark a period reviewed."
+                        )}
+                      </p>
+                      {result?.error && (
+                        <p className={styles.failure} role="alert">
+                          {result.error}
+                        </p>
+                      )}
+                      {result?.coverage && (
+                        <div className={styles.checkResult}>
+                          <strong>
+                            {result.count == null
+                              ? "Recent filings loaded · establish a review baseline in Analysis"
+                              : `${result.coverage.completeSinceReview ? "" : "At least "}${result.count} report/event filings after ${result.since}`}
+                          </strong>
+                          <p>
+                            {result.coverage.loaded.toLocaleString()} metadata
+                            records checked ·{" "}
+                            {result.coverage.from || "No dated records"}
+                            {result.coverage.to
+                              ? ` to ${result.coverage.to}`
+                              : ""}
+                            .{" "}
+                            {result.coverage.archiveOverlap
+                              ? "Unloaded archives overlap this review window."
+                              : "Archive documents are not included."}
+                            {result.coverage.omitted > 0
+                              ? ` ${result.coverage.omitted} invalid records or archives were omitted.`
+                              : ""}
+                          </p>
+                          {result.sameDay > 0 && (
+                            <p>
+                              {result.sameDay} filing(s) on the review date are
+                              excluded; filing dates cannot establish whether
+                              they arrived before your review.
+                            </p>
+                          )}
+                          {result.filings.length > 0 && (
+                            <ul>
+                              {result.filings.slice(0, 3).map((filing: any) => (
+                                <li key={filing.accession}>
+                                  <a
+                                    href={filing.documentUrl || filing.indexUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    {filing.form} · {filing.filingDate}{" "}
+                                    <ArrowUpRight size={12} />
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          <small>
+                            Checked{" "}
+                            {result.observedAt?.slice(0, 19).replace("T", " ")}{" "}
+                            UTC
+                          </small>
+                        </div>
+                      )}
                     </>
                   )}
-                  {(row.kind === "fund" ||
-                    row.sources.includes("Workspace")) && (
-                    <button onClick={() => unsave(row)}>
-                      Unsave{row.sources.includes("Market") ? " Workspace" : ""}
-                    </button>
-                  )}
-                  {row.sources.includes("Market") && (
-                    <Link href="/market?screen=watchlist" prefetch={false}>
-                      Manage Market list
+                  <div className={styles.rowActions}>
+                    <Link href={href} prefetch={false}>
+                      {row.kind === "fund" ? "Open holdings" : "Open analysis"}
                     </Link>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-        <p className={styles.footnote}>
-          Checks run only when you request them, for up to 20 companies at a
-          time. They cover report and event forms in the recent SEC submissions
-          feed, not full archived history or financial changes. No emails or
-          background notifications are sent.
-        </p>
-      </section>
-      <ResearchVault />
+                    {row.kind === "company" && (
+                      <>
+                        <Link prefetch={false} href={`/filings/${row.ticker}`}>
+                          Filings
+                        </Link>
+                        <button
+                          disabled={busy}
+                          onClick={() => checkCompanies([row])}
+                        >
+                          Check filings
+                        </button>
+                      </>
+                    )}
+                    {(row.kind === "fund" ||
+                      row.sources.includes("Workspace")) && (
+                      <button onClick={() => unsave(row)}>
+                        Unsave
+                        {row.sources.includes("Market") ? " Workspace" : ""}
+                      </button>
+                    )}
+                    {row.sources.includes("Market") && (
+                      <Link href="/market?screen=watchlist" prefetch={false}>
+                        Manage Market list
+                      </Link>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <p className={styles.footnote}>
+            Checks run only when you request them, for up to 20 companies at a
+            time. They cover report and event forms in the recent SEC
+            submissions feed, not full archived history or financial changes. No
+            emails or background notifications are sent.
+          </p>
+        </section>
+      </div>
+      <div hidden={hubView !== "library"}>
+        <ResearchVault />
+      </div>
     </div>
   );
 }

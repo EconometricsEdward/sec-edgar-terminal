@@ -110,7 +110,7 @@ export default function ResearchVault() {
       setStatus(
         safety
           ? "Safety backup download started. Confirm you have kept the file before restoring selected stores."
-          : "Full research backup download started. It includes all six research tools and every saved fund notebook in this browser.",
+          : "Full research backup download started. It includes saved research across the terminal, fund notebooks, and portfolios with private notes and allocation amounts. Keep this file secure.",
       );
     } catch (error) {
       setStatus(
@@ -195,8 +195,8 @@ export default function ResearchVault() {
           </span>
           <h2 id="vault-title">Every insight, one place.</h2>
           <p>
-            Find saved evidence, research notes, searches, and pending reviews
-            across the terminal.
+            Find saved evidence, research notes, portfolios, searches, and
+            pending reviews across the terminal.
           </p>
         </div>
         <button className={styles.button} type="button" onClick={refresh}>
@@ -240,6 +240,7 @@ export default function ResearchVault() {
               "Filings",
               "Market",
               "Funds",
+              "Portfolios",
             ].map((s) => (
               <option key={s}>{s}</option>
             ))}
@@ -259,6 +260,8 @@ export default function ResearchVault() {
               ["queue", "Pending reviews"],
               ["company", "Companies"],
               ["fund", "Funds"],
+              ["portfolio", "Portfolios"],
+              ["position", "Portfolio positions"],
             ].map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -289,11 +292,17 @@ export default function ResearchVault() {
               </h3>
               {entry.text && <p>{entry.text}</p>}
               {entry.text &&
-                ["note", "evidence", "queue"].includes(entry.type) && (
+                ["note", "evidence", "queue", "position"].includes(
+                  entry.type,
+                ) && (
                   <details className={styles.savedText}>
                     <summary>
                       Read saved{" "}
-                      {entry.type === "evidence" ? "evidence" : "notes"}
+                      {entry.type === "evidence"
+                        ? "evidence"
+                        : entry.type === "position"
+                          ? "position details"
+                          : "notes"}
                     </summary>
                     <p>{entry.text}</p>
                     <Link href={entry.href}>
@@ -314,7 +323,7 @@ export default function ResearchVault() {
           <p>
             {vault.entries.length
               ? "Try another ticker, topic, or tool."
-              : "Save a financial metric, a filing passage, a search, or a fund. It will appear here with a link back to its research tool."}
+              : "Save a financial metric, a filing passage, a search, a fund, or a portfolio. It will appear here with a link back to its research tool."}
           </p>
           <Link href="/analysis/JPM?view=notebook">
             Open a company notebook <ArrowUpRight size={14} />
@@ -361,12 +370,14 @@ export default function ResearchVault() {
         <summary>
           <ShieldCheck size={18} />
           <span>Backup and restore your complete research library</span>
-          <span className={styles.badge}>6 research tools</span>
+          <span className={styles.badge}>All saved research</span>
         </summary>
         <p>
           Download a portable copy before clearing browser data or moving
-          computers. Backups include quotations and your private notes. Research
-          stays in this browser until you export it.
+          computers. Full backups include saved portfolios, supplied allocation
+          amounts, quotations, and private notes. Keep the downloaded file
+          secure. Your saved research stays in this browser until you export it.
+          Older backups remain supported and only replace the stores you select.
         </p>
         <div className={styles.actions}>
           <button
