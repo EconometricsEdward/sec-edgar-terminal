@@ -28,6 +28,16 @@ type Props = {
   onRequestHandled?: () => void;
 };
 const copy = (value: any) => JSON.parse(JSON.stringify(value));
+const viewSignature = (value: ViewValue) =>
+  JSON.stringify({
+    query: value.query,
+    filter: value.filter,
+    industryFilter: value.industryFilter,
+    sort: value.sort,
+    direction: value.direction,
+    columns: value.columns,
+    preset: value.preset,
+  });
 function clearViewRequest() {
   const url = new URL(window.location.href);
   if (url.searchParams.has("portfolioView")) {
@@ -54,6 +64,7 @@ export default function PortfolioViews({
     current: [],
   });
   const [loadedId, setLoadedId] = useState("");
+  const [restorationRevision, setRestorationRevision] = useState(0);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -62,7 +73,7 @@ export default function PortfolioViews({
   const requestRef = useRef({ requestedViewId, requestNonce });
   const handledRequest = useRef("");
   const restoring = useRef<string | null>(null);
-  const valueJson = JSON.stringify(value);
+  const valueJson = viewSignature(value);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
@@ -94,7 +105,8 @@ export default function PortfolioViews({
           const next = copy(
             linked?.value || current?.value || DEFAULT_PORTFOLIO_VIEW,
           );
-          restoring.current = JSON.stringify(next);
+          restoring.current = viewSignature(next);
+          setRestorationRevision((revision) => revision + 1);
           onChangeRef.current(next);
           setLoadedId(portfolioId);
           setName("");
@@ -145,7 +157,8 @@ export default function PortfolioViews({
       );
       if (view) {
         const next = copy(view.value);
-        restoring.current = JSON.stringify(next);
+        restoring.current = viewSignature(next);
+        setRestorationRevision((revision) => revision + 1);
         onChangeRef.current(next);
         setMessage(`Loaded ${view.name}.`);
         setError("");
@@ -176,14 +189,10 @@ export default function PortfolioViews({
         const latest = readPortfolioViews(
           localStorage.getItem(PORTFOLIO_VIEWS_KEY),
         );
-        if (
-          JSON.stringify(
-            latest.current.find(
-              (entry: any) => entry.portfolioId === portfolioId,
-            )?.value,
-          ) === valueJson
-        )
-          return;
+        const current = latest.current.find(
+          (entry: any) => entry.portfolioId === portfolioId,
+        )?.value;
+        if (current && viewSignature(current) === valueJson) return;
         setStore(
           writePortfolioView(localStorage, {
             mode: "current",
@@ -202,10 +211,10 @@ export default function PortfolioViews({
       }
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [portfolioId, loadedId, valueJson]);
+  }, [portfolioId, loadedId, valueJson, restorationRevision]);
 
   const selected = store.views.find(
-    (entry: any) => JSON.stringify(entry.value) === valueJson,
+    (entry: any) => viewSignature(entry.value) === valueJson,
   );
   const preset = PORTFOLIO_VIEW_PRESETS.find(
     (entry) => entry.id === value.preset,
