@@ -1,0 +1,114 @@
+.root {
+  color: var(--p-text, #e8edf5);
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+.root :is(h3, p) {
+  margin: 0;
+}
+.heading {
+  display: flex;
+  gap: 28px;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.heading h3 {
+  font-size: 24px;
+  letter-spacing: -0.025em;
+}
+.heading > p {
+  max-width: 440px;
+  color: var(--p-muted, #a7b4c7);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.root .eyebrow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 7px;
+  color: var(--p-gold, #f7c65a);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 10px;
+  font-weight: 750;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 20px;
+  border: 1px solid var(--p-line, #29364c);
+  border-radius: 13px;
+  background: var(--p-panel, #101a2b);
+}
+.card[data-attention="true"] {
+  border-top: 2px solid
+    color-mix(in srgb, var(--p-gold, #f7c65a) 70%, transparent);
+}
+.label {
+  color: var(--p-muted, #a7b4c7);
+  font-size: 12px;
+  font-weight: 650;
+}
+.card > strong {
+  font-size: clamp(22px, 2.5vw, 29px);
+  line-height: 1.2;
+  font-weight: 740;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.description {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--p-muted, #a7b4c7);
+}
+.root .card button {
+  margin-top: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  border: 0;
+  border-top: 1px solid var(--p-line, #29364c);
+  border-radius: 0;
+  background: transparent;
+  padding: 13px 0 0;
+  color: var(--p-gold, #f7c65a);
+  font-size: 12px;
+  font-weight: 650;
+  min-height: 44px;
+  cursor: pointer;
+}
+.root .card button:hover {
+  text-decoration: underline;
+}
+.root button:focus-visible {
+  outline: 2px solid var(--p-gold, #f7c65a);
+  outline-offset: 4px;
+}
+@media (max-width: 950px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .heading {
+    display: grid;
+    gap: 10px;
+  }
+}
+@media (max-width: 600px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+  .card {
+    padding: 17px;
+  }
+}

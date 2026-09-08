@@ -165,7 +165,7 @@
 }
 .nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 6px;
   gap: 6px;
   border: 1px solid var(--a-line);
@@ -187,6 +187,29 @@
 }
 .root .nav button:hover {
   border-color: var(--a-gold);
+}
+.retained,
+.subpanel {
+  min-width: 0;
+}
+.subpanel {
+  display: grid;
+  gap: 20px;
+}
+.root [hidden] {
+  display: none !important;
+}
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--a-line);
+}
+.root .subnav button[aria-pressed="true"] {
+  color: var(--a-gold);
+  border-color: var(--a-gold);
+  background: color-mix(in srgb, var(--a-gold) 9%, var(--a-panel));
 }
 .panel {
   display: grid;

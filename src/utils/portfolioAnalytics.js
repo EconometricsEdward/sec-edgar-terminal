@@ -324,12 +324,21 @@ export function buildPortfolioAnalytics(
 
   const metrics = METRICS.map((definition) => {
     let notApplicableCount = 0;
+    const eligibleCiks = [];
+    const missingCiks = [];
+    const notApplicableCiks = [];
     const observations = [];
     const coveredIssuers = [];
     for (const issuer of operatingIssuers) {
       const company = byCik[issuer.cik];
       const state = metricState(issuer, company, definition);
-      if (state === "not-applicable") notApplicableCount++;
+      if (state === "not-applicable") {
+        notApplicableCount++;
+        notApplicableCiks.push(issuer.cik);
+      } else {
+        eligibleCiks.push(issuer.cik);
+        if (state === "missing") missingCiks.push(issuer.cik);
+      }
       if (state !== "available") continue;
       const point = company.metrics[definition.id];
       const rowId = issuer.rowIds[0];
@@ -386,6 +395,9 @@ export function buildPortfolioAnalytics(
       eligibleCount,
       missingCount: eligibleCount - observations.length,
       notApplicableCount,
+      eligibleCiks,
+      missingCiks,
+      notApplicableCiks,
       median: quantile(values, 0.5),
       p25: quantile(values, 0.25),
       p75: quantile(values, 0.75),
