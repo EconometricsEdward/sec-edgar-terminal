@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   allocationSummary,
   companyAvailable,
@@ -51,7 +50,6 @@ function present(point: any) {
 }
 
 export default function DemoResults() {
-  const router = useRouter();
   const [demo, setDemo] = useState<any>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -169,8 +167,10 @@ export default function DemoResults() {
     setSaveError("");
     try {
       const { portfolio } = saveDemoPortfolio(localStorage, demo);
-      window.dispatchEvent(new Event("research-storage"));
-      router.push(hubDestination("portfolios", { portfolioId: portfolio.id }));
+      // Re-enter the workspace with its saved portfolio route initialized.
+      window.location.assign(
+        hubDestination("portfolios", { portfolioId: portfolio.id }),
+      );
     } catch (failure) {
       setSaveError(
         failure instanceof Error
