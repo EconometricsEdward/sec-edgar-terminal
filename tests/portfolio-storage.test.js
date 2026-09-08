@@ -27,6 +27,7 @@ import {
 } from "../src/utils/portfolioModel.js";
 import { safeInternalPath } from "../src/utils/siteRoutes.js";
 import { buildPortfolioCompany } from "../src/utils/portfolioResearchServer.js";
+import { createPortfolioBaseline } from "../src/utils/portfolioChanges.js";
 
 const now = "2026-09-07T18:00:00.000Z";
 const companyKey = "edgar:research-workspace:v1";
@@ -165,6 +166,53 @@ test("new portfolios remain research universes without invented weights and surv
   assert.equal(
     readPortfolios(browser.getItem(PORTFOLIOS_KEY)).portfolios[0].name,
     "Company research",
+  );
+});
+
+test("compact comparison checkpoints survive browser reloads and private backup restores while older portfolios remain valid", () => {
+  const captured = snapshot([company()]);
+  const baseline = createPortfolioBaseline(captured);
+  const document = portfolio({
+    snapshot: captured,
+    comparisonBaseline: baseline,
+  });
+  const browser = storage();
+  writePortfolio(browser, { mode: "create", portfolio: document, now });
+  const saved = readPortfolios(browser.getItem(PORTFOLIOS_KEY)).portfolios[0];
+  assert.deepEqual(saved.comparisonBaseline, baseline);
+  const target = storage();
+  const backup = parseResearchBackup(exportResearchBackup(browser, now));
+  restoreResearchVault(
+    target,
+    backup,
+    [PORTFOLIOS_KEY],
+    exportResearchBackup(target, now),
+  );
+  assert.deepEqual(
+    readPortfolios(target.getItem(PORTFOLIOS_KEY)).portfolios[0]
+      .comparisonBaseline,
+    baseline,
+  );
+  const legacy = { ...document };
+  delete legacy.comparisonBaseline;
+  assert.equal(validatePortfolio(legacy).comparisonBaseline, undefined);
+  const invalid = structuredClone(document);
+  invalid.comparisonBaseline.sources[0] = "https://example.com/private";
+  assert.throws(() => validatePortfolio(invalid), /SEC.gov/);
+  assert.throws(
+    () =>
+      writePortfolio(browser, {
+        mode: "update",
+        id: document.id,
+        patch: { comparisonBaseline: invalid.comparisonBaseline },
+        now,
+      }),
+    /SEC.gov/,
+  );
+  assert.deepEqual(
+    readPortfolios(browser.getItem(PORTFOLIOS_KEY)).portfolios[0]
+      .comparisonBaseline,
+    baseline,
   );
 });
 
@@ -565,6 +613,7 @@ test("100 company snapshots built by the shared research service fit the saved p
   const document = portfolio({
     rows: rows(companies.map((item) => ({ ticker: item.ticker }))),
     snapshot: captured,
+    comparisonBaseline: createPortfolioBaseline(captured),
   });
   const browser = storage();
   writePortfolio(browser, { mode: "create", portfolio: document, now });

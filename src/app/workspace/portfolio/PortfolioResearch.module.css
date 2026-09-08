@@ -9,6 +9,18 @@
   display: grid;
   gap: 20px;
 }
+.root .focusButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  color: var(--p-gold);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+  padding: 4px 0;
+}
+.root .focusButton:hover { text-decoration: underline; }
+.root .intro h2 { font-size: clamp(24px, 2.6vw, 31px); }
 .root h2 {
   font-size: clamp(26px, 3.2vw, 38px);
   line-height: 1.2;

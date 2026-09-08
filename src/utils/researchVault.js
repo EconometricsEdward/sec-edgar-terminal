@@ -7,6 +7,9 @@ import { readFilingsNotebook } from "./filingsNotebook.js";
 import { FUND_BOARDS_KEY, readFundBoards } from "./fundBoards.js";
 import { fundWorkspacePath } from "./fundWorkspaceSettings.js";
 import { PORTFOLIOS_KEY, readPortfolios } from "./portfolioStorage.js";
+import { RESEARCH_INBOX_KEY, readResearchInbox } from "./researchInbox.js";
+import { PORTFOLIO_VIEWS_KEY, readPortfolioViews } from "./portfolioViews.js";
+import { RESEARCH_BRIEFS_KEY, readResearchBriefs } from "./researchBriefs.js";
 
 export const RESEARCH_STORAGE_EVENT = "research-storage";
 export const RESEARCH_BACKUP_LIMIT = 16 * 1024 * 1024;
@@ -48,6 +51,24 @@ export const RESEARCH_STORES = [
     label: "Portfolio research and private allocations",
     source: "Portfolios",
     kind: "portfolios",
+  },
+  {
+    key: RESEARCH_INBOX_KEY,
+    label: "Research inbox review and snooze state",
+    source: "Inbox",
+    kind: "research-inbox",
+  },
+  {
+    key: PORTFOLIO_VIEWS_KEY,
+    label: "Saved portfolio views and preferences",
+    source: "Portfolios",
+    kind: "portfolio-views",
+  },
+  {
+    key: RESEARCH_BRIEFS_KEY,
+    label: "Research briefs and private writing",
+    source: "Briefs",
+    kind: "research-briefs",
   },
 ];
 const keys = new Set(RESEARCH_STORES.map((s) => s.key));
@@ -367,6 +388,10 @@ export function validateResearchStore(key, raw) {
   const data = JSON.parse(raw);
   // Portfolios also contain a validated internal fund-workflow destination.
   if (key === PORTFOLIOS_KEY) return readPortfolios(raw);
+  // Dedicated readers enforce each browser-local store's schema and limits.
+  if (key === RESEARCH_INBOX_KEY) return readResearchInbox(raw);
+  if (key === PORTFOLIO_VIEWS_KEY) return readPortfolioViews(raw);
+  if (key === RESEARCH_BRIEFS_KEY) return readResearchBriefs(raw);
   inspectTree(data);
   if (key === "edgar-funds-shelf-v1") {
     requireShape(
@@ -711,9 +736,100 @@ function companyEvidenceDestination(t, evidence) {
   }
   return "/workspace?view=library";
 }
+
+/** Preserve citations already captured by a research tool; never infer a SEC URL. */
+export function researchEvidenceSources(evidence, context = {}) {
+  const sources = [],
+    seen = new Set();
+  let inspected = 0;
+  const captureDate = (value) =>
+    typeof value === "string" &&
+    value.length <= 40 &&
+    /^\d{4}-\d{2}-\d{2}T/.test(value) &&
+    Number.isFinite(Date.parse(value))
+      ? value
+      : "";
+  function visit(value, inherited = {}, depth = 0) {
+    if (!value || depth > 7 || ++inspected > 2000 || sources.length >= 100)
+      return;
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 1000))
+        visit(item, inherited, depth + 1);
+      return;
+    }
+    if (!object(value)) return;
+    const capturedAt =
+      [value.capturedAt, value.collectedAt, value.observedAt, value.savedAt]
+        .map(captureDate)
+        .find(Boolean) ||
+      inherited.capturedAt ||
+      "";
+    const label =
+      [
+        value.label || value.tag || value.form || inherited.label,
+        value.accession,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+        .slice(0, 300) || "SEC source";
+    for (const key of [
+      "url",
+      "documentUrl",
+      "sourceUrl",
+      "docUrl",
+      "indexUrl",
+    ]) {
+      const url = value[key];
+      if (typeof url !== "string" || url.length > 2000 || seen.has(url))
+        continue;
+      try {
+        const parsed = new URL(url);
+        if (
+          parsed.protocol !== "https:" ||
+          !["sec.gov", "www.sec.gov", "data.sec.gov"].includes(
+            parsed.hostname,
+          ) ||
+          parsed.username ||
+          parsed.password ||
+          parsed.port
+        )
+          continue;
+        seen.add(url);
+        sources.push({ url, label, ...(capturedAt ? { capturedAt } : {}) });
+        if (sources.length >= 100) return;
+      } catch {
+        /* Missing or unsafe source fields never become citations. */
+      }
+    }
+    for (const key of [
+      "point",
+      "source",
+      "sources",
+      "filing",
+      "calculations",
+      "evidence",
+    ])
+      if (value[key]) visit(value[key], { label, capturedAt }, depth + 1);
+  }
+  visit(evidence, {
+    label: string(context.label).slice(0, 300),
+    capturedAt: captureDate(context.capturedAt),
+  });
+  return sources;
+}
+
 function entriesFor(source, data, store = {}) {
   const rows = [];
-  const add = (type, t, title, text, href, date = "", id = "") =>
+  const add = (
+    type,
+    t,
+    title,
+    text,
+    href,
+    date = "",
+    id = "",
+    evidence = null,
+  ) =>
     rows.push({
       id: `${source}:${type}:${id || rows.length}`,
       type,
@@ -723,7 +839,58 @@ function entriesFor(source, data, store = {}) {
       text: string(text),
       href,
       date: string(date),
+      sources: researchEvidenceSources(evidence, {
+        label: title,
+        capturedAt: date,
+      }),
     });
+  // Inbox state annotates derived items. Indexing it as a queue would duplicate
+  // the legacy queues that the inbox itself reads from this library.
+  if (store.kind === "research-inbox") return rows;
+  if (store.kind === "portfolio-views") {
+    for (const view of data.views)
+      add(
+        "search",
+        "",
+        view.name,
+        [
+          "Saved portfolio view",
+          view.value.preset,
+          view.value.query,
+          view.value.industryFilter,
+          `${view.value.columns.length} financial columns`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        `/workspace?view=portfolios&portfolioView=${encodeURIComponent(view.id)}`,
+        view.updatedAt,
+        `view:${view.id}`,
+      );
+    return rows;
+  }
+  if (store.kind === "research-briefs") {
+    for (const brief of data.briefs)
+      add(
+        "brief",
+        brief.ticker,
+        brief.title,
+        [
+          brief.status,
+          brief.question,
+          brief.thesis,
+          brief.risks,
+          brief.nextSteps,
+          `${brief.sources.length} attached SEC sources`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        `/workspace?view=briefs&brief=${encodeURIComponent(brief.id)}`,
+        brief.updatedAt,
+        brief.id,
+        brief,
+      );
+    return rows;
+  }
   if (store.kind === "fund-note") {
     if (data)
       add(
@@ -777,6 +944,7 @@ function entriesFor(source, data, store = {}) {
           href,
           board.capturedAt,
           `${board.id}:${entry.id}`,
+          entry,
         );
     }
     return rows;
@@ -876,6 +1044,7 @@ function entriesFor(source, data, store = {}) {
           `/analysis/${t}?view=notebook`,
           question.reviewedAt || question.updatedAt,
           `${t}:question:${question.id}`,
+          question,
         );
       for (const rule of c.analysisRules || [])
         add(
@@ -896,6 +1065,7 @@ function entriesFor(source, data, store = {}) {
           companyEvidenceDestination(t, e),
           e.collectedAt || e.point?.period?.end,
           `${t}:${i}`,
+          e,
         );
       for (const [i, v] of (c.analysisViews || []).entries())
         add(
@@ -992,6 +1162,7 @@ function entriesFor(source, data, store = {}) {
           : compareDestination(peers, { ...p.settings, view: "notebook" }),
         p.savedAt,
         p.id,
+        p,
       );
     }
   } else if (source === "Disclosures") {
@@ -1015,6 +1186,7 @@ function entriesFor(source, data, store = {}) {
           href,
           f.discoveredAt || f.filingDate,
           `${s.id}:${f.id}`,
+          f,
         );
     }
     for (const c of data.collections)
@@ -1027,6 +1199,7 @@ function entriesFor(source, data, store = {}) {
           pathWithSettings("/disclosures", e.settings),
           e.observedAt || e.filingDate,
           `${c.id}:${e.id}`,
+          e,
         );
   } else if (source === "Filings") {
     for (const [t, c] of Object.entries(data.companies)) {
@@ -1041,6 +1214,7 @@ function entriesFor(source, data, store = {}) {
             href,
             r.filing.filingDate,
             `${t}:${id}`,
+            r,
           );
         else if (r.notes)
           add(
@@ -1051,6 +1225,7 @@ function entriesFor(source, data, store = {}) {
             href,
             r.reviewedAt || r.filing.filingDate,
             `${t}:${id}`,
+            r,
           );
       }
       for (const e of c.evidence)
@@ -1064,6 +1239,7 @@ function entriesFor(source, data, store = {}) {
           `/filings/${t}?view=notebook`,
           e.filing.filingDate,
           `${t}:${e.id}`,
+          e,
         );
       for (const v of c.views)
         add(
@@ -1169,6 +1345,7 @@ export function readResearchVault(storage) {
       evidence: entries.filter((e) => e.type === "evidence").length,
       searches: entries.filter((e) => e.type === "search").length,
       queued: entries.filter((e) => e.type === "queue").length,
+      briefs: entries.filter((e) => e.type === "brief").length,
       companies: new Set(
         entries.flatMap((e) => e.ticker.split(",").filter(ticker)),
       ).size,

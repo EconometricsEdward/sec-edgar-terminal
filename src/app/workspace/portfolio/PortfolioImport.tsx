@@ -38,6 +38,8 @@ type Props = {
   ) => void;
   onCancel?: () => void;
   initialName?: string;
+  initialAction?: "new" | "paste" | "watchlist";
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 const IDENTITY_FIELDS = ["ticker", "company_name", "cik", "exchange"];
@@ -82,14 +84,23 @@ export default function PortfolioImport({
   onCommit,
   onCancel,
   initialName = "My research universe",
+  initialAction = "new",
+  onDirtyChange,
 }: Props) {
   const [name, setName] = useState(initialName);
   const [rows, setRows] = useState<any[]>(initialRows);
   const [parsed, setParsed] = useState<any>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [sourceName, setSourceName] = useState("");
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [paste, setPaste] = useState("");
+  const [pasteOpen, setPasteOpen] = useState(initialAction !== "new");
+  const [paste, setPaste] = useState(
+    initialAction === "watchlist"
+      ? watchlist
+          .map((entry) => (typeof entry === "string" ? entry : entry.ticker))
+          .filter(Boolean)
+          .join("\n")
+      : "",
+  );
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -107,6 +118,24 @@ export default function PortfolioImport({
   const fileInput = useRef<HTMLInputElement>(null);
   const pasteInput = useRef<HTMLTextAreaElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
+  const [initialDraft] = useState(() => ({
+    name: initialName,
+    rows: JSON.stringify(initialRows),
+  }));
+  const rowSignature = useMemo(() => JSON.stringify(rows), [rows]);
+  const dirty =
+    name !== initialDraft.name ||
+    rowSignature !== initialDraft.rows ||
+    paste.length > 0 ||
+    parsed !== null ||
+    reading ||
+    applyImportSettings;
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => {
+    if (initialAction !== "new") pasteInput.current?.focus();
+  }, [initialAction]);
 
   useEffect(
     () => () => {
