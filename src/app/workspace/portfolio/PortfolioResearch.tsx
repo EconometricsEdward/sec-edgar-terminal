@@ -39,10 +39,15 @@ import {
 import { MAX_COMPARE_COMPANIES } from "../../../utils/compareLimits.js";
 import { downloadText } from "../../../utils/download.js";
 import s from "./PortfolioResearch.module.css";
+import { rowMatchesPortfolioView } from "../../../utils/portfolioViews.js";
+import { advancePortfolioBaseline } from "../../../utils/portfolioChanges.js";
 
 const PortfolioImport = dynamic(() => import("./PortfolioImport"), {
   loading: () => <p role="status">Opening import and review…</p>,
 });
+const PortfolioViews = dynamic(() => import("./PortfolioViews"));
+const CompanyFocus = dynamic(() => import("./CompanyFocus"));
+const PortfolioChanges = dynamic(() => import("./PortfolioChanges"));
 const METRICS: [string, string][] = [
   ["revenue", "Revenue"],
   ["revenueGrowth", "Revenue growth"],
@@ -129,7 +134,17 @@ const validSecUrl = (value: unknown) => {
   }
 };
 
-export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
+export default function PortfolioResearch({
+  watchlist,
+  navigationRequest,
+  onCreateBrief,
+  active = true,
+}: {
+  watchlist: any[];
+  navigationRequest?: any;
+  onCreateBrief: (draft: any) => void;
+  active?: boolean;
+}) {
   const workspace = useWorkspace();
   const [store, setStore] = useState<any>({
     version: 1,
@@ -140,6 +155,14 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [editor, setEditor] = useState<"new" | "edit" | null>(null);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const editorDirtyRef = useRef(false);
+  const [pendingNavigation, setPendingNavigation] = useState<any>(null);
+  const pendingNavigationRef = useRef<HTMLElement | null>(null);
+  const onEditorDirtyChange = useCallback((dirty: boolean) => {
+    editorDirtyRef.current = dirty;
+    setEditorDirty(dirty);
+  }, []);
   const [rename, setRename] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -150,6 +173,14 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
   const [filter, setFilter] = useState("all");
   const [industryFilter, setIndustryFilter] = useState("");
   const [sort, setSort] = useState("name");
+  const [preset, setPreset] = useState("overview");
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+  const [importStart, setImportStart] = useState<"new" | "paste" | "watchlist">(
+    "new",
+  );
+  const [importEpoch, setImportEpoch] = useState(0);
+  const handledNavigation = useRef(0);
+  const [consumedViewRequest, setConsumedViewRequest] = useState(0);
   const [direction, setDirection] = useState("asc");
   const [columns, setColumns] = useState(DEFAULT_COLUMNS);
   const [selected, setSelected] = useState<string[]>([]);
@@ -173,38 +204,48 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
     store.portfolios[0] ||
     null;
 
-  const acceptStore = useCallback((saved: any) => {
-    const active =
-      saved.portfolios.find((item: any) => item.id === saved.activeId) ||
-      saved.portfolios[0];
-    const key = documentKey(active);
-    if (currentContext.current !== key) {
-      if (editorOwner.current !== null) {
-        setMessage(
-          "The saved portfolio changed while the editor was open. Reopen Edit rows to review the current version before saving.",
+  const acceptStore = useCallback(
+    (saved: any, allowDraftReplacement = false) => {
+      const active =
+        saved.portfolios.find((item: any) => item.id === saved.activeId) ||
+        saved.portfolios[0];
+      const key = documentKey(active);
+      if (currentContext.current !== key) {
+        if (editorDirtyRef.current && !allowDraftReplacement) {
+          setMessage(
+            "Saved portfolios changed in another tab. Your unsaved draft remains open. Finish reviewing it or cancel to load the latest saved version.",
+          );
+          return;
+        }
+        if (editorOwner.current !== null) {
+          setMessage(
+            "The saved portfolio changed while the editor was open. Reopen Edit rows to review the current version before saving.",
+          );
+          editorOwner.current = null;
+        }
+        setEditor(null);
+        if (runOwner.current && runOwner.current.key !== key) {
+          controller.current?.abort();
+          runGeneration.current += 1;
+          runOwner.current = null;
+          setBusy(false);
+          setMessage(
+            "The saved portfolio changed. Research stopped to protect the newer version; run research again when ready.",
+          );
+        }
+        currentContext.current = key;
+        setWorkingSnapshot((current: any) =>
+          current?.ownerKey === key ? current : null,
         );
-        editorOwner.current = null;
+        setEvidence(null);
+        setCopyFallback("");
+        setSelected([]);
+        setFocusedRowId(null);
       }
-      setEditor(null);
-      if (runOwner.current && runOwner.current.key !== key) {
-        controller.current?.abort();
-        runGeneration.current += 1;
-        runOwner.current = null;
-        setBusy(false);
-        setMessage(
-          "The saved portfolio changed. Research stopped to protect the newer version; run research again when ready.",
-        );
-      }
-      currentContext.current = key;
-      setWorkingSnapshot((current: any) =>
-        current?.ownerKey === key ? current : null,
-      );
-      setEvidence(null);
-      setCopyFallback("");
-      setSelected([]);
-    }
-    setStore(saved);
-  }, []);
+      setStore(saved);
+    },
+    [],
+  );
 
   useEffect(() => {
     let restoreRequested = true;
@@ -249,11 +290,17 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
   useEffect(() => {
     if (evidence) evidenceRef.current?.focus();
   }, [evidence]);
+  useEffect(() => {
+    if (!active) setFocusedRowId(null);
+  }, [active]);
+  useEffect(() => {
+    if (active && pendingNavigation) pendingNavigationRef.current?.focus();
+  }, [active, pendingNavigation]);
 
   function persist(operation: any, notice = "") {
     try {
       const next = writePortfolio(localStorage, operation);
-      acceptStore(next);
+      acceptStore(next, true);
       setError("");
       if (notice) setMessage(notice);
       window.dispatchEvent(new Event("research-storage"));
@@ -287,6 +334,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
                   snapshot: null,
                   lastCheckedAt: null,
                   previousCheckedAt: null,
+                  comparisonBaseline: null,
                 },
               },
               "Rows saved. Review the analysis settings, then run research.",
@@ -299,6 +347,12 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
               "Research rows saved with the analysis settings you reviewed.",
             );
       if (next) {
+        onEditorDirtyChange(false);
+        if (pendingNavigation) {
+          setConsumedViewRequest(pendingNavigation.nonce || 0);
+          restoreDraftUrl(next.activeId);
+        }
+        setPendingNavigation(null);
         setEditor(null);
         setSelected([]);
         setWorkingSnapshot(null);
@@ -313,12 +367,22 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
     }
   }
   function openEditor(mode: "new" | "edit") {
+    if (editorDirtyRef.current) return;
+    onEditorDirtyChange(false);
     editorOwner.current = documentKey(document);
+    if (mode === "new") {
+      setImportStart("new");
+      setImportEpoch((value) => value + 1);
+    }
     setEditor(mode);
   }
   function selectPortfolio(id: string) {
+    if (id === document?.id) return;
+    if (editorDirtyRef.current) return;
     const url = new URL(window.location.href);
-    url.searchParams.delete("portfolio");
+    url.searchParams.set("view", "portfolios");
+    url.searchParams.set("portfolio", id);
+    url.searchParams.delete("row");
     window.history.replaceState(null, "", url);
     if (!persist({ mode: "activate", id })) return;
     setSelected([]);
@@ -329,6 +393,79 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
     setConfirmDelete(false);
     setMessage("");
   }
+  function restoreDraftUrl(portfolioId = document?.id) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", "portfolios");
+    if (portfolioId) url.searchParams.set("portfolio", portfolioId);
+    else url.searchParams.delete("portfolio");
+    for (const key of ["action", "row", "portfolioView"])
+      url.searchParams.delete(key);
+    window.history.replaceState(window.history.state, "", url);
+  }
+  function cancelEditor() {
+    editorOwner.current = null;
+    onEditorDirtyChange(false);
+    setEditor(null);
+    try {
+      acceptStore(readPortfolios(localStorage.getItem(PORTFOLIOS_KEY)), true);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Saved portfolios could not be read.",
+      );
+    }
+  }
+  function applyNavigation(request: any) {
+    if (request.action === "cancel-editor") {
+      cancelEditor();
+      restoreDraftUrl();
+      return;
+    }
+    if (request.portfolioId) {
+      if (
+        !store.portfolios.some((entry: any) => entry.id === request.portfolioId)
+      ) {
+        setError(
+          "That portfolio is not saved in this browser. Choose another portfolio or import your file.",
+        );
+        restoreDraftUrl();
+        return;
+      }
+      // Opening the active portfolio must not reset its current import draft.
+      if (request.portfolioId !== document?.id)
+        selectPortfolio(request.portfolioId);
+      setTab("research");
+      if (request.rowId) setFocusedRowId(request.rowId);
+    }
+    if (request.portfolioViewId) setTab("research");
+    if (["new", "paste", "watchlist"].includes(request.action)) {
+      editorOwner.current = documentKey(document);
+      setImportStart(request.action);
+      setImportEpoch((value) => value + 1);
+      setEditor("new");
+    }
+  }
+  useEffect(() => {
+    if (
+      !ready ||
+      !navigationRequest ||
+      handledNavigation.current === navigationRequest.nonce
+    )
+      return;
+    handledNavigation.current = navigationRequest.nonce;
+    const replacesDraft =
+      (navigationRequest.portfolioId &&
+        navigationRequest.portfolioId !== document?.id) ||
+      ["new", "paste", "watchlist"].includes(navigationRequest.action);
+    if (editorDirtyRef.current && replacesDraft) {
+      setPendingNavigation(navigationRequest);
+      return;
+    }
+    applyNavigation(navigationRequest);
+    // Requests are processed once after saved documents finish loading.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigationRequest, ready, store.portfolios]);
   const captured =
     workingSnapshot?.ownerKey === documentKey(document)
       ? workingSnapshot.snapshot
@@ -351,6 +488,10 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
     [document, companiesByCik],
   );
   const rows = useMemo(() => document?.rows || [], [document]);
+  const focusedRow = rows.find((row: any) => row.id === focusedRowId);
+  const focusedCompany = focusedRow
+    ? companiesByCik[focusedRow.resolution?.cik]
+    : null;
   const priorCheck = document?.previousCheckedAt || "";
   const included = activeRows(document);
   const visibleRows = useMemo(() => {
@@ -360,6 +501,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
       const text =
         `${row.input.ticker} ${row.input.company_name} ${row.resolution?.name} ${row.resolution?.cik} ${company?.industry || ""}`.toLowerCase();
       return (
+        rowMatchesPortfolioView(row, company, preset) &&
         (!query.trim() || text.includes(query.toLowerCase().trim())) &&
         (filter === "all" ||
           (filter === "needs-review"
@@ -406,7 +548,26 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
     sort,
     direction,
     summary,
+    preset,
   ]);
+  const viewSettings = useMemo(
+    () => ({ query, filter, industryFilter, sort, direction, columns, preset }),
+    [query, filter, industryFilter, sort, direction, columns, preset],
+  );
+  function applyView(value: any) {
+    setQuery(value.query);
+    setFilter(value.filter);
+    setIndustryFilter(value.industryFilter);
+    setSort(value.sort);
+    setDirection(value.direction);
+    setColumns(value.columns);
+    setPreset(value.preset);
+    setSelected([]);
+  }
+  function draftBrief(draft: any) {
+    setFocusedRowId(null);
+    onCreateBrief({ ...draft, portfolioId: document?.id || "" });
+  }
   const priorities = useMemo(
     () => portfolioReviewPriorities(rows, companies, summary),
     [rows, companies, summary],
@@ -487,6 +648,18 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
       };
       setWorkingSnapshot({ ownerKey, snapshot });
       const completeCheck = isCompletePortfolioCheck(result, onlyFailed);
+      let comparisonBaseline = document.comparisonBaseline || null;
+      let comparisonWarning = "";
+      try {
+        comparisonBaseline = advancePortfolioBaseline(
+          document,
+          snapshot,
+          completeCheck,
+        );
+      } catch {
+        comparisonWarning =
+          " The comparison capture could not fit its storage limit; the current research is still available.";
+      }
       runOwner.current = null;
       persist(
         {
@@ -495,6 +668,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
           expectedUpdatedAt: revision,
           patch: {
             snapshot,
+            comparisonBaseline,
             ...(completeCheck
               ? {
                   previousCheckedAt: previousCheck,
@@ -505,7 +679,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
         },
         result.cancelled
           ? "Research stopped. Completed evidence is retained; remaining issuers are unchecked."
-          : `Research finished: ${result.companies.filter(companyAvailable).length} issuers with financial evidence; ${result.companies.filter((entry: any) => entry.status === "failed" || entry.refreshStatus === "failed").length} retrieval failures. ${completeCheck ? "Full-check baseline updated." : "The full-check baseline is unchanged; review incomplete or stale results."}`,
+          : `Research finished: ${result.companies.filter(companyAvailable).length} issuers with financial evidence; ${result.companies.filter((entry: any) => entry.status === "failed" || entry.refreshStatus === "failed").length} retrieval failures. ${completeCheck ? "Full-check baseline updated. Open What changed to review differences." : "The full-check baseline is unchanged; review incomplete or stale results."}${comparisonWarning}`,
       );
     } catch (failure) {
       if (!isCurrent()) return;
@@ -533,6 +707,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
             snapshot: null,
             lastCheckedAt: null,
             previousCheckedAt: null,
+            comparisonBaseline: null,
           },
         },
         "Reporting basis changed. Run research to capture compatible evidence.",
@@ -690,13 +865,56 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
       <div className={s.status} role="status" aria-live="polite">
         {message}
       </div>
+      {pendingNavigation && (
+        <section
+          ref={pendingNavigationRef}
+          tabIndex={-1}
+          className={s.evidence}
+          role="alertdialog"
+          aria-modal="false"
+          aria-labelledby="portfolio-draft-choice-title"
+          aria-describedby="portfolio-draft-choice-description"
+        >
+          <h3 id="portfolio-draft-choice-title">
+            Keep your unsaved import draft?
+          </h3>
+          <p id="portfolio-draft-choice-description">
+            You have unsaved rows or import settings. Continuing will replace
+            this draft.
+          </p>
+          <div className={s.selectionBar}>
+            <button
+              className={s.primary}
+              onClick={() => {
+                setConsumedViewRequest(pendingNavigation.nonce || 0);
+                setPendingNavigation(null);
+                restoreDraftUrl();
+                setMessage("Your unsaved draft is still open.");
+              }}
+            >
+              Keep draft
+            </button>
+            <button
+              className={s.secondary}
+              onClick={() => {
+                const request = pendingNavigation;
+                onEditorDirtyChange(false);
+                setPendingNavigation(null);
+                applyNavigation(request);
+              }}
+            >
+              Discard draft and continue
+            </button>
+          </div>
+        </section>
+      )}
       {store.portfolios.length > 0 && (
         <div className={s.savedBar}>
           <label>
             Saved portfolios & universes
             <select
               value={document?.id || ""}
-              disabled={busy}
+              disabled={busy || editorDirty}
               onChange={(event) => selectPortfolio(event.target.value)}
             >
               {store.portfolios.map((item: any) => (
@@ -708,14 +926,14 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
           </label>
           <button
             className={s.primary}
-            disabled={busy || store.portfolios.length >= 20}
+            disabled={busy || editorDirty || store.portfolios.length >= 20}
             onClick={() => openEditor("new")}
           >
             <Plus size={16} /> New
           </button>
           <button
             className={s.secondary}
-            disabled={busy}
+            disabled={busy || editorDirty}
             onClick={() => openEditor("edit")}
           >
             Edit rows
@@ -734,7 +952,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
               </label>
               <button
                 className={s.secondary}
-                disabled={busy || !rename.trim()}
+                disabled={busy || editorDirty || !rename.trim()}
                 onClick={() => {
                   if (
                     persist(
@@ -749,7 +967,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
               </button>
               <button
                 className={s.secondary}
-                disabled={busy || store.portfolios.length >= 20}
+                disabled={busy || editorDirty || store.portfolios.length >= 20}
                 onClick={() => {
                   const next = persist(
                     { mode: "duplicate", id: document.id },
@@ -765,7 +983,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
               </button>
               <button
                 className={s.secondary}
-                disabled={busy}
+                disabled={busy || editorDirty}
                 onClick={() => setConfirmDelete(true)}
               >
                 Delete…
@@ -778,6 +996,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
                   </p>
                   <button
                     className={s.danger}
+                    disabled={editorDirty}
                     onClick={() => {
                       if (
                         persist(
@@ -807,15 +1026,19 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
       )}
       {editor || !document ? (
         <PortfolioImport
+          key={`${editor || "first"}:${importEpoch}:${editor === "edit" ? document?.id : "new"}`}
+          initialAction={editor === "edit" ? "new" : importStart}
           initialRows={editor === "edit" ? document?.rows : undefined}
           initialName={editor === "edit" ? document?.name : undefined}
           watchlist={watchlist}
+          onDirtyChange={onEditorDirtyChange}
           onCommit={commitRows}
           onCancel={
             document
               ? () => {
-                  editorOwner.current = null;
-                  setEditor(null);
+                  if (editorDirtyRef.current)
+                    setPendingNavigation({ action: "cancel-editor" });
+                  else cancelEditor();
                 }
               : undefined
           }
@@ -980,7 +1203,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
                 <p>
                   {summary.issues.length} row validation issues affect
                   allocation calculations.{" "}
-                  <button onClick={() => setEditor("edit")}>
+                  <button onClick={() => openEditor("edit")}>
                     Review and correct rows
                   </button>
                   .
@@ -1033,6 +1256,7 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
           <nav className={s.tabs} aria-label="Portfolio research views">
             {[
               ["research", "Company research"],
+              ["changes", "What changed"],
               ["allocation", "Allocation & coverage"],
               ["filings", "Filing feed"],
               ["exports", "Export & AI context"],
@@ -1048,6 +1272,20 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
           </nav>
           {tab === "research" && (
             <>
+              <PortfolioViews
+                value={viewSettings}
+                onChange={applyView}
+                portfolioId={document.id}
+                requestedViewId={
+                  consumedViewRequest === navigationRequest?.nonce
+                    ? ""
+                    : navigationRequest?.portfolioViewId || ""
+                }
+                requestNonce={navigationRequest?.nonce || 0}
+                onRequestHandled={() =>
+                  setConsumedViewRequest(navigationRequest?.nonce || 0)
+                }
+              />
               <div className={s.tableToolbar}>
                 <label className={s.search}>
                   Search companies
@@ -1253,6 +1491,12 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
                                 row.input.ticker ||
                                 "CIK-only issuer"}
                             </strong>
+                            <button
+                              className={s.focusButton}
+                              onClick={() => setFocusedRowId(row.id)}
+                            >
+                              Open company focus
+                            </button>
                             <span>
                               {company?.name ||
                                 row.resolution?.name ||
@@ -1443,6 +1687,32 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
                     </h4>
                     <button
                       className={s.secondary}
+                      onClick={() =>
+                        draftBrief({
+                          title: `${evidence.company.name} · ${evidence.point?.label || evidence.key}`,
+                          question: `What does the reported ${evidence.point?.label || evidence.key} evidence tell us, and what remains uncertain?`,
+                          ticker: evidence.company.ticker || "",
+                          cik: evidence.company.cik,
+                          sources: (evidence.point?.sources || [])
+                            .filter((source: any) =>
+                              validSecUrl(source.documentUrl || source.url),
+                            )
+                            .map((source: any) => ({
+                              url: source.documentUrl || source.url,
+                              label: `${source.form || "SEC filing"} · ${source.filed || source.end || "source evidence"}`,
+                              annotation: "context",
+                              origin: "Portfolio metric evidence",
+                              capturedAt:
+                                source.observedAt ||
+                                evidence.company.retrievedAt,
+                            })),
+                        })
+                      }
+                    >
+                      Draft a research brief
+                    </button>
+                    <button
+                      className={s.secondary}
                       onClick={() => setEvidence(null)}
                     >
                       Close evidence
@@ -1513,12 +1783,23 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
               )}
               <ReviewPriorities
                 priorities={priorities}
-                onReview={() => setEditor("edit")}
+                onReview={() => openEditor("edit")}
               />
             </>
           )}
           {tab === "allocation" && (
             <AllocationView summary={summary} columns={columns} />
+          )}
+          {tab === "changes" && (
+            <PortfolioChanges
+              baseline={document.comparisonBaseline || null}
+              snapshot={captured}
+              rows={rows}
+              onInspectCompany={setFocusedRowId}
+              onCreateBrief={draftBrief}
+              onRefresh={() => run(false)}
+              refreshing={busy}
+            />
           )}
           {tab === "filings" && (
             <section className={s.panel}>
@@ -1645,6 +1926,33 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
                             onClick={() => saveFiling(filing)}
                           >
                             Save evidence
+                          </button>
+                          <button
+                            className={s.focusButton}
+                            onClick={() =>
+                              draftBrief({
+                                title: `${filing.companyName} · ${filing.form}`,
+                                ticker: filing.ticker || "",
+                                cik: filing.cik,
+                                question: `What should we investigate in this ${filing.form} filing?`,
+                                sources: validSecUrl(filing.documentUrl)
+                                  ? [
+                                      {
+                                        url: filing.documentUrl,
+                                        label: `${filing.form} · ${filing.filingDate}`,
+                                        annotation: "context",
+                                        origin: "Portfolio filing feed",
+                                        capturedAt:
+                                          filing.observedAt ||
+                                          companiesByCik[filing.cik]
+                                            ?.retrievedAt,
+                                      },
+                                    ]
+                                  : [],
+                              })
+                            }
+                          >
+                            Add to a brief
                           </button>
                         </td>
                       </tr>
@@ -1776,6 +2084,34 @@ export default function PortfolioResearch({ watchlist }: { watchlist: any[] }) {
             </section>
           )}
         </>
+      )}
+      {focusedRow && !editor && (
+        <CompanyFocus
+          row={focusedRow}
+          company={focusedCompany}
+          relatedRows={rows.filter((row: any) =>
+            focusedRow.resolution?.cik
+              ? row.resolution?.cik === focusedRow.resolution.cik
+              : row.id === focusedRow.id,
+          )}
+          allocations={summary.allocations}
+          onClose={() => setFocusedRowId(null)}
+          onInspectMetric={(key: string, point: any) => {
+            setFocusedRowId(null);
+            setTab("research");
+            setEvidence({ company: focusedCompany, key, point });
+          }}
+          onCreateBrief={draftBrief}
+          onSaveFiling={(filing: any) =>
+            saveFiling({
+              ...filing,
+              cik: focusedRow.resolution?.cik,
+              ticker:
+                focusedRow.resolution?.ticker || focusedCompany?.ticker || "",
+              companyName: focusedCompany?.name || focusedRow.resolution?.name,
+            })
+          }
+        />
       )}
       <p className={s.privacy}>
         Saved only in this browser, with up to 20 portfolios and a 4 MiB

@@ -1,3 +1,5 @@
+import { validatePortfolioBaseline } from "./portfolioChanges.js";
+
 /** Versioned, browser-local portfolio documents. Uploaded file contents are never stored. */
 export const PORTFOLIOS_KEY = "edgar:portfolios:v1";
 export const PORTFOLIO_LIMIT = 20;
@@ -57,6 +59,10 @@ function inspectPortfolioTree(value) {
       ++nodes <= 500000 && depth <= 24,
       "Portfolio research is too large or deeply nested.",
     );
+    if (key === "comparisonBaseline") {
+      validatePortfolioBaseline(entry);
+      return;
+    }
     if (key === "fundUrl") {
       requireValue(
         typeof entry === "string" &&
@@ -536,6 +542,7 @@ export function validatePortfolio(portfolio) {
       `Portfolio ${field} is invalid.`,
     );
   snapshotRecord(portfolio.snapshot);
+  validatePortfolioBaseline(portfolio.comparisonBaseline);
   return portfolio;
 }
 
@@ -587,7 +594,7 @@ const newId = () =>
 
 /**
  * Accepts already reviewed position rows; validation does not resolve or alter user allocations.
- * @param {{id?: string, name?: string, rows?: any[], allocation?: any, research?: any, snapshot?: any, lastCheckedAt?: string | null, previousCheckedAt?: string | null, now?: string}} input
+ * @param {{id?: string, name?: string, rows?: any[], allocation?: any, research?: any, snapshot?: any, comparisonBaseline?: any, lastCheckedAt?: string | null, previousCheckedAt?: string | null, now?: string}} input
  */
 export function createPortfolio({
   id = newId(),
@@ -596,6 +603,7 @@ export function createPortfolio({
   allocation = { basis: "none", normalize: false },
   research = { basis: "annual" },
   snapshot = null,
+  comparisonBaseline = null,
   lastCheckedAt = null,
   previousCheckedAt = null,
   now = new Date().toISOString(),
@@ -609,6 +617,7 @@ export function createPortfolio({
     allocation,
     research,
     snapshot,
+    comparisonBaseline,
     lastCheckedAt,
     previousCheckedAt,
   };

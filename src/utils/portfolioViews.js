@@ -1,0 +1,301 @@
+import { companyAvailable } from "./portfolioModel.js";
+
+export const PORTFOLIO_VIEWS_KEY = "edgar:portfolio-views:v1";
+export const PORTFOLIO_VIEW_LIMIT = 20;
+export const PORTFOLIO_VIEWS_BYTES = 128 * 1024;
+export const PORTFOLIO_VIEW_COLUMNS = [
+  "revenue",
+  "revenueGrowth",
+  "netIncome",
+  "operatingCashFlow",
+  "capex",
+  "freeCashFlow",
+  "cash",
+  "debt",
+  "totalAssets",
+  "stockholdersEquity",
+  "roe",
+  "roa",
+  "netMargin",
+  "netInterestIncome",
+  "deposits",
+  "loans",
+  "loanDeposits",
+  "premiumsEarned",
+  "investmentIncome",
+];
+export const DEFAULT_PORTFOLIO_VIEW = {
+  query: "",
+  filter: "all",
+  industryFilter: "",
+  sort: "name",
+  direction: "asc",
+  columns: [
+    "revenue",
+    "netIncome",
+    "operatingCashFlow",
+    "freeCashFlow",
+    "cash",
+    "debt",
+  ],
+  preset: "overview",
+};
+export const PORTFOLIO_VIEW_PRESETS = [
+  {
+    id: "overview",
+    name: "Financial overview",
+    description:
+      "All positions, with the core financial measures side by side.",
+    columns: DEFAULT_PORTFOLIO_VIEW.columns,
+  },
+  {
+    id: "cash-flow",
+    name: "Cash flow",
+    description:
+      "Operating companies: cash from operations, investment and free cash flow. Unclassified rows stay visible for review.",
+    columns: [
+      "operatingCashFlow",
+      "capex",
+      "freeCashFlow",
+      "netIncome",
+      "cash",
+      "debt",
+    ],
+  },
+  {
+    id: "banking",
+    name: "Banking",
+    description:
+      "Companies classified with the banking lens: funding, loans and profitability.",
+    columns: [
+      "netInterestIncome",
+      "netIncome",
+      "deposits",
+      "loans",
+      "loanDeposits",
+      "roe",
+    ],
+  },
+  {
+    id: "coverage",
+    name: "Coverage gaps",
+    description:
+      "Positions needing identity, retrieval, freshness or financial coverage review. Missing values stay missing.",
+    columns: ["revenue", "netIncome", "operatingCashFlow", "totalAssets"],
+  },
+];
+
+const clone = (value) => JSON.parse(JSON.stringify(value));
+const object = (value) =>
+  value !== null &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  [Object.prototype, null].includes(Object.getPrototypeOf(value));
+const text = (value, max) => typeof value === "string" && value.length <= max;
+const id = (value) =>
+  text(value, 100) &&
+  /^[A-Za-z0-9_-]+$/.test(value) &&
+  !["__proto__", "constructor", "prototype"].includes(value);
+const timestamp = (value) =>
+  text(value, 40) &&
+  /^\d{4}-\d{2}-\d{2}T/.test(value) &&
+  Number.isFinite(Date.parse(value));
+const bytes = (value) => new TextEncoder().encode(value).length;
+function requireValue(condition, message) {
+  if (!condition) throw new Error(message);
+}
+function keys(value, allowed) {
+  requireValue(
+    object(value) && Object.keys(value).every((key) => allowed.includes(key)),
+    "Saved view contains unsupported fields. Existing views are preserved.",
+  );
+}
+
+export function validatePortfolioView(value) {
+  keys(value, [
+    "query",
+    "filter",
+    "industryFilter",
+    "sort",
+    "direction",
+    "columns",
+    "preset",
+  ]);
+  requireValue(
+    text(value.query, 300) && text(value.industryFilter, 300),
+    "Saved view search or industry is invalid.",
+  );
+  requireValue(
+    [
+      "all",
+      "ready",
+      "partial",
+      "failed",
+      "needs-review",
+      "unsupported",
+      "excluded",
+    ].includes(value.filter),
+    "Saved view coverage filter is invalid.",
+  );
+  requireValue(
+    ["name", "weight", ...PORTFOLIO_VIEW_COLUMNS].includes(value.sort) &&
+      ["asc", "desc"].includes(value.direction),
+    "Saved view sorting is invalid.",
+  );
+  requireValue(
+    PORTFOLIO_VIEW_PRESETS.some((preset) => preset.id === value.preset),
+    "Saved view preset is invalid.",
+  );
+  requireValue(
+    Array.isArray(value.columns) &&
+      value.columns.length <= PORTFOLIO_VIEW_COLUMNS.length &&
+      value.columns.every((key) => PORTFOLIO_VIEW_COLUMNS.includes(key)) &&
+      new Set(value.columns).size === value.columns.length,
+    "Saved view financial columns are invalid.",
+  );
+  return clone(value);
+}
+
+export function readPortfolioViews(raw) {
+  if (raw === null || raw === undefined || raw === "")
+    return { version: 1, views: [], current: [] };
+  requireValue(
+    typeof raw === "string" && bytes(raw) <= PORTFOLIO_VIEWS_BYTES,
+    "Saved views exceed the 128 KiB storage limit.",
+  );
+  let store;
+  try {
+    store = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      "Saved views could not be read. Existing views are preserved.",
+    );
+  }
+  keys(store, ["version", "views", "current"]);
+  requireValue(
+    store.version === 1 &&
+      Array.isArray(store.views) &&
+      Array.isArray(store.current),
+    "Saved views have an unsupported format.",
+  );
+  requireValue(
+    store.views.length <= PORTFOLIO_VIEW_LIMIT &&
+      store.current.length <= PORTFOLIO_VIEW_LIMIT,
+    "Keep up to 20 saved views and 20 portfolio view preferences.",
+  );
+  const seen = new Set();
+  for (const view of store.views) {
+    keys(view, ["id", "name", "value", "createdAt", "updatedAt"]);
+    requireValue(
+      id(view.id) &&
+        !seen.has(view.id) &&
+        text(view.name, 80) &&
+        view.name.trim().length > 0 &&
+        timestamp(view.createdAt) &&
+        timestamp(view.updatedAt),
+      "A saved view has an invalid name, identifier or date.",
+    );
+    seen.add(view.id);
+    validatePortfolioView(view.value);
+  }
+  seen.clear();
+  for (const entry of store.current) {
+    keys(entry, ["portfolioId", "value", "updatedAt"]);
+    requireValue(
+      id(entry.portfolioId) &&
+        !seen.has(entry.portfolioId) &&
+        timestamp(entry.updatedAt),
+      "A portfolio view preference is invalid.",
+    );
+    seen.add(entry.portfolioId);
+    validatePortfolioView(entry.value);
+  }
+  return clone(store);
+}
+
+/** Always start from fresh storage, so a write keeps other tabs' saved views. */
+export function writePortfolioView(storage, operation) {
+  const store = readPortfolioViews(storage.getItem(PORTFOLIO_VIEWS_KEY));
+  const now = operation.now || new Date().toISOString();
+  requireValue(timestamp(now), "The saved view date is invalid.");
+  if (operation.mode === "save") {
+    requireValue(
+      text(operation.name, 80) && operation.name.trim().length > 0,
+      "Name this view using 1–80 characters.",
+    );
+    const value = validatePortfolioView(operation.value);
+    const existing = operation.id
+      ? store.views.find((entry) => entry.id === operation.id)
+      : null;
+    if (operation.id)
+      requireValue(
+        existing,
+        "This view was removed in another tab. Save a new view instead.",
+      );
+    requireValue(
+      existing || store.views.length < PORTFOLIO_VIEW_LIMIT,
+      "You can save up to 20 views. Remove a view before adding another.",
+    );
+    if (existing)
+      Object.assign(existing, {
+        name: operation.name.trim(),
+        value,
+        updatedAt: now,
+      });
+    else
+      store.views.push({
+        id: globalThis.crypto.randomUUID(),
+        name: operation.name.trim(),
+        value,
+        createdAt: now,
+        updatedAt: now,
+      });
+  } else if (operation.mode === "delete") {
+    requireValue(id(operation.id), "Choose a saved view to remove.");
+    store.views = store.views.filter((entry) => entry.id !== operation.id);
+  } else if (operation.mode === "current") {
+    requireValue(
+      id(operation.portfolioId),
+      "A valid portfolio is required to remember this view.",
+    );
+    const value = validatePortfolioView(operation.value);
+    store.current = store.current.filter(
+      (entry) => entry.portfolioId !== operation.portfolioId,
+    );
+    store.current.push({
+      portfolioId: operation.portfolioId,
+      value,
+      updatedAt: now,
+    });
+    store.current = store.current.slice(-PORTFOLIO_VIEW_LIMIT);
+  } else throw new Error("Unsupported saved view operation.");
+  const serialized = JSON.stringify(store);
+  readPortfolioViews(serialized);
+  try {
+    storage.setItem(PORTFOLIO_VIEWS_KEY, serialized);
+  } catch {
+    throw new Error(
+      "This browser could not save the view. Existing saved views are preserved.",
+    );
+  }
+  return clone(store);
+}
+
+/** Presets add a lens; the table must still apply the user's search and filters. */
+export function rowMatchesPortfolioView(row, company, preset = "overview") {
+  if (preset === "overview") return true;
+  if (row.excluded || row.duplicateChoice === "remove") return false;
+  const isFund = row.resolution?.kind === "fund" || company?.kind === "fund";
+  if (preset === "banking") return !isFund && company?.lens === "banking";
+  if (preset === "cash-flow")
+    return !isFund && (!company?.lens || company.lens === "corporate");
+  if (preset === "coverage")
+    return (
+      row.resolution?.status !== "resolved" ||
+      !companyAvailable(company) ||
+      company.status === "partial" ||
+      ["stale", "unavailable"].includes(company.cache?.status) ||
+      ["pending", "not_checked", "failed"].includes(company.refreshStatus)
+    );
+  return false;
+}

@@ -195,8 +195,8 @@ export default function ResearchVault() {
           </span>
           <h2 id="vault-title">Every insight, one place.</h2>
           <p>
-            Find saved evidence, research notes, portfolios, searches, and
-            pending reviews across the terminal.
+            Find saved evidence, research briefs, notes, portfolios, searches,
+            and pending reviews across the terminal.
           </p>
         </div>
         <button className={styles.button} type="button" onClick={refresh}>
@@ -241,6 +241,7 @@ export default function ResearchVault() {
               "Market",
               "Funds",
               "Portfolios",
+              "Briefs",
             ].map((s) => (
               <option key={s}>{s}</option>
             ))}
@@ -262,6 +263,7 @@ export default function ResearchVault() {
               ["fund", "Funds"],
               ["portfolio", "Portfolios"],
               ["position", "Portfolio positions"],
+              ["brief", "Research briefs"],
             ].map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -292,7 +294,7 @@ export default function ResearchVault() {
               </h3>
               {entry.text && <p>{entry.text}</p>}
               {entry.text &&
-                ["note", "evidence", "queue", "position"].includes(
+                ["note", "evidence", "queue", "position", "brief"].includes(
                   entry.type,
                 ) && (
                   <details className={styles.savedText}>
@@ -302,7 +304,9 @@ export default function ResearchVault() {
                         ? "evidence"
                         : entry.type === "position"
                           ? "position details"
-                          : "notes"}
+                          : entry.type === "brief"
+                            ? "brief"
+                            : "notes"}
                     </summary>
                     <p>{entry.text}</p>
                     <Link href={entry.href}>
@@ -310,6 +314,32 @@ export default function ResearchVault() {
                     </Link>
                   </details>
                 )}
+              {entry.sources.length > 0 && (
+                <details className={styles.sourceList}>
+                  <summary>
+                    {entry.sources.length} saved SEC{" "}
+                    {entry.sources.length === 1 ? "source" : "sources"}
+                  </summary>
+                  <ul>
+                    {entry.sources.map((citation) => (
+                      <li key={citation.url}>
+                        <a
+                          href={citation.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {citation.label} <ArrowUpRight size={12} />
+                        </a>
+                        {citation.capturedAt && (
+                          <small>
+                            Captured {citation.capturedAt.slice(0, 10)}
+                          </small>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </article>
           ))}
         </div>
@@ -375,9 +405,10 @@ export default function ResearchVault() {
         <p>
           Download a portable copy before clearing browser data or moving
           computers. Full backups include saved portfolios, supplied allocation
-          amounts, quotations, and private notes. Keep the downloaded file
-          secure. Your saved research stays in this browser until you export it.
-          Older backups remain supported and only replace the stores you select.
+          amounts, quotations, private notes, research briefs, saved views, and
+          inbox review states. Keep the downloaded file secure. Your saved
+          research stays in this browser until you export it. Older backups
+          remain supported and only replace the stores you select.
         </p>
         <div className={styles.actions}>
           <button

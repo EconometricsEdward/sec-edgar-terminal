@@ -28,11 +28,25 @@ import {
   removeFundFromShelf,
 } from "../../utils/workspaceReview.js";
 import styles from "./workspace.module.css";
+import {
+  HUB_VIEWS,
+  hubDestination,
+  parseHubLocation,
+} from "../../utils/researchHubNavigation.js";
 
 const PortfolioResearch = dynamic(
   () => import("./portfolio/PortfolioResearch"),
   { loading: () => <p role="status">Opening Portfolio Research…</p> },
 );
+const HubOverview = dynamic(() => import("./HubOverview"), {
+  loading: () => <p role="status">Opening your research overview…</p>,
+});
+const ResearchInbox = dynamic(() => import("./ResearchInbox"), {
+  loading: () => <p role="status">Opening your review inbox…</p>,
+});
+const ResearchBriefs = dynamic(() => import("./ResearchBriefs"), {
+  loading: () => <p role="status">Opening your research briefs…</p>,
+});
 
 export default function WorkspaceClient() {
   const { data, ready, error, update } = useWorkspace();
@@ -45,15 +59,33 @@ export default function WorkspaceClient() {
   const [status, setStatus] = useState("");
   const [storageError, setStorageError] = useState("");
   const [filter, setFilter] = useState("all");
-  const [hubView, setHubView] = useState("portfolios");
+  const [hubView, setHubView] = useState("overview");
+  const [visitedViews, setVisitedViews] = useState(["overview"]);
+  const [portfolioRequest, setPortfolioRequest] = useState<any>(null);
+  const [briefRequest, setBriefRequest] = useState<any>(null);
+  const navigationSequence = useRef(0);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
-    const requestedView = new URLSearchParams(window.location.search).get(
-      "view",
-    );
-    if (["watchlist", "library"].includes(requestedView || ""))
-      setHubView(requestedView!);
-    else if (window.location.hash === "#research-vault") setHubView("library");
+    const restoreRoute = () => {
+      const requested = parseHubLocation(window.location.href);
+      setHubView(requested.view);
+      setVisitedViews((current) =>
+        current.includes(requested.view)
+          ? current
+          : [...current, requested.view],
+      );
+      if (requested.view === "portfolios")
+        setPortfolioRequest({
+          ...requested,
+          nonce: ++navigationSequence.current,
+        });
+      if (requested.view === "briefs" && requested.briefId)
+        setBriefRequest({
+          briefId: requested.briefId,
+          nonce: ++navigationSequence.current,
+        });
+    };
+    restoreRoute();
     const read = () => {
       const failures: string[] = [];
       try {
@@ -72,13 +104,43 @@ export default function WorkspaceClient() {
     window.addEventListener("storage", read);
     window.addEventListener("research-storage", read);
     window.addEventListener("focus", read);
+    window.addEventListener("popstate", restoreRoute);
+    window.addEventListener("hashchange", restoreRoute);
     return () => {
       controller.current?.abort();
       window.removeEventListener("storage", read);
       window.removeEventListener("research-storage", read);
       window.removeEventListener("focus", read);
+      window.removeEventListener("popstate", restoreRoute);
+      window.removeEventListener("hashchange", restoreRoute);
     };
   }, []);
+  function navigate(view: string, options: any = {}) {
+    const href = hubDestination(view, options);
+    if (`${window.location.pathname}${window.location.search}` !== href)
+      window.history.pushState(null, "", href);
+    setHubView(view);
+    setVisitedViews((current) =>
+      current.includes(view) ? current : [...current, view],
+    );
+    if (
+      view === "portfolios" &&
+      (options.portfolioId ||
+        options.action ||
+        options.rowId ||
+        options.portfolioViewId)
+    )
+      setPortfolioRequest({ ...options, nonce: ++navigationSequence.current });
+    if (view === "briefs" && options.briefId)
+      setBriefRequest({
+        briefId: options.briefId,
+        nonce: ++navigationSequence.current,
+      });
+  }
+  function createBrief(draft: any) {
+    setBriefRequest({ ...draft, nonce: ++navigationSequence.current });
+    navigate("briefs");
+  }
   const watchlist = useMemo(
     () => consolidatedWatchlist(data, market, funds),
     [data, market, funds],
@@ -264,7 +326,36 @@ export default function WorkspaceClient() {
     }
   }
   return (
-    <div className={styles.page}>
+    <div
+      className={styles.page}
+      onClickCapture={(event) => {
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        )
+          return;
+        const anchor = (event.target as Element).closest?.("a");
+        if (
+          !anchor ||
+          anchor.target === "_blank" ||
+          anchor.hasAttribute("download")
+        )
+          return;
+        const destination = new URL(anchor.href, window.location.href);
+        if (
+          destination.origin !== window.location.origin ||
+          destination.pathname !== "/workspace"
+        )
+          return;
+        event.preventDefault();
+        const route = parseHubLocation(destination.href);
+        navigate(route.view, route);
+      }}
+    >
       <div className={styles.heading}>
         <div>
           <span className={styles.eyebrow}>Your research, connected</span>
@@ -274,32 +365,48 @@ export default function WorkspaceClient() {
             keep the evidence behind your work.
           </p>
         </div>
-        <Link
-          href="#research-vault"
-          className={styles.secondary}
-          onClick={() => setHubView("library")}
-        >
+        <Link href="/workspace?view=library" className={styles.secondary}>
           Find saved evidence <ArrowUpRight size={16} />
         </Link>
       </div>
       <nav className={styles.hubTabs} aria-label="Research Hub areas">
-        {[
-          ["portfolios", "Portfolio Research"],
-          ["watchlist", "Watchlists"],
-          ["library", "Saved research & backups"],
-        ].map(([view, label]) => (
+        {HUB_VIEWS.map(([view, label]) => (
           <button
             key={view}
             type="button"
             aria-pressed={hubView === view}
-            onClick={() => setHubView(view)}
+            onClick={() => navigate(view)}
           >
             {label}
           </button>
         ))}
       </nav>
+      <div hidden={hubView !== "overview"}>
+        <HubOverview watchlist={watchlist} onNavigate={navigate} />
+      </div>
       <div hidden={hubView !== "portfolios"}>
-        <PortfolioResearch watchlist={watchlist} />
+        {visitedViews.includes("portfolios") && (
+          <PortfolioResearch
+            active={hubView === "portfolios"}
+            watchlist={watchlist}
+            navigationRequest={portfolioRequest}
+            onCreateBrief={createBrief}
+          />
+        )}
+      </div>
+      <div hidden={hubView !== "inbox"}>
+        {visitedViews.includes("inbox") && (
+          <ResearchInbox
+            watchlist={watchlist}
+            onNavigate={navigate}
+            onCreateBrief={createBrief}
+          />
+        )}
+      </div>
+      <div hidden={hubView !== "briefs"}>
+        {visitedViews.includes("briefs") && (
+          <ResearchBriefs request={briefRequest} onNavigate={navigate} />
+        )}
       </div>
       <div hidden={hubView !== "watchlist"} className={styles.legacyWorkspace}>
         <div className={styles.summary} aria-label="Saved research overview">
