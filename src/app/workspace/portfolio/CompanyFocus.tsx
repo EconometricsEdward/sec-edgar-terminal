@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useRef } from "react";
 import { ArrowUpRight, FileText, X } from "lucide-react";
+import { portfolioNumber } from "../../../utils/portfolioModel.js";
 import s from "./CompanyFocus.module.css";
 
 type Props = {
@@ -279,16 +280,13 @@ export default function CompanyFocus({
                   : `What changed in ${name}'s latest SEC evidence, and what supports or challenges the research thesis?`,
                 cik,
                 ticker,
-                sources: filings
-                  .slice(0, 5)
-                  .map((filing: any) => ({
-                    label: `${filing.form} · ${filing.filingDate}`,
-                    url: secUrl(filing.documentUrl),
-                    annotation: "context",
-                    origin: "Company focus",
-                    capturedAt:
-                      company?.retrievedAt || new Date().toISOString(),
-                  })),
+                sources: filings.slice(0, 5).map((filing: any) => ({
+                  label: `${filing.form} · ${filing.filingDate}`,
+                  url: secUrl(filing.documentUrl),
+                  annotation: "context",
+                  origin: "Company focus",
+                  capturedAt: company?.retrievedAt || new Date().toISOString(),
+                })),
               });
             }}
           >
@@ -442,6 +440,9 @@ export default function CompanyFocus({
               <tbody>
                 {positionRows.map((entry: any) => {
                   const allocation = byRow.get(entry.id);
+                  const enteredWeight = portfolioNumber(
+                    entry.input?.weight_pct,
+                  );
                   const included =
                     !entry.excluded && entry.duplicateChoice !== "remove";
                   return (
@@ -459,9 +460,7 @@ export default function CompanyFocus({
                           : "—"}
                       </td>
                       <td>
-                        {finite(entry.input?.weight_pct)
-                          ? percent(entry.input.weight_pct)
-                          : "—"}
+                        {enteredWeight !== null ? percent(enteredWeight) : "—"}
                       </td>
                       <td>{entry.input?.as_of_date || "—"}</td>
                     </tr>
