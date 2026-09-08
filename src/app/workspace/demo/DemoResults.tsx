@@ -326,7 +326,7 @@ export default function DemoResults() {
               Example follow-ups
             </button>
           </nav>
-          {area === "analytics" && (
+          <div hidden={area !== "analytics"}>
             <PortfolioAnalytics
               rows={rows}
               settings={demo.input.allocation}
@@ -338,7 +338,7 @@ export default function DemoResults() {
               refreshing={saving}
               preview
             />
-          )}
+          </div>
           {(area === "companies" || area === "filings") && (
             <div className={s.filters}>
               <label>

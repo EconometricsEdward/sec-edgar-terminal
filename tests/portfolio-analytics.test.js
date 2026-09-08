@@ -47,6 +47,36 @@ const condition = (result, id = "negativeNetIncome") =>
 const close = (actual, expected) =>
   assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
 
+test("metric applicability partitions identified operating issuers for filtered analytics", () => {
+  const result = buildPortfolioAnalytics(
+    rows(["A", "B", "C", "CL-A", "CL-B", "FUND"].map((ticker) => ({ ticker }))),
+    { basis: "none" },
+    [
+      company(1, { revenueGrowth: point(0) }),
+      company(2, { revenueGrowth: point(99, "%", { status: "unavailable" }) }),
+      company(3, {}, { lens: "banking" }),
+      company(8, { revenueGrowth: point(12) }),
+    ],
+  );
+  const growth = metric(result);
+  assert.deepEqual(growth.eligibleCiks.sort(), [cik(1), cik(2), cik(8)]);
+  assert.deepEqual(growth.missingCiks, [cik(2)]);
+  assert.deepEqual(growth.notApplicableCiks, [cik(3)]);
+  assert.equal(
+    growth.observations.length + growth.missingCiks.length,
+    growth.eligibleCiks.length,
+  );
+  assert.equal(
+    growth.eligibleCiks.length + growth.notApplicableCiks.length,
+    result.operatingIssuerCount,
+  );
+  assert.equal(new Set(growth.eligibleCiks).size, growth.eligibleCiks.length);
+  assert.equal(
+    growth.observations.find((entry) => entry.cik === cik(1)).value,
+    0,
+  );
+});
+
 test("unweighted issuer distributions have exact interpolated quartiles without invented allocation", () => {
   const input = rows(["A", "B", "C", "D"].map((ticker) => ({ ticker })));
   const companies = [0, 10, 20, 30].map((value, index) =>

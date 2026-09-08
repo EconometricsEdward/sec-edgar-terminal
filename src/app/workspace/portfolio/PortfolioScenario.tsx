@@ -1,9 +1,10 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { buildPortfolioScenario } from "../../../utils/portfolioScenario.js";
 import { csvString } from "../../../utils/portfolioFiles.js";
 import { downloadText } from "../../../utils/download.js";
+import PortfolioScenarioTools from "./PortfolioScenarioTools";
 import styles from "./PortfolioScenario.module.css";
 
 type Props = {
@@ -49,7 +50,9 @@ export default function PortfolioScenario({
   onInspectCompany,
 }: Props) {
   const controlId = useId();
+  const singleScenarioButton = useRef<HTMLButtonElement>(null);
   const [scenario, setScenario] = useState(DEFAULT_SCENARIO);
+  const [toolArea, setToolArea] = useState("scenario");
   const [expanded, setExpanded] = useState(false);
   const [exportError, setExportError] = useState("");
   const result = useMemo(
@@ -163,11 +166,31 @@ export default function PortfolioScenario({
           <h3 id={`${controlId}-heading`}>What if prices moved?</h3>
           <p>
             Set a price change and see each issuer’s contribution, the portfolio
-            impact, and how the remaining weights shift.
+            impact, and how the remaining weights shift. Explore a range of
+            moves, solve a loss target, or compare named cases.
           </p>
         </div>
         <span className={styles.hypothetical}>Hypothetical scenario</span>
       </div>
+
+      <nav className={styles.toolNav} aria-label="Scenario lab tools">
+        {[
+          ["scenario", "Single scenario"],
+          ["sensitivity", "Sensitivity grid"],
+          ["loss", "Loss target"],
+          ["compare", "Compare cases"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            ref={value === "scenario" ? singleScenarioButton : undefined}
+            type="button"
+            aria-pressed={toolArea === value}
+            onClick={() => setToolArea(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
 
       {result.basis === "none" && !scenario.equalWeight && (
         <div className={styles.optIn}>
@@ -209,53 +232,55 @@ export default function PortfolioScenario({
         </div>
       )}
 
-      <div className={styles.presets} aria-label="Price scenario presets">
-        <span>Try a scenario</span>
-        <button
-          type="button"
-          onClick={() =>
-            change({
-              scope: "all",
-              targetShockPct: "-10",
-              remainderShockPct: "0",
-            })
-          }
-        >
-          All holdings −10%
-        </button>
-        <button
-          type="button"
-          disabled={!largestIssuer || result.allocationErrors.length > 0}
-          onClick={() =>
-            change({
-              scope: "issuer",
-              targetCik: largestIssuer?.cik || "",
-              targetShockPct: "-30",
-              remainderShockPct: "0",
-            })
-          }
-        >
-          Largest issuer −30%
-        </button>
-        <button
-          type="button"
-          disabled={!result.industries.length}
-          onClick={() =>
-            change({
-              scope: "industry",
-              targetIndustry: result.industries.includes(
-                scenario.targetIndustry,
-              )
-                ? scenario.targetIndustry
-                : result.industries[0],
-              targetShockPct: "-20",
-              remainderShockPct: "0",
-            })
-          }
-        >
-          One industry −20%
-        </button>
-      </div>
+      {(toolArea === "scenario" || toolArea === "compare") && (
+        <div className={styles.presets} aria-label="Price scenario presets">
+          <span>Try a scenario</span>
+          <button
+            type="button"
+            onClick={() =>
+              change({
+                scope: "all",
+                targetShockPct: "-10",
+                remainderShockPct: "0",
+              })
+            }
+          >
+            All holdings −10%
+          </button>
+          <button
+            type="button"
+            disabled={!largestIssuer || result.allocationErrors.length > 0}
+            onClick={() =>
+              change({
+                scope: "issuer",
+                targetCik: largestIssuer?.cik || "",
+                targetShockPct: "-30",
+                remainderShockPct: "0",
+              })
+            }
+          >
+            Largest issuer −30%
+          </button>
+          <button
+            type="button"
+            disabled={!result.industries.length}
+            onClick={() =>
+              change({
+                scope: "industry",
+                targetIndustry: result.industries.includes(
+                  scenario.targetIndustry,
+                )
+                  ? scenario.targetIndustry
+                  : result.industries[0],
+                targetShockPct: "-20",
+                remainderShockPct: "0",
+              })
+            }
+          >
+            One industry −20%
+          </button>
+        </div>
+      )}
 
       <div className={styles.controls}>
         <label htmlFor={`${controlId}-scope`}>
@@ -318,40 +343,44 @@ export default function PortfolioScenario({
             </small>
           </label>
         )}
-        <div className={styles.shockControl}>
-          <label htmlFor={`${controlId}-shock`}>
-            Target price change (%)
+        {(toolArea === "scenario" || toolArea === "compare") && (
+          <div className={styles.shockControl}>
+            <label htmlFor={`${controlId}-shock`}>
+              Target price change (%)
+              <input
+                id={`${controlId}-shock`}
+                type="number"
+                min="-100"
+                max="100"
+                step="any"
+                value={scenario.targetShockPct}
+                onChange={(event) =>
+                  change({ targetShockPct: event.target.value })
+                }
+                aria-describedby={`${controlId}-bounds`}
+              />
+            </label>
             <input
-              id={`${controlId}-shock`}
-              type="number"
+              aria-label="Adjust target price change"
+              type="range"
               min="-100"
               max="100"
-              step="any"
-              value={scenario.targetShockPct}
+              step="1"
+              value={
+                Number.isFinite(rangeValue)
+                  ? Math.max(-100, Math.min(100, rangeValue))
+                  : 0
+              }
               onChange={(event) =>
                 change({ targetShockPct: event.target.value })
               }
-              aria-describedby={`${controlId}-bounds`}
             />
-          </label>
-          <input
-            aria-label="Adjust target price change"
-            type="range"
-            min="-100"
-            max="100"
-            step="1"
-            value={
-              Number.isFinite(rangeValue)
-                ? Math.max(-100, Math.min(100, rangeValue))
-                : 0
-            }
-            onChange={(event) => change({ targetShockPct: event.target.value })}
-          />
-          <small id={`${controlId}-bounds`}>
-            −100% to +100%; negative values model a price decline.
-          </small>
-        </div>
-        {scenario.scope !== "all" && (
+            <small id={`${controlId}-bounds`}>
+              −100% to +100%; negative values model a price decline.
+            </small>
+          </div>
+        )}
+        {scenario.scope !== "all" && toolArea !== "sensitivity" && (
           <label htmlFor={`${controlId}-rest`}>
             Other holdings’ price change (%)
             <input
@@ -370,7 +399,23 @@ export default function PortfolioScenario({
         )}
       </div>
 
-      {result.errors.length > 0 && (
+      <PortfolioScenarioTools
+        area={toolArea}
+        rows={rows}
+        settings={settings}
+        companies={companies}
+        scenario={scenario}
+        result={result}
+        onLoad={(assumptions) => {
+          setScenario(assumptions);
+          setExpanded(false);
+          setExportError("");
+          setToolArea("scenario");
+          singleScenarioButton.current?.focus();
+        }}
+      />
+
+      {toolArea === "scenario" && result.errors.length > 0 && (
         <div className={styles.blocked} role="status">
           <strong>Complete the inputs to see a portfolio result.</strong>
           <ul>
@@ -380,164 +425,168 @@ export default function PortfolioScenario({
           </ul>
         </div>
       )}
-      {result.eligible && result.totalReturnPct !== null && (
-        <>
-          <div
-            className={styles.resultSummary}
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <div className={styles.total}>
-              <span>Hypothetical portfolio return</span>
-              <strong
-                className={
-                  result.totalReturnPct < 0
-                    ? styles.negative
-                    : result.totalReturnPct > 0
-                      ? styles.positive
-                      : ""
-                }
-              >
-                {number(result.totalReturnPct, true)}%
-              </strong>
-              <small>
-                {result.equalWeight
-                  ? "Equal-weight model · assumed allocations"
-                  : result.basisLabel}
-              </small>
-            </div>
-            <div className={styles.resultContext}>
-              <strong>
-                {targetLabel}: {number(result.targetShockPct, true)}%
-              </strong>
-              <p>
-                {number(result.targetWeightPct)}% of starting allocation
-                receives this change.{" "}
-                {result.scope !== "all" &&
-                  `Other holdings move ${number(result.remainderShockPct, true)}%.`}
-              </p>
-              {result.startingValue !== null && (
-                <p>
-                  Modeled value: {amount(result.startingValue, result.currency)}{" "}
-                  →{" "}
-                  <strong>{amount(result.endingValue, result.currency)}</strong>{" "}
-                  ({amount(result.valueChange, result.currency)} change).
-                </p>
-              )}
-            </div>
-          </div>
-          <div className={styles.tableHeading}>
-            <div>
-              <h4>Where the impact comes from</h4>
-              <p>
-                Ordered by absolute contribution. Ending weights show
-                concentration after the assumed price moves.
-              </p>
-            </div>
-            <button type="button" onClick={exportScenario}>
-              Download scenario CSV
-            </button>
-          </div>
-          {exportError && <p role="alert">{exportError}</p>}
-          {!result.endingWeightsDefined && (
-            <p className={styles.modelNotice}>
-              The modeled portfolio value falls to zero. Ending weights and
-              weight drift are undefined.
-            </p>
-          )}
-          <div
-            className={styles.tableWrap}
-            tabIndex={0}
-            role="region"
-            aria-label="Scenario contributions; scroll horizontally for all columns"
-          >
-            <table>
-              <caption>
-                {result.contributions.length} issuers ·{" "}
-                {result.equalWeight
-                  ? "Equal-weight model; assumed allocations"
-                  : "Selected portfolio allocation"}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Issuer</th>
-                  <th scope="col">Starting weight</th>
-                  <th scope="col">Price change</th>
-                  <th scope="col">Contribution</th>
-                  <th scope="col">Ending weight</th>
-                  <th scope="col">Weight drift</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleContributions.map((row: any) => (
-                  <tr key={row.cik}>
-                    <th scope="row">
-                      <button
-                        type="button"
-                        className={styles.issuerButton}
-                        onClick={() => onInspectCompany(row.rowId)}
-                      >
-                        {row.tickers.join(" / ") || row.name}
-                      </button>
-                      <small>{row.name}</small>
-                      <span className={styles.targetBadge}>
-                        {row.targeted ? "Target" : "Other holdings"}
-                      </span>
-                    </th>
-                    <td>{number(row.weightPct)}%</td>
-                    <td>{number(row.shockPct, true)}%</td>
-                    <td
-                      className={
-                        row.contributionPct < 0
-                          ? styles.negative
-                          : row.contributionPct > 0
-                            ? styles.positive
-                            : ""
-                      }
-                    >
-                      <strong>{number(row.contributionPct, true)} pp</strong>
-                    </td>
-                    <td>
-                      {row.endingWeightPct === null
-                        ? "Undefined"
-                        : `${number(row.endingWeightPct)}%`}
-                    </td>
-                    <td>
-                      {row.driftPct === null
-                        ? "Undefined"
-                        : `${number(row.driftPct, true)} pp`}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Whole portfolio</th>
-                  <td>100.00%</td>
-                  <td>—</td>
-                  <td>{number(result.totalReturnPct, true)} pp</td>
-                  <td>
-                    {!result.endingWeightsDefined ? "Undefined" : "100.00%"}
-                  </td>
-                  <td>—</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-          {result.contributions.length > 10 && (
-            <button
-              type="button"
-              className={styles.showAll}
-              aria-expanded={expanded}
-              onClick={() => setExpanded(!expanded)}
+      {toolArea === "scenario" &&
+        result.eligible &&
+        result.totalReturnPct !== null && (
+          <>
+            <div
+              className={styles.resultSummary}
+              aria-live="polite"
+              aria-atomic="true"
             >
-              {expanded
-                ? "Show largest 10 contributions"
-                : `Show all ${result.contributions.length} issuers`}
-            </button>
-          )}
-        </>
-      )}
+              <div className={styles.total}>
+                <span>Hypothetical portfolio return</span>
+                <strong
+                  className={
+                    result.totalReturnPct < 0
+                      ? styles.negative
+                      : result.totalReturnPct > 0
+                        ? styles.positive
+                        : ""
+                  }
+                >
+                  {number(result.totalReturnPct, true)}%
+                </strong>
+                <small>
+                  {result.equalWeight
+                    ? "Equal-weight model · assumed allocations"
+                    : result.basisLabel}
+                </small>
+              </div>
+              <div className={styles.resultContext}>
+                <strong>
+                  {targetLabel}: {number(result.targetShockPct, true)}%
+                </strong>
+                <p>
+                  {number(result.targetWeightPct)}% of starting allocation
+                  receives this change.{" "}
+                  {result.scope !== "all" &&
+                    `Other holdings move ${number(result.remainderShockPct, true)}%.`}
+                </p>
+                {result.startingValue !== null && (
+                  <p>
+                    Modeled value:{" "}
+                    {amount(result.startingValue, result.currency)} →{" "}
+                    <strong>
+                      {amount(result.endingValue, result.currency)}
+                    </strong>{" "}
+                    ({amount(result.valueChange, result.currency)} change).
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className={styles.tableHeading}>
+              <div>
+                <h4>Where the impact comes from</h4>
+                <p>
+                  Ordered by absolute contribution. Ending weights show
+                  concentration after the assumed price moves.
+                </p>
+              </div>
+              <button type="button" onClick={exportScenario}>
+                Download scenario CSV
+              </button>
+            </div>
+            {exportError && <p role="alert">{exportError}</p>}
+            {!result.endingWeightsDefined && (
+              <p className={styles.modelNotice}>
+                The modeled portfolio value falls to zero. Ending weights and
+                weight drift are undefined.
+              </p>
+            )}
+            <div
+              className={styles.tableWrap}
+              tabIndex={0}
+              role="region"
+              aria-label="Scenario contributions; scroll horizontally for all columns"
+            >
+              <table>
+                <caption>
+                  {result.contributions.length} issuers ·{" "}
+                  {result.equalWeight
+                    ? "Equal-weight model; assumed allocations"
+                    : "Selected portfolio allocation"}
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Issuer</th>
+                    <th scope="col">Starting weight</th>
+                    <th scope="col">Price change</th>
+                    <th scope="col">Contribution</th>
+                    <th scope="col">Ending weight</th>
+                    <th scope="col">Weight drift</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleContributions.map((row: any) => (
+                    <tr key={row.cik}>
+                      <th scope="row">
+                        <button
+                          type="button"
+                          className={styles.issuerButton}
+                          onClick={() => onInspectCompany(row.rowId)}
+                        >
+                          {row.tickers.join(" / ") || row.name}
+                        </button>
+                        <small>{row.name}</small>
+                        <span className={styles.targetBadge}>
+                          {row.targeted ? "Target" : "Other holdings"}
+                        </span>
+                      </th>
+                      <td>{number(row.weightPct)}%</td>
+                      <td>{number(row.shockPct, true)}%</td>
+                      <td
+                        className={
+                          row.contributionPct < 0
+                            ? styles.negative
+                            : row.contributionPct > 0
+                              ? styles.positive
+                              : ""
+                        }
+                      >
+                        <strong>{number(row.contributionPct, true)} pp</strong>
+                      </td>
+                      <td>
+                        {row.endingWeightPct === null
+                          ? "Undefined"
+                          : `${number(row.endingWeightPct)}%`}
+                      </td>
+                      <td>
+                        {row.driftPct === null
+                          ? "Undefined"
+                          : `${number(row.driftPct, true)} pp`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th scope="row">Whole portfolio</th>
+                    <td>100.00%</td>
+                    <td>—</td>
+                    <td>{number(result.totalReturnPct, true)} pp</td>
+                    <td>
+                      {!result.endingWeightsDefined ? "Undefined" : "100.00%"}
+                    </td>
+                    <td>—</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            {result.contributions.length > 10 && (
+              <button
+                type="button"
+                className={styles.showAll}
+                aria-expanded={expanded}
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded
+                  ? "Show largest 10 contributions"
+                  : `Show all ${result.contributions.length} issuers`}
+              </button>
+            )}
+          </>
+        )}
       <div className={styles.footer}>
         <details>
           <summary>Calculation and assumptions</summary>
@@ -564,6 +613,7 @@ export default function PortfolioScenario({
             setScenario(DEFAULT_SCENARIO);
             setExpanded(false);
             setExportError("");
+            setToolArea("scenario");
           }}
         >
           Reset scenario

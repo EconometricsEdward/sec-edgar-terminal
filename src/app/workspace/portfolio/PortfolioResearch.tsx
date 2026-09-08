@@ -1298,32 +1298,30 @@ export default function PortfolioResearch({
               </button>
             ))}
           </nav>
-          {tab === "analytics" && (
-            <>
-              <PortfolioAnalytics
-                key={document.id}
-                rows={rows}
-                settings={document.allocation}
-                companies={companies}
-                capturedAt={captured?.generated_at || null}
-                onInspectCompany={setFocusedRowId}
-                onReviewRows={() => openEditor("edit")}
-                onRefresh={() => run(false)}
-                refreshing={busy}
-              />
-              <div className={s.exportButtons}>
-                <button
-                  className={s.secondary}
-                  onClick={() => changePortfolioTab("exports")}
-                >
-                  <ArrowDownToLine size={16} /> Export analytics & evidence
-                </button>
-                <Link href="/workspace/portfolio-guide#analytics">
-                  How these analytics work ↗
-                </Link>
-              </div>
-            </>
-          )}
+          <div hidden={tab !== "analytics"}>
+            <PortfolioAnalytics
+              key={document.id}
+              rows={rows}
+              settings={document.allocation}
+              companies={companies}
+              capturedAt={captured?.generated_at || null}
+              onInspectCompany={setFocusedRowId}
+              onReviewRows={() => openEditor("edit")}
+              onRefresh={() => run(false)}
+              refreshing={busy}
+            />
+            <div className={s.exportButtons}>
+              <button
+                className={s.secondary}
+                onClick={() => changePortfolioTab("exports")}
+              >
+                <ArrowDownToLine size={16} /> Export analytics & evidence
+              </button>
+              <Link href="/workspace/portfolio-guide#analytics">
+                How these analytics work ↗
+              </Link>
+            </div>
+          </div>
           {tab === "research" && (
             <>
               <PortfolioViews
@@ -2122,10 +2120,10 @@ export default function PortfolioResearch({
               <p>
                 CSV follows your chosen financial columns and includes source
                 context. XLSX separates holdings, company research, portfolio
-                summary, analytics, sources, and coverage. Full-portfolio
-                exports include concentration and financial distributions.
-                Select all portfolio rows for the analytics CSV. Selected
-                subsets retain their original portfolio denominator.
+                summary, analytics, metric observations, sources, and coverage.
+                Full-portfolio exports include concentration and financial
+                distributions. Select all portfolio rows for the analytics CSV.
+                Selected subsets retain their original portfolio denominator.
               </p>
               {copyFallback && (
                 <label className={s.copyArea}>

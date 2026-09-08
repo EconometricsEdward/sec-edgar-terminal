@@ -1,10 +1,13 @@
 "use client";
 
 import { useId, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   ArrowUpRight,
   BarChart3,
   CircleHelp,
+  ClipboardList,
+  ListFilter,
   Layers3,
   Search,
   ShieldCheck,
@@ -12,6 +15,26 @@ import {
 import { buildPortfolioAnalytics } from "../../../utils/portfolioAnalytics.js";
 import PortfolioScenario from "./PortfolioScenario";
 import s from "./PortfolioAnalytics.module.css";
+
+const loading = () => <p role="status">Opening analytics tools…</p>;
+const PortfolioBriefing = dynamic(() => import("./PortfolioBriefing"), {
+  loading,
+});
+const PortfolioConcentrationTools = dynamic(
+  () => import("./PortfolioConcentrationTools"),
+  { loading },
+);
+const PortfolioFinancialTools = dynamic(
+  () => import("./PortfolioFinancialTools"),
+  { loading },
+);
+const PortfolioScreener = dynamic(() => import("./PortfolioScreener"), {
+  loading,
+});
+const PortfolioCoverageMatrix = dynamic(
+  () => import("./PortfolioCoverageMatrix"),
+  { loading },
+);
 
 type Props = {
   rows: any[];
@@ -35,8 +58,10 @@ type Issuer = {
   industry: string;
 };
 const AREAS = [
+  { id: "overview", label: "Portfolio briefing", icon: ClipboardList },
   { id: "concentration", label: "Concentration", icon: Layers3 },
   { id: "financial", label: "Financial profile", icon: BarChart3 },
+  { id: "screener", label: "Company screener", icon: ListFilter },
   { id: "scenario", label: "Scenario lab", icon: CircleHelp },
   { id: "coverage", label: "Evidence coverage", icon: ShieldCheck },
 ] as const;
@@ -170,7 +195,20 @@ export default function PortfolioAnalytics({
   const titleId = useId();
   const coverageSelectionId = useId();
   const areaButtons = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [area, setArea] = useState<string>("concentration");
+  const [area, setArea] = useState<string>("overview");
+  const [visitedAreas, setVisitedAreas] = useState(() => new Set(["overview"]));
+  const [financialMode, setFinancialMode] = useState("distribution");
+  const [financialTool, setFinancialTool] = useState<
+    "peers" | "relationships" | "compare"
+  >("peers");
+  const [financialToolsVisited, setFinancialToolsVisited] = useState(false);
+  const [coverageMode, setCoverageMode] = useState("summary");
+  const [matrixVisited, setMatrixVisited] = useState(false);
+  const changeArea = (next: string) => {
+    if (!AREAS.some((entry) => entry.id === next)) return;
+    setArea(next);
+    setVisitedAreas((current) => new Set([...current, next]));
+  };
   const [industry, setIndustry] = useState("");
   const [query, setQuery] = useState("");
   const [showIndustries, setShowIndustries] = useState(false);
@@ -333,7 +371,7 @@ export default function PortfolioAnalytics({
             }}
             type="button"
             aria-pressed={area === id}
-            onClick={() => setArea(id)}
+            onClick={() => changeArea(id)}
           >
             <Icon size={18} aria-hidden="true" />
             {label}
@@ -341,8 +379,21 @@ export default function PortfolioAnalytics({
         ))}
       </nav>
 
-      {area === "concentration" && (
-        <div className={s.panel}>
+      <div className={s.retained} hidden={area !== "overview"}>
+        <PortfolioBriefing
+          report={report}
+          onNavigate={(next) => {
+            if (next === "financial") setFinancialMode("distribution");
+            if (next === "coverage") setCoverageMode("summary");
+            changeArea(next);
+            areaButtons.current[next]?.focus();
+          }}
+          onInspectCompany={onInspectCompany}
+        />
+      </div>
+
+      {visitedAreas.has("concentration") && (
+        <div className={s.panel} hidden={area !== "concentration"}>
           <div className={s.sectionHeading}>
             <div>
               <p className={s.eyebrow}>Where exposure collects</p>
@@ -400,6 +451,10 @@ export default function PortfolioAnalytics({
               </p>
             </>
           )}
+          <PortfolioConcentrationTools
+            report={report}
+            onInspectCompany={onInspectCompany}
+          />
           <div className={s.twoColumns}>
             <section
               className={s.chartCard}
@@ -605,587 +660,685 @@ export default function PortfolioAnalytics({
         </div>
       )}
 
-      {area === "financial" && (
-        <div className={s.panel}>
-          <div className={s.sectionHeading}>
-            <div>
-              <p className={s.eyebrow}>Company fundamentals, together</p>
-              <h3>Find the outliers. Inspect the evidence.</h3>
-              <p>
-                Each issuer contributes one observation. Medians and percentiles
-                describe the companies with supported evidence; they are
-                unweighted and do not represent a consolidated portfolio ratio.
-              </p>
-            </div>
-          </div>
-          {metric && (
-            <>
-              <label className={s.metricSelect}>
-                <span>Financial measure</span>
-                <select
-                  value={metric.id}
-                  onChange={(event) => {
-                    setMetricId(event.target.value);
-                    setBinIndex(null);
-                    setObservationLimit(20);
-                  }}
-                >
-                  {report.metrics.map((entry: any) => (
-                    <option value={entry.id} key={entry.id}>
-                      {entry.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className={s.description}>{metric.description}</p>
-              <div className={s.concentrationStats}>
-                <div>
-                  <span>Observed median</span>
-                  <strong>{metricValue(metric.median, metric.unit)}</strong>
-                  <small>Middle company observation</small>
-                </div>
-                <div>
-                  <span>Middle 50% of companies</span>
-                  <strong className={s.range}>
-                    {metricRange(metric.p25, metric.p75, metric.unit)}
-                  </strong>
-                  <small>25th to 75th percentile</small>
-                </div>
-                <div>
-                  <span>Measured companies</span>
-                  <strong>
-                    {metric.availableCount}
-                    <em> / {metric.eligibleCount}</em>
-                  </strong>
-                  <small>
-                    {metric.missingCount} unavailable ·{" "}
-                    {metric.notApplicableCount} not applicable
-                  </small>
-                </div>
-                <div>
-                  <span>
-                    {weighted ? "Known allocation covered" : "Observed range"}
-                  </span>
-                  <strong className={s.range}>
-                    {weighted
-                      ? percent(metric.coveredWeightPct)
-                      : metricRange(metric.min, metric.max, metric.unit)}
-                  </strong>
-                  <small>
-                    {weighted
-                      ? "Original portfolio allocation denominator"
-                      : "Minimum to maximum supported value"}
-                  </small>
-                </div>
-              </div>
-              <section
-                className={s.distribution}
-                aria-label={`${metric.label} distribution`}
+      {visitedAreas.has("financial") && (
+        <div className={s.panel} hidden={area !== "financial"}>
+          <nav className={s.subnav} aria-label="Financial profile tools">
+            {[
+              ["distribution", "Distributions"],
+              ["peers", "Peer benchmarks"],
+              ["relationships", "Metric relationships"],
+              ["compare", "Compare companies"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={financialMode === id}
+                onClick={() => {
+                  setFinancialMode(id);
+                  if (id !== "distribution") {
+                    setFinancialTool(
+                      id as "peers" | "relationships" | "compare",
+                    );
+                    setFinancialToolsVisited(true);
+                  }
+                }}
               >
-                <div className={s.cardHeading}>
-                  <h4>How the companies are distributed</h4>
-                  <span>{metric.availableCount} measured</span>
-                </div>
-                <p className={s.chartHelp}>
-                  Select a range to see the companies behind it. Bar heights
-                  show company counts.
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className={s.subpanel} hidden={financialMode !== "distribution"}>
+            <div className={s.sectionHeading}>
+              <div>
+                <p className={s.eyebrow}>Company fundamentals, together</p>
+                <h3>Find the outliers. Inspect the evidence.</h3>
+                <p>
+                  Each issuer contributes one observation. Medians and
+                  percentiles describe the companies with supported evidence;
+                  they are unweighted and do not represent a consolidated
+                  portfolio ratio.
                 </p>
-                {metric.availableCount > 0 ? (
-                  <div className={s.histogram}>
-                    {metric.bins.map((entry: any, index: number) => (
-                      <button
-                        key={entry.label}
-                        type="button"
-                        className={s.histogramBin}
-                        aria-pressed={binIndex === index}
-                        aria-label={`${metric.label}: ${entry.label}, ${entry.count} companies${weighted ? `, ${percent(entry.weightPct)} known allocation` : ""}`}
-                        onClick={() => {
-                          setBinIndex(binIndex === index ? null : index);
-                          setObservationLimit(20);
-                        }}
-                      >
-                        <strong>{entry.count}</strong>
-                        <span className={s.histogramTrack} aria-hidden="true">
-                          <span
-                            style={{ height: barWidth(entry.count, maxBin) }}
-                          />
-                        </span>
-                        <span>{entry.label}</span>
-                        {weighted && (
-                          <small>{percent(entry.weightPct)} allocation</small>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className={s.empty}>
-                    No supported observations for this measure. Check Evidence
-                    coverage for missing data and industry limitations.
-                  </p>
-                )}
-              </section>
-              <div className={s.cardHeading}>
-                <h4>
-                  {bin ? `Companies: ${bin.label}` : "All measured companies"}
-                </h4>
-                {bin && (
-                  <button
-                    type="button"
-                    onClick={() => {
+              </div>
+            </div>
+            {metric && (
+              <>
+                <label className={s.metricSelect}>
+                  <span>Financial measure</span>
+                  <select
+                    value={metric.id}
+                    onChange={(event) => {
+                      setMetricId(event.target.value);
                       setBinIndex(null);
                       setObservationLimit(20);
                     }}
                   >
-                    Clear range
-                  </button>
-                )}
-              </div>
-              {observations.length ? (
-                <>
-                  <div
-                    className={s.tableWrap}
-                    tabIndex={0}
-                    role="region"
-                    aria-label={`${metric.label} company observations`}
-                  >
-                    <table className={s.table}>
-                      <thead>
-                        <tr>
-                          <th scope="col">Company</th>
-                          <th scope="col">{metric.label}</th>
-                          <th scope="col">Reporting end</th>
-                          <th scope="col">Evidence</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {observations
-                          .slice(0, observationLimit)
-                          .map((entry: any) => (
-                            <tr key={entry.cik}>
-                              <th scope="row">
-                                <button
-                                  type="button"
-                                  className={s.companyLink}
-                                  onClick={() => onInspectCompany(entry.rowId)}
-                                >
-                                  {entry.ticker || entry.name}
-                                  <ArrowUpRight size={15} aria-hidden="true" />
-                                </button>
-                                <span>{entry.name}</span>
-                              </th>
-                              <td className={s.numeric}>
-                                {metricValue(entry.value, metric.unit)}
-                              </td>
-                              <td>{entry.periodEnd || "Unavailable"}</td>
-                              <td>
-                                {entry.sourceUrl ? (
-                                  <a
-                                    className={s.sourceLink}
-                                    href={entry.sourceUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    aria-label={`Open SEC source for ${entry.ticker || entry.name} ${metric.label} in a new tab`}
-                                  >
-                                    SEC filing
-                                    <ArrowUpRight
-                                      size={14}
-                                      aria-hidden="true"
-                                    />
-                                  </a>
-                                ) : (
+                    {report.metrics.map((entry: any) => (
+                      <option value={entry.id} key={entry.id}>
+                        {entry.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className={s.description}>{metric.description}</p>
+                <div className={s.concentrationStats}>
+                  <div>
+                    <span>Observed median</span>
+                    <strong>{metricValue(metric.median, metric.unit)}</strong>
+                    <small>Middle company observation</small>
+                  </div>
+                  <div>
+                    <span>Middle 50% of companies</span>
+                    <strong className={s.range}>
+                      {metricRange(metric.p25, metric.p75, metric.unit)}
+                    </strong>
+                    <small>25th to 75th percentile</small>
+                  </div>
+                  <div>
+                    <span>Measured companies</span>
+                    <strong>
+                      {metric.availableCount}
+                      <em> / {metric.eligibleCount}</em>
+                    </strong>
+                    <small>
+                      {metric.missingCount} unavailable ·{" "}
+                      {metric.notApplicableCount} not applicable
+                    </small>
+                  </div>
+                  <div>
+                    <span>
+                      {weighted ? "Known allocation covered" : "Observed range"}
+                    </span>
+                    <strong className={s.range}>
+                      {weighted
+                        ? percent(metric.coveredWeightPct)
+                        : metricRange(metric.min, metric.max, metric.unit)}
+                    </strong>
+                    <small>
+                      {weighted
+                        ? "Original portfolio allocation denominator"
+                        : "Minimum to maximum supported value"}
+                    </small>
+                  </div>
+                </div>
+                <section
+                  className={s.distribution}
+                  aria-label={`${metric.label} distribution`}
+                >
+                  <div className={s.cardHeading}>
+                    <h4>How the companies are distributed</h4>
+                    <span>{metric.availableCount} measured</span>
+                  </div>
+                  <p className={s.chartHelp}>
+                    Select a range to see the companies behind it. Bar heights
+                    show company counts.
+                  </p>
+                  {metric.availableCount > 0 ? (
+                    <div className={s.histogram}>
+                      {metric.bins.map((entry: any, index: number) => (
+                        <button
+                          key={entry.label}
+                          type="button"
+                          className={s.histogramBin}
+                          aria-pressed={binIndex === index}
+                          aria-label={`${metric.label}: ${entry.label}, ${entry.count} companies${weighted ? `, ${percent(entry.weightPct)} known allocation` : ""}`}
+                          onClick={() => {
+                            setBinIndex(binIndex === index ? null : index);
+                            setObservationLimit(20);
+                          }}
+                        >
+                          <strong>{entry.count}</strong>
+                          <span className={s.histogramTrack} aria-hidden="true">
+                            <span
+                              style={{ height: barWidth(entry.count, maxBin) }}
+                            />
+                          </span>
+                          <span>{entry.label}</span>
+                          {weighted && (
+                            <small>{percent(entry.weightPct)} allocation</small>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={s.empty}>
+                      No supported observations for this measure. Check Evidence
+                      coverage for missing data and industry limitations.
+                    </p>
+                  )}
+                </section>
+                <div className={s.cardHeading}>
+                  <h4>
+                    {bin ? `Companies: ${bin.label}` : "All measured companies"}
+                  </h4>
+                  {bin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBinIndex(null);
+                        setObservationLimit(20);
+                      }}
+                    >
+                      Clear range
+                    </button>
+                  )}
+                </div>
+                {observations.length ? (
+                  <>
+                    <div
+                      className={s.tableWrap}
+                      tabIndex={0}
+                      role="region"
+                      aria-label={`${metric.label} company observations`}
+                    >
+                      <table className={s.table}>
+                        <thead>
+                          <tr>
+                            <th scope="col">Company</th>
+                            <th scope="col">{metric.label}</th>
+                            <th scope="col">Reporting end</th>
+                            <th scope="col">Evidence</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {observations
+                            .slice(0, observationLimit)
+                            .map((entry: any) => (
+                              <tr key={entry.cik}>
+                                <th scope="row">
                                   <button
                                     type="button"
+                                    className={s.companyLink}
                                     onClick={() =>
                                       onInspectCompany(entry.rowId)
                                     }
                                   >
-                                    Inspect company
+                                    {entry.ticker || entry.name}
+                                    <ArrowUpRight
+                                      size={15}
+                                      aria-hidden="true"
+                                    />
                                   </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className={s.listFooter}>
-                    <span>
-                      Showing {Math.min(observationLimit, observations.length)}{" "}
-                      of {observations.length} measured companies.
+                                  <span>{entry.name}</span>
+                                </th>
+                                <td className={s.numeric}>
+                                  {metricValue(entry.value, metric.unit)}
+                                </td>
+                                <td>{entry.periodEnd || "Unavailable"}</td>
+                                <td>
+                                  {entry.sourceUrl ? (
+                                    <a
+                                      className={s.sourceLink}
+                                      href={entry.sourceUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      aria-label={`Open SEC source for ${entry.ticker || entry.name} ${metric.label} in a new tab`}
+                                    >
+                                      SEC filing
+                                      <ArrowUpRight
+                                        size={14}
+                                        aria-hidden="true"
+                                      />
+                                    </a>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onInspectCompany(entry.rowId)
+                                      }
+                                    >
+                                      Inspect company
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className={s.listFooter}>
+                      <span>
+                        Showing{" "}
+                        {Math.min(observationLimit, observations.length)} of{" "}
+                        {observations.length} measured companies.
+                      </span>
+                      {observationLimit < observations.length && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setObservationLimit((value) => value + 20)
+                          }
+                        >
+                          Show next 20
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className={s.empty}>
+                    No measured companies in this range.
+                  </p>
+                )}
+              </>
+            )}
+            <section
+              className={s.conditions}
+              aria-label="Financial conditions to review"
+            >
+              <div className={s.sectionHeading}>
+                <div>
+                  <p className={s.eyebrow}>Start your next review</p>
+                  <h3>Financial conditions worth examining</h3>
+                  <p>
+                    These are factual screens from reported measures. An
+                    unavailable value is excluded, never treated as zero or as a
+                    passing result.
+                  </p>
+                </div>
+              </div>
+              <div className={s.conditionGrid}>
+                {report.conditions.map((condition: any) => (
+                  <button
+                    type="button"
+                    key={condition.id}
+                    className={s.conditionCard}
+                    aria-pressed={conditionId === condition.id}
+                    disabled={condition.measuredCount === 0}
+                    onClick={() =>
+                      setConditionId(
+                        conditionId === condition.id ? "" : condition.id,
+                      )
+                    }
+                  >
+                    <span>{condition.label}</span>
+                    <strong
+                      className={
+                        condition.measuredCount === 0
+                          ? s.notAssessed
+                          : undefined
+                      }
+                    >
+                      {condition.measuredCount === 0 ? (
+                        "Not assessed"
+                      ) : (
+                        <>
+                          {condition.matchedCount}
+                          <em> companies</em>
+                        </>
+                      )}
+                    </strong>
+                    <small>{condition.description}</small>
+                    <span className={s.conditionCoverage}>
+                      {condition.measuredCount} measured ·{" "}
+                      {condition.missingCount} unavailable ·{" "}
+                      {condition.notApplicableCount} not applicable
                     </span>
-                    {observationLimit < observations.length && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setObservationLimit((value) => value + 20)
-                        }
-                      >
-                        Show next 20
-                      </button>
+                    {weighted && condition.measuredCount > 0 && (
+                      <b>
+                        {percent(condition.knownMatchedWeightPct)} known
+                        allocation matches
+                      </b>
                     )}
+                  </button>
+                ))}
+              </div>
+              {selectedCondition && selectedCondition.measuredCount > 0 && (
+                <div className={s.conditionMembers}>
+                  <div className={s.cardHeading}>
+                    <h4>{selectedCondition.label}</h4>
+                    <button type="button" onClick={() => setConditionId("")}>
+                      Close selection
+                    </button>
                   </div>
-                </>
-              ) : (
-                <p className={s.empty}>No measured companies in this range.</p>
+                  <MemberList
+                    key={conditionId}
+                    issuers={conditionMembers}
+                    weighted={weighted}
+                    onInspectCompany={onInspectCompany}
+                    empty="No companies with supported evidence meet this condition."
+                  />
+                </div>
               )}
-            </>
+            </section>
+          </div>
+          {financialToolsVisited && (
+            <div
+              className={s.retained}
+              hidden={financialMode === "distribution"}
+            >
+              <PortfolioFinancialTools
+                report={report}
+                onInspectCompany={onInspectCompany}
+                view={financialTool}
+              />
+            </div>
           )}
-          <section
-            className={s.conditions}
-            aria-label="Financial conditions to review"
-          >
+        </div>
+      )}
+
+      {visitedAreas.has("screener") && (
+        <div className={s.retained} hidden={area !== "screener"}>
+          <PortfolioScreener
+            report={report}
+            companies={companies}
+            onInspectCompany={onInspectCompany}
+          />
+        </div>
+      )}
+
+      {visitedAreas.has("scenario") && (
+        <div className={s.retained} hidden={area !== "scenario"}>
+          <PortfolioScenario
+            rows={rows}
+            settings={settings}
+            companies={companies}
+            onInspectCompany={onInspectCompany}
+          />
+        </div>
+      )}
+
+      {visitedAreas.has("coverage") && (
+        <div className={s.panel} hidden={area !== "coverage"}>
+          <nav className={s.subnav} aria-label="Evidence coverage tools">
+            <button
+              type="button"
+              aria-pressed={coverageMode === "summary"}
+              onClick={() => setCoverageMode("summary")}
+            >
+              Coverage summary
+            </button>
+            <button
+              type="button"
+              aria-pressed={coverageMode === "matrix"}
+              onClick={() => {
+                setCoverageMode("matrix");
+                setMatrixVisited(true);
+              }}
+            >
+              Company & metric matrix
+            </button>
+          </nav>
+          <div className={s.subpanel} hidden={coverageMode !== "summary"}>
             <div className={s.sectionHeading}>
               <div>
-                <p className={s.eyebrow}>Start your next review</p>
-                <h3>Financial conditions worth examining</h3>
+                <p className={s.eyebrow}>Know what supports the analysis</p>
+                <h3>Make the gaps visible.</h3>
                 <p>
-                  These are factual screens from reported measures. An
-                  unavailable value is excluded, never treated as zero or as a
-                  passing result.
+                  Coverage shows what is present in this research snapshot.
+                  Different measures can cover different companies, and a
+                  reported value may describe an older period.
                 </p>
               </div>
+              <div className={s.actions}>
+                <button type="button" onClick={onReviewRows}>
+                  {preview ? "Open full demo to review" : "Review input rows"}
+                </button>
+                <button type="button" onClick={onRefresh} disabled={refreshing}>
+                  {refreshing
+                    ? "Refreshing research…"
+                    : preview
+                      ? "Open full demo to refresh"
+                      : "Refresh research"}
+                </button>
+              </div>
             </div>
-            <div className={s.conditionGrid}>
-              {report.conditions.map((condition: any) => (
+            <div className={s.statusGrid}>
+              {report.coverage.statuses.map((entry: any) => (
                 <button
                   type="button"
-                  key={condition.id}
-                  className={s.conditionCard}
-                  aria-pressed={conditionId === condition.id}
-                  disabled={condition.measuredCount === 0}
+                  className={s.statusCard}
+                  key={entry.id}
+                  aria-pressed={
+                    coverageSelection?.kind === "status" &&
+                    coverageSelection.id === entry.id
+                  }
                   onClick={() =>
-                    setConditionId(
-                      conditionId === condition.id ? "" : condition.id,
+                    setCoverageSelection(
+                      coverageSelection?.kind === "status" &&
+                        coverageSelection.id === entry.id
+                        ? null
+                        : { kind: "status", id: entry.id },
                     )
                   }
                 >
-                  <span>{condition.label}</span>
-                  <strong
-                    className={
-                      condition.measuredCount === 0 ? s.notAssessed : undefined
-                    }
-                  >
-                    {condition.measuredCount === 0 ? (
-                      "Not assessed"
-                    ) : (
-                      <>
-                        {condition.matchedCount}
-                        <em> companies</em>
-                      </>
-                    )}
-                  </strong>
-                  <small>{condition.description}</small>
-                  <span className={s.conditionCoverage}>
-                    {condition.measuredCount} measured ·{" "}
-                    {condition.missingCount} unavailable ·{" "}
-                    {condition.notApplicableCount} not applicable
-                  </span>
-                  {weighted && condition.measuredCount > 0 && (
-                    <b>
-                      {percent(condition.knownMatchedWeightPct)} known
-                      allocation matches
-                    </b>
+                  <span>{entry.label}</span>
+                  <strong>{entry.count}</strong>
+                  {weighted && (
+                    <small>{percent(entry.weightPct)} known allocation</small>
                   )}
                 </button>
               ))}
             </div>
-            {selectedCondition && selectedCondition.measuredCount > 0 && (
-              <div className={s.conditionMembers}>
+            <p className={s.note}>
+              Status counts combine share classes for identified issuers;
+              unresolved entries count individual positions.{" "}
+              {report.coverage.staleCount > 0
+                ? `${report.coverage.staleCount} companies also have older cached evidence or reporting periods relative to this snapshot.`
+                : "No older-evidence flags in this snapshot; freshness is evaluated against its recorded capture date."}{" "}
+              {report.fundCount > 0
+                ? `${report.fundCount} funds are shown separately because company financial ratios do not look through their holdings.`
+                : ""}
+            </p>
+            {coverageGroup && (
+              <section className={s.coverageMembers} id={coverageSelectionId}>
                 <div className={s.cardHeading}>
-                  <h4>{selectedCondition.label}</h4>
-                  <button type="button" onClick={() => setConditionId("")}>
-                    Close selection
+                  <h4>
+                    {coverageSelection?.kind === "period"
+                      ? `Reporting end: ${coverageGroup.end}`
+                      : coverageGroup.label}
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setCoverageSelection(null)}
+                  >
+                    Clear selection
                   </button>
                 </div>
                 <MemberList
-                  key={conditionId}
-                  issuers={conditionMembers}
+                  key={`${coverageSelection?.kind}:${coverageSelection?.id}`}
+                  issuers={coverageMembers}
                   weighted={weighted}
                   onInspectCompany={onInspectCompany}
-                  empty="No companies with supported evidence meet this condition."
+                  empty="No identified companies in this selection. Review input rows to resolve unidentified positions."
                 />
-              </div>
+              </section>
             )}
-          </section>
-        </div>
-      )}
-
-      {area === "scenario" && (
-        <PortfolioScenario
-          rows={rows}
-          settings={settings}
-          companies={companies}
-          onInspectCompany={onInspectCompany}
-        />
-      )}
-
-      {area === "coverage" && (
-        <div className={s.panel}>
-          <div className={s.sectionHeading}>
-            <div>
-              <p className={s.eyebrow}>Know what supports the analysis</p>
-              <h3>Make the gaps visible.</h3>
-              <p>
-                Coverage shows what is present in this research snapshot.
-                Different measures can cover different companies, and a reported
-                value may describe an older period.
-              </p>
-            </div>
-            <div className={s.actions}>
-              <button type="button" onClick={onReviewRows}>
-                {preview ? "Open full demo to review" : "Review input rows"}
-              </button>
-              <button type="button" onClick={onRefresh} disabled={refreshing}>
-                {refreshing
-                  ? "Refreshing research…"
-                  : preview
-                    ? "Open full demo to refresh"
-                    : "Refresh research"}
-              </button>
-            </div>
-          </div>
-          <div className={s.statusGrid}>
-            {report.coverage.statuses.map((entry: any) => (
-              <button
-                type="button"
-                className={s.statusCard}
-                key={entry.id}
-                aria-pressed={
-                  coverageSelection?.kind === "status" &&
-                  coverageSelection.id === entry.id
-                }
-                onClick={() =>
-                  setCoverageSelection(
-                    coverageSelection?.kind === "status" &&
-                      coverageSelection.id === entry.id
-                      ? null
-                      : { kind: "status", id: entry.id },
-                  )
-                }
+            <section className={s.coverageTable}>
+              <div className={s.cardHeading}>
+                <h4>Coverage by financial measure</h4>
+                <span>Unique operating issuers</span>
+              </div>
+              <div
+                className={s.tableWrap}
+                tabIndex={0}
+                role="region"
+                aria-label="Metric evidence coverage"
               >
-                <span>{entry.label}</span>
-                <strong>{entry.count}</strong>
-                {weighted && (
-                  <small>{percent(entry.weightPct)} known allocation</small>
-                )}
-              </button>
-            ))}
-          </div>
-          <p className={s.note}>
-            Status counts combine share classes for identified issuers;
-            unresolved entries count individual positions.{" "}
-            {report.coverage.staleCount > 0
-              ? `${report.coverage.staleCount} companies also have older cached evidence or reporting periods relative to this snapshot.`
-              : "No older-evidence flags in this snapshot; freshness is evaluated against its recorded capture date."}{" "}
-            {report.fundCount > 0
-              ? `${report.fundCount} funds are shown separately because company financial ratios do not look through their holdings.`
-              : ""}
-          </p>
-          {coverageGroup && (
-            <section className={s.coverageMembers} id={coverageSelectionId}>
-              <div className={s.cardHeading}>
-                <h4>
-                  {coverageSelection?.kind === "period"
-                    ? `Reporting end: ${coverageGroup.end}`
-                    : coverageGroup.label}
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setCoverageSelection(null)}
-                >
-                  Clear selection
-                </button>
-              </div>
-              <MemberList
-                key={`${coverageSelection?.kind}:${coverageSelection?.id}`}
-                issuers={coverageMembers}
-                weighted={weighted}
-                onInspectCompany={onInspectCompany}
-                empty="No identified companies in this selection. Review input rows to resolve unidentified positions."
-              />
-            </section>
-          )}
-          <section className={s.coverageTable}>
-            <div className={s.cardHeading}>
-              <h4>Coverage by financial measure</h4>
-              <span>Unique operating issuers</span>
-            </div>
-            <div
-              className={s.tableWrap}
-              tabIndex={0}
-              role="region"
-              aria-label="Metric evidence coverage"
-            >
-              <table className={s.table}>
-                <thead>
-                  <tr>
-                    <th scope="col">Measure</th>
-                    <th scope="col">Measured / eligible</th>
-                    <th scope="col">Unavailable</th>
-                    <th scope="col">Not applicable</th>
-                    {weighted && <th scope="col">Known weight covered</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.coverage.metricRows.map((entry: any) => (
-                    <tr key={entry.id}>
-                      <th scope="row">
-                        <button
-                          type="button"
-                          className={s.companyLink}
-                          onClick={() => {
-                            setMetricId(entry.id);
-                            setBinIndex(null);
-                            setObservationLimit(20);
-                            setArea("financial");
-                            areaButtons.current.financial?.focus();
-                          }}
-                        >
-                          {entry.label}
-                          <ArrowUpRight size={15} aria-hidden="true" />
-                        </button>
-                      </th>
-                      <td className={s.numeric}>
-                        {entry.availableCount} / {entry.eligibleCount}
-                      </td>
-                      <td className={s.numeric}>{entry.missingCount}</td>
-                      <td className={s.numeric}>{entry.notApplicableCount}</td>
-                      {weighted && (
-                        <td className={s.numeric}>
-                          {percent(entry.coveredWeightPct)}
-                        </td>
-                      )}
+                <table className={s.table}>
+                  <thead>
+                    <tr>
+                      <th scope="col">Measure</th>
+                      <th scope="col">Measured / eligible</th>
+                      <th scope="col">Unavailable</th>
+                      <th scope="col">Not applicable</th>
+                      {weighted && <th scope="col">Known weight covered</th>}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-          <div className={s.twoColumns}>
-            <section
-              className={s.chartCard}
-              aria-label="Reporting date distribution"
-            >
-              <div className={s.cardHeading}>
-                <h4>Reporting periods are not always aligned</h4>
-              </div>
-              <p className={s.chartHelp}>
-                Company counts by reporting end. Select a date to see which
-                companies it covers. This is the financial reporting date, not
-                the download date.
-              </p>
-              <div className={s.barList}>
-                {report.coverage.periodEnds
-                  .slice(0, showPeriods ? undefined : 8)
-                  .map((entry: any) => (
-                    <button
-                      className={s.barButton}
-                      key={entry.end}
-                      type="button"
-                      aria-pressed={
-                        coverageSelection?.kind === "period" &&
-                        coverageSelection.id === entry.end
-                      }
-                      onClick={() =>
-                        setCoverageSelection(
-                          coverageSelection?.kind === "period" &&
-                            coverageSelection.id === entry.end
-                            ? null
-                            : { kind: "period", id: entry.end },
-                        )
-                      }
-                      aria-label={`Reporting end ${entry.end}: ${entry.count} companies`}
-                    >
-                      <span className={s.barCaption}>
-                        <strong>{entry.end}</strong>
-                        <b>{entry.count}</b>
-                      </span>
-                      <span className={s.barTrack} aria-hidden="true">
-                        <span
-                          style={{ width: barWidth(entry.count, maxPeriod) }}
-                        />
-                      </span>
-                    </button>
-                  ))}
-              </div>
-              {report.coverage.periodEnds.length > 8 && (
-                <button
-                  type="button"
-                  className={s.showMore}
-                  onClick={() => setShowPeriods(!showPeriods)}
-                >
-                  {showPeriods
-                    ? "Show newest 8 periods"
-                    : `Show all ${report.coverage.periodEnds.length} periods`}
-                </button>
-              )}
-              {coverageSelection?.kind === "period" && coverageGroup && (
-                <p className={s.note} role="status">
-                  {coverageGroup.count} companies selected for{" "}
-                  {coverageGroup.end}.{" "}
-                  <a className={s.sourceLink} href={`#${coverageSelectionId}`}>
-                    View selected companies ↑
-                  </a>
-                </p>
-              )}
-            </section>
-            <section
-              className={s.chartCard}
-              aria-label="Companies needing more evidence"
-            >
-              <div className={s.cardHeading}>
-                <h4>Resolve the next gap</h4>
-                <span>{report.coverage.missingRows.length} positions</span>
-              </div>
-              <p className={s.chartHelp}>
-                Unidentified companies, missing research, and unavailable
-                tracked measures appear here. Inspect a company to see the
-                evidence and the reason for each gap.
-              </p>
-              {report.coverage.missingRows.length ? (
-                <>
-                  <ul className={s.missingList}>
-                    {report.coverage.missingRows
-                      .slice(0, missingLimit)
-                      .map((entry: any) => (
-                        <li key={entry.rowId}>
-                          <div>
-                            <strong>
-                              {entry.ticker ||
-                                entry.name ||
-                                "Unidentified position"}
-                            </strong>
-                            <span>{entry.name}</span>
-                            <small>{entry.reason}</small>
-                          </div>
+                  </thead>
+                  <tbody>
+                    {report.coverage.metricRows.map((entry: any) => (
+                      <tr key={entry.id}>
+                        <th scope="row">
                           <button
                             type="button"
-                            onClick={() => onInspectCompany(entry.rowId)}
-                            aria-label={`Inspect coverage for ${entry.ticker || entry.name || "unidentified position"}`}
+                            className={s.companyLink}
+                            onClick={() => {
+                              setMetricId(entry.id);
+                              setBinIndex(null);
+                              setObservationLimit(20);
+                              setFinancialMode("distribution");
+                              changeArea("financial");
+                              areaButtons.current.financial?.focus();
+                            }}
                           >
-                            <ArrowUpRight size={17} aria-hidden="true" />
+                            {entry.label}
+                            <ArrowUpRight size={15} aria-hidden="true" />
                           </button>
-                        </li>
-                      ))}
-                  </ul>
-                  {missingLimit < report.coverage.missingRows.length && (
-                    <button
-                      type="button"
-                      onClick={() => setMissingLimit((value) => value + 20)}
-                    >
-                      Show next 20
-                    </button>
-                  )}
-                </>
-              ) : (
-                <p className={s.empty}>
-                  No missing company identities or tracked financial measures in
-                  this snapshot. Measures that do not apply remain separate in
-                  the coverage table.
-                </p>
-              )}
+                        </th>
+                        <td className={s.numeric}>
+                          {entry.availableCount} / {entry.eligibleCount}
+                        </td>
+                        <td className={s.numeric}>{entry.missingCount}</td>
+                        <td className={s.numeric}>
+                          {entry.notApplicableCount}
+                        </td>
+                        {weighted && (
+                          <td className={s.numeric}>
+                            {percent(entry.coveredWeightPct)}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
+            <div className={s.twoColumns}>
+              <section
+                className={s.chartCard}
+                aria-label="Reporting date distribution"
+              >
+                <div className={s.cardHeading}>
+                  <h4>Reporting periods are not always aligned</h4>
+                </div>
+                <p className={s.chartHelp}>
+                  Company counts by reporting end. Select a date to see which
+                  companies it covers. This is the financial reporting date, not
+                  the download date.
+                </p>
+                <div className={s.barList}>
+                  {report.coverage.periodEnds
+                    .slice(0, showPeriods ? undefined : 8)
+                    .map((entry: any) => (
+                      <button
+                        className={s.barButton}
+                        key={entry.end}
+                        type="button"
+                        aria-pressed={
+                          coverageSelection?.kind === "period" &&
+                          coverageSelection.id === entry.end
+                        }
+                        onClick={() =>
+                          setCoverageSelection(
+                            coverageSelection?.kind === "period" &&
+                              coverageSelection.id === entry.end
+                              ? null
+                              : { kind: "period", id: entry.end },
+                          )
+                        }
+                        aria-label={`Reporting end ${entry.end}: ${entry.count} companies`}
+                      >
+                        <span className={s.barCaption}>
+                          <strong>{entry.end}</strong>
+                          <b>{entry.count}</b>
+                        </span>
+                        <span className={s.barTrack} aria-hidden="true">
+                          <span
+                            style={{ width: barWidth(entry.count, maxPeriod) }}
+                          />
+                        </span>
+                      </button>
+                    ))}
+                </div>
+                {report.coverage.periodEnds.length > 8 && (
+                  <button
+                    type="button"
+                    className={s.showMore}
+                    onClick={() => setShowPeriods(!showPeriods)}
+                  >
+                    {showPeriods
+                      ? "Show newest 8 periods"
+                      : `Show all ${report.coverage.periodEnds.length} periods`}
+                  </button>
+                )}
+                {coverageSelection?.kind === "period" && coverageGroup && (
+                  <p className={s.note} role="status">
+                    {coverageGroup.count} companies selected for{" "}
+                    {coverageGroup.end}.{" "}
+                    <a
+                      className={s.sourceLink}
+                      href={`#${coverageSelectionId}`}
+                    >
+                      View selected companies ↑
+                    </a>
+                  </p>
+                )}
+              </section>
+              <section
+                className={s.chartCard}
+                aria-label="Companies needing more evidence"
+              >
+                <div className={s.cardHeading}>
+                  <h4>Resolve the next gap</h4>
+                  <span>{report.coverage.missingRows.length} positions</span>
+                </div>
+                <p className={s.chartHelp}>
+                  Unidentified companies, missing research, and unavailable
+                  tracked measures appear here. Inspect a company to see the
+                  evidence and the reason for each gap.
+                </p>
+                {report.coverage.missingRows.length ? (
+                  <>
+                    <ul className={s.missingList}>
+                      {report.coverage.missingRows
+                        .slice(0, missingLimit)
+                        .map((entry: any) => (
+                          <li key={entry.rowId}>
+                            <div>
+                              <strong>
+                                {entry.ticker ||
+                                  entry.name ||
+                                  "Unidentified position"}
+                              </strong>
+                              <span>{entry.name}</span>
+                              <small>{entry.reason}</small>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => onInspectCompany(entry.rowId)}
+                              aria-label={`Inspect coverage for ${entry.ticker || entry.name || "unidentified position"}`}
+                            >
+                              <ArrowUpRight size={17} aria-hidden="true" />
+                            </button>
+                          </li>
+                        ))}
+                    </ul>
+                    {missingLimit < report.coverage.missingRows.length && (
+                      <button
+                        type="button"
+                        onClick={() => setMissingLimit((value) => value + 20)}
+                      >
+                        Show next 20
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <p className={s.empty}>
+                    No missing company identities or tracked financial measures
+                    in this snapshot. Measures that do not apply remain separate
+                    in the coverage table.
+                  </p>
+                )}
+              </section>
+            </div>
           </div>
+          {matrixVisited && (
+            <div className={s.retained} hidden={coverageMode !== "matrix"}>
+              <PortfolioCoverageMatrix
+                report={report}
+                companies={companies}
+                onInspectCompany={onInspectCompany}
+              />
+            </div>
+          )}
         </div>
       )}
     </section>

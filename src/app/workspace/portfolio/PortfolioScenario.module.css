@@ -331,6 +331,126 @@
 .footer > button {
   flex-shrink: 0;
 }
+.toolNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  border-bottom: 1px solid var(--sc-line);
+  padding-bottom: 15px;
+}
+.scenario .toolNav button[aria-pressed="true"] {
+  background: var(--sc-accent);
+  border-color: var(--sc-accent);
+  color: #10151c;
+}
+.toolPanel {
+  display: grid;
+  gap: 17px;
+  min-width: 0;
+  border-top: 1px solid var(--sc-line);
+  padding-top: 20px;
+}
+.toolPanel .toolNote {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.gridStep {
+  display: grid;
+  gap: 7px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--sc-muted);
+}
+.gridStep select {
+  min-height: 44px;
+  border-radius: 7px;
+  border: 1px solid var(--sc-line);
+  background: var(--sc-panel);
+  color: var(--sc-text);
+  padding: 8px;
+  font-size: 14px;
+}
+.sensitivityTable table {
+  min-width: 600px;
+}
+.sensitivityTable th:first-child {
+  min-width: 120px;
+}
+.sensitivityTable td {
+  padding: 7px;
+}
+.scenario .sensitivityCell {
+  min-height: 48px;
+  width: 100%;
+  font-size: 15px;
+  font-weight: 700;
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+.scenario .sensitivityCell[aria-pressed="true"] {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 0;
+}
+.toolDetails {
+  font-size: 13px;
+  color: var(--sc-muted);
+}
+.toolDetails summary {
+  cursor: pointer;
+  min-height: 40px;
+  padding-top: 8px;
+}
+.caseControls {
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: end;
+}
+.caseControls button {
+  min-height: 44px;
+}
+.comparisonTable table {
+  min-width: 640px;
+  table-layout: fixed;
+}
+.comparisonTable th,
+.comparisonTable td {
+  text-align: left;
+  white-space: normal;
+  min-width: 170px;
+  width: 200px;
+  vertical-align: top;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.comparisonTable td small {
+  display: block;
+  font-size: 11px;
+  margin-top: 4px;
+  color: var(--sc-muted);
+}
+.comparisonTable thead th > strong {
+  color: var(--sc-text);
+  font-size: 13px;
+}
+.comparisonReturn {
+  font-size: 22px;
+  letter-spacing: -0.025em;
+}
+.caseActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+.scenario .caseActions button {
+  font-size: 11px;
+  min-height: 32px;
+  padding: 5px 7px;
+}
+:global(html[data-theme-mode="light"])
+  .scenario
+  .toolNav
+  button[aria-pressed="true"] {
+  color: #fff;
+}
 @media (max-width: 700px) {
   .heading,
   .optIn,
@@ -346,6 +466,9 @@
   }
   .controls {
     grid-template-columns: 1fr;
+  }
+  .gridStep {
+    width: 100%;
   }
   .optIn .primary {
     width: 100%;

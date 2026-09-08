@@ -252,13 +252,24 @@ export default function PortfolioGuidePage() {
         </p>
         <ul>
           <li>
+            <strong>Portfolio briefing:</strong> start with the largest known
+            exposures, financial conditions and evidence gaps. Each finding
+            leads to a relevant view or company. Counts describe identified
+            issuers; a ticker list does not imply invested weights.
+          </li>
+          <li>
             <strong>Concentration:</strong> see combined issuer exposure across
             share classes and the SEC industry mix. Top-issuer percentages use
             known original weights. Complete, reviewed allocations totaling 100%
             also show an effective issuer count: 1 divided by the sum of squared
             issuer weight fractions. Ten equally weighted issuers produce 10;
             one issuer produces 1. This measures allocation concentration and
-            does not account for correlations or fund holdings.
+            does not account for correlations or fund holdings. Set your own
+            issuer and industry limits, inspect breaches, and trace cumulative
+            allocation across the largest holdings. Limit settings are research
+            assumptions. Incomplete weights cannot establish that exposure is
+            within a limit. HHI contributions use squared issuer weights only
+            when allocation is complete.
           </li>
           <li>
             <strong>Financial profile:</strong> compare company medians, the
@@ -269,18 +280,50 @@ export default function PortfolioGuidePage() {
             and not-applicable observations stay separate.
           </li>
           <li>
+            <strong>Peer benchmarks and relationships:</strong> choose a SEC
+            industry and reporting dates to compare a relevant group. Percentile
+            ranks describe position within the measured group; a higher rank is
+            not necessarily better. Two-metric charts use only issuers with both
+            measures, show their reporting dates, and can require matching
+            period ends. These are financial relationships, not return
+            correlations or forecasts.
+          </li>
+          <li>
+            <strong>Company comparisons:</strong> select up to four issuers and
+            compare supported measures, reporting periods and SEC sources side
+            by side. Missing values remain visible. Industry filters do not
+            change the saved portfolio or its weight denominator.
+          </li>
+          <li>
+            <strong>Company screener:</strong> combine up to four financial
+            rules and inspect companies meeting all of them. A company needs
+            supported evidence for every rule to qualify. Presets are editable
+            research questions. Download the matching observations with their
+            coverage and sources.
+          </li>
+          <li>
             <strong>Scenario lab:</strong> apply hypothetical price changes to
             all holdings, an issuer or a SEC industry. A 60% holding falling
             20%, with the remaining 40% unchanged, contributes −12 percentage
             points to modeled portfolio value. Scenarios require complete
             reviewed allocations, or your explicit choice to try a temporary
             equal-weight model. The temporary model does not edit saved weights.
+            Sensitivity tables vary the target and other holdings&apos; price
+            changes. The loss-target tool solves the target price change needed
+            to produce your specified portfolio loss, holding the other
+            assumptions fixed; it reports when that change is outside the
+            supported range. Compare up to four named sets of assumptions and
+            download the comparison. Cases remain available while you switch
+            research tabs. Reloading, editing rows or opening another portfolio
+            clears them; download the comparison to keep it.
           </li>
           <li>
             <strong>Evidence coverage:</strong> inspect metric coverage,
             reporting-date differences and the companies that need attention.
             Missing financial evidence never becomes a zero value. Reported
-            periods can differ across issuers, including in the same chart.
+            periods can differ across issuers, including in the same chart. The
+            company-by-metric matrix makes every supported, missing and
+            not-applicable measure visible, with inspection and CSV download.
           </li>
         </ul>
         <p>
@@ -395,12 +438,14 @@ export default function PortfolioGuidePage() {
           Export the selected issuer table to CSV, or a captured research
           package to XLSX, JSON or Markdown. The workbook separates Holdings,
           Company research, Portfolio summary, Sources, Coverage &amp;
-          methodology, and Analytics. An analytics CSV summarizes the full
-          portfolio; full JSON and Markdown packages include those calculations
-          too. Selected-row exports omit portfolio-wide analytics to keep the
-          selected scope and original weights clear. Copy research context
-          produces the same source-backed brief for another research tool
-          without calling a model.
+          methodology, Analytics, and Metric observations. The last sheet keeps
+          each issuer&apos;s supported values, reporting dates and source links
+          alongside explicit missing and not-applicable states. An analytics CSV
+          summarizes the full portfolio; full JSON and Markdown packages include
+          those calculations too. Selected-row exports omit portfolio-wide
+          analytics to keep the selected scope and original weights clear. Copy
+          research context produces the same source-backed brief for another
+          research tool without calling a model.
         </p>
         <p>
           Research packages use <code>edgar.portfolio.research.v1</code>,

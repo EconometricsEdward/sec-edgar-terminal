@@ -1,0 +1,350 @@
+.matrix {
+  --pm-text: var(--hub-text, #e8edf5);
+  --pm-muted: var(--hub-muted, #a7b4c7);
+  --pm-line: var(--hub-border, #344158);
+  --pm-accent: var(--hub-accent, #f7c65a);
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--pm-line);
+  border-radius: 16px;
+  background: var(--hub-panel, #101a2b);
+  color: var(--pm-text);
+}
+.matrix h3 {
+  margin: 7px 0 10px;
+  font-size: clamp(23px, 2.6vw, 30px);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+.matrix p {
+  margin: 4px 0;
+  color: var(--pm-muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.eyebrow {
+  color: var(--pm-accent);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.heading,
+.filterRow,
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.heading > div {
+  max-width: 770px;
+}
+.heading > button {
+  flex-shrink: 0;
+}
+.matrix button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--pm-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--pm-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.matrix button:hover:not(:disabled) {
+  border-color: var(--pm-accent);
+  color: var(--pm-accent);
+}
+.matrix button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.matrix button:focus-visible,
+.matrix input:focus-visible,
+.matrix select:focus-visible,
+.matrix a:focus-visible,
+.tableWrap:focus-visible {
+  outline: 2px solid var(--pm-accent);
+  outline-offset: 3px;
+}
+.controls {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(170px, 1fr) minmax(
+      170px,
+      1fr
+    );
+  gap: 14px;
+}
+.matrix label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pm-muted);
+}
+.matrix input,
+.matrix select {
+  min-width: 0;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--pm-line);
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: var(--hub-input, #0c1524);
+  color: var(--pm-text);
+  font: inherit;
+  font-size: 13px;
+}
+.matrix .check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.5;
+}
+.matrix .check input[type="checkbox"] {
+  width: 17px;
+  min-width: 17px;
+  min-height: 17px;
+  height: 17px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--pm-accent);
+}
+.summary {
+  display: flex;
+  gap: 14px 24px;
+  flex-wrap: wrap;
+  padding: 15px 18px;
+  border: 1px solid var(--pm-line);
+  border-radius: 9px;
+  background: #ffffff03;
+}
+.summary > span {
+  font-size: 12px;
+  color: var(--pm-muted);
+}
+.summary strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  margin-right: 5px;
+  color: var(--pm-text);
+}
+.summary > .available strong {
+  color: #89d3b3;
+}
+.summary > .missing strong {
+  color: var(--pm-accent);
+}
+.matrix .note,
+.footer p {
+  font-size: 12px;
+}
+.tableWrap {
+  overflow: auto;
+  max-width: 100%;
+  max-height: 720px;
+  border: 1px solid var(--pm-line);
+  border-radius: 10px;
+}
+.tableWrap table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+.tableWrap th,
+.tableWrap td {
+  padding: 12px 13px;
+  text-align: left;
+  vertical-align: top;
+  border-right: 1px solid var(--pm-line);
+  border-bottom: 1px solid var(--pm-line);
+  min-width: 137px;
+}
+.tableWrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  color: var(--pm-muted);
+  font-size: 11px;
+  font-weight: 650;
+  background: var(--hub-panel, #101a2b);
+  box-shadow: 0 1px 0 var(--pm-line);
+}
+.tableWrap th:first-child {
+  min-width: 215px;
+  max-width: 260px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--hub-panel, #101a2b);
+  box-shadow: 1px 0 0 var(--pm-line);
+}
+.tableWrap thead th:first-child {
+  z-index: 3;
+}
+.tableWrap tbody th {
+  font-weight: 400;
+}
+.tableWrap th > span,
+.tableWrap th > small {
+  display: block;
+  margin-top: 6px;
+  color: var(--pm-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.tableWrap thead small {
+  margin-top: 4px;
+  font-weight: 400;
+}
+.tableWrap tr > *:last-child {
+  border-right: 0;
+}
+.tableWrap tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.matrix .company {
+  padding: 0;
+  min-height: 28px;
+  border: 0;
+  color: var(--pm-accent);
+  font-weight: 700;
+  text-align: left;
+}
+.availableCell {
+  background: #75d4a907;
+}
+.missingCell {
+  background: #f7c65a0b;
+}
+.naCell {
+  background: #ffffff02;
+}
+.cellLabel {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--pm-muted);
+}
+.availableCell .cellLabel {
+  color: #89d3b3;
+}
+.missingCell .cellLabel {
+  color: var(--pm-accent);
+}
+.tableWrap td > strong {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.date {
+  display: block;
+  margin-top: 7px;
+  font-size: 10px;
+  color: var(--pm-muted);
+  line-height: 1.5;
+}
+.tableWrap a {
+  display: inline-block;
+  margin-top: 7px;
+  font-size: 10px;
+  color: var(--pm-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.matrix .inspect {
+  padding: 4px 0;
+  min-height: 30px;
+  border: 0;
+  border-radius: 0;
+  font-size: 11px;
+  color: var(--pm-accent);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.tableWrap th > .missing {
+  color: var(--pm-accent);
+}
+.empty {
+  padding: 24px;
+  border: 1px dashed var(--pm-line);
+  border-radius: 10px;
+}
+.empty p {
+  margin: 8px 0 15px;
+}
+.footer > button {
+  flex-shrink: 0;
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 1000px) {
+  .heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .controls > label:first-child {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 600px) {
+  .matrix {
+    padding: 16px;
+    gap: 15px;
+  }
+  .controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .controls > label:first-child {
+    grid-column: auto;
+  }
+  .filterRow,
+  .footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .tableWrap th:first-child {
+    position: static;
+    min-width: 175px;
+    max-width: 190px;
+  }
+  .tableWrap thead th:first-child {
+    position: sticky;
+    top: 0;
+  }
+  .summary {
+    gap: 12px;
+    padding: 14px;
+  }
+  .summary > span {
+    flex: 1 1 40%;
+  }
+  .summary strong {
+    display: block;
+    margin: 0 0 4px;
+  }
+}

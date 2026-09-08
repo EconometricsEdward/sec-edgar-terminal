@@ -529,6 +529,102 @@ export function portfolioCsv(bundle, columns) {
   return csvString(companyTable(bundle, columns));
 }
 
+// These rows use the same canonical issuer/metric grid as the analytics views.
+// A subset never borrows identities or applicability from the full document.
+function metricObservationRows(bundle) {
+  const analytics = bundle.analytics;
+  if (
+    !analytics ||
+    analytics.scope !== "full_saved_document" ||
+    bundle.export_options?.selected_subset
+  )
+    return [];
+  const includeWeights =
+    bundle.export_options?.include_allocations !== false && analytics.weighted;
+  return analytics.metrics.flatMap((metric) => {
+    const observations = new Map(
+      metric.observations.map((observation) => [observation.cik, observation]),
+    );
+    const notApplicable = new Set(metric.notApplicableCiks || []);
+    return analytics.concentration.issuers.map((issuer) => {
+      const observation = observations.get(issuer.cik);
+      const status =
+        issuer.kind === "fund" || notApplicable.has(issuer.cik)
+          ? "not_applicable"
+          : finite(observation?.value)
+            ? "available"
+            : "missing";
+      const available = status === "available";
+      return {
+        cik: issuer.cik,
+        ticker: issuer.tickers.join(" / "),
+        company: issuer.name,
+        metric: metric.id,
+        metric_label: metric.label,
+        observation_status: status,
+        value: available ? observation.value : null,
+        unit: metric.unit,
+        period: available ? observation.periodEnd : null,
+        source_url: available ? secUrl(observation.sourceUrl) : null,
+        known_weight_pct:
+          includeWeights && finite(issuer.weightPct) ? issuer.weightPct : null,
+        research_captured_at:
+          analytics.capturedAt || bundle.research_captured_at,
+        scope: analytics.scope,
+        detail:
+          status === "not_applicable"
+            ? issuer.kind === "fund"
+              ? "Company financial measures do not apply to this direct fund position. No holdings look-through is inferred."
+              : "This measure does not apply to the company's reporting lens or is marked not applicable in the captured evidence."
+            : status === "missing"
+              ? "No supported observation with a compatible unit is available. A missing value is not zero."
+              : "One supported observation per issuer. Share classes are combined; known weights retain the full saved portfolio denominator.",
+      };
+    });
+  });
+}
+
+function metricObservationsTable(bundle) {
+  const headers = [
+    "cik",
+    "ticker",
+    "company",
+    "metric",
+    "metric_label",
+    "observation_status",
+    "value",
+    "unit",
+    "period",
+    "source_url",
+    "known_weight_pct",
+    "research_captured_at",
+    "scope",
+    "detail",
+  ];
+  const observations = metricObservationRows(bundle);
+  if (
+    !bundle.analytics ||
+    bundle.analytics.scope !== "full_saved_document" ||
+    bundle.export_options?.selected_subset
+  ) {
+    const omitted = {
+      observation_status: "not_included",
+      research_captured_at: bundle.research_captured_at,
+      scope: "not_included_for_selected_export",
+      detail:
+        bundle.analytics?.reason ||
+        "Portfolio-wide metric observations require a full-portfolio export.",
+    };
+    return [headers, headers.map((key) => scalar(omitted[key]))];
+  }
+  return [
+    headers,
+    ...observations.map((observation) =>
+      headers.map((key) => scalar(observation[key])),
+    ),
+  ];
+}
+
 // Fixed columns make the analytics export usable independently of the larger
 // evidence tables. Every numeric result comes directly from the shared model.
 function analyticsTable(bundle) {
@@ -548,6 +644,11 @@ function analyticsTable(bundle) {
     "research_captured_at",
     "scope",
     "detail",
+    "cik",
+    "ticker",
+    "company",
+    "observation_status",
+    "source_url",
   ];
   const rows = [headers];
   const analytics = bundle.analytics;
@@ -662,6 +763,15 @@ function analyticsTable(bundle) {
         },
       );
   }
+  for (const observation of metricObservationRows(bundle))
+    add(
+      "metric_observation",
+      observation.metric,
+      observation.metric_label,
+      observation.value,
+      observation.unit,
+      observation,
+    );
   for (const condition of analytics.conditions)
     add(
       "review_condition",
@@ -921,6 +1031,7 @@ export function portfolioXlsx(bundle) {
     { name: "Sources", rows: sources },
     { name: "Coverage & methodology", rows: coverage },
     { name: "Analytics", rows: analyticsTable(bundle) },
+    { name: "Metric observations", rows: metricObservationsTable(bundle) },
   ]);
 }
 
