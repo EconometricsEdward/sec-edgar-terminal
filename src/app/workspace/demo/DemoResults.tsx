@@ -691,7 +691,13 @@ export default function DemoResults() {
                 setFocusedRowId(null);
                 setArea("companies");
                 setPreset("overview");
-                setQuery(row.input.ticker || row.resolution.ticker || "");
+                setQuery(
+                  byCik[row.resolution.cik]?.name ||
+                    row.resolution.name ||
+                    row.input.ticker ||
+                    row.resolution.ticker ||
+                    "",
+                );
                 setEvidence({
                   company: {
                     ...byCik[row.resolution.cik],
