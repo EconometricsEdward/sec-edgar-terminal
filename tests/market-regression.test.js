@@ -196,6 +196,74 @@ test('Rolling beta captures a regime change and always includes the final window
   closeTo(result.rollingBeta.current, 2, 1e-11);
   assert.equal(result.rollingBeta.points.at(-1).date, dates.at(-1));
   assert.ok(result.rollingBeta.maximum > result.rollingBeta.minimum);
+  assert.ok(result.rollingBeta.firstQuartile <= result.rollingBeta.median);
+  assert.ok(result.rollingBeta.thirdQuartile >= result.rollingBeta.median);
+  assert.ok(result.rollingBeta.currentPercentile > 50);
+});
+
+test('Rolling beta uses a neutral midrank percentile when every estimate is tied', () => {
+  const market = marketSequence(260);
+  const dates = tradingDates(market.length);
+  const result = estimateRegressionDiagnostics({
+    assetPrices: pricesFromLogReturns(market.map((value) => 1.25 * value), dates),
+    marketPrices: pricesFromLogReturns(market, dates),
+    sectorPrices: pricesFromLogReturns(market, dates),
+    minimumObservations: 126,
+    rollingWindow: 60,
+  });
+  closeTo(result.rollingBeta.currentPercentile, 50, 1e-10);
+});
+
+test('Term structure, influence sensitivity, and residual tails reuse the aligned sample', () => {
+  const market = marketSequence(520);
+  const asset = market.map((value, index) => (
+    0.0001 + (index < 260 ? 0.8 : 1.35) * value + (index === 500 ? 0.045 : Math.sin(index * 0.77) * 0.0004)
+  ));
+  const dates = tradingDates(market.length, '2023-01-03');
+  const result = estimateRegressionDiagnostics({
+    assetPrices: pricesFromLogReturns(asset, dates),
+    marketPrices: pricesFromLogReturns(market, dates),
+    sectorPrices: pricesFromLogReturns(market, dates),
+    requestedStart: dates[0],
+    horizonStarts: {
+      '1y': dates[260],
+      '3y': dates[0],
+      '5y': '2020-01-01',
+    },
+  });
+  const oneYear = result.betaTermStructure.find((point) => point.window === '1y');
+  const threeYear = result.betaTermStructure.find((point) => point.window === '3y');
+  const fiveYear = result.betaTermStructure.find((point) => point.window === '5y');
+  assert.equal(oneYear.available, true);
+  assert.equal(threeYear.available, true);
+  assert.equal(fiveYear.available, false);
+  assert.equal(fiveYear.reason, 'history_not_loaded');
+  assert.ok(oneYear.beta > threeYear.beta);
+  assert.equal(result.influenceSensitivity.available, true);
+  assert.equal(result.influenceSensitivity.excludedDates.length, 3);
+  assert.ok(Number.isFinite(result.influenceSensitivity.betaDelta));
+  assert.equal(result.residualTail.probability, 0.05);
+  assert.ok(result.residualTail.expectedShortfall <= result.residualTail.lowerQuantile);
+  assert.ok(result.residualTail.worst.abnormalReturn <= result.residualTail.best.abnormalReturn);
+});
+
+test('Term structure withholds long-horizon labels for a short issuer history', () => {
+  const market = marketSequence(520);
+  const dates = tradingDates(market.length, '2023-01-03');
+  const recentDates = dates.slice(-150);
+  const recentAsset = market.slice(-149).map((value) => 1.1 * value);
+  const result = estimateRegressionDiagnostics({
+    assetPrices: pricesFromLogReturns(recentAsset, recentDates),
+    marketPrices: pricesFromLogReturns(market, dates),
+    sectorPrices: pricesFromLogReturns(market, dates),
+    minimumObservations: 126,
+    horizonStarts: { '3y': dates[0] },
+  });
+  const threeYear = result.betaTermStructure[0];
+  assert.equal(threeYear.available, false);
+  assert.equal(threeYear.reason, 'insufficient_requested_horizon_coverage');
+  assert.ok(threeYear.observations >= 126);
+  assert.ok(threeYear.overlapCoverage < 0.8);
 });
 
 test('Sector residualization recovers independent and equivalent joint coefficients', () => {
@@ -262,8 +330,15 @@ test('Date-only filing events begin strictly after the filing date', () => {
   assert.equal(result.timingQuality, 'filing_date_next_session_proxy');
   assert.equal(result.windows['1'].through, dates[eventIndex + 1]);
   closeTo(result.windows['1'].cumulativeAbnormalReturn, Math.exp(0.02) - 1, 1e-11);
+  assert.equal(result.path.length, 20);
+  assert.equal(result.path[0].session, 1);
+  assert.equal(result.path[19].session, 20);
+  closeTo(result.path[0].cumulativeAbnormalReturn, result.windows['1'].cumulativeAbnormalReturn, 1e-14);
+  closeTo(result.path[19].cumulativeAbnormalReturn, result.windows['20'].cumulativeAbnormalReturn, 1e-14);
   assert.equal(result.estimation.observations, 252);
   assert.equal(result.estimation.gapSessions, 20);
+  assert.match(result.estimation.inference, /HAC/);
+  assert.ok(Number.isSafeInteger(result.estimation.hacLag));
   assert.equal(estimateFilingEvent({ assetPrices: [], marketPrices: [], sectorPrices: [], filedDate: '2026-02-30' }), null);
 });
 

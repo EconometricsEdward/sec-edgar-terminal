@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GET, OPTIONS } from '../src/app/api/v1/market-signals/route.js';
+import { GET, HEAD, OPTIONS } from '../src/app/api/v1/market-signals/route.js';
 
 test('Market signals route rejects missing, unknown, and duplicate inputs without cacheable errors', async () => {
   for (const [url, code] of [
@@ -37,4 +37,30 @@ test('Market signals exposes a cacheable public read-only CORS contract', async 
   assert.equal(response.status, 204);
   assert.equal(response.headers.get('access-control-allow-origin'), '*');
   assert.equal(response.headers.get('access-control-allow-methods'), 'GET, OPTIONS');
+  assert.match(response.headers.get('access-control-allow-headers'), /If-None-Match/);
+  assert.match(response.headers.get('access-control-expose-headers'), /RateLimit-Reset/);
+  assert.match(response.headers.get('access-control-expose-headers'), /Link/);
+});
+
+test('Market signals returns a versioned 429 envelope and HEAD never returns a body', async () => {
+  const request = () => new Request(
+    'https://secedgarterminal.com/api/v1/market-signals?ticker=INVALID!',
+    { headers: { 'x-forwarded-for': '192.0.2.199' } },
+  );
+  for (let index = 0; index < 10; index += 1) assert.equal((await GET(request())).status, 400);
+  const limited = await GET(request());
+  const body = await limited.json();
+  assert.equal(limited.status, 429);
+  assert.equal(body.schema_version, 'edgar.market-signals.v1');
+  assert.equal(body.code, 'RATE_LIMITED');
+  assert.equal(body.retryable, true);
+  assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+
+  const head = await HEAD(new Request(
+    'https://secedgarterminal.com/api/v1/market-signals?ticker=INVALID!',
+    { headers: { 'x-forwarded-for': '192.0.2.200' } },
+  ));
+  assert.equal(head.status, 405);
+  assert.equal(head.headers.get('allow'), 'GET, OPTIONS');
+  assert.equal(await head.text(), '');
 });

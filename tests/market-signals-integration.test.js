@@ -180,6 +180,17 @@ test('Signal orchestration joins one warm SEC snapshot to three adjusted price s
     assert.equal(result.filing_event.timing_quality, 'acceptance_timestamp_during_or_after_session');
     assert.equal(result.filing_event.event_interval_end, '2026-08-03');
     assert.ok(Number.isFinite(result.evidence_gap.evidence_gap));
+    assert.equal(result.estimates.beta_term_structure.length, 3);
+    assert.equal(result.estimates.influence_sensitivity.available, true);
+    assert.ok(Number.isFinite(result.estimates.residual_tail.expected_shortfall));
+    assert.equal(result.filing_event.path.length, 20);
+    assert.match(result.filing_event.estimation.inference, /HAC/);
+    assert.equal(result.quality.gates.length, 7);
+    assert.ok(result.research_readout.questions.length > 0);
+    assert.match(result.fingerprints.input_sha256, /^[0-9a-f]{64}$/);
+    assert.match(result.fingerprints.result_sha256, /^[0-9a-f]{64}$/);
+    assert.match(result.fingerprints.sec_sha256, /^[0-9a-f]{64}$/);
+    assert.match(result.fingerprints.canonicalization, /lexicographic/);
     assert.equal(result.quality.headline_eligible, true);
     assert.equal(result.quality.filing_score_complete, true);
     assert.equal(result.quality.peer_count, 10);
@@ -190,6 +201,12 @@ test('Signal orchestration joins one warm SEC snapshot to three adjusted price s
     assert.equal(result.provenance.prices.asset.last_observation, '2026-09-08');
     assert.equal(JSON.stringify(result).includes('adjustedClose'), false);
     assert.equal(JSON.stringify(result).includes('rawClose'), false);
+    const repeated = await loadMarketSignal({
+      ticker: 'NVDA', window: '1y', basis: 'ttm', cohort: 'ai-infrastructure', sectorProxy: 'XLK',
+    }, { now: new Date('2026-09-09T12:00:00.000Z') });
+    assert.equal(repeated.snapshot_id, result.snapshot_id);
+    assert.equal(repeated.fingerprints.input_sha256, result.fingerprints.input_sha256);
+    assert.equal(repeated.fingerprints.result_sha256, result.fingerprints.result_sha256);
 
     // Compile the published contract and validate the real orchestration
     // output so response-key drift cannot silently break generated clients.
@@ -200,7 +217,51 @@ test('Signal orchestration joins one warm SEC snapshot to three adjusted price s
     assert.ok(Object.hasOwn(schema.$defs.regression.properties, 'beta_confidence_interval95'));
     assert.equal(Object.hasOwn(schema.$defs.regression.properties, 'beta_confidence_interval_95'), false);
 
+    const { GET: signalRouteGet } = await import(`../src/app/api/v1/market-signals/route.js?integration=${Date.now()}`);
+    const routeUrl = 'https://secedgarterminal.com/api/v1/market-signals?ticker=NVDA&window=1y&basis=ttm&cohort=ai-infrastructure&sector_proxy=XLK';
+    const firstRouteResponse = await signalRouteGet(new Request(routeUrl, { headers: { 'x-forwarded-for': '192.0.2.210' } }));
+    assert.equal(firstRouteResponse.status, 200);
+    const etag = firstRouteResponse.headers.get('etag');
+    assert.match(etag, /^"[A-Za-z0-9_-]+"$/);
+    assert.equal(firstRouteResponse.headers.get('content-location'), '/api/v1/market-signals?ticker=NVDA&window=1y&basis=ttm&cohort=ai-infrastructure&sector_proxy=XLK');
+    assert.match(firstRouteResponse.headers.get('server-timing'), /total;dur=/);
+    const conditionalResponse = await signalRouteGet(new Request(routeUrl, {
+      headers: { 'x-forwarded-for': '192.0.2.211', 'if-none-match': etag },
+    }));
+    assert.equal(conditionalResponse.status, 304);
+    assert.equal(await conditionalResponse.text(), '');
+    for (const [index, validator] of [`W/${etag}`, `"unmatched", W/${etag}`, '*'].entries()) {
+      const conditional = await signalRouteGet(new Request(routeUrl, {
+        headers: { 'x-forwarded-for': `192.0.2.${212 + index}`, 'if-none-match': validator },
+      }));
+      assert.equal(conditional.status, 304);
+      assert.equal(await conditional.text(), '');
+    }
+    const nonmatch = await signalRouteGet(new Request(routeUrl, {
+      headers: { 'x-forwarded-for': '192.0.2.215', 'if-none-match': '"unmatched"' },
+    }));
+    assert.equal(nonmatch.status, 200);
+
+    // Refresh clocks are provenance, not analytic inputs; exact filing values,
+    // peers, versions, cutoffs, and price rows determine the stable snapshot.
+    snapshot.generatedAt = '2026-09-09T08:30:00.000Z';
+    const reclocked = await loadMarketSignal({
+      ticker: 'NVDA', window: '1y', basis: 'ttm', cohort: 'ai-infrastructure', sectorProxy: 'XLK',
+    }, { now: new Date('2026-09-09T12:00:00.000Z') });
+    assert.equal(reclocked.fingerprints.input_sha256, result.fingerprints.input_sha256);
+    assert.equal(reclocked.snapshot_id, result.snapshot_id);
+    assert.notEqual(reclocked.fingerprints.result_sha256, result.fingerprints.result_sha256);
+
+    snapshot.companies[1].filingComparisons.ttm.current.metrics.revenueGrowth += 0.25;
+    snapshot.generatedAt = '2026-09-09T08:45:00.000Z';
+    const changedPeerInput = await loadMarketSignal({
+      ticker: 'NVDA', window: '1y', basis: 'ttm', cohort: 'ai-infrastructure', sectorProxy: 'XLK',
+    }, { now: new Date('2026-09-09T12:00:00.000Z') });
+    assert.notEqual(changedPeerInput.fingerprints.input_sha256, result.fingerprints.input_sha256);
+    assert.notEqual(changedPeerInput.snapshot_id, result.snapshot_id);
+
     includeAdjusted = false;
+    for (const key of redis.keys()) if (key.includes('stock-raw-yahoo')) redis.delete(key);
     const withheld = await loadMarketSignal({
       ticker: 'NVDA', window: '3y', basis: 'ttm', cohort: 'ai-infrastructure', sectorProxy: 'XLK',
     }, { now: new Date('2026-09-09T12:00:00.000Z') });

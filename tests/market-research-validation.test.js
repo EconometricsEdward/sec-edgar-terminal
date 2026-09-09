@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isMarketAtlas } from '../src/utils/marketResearchValidation.js';
+import { projectMarketAtlasForClient } from '../src/utils/marketClientProjection.js';
+import { isMarketAtlas, isMarketClientAtlas } from '../src/utils/marketResearchValidation.js';
 
 const factorMetrics = () => Object.fromEntries([
   'revenueGrowth', 'netMargin', 'operatingMargin', 'freeCashFlowMargin', 'equityToAssets', 'cashToAssets',
@@ -45,6 +46,20 @@ function atlas() {
 
 test('Market atlas validation accepts fields consumed by the UI', () => {
   assert.equal(isMarketAtlas(atlas(), 'market-research-v3'), true);
+});
+
+test('Browser projection has a strict, separate validation contract', () => {
+  const projected = projectMarketAtlasForClient(atlas());
+  assert.equal(isMarketClientAtlas(projected, 'market-research-v3'), true);
+  assert.equal(isMarketAtlas(projected, 'market-research-v3'), false);
+
+  const leaked = structuredClone(projected);
+  leaked.companies[0].filingComparisons = { annual: null, ttm: null };
+  assert.equal(isMarketClientAtlas(leaked, 'market-research-v3'), false);
+
+  const malformed = structuredClone(projected);
+  malformed.companies[0].reports = null;
+  assert.equal(isMarketClientAtlas(malformed, 'market-research-v3'), false);
 });
 
 test('Market atlas validation rejects wrong versions and unsafe nested shapes', () => {

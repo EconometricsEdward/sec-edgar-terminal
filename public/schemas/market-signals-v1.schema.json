@@ -9,6 +9,7 @@
     "methodology_version",
     "universe_version",
     "snapshot_id",
+    "fingerprints",
     "status",
     "cache_status",
     "generated_at",
@@ -21,7 +22,9 @@
     "filing_event",
     "evidence_gap",
     "quality",
+    "research_readout",
     "interpretation",
+    "measurement",
     "provenance",
     "equations",
     "warnings",
@@ -36,7 +39,7 @@
     },
     "methodology_version": {
       "type": "string",
-      "const": "market-signals-1.0.0"
+      "const": "market-signals-1.1.0"
     },
     "universe_version": {
       "type": "string",
@@ -45,7 +48,31 @@
     "snapshot_id": {
       "type": "string",
       "minLength": 1,
-      "description": "Identifier for the SEC snapshot, normalized request, inputs, and calculation time used for this result."
+      "description": "Stable identifier for the SEC snapshot, normalized request, and exact inputs. Recomputing unchanged inputs preserves the identifier."
+    },
+    "fingerprints": {
+      "type": "object",
+      "required": ["algorithm", "canonicalization", "input_scope", "result_scope", "input_sha256", "result_sha256", "sec_sha256", "prices"],
+      "properties": {
+        "algorithm": { "const": "sha-256" },
+        "canonicalization": { "type": "string", "description": "Canonical JSON procedure used before hashing." },
+        "input_scope": { "type": "string", "description": "Documents the complete input fingerprint preimage scope." },
+        "result_scope": { "type": "string", "description": "Documents the computed-record fingerprint scope and distinguishes it from the byte-level HTTP ETag." },
+        "input_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "result_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "sec_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Trace hash over the exact focus and sorted peer SEC comparison inputs; source data are separately linked in provenance." },
+        "prices": {
+          "type": "object",
+          "required": ["asset", "market", "sector_proxy"],
+          "properties": {
+            "asset": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "market": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "sector_proxy": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     },
     "status": {
       "type": "string",
@@ -94,14 +121,25 @@
         "market_model": { "$ref": "#/$defs/regression" },
         "conditional_beta": { "$ref": "#/$defs/conditionalBeta" },
         "independent_sector_sensitivity": { "$ref": "#/$defs/sectorModel" },
-        "rolling_beta": { "$ref": "#/$defs/rollingBeta" }
+        "rolling_beta": { "$ref": "#/$defs/rollingBeta" },
+        "beta_term_structure": {
+          "type": "array",
+          "description": "One-, three-, and five-year estimates from one five-year input panel. A horizon requires at least 126 matched returns and at least 80% of SPY intervals across its requested span; short issuer histories remain explicitly unavailable.",
+          "items": { "$ref": "#/$defs/betaHorizon" }
+        },
+        "influence_sensitivity": {
+          "$ref": "#/$defs/influenceSensitivity"
+        },
+        "residual_tail": {
+          "$ref": "#/$defs/residualTail"
+        }
       },
       "additionalProperties": true
     },
     "edgar_snapshot": {
       "type": ["object", "null"],
       "description": "Current peer-normalized filing-change diagnostic. This is a descriptive snapshot, not a historical factor return or expected-return signal.",
-      "required": ["available", "diagnostic_only", "filing_change_z", "reason", "cohort_id", "direction", "coverage", "components", "claim_limits"],
+      "required": ["available", "diagnostic_only", "filing_change_z", "reason", "cohort_id", "direction", "coverage", "components", "driver_summary", "claim_limits"],
       "properties": {
         "schema_version": { "type": "string", "const": "edgar-market-signals-v1" },
         "available": { "type": "boolean" },
@@ -120,7 +158,11 @@
           "items": { "$ref": "#/$defs/filingComponent" }
         },
         "methodology": { "type": "object", "additionalProperties": true },
-        "claim_limits": { "$ref": "#/$defs/stringArray" }
+        "claim_limits": { "$ref": "#/$defs/stringArray" },
+        "driver_summary": {
+          "$ref": "#/$defs/driverSummary",
+          "description": "Fixed-weight filing-score contributions ranked without changing the template weights."
+        }
       },
       "additionalProperties": true
     },
@@ -147,7 +189,9 @@
             "start": { "$ref": "#/$defs/nullableDate" },
             "end": { "$ref": "#/$defs/nullableDate" },
             "observations": { "type": "integer", "minimum": 0 },
-            "gap_sessions": { "type": "integer", "minimum": 0 }
+            "gap_sessions": { "type": "integer", "minimum": 0 },
+            "inference": { "type": "string" },
+            "hac_lag": { "type": "integer", "minimum": 0 }
           },
           "additionalProperties": true
         },
@@ -159,6 +203,23 @@
             "20": { "$ref": "#/$defs/eventWindow" }
           },
           "additionalProperties": true
+        },
+        "path": {
+          "type": "array",
+          "maxItems": 20,
+          "description": "Complete post-filing session path; stops at the first missing exact return interval.",
+          "items": {
+            "type": "object",
+            "required": ["session", "date", "daily_abnormal_return", "cumulative_abnormal_return", "standardized_response"],
+            "properties": {
+              "session": { "type": "integer", "minimum": 1, "maximum": 20 },
+              "date": { "$ref": "#/$defs/nullableDate" },
+              "daily_abnormal_return": { "$ref": "#/$defs/nullableNumber" },
+              "cumulative_abnormal_return": { "$ref": "#/$defs/nullableNumber" },
+              "standardized_response": { "$ref": "#/$defs/nullableNumber" }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": true
@@ -193,9 +254,33 @@
       "additionalProperties": true
     },
     "quality": { "$ref": "#/$defs/quality" },
+    "research_readout": {
+      "type": "object",
+      "required": ["observations", "questions", "claim_boundary"],
+      "properties": {
+        "observations": { "type": "array", "items": { "$ref": "#/$defs/researchObservation" } },
+        "questions": { "$ref": "#/$defs/stringArray" },
+        "claim_boundary": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "interpretation": {
       "type": "string",
       "description": "Deterministic plain-language summary of the dated result, not generated investment advice."
+    },
+    "measurement": {
+      "type": "object",
+      "required": ["returns", "event_abnormal_return", "volatility", "beta_and_z_scores", "filing_levels", "filing_changes", "annualization_sessions"],
+      "properties": {
+        "returns": { "type": "string" },
+        "event_abnormal_return": { "type": "string" },
+        "volatility": { "type": "string" },
+        "beta_and_z_scores": { "type": "string" },
+        "filing_levels": { "type": "string" },
+        "filing_changes": { "type": "string" },
+        "annualization_sessions": { "const": 252 }
+      },
+      "additionalProperties": false
     },
     "provenance": { "$ref": "#/$defs/provenance" },
     "equations": {
@@ -380,6 +465,115 @@
       },
       "additionalProperties": true
     },
+    "betaHorizon": {
+      "type": "object",
+      "required": ["window", "requested_start", "available", "observations", "overlap_coverage"],
+      "properties": {
+        "window": { "type": "string", "enum": ["1y", "3y", "5y"] },
+        "requested_start": { "type": "string", "format": "date" },
+        "available": { "type": "boolean" },
+        "reason": { "type": "string", "enum": ["insufficient_observations", "insufficient_requested_horizon_coverage", "history_not_loaded"] },
+        "effective_start": { "$ref": "#/$defs/nullableDate" },
+        "effective_end": { "$ref": "#/$defs/nullableDate" },
+        "observations": { "type": "integer", "minimum": 0 },
+        "overlap_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "beta": { "$ref": "#/$defs/nullableNumber" },
+        "beta_confidence_interval95": {
+          "type": ["array", "null"],
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "r_squared": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "residual_volatility_annualized": { "$ref": "#/$defs/nullableNumber" }
+      },
+      "additionalProperties": false
+    },
+    "influencePoint": {
+      "type": "object",
+      "required": ["date", "distance"],
+      "properties": {
+        "date": { "$ref": "#/$defs/nullableDate" },
+        "distance": { "$ref": "#/$defs/nullableNumber" }
+      },
+      "additionalProperties": false
+    },
+    "influenceSensitivity": {
+      "type": ["object", "null"],
+      "description": "OLS refit after excluding the three largest Cook-distance sessions. This is a sensitivity check, not a replacement estimator.",
+      "required": ["available", "method", "excluded_dates"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "method": { "type": "string" },
+        "reason": { "type": "string", "enum": ["insufficient_observations_after_exclusion", "no_influential_dates"] },
+        "observations": { "type": "integer", "minimum": 0 },
+        "excluded_dates": { "type": "array", "maxItems": 3, "items": { "$ref": "#/$defs/influencePoint" } },
+        "beta": { "$ref": "#/$defs/nullableNumber" },
+        "beta_delta": { "$ref": "#/$defs/nullableNumber" },
+        "r_squared": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "residualExtreme": {
+      "type": "object",
+      "required": ["date", "log_residual", "abnormal_return"],
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "log_residual": { "type": "number" },
+        "abnormal_return": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "residualTail": {
+      "type": ["object", "null"],
+      "description": "Empirical market-model residual tail diagnostics, not portfolio VaR or expected loss.",
+      "required": ["probability", "lower_quantile", "expected_shortfall", "tail_observations", "worst", "best", "interpretation"],
+      "properties": {
+        "probability": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 },
+        "lower_quantile": { "type": "number" },
+        "expected_shortfall": { "type": "number" },
+        "tail_observations": { "type": "integer", "minimum": 1 },
+        "worst": { "$ref": "#/$defs/residualExtreme" },
+        "best": { "$ref": "#/$defs/residualExtreme" },
+        "interpretation": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "driverContribution": {
+      "type": "object",
+      "required": ["key", "label", "weighted_z", "z", "weight"],
+      "properties": {
+        "key": { "type": "string" },
+        "label": { "type": "string" },
+        "weighted_z": { "type": "number" },
+        "z": { "type": "number" },
+        "weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "driverSummary": {
+      "type": "object",
+      "required": ["available", "ranked", "strongest_positive", "strongest_negative", "contribution_sum"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "ranked": { "type": "array", "items": { "$ref": "#/$defs/driverContribution" } },
+        "strongest_positive": { "oneOf": [{ "$ref": "#/$defs/driverContribution" }, { "type": "null" }] },
+        "strongest_negative": { "oneOf": [{ "$ref": "#/$defs/driverContribution" }, { "type": "null" }] },
+        "contribution_sum": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "researchObservation": {
+      "type": "object",
+      "required": ["id", "level", "finding", "rule"],
+      "properties": {
+        "id": { "type": "string" },
+        "level": { "type": "string", "enum": ["high", "context"] },
+        "finding": { "type": "string" },
+        "rule": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "regression": {
       "type": ["object", "null"],
       "description": "OLS with an intercept. Inference uses Newey-West HAC standard errors. Return and volatility fields are decimal log-return units, so 0.20 represents 20% annualized volatility.",
@@ -473,9 +667,14 @@
         },
         "current": { "$ref": "#/$defs/nullableNumber" },
         "median": { "$ref": "#/$defs/nullableNumber" },
+        "first_quartile": { "$ref": "#/$defs/nullableNumber" },
+        "third_quartile": { "$ref": "#/$defs/nullableNumber" },
+        "interquartile_range": { "$ref": "#/$defs/nullableNumber" },
         "minimum": { "$ref": "#/$defs/nullableNumber" },
         "maximum": { "$ref": "#/$defs/nullableNumber" },
-        "range": { "$ref": "#/$defs/nullableNumber" }
+        "range": { "$ref": "#/$defs/nullableNumber" },
+        "current_minus_median": { "$ref": "#/$defs/nullableNumber" },
+        "current_percentile": { "type": ["number", "null"], "minimum": 0, "maximum": 100 }
       },
       "additionalProperties": true
     },
@@ -491,7 +690,7 @@
     },
     "quality": {
       "type": "object",
-      "required": ["grade", "headline_eligible", "evidence_gap_eligible", "observations", "peer_count", "eligible_peer_issuers", "filing_components", "required_filing_components", "filing_score_complete", "peer_filings_after_focus", "filing_event_complete", "sec_snapshot_status"],
+      "required": ["grade", "headline_eligible", "evidence_gap_eligible", "observations", "peer_count", "eligible_peer_issuers", "filing_components", "required_filing_components", "filing_score_complete", "peer_filings_after_focus", "filing_event_complete", "sec_snapshot_status", "gates"],
       "properties": {
         "grade": { "type": "string", "enum": ["A", "B", "C", "D"] },
         "headline_eligible": { "type": "boolean" },
@@ -504,7 +703,22 @@
         "filing_score_complete": { "type": "boolean" },
         "peer_filings_after_focus": { "type": ["integer", "null"], "minimum": 0 },
         "filing_event_complete": { "type": "boolean" },
-        "sec_snapshot_status": { "type": "string" }
+        "sec_snapshot_status": { "type": "string" },
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "status", "value", "requirement"],
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "status": { "type": "string", "enum": ["pass", "warn", "fail"] },
+              "value": { "type": "string" },
+              "requirement": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": true
     },

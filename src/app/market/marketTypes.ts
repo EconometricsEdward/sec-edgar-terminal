@@ -8,7 +8,7 @@ export type FilingComparisonPoint = FilingComparisonPointBase & (
   | { metricSources: Record<string, FilingMetricSource[]>; factorSourceAccessions?: never; factorSourceMasks?: never }
 );
 export type FilingComparison = { pointInTime: true; cutoff: { filed: string; acceptedAt: string | null; accession: string }; current: FilingComparisonPoint; prior: FilingComparisonPoint | null; gapDays: number | null; changes: Record<string, number | null> };
-export type Company = { version: string; ticker: string; name: string; cik: string; sic: string; revenueBasis?: string; cohorts: string[]; observedAt: string; metrics: Record<Basis, Record<string, number | null>>; reports: Record<Basis, Period | null>; filingComparisons: Record<Basis, FilingComparison | null>; cache?: { status: 'stale'; warning: string } };
+export type Company = { version: string; ticker: string; name: string; cik: string; sic: string; revenueBasis?: string; cohorts: string[]; observedAt: string; metrics: Record<Basis, Record<string, number | null>>; reports: Record<Basis, Period | null>; filingComparisons?: Record<Basis, FilingComparison | null>; cache?: { status: 'stale'; warning: string } };
 export type Cohort = { id: string; label: string; title: string; description: string; tickers: string[]; disclosureTerms: string };
 export type Saved = { version: number; watchlist: string[]; views: { name: string; query: string }[]; baselines: Record<string, Company> };
 export type Stats = { count: number; total: number; median: number | null; mean: number | null; positive: number; negative: number; positivePct: number | null };

@@ -64,7 +64,7 @@ function validFilingComparison(comparison) {
     && comparison.gapDays <= 380;
 }
 
-function validCompany(company) {
+function validCompanyBase(company) {
   return record(company)
     && typeof company.version === 'string'
     && typeof company.ticker === 'string'
@@ -79,12 +79,20 @@ function validCompany(company) {
     && record(company.metrics.ttm)
     && record(company.reports)
     && Object.hasOwn(company.reports, 'annual')
-    && Object.hasOwn(company.reports, 'ttm')
+    && Object.hasOwn(company.reports, 'ttm');
+}
+
+function validCompany(company) {
+  return validCompanyBase(company)
     && record(company.filingComparisons)
     && Object.hasOwn(company.filingComparisons, 'annual')
     && Object.hasOwn(company.filingComparisons, 'ttm')
     && validFilingComparison(company.filingComparisons.annual)
     && validFilingComparison(company.filingComparisons.ttm);
+}
+
+function validClientCompany(company) {
+  return validCompanyBase(company) && !Object.hasOwn(company, 'filingComparisons');
 }
 
 function validCohort(cohort) {
@@ -111,19 +119,28 @@ function validObservation(observation) {
     && validStats(observation.netMargin);
 }
 
-/** Validate the fields consumed by the Market UI before trusting a shared snapshot. */
-export function isMarketAtlas(value, expectedVersion) {
+function validAtlas(value, expectedVersion, companyValidator) {
   return record(value)
     && (expectedVersion === undefined || value.version === expectedVersion)
     && validDate(value.generatedAt)
     && Number.isSafeInteger(value.requested)
     && value.requested >= 0
     && Array.isArray(value.companies)
-    && value.companies.every(validCompany)
+    && value.companies.every(companyValidator)
     && Array.isArray(value.cohorts)
     && value.cohorts.every(validCohort)
     && Array.isArray(value.failures)
     && Array.isArray(value.observations)
     && value.observations.every(validObservation)
     && typeof value.historyPersistence === 'boolean';
+}
+
+/** Validate the complete server-side atlas, including filing comparisons. */
+export function isMarketAtlas(value, expectedVersion) {
+  return validAtlas(value, expectedVersion, validCompany);
+}
+
+/** Validate the deliberately smaller browser projection without weakening the full-atlas contract. */
+export function isMarketClientAtlas(value, expectedVersion) {
+  return validAtlas(value, expectedVersion, validClientCompany);
 }

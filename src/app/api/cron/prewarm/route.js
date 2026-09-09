@@ -36,6 +36,7 @@ import { warmSet, warmCacheEnabled } from '../../../../utils/warmCache.js';
 import { secFetch } from '../../../../utils/secClient.js';
 import { loadPriceSeries } from '../../../../utils/priceDataServer.js';
 import { loadMarketAtlas } from '../../../../utils/marketResearchServer.js';
+import { loadMarketSignal } from '../../../../utils/marketSignalsServer.js';
 
 export const runtime = 'nodejs';
 // Fluid-compute Vercel functions support a five-minute Hobby ceiling as of
@@ -62,6 +63,12 @@ const SAFETY_MARGIN_MS = 3_000;
 
 const USER_AGENT = process.env.SEC_USER_AGENT || 'EDGAR Terminal Prewarmer research@example.com';
 const FACTOR_BENCHMARKS = ['SPY', 'XLF', 'XLRE', 'XHB', 'XLE', 'XLY', 'XLK', 'XLI', 'XLV', 'XLU'];
+const FACTOR_DEFAULT_REQUESTS = [
+  { ticker: 'MSFT', requiredPrices: ['MSFT', 'SPY', 'XLK'] },
+  { ticker: 'NVDA', requiredPrices: ['NVDA', 'SPY', 'XLK'] },
+  { ticker: 'JPM', requiredPrices: ['JPM', 'SPY', 'XLF'] },
+];
+const FACTOR_DEFAULT_TICKERS = FACTOR_DEFAULT_REQUESTS.map((request) => request.ticker);
 
 // ---------------------------------------------------------------------------
 // Small concurrency-pool helper. Runs `worker(item)` for each item in `items`
@@ -170,7 +177,7 @@ export async function GET(request) {
   );
 
   const stocks = await getPopularStocks();
-  const priceTickers = [...new Set([...FACTOR_BENCHMARKS, ...stocks])];
+  const priceTickers = [...new Set([...FACTOR_BENCHMARKS, ...FACTOR_DEFAULT_TICKERS, ...stocks])];
 
   // Resolve tickers → CIKs up front in one batch (shared cache). We need the
   // CIK for SEC-backed warmers. Tickers without a CIK are treated as
@@ -185,6 +192,8 @@ export async function GET(request) {
     durationMs: null,
     timedOut: false,
   };
+  let warmedMarketAtlas = null;
+  const yahooAdjustedPrices = new Set();
 
   try {
     // --- Stage 1: point-in-time SEC Market atlas ----------------------------
@@ -193,6 +202,7 @@ export async function GET(request) {
     if (timeLeft() > 120_000) {
       try {
         const market = await loadMarketAtlas({ signal: controller.signal, forceRefresh: true });
+        warmedMarketAtlas = market;
         summary.stages.marketAtlas = {
           companies: market.companies.length,
           generatedAt: market.generatedAt,
@@ -217,6 +227,9 @@ export async function GET(request) {
         failed: stage.errors.length,
         errors: stage.errors.slice(0, 5),
       };
+      for (const result of stage.results) {
+        if (result.provider === 'yahoo_finance' && result.priceBasis === 'adjusted_close') yahooAdjustedPrices.add(result.ticker);
+      }
     } else {
       summary.stages.prices = { skipped: 'insufficient time budget' };
     }
@@ -237,6 +250,39 @@ export async function GET(request) {
       };
     } else {
       summary.stages.submissions = { skipped: 'insufficient time budget' };
+    }
+
+    // --- Stage 4: Default Factor Lab results --------------------------------
+    // This optional work runs only after the core SEC warmers and only when
+    // Stage 2 just confirmed every dependency as Yahoo adjusted close. That
+    // makes the calculation cache-only and prevents a second provider attempt.
+    const factorCandidates = FACTOR_DEFAULT_REQUESTS.filter((item) => (
+      item.requiredPrices.every((ticker) => yahooAdjustedPrices.has(ticker))
+    ));
+    if (timeLeft() > 35_000 && warmedMarketAtlas && factorCandidates.length) {
+      const stage = await runPool(factorCandidates, 2, async ({ ticker }) => {
+        if (timeLeft() < 20_000 || controller.signal.aborted) return;
+        const result = await loadMarketSignal(
+          { ticker, window: '3y', basis: 'ttm', cohort: 'auto', sectorProxy: 'auto' },
+          { atlas: warmedMarketAtlas, signal: controller.signal },
+        );
+        return { ticker, status: result.status, cacheStatus: result.cache_status, dataThrough: result.data_through };
+      });
+      summary.stages.factorSignals = {
+        eligible: factorCandidates.length,
+        succeeded: stage.results.length,
+        failed: stage.errors.length,
+        results: stage.results,
+        errors: stage.errors.slice(0, 3),
+      };
+    } else {
+      summary.stages.factorSignals = {
+        skipped: timeLeft() <= 35_000
+          ? 'insufficient time budget'
+          : !warmedMarketAtlas
+            ? 'fresh Market atlas unavailable'
+            : 'Yahoo adjusted-price dependencies were not all warmed',
+      };
     }
   } finally {
     clearTimeout(deadlineTimer);

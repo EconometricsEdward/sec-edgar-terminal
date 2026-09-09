@@ -4,14 +4,17 @@ import dynamic from 'next/dynamic';
 import { Activity, ArrowUpRight, Bookmark, Check, Download, Grid2X2, ListFilter, Loader2, RefreshCw, Share2, Sigma, Star, X } from 'lucide-react';
 import { MARKET_ATLAS_FRESH_MS, MARKET_VERSION, MARKET_SAVED_KEY, DEFAULT_MARKET_VIEW, parseMarketView, marketViewQuery, parseMarketSaved, selectMarketCompanies, marketCsv, marketBrief } from '../../utils/marketResearch.js';
 import { MARKET_LENSES } from '../../utils/marketCohorts.js';
-import { isMarketAtlas } from '../../utils/marketResearchValidation.js';
+import { isMarketClientAtlas } from '../../utils/marketResearchValidation.js';
 import { downloadText } from '../../utils/download.js';
 import { Briefing, CompanyTable, ObservationHistory, PeerComparison, SavedResearch, SectorMap } from './MarketPanels';
 import type { Company, MarketData, MarketView, Saved } from './marketTypes';
 import s from './market.module.css';
 
 const MarketEvidence = dynamic(() => import('./MarketEvidence'), { ssr: false });
-const MarketFactorLab = dynamic(() => import('./MarketFactorLab'), { ssr: false });
+const MarketFactorLab = dynamic(() => import('./MarketFactorLab'), {
+  ssr: false,
+  loading: () => <div className={s.loading} role="status"><Loader2 className={s.spin} size={22} /><div><h2>Opening Factor Lab</h2><p>Loading the econometric workspace…</p></div></div>,
+});
 const COHORT_IDS = MARKET_LENSES.map((c) => c.id);
 const EMPTY_COMPANIES: Company[] = [];
 const TABS = [{ id: 'overview', label: 'Market briefing', icon: Activity }, { id: 'sectors', label: 'Sector heatmap', icon: Grid2X2 }, { id: 'companies', label: 'Companies', icon: ListFilter }, { id: 'factors', label: 'Factor Lab', icon: Sigma }, { id: 'saved', label: 'Saved research', icon: Bookmark }];
@@ -51,9 +54,9 @@ export default function MarketOverviewClient({ initialData = null }: { initialDa
     const timeout = setTimeout(() => controller.abort(new Error('The Market snapshot is taking longer than expected. Please retry shortly.')), 285000);
     async function load() {
       try {
-        const response = await fetch(`/api/market-research?v=${MARKET_VERSION}`, { signal: controller.signal });
+        const response = await fetch(`/api/market-research?v=${MARKET_VERSION}&projection=client`, { signal: controller.signal });
         const result = await response.json();
-        if (!response.ok || !isMarketAtlas(result, MARKET_VERSION)) throw new Error(result.error || 'Market research is temporarily unavailable.');
+        if (!response.ok || !isMarketClientAtlas(result, MARKET_VERSION)) throw new Error(result.error || 'Market research is temporarily unavailable.');
         setData(result);
         setError('');
       } catch (e) {
