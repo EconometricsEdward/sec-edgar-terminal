@@ -23,7 +23,9 @@
  * additions), swap the in-memory Map for Upstash Redis.
  */
 
-const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+import { secFetch } from "./secClient.js";
+
+const TTL_MS = 24 * 60 * 60 * 1000; // directory files change infrequently
 
 // Per-instance caches
 let operatingCache = null; // { data, expiresAt }
@@ -42,10 +44,9 @@ function getUserAgent() {
 }
 
 async function fetchAndIndex(url, buildIndex) {
-  const res = await fetch(url, {
+  const res = await secFetch(url, {
     headers: { "User-Agent": getUserAgent() },
-    // Even module-scope data shouldn't hang indefinitely
-    signal: AbortSignal.timeout(15_000),
+    timeoutMs: 15_000,
   });
   if (!res.ok) {
     throw new Error(`SEC ticker file fetch failed: HTTP ${res.status}`);

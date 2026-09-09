@@ -3,7 +3,6 @@
 import React, {
   createContext,
   useState,
-  useEffect,
   useCallback,
   ReactNode,
 } from "react";
@@ -41,7 +40,7 @@ export interface TickerContextValue {
   setTickerMap: (m: TickerMap | null) => void;
   company: Company | null;
   setCompany: (c: Company | null) => void;
-  directoryStatus: "loading" | "ready" | "error";
+  directoryStatus: "idle" | "loading" | "ready" | "error";
   directoryError: string;
   refreshTickerMap: (force?: boolean) => Promise<void>;
 }
@@ -55,7 +54,7 @@ export interface TickerContextValue {
 export const TickerContext = createContext<TickerContextValue | null>(null);
 
 // ============================================================================
-// Provider — wraps the app with state and auto-loads the ticker map on mount
+// Provider — owns ticker-directory state and loads it only on search intent
 // ============================================================================
 
 export function TickerProvider({ children }: { children: ReactNode }) {
@@ -63,8 +62,8 @@ export function TickerProvider({ children }: { children: ReactNode }) {
   const [tickerMap, setTickerMap] = useState<TickerMap | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [directoryStatus, setDirectoryStatus] = useState<
-    "loading" | "ready" | "error"
-  >("loading");
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const [directoryError, setDirectoryError] = useState("");
 
   const refreshTickerMap = useCallback(async (force = false) => {
@@ -84,17 +83,6 @@ export function TickerProvider({ children }: { children: ReactNode }) {
       );
     }
   }, []);
-
-  // Preload the classified ticker map on mount. Same behavior as the old
-  // App.jsx useEffect, just now lives with the context that owns it.
-  useEffect(() => {
-    void refreshTickerMap();
-    const refresh = () => {
-      void refreshTickerMap();
-    };
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [refreshTickerMap]);
 
   return (
     <TickerContext.Provider

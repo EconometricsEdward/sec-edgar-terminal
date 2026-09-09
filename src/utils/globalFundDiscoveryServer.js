@@ -9,6 +9,7 @@ import {
   normalizeIssuerName,
 } from "./globalFundSecurity.js";
 import { warmGet, warmSet } from "./warmCache.js";
+import { secFetch } from "./secClient.js";
 
 const VERSION = "global-fund-discovery-v1";
 const DAY = 86400000;
@@ -16,7 +17,6 @@ const BATCH_SIZE = 24;
 const SEC_PAGE_SIZE = 100;
 const cache = new Map();
 const pending = new Map();
-let nextRequest = 0;
 const requestDeadline = new AsyncLocalStorage();
 const iso = (date) => new Date(date).toISOString().slice(0, 10);
 const validDate = (value) =>
@@ -47,24 +47,22 @@ async function cached(key, fn, { shared = false, ttl = 1800000 } = {}) {
   }
 }
 
-async function sec(url) {
+async function sec(url, { maxBytes = 40_000_000 } = {}) {
   const remaining = () =>
     (requestDeadline.getStore() || Date.now() + 85000) - Date.now();
   if (remaining() <= 1000)
     throw new Error(
       "Verification time limit reached. Retry this search to check unavailable reports.",
     );
-  const wait = Math.max(0, nextRequest - Date.now());
-  nextRequest = Date.now() + wait + 260;
-  if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-  const response = await fetch(url, {
+  const response = await secFetch(url, {
     headers: {
       "User-Agent":
         process.env.SEC_USER_AGENT ||
         "EDGAR Terminal research@secedgarterminal.com",
       Accept: "application/json, application/xml, text/xml, */*",
     },
-    signal: AbortSignal.timeout(Math.max(1, Math.min(18000, remaining()))),
+    timeoutMs: Math.max(1, Math.min(18000, remaining())),
+    maxBytes,
   });
   if (!response.ok)
     throw new Error(
@@ -226,7 +224,7 @@ async function loadReport(candidate) {
           "The primary N-PORT portfolio could not be located. Open the SEC report.",
         );
       const sourceUrl = `${candidate.root}/${filename}`;
-      const response = await sec(sourceUrl);
+      const response = await sec(sourceUrl, { maxBytes: 80 * 1024 * 1024 });
       const reader = response.body.getReader();
       const chunks = [];
       let length = 0;

@@ -2,6 +2,7 @@ import { getOperatingTicker, getFundTicker } from './tickerMap.js';
 import { warmGet, warmSet } from './warmCache.js';
 import { validTicker } from './researchWorkspace.js';
 import { normalizeFilingRows, validFilingDate } from './filingsResearch.js';
+import { secFetch } from './secClient.js';
 
 export const FILINGS_VERSION = 'filings-v1';
 const localCache = new Map();
@@ -32,9 +33,10 @@ async function secJson(path, signal) {
     try { return validateSubmissions(cached, path); }
     catch { /* A bad cache entry must not prevent a fresh SEC retry. */ }
   }
-  const response = await fetch(`https://data.sec.gov/submissions/${path}`, {
+  const response = await secFetch(`https://data.sec.gov/submissions/${path}`, {
     headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com', Accept: 'application/json' },
-    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
+    signal,
+    timeoutMs: 15000,
     cache: 'no-store',
   });
   if (!response.ok) throw failure(`SEC submissions are temporarily unavailable (HTTP ${response.status}). Retry this request.`);

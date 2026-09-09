@@ -260,13 +260,12 @@ test("Failed SEC fetches are retried, successful text is cached, and caller-supp
       ? new Response("SEC unavailable", { status: 503 })
       : new Response(`<html><p>${shared}</p></html>`, { headers: { "content-type": "text/html" } });
   });
-  await assert.rejects(fetchReaderDocument("19617", filing), { status: 502 });
   const recovered = await fetchReaderDocument("19617", filing);
   assert.equal(recovered.text, shared);
   assert.deepEqual(await fetchReaderDocument("19617", filing), recovered);
   assert.equal(attempts, 2);
   for (const call of calls) {
-    assert.equal(call.url, "https://www.sec.gov/Archives/edgar/data/19617/000001961725998871/report.htm");
+    assert.equal(String(call.url), "https://www.sec.gov/Archives/edgar/data/19617/000001961725998871/report.htm");
     assert.equal(call.options.redirect, "error");
     assert.ok(call.options.signal instanceof AbortSignal);
   }

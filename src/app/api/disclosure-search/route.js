@@ -14,6 +14,7 @@ import {
 } from '../../../utils/scannerCache.js';
 import { getOperatingTickers } from '../../../utils/tickerMap.js';
 import { getDisclosureMarketMap, getDisclosureUniverse } from '../../../utils/disclosureUniverses.js';
+import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -65,8 +66,7 @@ async function scanTicker(ticker, cik, depth, definitions, matchMode = 'any') {
     };
   }
 
-  const scanResults = await Promise.all(
-    filings.map(async (filing) => {
+  const inspectFiling = async (filing) => {
       const url = `https://www.sec.gov/Archives/edgar/data/${parseInt(cik, 10)}/${filing.accession.replace(/-/g, '')}/${filing.primaryDoc}`;
       const { text, error } = await fetchFilingText(cik, filing.accession, filing.primaryDoc);
 
@@ -136,8 +136,13 @@ async function scanTicker(ticker, cik, depth, definitions, matchMode = 'any') {
         keywordsFound: Array.from(keywordsFound).sort(),
         categoriesFound: ['custom'],
       };
-    }),
-  );
+  };
+  const scanResults = [];
+  // Keep the queue shallow enough that every worker can obtain a reservation
+  // from the shared SEC start gate instead of manufacturing skipped filings.
+  for (let index = 0; index < filings.length; index += 3) {
+    scanResults.push(...await Promise.all(filings.slice(index, index + 3).map(inspectFiling)));
+  }
 
   const filingsWithMatches = scanResults.filter((result) => result.matchCount > 0);
   const totalMatches = scanResults.reduce((sum, result) => sum + result.matchCount, 0);
@@ -177,6 +182,18 @@ export async function GET(request) {
   const depthParam = url.searchParams.get('depth');
   const fresh = url.searchParams.get('fresh') === 'true';
   const matchMode = parseMatchMode(url.searchParams.get('match') || url.searchParams.get('matchMode'));
+
+  // The current UI uses /api/disclosure-research. Keep this legacy scanner
+  // available for compatibility, but do not expose its cache bypass publicly.
+  if (fresh) {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+      return NextResponse.json(
+        { error: 'A fresh legacy disclosure scan requires cron authorization.' },
+        { status: 401, headers: { 'Cache-Control': 'private, no-store' } },
+      );
+    }
+  }
 
   const parsed = buildKeywordDefinitions(rawQuery);
   if (parsed.definitions.length === 0) {
@@ -253,6 +270,17 @@ export async function GET(request) {
   if (!Number.isFinite(depth) || depth < 1) depth = defaultDepth;
   if (depth > maxDepth) depth = maxDepth;
 
+  // Charge by estimated SEC work instead of treating a 240-document market
+  // scan as equivalent to a one-company request.
+  const estimatedCost = Math.max(1, Math.min(240, tickers.length * (depth + 1)));
+  const limit = await checkRateLimit({
+    key: `rl:disclosure-search:${getClientIp(request)}`,
+    windowMs: 5 * 60_000,
+    max: 240,
+    cost: estimatedCost,
+  });
+  if (!limit.allowed) return rateLimitedResponse(limit);
+
   const signature = disclosureSignature({ terms: parsed.terms, depth, matchMode });
 
   let cikByTicker;
@@ -291,7 +319,7 @@ export async function GET(request) {
       const result = await scanTicker(ticker, entry.cik, depth, parsed.definitions, matchMode);
       results.push({ ...result, fromCache: false });
 
-      if (!result.error) {
+      if (!result.error && result.totalFilingsFailed === 0) {
         try {
           await setCachedDisclosureScan(ticker, signature, result);
         } catch (err) {
@@ -303,9 +331,10 @@ export async function GET(request) {
     }
   }
 
-  const headers = fresh
+  const incomplete = errors.length > 0 || results.some((result) => result.error || result.totalFilingsFailed > 0);
+  const headers = fresh || incomplete
     ? { 'Cache-Control': 'private, no-store' }
-    : { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600' };
+    : { 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400' };
 
   return NextResponse.json(
     {
@@ -337,12 +366,20 @@ export async function GET(request) {
       },
       results,
       errors,
+      incomplete,
     },
     { headers },
   );
 }
 
 export async function DELETE(request) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+    return NextResponse.json(
+      { error: 'Cache invalidation requires cron authorization.' },
+      { status: 401, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  }
   const url = new URL(request.url);
   const tickersParam = url.searchParams.get('tickers');
   const rawQuery = url.searchParams.get('query') || url.searchParams.get('keywords') || '';
@@ -364,9 +401,18 @@ export async function DELETE(request) {
 
   const signature = disclosureSignature({ terms: parsed.terms, depth, matchMode });
   const tickers = tickersParam.split(',').map((ticker) => ticker.trim().toUpperCase()).filter(Boolean);
+  if (tickers.length > MAX_MANUAL_TICKERS) {
+    return NextResponse.json(
+      { error: `At most ${MAX_MANUAL_TICKERS} cache entries can be invalidated at once.` },
+      { status: 400, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  }
   for (const ticker of tickers) {
     await invalidateDisclosureScan(ticker, signature);
   }
 
-  return NextResponse.json({ invalidated: tickers, query: parsed.terms });
+  return NextResponse.json(
+    { invalidated: tickers, query: parsed.terms },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  );
 }

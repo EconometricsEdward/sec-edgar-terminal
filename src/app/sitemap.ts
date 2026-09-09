@@ -17,6 +17,9 @@ const MAIN_PAGES: Array<
   ["/compare", "weekly", 0.8],
   ["/fund", "weekly", 0.8],
   ["/disclosures", "weekly", 0.8],
+  ["/workspace", "weekly", 0.8],
+  ["/workspace/demo", "monthly", 0.6],
+  ["/workspace/portfolio-guide", "monthly", 0.7],
 ];
 
 const FEATURED_ANALYSIS_TICKERS = [
@@ -49,6 +52,10 @@ const FEATURED_FUNDS = [
   "IWM",
   "BND",
   "VXUS",
+  "VEA",
+  "VWO",
+  "AGG",
+  "TLT",
 ];
 
 const FEATURED_COMPARISONS = [

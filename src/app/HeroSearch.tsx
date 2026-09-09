@@ -7,7 +7,6 @@ import {
   GitCompare as GitCompareIcon, FileText, BarChart3,
 } from 'lucide-react';
 import { TickerContext } from '../contexts/TickerContext';
-import { loadClassifiedTickerMap } from '../utils/tickerMapLoader.js';
 import {
   routeSearch,
   getSuggestions,
@@ -16,9 +15,6 @@ import {
   disclosureTopicTerm,
   disclosureSearchPath,
 } from '../utils/searchRouter.js';
-import type { TickerMap } from '../contexts/TickerContext';
-
-const noopSetTickerMap = (_map: TickerMap | null) => {};
 
 // ============================================================================
 // Types
@@ -55,7 +51,8 @@ export default function HeroSearch() {
   const router = useRouter();
   const ctx = useContext(TickerContext);
   const tickerMap = ctx?.tickerMap ?? null;
-  const setTickerMap = ctx?.setTickerMap ?? noopSetTickerMap;
+  const directoryStatus = ctx?.directoryStatus ?? 'idle';
+  const refreshTickerMap = ctx?.refreshTickerMap;
 
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -65,18 +62,10 @@ export default function HeroSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load classified ticker map on mount if not already loaded
-  useEffect(() => {
-    if (tickerMap && Object.keys(tickerMap).length > 0) return;
-    (async () => {
-      try {
-        const map = await loadClassifiedTickerMap();
-        setTickerMap(map);
-      } catch {
-        // Silent — topic shortcuts still work without ticker map
-      }
-    })();
-  }, [tickerMap, setTickerMap]);
+  const ensureDirectory = useCallback(() => {
+    if (directoryStatus === 'idle' || directoryStatus === 'error')
+      void refreshTickerMap?.(directoryStatus === 'error');
+  }, [directoryStatus, refreshTickerMap]);
 
   // Click outside closes dropdowns
   useEffect(() => {
@@ -201,11 +190,15 @@ export default function HeroSearch() {
             type="text"
             value={input}
             onChange={(e) => {
+              ensureDirectory();
               setInput(e.target.value.toUpperCase());
               setShowSuggestions(true);
               setHighlightedIdx(0);
             }}
-            onFocus={() => input && setShowSuggestions(true)}
+            onFocus={() => {
+              ensureDirectory();
+              if (input) setShowSuggestions(true);
+            }}
             onKeyDown={handleKeyDown}
             placeholder="Search a ticker, company, or SEC topic (AAPL, tariffs, AI, SPY)"
             className="w-full bg-stone-900 border-2 border-stone-800 focus:border-amber-500 outline-none pl-11 pr-11 py-3.5 text-base font-bold tracking-wider placeholder-stone-600 transition-colors"

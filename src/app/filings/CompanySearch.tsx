@@ -58,6 +58,10 @@ export default function CompanySearch({
             id={id}
             autoComplete="off"
             value={query}
+            onFocus={() => {
+              if (["idle", "error"].includes(context?.directoryStatus || ""))
+                void context?.refreshTickerMap(context.directoryStatus === "error");
+            }}
             onChange={(e) => {
               setQuery(e.target.value);
               setError("");

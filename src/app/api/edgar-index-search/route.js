@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { buildKeywordDefinitions } from '../../../utils/disclosureKeywords.js';
 import { resolveDisclosureCompany } from '../../../utils/tickerMap.js';
 import { parseDisclosureQuery, quoteTerm } from '../../../utils/disclosureQuery.js';
+import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
+import { secFetch } from '../../../utils/secClient.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -124,12 +126,13 @@ async function fetchSearchPage({ secQuery, forms, startDate, endDate, from, size
     ciks,
   });
   const requestUrl = `${SEC_SEARCH_URL}?${params}`;
-  const response = await fetch(requestUrl, {
+  const response = await secFetch(requestUrl, {
     headers: {
       'User-Agent': process.env.SEC_USER_AGENT || DEFAULT_USER_AGENT,
       Accept: 'application/json',
     },
     signal,
+    timeoutMs: 10_000,
   });
 
   if (!response.ok) {
@@ -399,6 +402,13 @@ export async function GET(request) {
   const rawFocus = url.searchParams.get('focus') || url.searchParams.get('ticker') || url.searchParams.get('cik') || url.searchParams.get('company') || '';
   let focusTerms = parseFocusTerms(rawFocus);
   if (rawFocus.split(',').filter((s) => s.trim()).length > MAX_FOCUS_TERMS) return NextResponse.json({ error: 'Focus the index on at most five companies.' }, { status: 400 });
+  const rate = await checkRateLimit({
+    key: `rl:edgar-index-search:${getClientIp(request)}`,
+    windowMs: 5 * 60_000,
+    max: 60,
+    cost: focusTerms.length ? 10 : 2,
+  });
+  if (!rate.allowed) return rateLimitedResponse(rate);
   try {
     focusTerms = await Promise.all(focusTerms.map(async (focus) => {
       const resolved = await resolveDisclosureCompany(focus.raw);
@@ -597,7 +607,7 @@ export async function GET(request) {
       },
       {
         headers: {
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
+          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400',
         },
       },
     );
@@ -607,7 +617,10 @@ export async function GET(request) {
       : err?.status
         ? err.message
         : `SEC full-text search failed: ${err.message}`;
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json(
+      { error: message },
+      { status: err?.status || 502, headers: { 'Cache-Control': 'private, no-store' } },
+    );
   } finally {
     clearTimeout(timeoutId);
   }

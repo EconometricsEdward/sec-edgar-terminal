@@ -10,6 +10,7 @@ import {
   SECTION_OPTIONS,
 } from "./disclosureResearch.js";
 import { parseDisclosureQuery, QUERY_VERSION } from "./disclosureQuery.js";
+import { secFetch as controlledSecFetch } from "./secClient.js";
 
 export const DISCLOSURE_FORMS = [
   "10-K",
@@ -26,24 +27,19 @@ export const DISCLOSURE_FORMS = [
   "N-CSR",
   "NPORT-P",
 ];
-let nextRequest = 0;
 const textCache = new Map();
 const inflight = new Map();
 const signature = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 async function secFetch(url) {
-  const slot = Math.max(Date.now(), nextRequest);
-  nextRequest = slot + 180;
-  if (slot > Date.now())
-    await new Promise((resolve) => setTimeout(resolve, slot - Date.now()));
-  const response = await fetch(url, {
+  const response = await controlledSecFetch(url, {
     headers: {
       "User-Agent":
         process.env.SEC_USER_AGENT ||
         "EDGAR Terminal research@secedgarterminal.com",
     },
-    signal: AbortSignal.timeout(18000),
+    timeoutMs: 18000,
   });
   if (!response.ok) throw new Error(`SEC returned HTTP ${response.status}.`);
   return response;

@@ -8,8 +8,12 @@ export async function GET(request) {
   const params = new URL(request.url).searchParams;
   const ticker = (params.get('ticker') || '').trim().toUpperCase();
   const archive = params.get('archive') || '';
-  const headers = { 'Cache-Control': 'private, no-store' };
-  if (!validTicker(ticker) || archive && !/^CIK\d{10}-submissions-\d+\.json$/.test(archive)) return Response.json({ error: 'Provide a valid ticker and SEC archive name.', code: 'INVALID_REQUEST' }, { status: 400, headers });
+  const headers = {
+    'Cache-Control': archive
+      ? 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400, stale-if-error=604800'
+      : 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400',
+  };
+  if (!validTicker(ticker) || archive && !/^CIK\d{10}-submissions-\d+\.json$/.test(archive)) return Response.json({ error: 'Provide a valid ticker and SEC archive name.', code: 'INVALID_REQUEST' }, { status: 400, headers: { 'Cache-Control': 'private, no-store' } });
   const limit = await checkRateLimit({ key: `rl:filings-research:${getClientIp(request)}`, windowMs: 60000, max: 60 });
   if (!limit.allowed) {
     const response = rateLimitedResponse(limit);
@@ -29,6 +33,6 @@ export async function GET(request) {
       controller.enqueue(bytes.subarray(offset, offset + 32768)); offset += 32768;
     } }), { headers: responseHeaders });
   } catch (error) {
-    return Response.json({ error: error.message || 'SEC filings could not be loaded. Retry this request.', code: error.code || 'SEC_UNAVAILABLE' }, { status: error.status || 502, headers });
+    return Response.json({ error: error.message || 'SEC filings could not be loaded. Retry this request.', code: error.code || 'SEC_UNAVAILABLE' }, { status: error.status || 502, headers: { 'Cache-Control': 'private, no-store' } });
   }
 }

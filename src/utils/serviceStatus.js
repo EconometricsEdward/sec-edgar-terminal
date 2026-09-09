@@ -10,15 +10,18 @@ export function describeServiceHealth(payload, httpStatus) {
     throw new Error("The service check returned an unexpected response.");
   }
   const secConfigured = payload.checks.secUserAgent === "configured";
+  const rateGateConfigured = payload.checks.secRateGate === "configured";
   return {
     phase:
-      httpStatus === 200 && payload.status === "ok" && secConfigured
+      httpStatus === 200 && payload.status === "ok" && secConfigured && rateGateConfigured
         ? "available"
         : "degraded",
     secConfiguration: secConfigured
       ? "Configured"
-      : payload.checks.secUserAgent === "missing"
-        ? "Missing"
+      : payload.checks.secUserAgent === "invalid"
+        ? "Invalid or missing contact information"
+        : payload.checks.secUserAgent === "missing"
+          ? "Missing"
         : "Unknown",
     cacheConfiguration:
       payload.checks.warmCache === "configured"
@@ -26,5 +29,10 @@ export function describeServiceHealth(payload, httpStatus) {
         : payload.checks.warmCache === "disabled"
           ? "Disabled"
           : "Unknown",
+    rateLimitConfiguration: rateGateConfigured
+      ? `Configured · ${payload.checks.secStartsPerSecond || "bounded"} SEC request starts/second`
+      : payload.checks.secRateGate === "disabled"
+        ? "Disabled"
+        : "Unknown",
   };
 }

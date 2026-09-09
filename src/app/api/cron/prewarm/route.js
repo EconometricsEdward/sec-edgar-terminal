@@ -9,7 +9,6 @@
  * What this covers per ticker:
  *   - Stock price history  (Yahoo → Stooq fallback)
  *   - SEC submissions      (data.sec.gov)
- *   - Recent Form 4s       (SEC filings for the last ~20 Form 4 accessions)
  *
  * Concurrency rules:
  *   - SEC: max 5 concurrent requests (SEC's published limit is 10/sec global,
@@ -34,6 +33,7 @@ import { NextResponse } from 'next/server';
 import { getPopularStocks } from '../../../../utils/popularTickers.js';
 import { getOperatingTickers } from '../../../../utils/tickerMap.js';
 import { warmSet, warmCacheEnabled } from '../../../../utils/warmCache.js';
+import { secFetch } from '../../../../utils/secClient.js';
 
 export const runtime = 'nodejs';
 // Vercel function duration cap:
@@ -125,51 +125,17 @@ async function warmStockPrice(ticker) {
 
 async function warmSubmissions(ticker, cik) {
   const url = `https://data.sec.gov/submissions/CIK${cik}.json`;
-  const res = await fetch(url, {
+  const res = await secFetch(url, {
     headers: { 'User-Agent': USER_AGENT },
-    signal: AbortSignal.timeout(SEC_ITEM_TIMEOUT_MS),
+    timeoutMs: SEC_ITEM_TIMEOUT_MS,
   });
   if (!res.ok) throw new Error(`SEC HTTP ${res.status}`);
   const data = await res.json();
 
-  // Store both by ticker (for the common lookup path) and by CIK (for any
-  // route that works directly with CIKs)
-  await Promise.all([
-    warmSet('submissions', ticker, data),
-    warmSet('submissions-cik', cik, data),
-  ]);
+  // /api/sec reads this exact namespace. Avoid parallel ticker aliases and
+  // Form 4 lists that no production route consumes.
+  await warmSet('submissions-cik', cik, data);
   return { ticker, ok: true };
-}
-
-async function warmForm4s(ticker, cik) {
-  // Get submissions to find recent Form 4 accessions
-  const subs = await fetch(`https://data.sec.gov/submissions/CIK${cik}.json`, {
-    headers: { 'User-Agent': USER_AGENT },
-    signal: AbortSignal.timeout(SEC_ITEM_TIMEOUT_MS),
-  });
-  if (!subs.ok) throw new Error(`SEC submissions HTTP ${subs.status}`);
-  const data = await subs.json();
-
-  const recent = data?.filings?.recent;
-  if (!recent) return { ticker, ok: true, note: 'no recent filings' };
-
-  // Find the 10 most recent Form 4 accessions (insider trades). We don't
-  // pre-warm every Form 4 for the last decade — just the recent ones most
-  // likely to be viewed.
-  const accessions = [];
-  for (let i = 0; i < recent.form.length && accessions.length < 10; i++) {
-    if (recent.form[i] === '4') {
-      accessions.push(recent.accessionNumber[i]);
-    }
-  }
-
-  if (accessions.length === 0) return { ticker, ok: true, note: 'no form 4s' };
-
-  // Store the accession list, not the parsed XML. The form4 route's own
-  // CDN cache is what handles the actual XML — once a user (or our own
-  // pre-warm pingback below) touches it, it'll stay cached for 24h.
-  await warmSet('form4-recent', ticker, { cik, accessions });
-  return { ticker, ok: true, count: accessions.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -256,27 +222,6 @@ export async function GET(request) {
     };
   } else {
     summary.stages.submissions = { skipped: 'insufficient time budget' };
-  }
-
-  // --- Stage 3: Form 4 accession lists (all popular stocks with a CIK) ------
-  // This does another submissions fetch per ticker (a small % of wasted work)
-  // because Stage 2 doesn't hand us the parsed forms. The duplication is
-  // cheap on SEC's side and keeps the stages independent.
-  if (timeLeft() > 30_000) {
-    const items = stocks
-      .filter((t) => cikMap[t])
-      .map((t) => ({ ticker: t, cik: cikMap[t].cik }));
-    const stage = await runPool(items, SEC_CONCURRENCY, async ({ ticker, cik }) => {
-      if (timeLeft() < 5_000) return;
-      return await warmForm4s(ticker, cik);
-    });
-    summary.stages.form4 = {
-      succeeded: stage.results.length,
-      failed: stage.errors.length,
-      errors: stage.errors.slice(0, 5),
-    };
-  } else {
-    summary.stages.form4 = { skipped: 'insufficient time budget' };
   }
 
   summary.durationMs = Date.now() - startedAt;

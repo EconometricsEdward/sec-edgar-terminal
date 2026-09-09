@@ -29,6 +29,21 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: '/crypto',
+        destination: 'https://secedgarterminal.com/disclosures',
+        permanent: true,
+      },
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'www.secedgarterminal.com' }],
+        destination: 'https://secedgarterminal.com/:path*',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

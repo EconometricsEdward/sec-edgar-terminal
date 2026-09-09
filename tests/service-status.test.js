@@ -5,7 +5,12 @@ import { describeServiceHealth } from "../src/utils/serviceStatus.js";
 const healthy = {
   service: "sec-edgar-terminal",
   status: "ok",
-  checks: { secUserAgent: "configured", warmCache: "configured" },
+  checks: {
+    secUserAgent: "configured",
+    warmCache: "configured",
+    secRateGate: "configured",
+    secStartsPerSecond: 7,
+  },
 };
 
 test("service status confirms only application configuration", () => {
@@ -13,6 +18,7 @@ test("service status confirms only application configuration", () => {
     phase: "available",
     secConfiguration: "Configured",
     cacheConfiguration: "Configured",
+    rateLimitConfiguration: "Configured · 7 SEC request starts/second",
   });
   assert.equal(
     Object.hasOwn(describeServiceHealth(healthy, 200), "dataFreshness"),
@@ -24,12 +30,17 @@ test("missing request configuration is degraded including on HTTP 200", () => {
   const degraded = {
     ...healthy,
     status: "degraded",
-    checks: { secUserAgent: "missing", warmCache: "disabled" },
+    checks: {
+      secUserAgent: "missing",
+      warmCache: "disabled",
+      secRateGate: "disabled",
+    },
   };
   assert.deepEqual(describeServiceHealth(degraded, 503), {
     phase: "degraded",
     secConfiguration: "Missing",
     cacheConfiguration: "Disabled",
+    rateLimitConfiguration: "Disabled",
   });
   assert.equal(
     describeServiceHealth({ ...degraded, status: "ok" }, 200).phase,
