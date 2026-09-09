@@ -102,6 +102,72 @@ export async function warmSet(type, id, value, ttlSeconds = 25 * 3600) {
 }
 
 /**
+ * Acquire a short distributed lease. A null result means either another
+ * worker owns the lease or the shared store is unavailable; callers should
+ * serve stale data or stop rather than duplicate expensive upstream work.
+ */
+export async function warmAcquireLease(type, id, ttlMs = 60_000) {
+  if (!ENABLED) return null;
+  const token = crypto.randomUUID();
+  try {
+    // Use the command-array form so NX/PX are unambiguously Redis command
+    // arguments rather than REST query-string flags.
+    const res = await fetch(REST_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([
+        'SET',
+        key(`lease:${type}`, id),
+        token,
+        'NX',
+        'PX',
+        Math.max(1000, Math.ceil(ttlMs)),
+      ]),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.result === 'OK' ? token : null;
+  } catch (err) {
+    console.warn(`[warmCache] lease acquisition failed for ${type}/${id}: ${err.message}`);
+    return null;
+  }
+}
+
+/** Release only the lease owned by this token. */
+export async function warmReleaseLease(type, id, token) {
+  if (!ENABLED || !token) return false;
+  try {
+    const script = `
+      if redis.call('GET', KEYS[1]) == ARGV[1] then
+        return redis.call('DEL', KEYS[1])
+      end
+      return 0
+    `;
+    const res = await fetch(`${REST_URL}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([
+        ['EVAL', script, 1, key(`lease:${type}`, id), token],
+      ]),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return Number(data?.[0]?.result || 0) === 1;
+  } catch (err) {
+    console.warn(`[warmCache] lease release failed for ${type}/${id}: ${err.message}`);
+    return false;
+  }
+}
+
+/**
  * Check if warm cache is wired up — useful for health checks / debug endpoints.
  */
 export function warmCacheEnabled() {

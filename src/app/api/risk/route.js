@@ -6,6 +6,7 @@ import { fetchFilingText } from '../../../utils/filingTextParser.js';
 import { secResearchJson, submissionRows } from '../../../utils/secResearchData.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
 import { warmGet, warmSet } from '../../../utils/warmCache.js';
+import { secFetch } from '../../../utils/secClient.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -22,7 +23,7 @@ async function readAnnualDisclosure(submissions, cik) {
     for (const file of files.slice(0, 4)) {
       if (!/^CIK\d{10}-submissions-\d+\.json$/.test(file.name)) continue;
       try {
-        const res = await fetch(`https://data.sec.gov/submissions/${file.name}`, { headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com' }, signal: AbortSignal.timeout(6000) });
+        const res = await secFetch(`https://data.sec.gov/submissions/${file.name}`, { headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com' }, timeoutMs: 6000 });
         if (!res.ok) { limited = true; continue; }
         filings = filings.concat(submissionRows(await res.json(), cik));
         annual = filings.filter((f) => f.form === '10-K').sort((a, b) => b.filingDate.localeCompare(a.filingDate))[0];

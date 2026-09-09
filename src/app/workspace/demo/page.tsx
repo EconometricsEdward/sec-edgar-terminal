@@ -4,7 +4,7 @@ import DemoResults from "./DemoResults";
 import s from "./demo.module.css";
 
 export const metadata = buildPageMetadata({
-  title: "100-Company Example — Portfolio Research | EDGAR Terminal",
+  title: "100-Company Portfolio Research Example",
   description:
     "Download a prefilled 100-ticker CSV or Excel template and explore its captured SEC research results, financial evidence, and filings before starting your own research.",
   path: "/workspace/demo",

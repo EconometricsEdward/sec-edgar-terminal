@@ -38,14 +38,14 @@ function warnFallbackOnce() {
 
 // ---------- In-memory fallback (dev only) ----------
 const localBuckets = new Map();
-function localCheck(key, windowMs, max) {
+function localCheck(key, windowMs, max, cost) {
   const now = Date.now();
   let b = localBuckets.get(key);
   if (!b || now > b.resetAt) {
     b = { count: 0, resetAt: now + windowMs };
     localBuckets.set(key, b);
   }
-  b.count += 1;
+  b.count += cost;
   // Opportunistic cleanup: every ~100 checks, purge expired buckets.
   // (Avoids setInterval, which is unreliable on serverless.)
   if (Math.random() < 0.01) {
@@ -61,13 +61,13 @@ function localCheck(key, windowMs, max) {
 }
 
 // ---------- Upstash REST path ----------
-async function remoteCheck(key, windowMs, max) {
+async function remoteCheck(key, windowMs, max, cost) {
   // Fixed window using INCR + conditional EXPIRE. Good enough for our
   // protection goals and avoids sorted-set complexity.
   const windowSec = Math.max(1, Math.ceil(windowMs / 1000));
 
-  // Pipeline: INCR then EXPIRE (NX = only set TTL if no TTL exists).
-  // Two commands, one round trip.
+  // Pipeline: INCRBY, EXPIRE (NX), then PTTL. The exact TTL lets callers send
+  // an accurate Retry-After instead of guessing a fresh full window.
   const res = await fetch(`${REST_URL}/pipeline`, {
     method: 'POST',
     headers: {
@@ -75,8 +75,9 @@ async function remoteCheck(key, windowMs, max) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify([
-      ['INCR', key],
+      ['INCRBY', key, cost],
       ['EXPIRE', key, windowSec, 'NX'],
+      ['PTTL', key],
     ]),
     // Don't hang forever if KV is having a bad day — fail open.
     signal: AbortSignal.timeout(2000),
@@ -84,13 +85,20 @@ async function remoteCheck(key, windowMs, max) {
 
   if (!res.ok) throw new Error(`KV HTTP ${res.status}`);
   const results = await res.json();
-  // Pipeline response: [{ result: <value> }, { result: <value> }]
+  if (!Array.isArray(results) || results.length !== 3 || results.some((item) => item?.error)) {
+    throw new Error('KV returned an invalid rate-limit pipeline response');
+  }
+  // Pipeline response: [{ result: <value> }, ...]
   const count = Number(results?.[0]?.result ?? 0);
+  const ttlMs = Number(results?.[2]?.result);
+  if (!Number.isSafeInteger(count) || count < cost || !Number.isFinite(ttlMs) || ttlMs <= 0) {
+    throw new Error('KV returned an invalid rate-limit counter or expiry');
+  }
   return {
     allowed: count <= max,
     remaining: Math.max(0, max - count),
-    // We don't know exact reset without another round trip; approximate.
-    resetAt: Date.now() + windowMs,
+    resetAt: Date.now() + (Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : windowMs),
+    limit: max,
   };
 }
 
@@ -102,18 +110,33 @@ async function remoteCheck(key, windowMs, max) {
  * of temporarily disabling rate limiting. For most abuse patterns this
  * is the right tradeoff.
  */
-export async function checkRateLimit({ key, windowMs, max }) {
+export async function checkRateLimit({ key, windowMs, max, cost = 1 }) {
+  if (!Number.isSafeInteger(cost) || cost < 1) {
+    throw new TypeError('Rate-limit cost must be a positive safe integer.');
+  }
   if (!ENABLED) {
     warnFallbackOnce();
-    return localCheck(key, windowMs, max);
+    return { ...localCheck(key, windowMs, max, cost), limit: max };
   }
 
   try {
-    return await remoteCheck(key, windowMs, max);
+    return await remoteCheck(key, windowMs, max, cost);
   } catch (err) {
     console.warn(`[rateLimit] remote check failed, failing open: ${err.message}`);
-    return { allowed: true, remaining: max, resetAt: Date.now() + windowMs };
+    return { allowed: true, remaining: max, resetAt: Date.now() + windowMs, limit: max };
   }
+}
+
+/** Standard quota headers for both successful and rejected responses. */
+export function rateLimitHeaders(info) {
+  const resetSeconds = Math.max(1, Math.ceil((info.resetAt - Date.now()) / 1000));
+  return {
+    'RateLimit-Limit': String(info.limit ?? 0),
+    'RateLimit-Remaining': String(Math.max(0, info.remaining ?? 0)),
+    'RateLimit-Reset': String(resetSeconds),
+    // Keep the legacy header while clients migrate to the standard fields.
+    'X-RateLimit-Remaining': String(Math.max(0, info.remaining ?? 0)),
+  };
 }
 
 /**
@@ -131,13 +154,15 @@ export function getClientIp(request) {
  * Convenience helper: build a 429 response with proper headers.
  */
 export function rateLimitedResponse(info) {
+  const retryAfter = String(Math.max(1, Math.ceil((info.resetAt - Date.now()) / 1000)));
   return Response.json(
     { error: 'Rate limit exceeded. Please wait a moment before retrying.' },
     {
       status: 429,
       headers: {
-        'Retry-After': String(Math.max(1, Math.ceil((info.resetAt - Date.now()) / 1000))),
-        'X-RateLimit-Remaining': String(info.remaining),
+        ...rateLimitHeaders(info),
+        'Retry-After': retryAfter,
+        'Cache-Control': 'private, no-store',
       },
     }
   );

@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { Activity, ArrowUpRight, Bookmark, Check, Download, Grid2X2, ListFilter, Loader2, RefreshCw, Share2, Star, X } from 'lucide-react';
 import { MARKET_VERSION, MARKET_SAVED_KEY, DEFAULT_MARKET_VIEW, parseMarketView, marketViewQuery, parseMarketSaved, selectMarketCompanies, marketCsv, marketBrief } from '../../utils/marketResearch.js';
 import { MARKET_LENSES } from '../../utils/marketCohorts.js';
+import { isMarketAtlas } from '../../utils/marketResearchValidation.js';
 import { downloadText } from '../../utils/download.js';
 import { Briefing, CompanyTable, ObservationHistory, PeerComparison, SavedResearch, SectorMap } from './MarketPanels';
 import type { Company, MarketData, MarketView, Saved } from './marketTypes';
@@ -14,9 +15,9 @@ const COHORT_IDS = MARKET_LENSES.map((c) => c.id);
 const EMPTY_COMPANIES: Company[] = [];
 const TABS = [{ id: 'overview', label: 'Market briefing', icon: Activity }, { id: 'sectors', label: 'Sector heatmap', icon: Grid2X2 }, { id: 'companies', label: 'Companies', icon: ListFilter }, { id: 'saved', label: 'Saved research', icon: Bookmark }];
 
-export default function MarketOverviewClient() {
-  const [data, setData] = useState<MarketData | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function MarketOverviewClient({ initialData = null }: { initialData?: MarketData | null }) {
+  const [data, setData] = useState<MarketData | null>(initialData);
+  const [loading, setLoading] = useState(!initialData);
   const [slow, setSlow] = useState(false);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
@@ -40,6 +41,10 @@ export default function MarketOverviewClient() {
   }, []);
 
   useEffect(() => {
+    const initialAge = initialData?.generatedAt
+      ? Date.now() - Date.parse(initialData.generatedAt)
+      : Number.POSITIVE_INFINITY;
+    if (initialData && initialData.cache?.status !== 'stale' && initialAge < 6 * 60 * 60 * 1000 && retry === 0) return;
     const controller = new AbortController();
     const slowTimer = setTimeout(() => setSlow(true), 8000);
     const timeout = setTimeout(() => controller.abort(new Error('The Market snapshot is taking longer than expected. Please retry shortly.')), 285000);
@@ -47,15 +52,16 @@ export default function MarketOverviewClient() {
       try {
         const response = await fetch(`/api/market-research?v=${MARKET_VERSION}`, { signal: controller.signal });
         const result = await response.json();
-        if (!response.ok || result.version !== MARKET_VERSION || !Array.isArray(result.companies)) throw new Error(result.error || 'Market research is temporarily unavailable.');
+        if (!response.ok || !isMarketAtlas(result, MARKET_VERSION)) throw new Error(result.error || 'Market research is temporarily unavailable.');
         setData(result);
+        setError('');
       } catch (e) {
         if (!controller.signal.aborted || controller.signal.reason instanceof Error && controller.signal.reason.name !== 'AbortError') setError(e instanceof Error ? e.message : 'Could not load Market research.');
       } finally { clearTimeout(slowTimer); clearTimeout(timeout); if (!controller.signal.aborted || controller.signal.reason?.name !== 'AbortError') setLoading(false); }
     }
     load();
     return () => { clearTimeout(slowTimer); clearTimeout(timeout); controller.abort(); };
-  }, [retry]);
+  }, [retry, initialData]);
 
   const companies = data?.companies || EMPTY_COMPANIES;
   const cohortCompanies = useMemo(() => view.cohort === 'all' ? companies : companies.filter((c) => c.cohorts.includes(view.cohort)), [companies, view.cohort]);
@@ -96,6 +102,7 @@ export default function MarketOverviewClient() {
     {loading && <div className={s.loading} role="status"><Loader2 className={s.spin} size={25} /><div><h2>{slow ? 'Assembling the latest filing snapshot' : 'Loading Market research'}</h2><p>{slow ? 'A cold snapshot can take a few minutes while the covered companies are checked. Completed snapshots are cached for subsequent visits.' : 'Loading company fundamentals, cohort coverage, and reporting dates…'}</p></div></div>}
     {error && <div className={s.error} role="alert"><h2>Could not update Market research</h2><p>{error}</p><button className={s.button} onClick={() => { setError(''); setLoading(true); setSlow(false); setRetry((n) => n + 1); }}><RefreshCw size={14} />Retry Market data</button></div>}
     {data && <>
+      {data.cache?.status === 'stale' && <div className={s.warning} role="status"><RefreshCw size={16} /><p><b>Showing the last completed snapshot.</b> {data.cache.warning} Calculated {data.generatedAt.slice(0, 16).replace('T', ' ')} UTC.</p></div>}
       <div className={s.toolbar}><label>Research universe<select value={view.cohort} onChange={(e) => updateView({ cohort: e.target.value })}><option value="all">All covered companies</option>{data.cohorts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label><div className={s.actions}><button className={s.button} onClick={shareView}><Share2 size={14} />Share view</button><button className={s.button} onClick={() => { setViewName(`${cohort?.label || 'Market'} · ${view.basis === 'ttm' ? 'TTM' : 'Annual'}`); setSaveOpen(!saveOpen); }}><Bookmark size={14} />Save view</button><button className={s.button} onClick={() => { downloadText(`market-${view.basis}-screen.csv`, marketCsv(rows, view.basis, data.generatedAt), 'text/csv'); setNotice(`CSV exported: ${rows.length} companies in the current screen.`); }}><Download size={14} />Export CSV</button><button className={s.button} onClick={() => { downloadText('market-research-brief.md', marketBrief(rows, view, data, window.location.href), 'text/markdown'); setNotice('Research brief exported.'); }}><Download size={14} />Research brief</button></div></div>
       {cohort && <div className={s.cohortNote}><span><b>{cohort.title}</b> · {cohort.description}</span><button onClick={() => updateView({ cohort: 'all' })} aria-label="Clear cohort filter"><X size={16} /></button></div>}
       <p className={s.basisNote}>{view.basis === 'ttm' ? 'Quarter-end balances · Trailing-twelve-month flows · Year-over-year revenue growth' : 'Annual balances and flows · Year-over-year revenue growth'} <span>Screen exports: {rows.length} {rows.length === 1 ? 'company' : 'companies'}{view.query ? ` · “${view.query}”` : ''}{view.screen !== 'all' ? ` · ${view.screen}` : ''}</span></p>
@@ -108,7 +115,7 @@ export default function MarketOverviewClient() {
       {view.tab === 'saved' && <SavedResearch saved={saved} data={data} basis={view.basis} onOpenView={(query) => updateView(parseMarketView(query, COHORT_IDS) as MarketView)} onRemoveView={(index) => persist((current) => ({ ...current, views: current.views.filter((_, i) => i !== index) }), 'Saved view deleted.')} onInspect={setInspecting} onBaseline={(c) => persist((current) => ({ ...current, baselines: { ...current.baselines, [c.ticker]: c } }), `${c.ticker} review baseline updated.`)} />}
       {peers.length > 0 && <div className={s.peerTray}><div><Star size={15} /><b>{peers.length}/5 peers</b>{peers.map((c) => <button key={c.ticker} onClick={() => togglePeer(c.ticker)} aria-label={`Remove ${c.ticker} from comparison`}>{c.ticker}<X size={12} /></button>)}</div><div><button className={s.button} onClick={() => { updateView({ selected: [] }); setCompareOpen(false); }}>Clear peers</button><button className={s.primary} disabled={peers.length < 2} onClick={() => setCompareOpen(!compareOpen)}>{compareOpen ? 'Hide comparison' : 'Compare peers'}</button></div></div>}
       {compareOpen && peers.length >= 2 && <PeerComparison companies={peers} basis={view.basis} onInspect={setInspecting} />}
-      <details className={`${s.panel} ${s.details}`}><summary>Methodology & interpretation</summary><div className={s.methodology}><p><b>Universe.</b> {data.requested} curated ticker entries grouped into {data.cohorts.length} overlapping research cohorts. Coverage reflects companies currently resolved and available from SEC Company Facts. Cohorts are research themes, not exhaustive industry indexes.</p><p><b>Calculations.</b> Only compatible USD contexts are used. Bank revenue is net of interest expense; gross interest income and insurance premiums alone cannot substitute total revenue. Annual and TTM figures are calculated independently. TTM requires a full reported year or four consecutive quarters; revenue growth compares periods about one year apart and requires a positive prior-year base. Missing values stay unavailable and are excluded from each metric’s own denominator.</p><p><b>Comparability.</b> Mean and median are equally weighted across available companies. Fiscal ends differ. No market-cap weights or price returns are used. Banks and insurers have different capital and cash-flow structures; their high liability ratios do not create an automatic stress flag.</p><p><b>Evidence.</b> Company evidence preserves the raw sources and intermediate calculations. Free cash flow is operating cash flow less PP&E purchases. Cash is the tagged cash and cash-equivalents measure. Broad derivative concept counts are not summed into financial exposure totals.</p><p><b>Timing.</b> Data is cached for up to six hours, with a short delivery-cache allowance. Historical company points use the latest available revisions. Observed market history records actual calculation dates, not point-in-time backtests. Saved research stays in this browser.</p></div></details>
+      <details className={`${s.panel} ${s.details}`}><summary>Methodology & interpretation</summary><div className={s.methodology}><p><b>Universe.</b> {data.requested} curated ticker entries grouped into {data.cohorts.length} overlapping research cohorts. Coverage reflects companies currently resolved and available from SEC Company Facts. Cohorts are research themes, not exhaustive industry indexes.</p><p><b>Calculations.</b> Only compatible USD contexts are used. Bank revenue is net of interest expense; gross interest income and insurance premiums alone cannot substitute total revenue. Annual and TTM figures are calculated independently. TTM requires a full reported year or four consecutive quarters; revenue growth compares periods about one year apart and requires a positive prior-year base. Missing values stay unavailable and are excluded from each metric’s own denominator.</p><p><b>Comparability.</b> Mean and median are equally weighted across available companies. Fiscal ends differ. No market-cap weights or price returns are used. Banks and insurers have different capital and cash-flow structures; their high liability ratios do not create an automatic stress flag.</p><p><b>Evidence.</b> Company evidence preserves the raw sources and intermediate calculations. Free cash flow is operating cash flow less PP&E purchases. Cash is the tagged cash and cash-equivalents measure. Broad derivative concept counts are not summed into financial exposure totals.</p><p><b>Timing.</b> Six hours is the fresh-data window. During upstream trouble, the last successfully cached snapshot may remain available and is labeled above. Historical company points use the latest available revisions. Observed market history records actual calculation dates, not point-in-time backtests. Saved research stays in this browser.</p></div></details>
     </>}
     {inspecting && <MarketEvidence key={inspecting} ticker={inspecting} initialBasis={view.basis} initialMetric={view.metric} onClose={() => setInspecting(null)} />}
   </div>;

@@ -53,22 +53,17 @@
  */
 
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
+import { secFetch } from '../../../utils/secClient.js';
 
 export const runtime = 'nodejs';
 // Removed force-dynamic — Form 4 XML is immutable once filed, so we want the
 // CDN to serve these essentially forever.
 
-const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 20;
+const RATE_WINDOW_MS = 10 * 60_000;
+const RATE_MAX = 120;
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(t);
-  }
+  return secFetch(url, { ...options, timeoutMs });
 }
 
 /**
@@ -197,7 +192,7 @@ function parseTransaction(block, type) {
 /**
  * Fetch Form 4 XML from SEC. Accession format: "0001234567-24-123456"
  */
-async function fetchForm4(cik, accession, userAgent) {
+async function fetchForm4(cik, accession, userAgent, signal) {
   const accNoDash = accession.replace(/-/g, '');
   const paddedCik = String(parseInt(cik, 10));
 
@@ -206,6 +201,7 @@ async function fetchForm4(cik, accession, userAgent) {
 
   const indexRes = await fetchWithTimeout(indexJsonUrl, {
     headers: { 'User-Agent': userAgent, Accept: 'application/json' },
+    signal,
   });
 
   if (!indexRes.ok) throw new Error(`Index fetch failed: HTTP ${indexRes.status}`);
@@ -220,6 +216,7 @@ async function fetchForm4(cik, accession, userAgent) {
   const xmlUrl = `https://www.sec.gov/Archives/edgar/data/${paddedCik}/${accNoDash}/${xmlFile.name}`;
   const xmlRes = await fetchWithTimeout(xmlUrl, {
     headers: { 'User-Agent': userAgent, Accept: 'application/xml, text/xml' },
+    signal,
   });
 
   if (!xmlRes.ok) throw new Error(`XML fetch failed: HTTP ${xmlRes.status}`);
@@ -245,21 +242,28 @@ export async function GET(request) {
     return Response.json({ error: 'Missing accessions parameter' }, { status: 400 });
   }
 
-  const ip = getClientIp(request);
-  const limit = await checkRateLimit({
-    key: `rl:form4:${ip}`,
-    windowMs: RATE_WINDOW_MS,
-    max: RATE_MAX,
-  });
-  if (!limit.allowed) return rateLimitedResponse(limit);
-
-  const accessionList = accessions.split(',').map((a) => a.trim()).filter(Boolean);
+  const accessionList = [...new Set(accessions.split(',').map((a) => a.trim()).filter(Boolean))];
   if (accessionList.length === 0) {
     return Response.json({ error: 'No valid accessions provided' }, { status: 400 });
   }
   if (accessionList.length > 30) {
     return Response.json({ error: 'Too many accessions (max 30 per request)' }, { status: 400 });
   }
+  if (accessionList.some((accession) => !/^\d{10}-\d{2}-\d{6}$/.test(accession))) {
+    return Response.json(
+      { error: 'One or more accession numbers are invalid.' },
+      { status: 400, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  }
+
+  const ip = getClientIp(request);
+  const limit = await checkRateLimit({
+    key: `rl:form4:${ip}`,
+    windowMs: RATE_WINDOW_MS,
+    max: RATE_MAX,
+    cost: accessionList.length * 2,
+  });
+  if (!limit.allowed) return rateLimitedResponse(limit);
 
   const userAgent = process.env.SEC_USER_AGENT
     || 'EDGAR Terminal Research Tool (github.com/EconometricsEdward/sec-edgar-terminal)';
@@ -267,7 +271,7 @@ export async function GET(request) {
   // Fetch all Form 4s in parallel but with a small concurrency limit to respect SEC rate limits
   const results = [];
   const errors = [];
-  const CONCURRENCY = 5;
+  const CONCURRENCY = 2;
 
   const work = [...accessionList];
 
@@ -275,7 +279,7 @@ export async function GET(request) {
     if (work.length === 0) return;
     const accession = work.shift();
     try {
-      const parsed = await fetchForm4(cik, accession, userAgent);
+      const parsed = await fetchForm4(cik, accession, userAgent, request.signal);
       results.push(parsed);
     } catch (err) {
       errors.push({ accession, error: err.message });
@@ -290,6 +294,17 @@ export async function GET(request) {
   });
 
   await Promise.all(workers);
+
+  if (results.length === 0 && errors.length > 0) {
+    return Response.json(
+      {
+        error: 'SEC insider filings are temporarily unavailable. Retry this request.',
+        cik,
+        errors,
+      },
+      { status: 502, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  }
 
   // Flatten all transactions for easier charting, while preserving per-filing grouping
   const allTransactions = [];
@@ -324,7 +339,9 @@ export async function GET(request) {
       // The CDN will serve these essentially forever — which is exactly what
       // we want for protecting the SEC rate limit.
       headers: {
-        'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800',
+        'Cache-Control': errors.length > 0
+          ? 'private, no-store'
+          : 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=604800',
       },
     }
   );

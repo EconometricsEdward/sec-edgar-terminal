@@ -1,16 +1,18 @@
 import { NextResponse } from 'next/server';
 import { warmCacheEnabled } from '../../../utils/warmCache.js';
+import { secClientStatus } from '../../../utils/secClient.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function configured(value: string | undefined) {
-  return Boolean(value && value.trim());
-}
-
 export async function GET() {
-  const secUserAgentConfigured = configured(process.env.SEC_USER_AGENT);
-  const status = secUserAgentConfigured ? 'ok' : 'degraded';
+  const warmCacheConfigured = warmCacheEnabled();
+  const gate = secClientStatus();
+  const secUserAgentConfigured = gate.userAgent === 'configured';
+  const deployed = Boolean(process.env.VERCEL_ENV || process.env.VERCEL) || process.env.NODE_ENV === 'production';
+  const status = secUserAgentConfigured && (!deployed || (warmCacheConfigured && gate.sharedGate === 'configured'))
+    ? 'ok'
+    : 'degraded';
 
   return NextResponse.json(
     {
@@ -18,8 +20,10 @@ export async function GET() {
       service: 'sec-edgar-terminal',
       checkedAt: new Date().toISOString(),
       checks: {
-        secUserAgent: secUserAgentConfigured ? 'configured' : 'missing',
-        warmCache: warmCacheEnabled() ? 'configured' : 'disabled',
+        secUserAgent: secUserAgentConfigured ? 'configured' : 'invalid',
+        warmCache: warmCacheConfigured ? 'configured' : 'disabled',
+        secRateGate: gate.sharedGate,
+        secStartsPerSecond: gate.startsPerSecond,
       },
       deployment: {
         environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
@@ -28,9 +32,11 @@ export async function GET() {
       },
     },
     {
-      status: secUserAgentConfigured ? 200 : 503,
+      status: status === 'ok' ? 200 : 503,
       headers: {
-        'Cache-Control': 'no-store, max-age=0',
+        'Cache-Control': status === 'ok'
+          ? 'public, max-age=0, s-maxage=30, stale-while-revalidate=60'
+          : 'private, no-store',
       },
     },
   );

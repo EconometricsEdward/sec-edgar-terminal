@@ -17,6 +17,6 @@ export async function GET(request) {
     const period = basis === 'annual' ? extractAnnualPeriods(company.facts)[0] : ['ytd', 'ttm'].includes(basis) ? withPeriodKind(extractQuarterlyPeriods(company.facts), basis)[0] : null;
     return NextResponse.json({ ticker, cik: company.cik, name: company.companyName,
       snapshot: companySnapshot(company.facts, company.sic, company.filings, period), filings: company.filings.slice(0, 80) },
-    { headers: { 'Cache-Control': 'private, no-store' } });
-  } catch (error) { return NextResponse.json({ error: error.message }, { status: 502 }); }
+    { headers: { 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400' } });
+  } catch (error) { return NextResponse.json({ error: error.message }, { status: error.status || 502, headers: { 'Cache-Control': 'private, no-store' } }); }
 }

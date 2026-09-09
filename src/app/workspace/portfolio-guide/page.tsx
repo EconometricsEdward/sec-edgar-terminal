@@ -71,7 +71,7 @@ const fields = [
 
 export default function PortfolioGuidePage() {
   return (
-    <main className={styles.page}>
+    <article className={styles.page}>
       <header>
         <Link href="/workspace">← Research Hub</Link>
         <p className={styles.eyebrow}>Portfolio Research · Format version 1</p>
@@ -481,6 +481,6 @@ export default function PortfolioGuidePage() {
         </p>
         <Link href="/workspace">Open Portfolio Research →</Link>
       </section>
-    </main>
+    </article>
   );
 }

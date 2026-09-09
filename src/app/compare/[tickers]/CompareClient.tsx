@@ -30,7 +30,6 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { TickerContext } from "../../../contexts/TickerContext";
-import { loadClassifiedTickerMap } from "../../../utils/tickerMapLoader.js";
 import { PEER_GROUPS } from "../../../utils/peerGroups.js";
 import {
   COMPARE_METRICS,
@@ -101,8 +100,6 @@ const VIEWS = [
   { key: "map", label: "Peer map", icon: ScatterChart },
   { key: "notebook", label: "Research notebook", icon: NotebookPen },
 ];
-const noop = (_value: any) => {};
-
 export default function CompareClient({
   initialTickers,
   preloadedCompanies,
@@ -112,7 +109,6 @@ export default function CompareClient({
 }) {
   const ctx = useContext(TickerContext);
   const tickerMap = ctx?.tickerMap;
-  const setTickerMap = ctx?.setTickerMap || noop;
   const [tickers, setTickers] = useState(() =>
     normalizeCompareTickers(initialTickers),
   );
@@ -244,18 +240,6 @@ export default function CompareClient({
     measure();
     return () => observer.disconnect();
   }, []);
-  useEffect(() => {
-    if (tickerMap) return;
-    const controller = new AbortController();
-    loadClassifiedTickerMap()
-      .then((map) => {
-        if (!controller.signal.aborted) setTickerMap(map);
-      })
-      .catch((e) => {
-        if (!controller.signal.aborted) setMessage(e.message);
-      });
-    return () => controller.abort();
-  }, [tickerMap, setTickerMap]);
   useEffect(() => {
     if (!ready) return;
     const peers = normalizeCompareTickers(peerKey),
@@ -688,7 +672,11 @@ export default function CompareClient({
               }
               value={input}
               placeholder="Add company or paste tickers: JPM, BAC…"
-              onFocus={() => setFocused(true)}
+              onFocus={() => {
+                if (["idle", "error"].includes(ctx?.directoryStatus || ""))
+                  void ctx?.refreshTickerMap(ctx.directoryStatus === "error");
+                setFocused(true);
+              }}
               onBlur={() => setTimeout(() => setFocused(false), 150)}
               onChange={(e) => {
                 setInput(e.target.value);

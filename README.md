@@ -33,7 +33,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Set a descriptive `SEC_USER_AGENT` in `.env.local` before calling SEC endpoints. SEC fair-access guidance expects automated clients to identify themselves.
+Set a descriptive `SEC_USER_AGENT` in `.env.local` before calling SEC endpoints. SEC fair-access guidance expects automated clients to identify themselves. Deployed runtimes also require the shared Upstash/KV settings shown in `.env.example`; the application fails closed rather than issuing uncoordinated SEC traffic.
 
 ## Useful Commands
 
@@ -48,12 +48,12 @@ npm test
 
 ## Operations
 
-- `GET /api/health` returns a no-store JSON health summary for deployment checks. It reports whether the required SEC user agent is configured, whether the warm cache layer is wired, and which Vercel environment/commit is serving the request.
+- `GET /api/health` returns a briefly edge-cached JSON health summary for deployment checks. It reports whether the required SEC user agent, warm cache, and shared SEC request gate are configured, plus the Vercel environment/commit serving the request. Degraded responses are never cached.
 - `/.well-known/security.txt` publishes the public issue tracker as the security contact channel.
 
 ## Environment Variables
 
-See `.env.example` for the current set of expected variables. The important production variable is `SEC_USER_AGENT`; Redis-backed features also use Upstash configuration when enabled.
+See `.env.example` for the current set of expected variables. `SEC_USER_AGENT` and the Upstash/KV REST URL and token are required in deployed runtimes. Local development may omit Redis and uses a conservative per-process SEC pacer.
 
 ## Data Sources
 

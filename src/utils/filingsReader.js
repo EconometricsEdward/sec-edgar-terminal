@@ -5,12 +5,12 @@ import { disclosurePassages } from "./disclosureResearch.js";
 import { warmGet, warmSet } from "./warmCache.js";
 import { loadFilingsCompany, loadFilingsArchive } from "./filingsResearchServer.js";
 import { validFilingDate } from "./filingsResearch.js";
+import { secFetch } from "./secClient.js";
 
 const MAX_DOCUMENT_BYTES = 24_000_000;
 const PAGE_SIZE = 8;
 const TEXT_CACHE_NAMESPACE = "filings-reader-text-v2";
 const cache = new Map();
-let nextRequest = 0;
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 const accessionPattern = /^\d{10}-\d{2}-\d{6}$/;
 
@@ -141,15 +141,13 @@ export async function fetchReaderDocument(cik, filing, { signal } = {}) {
     } catch { /* A corrupt entry is a miss; a failed fetch is never cached. */ }
   }
   if (!value) {
-    const slot = Math.max(Date.now(), nextRequest);
-    nextRequest = slot + 180;
-    if (slot > Date.now()) await new Promise((resolve) => setTimeout(resolve, slot - Date.now()));
     signal?.throwIfAborted();
-    const timeout = AbortSignal.timeout(18000);
-    const response = await fetch(url, {
+    const response = await secFetch(url, {
       headers: { "User-Agent": process.env.SEC_USER_AGENT || "EDGAR Terminal research@secedgarterminal.com", Accept: "text/html,text/plain,application/xml" },
       redirect: "error",
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      signal,
+      timeoutMs: 18000,
+      maxBytes: MAX_DOCUMENT_BYTES,
     });
     if (!response.ok) throw error(`SEC document request returned HTTP ${response.status}. Try again or open the original.`, 502);
     const contentType = response.headers.get("content-type") || "";

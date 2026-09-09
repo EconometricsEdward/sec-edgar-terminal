@@ -23,7 +23,7 @@
  */
 
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
-import { warmGet } from '../../../utils/warmCache.js';
+import { warmGet, warmSet } from '../../../utils/warmCache.js';
 import { recordView } from '../../../utils/viewTracker.js';
 
 export const runtime = 'nodejs';
@@ -107,7 +107,9 @@ async function tryYahoo(ticker, fromEpoch, toEpoch, fromIso) {
 
   if (!r.ok) throw new Error(`Yahoo HTTP ${r.status}`);
   const data = await r.json();
-  return parseYahooPayload(data, fromIso);
+  const rows = parseYahooPayload(data, fromIso);
+  await warmSet('stock-raw-yahoo', ticker.toUpperCase(), data, 25 * 3600);
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +181,7 @@ export async function GET(request) {
   if (!/^[A-Za-z0-9.\-]{1,10}$/.test(ticker)) {
     return Response.json({ error: 'Invalid ticker format' }, { status: 400 });
   }
+  const normalizedTicker = ticker.toUpperCase();
 
   const ip = getClientIp(request);
   const limit = await checkRateLimit({
@@ -193,7 +196,7 @@ export async function GET(request) {
   // the tracking event. Placed AFTER rate-limit check so abusers don't
   // inflate view counts, but BEFORE warm cache read so even cache hits
   // contribute to popularity signals.
-  recordView(ticker, ip);
+  recordView(normalizedTicker, ip);
 
   // Default: 10 years of history
   const now = new Date();
@@ -211,15 +214,22 @@ export async function GET(request) {
   // The pre-warmer stores 10 years of Yahoo data. If the user's `from` is
   // within that window, the warm payload covers it and we serve instantly.
   // If they ask for an older date than we warmed, fall through to live Yahoo.
-  const warmPayload = await warmGet('stock-raw-yahoo', ticker.toUpperCase());
+  const warmPayload = await warmGet('stock-raw-yahoo', normalizedTicker);
   if (warmPayload) {
     try {
+      const firstTimestamp = warmPayload.chart?.result?.[0]?.timestamp?.[0];
+      const coverageStart = Number.isFinite(firstTimestamp)
+        ? new Date(firstTimestamp * 1000).toISOString().slice(0, 10)
+        : null;
+      if (coverageStart && Date.parse(coverageStart) - Date.parse(fromIso) > 7 * 86400000) {
+        throw new Error(`Warm series begins ${coverageStart}, after the requested start date.`);
+      }
       const rows = parseYahooPayload(warmPayload, fromIso);
       if (rows.length > 0) {
         attempts.push({ source: 'warm', status: 'success', rowCount: rows.length });
         return Response.json(
           {
-            ticker,
+            ticker: normalizedTicker,
             source: 'warm',
             from: rows[0].date,
             to: rows[rows.length - 1].date,
@@ -230,7 +240,7 @@ export async function GET(request) {
           {
             status: 200,
             headers: {
-              'Cache-Control': 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400',
+              'Cache-Control': 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400, stale-if-error=604800',
               'X-Cache-Source': 'warm',
             },
           }
@@ -245,8 +255,8 @@ export async function GET(request) {
 
   // ------- Live upstream sources -------------------------------------------
   const sources = [
-    { name: 'yahoo', fn: () => tryYahoo(ticker, fromEpoch, toEpoch, fromIso) },
-    { name: 'stooq', fn: () => tryStooq(ticker, fromIso) },
+    { name: 'yahoo', fn: () => tryYahoo(normalizedTicker, fromEpoch, toEpoch, fromIso) },
+    { name: 'stooq', fn: () => tryStooq(normalizedTicker, fromIso) },
   ];
 
   for (const { name, fn } of sources) {
@@ -256,7 +266,7 @@ export async function GET(request) {
         attempts.push({ source: name, status: 'success', rowCount: rows.length });
         return Response.json(
           {
-            ticker,
+            ticker: normalizedTicker,
             source: name,
             from: rows[0].date,
             to: rows[rows.length - 1].date,
@@ -267,7 +277,7 @@ export async function GET(request) {
           {
             status: 200,
             headers: {
-              'Cache-Control': 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400',
+              'Cache-Control': 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400, stale-if-error=604800',
               'X-Cache-Source': 'upstream',
             },
           }
@@ -281,8 +291,8 @@ export async function GET(request) {
 
   return Response.json(
     {
-      error: `Price sources unavailable for ticker "${ticker}"`,
-      ticker,
+      error: `Price sources unavailable for ticker "${normalizedTicker}"`,
+      ticker: normalizedTicker,
       attempts,
       note: 'Yahoo Finance is the primary source; Stooq is a backup. Both may occasionally be unreachable from cloud hosting IPs.',
     },

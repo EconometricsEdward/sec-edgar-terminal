@@ -331,6 +331,13 @@ export default function AnalysisClient({
   const router = useRouter();
   const ctx = useContext(TickerContext);
   const tickerMap = ctx?.tickerMap ?? null;
+  const directoryStatus = ctx?.directoryStatus;
+  const refreshTickerMap = ctx?.refreshTickerMap;
+
+  useEffect(() => {
+    if (preloadedCik || tickerMap) return;
+    if (directoryStatus === 'idle') void refreshTickerMap?.();
+  }, [directoryStatus, preloadedCik, refreshTickerMap, tickerMap]);
 
   // Local company state — initialized from server props for instant display,
   // augmented client-side once submissions fetch completes

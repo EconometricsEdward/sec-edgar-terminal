@@ -1,3 +1,5 @@
+import { secFetch } from './secClient.js';
+
 // ============================================================================
 // filingTextParser — Fetches SEC filings and extracts plain text for scanning
 //
@@ -18,47 +20,6 @@
 // agent, pass it in.
 const DEFAULT_USER_AGENT = 'SEC EDGAR Terminal research@secedgarterminal.com';
 
-// SEC rate limit: 10 requests per second. We use 8 to be safe.
-const MAX_CONCURRENT = 4;   // Parallel requests
-const REQUEST_DELAY_MS = 125; // ~8 req/sec
-
-/**
- * Simple semaphore for controlling concurrency.
- */
-class Semaphore {
-  constructor(max) {
-    this.max = max;
-    this.active = 0;
-    this.queue = [];
-  }
-
-  async acquire() {
-    if (this.active < this.max) {
-      this.active++;
-      return;
-    }
-    return new Promise((resolve) => this.queue.push(resolve));
-  }
-
-  release() {
-    this.active--;
-    if (this.queue.length > 0) {
-      this.active++;
-      const next = this.queue.shift();
-      next();
-    }
-  }
-}
-
-const semaphore = new Semaphore(MAX_CONCURRENT);
-
-/**
- * Sleep helper for rate limiting.
- */
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * Fetch a URL with SEC-compliant headers and rate limiting.
  *
@@ -67,28 +28,17 @@ function sleep(ms) {
  * @returns {Promise<Response|null>}
  */
 async function fetchSec(url, timeoutMs = 15000) {
-  await semaphore.acquire();
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    const res = await fetch(url, {
+    return await secFetch(url, {
       headers: {
         'User-Agent': process.env.SEC_USER_AGENT || DEFAULT_USER_AGENT,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
-      signal: controller.signal,
+      timeoutMs,
+      retries: 2,
     });
-    clearTimeout(timeoutId);
-
-    // Small delay to stay under rate limit
-    await sleep(REQUEST_DELAY_MS);
-
-    return res;
   } catch {
     return null;
-  } finally {
-    semaphore.release();
   }
 }
 

@@ -20,7 +20,8 @@
  */
 
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
-import { warmGet } from '../../../utils/warmCache.js';
+import { warmGet, warmSet } from '../../../utils/warmCache.js';
+import { isValidSecUserAgent, secFetch } from '../../../utils/secClient.js';
 
 export const runtime = 'nodejs';
 
@@ -28,6 +29,13 @@ const SEC_USER_AGENT = process.env.SEC_USER_AGENT;
 
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 60;
+
+function cacheControlFor(host, path) {
+  if (host === 'www' && /^\/files\/company_tickers(?:_mf)?\.json$/.test(path)) {
+    return 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=604800';
+  }
+  return 'public, max-age=3600, s-maxage=21600, stale-while-revalidate=86400, stale-if-error=604800';
+}
 
 /**
  * Extract CIK from a submissions-style path. Returns null if not a submissions
@@ -42,10 +50,10 @@ function extractSubmissionsCik(path) {
 }
 
 export async function GET(request) {
-  if (!SEC_USER_AGENT) {
+  if (!isValidSecUserAgent(SEC_USER_AGENT)) {
     return Response.json(
-      { error: 'Server misconfigured: SEC_USER_AGENT environment variable is not set.' },
-      { status: 500 }
+      { error: 'Server misconfigured: SEC_USER_AGENT must include valid contact information.' },
+      { status: 503, headers: { 'Cache-Control': 'private, no-store' } }
     );
   }
 
@@ -80,12 +88,13 @@ export async function GET(request) {
   // If this request is a submissions lookup and we have a warm hit, we skip
   // the SEC call entirely — big win during rate-limit-tight moments.
   const cik = host === 'data' ? extractSubmissionsCik(path) : null;
+  const cacheControl = cacheControlFor(host, path);
   if (cik) {
     const warm = await warmGet('submissions-cik', cik);
     if (warm) {
       return Response.json(warm, {
         headers: {
-          'Cache-Control': 'public, max-age=3600, s-maxage=21600, stale-while-revalidate=86400',
+          'Cache-Control': cacheControl,
           'X-Cache-Source': 'warm',
         },
       });
@@ -96,29 +105,45 @@ export async function GET(request) {
   const targetUrl = baseUrl + path;
 
   try {
-    const secRes = await fetch(targetUrl, {
+    const secRes = await secFetch(targetUrl, {
       headers: {
         'User-Agent': SEC_USER_AGENT,
         Accept: 'application/json, text/plain, */*',
         'Accept-Encoding': 'gzip, deflate',
-        Host: new URL(baseUrl).host,
       },
-      signal: AbortSignal.timeout(10_000),
+      signal: request.signal,
+      timeoutMs: 10_000,
+      retries: 2,
     });
 
     if (!secRes.ok) {
       return Response.json(
         { error: `SEC returned ${secRes.status}`, path },
-        { status: secRes.status }
+        {
+          status: secRes.status,
+          headers: {
+            'Cache-Control': 'private, no-store',
+            ...(secRes.headers.get('retry-after')
+              ? { 'Retry-After': secRes.headers.get('retry-after') }
+              : {}),
+          },
+        }
       );
     }
 
     const body = await secRes.text();
+    if (cik) {
+      try {
+        await warmSet('submissions-cik', cik, JSON.parse(body), 25 * 3600);
+      } catch {
+        // A malformed payload must never be written over a good cache entry.
+      }
+    }
 
     return new Response(body, {
       status: 200,
       headers: {
-        'Cache-Control': 'public, max-age=3600, s-maxage=21600, stale-while-revalidate=86400',
+        'Cache-Control': cacheControl,
         'Content-Type': secRes.headers.get('content-type') || 'application/json',
         'X-Cache-Source': 'upstream',
       },
@@ -126,7 +151,7 @@ export async function GET(request) {
   } catch (err) {
     return Response.json(
       { error: `Upstream fetch failed: ${err.message}` },
-      { status: 502 }
+      { status: err.status || 502, headers: { 'Cache-Control': 'private, no-store' } }
     );
   }
 }

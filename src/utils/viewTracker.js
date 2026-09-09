@@ -7,7 +7,7 @@
  * finance forum) gets pre-warmed by the next nightly cron run.
  *
  * How it works:
- *   - On each `/api/prices` request, we record the viewer's IP under the
+ *   - On each `/api/prices` request, we record a one-way viewer token under the
  *     ticker, inside a Redis set with a TTL
  *   - The set's cardinality tells us the count of DISTINCT IPs that viewed
  *     that ticker in the last 24 hours — a better signal of "real
@@ -31,6 +31,8 @@
  * slow or down, we just silently drop tracking. User-facing latency is
  * unaffected.
  */
+
+import { createHmac } from 'node:crypto';
 
 const REST_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const REST_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -84,6 +86,11 @@ export function recordView(ticker, ip) {
   const t = ticker.toUpperCase();
   const viewKey = viewSetKey(t);
   const now = Math.floor(Date.now() / 1000);
+  // Preserve distinct counting without retaining a raw IP address in Redis.
+  const viewer = createHmac('sha256', REST_TOKEN)
+    .update(String(ip))
+    .digest('base64url')
+    .slice(0, 24);
 
   // Three commands, one round trip:
   //   1. Add this IP to the ticker's view set
@@ -95,7 +102,7 @@ export function recordView(ticker, ip) {
   // entries fall off, and (b) recency for tie-breaking when the hot
   // list is trimmed. Cheap enough to update always.
   fireAndForget([
-    ['SADD', viewKey, ip],
+    ['SADD', viewKey, viewer],
     ['EXPIRE', viewKey, VIEW_WINDOW_SEC],
     ['ZADD', HOT_SET_KEY, String(now), t],
   ]);

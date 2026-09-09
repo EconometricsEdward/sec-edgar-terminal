@@ -15,6 +15,7 @@ import {
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+const PUBLIC_RESEARCH_CACHE = "public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400";
 export async function GET(request) {
   const params = new URL(request.url).searchParams;
   const ticker = (params.get("ticker") || "").trim().toUpperCase();
@@ -52,7 +53,7 @@ export async function GET(request) {
           JSON.parse(
             gunzipSync(Buffer.from(cached.gzip, "base64")).toString("utf8"),
           ),
-          { headers: { "Cache-Control": "private, no-store" } },
+          { headers: { "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": "warm" } },
         );
       } catch {
         /* A corrupt cache entry falls through to public SEC data. */
@@ -69,7 +70,7 @@ export async function GET(request) {
       300,
     );
     return NextResponse.json(result, {
-      headers: { "Cache-Control": "private, no-store" },
+      headers: { "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": "upstream" },
     });
   } catch (error) {
     return NextResponse.json(
@@ -79,7 +80,7 @@ export async function GET(request) {
           error.message ||
           "SEC data could not be retrieved. Retry this issuer.",
       },
-      { status: 502 },
+      { status: error.status || 502, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 }

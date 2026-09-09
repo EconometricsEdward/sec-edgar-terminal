@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import AnalysisClient from "./AnalysisWorkspace";
 import { buildPageMetadata } from "../../../utils/siteMetadata";
+import { getOperatingTicker } from "../../../utils/tickerMap.js";
 
 // ============================================================================
 // Route configuration
@@ -14,16 +16,6 @@ export const revalidate = 3600;
 // ============================================================================
 // Types
 // ============================================================================
-interface CompanyTickerEntry {
-  cik_str: number;
-  ticker: string;
-  title: string;
-}
-
-interface CompanyTickersFile {
-  [key: string]: CompanyTickerEntry;
-}
-
 interface PageProps {
   params: Promise<{ ticker: string }>;
 }
@@ -43,47 +35,24 @@ interface CompanyMeta {
 // company title needed for metadata, JSON-LD, and the initial page shell without
 // fetching the much larger /submissions/CIK*.json payload server-side.
 // ============================================================================
-async function getCompanyMeta(ticker: string): Promise<CompanyMeta | null> {
-  const userAgent = process.env.SEC_USER_AGENT;
-  if (!userAgent) {
-    console.error("[analysis/[ticker]] SEC_USER_AGENT env var is not set");
-    return null;
-  }
-
+const getCompanyMeta = cache(async (ticker: string): Promise<CompanyMeta | null> => {
   try {
-    const res = await fetch("https://www.sec.gov/files/company_tickers.json", {
-      headers: { "User-Agent": userAgent },
-      next: { revalidate: 86400 },
-    });
-
-    if (!res.ok) {
-      console.error(
-        `[analysis/[ticker]] ticker-map fetch returned ${res.status}`,
-      );
-      return null;
-    }
-
-    const data = (await res.json()) as CompanyTickersFile;
     const upper = ticker.toUpperCase();
-
-    for (const entry of Object.values(data)) {
-      if (entry?.ticker?.toUpperCase() === upper) {
-        return {
+    const entry = await getOperatingTicker(upper);
+    return entry
+      ? {
           ticker: upper,
-          cik: String(entry.cik_str).padStart(10, "0"),
-          name: entry.title || upper,
+          cik: String(entry.cik).padStart(10, "0"),
+          name: entry.name || upper,
           sicDescription: null,
           exchange: null,
-        };
-      }
-    }
-
-    return null;
+        }
+      : null;
   } catch (err) {
     console.error("[analysis/[ticker]] ticker-map fetch failed:", err);
     return null;
   }
-}
+});
 
 // ============================================================================
 // generateMetadata — the SEO payoff. Per-page title/description/canonical

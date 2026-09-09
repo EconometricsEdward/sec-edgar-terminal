@@ -7,14 +7,16 @@ import { describeServiceHealth } from "../../utils/serviceStatus.js";
 import styles from "./ServiceStatus.module.css";
 
 type Status = {
-  phase: "checking" | "available" | "degraded" | "unavailable" | "offline";
+  phase: "idle" | "checking" | "available" | "degraded" | "unavailable" | "offline";
   checkedAt?: string;
   secConfiguration?: string;
   cacheConfiguration?: string;
+  rateLimitConfiguration?: string;
   message?: string;
 };
 
 const LABELS = {
+  idle: "Service status",
   checking: "Checking service",
   available: "Service responds",
   degraded: "Service limited",
@@ -23,7 +25,7 @@ const LABELS = {
 };
 
 export default function ServiceStatus() {
-  const [status, setStatus] = useState<Status>({ phase: "checking" });
+  const [status, setStatus] = useState<Status>({ phase: "idle" });
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -52,7 +54,6 @@ export default function ServiceStatus() {
     try {
       const response = await fetch("/api/health", {
         signal: controller.signal,
-        cache: "no-store",
         headers: { Accept: "application/json" },
       });
       const health = describeServiceHealth(
@@ -81,7 +82,6 @@ export default function ServiceStatus() {
   }, []);
 
   useEffect(() => {
-    void check();
     const offline = () => {
       requestId.current += 1;
       pending.current?.abort();
@@ -90,16 +90,21 @@ export default function ServiceStatus() {
         message: "Reconnect, then check the service again.",
       });
     };
-    const online = () => void check();
+    const online = () => {
+      if (expanded) void check();
+    };
     window.addEventListener("offline", offline);
     window.addEventListener("online", online);
     return () => {
-      requestId.current += 1;
-      pending.current?.abort();
       window.removeEventListener("offline", offline);
       window.removeEventListener("online", online);
     };
-  }, [check]);
+  }, [check, expanded]);
+
+  useEffect(() => () => {
+    requestId.current += 1;
+    pending.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (!expanded) return;
@@ -130,7 +135,11 @@ export default function ServiceStatus() {
         title={LABELS[status.phase]}
         aria-expanded={expanded}
         aria-controls={panelId}
-        onClick={() => setExpanded((value) => !value)}
+        onClick={() => {
+          const next = !expanded;
+          setExpanded(next);
+          if (next && !status.checkedAt) void check();
+        }}
       >
         <span
           className={styles.dot}
@@ -163,7 +172,7 @@ export default function ServiceStatus() {
             )}
           </p>
           {status.message && <p>{status.message}</p>}
-          {status.secConfiguration && status.phase !== "checking" && (
+          {status.secConfiguration && !["idle", "checking"].includes(status.phase) && (
             <dl>
               <div>
                 <dt>SEC request configuration</dt>
@@ -172,6 +181,10 @@ export default function ServiceStatus() {
               <div>
                 <dt>Shared cache configuration</dt>
                 <dd>{status.cacheConfiguration}</dd>
+              </div>
+              <div>
+                <dt>Shared SEC request gate</dt>
+                <dd>{status.rateLimitConfiguration}</dd>
               </div>
             </dl>
           )}

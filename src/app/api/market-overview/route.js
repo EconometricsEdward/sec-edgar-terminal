@@ -5,13 +5,19 @@ import {
   buildMetricRow,
 } from '../../../utils/xbrlParser.js';
 
-import { warmGet, warmSet } from '../../../utils/warmCache.js';
+import { warmAcquireLease, warmCacheEnabled, warmGet, warmReleaseLease, warmSet } from '../../../utils/warmCache.js';
 import { illustrativeGeography, marketSnapshot, appendSnapshot } from '../../../utils/marketEvidence.js';
+import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
+import { secFetch } from '../../../utils/secClient.js';
 
 export const revalidate = 21600;
+export const maxDuration = 300;
 
 const MAX_CONCURRENCY = 5;
 const BATCH_PAUSE_MS = 300;
+const MINIMUM_ATLAS_COVERAGE = 0.95;
+const MARKET_REBUILD_LEASE = 'sec-market-rebuild';
+const MARKET_REBUILD_LEASE_ID = 'global';
 
 const MARKET_OVERVIEW_TTL_MS = 1000 * 60 * 60 * 6;
 let marketOverviewCache = null;
@@ -738,9 +744,8 @@ function aggregateLens(definition, companies) {
   };
 }
 
-async function loadTickerMap(userAgent) {
-  const res = await fetch('https://www.sec.gov/files/company_tickers.json', {
-    headers: { 'User-Agent': userAgent },
+async function loadTickerMap(_userAgent) {
+  const res = await secFetch('https://www.sec.gov/files/company_tickers.json', {
     next: { revalidate: 86400 },
   });
 
@@ -765,10 +770,9 @@ async function loadTickerMap(userAgent) {
   return map;
 }
 
-async function fetchLatestFilingText(entry, userAgent) {
+async function fetchLatestFilingText(entry, _userAgent) {
   try {
-    const submissionsRes = await fetch(`https://data.sec.gov/submissions/CIK${entry.cik}.json`, {
-      headers: { 'User-Agent': userAgent },
+    const submissionsRes = await secFetch(`https://data.sec.gov/submissions/CIK${entry.cik}.json`, {
       cache: 'no-store',
     });
 
@@ -797,8 +801,7 @@ async function fetchLatestFilingText(entry, userAgent) {
     const accessionNoDashes = selected.accession.replace(/-/g, '');
     const url = `https://www.sec.gov/Archives/edgar/data/${cikNoZeros}/${accessionNoDashes}/${selected.primaryDocument}`;
 
-    const filingRes = await fetch(url, {
-      headers: { 'User-Agent': userAgent },
+    const filingRes = await secFetch(url, {
       cache: 'no-store',
     });
 
@@ -860,8 +863,7 @@ function buildMarketRiskProfile(filingText) {
 async function loadCompany(entry, userAgent, shouldScanText) {
   try {
     const [factsRes, filingText] = await Promise.all([
-      fetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${entry.cik}.json`, {
-        headers: { 'User-Agent': userAgent },
+      secFetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${entry.cik}.json`, {
         cache: 'no-store',
       }),
       shouldScanText ? fetchLatestFilingText(entry, userAgent) : Promise.resolve(null),
@@ -2474,38 +2476,100 @@ async function loadCompanyUniverse(entries, userAgent) {
 }
 
 export async function GET(request) {
-  const userAgent = process.env.SEC_USER_AGENT;
-
-  if (!userAgent) {
-    return NextResponse.json(
-      { error: 'SEC_USER_AGENT is not configured.' },
-      { status: 500 }
-    );
-  }
-
   const refresh = request?.url
     ? new URL(request.url).searchParams.get('refresh') === '1'
     : false;
 
+  // This legacy route can fan out into hundreds of SEC requests. A forced
+  // rebuild is an operational action and must never be a public cache bypass.
+  if (refresh) {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+      return NextResponse.json(
+        { error: 'A forced market refresh requires cron authorization.' },
+        { status: 401, headers: { 'Cache-Control': 'private, no-store' } },
+      );
+    }
+  }
+
   if (!refresh && marketOverviewCache && Date.now() < marketOverviewCache.expiresAt) {
     return NextResponse.json(marketOverviewCache.payload, {
       headers: {
-        'Cache-Control': 's-maxage=21600, stale-while-revalidate=86400',
+        'Cache-Control': 'public, max-age=60, s-maxage=21600, stale-while-revalidate=86400, stale-if-error=604800',
         'X-Market-Overview-Cache': 'memory-hit',
       },
     });
   }
 
-  try {
-    const cached = !refresh ? await warmGet('market-v2', 'atlas') : null;
-    if (cached && Date.now() - Date.parse(cached.generatedAt) < MARKET_OVERVIEW_TTL_MS) {
-      return NextResponse.json(cached, { headers: { 'Cache-Control': 's-maxage=21600, stale-while-revalidate=86400' } });
+  const cached = await warmGet('market-v2', 'atlas');
+  // The current site uses /api/market-research. This compatibility route may
+  // serve an existing snapshot publicly, but only an authenticated operator
+  // can launch its hundreds-of-requests legacy rebuild.
+  if (!refresh) {
+    if (cached) {
+      const stale = Date.now() - Date.parse(cached.generatedAt) >= MARKET_OVERVIEW_TTL_MS;
+      return NextResponse.json(
+        stale ? { ...cached, cache: { status: 'stale', warning: 'Showing the last retained legacy Market snapshot.' } } : cached,
+        {
+          headers: {
+            'Cache-Control': stale
+              ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=604800'
+              : 'public, max-age=60, s-maxage=21600, stale-while-revalidate=86400, stale-if-error=604800',
+            'X-Market-Overview-Cache': stale ? 'warm-stale' : 'warm-hit',
+            ...(stale ? { Warning: '110 - "Response is stale"', 'X-Data-Stale': '1' } : {}),
+          },
+        },
+      );
     }
+    return NextResponse.json(
+      { error: 'The legacy Market snapshot is not available. Use /api/market-research.' },
+      { status: 503, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  }
+
+  const userAgent = process.env.SEC_USER_AGENT;
+  if (!userAgent) {
+    return NextResponse.json(
+      { error: 'SEC_USER_AGENT is not configured.' },
+      { status: 503, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  }
+  const limit = await checkRateLimit({
+    key: `rl:market-overview:${getClientIp(request)}`,
+    windowMs: 60_000,
+    max: 100,
+    cost: 100,
+  });
+  if (!limit.allowed) return rateLimitedResponse(limit);
+  const lease = await warmAcquireLease(MARKET_REBUILD_LEASE, MARKET_REBUILD_LEASE_ID, 6 * 60_000);
+  if (warmCacheEnabled() && !lease) {
+    return NextResponse.json(
+      cached
+        ? { ...cached, cache: { status: 'stale', warning: 'Another worker is rebuilding the legacy Market snapshot.' } }
+        : { error: 'A legacy Market rebuild is already in progress.' },
+      {
+        status: cached ? 200 : 503,
+        headers: cached
+          ? { 'Cache-Control': 'private, no-store', Warning: '110 - "Response is stale"', 'X-Data-Stale': '1' }
+          : { 'Cache-Control': 'private, no-store' },
+      },
+    );
+  }
+
+  try {
     const tickerMap = await loadTickerMap(userAgent);
     const universeTickers = uniqueTickers(MARKET_LENSES.flatMap((lens) => lens.tickers));
     const entries = universeTickers
       .map((ticker) => tickerMap.get(ticker))
       .filter(Boolean);
+    const priorCount = Array.isArray(cached?.companies) ? cached.companies.length : 0;
+    const minimumCompanies = Math.max(
+      Math.ceil(universeTickers.length * MINIMUM_ATLAS_COVERAGE),
+      Math.ceil(priorCount * MINIMUM_ATLAS_COVERAGE),
+    );
+    if (entries.length < minimumCompanies) {
+      throw new Error(`The SEC ticker directory resolved only ${entries.length} of ${universeTickers.length} legacy Market companies.`);
+    }
 
     const companies = await loadCompanyUniverse(entries, userAgent);
     const companyByTicker = new Map(companies.map((company) => [company.ticker, company]));
@@ -2527,6 +2591,9 @@ export async function GET(request) {
 
     const loadedCompanies = companies.filter((company) => !company.error);
     const erroredCompanies = companies.filter((company) => company.error);
+    if (loadedCompanies.length < minimumCompanies) {
+      throw new Error(`Only ${loadedCompanies.length} of ${universeTickers.length} legacy Market companies loaded; the prior snapshot was retained.`);
+    }
 
     const payload = {
       generatedAt: new Date().toISOString(),
@@ -2556,7 +2623,8 @@ export async function GET(request) {
     const previousSnapshots = await warmGet('market-v2', 'observations');
     payload.observedHistory = appendSnapshot(previousSnapshots, marketSnapshot(payload));
     payload.historyPersistence = await warmSet('market-v2', 'observations', payload.observedHistory, 90 * 86400);
-    await warmSet('market-v2', 'atlas', payload, 21600);
+    // Keep the last complete snapshot available during a later SEC outage.
+    await warmSet('market-v2', 'atlas', payload, 7 * 86400);
     marketOverviewCache = {
       payload,
       expiresAt: Date.now() + MARKET_OVERVIEW_TTL_MS,
@@ -2564,14 +2632,36 @@ export async function GET(request) {
 
     return NextResponse.json(payload, {
       headers: {
-        'Cache-Control': 's-maxage=21600, stale-while-revalidate=86400',
+        'Cache-Control': 'private, no-store',
         'X-Market-Overview-Cache': 'rebuilt',
       },
     });
   } catch (error) {
+    const stale = await warmGet('market-v2', 'atlas');
+    if (stale) {
+      return NextResponse.json(
+        {
+          ...stale,
+          cache: {
+            status: 'stale',
+            warning: 'The SEC refresh failed; showing the last complete market snapshot.',
+          },
+        },
+        {
+          status: 502,
+          headers: {
+            'Cache-Control': 'private, no-store',
+            Warning: '110 - "Response is stale"',
+            'X-Data-Stale': '1',
+          },
+        },
+      );
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },
-      { status: 500 }
+      { status: 502, headers: { 'Cache-Control': 'private, no-store' } }
     );
+  } finally {
+    if (lease) await warmReleaseLease(MARKET_REBUILD_LEASE, MARKET_REBUILD_LEASE_ID, lease);
   }
 }

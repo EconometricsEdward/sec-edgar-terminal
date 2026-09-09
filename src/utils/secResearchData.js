@@ -2,14 +2,16 @@ import { getOperatingTicker } from './tickerMap.js';
 import { buildFilingUrl } from './filingTextParser.js';
 import { warmGet, warmSet } from './warmCache.js';
 import { RESEARCH_FORMS } from './researchWorkspace.js';
+import { secFetch } from './secClient.js';
 
 export async function secResearchJson(path, signal) {
   if (!/^\/(submissions\/CIK[\d-]+\.json|api\/xbrl\/companyfacts\/CIK\d{10}\.json)$/.test(path)) throw new Error('Invalid SEC data path.');
   const cached = await warmGet('research-sec-v1', path);
   if (cached) return cached;
-  const response = await fetch(`https://data.sec.gov${path}`, {
+  const response = await secFetch(`https://data.sec.gov${path}`, {
     headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com', Accept: 'application/json' },
-    signal: signal || AbortSignal.timeout(15000),
+    signal,
+    timeoutMs: 15000,
   });
   if (!response.ok) throw new Error(`SEC data request returned HTTP ${response.status}.`);
   const data = await response.json();
@@ -44,7 +46,7 @@ export async function loadResearchCompany(ticker, { history = false, since = '',
     for (const file of files.slice(0, 8)) {
       if (!/^CIK\d{10}-submissions-\d+\.json$/.test(file.name)) continue;
       try {
-        const response = await fetch(`https://data.sec.gov/submissions/${file.name}`, { headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com' }, signal: signal || AbortSignal.timeout(8000) });
+        const response = await secFetch(`https://data.sec.gov/submissions/${file.name}`, { headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com' }, signal, timeoutMs: 8000 });
         if (!response.ok) { historyLimited = true; continue; }
         filings.push(...submissionRows(await response.json(), cik));
       } catch { historyLimited = true; }

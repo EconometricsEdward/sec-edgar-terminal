@@ -1,3 +1,7 @@
+import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
+import { warmGet, warmSet } from '../../../utils/warmCache.js';
+import { secFetch } from '../../../utils/secClient.js';
+
 // ============================================================================
 // api/holders — 13F Institutional Holders (Next.js route handler)
 //
@@ -23,6 +27,13 @@
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
+const HOLDER_CACHE_HEADERS = {
+  'Cache-Control': 'public, max-age=300, s-maxage=43200, stale-while-revalidate=604800, stale-if-error=604800',
+};
+const HOLDER_FRESH_MS = 12 * 60 * 60 * 1000;
+const holderPending = new Map();
 
 // ----------------------------------------------------------------------------
 // Known institutional 13F filers, ranked roughly by AUM / 13F visibility.
@@ -84,9 +95,10 @@ const KNOWN_FILERS = [
   { cik: '0001603466', name: 'ValueAct Capital', type: 'hedge' },
 ];
 
-// Dedupe by CIK — some names above might share CIKs in error
-const UNIQUE_FILERS = Array.from(
-  new Map(KNOWN_FILERS.map((f) => [f.cik, f])).values()
+// Keep the first label for duplicate CIKs; the response ultimately uses the
+// authoritative filer name returned by SEC submissions.
+const UNIQUE_FILERS = KNOWN_FILERS.filter(
+  (filer, index, rows) => rows.findIndex((candidate) => candidate.cik === filer.cik) === index,
 );
 
 // ----------------------------------------------------------------------------
@@ -145,76 +157,108 @@ const KNOWN_CUSIPS = {
 // ============================================================================
 
 export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const ticker = searchParams.get('ticker');
-
-  if (!ticker) {
-    return Response.json({ error: 'ticker parameter required' }, { status: 400 });
+  const tickerUpper = (new URL(request.url).searchParams.get('ticker') || '').trim().toUpperCase();
+  if (!/^[A-Z0-9][A-Z0-9.-]{0,9}$/.test(tickerUpper)) {
+    return Response.json(
+      { error: 'Provide one valid ticker.' },
+      { status: 400, headers: { 'Cache-Control': 'private, no-store' } },
+    );
   }
-
-  const tickerUpper = ticker.toUpperCase();
   const cusip = KNOWN_CUSIPS[tickerUpper];
 
   if (!cusip) {
-    return Response.json({
-      holders: [],
-      meta: {
-        ticker: tickerUpper,
-        cusip: null,
-        message: '13F holder data currently available for common large-cap tickers only.',
+    return Response.json(
+      {
+        holders: [],
+        meta: {
+          ticker: tickerUpper,
+          cusip: null,
+          message: '13F holder data currently available for common large-cap tickers only.',
+        },
       },
-    });
+      { headers: HOLDER_CACHE_HEADERS },
+    );
   }
+
+  const cached = await warmGet('holders-v3', tickerUpper);
+  if (cached && Date.now() - Date.parse(cached.retrievedAt) < HOLDER_FRESH_MS) {
+    return Response.json(
+      { ...cached, meta: { ...cached.meta, cache: 'shared' } },
+      { headers: { ...HOLDER_CACHE_HEADERS, 'X-Cache-Source': 'warm' } },
+    );
+  }
+
+  // One request can inspect dozens of reports, so charge it as expensive
+  // work rather than as one ordinary API call.
+  const limit = await checkRateLimit({
+    key: `rl:holders:${getClientIp(request)}`,
+    windowMs: 10 * 60_000,
+    max: 120,
+    cost: 60,
+  });
+  if (!limit.allowed) return rateLimitedResponse(limit);
 
   const userAgent = process.env.SEC_USER_AGENT || 'EDGAR Terminal research-tool@example.com';
 
   try {
-    // ========================================================================
-    // PHASE 1: Fetch each known filer's most recent 13F-HR info table
-    // and scan for our target CUSIP. Runs in controlled-concurrency batches.
-    // ========================================================================
-    const knownHolders = await fetchKnownFilerHoldings(UNIQUE_FILERS, cusip, userAgent);
-
-    // ========================================================================
-    // PHASE 2: Use full-text search to find holders NOT in the known list.
-    // This catches mid-size filers (like family offices > $1B AUM) we haven't
-    // hardcoded. Limited to top 20 search hits to control load time.
-    // ========================================================================
-    const knownCiks = new Set(knownHolders.map((h) => h.filerCik));
-    const searchHolders = await fetchSearchFallbackHoldings(
-      cusip,
-      knownCiks,
-      userAgent,
-      20 // max additional filers from search
-    );
-
-    // ========================================================================
-    // MERGE + SORT
-    // ========================================================================
-    const allHolders = [...knownHolders, ...searchHolders];
-
-    // Sort by value descending. Handle nulls gracefully (put them last).
-    allHolders.sort((a, b) => {
-      const av = a.value || 0;
-      const bv = b.value || 0;
-      return bv - av;
-    });
-
-    return Response.json({
-      holders: allHolders.slice(0, 30),
-      meta: {
-        ticker: tickerUpper,
-        cusip,
-        knownFilersChecked: UNIQUE_FILERS.length,
-        knownFilersWithHolding: knownHolders.length,
-        searchFilersAdded: searchHolders.length,
-      },
-    });
+    let task = holderPending.get(tickerUpper);
+    if (!task) {
+      task = (async () => {
+        const knownScan = await fetchKnownFilerHoldings(UNIQUE_FILERS, cusip, userAgent);
+        const minimumCoverage = Math.ceil(UNIQUE_FILERS.length * 0.75);
+        if (knownScan.checked < minimumCoverage) {
+          throw new Error(`Only ${knownScan.checked} of ${UNIQUE_FILERS.length} institutional filings could be checked.`);
+        }
+        const knownHolders = knownScan.holdings;
+        const knownCiks = new Set(UNIQUE_FILERS.map((filer) => filer.cik));
+        const searchScan = await fetchSearchFallbackHoldings(cusip, knownCiks, userAgent, 20);
+        const searchHolders = searchScan.holdings;
+        const complete = knownScan.failed === 0 && searchScan.complete;
+        const allHolders = [...knownHolders, ...searchHolders]
+          .sort((a, b) => (b.value || 0) - (a.value || 0));
+        return {
+          holders: allHolders.slice(0, 30),
+          retrievedAt: new Date().toISOString(),
+          meta: {
+            ticker: tickerUpper,
+            cusip,
+            knownFilersChecked: UNIQUE_FILERS.length,
+            knownFilersVerified: knownScan.checked,
+            knownFilersWithHolding: knownHolders.length,
+            searchFilersAdded: searchHolders.length,
+            failedChecks: knownScan.failed + searchScan.failed,
+            complete,
+            cache: 'upstream',
+          },
+        };
+      })();
+      holderPending.set(tickerUpper, task);
+    }
+    try {
+      const payload = await task;
+      if (!payload.meta.complete) {
+        if (cached) throw new Error('The latest 13F refresh was incomplete.');
+        return Response.json(
+          { ...payload, meta: { ...payload.meta, warning: 'Some institutional filings could not be checked; this partial result was not retained.' } },
+          { headers: { 'Cache-Control': 'private, no-store', 'X-Data-Partial': '1' } },
+        );
+      }
+      await warmSet('holders-v3', tickerUpper, payload, 7 * 86400);
+      return Response.json(payload, { headers: { ...HOLDER_CACHE_HEADERS, 'X-Cache-Source': 'upstream' } });
+    } finally {
+      if (holderPending.get(tickerUpper) === task) holderPending.delete(tickerUpper);
+    }
   } catch (err) {
     console.error('Holders API error:', err);
+    if (cached) {
+      return Response.json(
+        { ...cached, meta: { ...cached.meta, cache: 'stale', warning: 'Holder refresh failed; showing the last completed 13F snapshot.' } },
+        { headers: { ...HOLDER_CACHE_HEADERS, Warning: '110 - "Response is stale"', 'X-Data-Stale': '1' } },
+      );
+    }
     return Response.json(
       { error: 'Failed to fetch 13F data', detail: err.message },
-      { status: 500 }
+      { status: 502, headers: { 'Cache-Control': 'private, no-store' } }
     );
   }
 }
@@ -224,41 +268,47 @@ export async function GET(request) {
 // ============================================================================
 
 async function fetchKnownFilerHoldings(filers, targetCusip, userAgent) {
-  const results = [];
-  // Controlled concurrency. SEC allows 10 req/sec; we use 6 at a time with
-  // a 200ms delay between batches = effective 30 req/sec peak but averaging
-  // well under the limit. Some filers fail (don't exist, don't have 13F-HR,
-  // don't hold this CUSIP) which is normal.
-  const batchSize = 6;
+  const holdings = [];
+  let checked = 0;
+  let failed = 0;
+  // Keep memory bounded while the shared SEC transport paces request starts.
+  const batchSize = 2;
 
   for (let i = 0; i < filers.length; i += batchSize) {
     const batch = filers.slice(i, i + batchSize);
     const batchResults = await Promise.all(
       batch.map((filer) => fetchFilerHolding(filer, targetCusip, userAgent))
     );
-    results.push(...batchResults.filter(Boolean));
+    for (const result of batchResults) {
+      if (result.ok) {
+        checked += 1;
+        if (result.holding) holdings.push(result.holding);
+      } else {
+        failed += 1;
+      }
+    }
     if (i + batchSize < filers.length) {
-      await sleep(200);
+      await sleep(100);
     }
   }
-  return results;
+  return { holdings, checked, failed };
 }
 
 /**
  * For one known filer, find their most recent 13F-HR and extract their holding
- * of the target CUSIP (if any). Returns null if no holding or on any error —
- * we want the whole flow to keep going even if individual filers fail.
+ * of the target CUSIP (if any). A checked non-holder is distinct from a failed
+ * filing request so outages cannot become a cached empty answer.
  */
 async function fetchFilerHolding(filer, targetCusip, userAgent) {
   try {
     // Step 1: Get the filer's submissions to find their most recent 13F-HR
     const submissionsUrl = `https://data.sec.gov/submissions/CIK${filer.cik}.json`;
     const submissionsRes = await fetchWithRetry(submissionsUrl, userAgent);
-    if (!submissionsRes.ok) return null;
+    if (!submissionsRes.ok) throw new Error(`SEC submissions returned HTTP ${submissionsRes.status}.`);
 
     const submissions = await submissionsRes.json();
     const recent = submissions?.filings?.recent;
-    if (!recent) return null;
+    if (!recent) return { ok: true, holding: null };
 
     // Find index of most recent 13F-HR
     let mostRecentIdx = -1;
@@ -273,7 +323,7 @@ async function fetchFilerHolding(filer, targetCusip, userAgent) {
         }
       }
     }
-    if (mostRecentIdx === -1) return null;
+    if (mostRecentIdx === -1) return { ok: true, holding: null };
 
     const accession = recent.accessionNumber[mostRecentIdx];
     const fileDate = recent.filingDate[mostRecentIdx];
@@ -287,20 +337,22 @@ async function fetchFilerHolding(filer, targetCusip, userAgent) {
       userAgent
     );
 
-    if (!holding) return null;
+    if (!holding) return { ok: true, holding: null };
 
     return {
-      filerCik: filer.cik,
-      filerName: filer.name,
-      fileDate,
-      periodOfReport,
-      accession,
-      ...holding,
-      source: 'known',
+      ok: true,
+      holding: {
+        filerCik: filer.cik,
+        filerName: submissions.name || filer.name,
+        fileDate,
+        periodOfReport,
+        accession,
+        ...holding,
+        source: 'known',
+      },
     };
-  } catch {
-    // Silent failure — expected for many filers
-    return null;
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -313,10 +365,15 @@ async function fetchSearchFallbackHoldings(targetCusip, skipCiks, userAgent, max
     const searchUrl = `https://efts.sec.gov/LATEST/search-index?q=%22${targetCusip}%22&forms=13F-HR&dateRange=custom&startdt=${getDateMonthsAgo(4)}&enddt=${today()}`;
 
     const searchRes = await fetchWithRetry(searchUrl, userAgent);
-    if (!searchRes.ok) return [];
+    if (!searchRes.ok) {
+      return { holdings: [], complete: false, failed: 1 };
+    }
 
     const searchData = await searchRes.json();
-    const hits = searchData?.hits?.hits || [];
+    if (!Array.isArray(searchData?.hits?.hits)) {
+      return { holdings: [], complete: false, failed: 1 };
+    }
+    const hits = searchData.hits.hits;
 
     // Dedupe by filer CIK, skip anyone already in known list.
     // Take most recent filing per filer.
@@ -347,21 +404,27 @@ async function fetchSearchFallbackHoldings(targetCusip, skipCiks, userAgent, max
 
     const candidates = Array.from(byFiler.values()).slice(0, maxResults);
     const results = [];
+    let failed = 0;
 
     // Process in small batches to control load
-    const batchSize = 5;
+    const batchSize = 2;
     for (let i = 0; i < candidates.length; i += batchSize) {
       const batch = candidates.slice(i, i + batchSize);
       const batchResults = await Promise.all(
         batch.map(async (candidate) => {
-          const holding = await fetchAndExtractHolding(
-            candidate.filerCik,
-            candidate.accession,
-            targetCusip,
-            userAgent
-          );
-          if (!holding) return null;
-          return { ...candidate, ...holding, source: 'search' };
+          try {
+            const holding = await fetchAndExtractHolding(
+              candidate.filerCik,
+              candidate.accession,
+              targetCusip,
+              userAgent
+            );
+            if (!holding) return null;
+            return { ...candidate, ...holding, source: 'search' };
+          } catch {
+            failed += 1;
+            return null;
+          }
         })
       );
       results.push(...batchResults.filter(Boolean));
@@ -370,10 +433,10 @@ async function fetchSearchFallbackHoldings(targetCusip, skipCiks, userAgent, max
       }
     }
 
-    return results;
+    return { holdings: results, complete: failed === 0, failed };
   } catch (err) {
     console.warn('Search fallback failed:', err.message);
-    return [];
+    return { holdings: [], complete: false, failed: 1 };
   }
 }
 
@@ -386,14 +449,13 @@ async function fetchSearchFallbackHoldings(targetCusip, skipCiks, userAgent, max
  * the target CUSIP. Returns { shares, value, issuerName } or null.
  */
 async function fetchAndExtractHolding(filerCik, accession, targetCusip, userAgent) {
-  try {
-    const cikStripped = String(filerCik).replace(/^0+/, '');
-    const accnNoHyphens = accession.replace(/-/g, '');
+  const cikStripped = String(filerCik).replace(/^0+/, '');
+  const accnNoHyphens = accession.replace(/-/g, '');
 
     // The filing's folder contains index.json listing all files
     const indexUrl = `https://www.sec.gov/Archives/edgar/data/${cikStripped}/${accnNoHyphens}/index.json`;
     const idxRes = await fetchWithRetry(indexUrl, userAgent);
-    if (!idxRes.ok) return null;
+    if (!idxRes.ok) throw new Error(`SEC filing index returned HTTP ${idxRes.status}.`);
 
     const idx = await idxRes.json();
     const items = idx?.directory?.item || [];
@@ -404,11 +466,11 @@ async function fetchAndExtractHolding(filerCik, accession, targetCusip, userAgen
       i.name.toLowerCase().includes('informationtable') && i.name.endsWith('.xml')
     ) || items.find((i) => /info.*table.*\.xml$/i.test(i.name));
 
-    if (!infoTableFile) return null;
+    if (!infoTableFile) throw new Error('The 13F information table could not be located.');
 
     const xmlUrl = `https://www.sec.gov/Archives/edgar/data/${cikStripped}/${accnNoHyphens}/${infoTableFile.name}`;
     const xmlRes = await fetchWithRetry(xmlUrl, userAgent);
-    if (!xmlRes.ok) return null;
+    if (!xmlRes.ok) throw new Error(`SEC information table returned HTTP ${xmlRes.status}.`);
 
     const xmlText = await xmlRes.text();
 
@@ -457,15 +519,12 @@ async function fetchAndExtractHolding(filerCik, accession, targetCusip, userAgen
     const valueIsThousands = accnYear >= 0 && accnYear < 23;
     const finalValue = valueIsThousands ? totalValue * 1000 : totalValue;
 
-    return {
-      shares: totalShares,
-      value: finalValue,
-      issuerName,
-      rowCount: matchCount,
-    };
-  } catch {
-    return null;
-  }
+  return {
+    shares: totalShares,
+    value: finalValue,
+    issuerName,
+    rowCount: matchCount,
+  };
 }
 
 // ============================================================================
@@ -477,25 +536,11 @@ async function fetchAndExtractHolding(filerCik, accession, targetCusip, userAgen
  * even with proper pacing; a single retry with backoff handles most cases.
  */
 async function fetchWithRetry(url, userAgent, attempt = 0) {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': userAgent,
-        'Accept': 'application/json,application/xml,text/xml,*/*',
-      },
-    });
-    if (res.status === 429 && attempt < 2) {
-      await sleep(500 * (attempt + 1));
-      return fetchWithRetry(url, userAgent, attempt + 1);
-    }
-    return res;
-  } catch (err) {
-    if (attempt < 2) {
-      await sleep(500);
-      return fetchWithRetry(url, userAgent, attempt + 1);
-    }
-    throw err;
-  }
+  return secFetch(url, {
+    headers: { 'User-Agent': userAgent, Accept: 'application/json,application/xml,text/xml,*/*' },
+    timeoutMs: 12_000,
+    retries: Math.max(0, 2 - attempt),
+  });
 }
 
 // ============================================================================

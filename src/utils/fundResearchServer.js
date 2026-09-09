@@ -9,21 +9,18 @@ import {
   portfolioSummary,
   FUND_CATALOG,
 } from "./fundResearch.js";
+import { secFetch } from "./secClient.js";
 const VERSION = "fund-research-v1";
 const cache = new Map(),
   inFlight = new Map();
-let nextRequest = 0;
 async function sec(url) {
-  const wait = Math.max(0, nextRequest - Date.now());
-  nextRequest = Date.now() + wait + 180;
-  if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-  const response = await fetch(url, {
+  const response = await secFetch(url, {
     headers: {
       "User-Agent":
         process.env.SEC_USER_AGENT ||
         "EDGAR Terminal research@secedgarterminal.com",
     },
-    signal: AbortSignal.timeout(25000),
+    timeoutMs: 25000,
   });
   if (!response.ok)
     throw new Error(

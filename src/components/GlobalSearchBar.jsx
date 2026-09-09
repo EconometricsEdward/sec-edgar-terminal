@@ -44,7 +44,7 @@ export default function GlobalSearchBar() {
   const context = useContext(TickerContext);
   const {
     tickerMap,
-    directoryStatus = "loading",
+    directoryStatus = "idle",
     directoryError = "",
     refreshTickerMap,
   } = context || {};
@@ -71,6 +71,11 @@ export default function GlobalSearchBar() {
     : input.trim()
       ? suggestions
       : recent;
+
+  const ensureDirectory = useCallback(() => {
+    if (directoryStatus === "idle" || directoryStatus === "error")
+      void refreshTickerMap?.(directoryStatus === "error");
+  }, [directoryStatus, refreshTickerMap]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -272,12 +277,14 @@ export default function GlobalSearchBar() {
           spellCheck={false}
           placeholder="Company, ticker or disclosure topic"
           onChange={(event) => {
+            ensureDirectory();
             setInput(event.target.value);
             setDestination(null);
             setError("");
             setOpen(true);
           }}
           onFocus={() => {
+            ensureDirectory();
             if (suppressFocus.current) {
               suppressFocus.current = false;
               return;
@@ -360,7 +367,7 @@ export default function GlobalSearchBar() {
               {error}
             </p>
           )}
-          {directoryStatus !== "ready" && (
+          {directoryStatus !== "ready" && directoryStatus !== "idle" && (
             <div className={styles.directory} role="status">
               <span>
                 {directoryStatus === "loading"
