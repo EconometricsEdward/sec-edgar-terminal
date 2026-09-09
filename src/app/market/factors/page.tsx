@@ -18,7 +18,7 @@ import styles from "./factors.module.css";
 const PAGE_PATH = "/market/factors" as const;
 const PAGE_URL = canonicalUrl(PAGE_PATH);
 const API_EXAMPLE_URL =
-  "/api/v1/market-signals?ticker=NVDA&window=3y&basis=ttm";
+  "/api/v1/market-signals?ticker=MSFT&window=3y&basis=ttm";
 const SCHEMA_URL = "/schemas/market-signals-v1.schema.json";
 const OPENAPI_URL = "/openapi.json";
 

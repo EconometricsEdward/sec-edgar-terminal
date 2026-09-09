@@ -45,7 +45,7 @@ export function isOlderReport(company, basis, observedAt) {
 }
 export const DEFAULT_MARKET_VIEW = {
   tab: 'overview', basis: 'ttm', cohort: 'all', query: '', screen: 'all', sort: 'revenueGrowth', direction: 'desc',
-  metric: 'revenueGrowth', statistic: 'median', selected: [], factorTicker: 'NVDA', factorWindow: '3y', factorSector: 'auto',
+  metric: 'revenueGrowth', statistic: 'median', selected: [], factorTicker: 'MSFT', factorWindow: '3y', factorSector: 'auto',
 };
 export function parseMarketView(query, cohortIds = []) {
   const p = new URLSearchParams(query);
