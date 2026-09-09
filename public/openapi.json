@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EDGAR Terminal Factor Lab API",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "A bounded, source-aware market diagnostic for analysts and connected AI tools. The EDGAR Factor Lab endpoint returns derived econometric diagnostics and filing-derived descriptive measures; it does not redistribute bulk vendor price histories, predict returns, or provide investment advice.",
     "contact": {
       "name": "EDGAR Terminal",
@@ -27,7 +27,7 @@
         "tags": ["Market signals"],
         "operationId": "getMarketSignal",
         "summary": "Calculate an EDGAR Factor Lab diagnostic for one covered company",
-        "description": "Returns daily adjusted-close regression diagnostics against SPY and a sector proxy, a current peer-normalized filing-change snapshot, a filing-event response when estimable, and the descriptive Evidence Gap. Exact-date intersection, coverage gates, Newey-West HAC inference, source provenance, warnings, and interpretation limits are included. A result may be ready, partial, withheld, or stale. Missing statistics are null, never zero. This is not CAPM because no risk-free return is subtracted; the regression intercept is not Jensen alpha. The filing snapshot is not a historical factor return, and the Evidence Gap is not a forecast or trade signal.",
+        "description": "Returns daily adjusted-close regression diagnostics against SPY and a sector proxy, beta term structure, rolling-distribution and influence diagnostics, residual-tail context, a current peer-normalized filing-change snapshot, a complete filing-event path with HAC response scaling, and the descriptive Evidence Gap. Exact-date intersection, explicit quality gates, stable fingerprints, source provenance, warnings, and interpretation limits are included. A result may be ready, partial, withheld, or stale. Missing statistics are null, never zero. This is not CAPM because no risk-free return is subtracted; the regression intercept is not Jensen alpha. The filing snapshot is not a historical factor return, and the Evidence Gap is not a forecast or trade signal.",
         "parameters": [
           {
             "name": "ticker",
@@ -98,22 +98,26 @@
               "enum": ["auto", "XLF", "XLRE", "XHB", "XLE", "XLY", "XLK", "XLI", "XLV", "XLU"],
               "default": "auto"
             }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "description": "Optional validator from a prior 200 response. Exact, weak, wildcard, and comma-separated validators are supported. Conditional reads still consume the normal GET quota and save response transfer only when the representation is unchanged.",
+            "schema": { "type": "string" }
           }
         ],
         "responses": {
           "200": {
             "description": "Completed or retained diagnostic. Inspect status, quality, warnings, sample, and provenance before using estimates.",
             "headers": {
-              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
-              "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
-              "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" },
               "X-Schema-Version": {
                 "description": "Response schema version.",
                 "schema": { "type": "string", "const": "edgar.market-signals.v1" }
               },
               "X-Methodology-Version": {
                 "description": "Econometric and filing-score methodology version.",
-                "schema": { "type": "string", "const": "market-signals-1.0.0" }
+                "schema": { "type": "string", "const": "market-signals-1.1.0" }
               },
               "X-Data-Through": {
                 "description": "Latest common price-input date or unavailable.",
@@ -123,8 +127,32 @@
                 "description": "Result delivery state; this is not the underlying data provider.",
                 "schema": { "type": "string", "enum": ["computed", "warm", "stale"] }
               },
+              "ETag": {
+                "description": "Strong validator for the exact response bytes; send it with If-None-Match for a conditional read.",
+                "schema": { "type": "string" }
+              },
+              "Last-Modified": {
+                "description": "HTTP date derived from the result generation clock.",
+                "schema": { "type": "string" }
+              },
+              "Content-Location": {
+                "description": "Canonical URL with normalized, explicit request settings.",
+                "schema": { "type": "string" }
+              },
+              "Server-Timing": {
+                "description": "Rate-limit and total server timing for delivery diagnostics.",
+                "schema": { "type": "string" }
+              },
               "Warning": {
                 "description": "HTTP Warning 110 when a retained stale result is served.",
+                "schema": { "type": "string" }
+              },
+              "X-Data-Stale": {
+                "description": "Present as 1 when a retained stale result is served.",
+                "schema": { "type": "string", "const": "1" }
+              },
+              "Link": {
+                "description": "Links to the JSON Schema and human-readable methodology.",
                 "schema": { "type": "string" }
               }
             },
@@ -138,9 +166,23 @@
                     "summary": "Abbreviated shape; live values and coverage vary",
                     "value": {
                       "schema_version": "edgar.market-signals.v1",
-                      "methodology_version": "market-signals-1.0.0",
+                      "methodology_version": "market-signals-1.1.0",
                       "universe_version": "market-research-v3",
                       "snapshot_id": "market-research-v3:example",
+                      "fingerprints": {
+                        "algorithm": "sha-256",
+                        "canonicalization": "UTF-8 JSON with recursively lexicographic object keys; documented arrays explicitly sorted where order is not analytic",
+                        "input_scope": "Schema, methodology, universe, normalized request, canonical SEC focus/peer comparison values, and internal price-series trace hashes; retrieval clocks excluded.",
+                        "result_scope": "Canonical initially computed API record excluding result_sha256. Delivery-time cache status or stale annotations may differ; use HTTP ETag for exact response bytes.",
+                        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                        "result_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+                        "sec_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+                        "prices": {
+                          "asset": "2222222222222222222222222222222222222222222222222222222222222222",
+                          "market": "3333333333333333333333333333333333333333333333333333333333333333",
+                          "sector_proxy": "4444444444444444444444444444444444444444444444444444444444444444"
+                        }
+                      },
                       "status": "ready",
                       "cache_status": "computed",
                       "generated_at": "2026-09-09T12:00:00.000Z",
@@ -342,6 +384,13 @@
                             "reason": null
                           }
                         ],
+                        "driver_summary": {
+                          "available": true,
+                          "ranked": [{ "key": "revenueGrowth", "label": "Revenue growth acceleration", "weighted_z": 0.225, "z": 0.9, "weight": 0.25 }],
+                          "strongest_positive": { "key": "revenueGrowth", "label": "Revenue growth acceleration", "weighted_z": 0.225, "z": 0.9, "weight": 0.25 },
+                          "strongest_negative": null,
+                          "contribution_sum": 0.89375
+                        },
                         "reason": null,
                         "methodology": { "peer_method": "leave-one-out cohort comparison" },
                         "claim_limits": ["Not a return forecast, trading signal, or recommendation."]
@@ -400,9 +449,35 @@
                         "filing_score_complete": true,
                         "peer_filings_after_focus": 0,
                         "filing_event_complete": true,
-                        "sec_snapshot_status": "current"
+                        "sec_snapshot_status": "current",
+                        "gates": [{
+                          "id": "aligned_sample",
+                          "label": "Exactly aligned sample",
+                          "status": "pass",
+                          "value": "752 sessions",
+                          "requirement": "At least 126 exactly matched daily return intervals."
+                        }]
+                      },
+                      "research_readout": {
+                        "observations": [{
+                          "id": "beta_reference",
+                          "level": "high",
+                          "finding": "NVDA's 95% HAC beta interval is entirely above 1.",
+                          "rule": "Compare the complete 95% Newey-West HAC interval with beta = 1."
+                        }],
+                        "questions": ["Which exposures coincide with the estimated market sensitivity?"],
+                        "claim_boundary": "Descriptive research triage only; not a forecast, valuation, recommendation, or trade signal."
                       },
                       "interpretation": "Illustrative, non-live example showing how filing evidence and market response remain separate.",
+                      "measurement": {
+                        "returns": "daily decimal log returns",
+                        "event_abnormal_return": "decimal cumulative simple return transformed from log residuals",
+                        "volatility": "annualized decimal using 252 sessions",
+                        "beta_and_z_scores": "unitless",
+                        "filing_levels": "percent",
+                        "filing_changes": "percentage points",
+                        "annualization_sessions": 252
+                      },
                       "provenance": {
                         "sec": {
                           "source": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
@@ -494,6 +569,16 @@
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "304": {
+            "description": "Representation unchanged for the supplied If-None-Match validator. The response has no body; conditional requests still consume the normal GET quota.",
+            "headers": {
+              "ETag": { "description": "Validator for the unchanged response bytes.", "schema": { "type": "string" } },
+              "Last-Modified": { "description": "Result generation time as an HTTP date.", "schema": { "type": "string" } },
+              "Content-Location": { "description": "Canonical URL with normalized settings.", "schema": { "type": "string" } },
+              "X-Schema-Version": { "description": "Response schema version.", "schema": { "type": "string", "const": "edgar.market-signals.v1" } },
+              "X-Methodology-Version": { "description": "Methodology version.", "schema": { "type": "string", "const": "market-signals-1.1.0" } }
+            }
+          },
           "422": {
             "$ref": "#/components/responses/ErrorResponse"
           },
@@ -510,7 +595,7 @@
             },
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/RateLimitError" }
+                "schema": { "$ref": "#/components/schemas/Error" }
               }
             }
           },
@@ -573,14 +658,6 @@
             },
             "additionalProperties": true
           }
-        },
-        "additionalProperties": true
-      },
-      "RateLimitError": {
-        "type": "object",
-        "required": ["error"],
-        "properties": {
-          "error": { "type": "string" }
         },
         "additionalProperties": true
       }

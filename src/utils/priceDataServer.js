@@ -475,10 +475,13 @@ export async function loadPriceSeries({ ticker: inputTicker, fromIso, now = new 
   const toEpoch = Math.floor(now.getTime() / 1000) + 86400;
   const exclusiveEnd = now.toISOString().slice(0, 10);
   const key = `${ticker}:${fromIso}:${forceRefresh ? 'refresh' : 'cached'}`;
-  if (pending.has(key)) return pending.get(key);
+  // Abortable background work must not become the shared promise for an
+  // unrelated user request; distributed refresh leases still prevent an
+  // upstream stampede across independent callers.
+  if (!signal && pending.has(key)) return pending.get(key);
   if (signal?.aborted) throw abortError(signal);
   const task = loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh, signal);
-  pending.set(key, task);
+  if (!signal) pending.set(key, task);
   try {
     const result = await task;
     // Yahoo can expose a still-forming daily candle. Publish only sessions
@@ -494,6 +497,6 @@ export async function loadPriceSeries({ ticker: inputTicker, fromIso, now = new 
     const adjustmentCoverage = result.provider === 'yahoo_finance' ? adjustedCount / prices.length : result.adjustmentCoverage;
     return { ...result, prices, priceBasis, adjustmentCoverage, from: prices[0].date, to: prices.at(-1).date, count: prices.length };
   } finally {
-    pending.delete(key);
+    if (!signal) pending.delete(key);
   }
 }

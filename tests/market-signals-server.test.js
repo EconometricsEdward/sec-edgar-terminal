@@ -8,7 +8,7 @@ import {
 
 test('Market signal request options normalize and constrain the public model surface', () => {
   assert.equal(MARKET_SIGNALS_SCHEMA_VERSION, 'edgar.market-signals.v1');
-  assert.equal(MARKET_SIGNALS_METHODOLOGY_VERSION, 'market-signals-1.0.0');
+  assert.equal(MARKET_SIGNALS_METHODOLOGY_VERSION, 'market-signals-1.1.0');
   assert.deepEqual(validateMarketSignalOptions({ ticker: ' nvda ', window: '5y', basis: 'annual', cohort: 'ai-infrastructure', sectorProxy: 'xlk' }), {
     ticker: 'NVDA', window: '5y', basis: 'annual', cohort: 'ai-infrastructure', sectorProxy: 'XLK',
   });

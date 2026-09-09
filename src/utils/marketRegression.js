@@ -27,6 +27,16 @@ const sampleVariance = (values, center = mean(values)) => values.length > 1
   ? values.reduce((sum, value) => sum + (value - center) ** 2, 0) / (values.length - 1)
   : null;
 
+function quantile(values, probability) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const position = Math.max(0, Math.min(1, probability)) * (sorted.length - 1);
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+
 function multiply2(a, b) {
   return [
     [a[0][0] * b[0][0] + a[0][1] * b[1][0], a[0][0] * b[0][1] + a[0][1] * b[1][1]],
@@ -261,26 +271,126 @@ export function fitIndependentSectorModel(observations, { minObservations = 126 
 }
 
 function summarizeRolling(points) {
-  if (!points.length) return { current: null, median: null, minimum: null, maximum: null, range: null };
+  if (!points.length) return {
+    current: null,
+    median: null,
+    firstQuartile: null,
+    thirdQuartile: null,
+    interquartileRange: null,
+    minimum: null,
+    maximum: null,
+    range: null,
+    currentMinusMedian: null,
+    currentPercentile: null,
+  };
   const values = points.map((point) => point.beta).sort((a, b) => a - b);
-  const middle = Math.floor(values.length / 2);
-  const median = values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
+  const current = points.at(-1).beta;
+  const median = quantile(values, 0.5);
+  const firstQuartile = quantile(values, 0.25);
+  const thirdQuartile = quantile(values, 0.75);
+  const tieTolerance = 1e-10 * Math.max(1, Math.abs(current));
+  const belowCurrent = values.filter((value) => value < current - tieTolerance).length;
+  const equalCurrent = values.filter((value) => Math.abs(value - current) <= tieTolerance).length;
   return {
-    current: points.at(-1).beta,
+    current,
     median,
+    firstQuartile,
+    thirdQuartile,
+    interquartileRange: thirdQuartile - firstQuartile,
     minimum: values[0],
     maximum: values.at(-1),
     range: values.at(-1) - values[0],
+    currentMinusMedian: current - median,
+    // A midrank keeps a tied, stable series at the 50th percentile instead of
+    // incorrectly presenting every tied observation as the historical maximum.
+    currentPercentile: 100 * (belowCurrent + 0.5 * equalCurrent) / values.length,
   };
 }
 
-export function estimateRegressionDiagnostics({ assetPrices, marketPrices, sectorPrices, requestedStart, minimumObservations = 126, rollingWindow = 126 }) {
+function summarizeHorizon(pairs, eligibleIntervals, required, window, requestedStart) {
+  const coverage = eligibleIntervals.length ? pairs.length / eligibleIntervals.length : 0;
+  if (pairs.length < required || coverage < 0.8) {
+    return {
+      window,
+      requestedStart,
+      available: false,
+      reason: pairs.length < required ? 'insufficient_observations' : 'insufficient_requested_horizon_coverage',
+      observations: pairs.length,
+      overlapCoverage: coverage,
+    };
+  }
+  const model = fitMarketModel(pairs, { minObservations: required });
+  return {
+    window,
+    requestedStart,
+    available: true,
+    effectiveStart: pairs[0].startDate,
+    effectiveEnd: pairs.at(-1).endDate,
+    observations: pairs.length,
+    overlapCoverage: coverage,
+    beta: model.beta,
+    betaConfidenceInterval95: model.betaConfidenceInterval95,
+    rSquared: model.rSquared,
+    residualVolatilityAnnualized: model.residualVolatilityAnnualized,
+  };
+}
+
+function influenceSensitivity(pairs, marketModel, required) {
+  const candidates = (marketModel.influentialDates || [])
+    .filter((point) => point?.date && finite(point?.distance));
+  const excludedDates = candidates.map((point) => point.date);
+  const retained = pairs.filter((row) => !excludedDates.includes(row.endDate));
+  if (!excludedDates.length || retained.length < required) {
+    return {
+      available: false,
+      method: 'OLS excluding the three largest Cook-distance sessions',
+      reason: excludedDates.length ? 'insufficient_observations_after_exclusion' : 'no_influential_dates',
+      excludedDates: candidates,
+    };
+  }
+  const refit = fitMarketModel(retained, { minObservations: required });
+  return {
+    available: true,
+    method: 'OLS excluding the three largest Cook-distance sessions',
+    observations: retained.length,
+    excludedDates: candidates,
+    beta: refit.beta,
+    betaDelta: refit.beta - marketModel.beta,
+    rSquared: refit.rSquared,
+  };
+}
+
+function residualTailDiagnostics(pairs, marketModel) {
+  const rows = (marketModel.residuals || []).flatMap((logResidual, index) => {
+    const pair = pairs[index];
+    return finite(logResidual) && pair?.endDate
+      ? [{ date: pair.endDate, logResidual, abnormalReturn: Math.expm1(logResidual) }]
+      : [];
+  });
+  if (!rows.length) return null;
+  const values = rows.map((row) => row.abnormalReturn);
+  const lowerQuantile = quantile(values, 0.05);
+  const tail = rows.filter((row) => row.abnormalReturn <= lowerQuantile);
+  const ordered = [...rows].sort((a, b) => a.abnormalReturn - b.abnormalReturn);
+  return {
+    probability: 0.05,
+    lowerQuantile,
+    expectedShortfall: mean(tail.map((row) => row.abnormalReturn)),
+    tailObservations: tail.length,
+    worst: ordered[0],
+    best: ordered.at(-1),
+    interpretation: 'Empirical market-model residual distribution; descriptive, not a portfolio loss forecast.',
+  };
+}
+
+export function estimateRegressionDiagnostics({ assetPrices, marketPrices, sectorPrices, requestedStart, horizonStarts = null, minimumObservations = 126, rollingWindow = 126 }) {
   const required = finite(minimumObservations) ? Math.max(2, Math.floor(minimumObservations)) : 126;
   const rollingLength = finite(rollingWindow) ? Math.max(2, Math.floor(rollingWindow)) : 126;
   const asset = priceLogReturns(assetPrices);
   const market = priceLogReturns(marketPrices);
   const sector = priceLogReturns(sectorPrices);
-  const pairs = alignReturnSeries({ asset: asset.returns, market: market.returns })
+  const allPairs = alignReturnSeries({ asset: asset.returns, market: market.returns });
+  const pairs = allPairs
     .filter((row) => !requestedStart || row.startDate >= requestedStart);
   const assetStart = asset.points[0]?.date || null;
   const assetEnd = asset.points.at(-1)?.date || null;
@@ -300,6 +410,25 @@ export function estimateRegressionDiagnostics({ assetPrices, marketPrices, secto
     });
   }
   const marketModel = fitMarketModel(pairs, { minObservations: required });
+  const termStructure = Object.entries(horizonStarts || {}).map(([window, start]) => {
+    const marketHistoryStart = market.points[0]?.date || null;
+    if (start && marketHistoryStart && Date.parse(marketHistoryStart) - Date.parse(start) > 7 * 86_400_000) {
+      return {
+        window,
+        requestedStart: start,
+        available: false,
+        reason: 'history_not_loaded',
+        observations: 0,
+        overlapCoverage: 0,
+      };
+    }
+    const horizonPairs = allPairs.filter((row) => !start || row.startDate >= start);
+    const eligibleIntervals = market.returns.filter((row) => (
+      (!start || row.startDate >= start)
+      && (!assetEnd || row.endDate <= assetEnd)
+    ));
+    return summarizeHorizon(horizonPairs, eligibleIntervals, required, window, start);
+  });
   const upsideRows = pairs.filter((row) => row.market > 0);
   const downsideRows = pairs.filter((row) => row.market < 0);
   const conditional = {
@@ -365,6 +494,9 @@ export function estimateRegressionDiagnostics({ assetPrices, marketPrices, secto
       },
     },
     marketModel,
+    betaTermStructure: termStructure,
+    influenceSensitivity: influenceSensitivity(pairs, marketModel, required),
+    residualTail: residualTailDiagnostics(pairs, marketModel),
     conditionalBeta: conditional,
     independentSector,
     rollingBeta: { window: rollingLength, points: rolling, ...summarizeRolling(rolling) },
@@ -411,28 +543,54 @@ export function estimateFilingEvent({ assetPrices, marketPrices, sectorPrices, f
   const model = fitIndependentSectorModel(estimation, { minObservations: 180 });
   if (!model) return null;
   const expectedPost = returns.market.slice(benchmarkEventIndex, benchmarkEventIndex + 20);
-  const dailyResidualVolatility = model.residualVolatilityAnnualized / Math.sqrt(TRADING_DAYS);
+  const estimationResiduals = model.residuals || [];
+  const residualMean = estimationResiduals.length ? mean(estimationResiduals) : 0;
+  const centeredResiduals = estimationResiduals.map((value) => value - residualMean);
+  const hacLag = Math.max(0, Math.floor(4 * (estimationResiduals.length / 100) ** (2 / 9)));
+  const autocovariances = Array.from({ length: hacLag + 1 }, (_, lag) => (
+    centeredResiduals.slice(lag).reduce((sum, value, index) => (
+      sum + value * centeredResiduals[index]
+    ), 0) / Math.max(1, centeredResiduals.length)
+  ));
+  const cumulativeVariance = (horizon) => {
+    if (!finite(autocovariances[0]) || autocovariances[0] <= EPSILON) return null;
+    let variance = horizon * autocovariances[0];
+    for (let lag = 1; lag <= Math.min(hacLag, horizon - 1); lag += 1) {
+      const weight = 1 - lag / (hacLag + 1);
+      variance += 2 * (horizon - lag) * weight * autocovariances[lag];
+    }
+    return finite(variance) && variance > EPSILON ? variance : null;
+  };
+  const path = [];
+  let cumulativeLogResidual = 0;
+  for (let index = 0; index < expectedPost.length; index += 1) {
+    const row = alignedByKey.get(expectedPost[index].key);
+    if (!row) break;
+    const sectorResidual = row.sector - model.sectorMarketInterceptDaily - model.sectorMarketBeta * row.market;
+    const fitted = model.interceptDaily + model.marketBeta * row.market + model.independentSectorBeta * sectorResidual;
+    const logResidual = row.asset - fitted;
+    cumulativeLogResidual += logResidual;
+    const variance = cumulativeVariance(index + 1);
+    path.push({
+      session: index + 1,
+      date: row.endDate,
+      dailyAbnormalReturn: Math.expm1(logResidual),
+      cumulativeAbnormalReturn: Math.expm1(cumulativeLogResidual),
+      standardizedResponse: variance ? cumulativeLogResidual / Math.sqrt(variance) : null,
+    });
+  }
   const windows = {};
   for (const horizon of [1, 5, 20]) {
-    const expected = expectedPost.slice(0, horizon);
-    const post = expected.map((row) => alignedByKey.get(row.key));
-    if (expected.length < horizon || post.some((row) => !row)) {
+    const point = path[horizon - 1];
+    if (expectedPost.length < horizon || !point || path.length < horizon) {
       windows[String(horizon)] = null;
       continue;
     }
-    const residuals = post.slice(0, horizon).map((row) => {
-      const sectorResidual = row.sector - model.sectorMarketInterceptDaily - model.sectorMarketBeta * row.market;
-      const fitted = model.interceptDaily + model.marketBeta * row.market + model.independentSectorBeta * sectorResidual;
-      return row.asset - fitted;
-    });
-    const cumulativeLogResidual = residuals.reduce((sum, value) => sum + value, 0);
     windows[String(horizon)] = {
       sessions: horizon,
-      through: post[horizon - 1].endDate,
-      cumulativeAbnormalReturn: Math.exp(cumulativeLogResidual) - 1,
-      standardizedResponse: dailyResidualVolatility > EPSILON
-        ? cumulativeLogResidual / (dailyResidualVolatility * Math.sqrt(horizon))
-        : null,
+      through: point.date,
+      cumulativeAbnormalReturn: point.cumulativeAbnormalReturn,
+      standardizedResponse: point.standardizedResponse,
     };
   }
   return {
@@ -446,8 +604,11 @@ export function estimateFilingEvent({ assetPrices, marketPrices, sectorPrices, f
       end: estimation.at(-1).endDate,
       observations: estimation.length,
       gapSessions: 20,
+      inference: 'Bartlett-weighted HAC cumulative residual variance',
+      hacLag,
     },
     windows,
+    path,
   };
 }
 

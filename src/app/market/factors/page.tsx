@@ -25,7 +25,7 @@ const OPENAPI_URL = "/openapi.json";
 export const metadata: Metadata = buildPageMetadata({
   title: "EDGAR Factor Lab — Beta & SEC Filing-Event Methodology",
   description:
-    "See how EDGAR Factor Lab estimates HAC market beta, conditional beta, independent sector sensitivity, filing-event response, and the EDGAR Evidence Gap.",
+    "See how EDGAR Factor Lab estimates beta term structure, HAC market beta, influence and residual-tail sensitivity, filing-event response, and the EDGAR Evidence Gap.",
   path: PAGE_PATH,
 });
 
@@ -128,7 +128,7 @@ export default function MarketFactorsMethodologyPage() {
             Open the interactive Factor Lab
             <ArrowUpRight size={15} aria-hidden="true" />
           </Link>
-          <span className={styles.version}>Methodology · version 1</span>
+          <span className={styles.version}>Methodology · version 1.1</span>
         </div>
 
         <div className={styles.heroGrid}>
@@ -218,7 +218,7 @@ export default function MarketFactorsMethodologyPage() {
             regression; the prior U.S. session becomes eligible after midnight
             UTC.
           </p>
-          <div className={styles.equation} aria-label="Security return equals alpha plus market beta times market return plus an error">
+          <div className={styles.equation} role="math" aria-label="Security return equals alpha plus market beta times market return plus an error">
             <code>rᵢ,ₜ = α + βₘrₘ,ₜ + εₜ</code>
             <span>and</span>
             <code>βₘ = Cov(rᵢ, rₘ) / Var(rₘ)</code>
@@ -256,6 +256,30 @@ export default function MarketFactorsMethodologyPage() {
             proxy; fallback or mixed-basis inputs are disclosed but withheld
             from these estimates.
           </div>
+          <div className={styles.twoColumns}>
+            <div>
+              <h3>Term structure and rolling location</h3>
+              <p>
+                One-, three-, and five-year summaries share one five-year price
+                panel, so they do not start separate provider calls. Each label
+                requires at least 126 matched returns and 80% of SPY intervals
+                across its requested span; a shorter issuer history leaves the
+                longer horizon unavailable rather than relabeling a since-listing estimate.
+                The 126-session rolling series reports quartiles and the current
+                empirical percentile. Overlapping windows are not independent tests.
+              </p>
+            </div>
+            <div>
+              <h3>Influence and residual tails</h3>
+              <p>
+                A sensitivity refit excludes the three largest Cook-distance
+                sessions and reports the beta change without replacing headline
+                OLS. The residual dashboard reports the empirical 5% quantile,
+                mean lower-tail abnormal return, and extreme dates. These are in-sample model
+                diagnostics—not portfolio VaR, expected loss, or forecasts.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -273,7 +297,7 @@ export default function MarketFactorsMethodologyPage() {
             consecutive trading sessions, each conditional regression uses a
             lag-0 HAC (HC1) covariance rather than serial-correlation lags.
           </p>
-          <div className={styles.equation} aria-label="Conditional beta asymmetry equals downside beta minus upside beta">
+          <div className={styles.equation} role="math" aria-label="Conditional beta asymmetry equals downside beta minus upside beta">
             <code>β asymmetry = β downside − β upside</code>
           </div>
           <p>
@@ -297,7 +321,7 @@ export default function MarketFactorsMethodologyPage() {
             broad-market component. The remaining sector residual represents
             movement not explained by that market model.
           </p>
-          <div className={styles.equationStack}>
+          <div className={styles.equationStack} role="math" aria-label="First regress the sector return on the market return. Then regress the issuer return on the market return and the market-orthogonal sector residual.">
             <code>rₛ,ₜ = aₛ + bₛrₘ,ₜ + uₛ,ₜ</code>
             <code>rᵢ,ₜ = α + βₘrₘ,ₜ + βₛ⊥uₛ,ₜ + εₜ</code>
           </div>
@@ -328,15 +352,17 @@ export default function MarketFactorsMethodologyPage() {
             as many as 252 earlier aligned sessions. The estimation sample ends
             20 sessions before the event and requires at least 180 observations.
           </p>
-          <div className={styles.equationStack}>
+          <div className={styles.equationStack} role="math" aria-label="The EDGAR Evidence Gap equals the filing-change z score clipped between negative three and positive three, minus the price-response z score clipped to the same range.">
             <code>ARₜ = rᵢ,ₜ − r̂ᵢ,ₜ</code>
             <code>CARₕ = exp(Σ ARₜ) − 1, for h = 1, 5, or 20 sessions</code>
-            <code>Standardized responseₕ = Σ ARₜ / (σ residual × √h)</code>
+            <code>Standardized responseₕ = Σ ARₜ / √(HAC cumulative residual varianceₕ)</code>
           </div>
           <p>
             The Filing–Market Map uses the 20-session standardized response.
-            Standardization makes responses more comparable across securities
-            with different residual volatility; it is not a p-value. The event
+            Version 1.1 estimates cumulative residual variance from the pre-event
+            residual autocovariances with Bartlett weights and publishes the full
+            daily path through session 20. Standardization makes responses more
+            comparable across securities; it is approximate and not a p-value. The event
             output retains the acceptance timestamp, assigned return interval,
             and timing-quality code. Every published 1-, 5-, or 20-session
             window must contain each expected benchmark interval in all three
@@ -406,7 +432,7 @@ export default function MarketFactorsMethodologyPage() {
           <p>
             Current and comparable-prior values must both exist. Missing values
             are never replaced with zero, and fixed weights are never silently
-            redistributed. Version 1 requires every component in the applicable
+            redistributed. Version 1.1 requires every component in the applicable
             template; otherwise the composite Filing Change z is unavailable.
             Each change is recomputed from the current value minus its
             comparable-prior value. A separately supplied change is retained
@@ -444,8 +470,9 @@ export default function MarketFactorsMethodologyPage() {
             The versioned response identifies the security and benchmarks,
             effective dates, observation counts, overlap, return and price
             basis, model coefficients, confidence interval, diagnostics,
-            filing-event windows, peer coverage, SEC evidence, calculation
-            definitions, and warnings. Missing outputs remain explicit rather
+            full filing-event path, peer coverage, SEC evidence, explicit
+            quality gates, stable SHA-256 fingerprints, calculation definitions,
+            and warnings. Missing outputs remain explicit rather
             than being inferred.
           </p>
           <div className={styles.apiLinks}>
@@ -463,8 +490,10 @@ export default function MarketFactorsMethodologyPage() {
             </a>
           </div>
           <div className={styles.note}>
-            An AI assistant should preserve dates, units, coverage, equations,
-            uncertainty, provenance, and limitations. It should not convert a
+            The interactive lab provides a compact, versioned AI context packet,
+            tidy raw-decimal CSV, full JSON, and Markdown. An AI assistant should
+            preserve dates, units, coverage, equations, uncertainty, provenance,
+            and limitations. It should not convert a
             missing coefficient into zero, call the Evidence Gap expected alpha,
             or infer an investment recommendation.
           </div>
@@ -480,7 +509,7 @@ export default function MarketFactorsMethodologyPage() {
             <article>
               <h3>No EDGAR factor beta yet</h3>
               <p>
-                Version 1 does not publish a historical high-minus-low EDGAR
+                Version 1.1 does not publish a historical high-minus-low EDGAR
                 factor-return series and does not estimate β<sub>EDGAR</sub>.
                 That requires point-in-time scores, historical membership,
                 delisted securities, and effective-dated security mapping.

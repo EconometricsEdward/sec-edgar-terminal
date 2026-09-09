@@ -7,11 +7,22 @@ import {
   Clipboard,
   Download,
   ExternalLink,
+  FileSpreadsheet,
   Loader2,
+  Pin,
   Play,
   Sigma,
+  X,
 } from 'lucide-react';
 import { downloadText } from '../../utils/download.js';
+import {
+  factorComparisonCsv,
+  factorComparisonSnapshot,
+  factorContextText,
+  factorFileStem,
+  parseFactorComparisons,
+  factorTidyCsv,
+} from '../../utils/marketFactorExports.js';
 import type { Basis, Company } from './marketTypes';
 import s from './market.module.css';
 
@@ -94,6 +105,16 @@ type MarketSignalsResponse = {
   methodology_version?: string;
   universe_version?: string;
   snapshot_id?: string;
+  fingerprints?: {
+    algorithm?: string;
+    canonicalization?: string;
+    input_scope?: string;
+    result_scope?: string;
+    input_sha256?: string;
+    result_sha256?: string;
+    sec_sha256?: string;
+    prices?: Record<string, string>;
+  };
   status?: 'ready' | 'partial' | 'withheld' | 'stale' | string;
   cache_status?: string;
   generated_at?: string | null;
@@ -137,9 +158,48 @@ type MarketSignalsResponse = {
       points?: { date?: string | null; beta?: number | null }[];
       current?: number | null;
       median?: number | null;
+      first_quartile?: number | null;
+      third_quartile?: number | null;
+      interquartile_range?: number | null;
       minimum?: number | null;
       maximum?: number | null;
       range?: number | null;
+      current_minus_median?: number | null;
+      current_percentile?: number | null;
+    } | null;
+    beta_term_structure?: {
+      window?: FactorWindow;
+      requested_start?: string | null;
+      available?: boolean;
+      reason?: string | null;
+      effective_start?: string | null;
+      effective_end?: string | null;
+      observations?: number | null;
+      overlap_coverage?: number | null;
+      beta?: number | null;
+      beta_confidence_interval95?: [number, number] | null;
+      r_squared?: number | null;
+      residual_volatility_annualized?: number | null;
+    }[];
+    influence_sensitivity?: {
+      available?: boolean;
+      method?: string;
+      threshold?: number | null;
+      reason?: string | null;
+      observations?: number | null;
+      excluded_dates?: { date?: string | null; distance?: number | null }[];
+      beta?: number | null;
+      beta_delta?: number | null;
+      r_squared?: number | null;
+    } | null;
+    residual_tail?: {
+      probability?: number | null;
+      lower_quantile?: number | null;
+      expected_shortfall?: number | null;
+      tail_observations?: number | null;
+      worst?: { date?: string | null; abnormal_return?: number | null } | null;
+      best?: { date?: string | null; abnormal_return?: number | null } | null;
+      interpretation?: string | null;
     } | null;
   } | null;
   edgar_snapshot?: {
@@ -163,19 +223,35 @@ type MarketSignalsResponse = {
       } | null;
     } | null;
     components?: FilingComponent[];
+    driver_summary?: {
+      available?: boolean;
+      ranked?: { key?: string; label?: string; weighted_z?: number | null; z?: number | null; weight?: number | null }[];
+      strongest_positive?: { label?: string; weighted_z?: number | null } | null;
+      strongest_negative?: { label?: string; weighted_z?: number | null } | null;
+      contribution_sum?: number | null;
+    } | null;
     reason?: string | null;
   } | null;
   filing_event?: {
     event_date?: string | null;
+    acceptance_timestamp?: string | null;
     event_start?: string | null;
+    event_interval_end?: string | null;
     timing_quality?: string | null;
-    estimation?: { start?: string | null; end?: string | null; observations?: number | null; gap_sessions?: number | null };
+    estimation?: { start?: string | null; end?: string | null; observations?: number | null; gap_sessions?: number | null; inference?: string | null; hac_lag?: number | null };
     windows?: Record<string, {
       sessions?: number | null;
       through?: string | null;
       cumulative_abnormal_return?: number | null;
       standardized_response?: number | null;
     } | null>;
+    path?: {
+      session?: number | null;
+      date?: string | null;
+      daily_abnormal_return?: number | null;
+      cumulative_abnormal_return?: number | null;
+      standardized_response?: number | null;
+    }[];
   } | null;
   evidence_gap?: {
     available?: boolean;
@@ -197,6 +273,12 @@ type MarketSignalsResponse = {
     filing_components?: number | null;
     filing_event_complete?: boolean;
     sec_snapshot_status?: string | null;
+    gates?: { id?: string; label?: string; status?: 'pass' | 'warn' | 'fail' | string; value?: string; requirement?: string }[];
+  };
+  research_readout?: {
+    observations?: { id?: string; level?: string; finding?: string; rule?: string }[];
+    questions?: string[];
+    claim_boundary?: string;
   };
   interpretation?: string | null;
   provenance?: {
@@ -250,6 +332,76 @@ type AnalysisRequest = {
 };
 
 type RollingPoint = { date: string; beta: number };
+
+type FactorComparison = ReturnType<typeof factorComparisonSnapshot>;
+
+const RESULT_CACHE_TTL_MS = 10 * 60_000;
+const RESULT_CACHE_LIMIT = 12;
+const resultCache = new Map<string, { data: MarketSignalsResponse; storedAt: number }>();
+const pendingRequests = new Map<string, Promise<MarketSignalsResponse>>();
+const COMPARISON_STORAGE_KEY = 'edgar:factor-lab-comparisons:v1';
+
+function factorRequestKey(request: Omit<AnalysisRequest, 'sequence'> | AnalysisRequest) {
+  return [request.ticker, request.window, request.basis, request.cohort, request.sector].join('|');
+}
+
+function factorResponseMatchesRequest(data: MarketSignalsResponse, request: AnalysisRequest) {
+  return data.request?.ticker === request.ticker
+    && data.request?.window === request.window
+    && data.request?.basis === request.basis
+    && (request.cohort === 'auto' || data.request?.cohort === request.cohort)
+    && (request.sector === 'auto' || data.request?.sector_proxy === request.sector);
+}
+
+function cachedFactorResult(key: string) {
+  const entry = resultCache.get(key);
+  if (!entry || Date.now() - entry.storedAt > RESULT_CACHE_TTL_MS) {
+    if (entry) resultCache.delete(key);
+    return null;
+  }
+  resultCache.delete(key);
+  resultCache.set(key, entry);
+  return entry.data;
+}
+
+function rememberFactorResult(key: string, data: MarketSignalsResponse) {
+  const degraded = data.cache_status === 'stale'
+    || data.status === 'stale'
+    || data.warnings?.some((warning) => ['PRICE_BASIS_UNVERIFIED', 'PRICE_REFRESH_FAILED', 'STALE_SIGNAL_RESULT'].includes(warning.code || ''));
+  if (degraded) {
+    resultCache.delete(key);
+    return;
+  }
+  resultCache.delete(key);
+  resultCache.set(key, { data, storedAt: Date.now() });
+  while (resultCache.size > RESULT_CACHE_LIMIT) resultCache.delete(resultCache.keys().next().value!);
+}
+
+function fetchFactorResult(key: string, url: string) {
+  const existing = pendingRequests.get(key);
+  if (existing) return existing;
+  const task = (async () => {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(65_000),
+    });
+    const responseTime = Date.now();
+    const retryAt = retryAtFromHeader(response.headers.get('Retry-After'), responseTime);
+    const result = await response.json().catch(() => ({})) as MarketSignalsResponse & SignalErrorPayload;
+    if (!response.ok) throw Object.assign(new Error(result.error || 'The factor analysis is temporarily unavailable.'), {
+      code: result.code,
+      retryable: typeof result.retryable === 'boolean' ? result.retryable : response.status === 429 || response.status >= 500,
+      status: response.status,
+      retryAt: response.status === 429 ? retryAt || responseTime + 60_000 : retryAt || undefined,
+    });
+    if (result.schema_version !== 'edgar.market-signals.v1') throw new Error('The factor response did not match the supported schema.');
+    rememberFactorResult(key, result);
+    return result;
+  })().finally(() => pendingRequests.delete(key));
+  pendingRequests.set(key, task);
+  return task;
+}
 
 const SECTOR_OPTIONS: { value: FactorSector; label: string }[] = [
   { value: 'auto', label: 'Auto · cohort-matched' },
@@ -327,12 +479,21 @@ function signalMarkdown(data: MarketSignalsResponse) {
   const componentLines = (filing?.components || []).map((component) => (
     `- ${component.label || words(component.key)}: weight ${percentText(component.weight)}, z ${zText(component.z)}, weighted contribution ${zText(component.weighted_z)}`
   ));
+  const termLines = (data.estimates?.beta_term_structure || []).map((point) => (
+    `- ${point.window?.toUpperCase() || 'Horizon'}: ${point.available ? `beta ${betaText(point.beta)}, 95% HAC interval ${point.beta_confidence_interval95 ? `${betaText(point.beta_confidence_interval95[0])} to ${betaText(point.beta_confidence_interval95[1])}` : '—'}, ${point.observations ?? '—'} observations` : `unavailable (${words(point.reason)})`}`
+  ));
+  const eventLines = ['1', '5', '20'].map((horizon) => {
+    const point = data.filing_event?.windows?.[horizon];
+    return `- ${horizon} session${horizon === '1' ? '' : 's'}: abnormal return ${percentText(point?.cumulative_abnormal_return)}, response z ${zText(point?.standardized_response)}, through ${plainDate(point?.through)}`;
+  });
   return [
     `# EDGAR Factor Lab — ${data.issuer?.ticker || data.request?.ticker || 'Company'}`,
     '',
     data.interpretation || 'No interpretation is available.',
     '',
     `- Status: ${data.status || 'unknown'}; quality grade: ${data.quality?.grade || '—'}`,
+    `- Snapshot ID: ${data.snapshot_id || '—'}`,
+    `- Input / calculation SHA-256: ${data.fingerprints?.input_sha256 || '—'} / ${data.fingerprints?.result_sha256 || '—'}`,
     `- Sample: ${data.sample?.observations ?? '—'} exactly aligned daily returns, ${plainDate(data.sample?.effective_start)} to ${plainDate(data.sample?.effective_end)}`,
     `- Market beta vs ${data.request?.market_benchmark || 'SPY'}: ${betaText(market?.beta)}`,
     `- 95% Newey–West HAC interval: ${market?.beta_confidence_interval95 ? `${betaText(market.beta_confidence_interval95[0])} to ${betaText(market.beta_confidence_interval95[1])}` : '—'}`,
@@ -342,14 +503,34 @@ function signalMarkdown(data: MarketSignalsResponse) {
     `- Filing change z / 20-session price-response z: ${zText(filing?.filing_change_z)} / ${zText(event20?.standardized_response)}`,
     `- EDGAR Evidence Gap: ${gap?.available ? zText(gap.evidence_gap) : `withheld (${gap?.reason || 'insufficient inputs'})`}`,
     `- Classification: ${gap?.available ? labelText(gap.classification) : 'Unavailable'}`,
+    `- Influence refit beta / change: ${betaText(data.estimates?.influence_sensitivity?.beta)} / ${zText(data.estimates?.influence_sensitivity?.beta_delta)}`,
+    `- Residual 5% quantile / mean lower-tail abnormal return: ${percentText(data.estimates?.residual_tail?.lower_quantile)} / ${percentText(data.estimates?.residual_tail?.expected_shortfall)}`,
     `- Current filing: ${current?.form || '—'}, period ${plainDate(current?.end)}, filed ${plainDate(current?.filed)}, accession ${current?.accession || '—'}`,
+    `- Current filing source: ${current?.source || '—'}`,
     `- Prior filing: ${prior?.form || '—'}, period ${plainDate(prior?.end)}, filed ${plainDate(prior?.filed)}, accession ${prior?.accession || '—'}`,
+    `- Prior filing source: ${prior?.source || '—'}`,
     `- Peer filing clocks: ${plainDate(filing?.coverage?.peer_filing_clock?.earliest_peer)} to ${plainDate(filing?.coverage?.peer_filing_clock?.latest_peer)}; ${filing?.coverage?.peer_filing_clock?.peers_after_focus ?? '—'} after the focus filing`,
     `- Price data through: ${plainDate(data.data_through)}; SEC snapshot: ${plainDate(data.provenance?.sec?.snapshot_generated_at)}`,
+    '',
+    '## Beta term structure',
+    '',
+    ...(termLines.length ? termLines : ['- Unavailable']),
+    '',
+    '## Filing-event windows',
+    '',
+    ...eventLines,
     '',
     '## Filing-score components',
     '',
     ...(componentLines.length ? componentLines : ['- Unavailable']),
+    '',
+    '## Research questions',
+    '',
+    ...(data.research_readout?.questions || []).map((item) => `- ${item}`),
+    '',
+    '## Quality gates',
+    '',
+    ...(data.quality?.gates || []).map((gate) => `- ${gate.label || gate.id}: ${gate.status}; ${gate.value}. Requirement: ${gate.requirement}`),
     '',
     '## Guardrails',
     '',
@@ -365,22 +546,13 @@ function signalMarkdown(data: MarketSignalsResponse) {
   ].join('\n');
 }
 
-function modelContext(data: MarketSignalsResponse) {
-  return [
-    'EDGAR Terminal model context. Treat null as unavailable, preserve source clocks, and do not convert these descriptive diagnostics into a forecast or recommendation.',
-    ...(data.cite_as ? [`Citation: ${data.cite_as}`] : []),
-    '',
-    JSON.stringify(data, null, 2),
-  ].join('\n');
-}
-
 function filingReference(point: FilingPoint | null | undefined, label: string) {
   if (!point) return <p className={s.factorFilingRef}><b>{label}</b><span>Unavailable</span></p>;
   const text = `${point.form || 'Filing'} · period ${plainDate(point.end)} · filed ${plainDate(point.filed)}`;
   return <p className={s.factorFilingRef}>
     <b>{label}</b>
     {point.source
-      ? <a href={point.source} target="_blank" rel="noreferrer">{text}<ExternalLink size={12} /></a>
+      ? <a href={point.source} target="_blank" rel="noreferrer" aria-label={`${label}: ${text}, opens in a new tab`}>{text}<ExternalLink size={12} /></a>
       : <span>{text}</span>}
     <small>Accession {point.accession || 'unavailable'}{point.accepted_at ? ` · accepted ${point.accepted_at.replace('T', ' ').slice(0, 19)} UTC` : ''}</small>
   </p>;
@@ -440,11 +612,44 @@ function buildRollingChart(points: { date?: string | null; beta?: number | null 
   };
 }
 
+function buildEventChart(points: {
+  session?: number | null;
+  date?: string | null;
+  cumulative_abnormal_return?: number | null;
+}[] | undefined) {
+  const clean = (points || []).flatMap((point) => (
+    finite(point.session) && typeof point.date === 'string' && finite(point.cumulative_abnormal_return)
+      ? [{ session: point.session, date: point.date, value: point.cumulative_abnormal_return }]
+      : []
+  ));
+  if (!clean.length) return null;
+  const width = 720;
+  const height = 230;
+  const left = 50;
+  const right = 18;
+  const top = 18;
+  const bottom = 38;
+  let minimum = Math.min(0, ...clean.map((point) => point.value));
+  let maximum = Math.max(0, ...clean.map((point) => point.value));
+  const padding = Math.max(0.005, (maximum - minimum) * 0.15);
+  minimum -= padding;
+  maximum += padding;
+  const x = (session: number) => left + (session - 1) / Math.max(1, clean.at(-1)!.session - 1) * (width - left - right);
+  const y = (value: number) => top + (maximum - value) / (maximum - minimum) * (height - top - bottom);
+  return {
+    clean, width, height, left, right, top, bottom, zeroY: y(0),
+    path: clean.map((point, index) => `${index ? 'L' : 'M'}${x(point.session).toFixed(2)},${y(point.value).toFixed(2)}`).join(' '),
+    start: clean[0],
+    end: clean.at(-1)!,
+    minimum,
+    maximum,
+  };
+}
+
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return <div className={s.factorMetric}>
     <dt>{label}</dt>
-    <dd>{value}</dd>
-    <small>{detail}</small>
+    <dd>{value}<small>{detail}</small></dd>
   </div>;
 }
 
@@ -483,7 +688,10 @@ export default function MarketFactorLab({
   const chartDescriptionId = useId();
   const mapTitleId = useId();
   const mapDescriptionId = useId();
+  const eventTitleId = useId();
+  const eventDescriptionId = useId();
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
+  const handledRequestSequenceRef = useRef(0);
   const eligibleCompanies = useMemo(() => {
     const rows = cohortId === 'all' ? companies : companies.filter((company) => company.cohorts.includes(cohortId));
     return [...rows].sort((a, b) => a.ticker.localeCompare(b.ticker));
@@ -499,19 +707,23 @@ export default function MarketFactorLab({
     sequence: 0,
   } satisfies AnalysisRequest : null;
   const [request, setRequest] = useState<AnalysisRequest | null>(initialRequest);
-  const [data, setData] = useState<MarketSignalsResponse | null>(null);
-  const [loading, setLoading] = useState(Boolean(initialRequest));
+  const [data, setData] = useState<MarketSignalsResponse | null>(() => initialRequest ? cachedFactorResult(factorRequestKey(initialRequest)) : null);
+  const [loading, setLoading] = useState(() => Boolean(initialRequest && !cachedFactorResult(factorRequestKey(initialRequest))));
   const [error, setError] = useState<FactorError | null>(null);
   const [clock, setClock] = useState(() => Date.now());
+  const [comparison, setComparison] = useState<FactorComparison[]>([]);
+  const [rollingRowsSnapshot, setRollingRowsSnapshot] = useState<string | null>(null);
+  const [eventRowsSnapshot, setEventRowsSnapshot] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      setComparison(parseFactorComparisons(sessionStorage.getItem(COMPARISON_STORAGE_KEY) || '[]') as FactorComparison[]);
+    } catch { /* Storage can be unavailable; keep the in-memory notebook usable. */ }
+  }, []);
 
   useEffect(() => {
     if (!request) return;
-    const controller = new AbortController();
-    let timedOut = false;
-    const timeout = window.setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, 65_000);
+    let active = true;
     const params = new URLSearchParams({
       ticker: request.ticker,
       window: request.window,
@@ -519,56 +731,39 @@ export default function MarketFactorLab({
       cohort: request.cohort,
       sector_proxy: request.sector,
     });
+    const key = factorRequestKey(request);
+    const cached = request.sequence === 0 ? cachedFactorResult(key) : null;
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
-    setData(null);
 
     async function load() {
       try {
-        const response = await fetch(`/api/v1/market-signals?${params.toString()}`, {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          signal: controller.signal,
-        });
-        const responseTime = Date.now();
-        const retryAt = retryAtFromHeader(response.headers.get('Retry-After'), responseTime);
-        const result = await response.json().catch(() => ({})) as MarketSignalsResponse & SignalErrorPayload;
-        if (!response.ok) throw Object.assign(new Error(result.error || 'The factor analysis is temporarily unavailable.'), {
-          code: result.code,
-          retryable: typeof result.retryable === 'boolean'
-            ? result.retryable
-            : response.status === 429 || response.status >= 500,
-          status: response.status,
-          retryAt: response.status === 429 ? retryAt || responseTime + 60_000 : retryAt || undefined,
-        });
-        if (result.schema_version !== 'edgar.market-signals.v1') throw new Error('The factor response did not match the supported schema.');
-        setData(result);
+        const result = await fetchFactorResult(key, `/api/v1/market-signals?${params.toString()}`);
+        if (active) setData(result);
       } catch (caught) {
-        if (controller.signal.aborted && !timedOut) return;
+        if (!active) return;
         const cause = caught as Error & FactorError;
         setClock(Date.now());
         setError({
-          message: timedOut ? 'The calculation exceeded 65 seconds. Retry shortly; a completed result may now be cached.' : cause.message,
+          message: cause.name === 'TimeoutError' ? 'The calculation exceeded 65 seconds. Retry shortly; a completed result may now be cached.' : cause.message,
           code: cause.code,
-          retryable: timedOut ? true : cause.retryable,
+          retryable: cause.name === 'TimeoutError' ? true : cause.retryable,
           status: cause.status,
           retryAt: cause.retryAt,
         });
       } finally {
-        window.clearTimeout(timeout);
-        if (!controller.signal.aborted || timedOut) setLoading(false);
+        if (active) setLoading(false);
       }
     }
     void load();
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
+    return () => { active = false; };
   }, [request]);
-
-  useEffect(() => {
-    if (data && request && request.sequence > 0) resultHeadingRef.current?.focus();
-  }, [data, request]);
 
   useEffect(() => {
     if (!error?.retryAt || error.retryAt <= Date.now()) return;
@@ -582,6 +777,8 @@ export default function MarketFactorLab({
   }, [error?.retryAt]);
 
   const rollingChart = useMemo(() => buildRollingChart(data?.estimates?.rolling_beta?.points), [data?.estimates?.rolling_beta?.points]);
+  const eventChart = useMemo(() => buildEventChart(data?.filing_event?.path), [data?.filing_event?.path]);
+  const compactContextLength = useMemo(() => data ? factorContextText(data).length : 0, [data]);
   const currentControlsDiffer = request ? (
     request.ticker !== factorTicker
     || request.window !== factorWindow
@@ -589,6 +786,15 @@ export default function MarketFactorLab({
     || request.basis !== basis
     || request.cohort !== (cohortId === 'all' ? 'auto' : cohortId)
   ) : false;
+  useEffect(() => {
+    if (!request || request.sequence <= handledRequestSequenceRef.current || loading) return;
+    if (error || !data || !factorResponseMatchesRequest(data, request)) {
+      if (error) handledRequestSequenceRef.current = request.sequence;
+      return;
+    }
+    handledRequestSequenceRef.current = request.sequence;
+    if (!currentControlsDiffer) resultHeadingRef.current?.focus();
+  }, [currentControlsDiffer, data, error, loading, request]);
   const retryWaitSeconds = error?.retryAt ? Math.max(0, Math.ceil((error.retryAt - clock) / 1000)) : 0;
   const unchangedNonRetryableError = Boolean(error?.retryable === false && !currentControlsDiffer);
   const runBlocked = retryWaitSeconds > 0 || unchangedNonRetryableError;
@@ -608,7 +814,6 @@ export default function MarketFactorLab({
     }
     setLoading(true);
     setError(null);
-    setData(null);
     setRequest((current) => ({
       ticker: factorTicker,
       window: factorWindow,
@@ -622,25 +827,62 @@ export default function MarketFactorLab({
   async function copyContext() {
     if (!data) return;
     try {
-      await navigator.clipboard.writeText(modelContext(data));
-      onNotice('Factor Lab model context copied.');
+      await navigator.clipboard.writeText(factorContextText(data));
+      onNotice('Compact, versioned Factor Lab model context copied.');
     } catch {
-      onNotice('Clipboard access is unavailable. Download the JSON or Markdown record instead.');
+      onNotice('Clipboard access is unavailable. Download the compact context TXT instead.');
     }
   }
 
   function exportJson() {
     if (!data) return;
-    const ticker = safeFileTicker(data.issuer?.ticker || data.request?.ticker);
-    downloadText(`${ticker}-edgar-factor-lab.json`, JSON.stringify(data, null, 2), 'application/json');
-    onNotice(`${ticker} Factor Lab JSON exported.`);
+    const stem = factorFileStem(data);
+    downloadText(`${stem}.json`, JSON.stringify(data, null, 2), 'application/json');
+    onNotice(`${safeFileTicker(data.issuer?.ticker || data.request?.ticker)} Factor Lab JSON exported.`);
   }
 
   function exportMarkdown() {
     if (!data) return;
-    const ticker = safeFileTicker(data.issuer?.ticker || data.request?.ticker);
-    downloadText(`${ticker}-edgar-factor-lab.md`, signalMarkdown(data), 'text/markdown');
-    onNotice(`${ticker} Factor Lab research note exported.`);
+    const stem = factorFileStem(data);
+    downloadText(`${stem}.md`, signalMarkdown(data), 'text/markdown');
+    onNotice(`${safeFileTicker(data.issuer?.ticker || data.request?.ticker)} Factor Lab research note exported.`);
+  }
+
+  function exportCsv() {
+    if (!data) return;
+    const stem = factorFileStem(data);
+    downloadText(`${stem}.csv`, factorTidyCsv(data), 'text/csv');
+    onNotice(`${safeFileTicker(data.issuer?.ticker || data.request?.ticker)} analysis-ready CSV exported.`);
+  }
+
+  function exportContext() {
+    if (!data) return;
+    downloadText(`${factorFileStem(data)}-ai-context.txt`, factorContextText(data), 'text/plain');
+    onNotice('Compact Factor Lab AI context downloaded.');
+  }
+
+  function persistComparison(next: FactorComparison[], message: string) {
+    setComparison(next);
+    try { sessionStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(next)); } catch { /* Session comparison remains available in memory. */ }
+    onNotice(message);
+  }
+
+  function pinAnalysis() {
+    if (!data) return;
+    const snapshot = factorComparisonSnapshot(data) as FactorComparison;
+    const withoutDuplicate = comparison.filter((item) => item.snapshot_id !== snapshot.snapshot_id);
+    const next = [snapshot, ...withoutDuplicate].slice(0, 4);
+    persistComparison(next, `${snapshot.ticker} result pinned for this session${withoutDuplicate.length >= 4 ? '; oldest pin replaced' : ''}.`);
+  }
+
+  function removePinned(snapshotId: string) {
+    persistComparison(comparison.filter((item) => item.snapshot_id !== snapshotId), 'Pinned Factor Lab result removed.');
+  }
+
+  function exportPinnedComparison() {
+    if (!comparison.length) return;
+    downloadText(`factor-lab-session-comparison-${new Date().toISOString().slice(0, 10)}.csv`, factorComparisonCsv(comparison), 'text/csv');
+    onNotice('Pinned Factor Lab comparison exported.');
   }
 
   const marketModel = data?.estimates?.market_model;
@@ -668,6 +910,13 @@ export default function MarketFactorLab({
   const components = data?.edgar_snapshot?.components || [];
   const peerClock = data?.edgar_snapshot?.coverage?.peer_filing_clock;
   const prices = data?.provenance?.prices;
+  const termStructure = data?.estimates?.beta_term_structure || [];
+  const influence = data?.estimates?.influence_sensitivity;
+  const residualTail = data?.estimates?.residual_tail;
+  const driverRows = data?.edgar_snapshot?.driver_summary?.ranked || [];
+  const maxDriver = Math.max(0.01, ...driverRows.map((item) => finite(item.weighted_z) ? Math.abs(item.weighted_z) : 0));
+  const resultMatchesRequest = !data || !request ? true : factorResponseMatchesRequest(data, request);
+  const resultIdentity = data?.snapshot_id || data?.generated_at || 'current-result';
   const autoRunAnnouncement = data && request?.sequence === 0
     ? `Factor analysis ready for ${data.issuer?.ticker || data.request?.ticker || 'the selected company'}. Status ${words(data.status)}; quality ${data.quality?.grade || 'unavailable'}.`
     : '';
@@ -687,14 +936,17 @@ export default function MarketFactorLab({
         <h2 id="factor-lab-heading">Where filing evidence meets market behavior</h2>
         <p>Estimate transparent market and sector sensitivities, then compare the latest peer-normalized SEC filing change with the model-adjusted price response. Every result preserves its sample, uncertainty, filing references, source clocks, and machine-readable context.</p>
       </div>
-      <div className={s.factorEquationGrid} aria-label="Factor Lab equations">
-        <p><b>Market model</b><code>rᵢ = intercept + βₘrSPY + error</code><span>Daily log returns; Newey–West HAC inference.</span></p>
-        <p><b>Sector sensitivity</b><code>rᵢ = βₘrSPY + βₛrsector⊥SPY + error</code><span>The sector ETF is residualized against SPY first.</span></p>
-        <p><b>Evidence Gap</b><code>clip(filing z) − clip(price-response z)</code><span>A descriptive disagreement measure, not expected return.</span></p>
-      </div>
+      <details className={`${s.details} ${s.factorMethodDetails}`}>
+        <summary>Model equations and definitions</summary>
+        <div className={s.factorEquationGrid} aria-label="Factor Lab equations">
+          <p><b>Market model</b><code role="math" aria-label="issuer return equals intercept plus market beta times S P Y return plus an error term">rᵢ = intercept + βₘrSPY + error</code><span>Daily log returns; Newey–West HAC inference.</span></p>
+          <p><b>Sector sensitivity</b><code role="math" aria-label="issuer return equals market beta times S P Y return plus sector beta times the sector return orthogonal to S P Y plus an error term">rᵢ = βₘrSPY + βₛrsector⊥SPY + error</code><span>The sector ETF is residualized against SPY first.</span></p>
+          <p><b>Evidence Gap</b><code role="math" aria-label="clipped filing z score minus clipped price response z score">clip(filing z) − clip(price-response z)</code><span>A descriptive disagreement measure, not expected return.</span></p>
+        </div>
+      </details>
     </div>
 
-    <form className={`${s.panel} ${s.factorControls}`} onSubmit={(event) => { event.preventDefault(); runAnalysis(); }}>
+    <form className={`${s.panel} ${s.factorControls}`} aria-busy={loading} onSubmit={(event) => { event.preventDefault(); runAnalysis(); }}>
       <div className={s.factorControlGrid}>
         <label>Company
           <select value={validTicker ? factorTicker : ''} onChange={(event) => onView({ factorTicker: event.target.value })}>
@@ -717,8 +969,8 @@ export default function MarketFactorLab({
         </label>
       </div>
       <div className={s.factorRunRow}>
-        <p><b>{basis === 'ttm' ? 'Latest TTM' : 'Annual'} filing basis</b> · Peer normalization: {cohortId === 'all' ? 'automatic company cohort' : words(cohortId)}. Changing controls does not spend an API request until you run the analysis.</p>
-        <button className={s.primary} type="submit" disabled={!validTicker || loading || runBlocked}>
+        <p id="factor-run-help"><b>{basis === 'ttm' ? 'Latest TTM' : 'Annual'} filing basis</b> · Peer normalization: {cohortId === 'all' ? 'automatic company cohort' : words(cohortId)}. Changing controls does not spend an API request until you run the analysis.</p>
+        <button className={s.primary} type="submit" aria-describedby="factor-run-help" disabled={!validTicker || loading || runBlocked}>
           {loading ? <Loader2 className={s.spin} size={15} /> : <Play size={15} />}
           {loading ? 'Estimating…' : retryWaitSeconds > 0 ? `Wait ${retryDelayText(retryWaitSeconds)}` : data ? 'Run again' : 'Run analysis'}
         </button>
@@ -731,12 +983,12 @@ export default function MarketFactorLab({
       <div><h2>Choose a company to start</h2><p>The calculation joins adjusted daily prices with the company’s latest comparable SEC filing snapshot. No live SEC request is made by this panel.</p></div>
     </div> : null}
 
-    {loading ? <div className={s.loading} role="status" aria-live="polite">
+    {loading && !data ? <div className={s.loading} role="status" aria-live="polite" aria-atomic="true">
       <Loader2 className={s.spin} size={25} />
       <div><h2>Estimating the market model</h2><p>Aligning trading intervals, calculating HAC uncertainty, residualizing the sector proxy, and evaluating the latest filing event…</p></div>
     </div> : null}
 
-    {error ? <div className={s.error} role="alert">
+    {error && !data ? <div className={s.error} role="alert">
       <h2>Factor analysis unavailable</h2>
       <p>{error.message}</p>
       {error.code ? <small>Error code: {error.code}</small> : null}
@@ -748,12 +1000,23 @@ export default function MarketFactorLab({
       </div>
     </div> : null}
 
-    {data && !loading ? <>
-      <div className={`${s.panel} ${s.factorResultHeader}`}>
+    {loading && data ? <div className={s.warning} role="status" aria-live="polite">
+      <Loader2 className={s.spin} size={16} />
+      <p><b>Updating—previous result shown.</b> The current result remains available until the refreshed analysis completes.</p>
+    </div> : null}
+
+    {error && data ? <div className={s.warning} role="alert">
+      <AlertTriangle size={16} />
+      <div><p><b>Previous result retained.</b> {error.message} Dates and request settings on the displayed result remain authoritative.</p>{error.retryable !== false ? <button type="button" className={s.button} onClick={runAnalysis} disabled={retryWaitSeconds > 0}>{retryWaitSeconds > 0 ? `Retry in ${retryDelayText(retryWaitSeconds)}` : 'Retry refresh'}</button> : null}</div>
+    </div> : null}
+
+    {data ? <div aria-busy={loading}>
+      <div className={`${s.panel} ${s.factorResultHeader}`} id="factor-summary">
         <div>
           <span className={s.eyebrow}>Research diagnostic</span>
-          <h2 ref={resultHeadingRef} tabIndex={-1}>{data.issuer?.ticker || data.request?.ticker} · {data.issuer?.name || 'Company analysis'}</h2>
+          <h2 ref={resultHeadingRef} tabIndex={-1} className={s.factorResultHeading}>{data.issuer?.ticker || data.request?.ticker} · {data.issuer?.name || 'Company analysis'}</h2>
           <p>{data.interpretation || 'The deterministic interpretation is unavailable.'}</p>
+          {!resultMatchesRequest ? <p className={s.factorPending}>Displayed result uses its labeled settings while a different request is pending.</p> : null}
         </div>
         <div className={s.factorStatusGroup} aria-label="Result status">
           <span className={`${s.factorStatus} ${statusClass}`}>
@@ -762,8 +1025,13 @@ export default function MarketFactorLab({
           </span>
           <span className={s.factorQuality}>Quality {data.quality?.grade || '—'}</span>
           <small>{data.sample?.observations ?? '—'} matched sessions · through {plainDate(data.data_through)}</small>
+          <button type="button" className={s.button} onClick={pinAnalysis}><Pin size={13} />Pin result</button>
         </div>
       </div>
+
+      <nav className={s.factorResultNav} aria-label="Factor result sections" tabIndex={0}>
+        <a href="#factor-summary">Summary</a><a href="#factor-readout">Research readout</a><a href="#factor-term">Term structure</a><a href="#factor-evidence">Evidence Gap</a><a href="#factor-event">Filing event</a><a href="#factor-rolling">Rolling beta</a><a href="#factor-filing">Filing drivers</a><a href="#factor-quality">Quality</a><a href="#factor-compare">Comparison</a><a href="#factor-handoff">Handoff</a>
+      </nav>
 
       {data.status === 'withheld' ? <div className={s.warning} role="status">
         <AlertTriangle size={16} />
@@ -780,7 +1048,64 @@ export default function MarketFactorLab({
         <MetricCard label="Residual volatility" value={percentText(marketModel?.residual_volatility_annualized)} detail="Annualized unexplained daily-return volatility" />
       </dl>
 
-      <div className={s.factorFeatureGrid}>
+      <section className={`${s.panel} ${s.factorReadout}`} id="factor-readout" aria-labelledby="factor-readout-heading">
+        <div className={s.factorSectionHeading}>
+          <div><span className={s.eyebrow}>Deterministic research triage</span><h2 id="factor-readout-heading">What stands out—and what to investigate</h2></div>
+          <small>Rules are disclosed beside every observation</small>
+        </div>
+        <div className={s.factorReadoutGrid}>
+          <div className={s.factorObservationList}>
+            {(data.research_readout?.observations || []).map((item) => <article key={item.id || item.finding} data-level={item.level}>
+              <b>{item.finding || 'Observation unavailable'}</b>
+              <small>{item.rule || 'No rule supplied.'}</small>
+            </article>)}
+            {!data.research_readout?.observations?.length ? <p className={s.factorUnavailable}>No deterministic observations are available.</p> : null}
+          </div>
+          <div className={s.factorQuestions}>
+            <h3>Next diligence questions</h3>
+            <ol>{(data.research_readout?.questions || []).map((question) => <li key={question}>{question}</li>)}</ol>
+            <p>{data.research_readout?.claim_boundary || 'Descriptive research triage only; not a forecast or recommendation.'}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className={`${s.panel} ${s.factorTerm}`} id="factor-term" aria-labelledby="factor-term-heading">
+        <div className={s.factorSectionHeading}>
+          <div><span className={s.eyebrow}>Exposure stability</span><h2 id="factor-term-heading">Beta term structure and sensitivity checks</h2></div>
+          <small>One loaded price set · no extra provider calls</small>
+        </div>
+        <div className={s.tableScroll} tabIndex={0} role="region" aria-label="Beta term structure table; scroll horizontally when needed">
+          <table className={s.comparison}>
+            <caption className={s.srOnly}>One, three, and five year beta estimates available from the loaded history</caption>
+            <thead><tr><th scope="col">Requested horizon</th><th scope="col">Effective sample</th><th scope="col">Observations</th><th scope="col">Market β</th><th scope="col">95% HAC interval</th><th scope="col">R²</th><th scope="col">Residual volatility</th></tr></thead>
+            <tbody>{termStructure.map((point) => <tr key={point.window}>
+              <th scope="row">{point.window?.toUpperCase() || '—'}</th>
+              <td>{point.available ? `${plainDate(point.effective_start)} to ${plainDate(point.effective_end)}` : words(point.reason)}</td>
+              <td>{point.observations ?? '—'}</td>
+              <td>{betaText(point.beta)}</td>
+              <td>{point.beta_confidence_interval95 ? `${betaText(point.beta_confidence_interval95[0])} to ${betaText(point.beta_confidence_interval95[1])}` : '—'}</td>
+              <td>{percentText(point.r_squared)}</td>
+              <td>{percentText(point.residual_volatility_annualized)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <div className={s.factorSensitivityGrid}>
+          <article>
+            <span>Influence sensitivity</span>
+            <strong>{influence?.available ? betaText(influence.beta) : 'Withheld'}</strong>
+            <p>{influence?.available ? `β change ${zText(influence.beta_delta)} after excluding the three largest Cook-distance sessions.` : words(influence?.reason)}</p>
+            {influence?.excluded_dates?.length ? <small>Dates: {influence.excluded_dates.map((point) => `${plainDate(point.date)} (${betaText(point.distance)})`).join(' · ')}</small> : null}
+          </article>
+          <article>
+            <span>Residual 5% tail</span>
+            <strong>{percentText(residualTail?.expected_shortfall)}</strong>
+            <p>Mean abnormal return in the empirical residual tail below the {percentText(residualTail?.lower_quantile)} quantile.</p>
+            <small>Worst {plainDate(residualTail?.worst?.date)} · {percentText(residualTail?.worst?.abnormal_return)} · not portfolio VaR</small>
+          </article>
+        </div>
+      </section>
+
+      <div className={s.factorFeatureGrid} id="factor-evidence">
         <section className={`${s.panel} ${s.factorGap}`} aria-labelledby="evidence-gap-heading">
           <span className={s.eyebrow}>Custom SEC diagnostic</span>
           <h2 id="evidence-gap-heading">EDGAR Evidence Gap</h2>
@@ -805,7 +1130,7 @@ export default function MarketFactorLab({
             <div><span className={s.eyebrow}>Filing–Market map</span><h2 id="filing-market-map-heading">One point, two independently scaled observations</h2></div>
             <span className={s.factorMapLabel}>{classification !== '—' ? classification : mapQuadrant}</span>
           </div>
-          {mapX != null && mapY != null ? <figure className={s.factorMapFigure}>
+          {mapX != null && mapY != null ? <figure className={s.factorMapFigure} tabIndex={0} role="region" aria-label="Filing–Market map; scroll horizontally when needed">
             <svg viewBox="0 0 500 320" role="img" aria-labelledby={`${mapTitleId} ${mapDescriptionId}`} className={s.factorMapSvg}>
               <title id={mapTitleId}>{data.issuer?.ticker} Filing–Market coordinate</title>
               <desc id={mapDescriptionId}>Filing-change z is {filingZ?.toFixed(2)} on the horizontal axis and 20-session model-adjusted price-response z is {responseZ?.toFixed(2)} on the vertical axis. Absolute z values below {neutralBand.toFixed(2)} are neutral on each axis. Classification: {classification !== '—' ? classification : mapQuadrant}.</desc>
@@ -832,13 +1157,13 @@ export default function MarketFactorLab({
             <figcaption>Coordinates are clipped to ±3 only for display. Shaded, dashed strips mark the neutral band; the exact values are below.</figcaption>
             <p className={s.factorMapLegend}><b>Classification rule:</b> positive ≥ +{neutralBand.toFixed(2)}; neutral when |z| &lt; {neutralBand.toFixed(2)}; negative ≤ −{neutralBand.toFixed(2)}.</p>
           </figure> : <div className={s.factorMapUnavailable}>The map requires both a peer-normalized filing score and a complete 20-session filing-event estimate.</div>}
-          <div className={s.tableScroll}>
+          <div className={s.tableScroll} tabIndex={0} role="region" aria-label="Exact Filing–Market coordinates; scroll horizontally when needed">
             <table className={s.comparison}>
               <caption className={s.srOnly}>Exact Filing–Market map coordinates</caption>
               <thead><tr><th scope="col">Coordinate</th><th scope="col">Exact value</th><th scope="col">Reference</th></tr></thead>
               <tbody>
                 <tr><th scope="row">Filing change</th><td>{zText(filingZ)}</td><td>{data.edgar_snapshot?.coverage?.eligible_peer_issuers ?? data.quality?.peer_count ?? '—'} eligible peers</td></tr>
-                <tr><th scope="row">Price response</th><td>{zText(responseZ)}</td><td>{event20?.sessions ?? 20} sessions through {plainDate(event20?.through)}</td></tr>
+                <tr><th scope="row">Price response</th><td>{zText(responseZ)}</td><td>{event20 ? `${event20.sessions ?? 20} sessions through ${plainDate(event20.through)}` : 'Unavailable'}</td></tr>
                 <tr><th scope="row">Classification</th><td colSpan={2}>{classification !== '—' ? classification : mapQuadrant}</td></tr>
                 <tr><th scope="row">Neutral band</th><td colSpan={2}>|z| &lt; {neutralBand.toFixed(2)} on each axis</td></tr>
               </tbody>
@@ -847,13 +1172,60 @@ export default function MarketFactorLab({
         </section>
       </div>
 
-      <section className={`${s.panel} ${s.factorRolling}`} aria-labelledby="rolling-beta-heading">
+      <section className={`${s.panel} ${s.factorEvent}`} id="factor-event" aria-labelledby="filing-event-heading">
+        <div className={s.factorSectionHeading}>
+          <div><span className={s.eyebrow}>Filing response path</span><h2 id="filing-event-heading">How the model-adjusted response accumulated</h2></div>
+          <small>{words(data.filing_event?.timing_quality)} · event interval ends {plainDate(data.filing_event?.event_interval_end)}</small>
+        </div>
+        <div className={s.factorEventGrid}>
+          <div className={s.tableScroll} tabIndex={0} role="region" aria-label="Filing event horizon summary">
+            <table className={`${s.comparison} ${s.factorCompactTable}`}>
+              <caption className={s.srOnly}>One, five, and twenty session filing-event estimates</caption>
+              <thead><tr><th scope="col">Horizon</th><th scope="col">Through</th><th scope="col">Abnormal return</th><th scope="col">Response z</th></tr></thead>
+              <tbody>{['1', '5', '20'].map((horizon) => {
+                const point = data.filing_event?.windows?.[horizon];
+                return <tr key={horizon}><th scope="row">{horizon} session{horizon === '1' ? '' : 's'}</th><td>{plainDate(point?.through)}</td><td>{percentText(point?.cumulative_abnormal_return)}</td><td>{zText(point?.standardized_response)}</td></tr>;
+              })}</tbody>
+            </table>
+          </div>
+          <dl className={s.factorEventMeta}>
+            <div><dt>Pre-event model</dt><dd>{data.filing_event?.estimation?.observations ?? '—'} sessions</dd></div>
+            <div><dt>Estimation end</dt><dd>{plainDate(data.filing_event?.estimation?.end)}</dd></div>
+            <div><dt>Information gap</dt><dd>{data.filing_event?.estimation?.gap_sessions ?? '—'} sessions</dd></div>
+            <div><dt>Response inference</dt><dd>{data.filing_event?.estimation?.inference || 'Unavailable'}{finite(data.filing_event?.estimation?.hac_lag) ? ` · lag ${data.filing_event.estimation.hac_lag}` : ''}</dd></div>
+          </dl>
+        </div>
+        {eventChart ? <figure className={s.factorChartFigure} tabIndex={0} role="region" aria-label="Cumulative filing-event abnormal-return chart; scroll horizontally when needed">
+          <svg viewBox={`0 0 ${eventChart.width} ${eventChart.height}`} role="img" aria-labelledby={`${eventTitleId} ${eventDescriptionId}`} className={s.factorChartSvg}>
+            <title id={eventTitleId}>{data.issuer?.ticker} cumulative model-adjusted filing response</title>
+            <desc id={eventDescriptionId}>Cumulative abnormal return from session one through session {eventChart.end.session}, ending at {percentText(eventChart.end.value)}. Exact daily observations follow in a disclosure table.</desc>
+            <line x1={eventChart.left} y1={eventChart.top} x2={eventChart.left} y2={eventChart.height - eventChart.bottom} className={s.factorChartAxis} />
+            <line x1={eventChart.left} y1={eventChart.zeroY} x2={eventChart.width - eventChart.right} y2={eventChart.zeroY} className={s.factorChartReference} />
+            <text x={eventChart.left - 7} y={eventChart.zeroY + 4} textAnchor="end" className={s.factorChartLabel}>0%</text>
+            <text x={eventChart.left} y={eventChart.height - 12} className={s.factorChartLabel}>Session {eventChart.start.session}</text>
+            <text x={eventChart.width - eventChart.right} y={eventChart.height - 12} textAnchor="end" className={s.factorChartLabel}>Session {eventChart.end.session}</text>
+            <path d={eventChart.path} className={s.factorChartLine} />
+          </svg>
+          <figcaption>Cumulative simple return transformed from daily log residuals. The standardized response uses Bartlett-weighted HAC cumulative residual variance and does not isolate concurrent news.</figcaption>
+        </figure> : <p className={s.factorUnavailable}>A complete event path is unavailable.</p>}
+        <details key={`event-path-${resultIdentity}`} className={`${s.details} ${s.factorDetails}`} onToggle={(event) => setEventRowsSnapshot(event.currentTarget.open ? resultIdentity : null)}>
+          <summary>Exact daily filing-event path · {data.filing_event?.path?.length || 0}</summary>
+          {eventRowsSnapshot === resultIdentity ? <div className={s.tableScroll} tabIndex={0} role="region" aria-label="Exact daily filing-event path">
+            <table className={`${s.comparison} ${s.factorCompactTable}`}>
+              <thead><tr><th scope="col">Session</th><th scope="col">Date</th><th scope="col">Daily abnormal return</th><th scope="col">Cumulative abnormal return</th><th scope="col">Response z</th></tr></thead>
+              <tbody>{(data.filing_event?.path || []).map((point) => <tr key={`${point.session}-${point.date}`}><th scope="row">{point.session ?? '—'}</th><td>{plainDate(point.date)}</td><td>{percentText(point.daily_abnormal_return, 3)}</td><td>{percentText(point.cumulative_abnormal_return, 3)}</td><td>{zText(point.standardized_response)}</td></tr>)}</tbody>
+            </table>
+          </div> : null}
+        </details>
+      </section>
+
+      <section className={`${s.panel} ${s.factorRolling}`} id="factor-rolling" aria-labelledby="rolling-beta-heading">
         <div className={s.factorSectionHeading}>
           <div><span className={s.eyebrow}>Stability diagnostic</span><h2 id="rolling-beta-heading">Rolling {data.estimates?.rolling_beta?.window || 126}-session market beta</h2></div>
-          <div className={s.factorRollingSummary}><span>Current <b>{betaText(data.estimates?.rolling_beta?.current)}</b></span><span>Median <b>{betaText(data.estimates?.rolling_beta?.median)}</b></span><span>Range <b>{betaText(data.estimates?.rolling_beta?.range)}</b></span></div>
+          <div className={s.factorRollingSummary}><span>Current <b>{betaText(data.estimates?.rolling_beta?.current)}</b></span><span>Median <b>{betaText(data.estimates?.rolling_beta?.median)}</b></span><span>Percentile rank <b>{finite(data.estimates?.rolling_beta?.current_percentile) ? `${data.estimates.rolling_beta.current_percentile.toFixed(0)}%` : '—'}</b></span><span>IQR <b>{betaText(data.estimates?.rolling_beta?.interquartile_range)}</b></span></div>
         </div>
         {rollingChart ? <>
-          <figure className={s.factorChartFigure}>
+          <figure className={s.factorChartFigure} tabIndex={0} role="region" aria-label="Rolling beta chart; scroll horizontally when needed">
             <svg viewBox={`0 0 ${rollingChart.width} ${rollingChart.height}`} role="img" aria-labelledby={`${chartTitleId} ${chartDescriptionId}`} className={s.factorChartSvg}>
               <title id={chartTitleId}>{data.issuer?.ticker} rolling market beta</title>
               <desc id={chartDescriptionId}>Rolling beta from {rollingChart.start} to {rollingChart.end}. Observed minimum {rollingChart.actualMinimum.toFixed(2)}, observed maximum {rollingChart.actualMaximum.toFixed(2)}, and current {betaText(data.estimates?.rolling_beta?.current)}. Exact observations follow in a table.</desc>
@@ -867,29 +1239,37 @@ export default function MarketFactorLab({
             </svg>
             <figcaption>Windows advance in five-session steps; the latest endpoint is included. The dashed reference is β = 1.</figcaption>
           </figure>
-          <details className={`${s.details} ${s.factorDetails}`}>
+          <details key={`rolling-points-${resultIdentity}`} className={`${s.details} ${s.factorDetails}`} onToggle={(event) => setRollingRowsSnapshot(event.currentTarget.open ? resultIdentity : null)}>
             <summary>Exact rolling-beta observations · {rollingChart.clean.length}</summary>
-            <div className={s.tableScroll}><table className={s.comparison}>
+            {rollingRowsSnapshot === resultIdentity ? <div className={s.tableScroll} tabIndex={0} role="region" aria-label="Exact rolling beta observations"><table className={`${s.comparison} ${s.factorNarrowTable}`}>
               <caption className={s.srOnly}>Exact rolling market beta observations</caption>
               <thead><tr><th scope="col">Window end</th><th scope="col">Market beta</th></tr></thead>
               <tbody>{rollingChart.clean.map((point) => <tr key={point.date}><td>{point.date}</td><td>{point.beta.toFixed(4)}</td></tr>)}</tbody>
-            </table></div>
+            </table></div> : null}
           </details>
         </> : <p className={s.factorUnavailable}>A rolling series is unavailable for this sample.</p>}
       </section>
 
-      <section className={`${s.panel} ${s.factorFiling}`} aria-labelledby="filing-score-heading">
+      <section className={`${s.panel} ${s.factorFiling}`} id="factor-filing" aria-labelledby="filing-score-heading">
         <div className={s.factorSectionHeading}>
           <div><span className={s.eyebrow}>SEC filing change</span><h2 id="filing-score-heading">Peer-robust filing components</h2></div>
           <div className={s.factorFilingScore}><span>Composite z</span><strong>{zText(data.edgar_snapshot?.filing_change_z)}</strong><small>{labelText(data.edgar_snapshot?.direction)}</small></div>
         </div>
         <p className={s.factorSectionCopy}>Each available component compares the issuer with other companies in the selected research cohort. The target issuer is excluded from its own peer distribution; median and MAD-based scaling reduce outlier influence. Composite z is the sum of the displayed weighted z contributions. Peer reports form a calculation-time cross-section rather than a cross-section frozen at the focus event.</p>
         {peerClock ? <p className={s.note}>Peer filing clocks: {plainDate(peerClock.earliest_peer)} to {plainDate(peerClock.latest_peer)} · {peerClock.observed_peers ?? '—'} observed · {peerClock.peers_after_focus ?? '—'} became public after the focus filing.</p> : null}
+        {driverRows.length ? <div className={s.factorDrivers} aria-label="Ranked weighted filing-score contributions">
+          {driverRows.map((driver) => <div key={driver.key || driver.label}>
+            <span>{driver.label || words(driver.key)}</span>
+            <i aria-hidden="true"><b data-sign={finite(driver.weighted_z) && driver.weighted_z < 0 ? 'negative' : 'positive'} style={{ width: `${finite(driver.weighted_z) && driver.weighted_z !== 0 ? Math.max(3, Math.abs(driver.weighted_z) / maxDriver * 100) : 0}%` }} /></i>
+            <strong>{zText(driver.weighted_z)}</strong>
+          </div>)}
+          <p>Bars rank fixed-weight z contributions by absolute magnitude. They do not redistribute unavailable weights.</p>
+        </div> : null}
         <div className={s.factorFilingRefs}>
           {filingReference(data.provenance?.sec?.current_filing, 'Current filing')}
           {filingReference(data.provenance?.sec?.prior_filing, 'Prior comparison')}
         </div>
-        {components.length ? <div className={s.tableScroll}>
+        {components.length ? <div className={`${s.tableScroll} ${s.factorDesktopComponents}`} tabIndex={0} role="region" aria-label="Peer-normalized filing components; scroll horizontally when needed">
           <table className={s.comparison}>
             <caption className={s.srOnly}>Peer-normalized filing score components and exact inputs</caption>
             <thead><tr><th scope="col">Component</th><th scope="col">Current (%)</th><th scope="col">Prior (%)</th><th scope="col">Input change (pp)</th><th scope="col">Peer median (pp)</th><th scope="col">MAD / scale (pp)</th><th scope="col">Peer percentile</th><th scope="col">Weight</th><th scope="col">z</th><th scope="col">Weighted z</th></tr></thead>
@@ -907,19 +1287,73 @@ export default function MarketFactorLab({
             </tr>)}</tbody>
           </table>
         </div> : <p className={s.factorUnavailable}>{data.edgar_snapshot?.reason || 'Comparable filing components are unavailable.'}</p>}
+        {components.length ? <div className={s.factorMobileComponents} aria-label="Peer-normalized filing components">
+          {components.map((component) => <article key={component.key || component.label}>
+            <h3>{component.label || words(component.key)}</h3>
+            {component.reason ? <p>{component.reason}</p> : null}
+            <dl>
+              <div><dt>Current / prior</dt><dd>{filingLevelText(component.current)} / {filingLevelText(component.prior)}</dd></div>
+              <div><dt>Change / peer median</dt><dd>{filingChangeText(component.change)} / {filingChangeText(component.peer_distribution?.median)}</dd></div>
+              <div><dt>MAD / scale</dt><dd>{filingChangeText(component.peer_distribution?.mad)} / {filingChangeText(component.peer_distribution?.scale)} · {words(component.peer_distribution?.scale_method)}</dd></div>
+              <div><dt>Peer percentile</dt><dd>{finite(component.peer_percentile) ? `${component.peer_percentile.toFixed(1)}%` : '—'} · {component.peer_count ?? '—'} peers</dd></div>
+              <div><dt>z / raw z</dt><dd>{zText(component.z)} / {zText(component.raw_z)}{component.clipped ? ' · clipped' : ''}</dd></div>
+              <div><dt>Weight / weighted z</dt><dd>{percentText(component.weight)} / {zText(component.weighted_z)}</dd></div>
+            </dl>
+          </article>)}
+        </div> : null}
       </section>
 
-      <section className={`${s.panel} ${s.factorAudit}`} aria-labelledby="factor-audit-heading">
+      <section className={`${s.panel} ${s.factorQualityPanel}`} id="factor-quality" aria-labelledby="factor-quality-heading">
+        <div className={s.factorSectionHeading}>
+          <div><span className={s.eyebrow}>Reliability dashboard</span><h2 id="factor-quality-heading">Why this result received quality {data.quality?.grade || '—'}</h2></div>
+          <span className={s.factorQuality}>Quality {data.quality?.grade || '—'}</span>
+        </div>
+        <div className={s.factorGateGrid}>{(data.quality?.gates || []).map((gate) => <article key={gate.id} data-status={gate.status}>
+          <span>{gate.status === 'pass' ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}{words(gate.status)}</span>
+          <h3>{gate.label || words(gate.id)}</h3>
+          <b>{gate.value || '—'}</b>
+          <p>{gate.requirement || 'No gate definition supplied.'}</p>
+        </article>)}</div>
+        <details className={`${s.details} ${s.factorDetails}`}>
+          <summary>Excluded and unmatched observations</summary>
+          <dl className={s.factorExcluded}>{Object.entries(data.sample?.excluded || {}).map(([key, value]) => <div key={key}><dt>{words(key)}</dt><dd>{value ?? '—'}</dd></div>)}</dl>
+        </details>
+      </section>
+
+      <section className={`${s.panel} ${s.factorCompare}`} id="factor-compare" aria-labelledby="factor-compare-heading">
+        <div className={s.factorSectionHeading}>
+          <div><span className={s.eyebrow}>Session notebook</span><h2 id="factor-compare-heading">Compare up to four pinned results</h2></div>
+          <div className={s.actions}><button type="button" className={s.button} onClick={pinAnalysis}><Pin size={14} />Pin current</button><button type="button" className={s.button} disabled={!comparison.length} onClick={exportPinnedComparison}><FileSpreadsheet size={14} />Comparison CSV</button></div>
+        </div>
+        {comparison.length ? <div className={s.tableScroll} tabIndex={0} role="region" aria-label="Pinned Factor Lab comparison; scroll horizontally when needed">
+          <table className={s.comparison}>
+            <caption className={s.srOnly}>Pinned Factor Lab results from this browser session</caption>
+            <thead><tr><th scope="col">Company</th><th scope="col">Settings</th><th scope="col">Market β</th><th scope="col">95% interval</th><th scope="col">Down / up β</th><th scope="col">Sector sensitivity</th><th scope="col">Evidence Gap</th><th scope="col">Quality</th><th scope="col">Remove</th></tr></thead>
+            <tbody>{comparison.map((item) => <tr key={item.snapshot_id}>
+              <th scope="row">{item.ticker}<small>{item.name}</small></th>
+              <td>{item.request?.window?.toUpperCase()} · {String(item.request?.basis || '').toUpperCase()} · {item.request?.sector_proxy}<small>Cohort {item.request?.cohort || '—'} · method {item.methodology_version || '—'} · through {plainDate(item.data_through)}</small></td>
+              <td>{betaText(item.beta)}</td><td>{item.beta_ci95 ? `${betaText(item.beta_ci95[0])} to ${betaText(item.beta_ci95[1])}` : '—'}</td>
+              <td>{betaText(item.downside_beta)} / {betaText(item.upside_beta)}</td><td>{betaText(item.sector_sensitivity)}</td><td>{zText(item.evidence_gap)}</td><td>{item.quality || '—'}</td>
+              <td><button type="button" className={s.iconButton} onClick={() => removePinned(item.snapshot_id)} aria-label={`Remove ${item.ticker} pinned result`}><X size={14} /></button></td>
+            </tr>)}</tbody>
+          </table>
+        </div> : <p className={s.factorSectionCopy}>Pin this result, run another company or setting, then pin again. No requests run automatically and no investment ranking is created.</p>}
+        <p className={s.note}>Compare like-for-like settings and methodology versions. Different windows, cohorts, or price-through dates remain visibly labeled rather than silently normalized.</p>
+      </section>
+
+      <section className={`${s.panel} ${s.factorAudit}`} id="factor-handoff" aria-labelledby="factor-audit-heading">
         <div className={s.factorSectionHeading}>
           <div><span className={s.eyebrow}>Audit & reuse</span><h2 id="factor-audit-heading">Researcher and model handoff</h2></div>
           <div className={s.actions}>
-            <button type="button" className={s.primary} onClick={copyContext}><Clipboard size={14} />Copy model context</button>
+            <button type="button" className={s.primary} onClick={copyContext}><Clipboard size={14} />Copy AI context</button>
+            <button type="button" className={s.button} onClick={exportContext}><Download size={14} />Context TXT</button>
+            <button type="button" className={s.button} onClick={exportCsv}><FileSpreadsheet size={14} />Tidy CSV</button>
             <button type="button" className={s.button} onClick={exportJson}><Download size={14} />JSON</button>
             <button type="button" className={s.button} onClick={exportMarkdown}><Download size={14} />Markdown</button>
           </div>
         </div>
-        <p className={s.factorSectionCopy}>The exports contain derived statistics, exact definitions, source clocks, quality fields, warnings, and nulls for unavailable values. They do not include bulk vendor price history.</p>
-        <div className={s.tableScroll}><table className={s.comparison}>
+        <p className={s.factorSectionCopy}>The compact <code>edgar.factor-context.v1</code> packet is about {Math.max(1, Math.ceil(compactContextLength / 4)).toLocaleString()} tokens by a four-characters-per-token estimate. CSV contains raw decimals and tidy record types; full JSON and Markdown retain the audit record. No export includes bulk vendor price history.</p>
+        <div className={s.tableScroll} tabIndex={0} role="region" aria-label="Price series provenance; scroll horizontally when needed"><table className={s.comparison}>
           <caption className={s.srOnly}>Price-series provenance</caption>
           <thead><tr><th scope="col">Role</th><th scope="col">Ticker</th><th scope="col">Provider</th><th scope="col">Price basis</th><th scope="col">Prices</th><th scope="col">Through</th><th scope="col">Cache</th></tr></thead>
           <tbody>
@@ -935,12 +1369,14 @@ export default function MarketFactorLab({
           <div><dt>Overlap coverage</dt><dd>{coverageText(data.sample?.overlap_coverage)}</dd></div>
           <div><dt>Schema</dt><dd>{data.schema_version}</dd></div>
           <div><dt>Method</dt><dd>{data.methodology_version || '—'}</dd></div>
+          <div><dt>Input fingerprint</dt><dd className={s.factorHash}><code>{data.fingerprints?.input_sha256 || '—'}</code></dd></div>
+          <div><dt>Calculation fingerprint</dt><dd className={s.factorHash}><code>{data.fingerprints?.result_sha256 || '—'}</code></dd></div>
         </dl>
         <div className={s.factorAuditLinks}>
           <a href={data.links?.methodology || '/market/factors'}>Methodology <ExternalLink size={12} /></a>
           {data.links?.api ? <a href={data.links.api}>API result <ExternalLink size={12} /></a> : null}
           {data.links?.schema ? <a href={data.links.schema}>JSON Schema <ExternalLink size={12} /></a> : null}
-          {data.links?.sec_companyfacts ? <a href={data.links.sec_companyfacts} target="_blank" rel="noreferrer">SEC Company Facts <ExternalLink size={12} /></a> : null}
+          {data.links?.sec_companyfacts ? <a href={data.links.sec_companyfacts} target="_blank" rel="noreferrer" aria-label="SEC Company Facts, opens in a new tab">SEC Company Facts <ExternalLink size={12} /></a> : null}
         </div>
         {data.cite_as ? <p className={s.factorCitation}><b>Cite as:</b> {data.cite_as}</p> : null}
       </section>
@@ -961,6 +1397,6 @@ export default function MarketFactorLab({
         </div>
         <p className={s.note}>The intercept is a market-model intercept, not Jensen alpha: this model does not subtract a risk-free return. Only pre-open timestamped filings use that session&apos;s return; intraday, post-close, non-trading-day, and date-only events begin with the next benchmark session. An event horizon is withheld if any expected company, SPY, or sector interval is missing.</p>
       </details>
-    </> : null}
+    </div> : null}
   </section>;
 }
