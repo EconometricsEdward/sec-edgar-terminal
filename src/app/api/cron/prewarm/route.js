@@ -17,8 +17,8 @@
  *            shared Vercel IPs, so we stay conservative)
  *
  * Time budget:
- *   - Vercel Pro cron max duration is 300s (5 min). We aim to finish in
- *     ~4 min to leave safety margin.
+ *   - Vercel Fluid Compute allows a 300s ceiling on the current plans. We
+ *     stop at 287s so the response can flush before the hard timeout.
  *   - If we approach the budget, we emit partial results rather than
  *     timing out mid-write and leaving cache in a half-state.
  *
@@ -34,13 +34,13 @@ import { getPopularStocks } from '../../../../utils/popularTickers.js';
 import { getOperatingTickers } from '../../../../utils/tickerMap.js';
 import { warmSet, warmCacheEnabled } from '../../../../utils/warmCache.js';
 import { secFetch } from '../../../../utils/secClient.js';
+import { loadPriceSeries } from '../../../../utils/priceDataServer.js';
+import { loadMarketAtlas } from '../../../../utils/marketResearchServer.js';
 
 export const runtime = 'nodejs';
-// Vercel function duration cap:
-//   Hobby plan: 60 seconds (our current setting)
-//   Pro plan:   300 seconds — when you upgrade, change this to 300 and
-//               bump BUDGET_MS below to 290_000 for full pre-warm coverage.
-export const maxDuration = 60;
+// Fluid-compute Vercel functions support a five-minute Hobby ceiling as of
+// 2026. Keep a response-flush margin below that hard limit.
+export const maxDuration = 300;
 // Crucial: we do NOT want Next.js or the CDN to cache this endpoint. Every
 // cron tick must actually execute.
 export const dynamic = 'force-dynamic';
@@ -48,20 +48,20 @@ export const dynamic = 'force-dynamic';
 // Hard time budget for the whole pre-warm run. Must stay under maxDuration.
 // We reserve SAFETY_MARGIN_MS at the end for the response to flush before
 // Vercel kills the function.
-const BUDGET_MS = 55_000;
+const BUDGET_MS = 290_000;
 
 // Concurrency caps per upstream
 const SEC_CONCURRENCY = 5;
 const YAHOO_CONCURRENCY = 3;
 
 // Per-item timeouts — if a single ticker is slow, skip it rather than stall
-const YAHOO_ITEM_TIMEOUT_MS = 10_000;
 const SEC_ITEM_TIMEOUT_MS = 10_000;
 // Leave this much time at the end for response assembly before Vercel's
 // hard function timeout hits.
 const SAFETY_MARGIN_MS = 3_000;
 
 const USER_AGENT = process.env.SEC_USER_AGENT || 'EDGAR Terminal Prewarmer research@example.com';
+const FACTOR_BENCHMARKS = ['SPY', 'XLF', 'XLRE', 'XHB', 'XLE', 'XLY', 'XLK', 'XLI', 'XLV', 'XLU'];
 
 // ---------------------------------------------------------------------------
 // Small concurrency-pool helper. Runs `worker(item)` for each item in `items`
@@ -93,41 +93,31 @@ async function runPool(items, limit, worker) {
 // status object for the response summary.
 // ---------------------------------------------------------------------------
 
-async function warmStockPrice(ticker) {
-  const yahooTicker = ticker.replace(/\./g, '-');
-  const now = Math.floor(Date.now() / 1000);
-  const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60;
-  const url =
-    `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}` +
-    `?period1=${tenYearsAgo}&period2=${now}&interval=1d&events=history&includeAdjustedClose=true`;
-
-  const res = await fetch(url, {
-    headers: {
-      // Same UA spoof the stock route uses — Yahoo treats default Node UA as bot traffic
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-      Accept: 'application/json,text/plain,*/*',
-    },
-    signal: AbortSignal.timeout(YAHOO_ITEM_TIMEOUT_MS),
+async function warmStockPrice(ticker, signal) {
+  const from = new Date();
+  from.setUTCFullYear(from.getUTCFullYear() - 10);
+  const result = await loadPriceSeries({
+    ticker,
+    fromIso: from.toISOString().slice(0, 10),
+    forceRefresh: true,
+    signal,
   });
-  if (!res.ok) throw new Error(`Yahoo HTTP ${res.status}`);
-
-  const data = await res.json();
-  if (data.chart?.error) throw new Error(`Yahoo error: ${data.chart.error.code}`);
-
-  // Store the raw Yahoo payload verbatim. The stock route will re-parse it
-  // using its existing logic rather than us trying to reimplement the
-  // parsing here. This keeps the warm-layer cheap to maintain — if the
-  // route's parsing changes, we don't have to update the warmer.
-  await warmSet('stock-raw-yahoo', ticker, data);
-  return { ticker, ok: true };
+  return {
+    ticker,
+    ok: true,
+    provider: result.provider,
+    priceBasis: result.priceBasis,
+    rows: result.count,
+  };
 }
 
-async function warmSubmissions(ticker, cik) {
+async function warmSubmissions(ticker, cik, signal) {
   const url = `https://data.sec.gov/submissions/CIK${cik}.json`;
   const res = await secFetch(url, {
     headers: { 'User-Agent': USER_AGENT },
     timeoutMs: SEC_ITEM_TIMEOUT_MS,
+    retries: 0,
+    signal,
   });
   if (!res.ok) throw new Error(`SEC HTTP ${res.status}`);
   const data = await res.json();
@@ -173,8 +163,14 @@ export async function GET(request) {
   const startedAt = Date.now();
   const deadline = startedAt + (BUDGET_MS - SAFETY_MARGIN_MS);
   const timeLeft = () => deadline - Date.now();
+  const controller = new AbortController();
+  const deadlineTimer = setTimeout(
+    () => controller.abort(new Error('Prewarm deadline reached.')),
+    Math.max(1, deadline - Date.now()),
+  );
 
   const stocks = await getPopularStocks();
+  const priceTickers = [...new Set([...FACTOR_BENCHMARKS, ...stocks])];
 
   // Resolve tickers → CIKs up front in one batch (shared cache). We need the
   // CIK for SEC-backed warmers. Tickers without a CIK are treated as
@@ -184,48 +180,71 @@ export async function GET(request) {
   const summary = {
     startedAt: new Date(startedAt).toISOString(),
     stockCount: stocks.length,
+    priceCount: priceTickers.length,
     stages: {},
     durationMs: null,
     timedOut: false,
   };
 
-  // --- Stage 1: Stock prices (all popular stocks) ---------------------------
-  // Yahoo is fragile, so do this first before its shared-IP quota gets eaten
-  // by the SEC work below which also shares the same egress IPs.
-  if (timeLeft() > 30_000) {
-    const stage = await runPool(stocks, YAHOO_CONCURRENCY, async (ticker) => {
-      if (timeLeft() < 5_000) return; // bail if we're running out of time
-      return await warmStockPrice(ticker);
-    });
-    summary.stages.prices = {
-      succeeded: stage.results.length,
-      failed: stage.errors.length,
-      errors: stage.errors.slice(0, 5), // truncate errors to keep response small
-    };
-  } else {
-    summary.stages.prices = { skipped: 'insufficient time budget' };
-  }
+  try {
+    // --- Stage 1: point-in-time SEC Market atlas ----------------------------
+    // Factor Lab is cache-only for SEC data, so the scheduled job must make
+    // the versioned atlas ready without waiting for a visitor to open Market.
+    if (timeLeft() > 120_000) {
+      try {
+        const market = await loadMarketAtlas({ signal: controller.signal, forceRefresh: true });
+        summary.stages.marketAtlas = {
+          companies: market.companies.length,
+          generatedAt: market.generatedAt,
+          cacheStatus: market.cache?.status || 'current',
+        };
+      } catch (error) {
+        summary.stages.marketAtlas = { failed: true, error: error.message };
+      }
+    } else {
+      summary.stages.marketAtlas = { skipped: 'insufficient time budget' };
+    }
 
-  // --- Stage 2: SEC submissions (all popular stocks with a CIK) -------------
-  if (timeLeft() > 30_000) {
-    const items = stocks
-      .filter((t) => cikMap[t])
-      .map((t) => ({ ticker: t, cik: cikMap[t].cik }));
-    const stage = await runPool(items, SEC_CONCURRENCY, async ({ ticker, cik }) => {
-      if (timeLeft() < 5_000) return;
-      return await warmSubmissions(ticker, cik);
-    });
-    summary.stages.submissions = {
-      succeeded: stage.results.length,
-      failed: stage.errors.length,
-      errors: stage.errors.slice(0, 5),
-    };
-  } else {
-    summary.stages.submissions = { skipped: 'insufficient time budget' };
+    // --- Stage 2: Stock prices (all popular stocks) -------------------------
+    // A new item needs enough budget for bounded Yahoo and fallback attempts.
+    if (timeLeft() > 30_000) {
+      const stage = await runPool(priceTickers, YAHOO_CONCURRENCY, async (ticker) => {
+        if (timeLeft() < 25_000 || controller.signal.aborted) return;
+        return await warmStockPrice(ticker, controller.signal);
+      });
+      summary.stages.prices = {
+        succeeded: stage.results.length,
+        failed: stage.errors.length,
+        errors: stage.errors.slice(0, 5),
+      };
+    } else {
+      summary.stages.prices = { skipped: 'insufficient time budget' };
+    }
+
+    // --- Stage 3: SEC submissions (all popular stocks with a CIK) -----------
+    if (timeLeft() > 25_000) {
+      const items = stocks
+        .filter((t) => cikMap[t])
+        .map((t) => ({ ticker: t, cik: cikMap[t].cik }));
+      const stage = await runPool(items, SEC_CONCURRENCY, async ({ ticker, cik }) => {
+        if (timeLeft() < 20_000 || controller.signal.aborted) return;
+        return await warmSubmissions(ticker, cik, controller.signal);
+      });
+      summary.stages.submissions = {
+        succeeded: stage.results.length,
+        failed: stage.errors.length,
+        errors: stage.errors.slice(0, 5),
+      };
+    } else {
+      summary.stages.submissions = { skipped: 'insufficient time budget' };
+    }
+  } finally {
+    clearTimeout(deadlineTimer);
   }
 
   summary.durationMs = Date.now() - startedAt;
   summary.finishedAt = new Date().toISOString();
+  summary.timedOut = controller.signal.aborted;
 
   return NextResponse.json(summary);
 }

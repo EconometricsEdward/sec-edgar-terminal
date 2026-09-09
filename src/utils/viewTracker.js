@@ -37,6 +37,7 @@ import { createHmac } from 'node:crypto';
 const REST_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const REST_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 const ENABLED = !!(REST_URL && REST_TOKEN);
+const TRACKING_SECRET = process.env.VIEW_TRACKING_SECRET || REST_TOKEN;
 
 // Configuration
 const VIEW_WINDOW_SEC = 24 * 3600;      // 24h rolling view window
@@ -87,8 +88,10 @@ export function recordView(ticker, ip) {
   const viewKey = viewSetKey(t);
   const now = Math.floor(Date.now() / 1000);
   // Preserve distinct counting without retaining a raw IP address in Redis.
-  const viewer = createHmac('sha256', REST_TOKEN)
-    .update(String(ip))
+  const viewer = createHmac('sha256', TRACKING_SECRET)
+    // Ticker scoping prevents the same pseudonymous viewer token from being
+    // correlated across otherwise independent popularity sets.
+    .update(`${t}\0${String(ip)}`)
     .digest('base64url')
     .slice(0, 24);
 

@@ -153,13 +153,14 @@ export function getClientIp(request) {
 /**
  * Convenience helper: build a 429 response with proper headers.
  */
-export function rateLimitedResponse(info) {
+export function rateLimitedResponse(info, extraHeaders = {}) {
   const retryAfter = String(Math.max(1, Math.ceil((info.resetAt - Date.now()) / 1000)));
   return Response.json(
     { error: 'Rate limit exceeded. Please wait a moment before retrying.' },
     {
       status: 429,
       headers: {
+        ...extraHeaders,
         ...rateLimitHeaders(info),
         'Retry-After': retryAfter,
         'Cache-Control': 'private, no-store',

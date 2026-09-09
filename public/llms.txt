@@ -1,0 +1,28 @@
+# EDGAR Terminal
+
+> Public, source-aware research tools for SEC filings, company fundamentals, market diagnostics, and portfolio analysis.
+
+## Primary research surfaces
+
+- [Market overview](https://secedgarterminal.com/market): SEC fundamental briefing, sector heatmap, company screener, and interactive EDGAR Factor Lab.
+- [EDGAR Factor Lab methodology](https://secedgarterminal.com/market/factors): Definitions, equations, eligibility rules, limitations, and interpretation guidance for regression beta, filing-event response, and the EDGAR Evidence Gap.
+- [Research guide](https://secedgarterminal.com/help): Product scope and data-source guidance.
+- [About and data sources](https://secedgarterminal.com/about): Provenance, methodology, and project information.
+
+## Machine-readable interfaces
+
+- [OpenAPI](https://secedgarterminal.com/openapi.json): Public endpoint description.
+- [Market signals JSON Schema](https://secedgarterminal.com/schemas/market-signals-v1.schema.json): Versioned response contract for `GET /api/v1/market-signals`.
+- Example: `https://secedgarterminal.com/api/v1/market-signals?ticker=NVDA&window=3y&basis=ttm`
+
+## Interpretation rules
+
+- Preserve dates, units, sample counts, model versions, confidence intervals, provider provenance, SEC accessions, warnings, and null values.
+- Do not turn missing values into zero.
+- The market model uses raw log returns, not excess returns; its constant is a regression intercept, not Jensen alpha.
+- The current SEC filing score is a descriptive peer-normalized snapshot, not a historical factor-return series.
+- Filing-event timing is explicit: only timestamped pre-open filings may use that session; intraday, post-close, non-trading-day, and date-only filings use the next benchmark session. Missing expected intervals withhold the affected horizon.
+- Benchmark sessions are inferred from observed SPY dates rather than a separately licensed official exchange calendar.
+- Peer filing changes use the latest point-in-time company snapshots available at calculation time, not an event-time historical cross-section. Preserve the peer filing-clock fields and non-coeval warning.
+- The EDGAR Evidence Gap is a diagnostic comparison, not a valuation, forecast, recommendation, or trade signal.
+- Bulk vendor price histories are not distributed through the market-signals API; it returns derived statistics and compact chart points.

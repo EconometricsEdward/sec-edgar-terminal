@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { warmCacheEnabled } from '../../../utils/warmCache.js';
+import { warmCacheEnabled, warmGet } from '../../../utils/warmCache.js';
 import { secClientStatus } from '../../../utils/secClient.js';
+import { MARKET_ATLAS_FRESH_MS, MARKET_VERSION } from '../../../utils/marketResearch.js';
+import { isMarketAtlas } from '../../../utils/marketResearchValidation.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,7 +12,15 @@ export async function GET() {
   const gate = secClientStatus();
   const secUserAgentConfigured = gate.userAgent === 'configured';
   const deployed = Boolean(process.env.VERCEL_ENV || process.env.VERCEL) || process.env.NODE_ENV === 'production';
-  const status = secUserAgentConfigured && (!deployed || (warmCacheConfigured && gate.sharedGate === 'configured'))
+  const candidate = warmCacheConfigured ? await warmGet(MARKET_VERSION, 'atlas') : null;
+  const atlasReady = isMarketAtlas(candidate, MARKET_VERSION);
+  const atlasAge = atlasReady ? Date.now() - Date.parse(candidate.generatedAt) : Number.POSITIVE_INFINITY;
+  const marketAtlas = atlasReady && Number.isFinite(atlasAge) && atlasAge >= 0 && atlasAge < MARKET_ATLAS_FRESH_MS
+    ? 'ready'
+    : atlasReady ? 'stale' : 'missing';
+  const status = secUserAgentConfigured && (!deployed || (
+    warmCacheConfigured && gate.sharedGate === 'configured' && marketAtlas !== 'missing'
+  ))
     ? 'ok'
     : 'degraded';
 
@@ -23,7 +33,10 @@ export async function GET() {
         secUserAgent: secUserAgentConfigured ? 'configured' : 'invalid',
         warmCache: warmCacheConfigured ? 'configured' : 'disabled',
         secRateGate: gate.sharedGate,
+        priceProviderGate: warmCacheConfigured ? 'configured' : 'disabled',
         secStartsPerSecond: gate.startsPerSecond,
+        marketAtlas,
+        marketAtlasGeneratedAt: atlasReady ? candidate.generatedAt : null,
       },
       deployment: {
         environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',

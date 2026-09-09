@@ -1,4 +1,8 @@
-export const MARKET_VERSION = 'market-research-v2';
+export const MARKET_VERSION = 'market-research-v3';
+// The production prewarmer runs daily. Keep one hour of scheduling margin so
+// ordinary visitors consume the shared snapshot instead of rebuilding the
+// full SEC universe between scheduled runs.
+export const MARKET_ATLAS_FRESH_MS = 25 * 60 * 60 * 1000;
 export const MARKET_SAVED_KEY = 'edgar:market-research:v1';
 export const MARKET_METRICS = [
   { key: 'revenueGrowth', label: 'Revenue growth', unit: 'pct', formula: '(Revenue / prior-year revenue − 1) × 100', inputs: ['revenue'], growth: true },
@@ -39,23 +43,40 @@ export function isOlderReport(company, basis, observedAt) {
   const age = reportAge(company, basis, observedAt);
   return age == null || age > (basis === 'annual' ? 550 : 200);
 }
-export const DEFAULT_MARKET_VIEW = { tab: 'overview', basis: 'ttm', cohort: 'all', query: '', screen: 'all', sort: 'revenueGrowth', direction: 'desc', metric: 'revenueGrowth', statistic: 'median', selected: [] };
+export const DEFAULT_MARKET_VIEW = {
+  tab: 'overview', basis: 'ttm', cohort: 'all', query: '', screen: 'all', sort: 'revenueGrowth', direction: 'desc',
+  metric: 'revenueGrowth', statistic: 'median', selected: [], factorTicker: 'NVDA', factorWindow: '3y', factorSector: 'auto',
+};
 export function parseMarketView(query, cohortIds = []) {
   const p = new URLSearchParams(query);
   const choice = (key, options, fallback) => options.includes(p.get(key)) ? p.get(key) : fallback;
-  return { tab: choice('tab', ['overview', 'sectors', 'companies', 'saved'], 'overview'), basis: choice('basis', ['annual', 'ttm'], 'ttm'),
+  const asset = (p.get('asset') || DEFAULT_MARKET_VIEW.factorTicker).trim().toUpperCase();
+  return { tab: choice('tab', ['overview', 'sectors', 'companies', 'factors', 'saved'], 'overview'), basis: choice('basis', ['annual', 'ttm'], 'ttm'),
     cohort: choice('cohort', ['all', ...cohortIds], 'all'), query: (p.get('q') || '').slice(0, 100),
     screen: choice('screen', ['all', 'growth', 'contraction', 'profitable', 'positiveCash', 'losses', 'negativeCash', 'older', 'watchlist'], 'all'),
     sort: choice('sort', ['ticker', 'filed', ...MARKET_METRICS.map((m) => m.key)], 'revenueGrowth'),
     direction: choice('direction', ['asc', 'desc'], 'desc'), metric: choice('metric', MARKET_METRICS.map((m) => m.key), 'revenueGrowth'),
     statistic: choice('statistic', ['median', 'mean'], 'median'),
-    selected: [...new Set((p.get('peers') || '').split(',').filter((t) => /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(t)))].slice(0, 5) };
+    selected: [...new Set((p.get('peers') || '').split(',').filter((t) => /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(t)))].slice(0, 5),
+    factorTicker: /^[A-Z0-9][A-Z0-9.-]{0,9}$/.test(asset) ? asset : DEFAULT_MARKET_VIEW.factorTicker,
+    factorWindow: choice('window', ['1y', '3y', '5y'], DEFAULT_MARKET_VIEW.factorWindow),
+    factorSector: choice('proxy', ['auto', 'XLF', 'XLRE', 'XHB', 'XLE', 'XLY', 'XLK', 'XLI', 'XLV', 'XLU'], DEFAULT_MARKET_VIEW.factorSector),
+  };
 }
 export function marketViewQuery(view) {
   const p = new URLSearchParams();
   for (const key of ['tab', 'basis', 'cohort', 'screen', 'sort', 'direction', 'metric', 'statistic']) if (view[key] !== DEFAULT_MARKET_VIEW[key]) p.set(key, view[key]);
   if (view.query) p.set('q', view.query);
   if (view.selected.length) p.set('peers', view.selected.join(','));
+  if (view.tab === 'factors') {
+    p.set('asset', view.factorTicker || DEFAULT_MARKET_VIEW.factorTicker);
+    p.set('window', view.factorWindow || DEFAULT_MARKET_VIEW.factorWindow);
+    p.set('proxy', view.factorSector || DEFAULT_MARKET_VIEW.factorSector);
+  } else {
+    if (view.factorTicker && view.factorTicker !== DEFAULT_MARKET_VIEW.factorTicker) p.set('asset', view.factorTicker);
+    if (view.factorWindow && view.factorWindow !== DEFAULT_MARKET_VIEW.factorWindow) p.set('window', view.factorWindow);
+    if (view.factorSector && view.factorSector !== DEFAULT_MARKET_VIEW.factorSector) p.set('proxy', view.factorSector);
+  }
   return p.toString();
 }
 export function selectMarketCompanies(companies, view, watchlist, observedAt) {
