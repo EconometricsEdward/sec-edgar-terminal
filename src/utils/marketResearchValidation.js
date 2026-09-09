@@ -1,9 +1,67 @@
+const FACTOR_METRIC_KEYS = [
+  'revenueGrowth', 'netMargin', 'operatingMargin', 'freeCashFlowMargin', 'equityToAssets', 'cashToAssets',
+];
+
 function record(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function validDate(value) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function validMetricMap(value) {
+  return record(value) && FACTOR_METRIC_KEYS.every((key) => Object.hasOwn(value, key)
+    && (value[key] === null || Number.isFinite(value[key])));
+}
+
+function validFactorSourceAccessions(value, metrics) {
+  return Array.isArray(value)
+    && value.every((accession) => /^\d{10}-\d{2}-\d{6}$/.test(accession || ''))
+    && new Set(value).size === value.length
+    && (!FACTOR_METRIC_KEYS.some((key) => Number.isFinite(metrics[key])) || value.length > 0);
+}
+
+function validFactorSourceMasks(value, accessions, metrics) {
+  if (!Array.isArray(value) || value.length !== FACTOR_METRIC_KEYS.length) return false;
+  const limit = 1n << BigInt(accessions.length);
+  return value.every((mask, index) => {
+    if (typeof mask !== 'string' || !/^[0-9a-f]+$/.test(mask)) return false;
+    const bits = BigInt(`0x${mask}`);
+    return bits < limit && (metrics[FACTOR_METRIC_KEYS[index]] === null || bits > 0n);
+  });
+}
+
+function validComparisonPoint(point) {
+  return record(point)
+    && validDate(point.end)
+    && validDate(point.filed)
+    && (point.acceptedAt === null || validDate(point.acceptedAt))
+    && typeof point.form === 'string'
+    && point.form.length > 0
+    && point.form.length <= 40
+    && /^\d{10}-\d{2}-\d{6}$/.test(point.accession || '')
+    && (point.source === undefined || point.source === null || /^https:\/\/www\.sec\.gov\/Archives\/edgar\/data\/\d+\/\d{18}\/$/.test(point.source))
+    && validMetricMap(point.metrics)
+    && validFactorSourceAccessions(point.factorSourceAccessions, point.metrics)
+    && validFactorSourceMasks(point.factorSourceMasks, point.factorSourceAccessions, point.metrics);
+}
+
+function validFilingComparison(comparison) {
+  if (comparison === null) return true;
+  if (!record(comparison) || comparison.pointInTime !== true
+    || !record(comparison.cutoff)
+    || !validDate(comparison.cutoff.filed)
+    || (comparison.cutoff.acceptedAt !== null && !validDate(comparison.cutoff.acceptedAt))
+    || !/^\d{10}-\d{2}-\d{6}$/.test(comparison.cutoff.accession || '')
+    || !validComparisonPoint(comparison.current)
+    || comparison.current.accession !== comparison.cutoff.accession
+    || !validMetricMap(comparison.changes)) return false;
+  if (comparison.prior === null) return comparison.gapDays === null;
+  return validComparisonPoint(comparison.prior)
+    && Number.isSafeInteger(comparison.gapDays)
+    && comparison.gapDays >= 350
+    && comparison.gapDays <= 380;
 }
 
 function validCompany(company) {
@@ -21,7 +79,12 @@ function validCompany(company) {
     && record(company.metrics.ttm)
     && record(company.reports)
     && Object.hasOwn(company.reports, 'annual')
-    && Object.hasOwn(company.reports, 'ttm');
+    && Object.hasOwn(company.reports, 'ttm')
+    && record(company.filingComparisons)
+    && Object.hasOwn(company.filingComparisons, 'annual')
+    && Object.hasOwn(company.filingComparisons, 'ttm')
+    && validFilingComparison(company.filingComparisons.annual)
+    && validFilingComparison(company.filingComparisons.ttm);
 }
 
 function validCohort(cohort) {

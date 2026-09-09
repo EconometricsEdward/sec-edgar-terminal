@@ -101,6 +101,58 @@ export async function warmSet(type, id, value, ttlSeconds = 25 * 3600) {
   }
 }
 
+/** Return the remaining TTL for a coordination marker, or null on miss/error. */
+export async function warmCooldownRemaining(type, id) {
+  if (!ENABLED) return null;
+  try {
+    const res = await fetch(`${REST_URL}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([['PTTL', key(type, id)]]),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const ttl = Number(data?.[0]?.result);
+    return Number.isFinite(ttl) && ttl > 0 ? ttl : 0;
+  } catch {
+    return null;
+  }
+}
+
+/** Atomically extend (never shorten) a distributed cooldown marker. */
+export async function warmExtendCooldown(type, id, ttlMs) {
+  if (!ENABLED || !Number.isFinite(ttlMs) || ttlMs <= 0) return false;
+  try {
+    const script = `
+      local current = redis.call('PTTL', KEYS[1])
+      local candidate = tonumber(ARGV[1])
+      if candidate > current then
+        redis.call('SET', KEYS[1], '1', 'PX', candidate)
+        return candidate
+      end
+      return current
+    `;
+    const res = await fetch(`${REST_URL}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([['EVAL', script, 1, key(type, id), Math.ceil(ttlMs)]]),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return Number(data?.[0]?.result) > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Acquire a short distributed lease. A null result means either another
  * worker owns the lease or the shared store is unavailable; callers should

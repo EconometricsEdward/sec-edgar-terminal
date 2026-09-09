@@ -3,7 +3,7 @@ import MarketOverviewClient from './MarketOverviewClient';
 import { buildPageMetadata } from '../../utils/siteMetadata';
 import { unstable_cache } from 'next/cache';
 import { warmGet } from '../../utils/warmCache.js';
-import { MARKET_VERSION } from '../../utils/marketResearch.js';
+import { MARKET_ATLAS_FRESH_MS, MARKET_VERSION } from '../../utils/marketResearch.js';
 import { isMarketAtlas } from '../../utils/marketResearchValidation.js';
 import type { MarketData } from './marketTypes';
 
@@ -15,7 +15,7 @@ const readCachedMarket = unstable_cache(
       || (await warmGet(MARKET_VERSION, 'atlas-last-good'));
     if (!isMarketAtlas(candidate, MARKET_VERSION)) return null;
     const age = Date.now() - Date.parse(candidate.generatedAt);
-    return Number.isFinite(age) && age < 6 * 60 * 60 * 1000
+    return Number.isFinite(age) && age >= 0 && age < MARKET_ATLAS_FRESH_MS
       ? candidate
       : {
           ...candidate,
@@ -25,15 +25,15 @@ const readCachedMarket = unstable_cache(
           },
         };
   },
-  ['market-page-atlas-v2'],
+  ['market-page-atlas-v3'],
   { revalidate: 3600 },
 );
 
 export const metadata: Metadata = {
   ...buildPageMetadata({
-    title: 'Market Overview — SEC Fundamentals, Sector Heatmap & Company Screener',
+    title: 'Market Overview — SEC Fundamentals, Betas & Factor Lab',
     description:
-      'Explore SEC company fundamentals with a market briefing, sector heatmap, company screener, peer comparisons, source-linked financial history, and saved research views.',
+      'Explore SEC fundamentals, sector heatmaps, company screening, regression betas, filing-event response, and the EDGAR Evidence Gap with source-aware research outputs.',
     path: '/market',
   }),
 };

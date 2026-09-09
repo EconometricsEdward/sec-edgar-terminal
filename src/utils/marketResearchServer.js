@@ -1,13 +1,13 @@
 import { getOperatingTicker, getOperatingTickers } from './tickerMap.js';
 import { warmAcquireLease, warmCacheEnabled, warmGet, warmReleaseLease, warmSet } from './warmCache.js';
 import { MARKET_LENSES } from './marketCohorts.js';
-import { buildMarketCompany, marketCompanySummary } from './marketResearchData.js';
-import { MARKET_VERSION, metricStats } from './marketResearch.js';
+import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary } from './marketResearchData.js';
+import { MARKET_ATLAS_FRESH_MS, MARKET_VERSION, metricStats } from './marketResearch.js';
 import { appendSnapshot } from './marketEvidence.js';
 import { secFetch } from './secClient.js';
 import { isMarketAtlas } from './marketResearchValidation.js';
 
-const TTL = 6 * 3600000;
+const COMPANY_FRESH_MS = MARKET_ATLAS_FRESH_MS;
 const MINIMUM_ATLAS_COVERAGE = 0.95;
 const MARKET_REBUILD_LEASE = 'sec-market-rebuild';
 const MARKET_REBUILD_LEASE_ID = 'global';
@@ -17,31 +17,33 @@ let atlas = null;
 let atlasPending = null;
 export const marketTickers = [...new Set(MARKET_LENSES.flatMap((c) => c.tickers))];
 
-async function secJson(path) {
+async function secJson(path, signal) {
   const response = await secFetch(`https://data.sec.gov${path}`, {
     headers: { Accept: 'application/json' },
     timeoutMs: 15000,
     cache: 'no-store',
+    signal,
   });
   if (!response.ok) throw new Error(`SEC data request returned HTTP ${response.status}.`);
   return response.json();
 }
-export async function loadMarketCompany(ticker, knownEntry = null) {
+export async function loadMarketCompany(ticker, knownEntry = null, { signal, forceRefresh = false } = {}) {
   const existing = memory.get(ticker);
-  if (existing && Date.now() - Date.parse(existing.observedAt) < TTL) return existing;
+  if (!forceRefresh && existing && Date.now() - Date.parse(existing.observedAt) < COMPANY_FRESH_MS) return existing;
   if (pending.has(ticker)) return pending.get(ticker);
   const task = (async () => {
     const cached = await warmGet(MARKET_VERSION, ticker);
-    if (cached && Date.now() - Date.parse(cached.observedAt) < TTL) { memory.set(ticker, cached); return cached; }
+    if (!forceRefresh && cached && Date.now() - Date.parse(cached.observedAt) < COMPANY_FRESH_MS) { memory.set(ticker, cached); return cached; }
     try {
       const entry = knownEntry || await getOperatingTicker(ticker);
       if (!entry) { const error = new Error('Ticker is absent from the current SEC operating-company map.'); error.name = 'UnresolvedTicker'; throw error; }
       const cik = String(entry.cik).padStart(10, '0');
       const [submissions, data] = await Promise.all([
-        secJson(`/submissions/CIK${cik}.json`), secJson(`/api/xbrl/companyfacts/CIK${cik}.json`),
+        secJson(`/submissions/CIK${cik}.json`, signal), secJson(`/api/xbrl/companyfacts/CIK${cik}.json`, signal),
       ]);
       if (!data.facts || !submissions.sic) throw new Error('SEC financial facts or industry classification are unavailable.');
-      const company = buildMarketCompany({ ticker, cik, name: submissions.name || entry.name, sic: submissions.sic, facts: data.facts },
+      const company = buildMarketCompany({ ticker, cik, name: submissions.name || entry.name, sic: submissions.sic, facts: data.facts,
+        acceptanceTimes: marketAcceptanceTimes(submissions) },
         MARKET_LENSES.filter((c) => c.tickers.includes(ticker)).map((c) => c.id));
       memory.set(ticker, company);
       await warmSet(MARKET_VERSION, ticker, company, 7 * 86400);
@@ -59,8 +61,8 @@ export async function loadMarketCompany(ticker, knownEntry = null) {
   try { return await task; } finally { pending.delete(ticker); }
 }
 
-export async function loadMarketAtlas() {
-  if (atlas && Date.now() < atlas.expiresAt) return atlas.data;
+export async function loadMarketAtlas({ signal, forceRefresh = false } = {}) {
+  if (!forceRefresh && atlas && Date.now() < atlas.expiresAt) return atlas.data;
   if (atlasPending) return atlasPending;
   atlasPending = (async () => {
     const [cachedValue, lastGoodValue] = await Promise.all([
@@ -69,7 +71,8 @@ export async function loadMarketAtlas() {
     ]);
     const cached = isMarketAtlas(cachedValue, MARKET_VERSION) ? cachedValue : null;
     const lastGood = isMarketAtlas(lastGoodValue, MARKET_VERSION) ? lastGoodValue : null;
-    if (cached && Date.now() - Date.parse(cached.generatedAt) < ((cached.failures || []).some((f) => f.retryable) ? 300000 : TTL)) {
+    const cachedAge = cached ? Date.now() - Date.parse(cached.generatedAt) : Number.POSITIVE_INFINITY;
+    if (!forceRefresh && cached && cachedAge >= 0 && cachedAge < ((cached.failures || []).some((f) => f.retryable) ? 300000 : MARKET_ATLAS_FRESH_MS)) {
       atlas = { data: cached, expiresAt: Date.now() + 60000 };
       return cached;
     }
@@ -103,9 +106,10 @@ export async function loadMarketAtlas() {
     // Bounded batches; upstream requests are spaced independently of cache reads.
     // Concurrent requests on this instance share this calculation and company loads.
     for (let i = 0; i < marketTickers.length; i += 3) {
+      if (signal?.aborted) throw signal.reason || new Error('Market refresh was aborted.');
       const tickers = marketTickers.slice(i, i + 3);
       const results = await Promise.allSettled(
-        tickers.map((ticker) => loadMarketCompany(ticker, directory[ticker])),
+        tickers.map((ticker) => loadMarketCompany(ticker, directory[ticker], { signal, forceRefresh })),
       );
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') companies.push(marketCompanySummary(result.value));
@@ -149,12 +153,19 @@ export async function loadMarketAtlas() {
       });
       data.historyPersistence = await warmSet(MARKET_VERSION, 'observations', data.observations, 90 * 86400);
     }
-    const duration = incomplete ? 300 : TTL / 1000;
-    if (incomplete) await warmSet(MARKET_VERSION, 'atlas', data, 300);
-    else await Promise.all([
-      warmSet(MARKET_VERSION, 'atlas', data, 7 * 86400),
-      warmSet(MARKET_VERSION, 'atlas-last-good', data, 7 * 86400),
-    ]);
+    const duration = incomplete ? 300 : MARKET_ATLAS_FRESH_MS / 1000;
+    if (incomplete) {
+      const stored = await warmSet(MARKET_VERSION, 'atlas', data, 300);
+      if (warmCacheEnabled() && !stored) throw new Error('The compact Market snapshot could not be persisted safely.');
+    } else {
+      const stored = await Promise.all([
+        warmSet(MARKET_VERSION, 'atlas', data, 7 * 86400),
+        warmSet(MARKET_VERSION, 'atlas-last-good', data, 7 * 86400),
+      ]);
+      if (warmCacheEnabled() && stored.some((value) => !value)) {
+        throw new Error('The compact Market snapshot could not be persisted safely.');
+      }
+    }
     atlas = { data, expiresAt: Date.now() + duration * 1000 };
       return data;
     } catch (error) {

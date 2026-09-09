@@ -1,187 +1,72 @@
 /**
- * Stock price proxy — Next.js route handler.
- *
- * Cache layers:
- *   User -> CDN -> this function -> warm cache -> Yahoo -> Stooq fallback
- *
- * Why this endpoint: Yahoo's legacy /v7/finance/download/ endpoint started returning
- * 401 Unauthorized sometime in 2024 for unauthenticated requests. The /v8/finance/chart/
- * endpoint still works without authentication and returns richer data (adjusted close,
- * splits, dividends) as JSON instead of CSV.
- *
- * Fallback strategy: If Yahoo v8 fails, we try Stooq as a secondary. Stooq sometimes
- * works from cloud IPs, sometimes doesn't.
- *
- * Warm cache: the pre-warmer stores the raw Yahoo JSON response under
- * 'stock-raw-yahoo:<TICKER>'. On a cache hit, we skip Yahoo entirely and
- * parse the stored payload — this is important because Vercel's shared
- * egress IPs get rate-limited by Yahoo unpredictably. By pre-fetching on
- * a schedule and serving from warm cache, most user requests for popular
- * tickers never touch Yahoo.
- *
- * No Finnhub: Finnhub moved /stock/candle behind a paywall in 2024. Not usable.
+ * Public stock-price proxy. Provider retrieval lives in priceDataServer so
+ * charting and econometric research share one provenance-aware pipeline.
  */
-
-import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
-import { warmGet, warmSet } from '../../../utils/warmCache.js';
+import { checkRateLimit, getClientIp, rateLimitedResponse, rateLimitHeaders } from '../../../utils/rateLimit.js';
+import { loadPriceSeries, normalizePriceTicker } from '../../../utils/priceDataServer.js';
 import { recordView } from '../../../utils/viewTracker.js';
 
 export const runtime = 'nodejs';
 
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 30;
+const ALLOWED_PARAMETERS = new Set(['ticker', 'from']);
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(t);
-  }
+function defaultFromDate(now = new Date()) {
+  const date = new Date(now);
+  date.setUTCFullYear(date.getUTCFullYear() - 10);
+  return date.toISOString().slice(0, 10);
 }
 
-// ---------------------------------------------------------------------------
-// Shared Yahoo-payload parser. Used for BOTH live Yahoo responses and warm
-// cache hits (which store the raw Yahoo JSON verbatim). Keeping one parser
-// means the warmer and the live path can't drift out of sync.
-// ---------------------------------------------------------------------------
-function parseYahooPayload(data, fromIso) {
-  if (data.chart?.error) {
-    throw new Error(`Yahoo error: ${data.chart.error.description || data.chart.error.code}`);
-  }
-
-  const result = data.chart?.result?.[0];
-  if (!result) throw new Error('Yahoo returned no result');
-
-  const timestamps = result.timestamp || [];
-  const quote = result.indicators?.quote?.[0] || {};
-  const adjClose = result.indicators?.adjclose?.[0]?.adjclose || [];
-  const opens = quote.open || [];
-  const highs = quote.high || [];
-  const lows = quote.low || [];
-  const closes = quote.close || [];
-  const volumes = quote.volume || [];
-
-  if (timestamps.length === 0) throw new Error('Yahoo returned empty price series');
-
-  const rows = [];
-  for (let i = 0; i < timestamps.length; i++) {
-    const close = adjClose[i] ?? closes[i];
-    if (!Number.isFinite(close)) continue;
-    const date = new Date(timestamps[i] * 1000).toISOString().slice(0, 10);
-    // If the caller asked for a narrower window than the warm-cached payload
-    // contains, trim accordingly
-    if (fromIso && date < fromIso) continue;
-    rows.push({
-      date,
-      open: opens[i],
-      high: highs[i],
-      low: lows[i],
-      close,
-      volume: volumes[i] ?? null,
-    });
-  }
-
-  if (rows.length === 0) throw new Error('Yahoo series had no valid rows');
-  return rows;
+function validIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
 }
 
-// ---------------------------------------------------------------------------
-// Source 1: Yahoo v8 chart endpoint (live)
-// ---------------------------------------------------------------------------
-
-async function tryYahoo(ticker, fromEpoch, toEpoch, fromIso) {
-  // Class shares: Yahoo uses dash, not dot (BRK-B, not BRK.B)
-  const yahooTicker = ticker.toUpperCase().replace(/\./g, '-');
-  const url =
-    `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}` +
-    `?period1=${fromEpoch}&period2=${toEpoch}&interval=1d&events=history&includeAdjustedClose=true`;
-
-  const r = await fetchWithTimeout(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-      Accept: 'application/json,text/plain,*/*',
-    },
-  });
-
-  if (!r.ok) throw new Error(`Yahoo HTTP ${r.status}`);
-  const data = await r.json();
-  const rows = parseYahooPayload(data, fromIso);
-  await warmSet('stock-raw-yahoo', ticker.toUpperCase(), data, 25 * 3600);
-  return rows;
+function requestError(message, code) {
+  return Object.assign(new Error(message), { status: 400, code });
 }
 
-// ---------------------------------------------------------------------------
-// Source 2: Stooq (best-effort backup)
-// ---------------------------------------------------------------------------
-
-async function tryStooq(ticker, fromIso) {
-  const stooqTicker = ticker.toLowerCase().replace(/\./g, '-') + '.us';
-  const url = `https://stooq.com/q/d/l/?s=${stooqTicker}&i=d`;
-
-  const r = await fetchWithTimeout(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-      Accept: 'text/csv,text/plain,*/*',
-    },
-  });
-
-  if (!r.ok) throw new Error(`Stooq HTTP ${r.status}`);
-
-  const text = await r.text();
-  const cleaned = text.replace(/^\uFEFF/, '').trim();
-
-  if (!cleaned || cleaned.length < 50) throw new Error('Stooq empty response');
-  if (cleaned.startsWith('<')) throw new Error('Stooq returned HTML');
-  if (cleaned.startsWith('No data')) throw new Error('Stooq has no data for ticker');
-  if (cleaned.toLowerCase().includes('exceeded') && cleaned.length < 500) {
-    throw new Error('Stooq rate limit hit');
+export function parsePriceRequest(url, now = new Date()) {
+  const parsed = new URL(url);
+  for (const key of parsed.searchParams.keys()) {
+    if (!ALLOWED_PARAMETERS.has(key)) throw requestError(`Unknown query parameter: ${key}`, 'UNKNOWN_QUERY_PARAMETER');
+    if (parsed.searchParams.getAll(key).length > 1) throw requestError(`Query parameter may appear only once: ${key}`, 'DUPLICATE_QUERY_PARAMETER');
   }
-
-  const lines = cleaned.split(/\r?\n/);
-  const header = (lines[0] || '').toLowerCase();
-  if (!header.includes('date') || !header.includes('close')) {
-    throw new Error(`Stooq not CSV: "${lines[0]?.slice(0, 80)}"`);
-  }
-
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',');
-    if (cols.length < 5) continue;
-    const [date, open, high, low, close, volume] = cols;
-    const closeNum = parseFloat(close);
-    if (!Number.isFinite(closeNum)) continue;
-    rows.push({
-      date,
-      open: parseFloat(open),
-      high: parseFloat(high),
-      low: parseFloat(low),
-      close: closeNum,
-      volume: volume ? parseInt(volume, 10) : null,
-    });
-  }
-
-  if (rows.length === 0) throw new Error('Stooq CSV had no parseable rows');
-  return fromIso ? rows.filter((r) => r.date >= fromIso) : rows;
+  const rawTicker = parsed.searchParams.get('ticker');
+  const ticker = normalizePriceTicker(rawTicker);
+  if (!ticker) throw requestError(rawTicker === null ? 'Missing ticker parameter' : 'Invalid ticker format', rawTicker === null ? 'MISSING_TICKER' : 'INVALID_TICKER');
+  const earliest = defaultFromDate(now);
+  const exclusiveEnd = now.toISOString().slice(0, 10);
+  const requestedFrom = parsed.searchParams.get('from');
+  if (requestedFrom !== null && !validIsoDate(requestedFrom)) throw requestError('Invalid from date; use YYYY-MM-DD.', 'INVALID_FROM_DATE');
+  const from = requestedFrom || earliest;
+  if (from < earliest) throw requestError('The from date may not be more than ten years ago.', 'LOOKBACK_TOO_LARGE');
+  if (from >= exclusiveEnd) throw requestError('The from date must precede today.', 'FROM_DATE_NOT_COMPLETE');
+  const canonical = new URL(parsed.pathname, parsed.origin);
+  canonical.searchParams.set('ticker', ticker);
+  if (from !== earliest) canonical.searchParams.set('from', from);
+  return { ticker, from, canonicalUrl: canonical.toString(), isCanonical: parsed.toString() === canonical.toString() };
 }
-
-// ---------------------------------------------------------------------------
-// Main handler
-// ---------------------------------------------------------------------------
 
 export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const ticker = searchParams.get('ticker');
-  const from = searchParams.get('from');
-
-  if (!ticker || typeof ticker !== 'string') {
-    return Response.json({ error: 'Missing ticker parameter' }, { status: 400 });
+  let parsed;
+  try {
+    parsed = parsePriceRequest(request.url);
+  } catch (error) {
+    return Response.json(
+      { error: error.message, code: error.code || 'INVALID_REQUEST' },
+      { status: 400, headers: { 'Cache-Control': 'private, no-store' } },
+    );
   }
-  if (!/^[A-Za-z0-9.\-]{1,10}$/.test(ticker)) {
-    return Response.json({ error: 'Invalid ticker format' }, { status: 400 });
+  const { ticker, from } = parsed;
+  if (!parsed.isCanonical) {
+    return new Response(null, {
+      status: 308,
+      headers: { Location: parsed.canonicalUrl, 'Cache-Control': 'public, max-age=3600, s-maxage=86400' },
+    });
   }
-  const normalizedTicker = ticker.toUpperCase();
 
   const ip = getClientIp(request);
   const limit = await checkRateLimit({
@@ -190,115 +75,52 @@ export async function GET(request) {
     max: RATE_MAX,
   });
   if (!limit.allowed) return rateLimitedResponse(limit);
+  recordView(ticker, ip);
 
-  // Track this ticker view for the auto-warm list. Fire-and-forget — this
-  // does NOT block the response. If KV is slow or down, we silently drop
-  // the tracking event. Placed AFTER rate-limit check so abusers don't
-  // inflate view counts, but BEFORE warm cache read so even cache hits
-  // contribute to popularity signals.
-  recordView(normalizedTicker, ip);
-
-  // Default: 10 years of history
-  const now = new Date();
-  const defaultFrom = new Date(now);
-  defaultFrom.setFullYear(defaultFrom.getFullYear() - 10);
-  const fromIso = from && /^\d{4}-\d{2}-\d{2}$/.test(from)
-    ? from
-    : defaultFrom.toISOString().slice(0, 10);
-  const fromEpoch = Math.floor(new Date(fromIso).getTime() / 1000);
-  const toEpoch = Math.floor(now.getTime() / 1000);
-
-  const attempts = [];
-
-  // ------- Warm cache check ------------------------------------------------
-  // The pre-warmer stores 10 years of Yahoo data. If the user's `from` is
-  // within that window, the warm payload covers it and we serve instantly.
-  // If they ask for an older date than we warmed, fall through to live Yahoo.
-  const warmPayload = await warmGet('stock-raw-yahoo', normalizedTicker);
-  if (warmPayload) {
-    try {
-      const firstTimestamp = warmPayload.chart?.result?.[0]?.timestamp?.[0];
-      const coverageStart = Number.isFinite(firstTimestamp)
-        ? new Date(firstTimestamp * 1000).toISOString().slice(0, 10)
-        : null;
-      if (coverageStart && Date.parse(coverageStart) - Date.parse(fromIso) > 7 * 86400000) {
-        throw new Error(`Warm series begins ${coverageStart}, after the requested start date.`);
-      }
-      const rows = parseYahooPayload(warmPayload, fromIso);
-      if (rows.length > 0) {
-        attempts.push({ source: 'warm', status: 'success', rowCount: rows.length });
-        return Response.json(
-          {
-            ticker: normalizedTicker,
-            source: 'warm',
-            from: rows[0].date,
-            to: rows[rows.length - 1].date,
-            count: rows.length,
-            prices: rows,
-            attempts,
-          },
-          {
-            status: 200,
-            headers: {
-              'Cache-Control': 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400, stale-if-error=604800',
-              'X-Cache-Source': 'warm',
-            },
-          }
-        );
-      }
-      attempts.push({ source: 'warm', status: 'empty' });
-    } catch (err) {
-      // Warm payload was malformed somehow — fall through to live sources
-      attempts.push({ source: 'warm', status: 'failed', error: err.message });
-    }
+  try {
+    const result = await loadPriceSeries({ ticker, fromIso: from });
+    return Response.json(
+      {
+        ticker,
+        // Backward compatibility: `source` historically meant cache or provider.
+        source: result.cacheStatus.startsWith('warm') ? 'warm' : result.provider === 'yahoo_finance' ? 'yahoo' : 'stooq',
+        provider: result.provider,
+        cacheStatus: result.cacheStatus,
+        priceBasis: result.priceBasis,
+        adjustmentCoverage: result.adjustmentCoverage,
+        retrievedAt: result.retrievedAt,
+        from: result.from,
+        to: result.to,
+        count: result.count,
+        // Preserve the existing chart contract without exposing the internal
+        // raw-versus-adjusted fields used by provenance and eligibility gates.
+        prices: result.prices.map(({ date, open, high, low, close, volume }) => ({
+          date, open, high, low, close, volume,
+        })),
+        attempts: result.attempts,
+      },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400, stale-if-error=604800',
+          'X-Cache-Source': result.cacheStatus,
+          'X-Price-Provider': result.provider,
+          'X-Price-Basis': result.priceBasis,
+        },
+      },
+    );
+  } catch (error) {
+    return Response.json(
+      {
+        error: error.message || `Price sources unavailable for ticker "${ticker}"`,
+        code: error.code || 'PRICE_DATA_UNAVAILABLE',
+        ticker,
+        note: 'Yahoo Finance adjusted prices are primary. Stooq is a provisional fallback because its adjustment treatment is not assumed equivalent.',
+      },
+      {
+        status: error.status || 502,
+        headers: { ...rateLimitHeaders(limit), 'Cache-Control': 'private, no-store' },
+      },
+    );
   }
-
-  // ------- Live upstream sources -------------------------------------------
-  const sources = [
-    { name: 'yahoo', fn: () => tryYahoo(normalizedTicker, fromEpoch, toEpoch, fromIso) },
-    { name: 'stooq', fn: () => tryStooq(normalizedTicker, fromIso) },
-  ];
-
-  for (const { name, fn } of sources) {
-    try {
-      const rows = await fn();
-      if (rows && rows.length > 0) {
-        attempts.push({ source: name, status: 'success', rowCount: rows.length });
-        return Response.json(
-          {
-            ticker: normalizedTicker,
-            source: name,
-            from: rows[0].date,
-            to: rows[rows.length - 1].date,
-            count: rows.length,
-            prices: rows,
-            attempts,
-          },
-          {
-            status: 200,
-            headers: {
-              'Cache-Control': 'public, max-age=21600, s-maxage=21600, stale-while-revalidate=86400, stale-if-error=604800',
-              'X-Cache-Source': 'upstream',
-            },
-          }
-        );
-      }
-      attempts.push({ source: name, status: 'empty' });
-    } catch (err) {
-      attempts.push({ source: name, status: 'failed', error: err.message });
-    }
-  }
-
-  return Response.json(
-    {
-      error: `Price sources unavailable for ticker "${normalizedTicker}"`,
-      ticker: normalizedTicker,
-      attempts,
-      note: 'Yahoo Finance is the primary source; Stooq is a backup. Both may occasionally be unreachable from cloud hosting IPs.',
-    },
-    {
-      status: 502,
-      headers: { 'Cache-Control': 'no-store' },
-    }
-  );
 }

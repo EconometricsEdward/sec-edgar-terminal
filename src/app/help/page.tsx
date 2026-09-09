@@ -153,6 +153,10 @@ export default function HelpPage() {
                 <td>
                   Provider, date range, adjustment basis, and missing history.
                   SEC financial facts and market prices have different sources.
+                  Factor Lab excludes the still-forming current daily candle
+                  and withholds headline estimates unless all required series
+                  are complete Yahoo adjusted-close histories; fallback data
+                  remains explicitly identified.
                 </td>
               </tr>
               <tr>

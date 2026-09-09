@@ -59,7 +59,10 @@ export default function AboutPage() {
               Historical price views, where present, use Yahoo Finance with a
               Stooq fallback. Prices do not come from the SEC. Provider
               availability, adjustment conventions, and date coverage can differ
-              from the financial reporting data.
+              from the financial reporting data. Shared pacing, cooldowns,
+              bounded responses, and cached last-good results protect upstream
+              availability; econometric headline outputs require verified,
+              complete adjusted-close inputs.
             </p>
           </article>
           <article>

@@ -1,7 +1,14 @@
 export type Basis = 'annual' | 'ttm';
-export type MarketView = { tab: string; basis: Basis; cohort: string; query: string; screen: string; sort: string; direction: string; metric: string; statistic: string; selected: string[] };
+export type MarketView = { tab: string; basis: Basis; cohort: string; query: string; screen: string; sort: string; direction: string; metric: string; statistic: string; selected: string[]; factorTicker: string; factorWindow: '1y' | '3y' | '5y'; factorSector: string };
 export type Period = { end: string; start?: string | null; filed: string; form: string; accession: string; fy: number; fp: string };
-export type Company = { version: string; ticker: string; name: string; cik: string; sic: string; revenueBasis?: string; cohorts: string[]; observedAt: string; metrics: Record<Basis, Record<string, number | null>>; reports: Record<Basis, Period | null>; cache?: { status: 'stale'; warning: string } };
+export type FilingMetricSource = { accession: string; filed: string; acceptedAt: string | null; form: string | null; start: string | null; end: string; taxonomy: string | null; tag: string | null; unit: string | null; value: number; source: string };
+type FilingComparisonPointBase = { end: string; filed: string; acceptedAt: string | null; form: string; accession: string; source?: string | null; metrics: Record<string, number | null> };
+export type FilingComparisonPoint = FilingComparisonPointBase & (
+  | { factorSourceAccessions: string[]; factorSourceMasks: string[]; metricSources?: never }
+  | { metricSources: Record<string, FilingMetricSource[]>; factorSourceAccessions?: never; factorSourceMasks?: never }
+);
+export type FilingComparison = { pointInTime: true; cutoff: { filed: string; acceptedAt: string | null; accession: string }; current: FilingComparisonPoint; prior: FilingComparisonPoint | null; gapDays: number | null; changes: Record<string, number | null> };
+export type Company = { version: string; ticker: string; name: string; cik: string; sic: string; revenueBasis?: string; cohorts: string[]; observedAt: string; metrics: Record<Basis, Record<string, number | null>>; reports: Record<Basis, Period | null>; filingComparisons: Record<Basis, FilingComparison | null>; cache?: { status: 'stale'; warning: string } };
 export type Cohort = { id: string; label: string; title: string; description: string; tickers: string[]; disclosureTerms: string };
 export type Saved = { version: number; watchlist: string[]; views: { name: string; query: string }[]; baselines: Record<string, Company> };
 export type Stats = { count: number; total: number; median: number | null; mean: number | null; positive: number; negative: number; positivePct: number | null };
