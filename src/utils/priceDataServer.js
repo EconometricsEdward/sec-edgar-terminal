@@ -326,7 +326,7 @@ export function yahooWarmEnvelope(raw, parsed, exclusiveEnd, retrievedAt = new D
   };
 }
 
-async function yahooSeries(ticker, fromIso, toEpoch, exclusiveEnd, signal) {
+async function yahooSeries(ticker, fromIso, toEpoch, exclusiveEnd, signal, cacheRaw = true) {
   const yahooTicker = ticker.replace(/\./g, '-');
   const fromEpoch = Math.floor(Date.parse(`${fromIso}T00:00:00Z`) / 1000);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooTicker)}`
@@ -352,7 +352,7 @@ async function yahooSeries(ticker, fromIso, toEpoch, exclusiveEnd, signal) {
   const parsed = parseYahooPayload(raw, fromIso);
   const retrievedAt = new Date().toISOString();
   const envelope = yahooWarmEnvelope(raw, parsed, exclusiveEnd, retrievedAt);
-  await warmSet('stock-raw-yahoo', ticker, envelope, 25 * 3600);
+  if (cacheRaw) await warmSet('stock-raw-yahoo', ticker, envelope, 25 * 3600);
   return { ...parsed, cacheStatus: 'upstream', retrievedAt };
 }
 
@@ -406,7 +406,7 @@ export function warmYahooSeries(envelope, fromIso) {
   };
 }
 
-async function loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh = false, signal, allowUnverifiedFallback = true) {
+async function loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh = false, signal, allowUnverifiedFallback = true, cacheRaw = true) {
   const attempts = [];
   const warm = forceRefresh ? null : await warmGet('stock-raw-yahoo', ticker);
   if (warm) {
@@ -448,7 +448,7 @@ async function loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh
 
   try {
     for (const [provider, loader] of [
-      ['yahoo_finance', () => yahooSeries(ticker, fromIso, toEpoch, exclusiveEnd, signal)],
+      ['yahoo_finance', () => yahooSeries(ticker, fromIso, toEpoch, exclusiveEnd, signal, cacheRaw)],
       ...(allowUnverifiedFallback ? [['stooq', () => stooqSeries(ticker, fromIso, signal)]] : []),
     ]) {
       try {
@@ -468,16 +468,16 @@ async function loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh
   throw new PriceDataError(`Price sources are unavailable for ${ticker}.`, { code: 'PRICE_DATA_UNAVAILABLE' });
 }
 
-export async function loadPriceSeries({ ticker: inputTicker, fromIso, now = new Date(), forceRefresh = false, signal, allowUnverifiedFallback = true }) {
+export async function loadPriceSeries({ ticker: inputTicker, fromIso, now = new Date(), forceRefresh = false, signal, allowUnverifiedFallback = true, cacheRaw = true }) {
   const ticker = normalizePriceTicker(inputTicker);
   if (!ticker) throw new PriceDataError('Invalid ticker format.', { code: 'INVALID_TICKER', status: 400 });
   if (!validIsoDate(fromIso)) throw new PriceDataError('Invalid price start date.', { code: 'INVALID_START_DATE', status: 400 });
   const toEpoch = Math.floor(now.getTime() / 1000) + 86400;
   const exclusiveEnd = now.toISOString().slice(0, 10);
-  const key = `${ticker}:${fromIso}:${forceRefresh ? 'refresh' : 'cached'}:${allowUnverifiedFallback ? 'fallback' : 'adjusted-only'}`;
+  const key = `${ticker}:${fromIso}:${forceRefresh ? 'refresh' : 'cached'}:${allowUnverifiedFallback ? 'fallback' : 'adjusted-only'}:${cacheRaw ? 'shared' : 'compact'}`;
   if (pending.has(key)) return pending.get(key);
   if (signal?.aborted) throw abortError(signal);
-  const task = loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh, signal, allowUnverifiedFallback);
+  const task = loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh, signal, allowUnverifiedFallback, cacheRaw);
   pending.set(key, task);
   try {
     const result = await task;
