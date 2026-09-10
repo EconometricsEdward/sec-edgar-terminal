@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { MARKET_ATLAS_FRESH_MS, MARKET_VERSION } from './marketResearch.js';
+import { readQuantAtlas } from './quantCoverageServer.js';
+import { QUANT_GROUPS } from './quantGroups.js';
 import { MARKET_LENSES } from './marketCohorts.js';
 import { isMarketAtlas } from './marketResearchValidation.js';
 import { loadPriceSeries } from './priceDataServer.js';
@@ -30,10 +32,11 @@ export const MARKET_SIGNAL_WINDOWS = Object.freeze({
 });
 
 export const SECTOR_PROXIES = Object.freeze([
-  'XLF', 'XLRE', 'XHB', 'XLE', 'XLY', 'XLK', 'XLI', 'XLV', 'XLU',
+  'XLF', 'XLRE', 'XHB', 'XLE', 'XLY', 'XLK', 'XLI', 'XLV', 'XLU', 'XLC', 'XLP', 'XLB',
 ]);
 
 const COHORT_PROXY = Object.freeze({
+  ...Object.fromEntries(QUANT_GROUPS.map(g=>[g.id,g.proxy])),
   'credit-banks': 'XLF',
   'private-capital': 'XLF',
   'real-estate': 'XLRE',
@@ -124,12 +127,16 @@ function atlasFromCache(candidate) {
   return isMarketAtlas(candidate, MARKET_VERSION) ? candidate : null;
 }
 
-async function readAtlasCacheOnly(now = new Date()) {
+async function readAtlasCacheOnly(now = new Date(), ticker = null) {
   const [current, lastGood] = await Promise.all([
     warmGet(MARKET_VERSION, 'atlas'),
     warmGet(MARKET_VERSION, 'atlas-last-good'),
   ]);
-  const cachedAtlas = atlasFromCache(current) || atlasFromCache(lastGood);
+  let cachedAtlas = atlasFromCache(current) || atlasFromCache(lastGood);
+  if(ticker && !cachedAtlas?.companies.some(c=>c.ticker===ticker)){
+    const expanded=await readQuantAtlas();
+    if(expanded?.companies.some(c=>c.ticker===ticker))cachedAtlas={...expanded,companies:expanded.companies.map(c=>({...c,cohorts:[c.researchGroup.id]}))};
+  }
   if (!cachedAtlas) {
     throw new MarketSignalError('The filing snapshot is not warm yet. Open Market research or retry shortly.', {
       code: 'MARKET_SNAPSHOT_NOT_READY',
@@ -464,14 +471,14 @@ export function validateMarketSignalOptions(input = {}) {
   if (!validTicker(ticker)) throw new MarketSignalError('A valid ticker is required.', { code: 'INVALID_TICKER', status: 400 });
   if (!Object.hasOwn(MARKET_SIGNAL_WINDOWS, window)) throw new MarketSignalError('Window must be 1y, 3y, or 5y.', { code: 'INVALID_WINDOW', status: 400 });
   if (!['ttm', 'annual'].includes(basis)) throw new MarketSignalError('Basis must be ttm or annual.', { code: 'INVALID_BASIS', status: 400 });
-  if (cohort !== 'auto' && !MARKET_LENSES.some((item) => item.id === cohort)) throw new MarketSignalError('Unknown peer-normalization cohort.', { code: 'INVALID_COHORT', status: 400 });
+  if (cohort !== 'auto' && ![...MARKET_LENSES,...QUANT_GROUPS].some((item) => item.id === cohort)) throw new MarketSignalError('Unknown peer-normalization cohort.', { code: 'INVALID_COHORT', status: 400 });
   if (sectorProxy !== 'auto' && !SECTOR_PROXIES.includes(sectorProxy)) throw new MarketSignalError('Unknown sector proxy.', { code: 'INVALID_SECTOR_PROXY', status: 400 });
   return { ticker, window, basis, cohort, sectorProxy };
 }
 
 export async function loadMarketSignal(input, { now = new Date() } = {}) {
   const options = validateMarketSignalOptions(input);
-  const atlas = await readAtlasCacheOnly(now);
+  const atlas = await readAtlasCacheOnly(now,options.ticker);
   const id = signalCacheId(atlas, options);
   const lastEligibleId = lastEligibleCacheId(options);
   if (pending.has(id)) return pending.get(id);

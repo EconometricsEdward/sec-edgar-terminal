@@ -61,7 +61,7 @@ export function parseMarketView(query, cohortIds = []) {
     quantThreshold: Number(choice('cutoff', ['0', '0.5', '1'], '0')),
     factorTicker: /^[A-Z0-9][A-Z0-9.-]{0,9}$/.test(asset) ? asset : DEFAULT_MARKET_VIEW.factorTicker,
     factorWindow: choice('window', ['1y', '3y', '5y'], DEFAULT_MARKET_VIEW.factorWindow),
-    factorSector: choice('proxy', ['auto', 'XLF', 'XLRE', 'XHB', 'XLE', 'XLY', 'XLK', 'XLI', 'XLV', 'XLU'], DEFAULT_MARKET_VIEW.factorSector),
+    factorSector: choice('proxy', ['auto', 'XLF', 'XLRE', 'XHB', 'XLE', 'XLY', 'XLK', 'XLI', 'XLV', 'XLU', 'XLC', 'XLP', 'XLB'], DEFAULT_MARKET_VIEW.factorSector),
   };
 }
 export function marketViewQuery(view) {

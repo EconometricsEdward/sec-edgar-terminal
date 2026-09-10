@@ -76,6 +76,12 @@ export async function loadMarketAtlas({ signal, forceRefresh = false } = {}) {
       atlas = { data: cached, expiresAt: Date.now() + 60000 };
       return cached;
     }
+    // Public callers never start a universe-wide SEC rebuild.
+    if (!forceRefresh) {
+      const fallback = lastGood || cached;
+      if (fallback) return { ...fallback, cache: { status: 'stale', warning: 'Showing the last completed Market snapshot while its scheduled refresh is pending.' } };
+      throw Object.assign(new Error('The scheduled Market snapshot is not available yet. Please retry later.'), { status: 503 });
+    }
     const lease = await warmAcquireLease(MARKET_REBUILD_LEASE, MARKET_REBUILD_LEASE_ID, 6 * 60_000);
     if (warmCacheEnabled() && !lease) {
       const fallback = lastGood || cached;

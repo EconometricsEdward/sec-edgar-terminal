@@ -1,12 +1,13 @@
 /** Pure, derived-only analytics for the Factor Lab coverage universe. */
 import { MARKET_LENSES } from './marketCohorts.js';
+import { QUANT_GROUPS } from './quantGroups.js';
 import { priceLogReturns, alignReturnSeries, fitMarketModel, fitIndependentSectorModel, estimateFilingEvent } from './marketRegression.js';
 
 export const UNIVERSE_VERSION = 'edgar.factor-universe.v1';
-export const UNIVERSE_METHOD = 'factor-universe-1.1.0';
+export const UNIVERSE_METHOD = 'factor-universe-1.2.0';
 export const UNIVERSE_FRESH_MS = 25 * 3600_000;
 export const UNIVERSE_GROUPS = MARKET_LENSES.map(c => ({ id: c.id, label: c.assetClass }));
-export const UNIVERSE_PROXIES = { 'credit-banks':'XLF', 'private-capital':'XLF', 'real-estate':'XLRE', housing:'XHB', 'energy-commodities':'XLE', 'consumer-demand':'XLY', 'ai-infrastructure':'XLK', 'software-security':'XLK', 'transport-cyclicals':'XLI', insurance:'XLF', healthcare:'XLV', 'industrial-capex':'XLI', 'utilities-rates':'XLU' };
+export const UNIVERSE_PROXIES = { ...Object.fromEntries(QUANT_GROUPS.map(g => [g.id, g.proxy])), 'credit-banks':'XLF', 'private-capital':'XLF', 'real-estate':'XLRE', housing:'XHB', 'energy-commodities':'XLE', 'consumer-demand':'XLY', 'ai-infrastructure':'XLK', 'software-security':'XLK', 'transport-cyclicals':'XLI', insurance:'XLF', healthcare:'XLV', 'industrial-capex':'XLI', 'utilities-rates':'XLU' };
 export { UNIVERSE_METRICS, finite, distribution } from './marketFundamentals.js';
 import { UNIVERSE_METRICS, finite, distribution, computeFundamentalDiagnostics, normalizeChangeThreshold, FUNDAMENTAL_DEFINITIONS } from './marketFundamentals.js';
 const average = values => values.length ? values.reduce((a,b)=>a+b,0)/values.length : null;
@@ -54,15 +55,21 @@ export function computeCoMovement(rows, returnMaps, benchmark) {
   const base={issuers:valid.length,population:rows.length,coverage,eligible_tickers:valid.map(r=>r.ticker),sessions:126,pairs:valid.length*(valid.length-1)/2,prior_start:window[0]?.startDate??null,prior_end:window[62]?.endDate??null,current_start:window[63]?.startDate??null,current_end:window.at(-1)?.endDate??null};
   if(valid.length<8||coverage<.6||window.length<126)return {...base,available:false,reason:'Requires at least 8 issuers and 60% of this scope with complete, varying returns on the same 126 SPY intervals.',prior:null,current:null,change:null,rolling:[]};
   const vectors=valid.map(r=>window.map(o=>returnMaps.get(r.ticker).get(o.key)));
-  const fixedPairs=[];
-  for(let i=0;i<vectors.length;i++)for(let j=i+1;j<vectors.length;j++){
-    const correlations=starts.map(start=>pearson(vectors[i].slice(start,start+63),vectors[j].slice(start,start+63)));
-    if(correlations.every(finite))fixedPairs.push(correlations);
-  }
-  const pairAverage=start=>({mean:average(fixedPairs.map(values=>values[starts.indexOf(start)])),pairs:fixedPairs.length});
-  const prior=pairAverage(0),current=pairAverage(63),rolling=[];
-  for(let start=0;start<=63;start+=7)rolling.push({through:window[start+62].endDate,...pairAverage(start)});
-  return {...base,pairs:fixedPairs.length,possible_pairs:base.pairs,available:finite(current.mean)&&finite(prior.mean),prior,current,change:finite(current.mean)&&finite(prior.mean)?current.mean-prior.mean:null,rolling};
+  // Exact mean of every off-diagonal correlation, without materializing N² pairs.
+  // Each centered unit vector has squared norm one; expand ||sum(u_i)||².
+  const pairAverage = start => {
+    const sums = new Float64Array(63);
+    for (const vector of vectors) {
+      const values = vector.slice(start, start + 63), mean = average(values);
+      const norm = Math.sqrt(values.reduce((n, value) => n + (value - mean) ** 2, 0));
+      for (let t = 0; t < 63; t++) sums[t] += (values[t] - mean) / norm;
+    }
+    const squared = sums.reduce((n, value) => n + value * value, 0);
+    return { mean: Math.max(-1, Math.min(1, (squared - valid.length) / (valid.length * (valid.length - 1)))), pairs: base.pairs };
+  };
+  const rolling = starts.map(start => ({ through: window[start + 62].endDate, ...pairAverage(start) }));
+  const prior = { mean: rolling[0].mean, pairs: base.pairs }, current = { mean: rolling.at(-1).mean, pairs: base.pairs };
+  return {...base, possible_pairs:base.pairs, available:true, prior, current, change:current.mean-prior.mean, rolling};
 }
 function makeExposure(asset,market,sector,benchmarkWindow) {
   const keys=new Set(benchmarkWindow.map(r=>r.key));
@@ -97,38 +104,52 @@ export function upgradeUniverseSnapshot(snapshot) {
   return {...snapshot,methodology_version:UNIVERSE_METHOD,diagnostics_version:'absolute-diagnostics-1.1.0',fundamental_definitions:FUNDAMENTAL_DEFINITIONS,scopes};
 }
 
-export function buildUniverseSnapshot(atlas, series={}, {basis='ttm',now=new Date()}={}) {
-  const companies=uniqueIssuers(atlas.companies||[]), usable={};
-  for(const [ticker,s] of Object.entries(series)){
-    const age=now.getTime()-Date.parse(s?.retrievedAt);
-    if(s?.provider==='yahoo_finance'&&s?.priceBasis==='adjusted_close'&&age>=0&&age<=UNIVERSE_FRESH_MS&&Array.isArray(s.prices))usable[ticker]={...s,prices:s.prices.filter(p=>p.date<now.toISOString().slice(0,10))};
+export function buildUniverseSnapshot(atlas, series={}, {basis='ttm',now=new Date(),shared={}}={}) {
+  const companies=uniqueIssuers(atlas.companies||[]),rows=[];
+  if(!shared.context||shared.context.at!==now.getTime()||shared.context.series!==series){
+    const usable={};
+    for(const [ticker,s] of Object.entries(series)){
+      const age=now.getTime()-Date.parse(s?.retrievedAt);
+      if(s?.provider==='yahoo_finance'&&s?.priceBasis==='adjusted_close'&&age>=0&&age<=UNIVERSE_FRESH_MS&&Array.isArray(s.prices))usable[ticker]={...s,prices:s.prices.filter(p=>p.date<now.toISOString().slice(0,10))};
+    }
+    const returnMaps=new Map(),returns={};
+    // Cross-sectional exposure needs only 252 intervals; filing events retain
+    // the original three-year prices separately. Do not allocate full return
+    // maps for every historical observation of every issuer.
+    for(const [ticker,s] of Object.entries(usable)){try{returns[ticker]=priceLogReturns(s.prices.slice(-254)).returns;returnMaps.set(ticker,new Map(returns[ticker].map(r=>[r.key,r.value])));}catch{/* excluded conflicting histories */}}
+    const benchmark=returns.SPY?.length&&now.getTime()-Date.parse(returns.SPY.at(-1).endDate)<7*86400000?returns.SPY:[];
+    shared.context={at:now.getTime(),series,usable,returnMaps,returns,benchmark,window:benchmark.slice(-252)};
+    shared.exposures=new Map();shared.coMovement=new Map();
   }
-  const returnMaps=new Map(),returns={};
-  for(const [ticker,s] of Object.entries(usable)){try{returns[ticker]=priceLogReturns(s.prices).returns;returnMaps.set(ticker,new Map(returns[ticker].map(r=>[r.key,r.value])));}catch{/* excluded conflicting histories */}}
-  const benchmark=returns.SPY?.length && now.getTime()-Date.parse(returns.SPY.at(-1).endDate)<7*86400000 ? returns.SPY : [],window=benchmark.slice(-252),rows=[];
+  const {usable,returnMaps,returns,benchmark,window}=shared.context;
   for(const company of companies){
     const comparison=company.filingComparisons?.[basis];
     const valid=comparison?.pointInTime===true&&comparison.gapDays>=350&&comparison.gapDays<=380;
-    const group=company.cohorts?.[0]||'unclassified',proxy=UNIVERSE_PROXIES[group]||'XLI';
+    const group=company.researchGroup?.id||company.cohorts?.[0]||'unclassified',proxy=company.researchGroup?.proxy||UNIVERSE_PROXIES[group]||null;
     const metrics=Object.fromEntries(UNIVERSE_METRICS.map(({key,population})=>{
       const supported=population==='all'||!financialIssuer(company);
       const current=valid&&supported?comparison.current?.metrics?.[key]:null,prior=valid&&supported?comparison.prior?.metrics?.[key]:null;
       return [key,{current:finite(current)?current:null,prior:finite(prior)?prior:null,change:finite(current)&&finite(prior)?current-prior:null,unavailable_reason:!supported?'ISSUER_TYPE_EXCLUDED':!valid?'NO_COMPARABLE_PERIOD':!finite(current)||!finite(prior)?'MISSING_FILING_INPUT':null}];
     }));
     let exposure=null,event=null;
-    if(returns[company.ticker]&&benchmark.length){try{exposure=makeExposure(returns[company.ticker],benchmark,returns[proxy]||[],window);}catch{/* diagnostics unavailable */}}
+    shared.exposures ||= new Map();
+    if(shared.exposures.has(company.ticker)) exposure=shared.exposures.get(company.ticker);
+    else if(returns[company.ticker]&&benchmark.length){try{exposure=makeExposure(returns[company.ticker],benchmark,returns[proxy]||[],window);}catch{/* diagnostics unavailable */}shared.exposures.set(company.ticker,exposure);}
     if(usable[company.ticker]&&usable.SPY&&usable[proxy]&&comparison?.current?.filed){
       try{const result=estimateFilingEvent({assetPrices:usable[company.ticker].prices,marketPrices:usable.SPY.prices,sectorPrices:usable[proxy].prices,filedDate:comparison.current.filed,acceptedAt:comparison.cutoff?.acceptedAt});const e=result?.windows?.['20'];if(e)event={return:e.cumulativeAbnormalReturn,response_z:e.standardizedResponse,through:e.through,first_session:result.eventIntervalEnd,timing:result.timingQuality};}catch{/* incomplete event */}
     }
-    rows.push({ticker:company.ticker,cik:company.cik,name:company.name,group,cohorts:company.cohorts,financial:financialIssuer(company),metrics,exposure,sector_proxy:proxy,price_source:usable[company.ticker]?{provider:usable[company.ticker].provider,price_basis:usable[company.ticker].priceBasis,retrieved_at:usable[company.ticker].retrievedAt,through:usable[company.ticker].prices.at(-1)?.date??null}:null,source_accessions:[...new Set([...(comparison?.current?.factorSourceAccessions||[]),...(comparison?.prior?.factorSourceAccessions||[])])],event,filed:comparison?.current?.filed??null,fiscal_end:comparison?.current?.end??null,prior_fiscal_end:comparison?.prior?.end??null,accession:comparison?.current?.accession??null,source:comparison?.current?.accession?`https://www.sec.gov/Archives/edgar/data/${Number(company.cik)}/${comparison.current.accession.replaceAll('-','')}/`:null});
+    rows.push({ticker:company.ticker,cik:company.cik,name:company.name,group,cohorts:company.cohorts,coverage_fund:company.membershipFund||null,sec_checked_at:company.checkedAt||company.observedAt||null,facts_retrieved_at:company.factsRetrievedAt||company.observedAt||null,financial:financialIssuer(company),metrics,exposure,sector_proxy:proxy,price_source:usable[company.ticker]?{provider:usable[company.ticker].provider,price_basis:usable[company.ticker].priceBasis,retrieved_at:usable[company.ticker].retrievedAt,through:usable[company.ticker].prices.at(-1)?.date??null}:null,source_accessions:[...new Set([...(comparison?.current?.factorSourceAccessions||[]),...(comparison?.prior?.factorSourceAccessions||[])])],event,filed:comparison?.current?.filed??null,fiscal_end:comparison?.current?.end??null,prior_fiscal_end:comparison?.prior?.end??null,accession:comparison?.current?.accession??null,source:comparison?.current?.accession?`https://www.sec.gov/Archives/edgar/data/${Number(company.cik)}/${comparison.current.accession.replaceAll('-','')}/`:null});
   }
   const scopes={};
-  for(const group of [{id:'all',label:'All covered issuers'},...UNIVERSE_GROUPS]){
-    const selected=group.id==='all'?rows:rows.filter(r=>r.group===group.id);const summary=summarizeScope(selected),co_movement=computeCoMovement(selected,returnMaps,benchmark);
+  for(const group of [{id:'all',label:'All covered issuers'},...(atlas.groups||UNIVERSE_GROUPS),...(companies.some(c=>!c.researchGroup&&!c.cohorts?.length)?[{id:'unclassified',label:'Unclassified'}]:[])]){
+    const selected=group.id==='all'?rows:rows.filter(r=>r.group===group.id);const summary=summarizeScope(selected);
+    shared.coMovement ||= new Map();
+    const co_movement=shared.coMovement.get(group.id)||computeCoMovement(selected,returnMaps,benchmark);
+    shared.coMovement.set(group.id,co_movement);
     scopes[group.id]={...group,...summary,co_movement,brief:universeBrief(summary,co_movement)};
   }
   const age=now.getTime()-Date.parse(atlas.generatedAt),secStale=atlas.cache?.status==='stale'||!finite(age)||age<0||age>UNIVERSE_FRESH_MS;
-  return {schema_version:UNIVERSE_VERSION,methodology_version:UNIVERSE_METHOD,diagnostics_version:'absolute-diagnostics-1.1.0',fundamental_definitions:FUNDAMENTAL_DEFINITIONS,generated_at:now.toISOString(),sec_snapshot_at:atlas.generatedAt,sec_stale:secStale,price_through:benchmark.at(-1)?.endDate??null,basis,status:secStale?'stale':scopes.all.exposure.coverage>=.8?'ready':'partial',universe:{requested:atlas.requested,issuers:rows.length,share_classes_excluded:(atlas.companies?.length||0)-rows.length,grouping:'One primary research group per issuer: first membership in the published research-cohort order. These are curated groups, not official industry sectors.'},price_sample:{benchmark:'SPY',sessions:252,minimum_matched:240,adjustment:'Fully adjusted Yahoo histories only',minimum_coverage_for_brief:.8},scopes,rows,history:[],limitations:['Coverage is the current EDGAR Terminal research universe, not the whole US market; there are no market-cap weights.','Comparisons use the same issuer’s current and comparable prior-year values as known at the current filing cutoff, including eligible revised comparatives. Fiscal ends differ.','Primary research groups are mutually exclusive for aggregates. Company drilldown peer scores use the original overlapping cohorts and are separate from absolute market breadth.','Changes in ratios use percentage points. Missing values are excluded, never counted as unchanged. Financial issuers (SIC 6000–6799) are excluded from operating-margin, free-cash-flow-margin and cash/assets breadth.','Filing response windows differ by issuer and can include other news. Characteristic associations are descriptive cross-sections, not causal tests, forecasts or factor-return backtests.','Pairwise correlation describes return co-movement on a fixed complete sample. It does not quantify a particular portfolio’s diversification benefit.'],links:{methodology:'https://secedgarterminal.com/market/factors',schema:'https://secedgarterminal.com/schemas/factor-universe-v1.schema.json',api:`https://secedgarterminal.com/api/v1/factor-universe?basis=${basis}`}};
+  return {schema_version:UNIVERSE_VERSION,methodology_version:UNIVERSE_METHOD,diagnostics_version:'absolute-diagnostics-1.1.0',fundamental_definitions:FUNDAMENTAL_DEFINITIONS,generated_at:now.toISOString(),sec_snapshot_at:atlas.generatedAt,sec_stale:secStale,price_through:benchmark.at(-1)?.endDate??null,basis,status:secStale?'stale':scopes.all.exposure.coverage>=.8?'ready':'partial',universe:{requested:atlas.requested,issuers:rows.length,coverage:atlas.coverage||null,share_classes_excluded:atlas.coverage?.duplicate_share_classes??(atlas.companies?.length||0)-rows.length,grouping:atlas.coverage?.grouping||'One primary research group per issuer: first membership in the published research-cohort order. These are curated groups, not official industry sectors.'},price_sample:{benchmark:'SPY',sessions:252,minimum_matched:240,adjustment:'Fully adjusted Yahoo histories only',minimum_coverage_for_brief:.8},scopes,rows,history:[],limitations:[atlas.coverage?'Coverage is drawn from published IVV, IJH and IJR equity holdings, mapped to SEC issuers. It is a research coverage proxy, not certified index membership, an index return, or the whole US market. Each issuer has equal weight.':'Coverage is the current EDGAR Terminal research universe, not the whole US market; there are no market-cap weights.','Comparisons use the same issuer’s current and comparable prior-year values as known at the current filing cutoff, including eligible revised comparatives. Fiscal ends differ.',atlas.coverage?'Primary groups use the fund-reported sectors. Original thematic cohorts remain separate for company drilldown peer scores. Membership is dated; changes in coverage start a new history segment.':'Primary research groups are mutually exclusive for aggregates. Company drilldown peer scores use the original overlapping cohorts and are separate from absolute market breadth.','Changes in ratios use percentage points. Missing values are excluded, never counted as unchanged. Financial issuers (SIC 6000–6799) are excluded from operating-margin, free-cash-flow-margin and cash/assets breadth.','Filing response windows differ by issuer and can include other news. Characteristic associations are descriptive cross-sections, not causal tests, forecasts or factor-return backtests.','Pairwise correlation describes return co-movement on a fixed complete sample. It does not quantify a particular portfolio’s diversification benefit.'],links:{methodology:'https://secedgarterminal.com/market/factors',schema:'https://secedgarterminal.com/schemas/factor-universe-v1.schema.json',api:`https://secedgarterminal.com/api/v1/factor-universe?basis=${basis}`}};
 }
 
 export function universeMarkdown(snapshot,group='all',selectedThreshold=0) {

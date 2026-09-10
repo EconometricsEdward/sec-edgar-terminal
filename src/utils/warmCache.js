@@ -59,6 +59,31 @@ export async function warmGet(type, id) {
   }
 }
 
+/** Bounded multi-key reads for scheduled coverage work; order matches ids. */
+export async function warmGetMany(type, ids, { signal, deadline = Date.now() + 30000 } = {}) {
+  if (!ENABLED) return ids.map(() => null);
+  const output = new Array(ids.length), batches = [];
+  for (let offset = 0; offset < ids.length; offset += 25) batches.push({ offset, ids: ids.slice(offset, offset + 25) });
+  const controller = new AbortController();
+  const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+  const workers = Array.from({ length: Math.min(3, batches.length) }, async () => {
+    while (batches.length) {
+      if (requestSignal.aborted || Date.now() >= deadline) throw new Error('Cache batch deadline reached.');
+      const batch = batches.shift();
+      const response = await fetch(REST_URL, {
+        method: 'POST', headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(['MGET', ...batch.ids.map(id => key(type, id))]),
+        signal: AbortSignal.any([requestSignal, AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now())))]),
+      });
+      const data = response.ok ? await response.json() : null;
+      if (!Array.isArray(data?.result) || data.result.length !== batch.ids.length) throw new Error('Incomplete cache batch.');
+      data.result.forEach((value, index) => { try { output[batch.offset + index] = value === null ? null : JSON.parse(value); } catch { throw new Error('Corrupt cache checkpoint.'); } });
+    }
+  });
+  try { await Promise.all(workers); return output; }
+  catch (error) { controller.abort(); await Promise.allSettled(workers); throw error; }
+}
+
 /**
  * Write a value to the warm cache with a TTL.
  *
@@ -77,7 +102,7 @@ export async function warmSet(type, id, value, ttlSeconds = 25 * 3600) {
     // Size sanity check — KV REST has a ~1MB per-value limit. Anything big
     // is probably a bug (or needs a different caching strategy). Skip
     // rather than fail the whole pre-warm run.
-    if (body.length > 900_000) {
+    if (new TextEncoder().encode(body).byteLength > 900_000) {
       console.warn(
         `[warmCache] skipping ${type}/${id}: payload ${body.length} bytes exceeds 900KB limit`
       );
