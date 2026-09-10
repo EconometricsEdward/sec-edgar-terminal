@@ -12,6 +12,16 @@ import {
   Sigma,
 } from 'lucide-react';
 import { downloadText } from '../../utils/download.js';
+import {
+  betaIntervalReading,
+  buildFactorReadingGuide,
+  evidenceReading,
+  filingComponentReading,
+  withFactorReadingGuide,
+  betaScenario,
+  eventTermStructure,
+  rollingRegime,
+} from '../../utils/marketFactorInsights.js';
 import type { Basis, Company } from './marketTypes';
 import s from './market.module.css';
 
@@ -168,6 +178,7 @@ type MarketSignalsResponse = {
   filing_event?: {
     event_date?: string | null;
     event_start?: string | null;
+    event_interval_end?: string | null;
     timing_quality?: string | null;
     estimation?: { start?: string | null; end?: string | null; observations?: number | null; gap_sessions?: number | null };
     windows?: Record<string, {
@@ -251,6 +262,16 @@ type AnalysisRequest = {
 
 type RollingPoint = { date: string; beta: number };
 
+const RESPONSE_CACHE_MAX = 18;
+const RESPONSE_CACHE_FRESH_MS = 5 * 60 * 1000;
+const responseCache = new Map<string, { storedAt: number; value: MarketSignalsResponse }>();
+
+function rememberResponse(key: string, value: MarketSignalsResponse) {
+  responseCache.delete(key);
+  responseCache.set(key, { storedAt: Date.now(), value });
+  if (responseCache.size > RESPONSE_CACHE_MAX) responseCache.delete(responseCache.keys().next().value!);
+}
+
 const SECTOR_OPTIONS: { value: FactorSector; label: string }[] = [
   { value: 'auto', label: 'Auto · cohort-matched' },
   { value: 'XLF', label: 'XLF · Financials' },
@@ -330,9 +351,13 @@ function signalMarkdown(data: MarketSignalsResponse) {
   return [
     `# EDGAR Factor Lab — ${data.issuer?.ticker || data.request?.ticker || 'Company'}`,
     '',
-    data.interpretation || 'No interpretation is available.',
+    ...buildFactorReadingGuide(data).summary,
     '',
-    `- Status: ${data.status || 'unknown'}; quality grade: ${data.quality?.grade || '—'}`,
+    '## Read each metric',
+    '',
+    ...buildFactorReadingGuide(data).metrics.map((metric) => `### ${metric.label}: ${metric.value}\n\n${metric.meaning}\n\n${metric.reading}\n\n${metric.caution}\n`),
+    '',
+    `- Status: ${data.status || 'unknown'}; input completeness grade: ${data.quality?.grade || '—'}`,
     `- Sample: ${data.sample?.observations ?? '—'} exactly aligned daily returns, ${plainDate(data.sample?.effective_start)} to ${plainDate(data.sample?.effective_end)}`,
     `- Market beta vs ${data.request?.market_benchmark || 'SPY'}: ${betaText(market?.beta)}`,
     `- 95% Newey–West HAC interval: ${market?.beta_confidence_interval95 ? `${betaText(market.beta_confidence_interval95[0])} to ${betaText(market.beta_confidence_interval95[1])}` : '—'}`,
@@ -341,7 +366,7 @@ function signalMarkdown(data: MarketSignalsResponse) {
     `- R² / annualized residual volatility: ${percentText(market?.r_squared)} / ${percentText(market?.residual_volatility_annualized)}`,
     `- Filing change z / 20-session price-response z: ${zText(filing?.filing_change_z)} / ${zText(event20?.standardized_response)}`,
     `- EDGAR Evidence Gap: ${gap?.available ? zText(gap.evidence_gap) : `withheld (${gap?.reason || 'insufficient inputs'})`}`,
-    `- Classification: ${gap?.available ? labelText(gap.classification) : 'Unavailable'}`,
+    `- Classification: ${gap?.available ? evidenceReading(gap, filing, data.filing_event).label : 'Unavailable'}`,
     `- Current filing: ${current?.form || '—'}, period ${plainDate(current?.end)}, filed ${plainDate(current?.filed)}, accession ${current?.accession || '—'}`,
     `- Prior filing: ${prior?.form || '—'}, period ${plainDate(prior?.end)}, filed ${plainDate(prior?.filed)}, accession ${prior?.accession || '—'}`,
     `- Peer filing clocks: ${plainDate(filing?.coverage?.peer_filing_clock?.earliest_peer)} to ${plainDate(filing?.coverage?.peer_filing_clock?.latest_peer)}; ${filing?.coverage?.peer_filing_clock?.peers_after_focus ?? '—'} after the focus filing`,
@@ -370,7 +395,7 @@ function modelContext(data: MarketSignalsResponse) {
     'EDGAR Terminal model context. Treat null as unavailable, preserve source clocks, and do not convert these descriptive diagnostics into a forecast or recommendation.',
     ...(data.cite_as ? [`Citation: ${data.cite_as}`] : []),
     '',
-    JSON.stringify(data, null, 2),
+    JSON.stringify(withFactorReadingGuide(data), null, 2),
   ].join('\n');
 }
 
@@ -391,10 +416,10 @@ function evidenceQuadrant(filingZ: number | null, responseZ: number | null, neut
   const axis = (value: number) => value >= neutralBand ? 'positive' : value <= -neutralBand ? 'negative' : 'neutral';
   const state = `${axis(filingZ)}:${axis(responseZ)}`;
   const labels: Record<string, string> = {
-    'positive:positive': 'Aligned improvement',
-    'positive:negative': 'Filing improvement not confirmed by price',
-    'negative:positive': 'Price response ahead of reported evidence',
-    'negative:negative': 'Aligned deterioration',
+    'positive:positive': 'Above-peer change; positive response',
+    'positive:negative': 'Above-peer change; negative response',
+    'negative:positive': 'Below-peer change; positive response',
+    'negative:negative': 'Below-peer change; negative response',
     'positive:neutral': 'Positive filing change; muted price response',
     'negative:neutral': 'Negative filing change; muted price response',
     'neutral:positive': 'Positive price response; muted filing change',
@@ -440,11 +465,15 @@ function buildRollingChart(points: { date?: string | null; beta?: number | null 
   };
 }
 
-function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+type MetricReading = ReturnType<typeof buildFactorReadingGuide>['metrics'][number];
+
+function MetricCard({ label, value, detail, explanation }: { label: string; value: string; detail: string; explanation: MetricReading }) {
   return <div className={s.factorMetric}>
     <dt>{label}</dt>
     <dd>{value}</dd>
-    <small>{detail}</small>
+    <dd className={s.factorMetricExplanation}><small>{detail}</small>
+    <p className={s.factorMetricMeaning}>{explanation.meaning}</p>
+    <details className={s.factorMetricHelp}><summary>How to read this result</summary><p>{explanation.reading}</p><p>{explanation.caution}</p></details></dd>
   </div>;
 }
 
@@ -456,7 +485,7 @@ function PriceProvenance({ label, value }: { label: string; value?: PriceDescrip
     <td>{words(value?.price_basis)}</td>
     <td>{value?.observations ?? '—'}</td>
     <td>{plainDate(value?.last_observation)}</td>
-    <td>{words(value?.cache_status)}</td>
+    <td>{plainDate(value?.retrieved_at)}</td>
   </tr>;
 }
 
@@ -503,6 +532,7 @@ export default function MarketFactorLab({
   const [loading, setLoading] = useState(Boolean(initialRequest));
   const [error, setError] = useState<FactorError | null>(null);
   const [clock, setClock] = useState(() => Date.now());
+  const [scenarioMove, setScenarioMove] = useState(-5);
 
   useEffect(() => {
     if (!request) return;
@@ -519,12 +549,19 @@ export default function MarketFactorLab({
       cohort: request.cohort,
       sector_proxy: request.sector,
     });
+    const cacheKey = params.toString();
     setLoading(true);
     setError(null);
-    setData(null);
 
     async function load() {
       try {
+        const cached = responseCache.get(cacheKey);
+        if (cached && Date.now() - cached.storedAt <= RESPONSE_CACHE_FRESH_MS) {
+          setData(cached.value);
+          setLoading(false);
+          return;
+        }
+        if (cached) responseCache.delete(cacheKey);
         const response = await fetch(`/api/v1/market-signals?${params.toString()}`, {
           method: 'GET',
           headers: { Accept: 'application/json' },
@@ -542,7 +579,10 @@ export default function MarketFactorLab({
           retryAt: response.status === 429 ? retryAt || responseTime + 60_000 : retryAt || undefined,
         });
         if (result.schema_version !== 'edgar.market-signals.v1') throw new Error('The factor response did not match the supported schema.');
-        setData(result);
+        if (controller.signal.aborted) return;
+        const explainedResult = withFactorReadingGuide(result);
+        if (result.status === 'ready' || result.status === 'partial') rememberResponse(cacheKey, explainedResult);
+        setData(explainedResult);
       } catch (caught) {
         if (controller.signal.aborted && !timedOut) return;
         const cause = caught as Error & FactorError;
@@ -567,8 +607,8 @@ export default function MarketFactorLab({
   }, [request]);
 
   useEffect(() => {
-    if (data && request && request.sequence > 0) resultHeadingRef.current?.focus();
-  }, [data, request]);
+    if (data && !loading && !error && request && request.sequence > 0) resultHeadingRef.current?.focus();
+  }, [data, loading, error, request]);
 
   useEffect(() => {
     if (!error?.retryAt || error.retryAt <= Date.now()) return;
@@ -608,7 +648,6 @@ export default function MarketFactorLab({
     }
     setLoading(true);
     setError(null);
-    setData(null);
     setRequest((current) => ({
       ticker: factorTicker,
       window: factorWindow,
@@ -632,7 +671,7 @@ export default function MarketFactorLab({
   function exportJson() {
     if (!data) return;
     const ticker = safeFileTicker(data.issuer?.ticker || data.request?.ticker);
-    downloadText(`${ticker}-edgar-factor-lab.json`, JSON.stringify(data, null, 2), 'application/json');
+    downloadText(`${ticker}-edgar-factor-lab.json`, JSON.stringify(withFactorReadingGuide(data), null, 2), 'application/json');
     onNotice(`${ticker} Factor Lab JSON exported.`);
   }
 
@@ -654,11 +693,8 @@ export default function MarketFactorLab({
     ? Math.min(3, data.evidence_gap.neutral_band)
     : 0.5;
   const mapQuadrant = evidenceQuadrant(filingZ, responseZ, neutralBand);
-  const classification = labelText(data?.evidence_gap?.classification);
-  const classificationInterpretation = data?.evidence_gap?.classification
-    && typeof data.evidence_gap.classification === 'object'
-    ? data.evidence_gap.classification.interpretation
-    : null;
+  const evidenceExplanation = evidenceReading(data?.evidence_gap, data?.edgar_snapshot, data?.filing_event);
+  const classification = evidenceExplanation.label;
   const mapX = finite(filingZ) ? 250 + Math.max(-3, Math.min(3, filingZ)) / 3 * 205 : null;
   const mapY = finite(responseZ) ? 160 - Math.max(-3, Math.min(3, responseZ)) / 3 * 125 : null;
   const neutralLeft = 250 - neutralBand / 3 * 205;
@@ -668,6 +704,12 @@ export default function MarketFactorLab({
   const components = data?.edgar_snapshot?.components || [];
   const peerClock = data?.edgar_snapshot?.coverage?.peer_filing_clock;
   const prices = data?.provenance?.prices;
+  const readingGuide = useMemo(() => buildFactorReadingGuide(data || {}), [data]);
+  const explanations = useMemo(() => Object.fromEntries(readingGuide.metrics.map((metric) => [metric.id, metric])), [readingGuide]);
+  const uncertainty = betaIntervalReading(marketModel);
+  const scenario = betaScenario(marketModel?.beta, betaInterval, scenarioMove);
+  const rolling = rollingRegime(data?.estimates?.rolling_beta?.points, data?.estimates?.rolling_beta?.current, data?.estimates?.rolling_beta?.median);
+  const eventWindows = eventTermStructure(data?.filing_event?.windows);
   const autoRunAnnouncement = data && request?.sequence === 0
     ? `Factor analysis ready for ${data.issuer?.ticker || data.request?.ticker || 'the selected company'}. Status ${words(data.status)}; quality ${data.quality?.grade || 'unavailable'}.`
     : '';
@@ -684,14 +726,14 @@ export default function MarketFactorLab({
     <div className={`${s.panel} ${s.factorIntro}`}>
       <div className={s.factorIntroCopy}>
         <span className={s.eyebrow}><Sigma size={15} />EDGAR Factor Lab</span>
-        <h2 id="factor-lab-heading">Where filing evidence meets market behavior</h2>
-        <p>Estimate transparent market and sector sensitivities, then compare the latest peer-normalized SEC filing change with the model-adjusted price response. Every result preserves its sample, uncertainty, filing references, source clocks, and machine-readable context.</p>
+        <h2 id="factor-lab-heading">Understand the stock’s market exposure and filing response</h2>
+        <p>Start with three questions: how much did this stock move with the market, how much movement remains unexplained, and how did its filing changes compare with peers and the subsequent price response? SPY is the broad-market ETF used as the benchmark.</p>
       </div>
-      <div className={s.factorEquationGrid} aria-label="Factor Lab equations">
+      <details className={s.factorEquationDetails}><summary>Show the model equations</summary><div className={s.factorEquationGrid} aria-label="Factor Lab equations">
         <p><b>Market model</b><code>rᵢ = intercept + βₘrSPY + error</code><span>Daily log returns; Newey–West HAC inference.</span></p>
-        <p><b>Sector sensitivity</b><code>rᵢ = βₘrSPY + βₛrsector⊥SPY + error</code><span>The sector ETF is residualized against SPY first.</span></p>
+        <p><b>Sector sensitivity</b><code>rᵢ = intercept + βₘrSPY + βₛrsector⊥SPY + error</code><span>The sector ETF is residualized against SPY first.</span></p>
         <p><b>Evidence Gap</b><code>clip(filing z) − clip(price-response z)</code><span>A descriptive disagreement measure, not expected return.</span></p>
-      </div>
+      </div></details>
     </div>
 
     <form className={`${s.panel} ${s.factorControls}`} onSubmit={(event) => { event.preventDefault(); runAnalysis(); }}>
@@ -707,7 +749,7 @@ export default function MarketFactorLab({
             {WINDOW_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <label>Independent sector proxy
+        <label>Sector ETF for comparison
           <select value={selectedSector} onChange={(event) => onView({ factorSector: event.target.value as FactorSector })}>
             {SECTOR_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
@@ -717,7 +759,7 @@ export default function MarketFactorLab({
         </label>
       </div>
       <div className={s.factorRunRow}>
-        <p><b>{basis === 'ttm' ? 'Latest TTM' : 'Annual'} filing basis</b> · Peer normalization: {cohortId === 'all' ? 'automatic company cohort' : words(cohortId)}. Changing controls does not spend an API request until you run the analysis.</p>
+        <p><b>{basis === 'ttm' ? 'Latest TTM' : 'Annual'} filing basis</b> · Filing changes compared with: {cohortId === 'all' ? 'automatic company cohort' : words(cohortId)}. Choose your settings, then run the analysis. Price models use the selected history; filing comparisons use the selected reporting basis.</p>
         <button className={s.primary} type="submit" disabled={!validTicker || loading || runBlocked}>
           {loading ? <Loader2 className={s.spin} size={15} /> : <Play size={15} />}
           {loading ? 'Estimating…' : retryWaitSeconds > 0 ? `Wait ${retryDelayText(retryWaitSeconds)}` : data ? 'Run again' : 'Run analysis'}
@@ -731,7 +773,7 @@ export default function MarketFactorLab({
       <div><h2>Choose a company to start</h2><p>The calculation joins adjusted daily prices with the company’s latest comparable SEC filing snapshot. No live SEC request is made by this panel.</p></div>
     </div> : null}
 
-    {loading ? <div className={s.loading} role="status" aria-live="polite">
+    {loading && !data ? <div className={s.loading} role="status" aria-live="polite">
       <Loader2 className={s.spin} size={25} />
       <div><h2>Estimating the market model</h2><p>Aligning trading intervals, calculating HAC uncertainty, residualizing the sector proxy, and evaluating the latest filing event…</p></div>
     </div> : null}
@@ -748,19 +790,24 @@ export default function MarketFactorLab({
       </div>
     </div> : null}
 
-    {data && !loading ? <>
+    {data ? <>
+      <nav className={s.factorJumpNav} aria-label="Factor Lab result sections">
+        <a href="#factor-summary">Summary</a><a href="#factor-scenario">Scenario</a><a href="#evidence-gap-heading">Evidence gap</a><a href="#rolling-beta-heading">Stability</a><a href="#filing-event-heading">Filing event</a><a href="#filing-score-heading">SEC components</a><a href="#factor-audit-heading">Sources</a><a href="#factor-metric-guide">Metric guide</a>
+        {loading ? <span><Loader2 className={s.spin} size={13} />Refreshing</span> : null}
+      </nav>
+      {(loading || error) ? <p className={s.factorPending} role="status">Showing the last completed result for {data.issuer?.ticker || data.request?.ticker}, {data.request?.window?.toUpperCase()} / {data.request?.basis}. {loading ? 'The requested analysis is still running.' : 'The latest request did not complete; these numbers have not been refreshed.'}</p> : null}
       <div className={`${s.panel} ${s.factorResultHeader}`}>
         <div>
-          <span className={s.eyebrow}>Research diagnostic</span>
+          <span className={s.eyebrow}>Completed analysis · {data.request?.window?.toUpperCase()} · {data.request?.basis === 'annual' ? 'Annual filing basis' : 'TTM filing basis'}</span>
           <h2 ref={resultHeadingRef} tabIndex={-1}>{data.issuer?.ticker || data.request?.ticker} · {data.issuer?.name || 'Company analysis'}</h2>
-          <p>{data.interpretation || 'The deterministic interpretation is unavailable.'}</p>
+          <p>Historical price relationships and the latest comparable SEC filings. Expand any metric for an explanation of this result.</p>
         </div>
         <div className={s.factorStatusGroup} aria-label="Result status">
           <span className={`${s.factorStatus} ${statusClass}`}>
             {data.status === 'ready' ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
             {words(data.status)}
           </span>
-          <span className={s.factorQuality}>Quality {data.quality?.grade || '—'}</span>
+          <span className={s.factorQuality}>Input completeness {data.quality?.grade || '—'}</span>
           <small>{data.sample?.observations ?? '—'} matched sessions · through {plainDate(data.data_through)}</small>
         </div>
       </div>
@@ -770,24 +817,57 @@ export default function MarketFactorLab({
         <p><b>Headline estimates are withheld.</b> The required adjusted-close provenance or minimum exactly aligned sample was not available. Review the coded warnings below.</p>
       </div> : null}
 
+      <section id="factor-summary" className={`${s.panel} ${s.factorDecisionBrief}`} aria-labelledby="factor-summary-heading">
+        <div><span className={s.eyebrow}>Start here</span><h2 id="factor-summary-heading">What this result tells you</h2>
+          <ol className={s.factorTakeaways}>{readingGuide.summary.map((item, index) => <li key={index}><b>{['Market relationship', 'What the model leaves out', 'Filing and price evidence'][index]}</b><p>{item}</p></li>)}</ol>
+        </div>
+        <aside className={s.factorReliability} aria-label="Uncertainty and coverage">
+          <h3>{uncertainty.label}</h3><p>{uncertainty.reading}</p>
+          <dl><div><dt>Beta interval width</dt><dd>{betaText(uncertainty.intervalWidth)}</dd></div><div><dt>Matched returns</dt><dd>{data.sample?.observations ?? 'Unavailable'}</dd></div><div><dt>Eligible interval coverage</dt><dd>{coverageText(data.sample?.overlap_coverage)}</dd></div></dl>
+          <p>These describe sampling uncertainty and coverage. They do not score the company or predict model accuracy.</p>
+        </aside>
+        {readingGuide.checks.length ? <div className={s.factorReviewChecks}><h3>Before drawing a conclusion</h3><ul>{readingGuide.checks.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
+      </section>
+
       <dl className={s.factorMetricGrid}>
-        <MetricCard label={`Market β · ${data.request?.market_benchmark || 'SPY'}`} value={betaText(marketModel?.beta)} detail={`${marketModel?.observations ?? data.sample?.observations ?? '—'} daily return observations`} />
-        <MetricCard label="95% HAC interval" value={betaInterval ? `${betaText(betaInterval[0])} to ${betaText(betaInterval[1])}` : '—'} detail={`Newey–West Bartlett lag ${marketModel?.hac_lag ?? '—'}`} />
-        <MetricCard label="Downside β" value={betaText(conditional?.downside?.beta)} detail={`${conditional?.observations?.downside ?? '—'} SPY down sessions`} />
-        <MetricCard label="Upside β" value={betaText(conditional?.upside?.beta)} detail={`${conditional?.observations?.upside ?? '—'} SPY up sessions`} />
-        <MetricCard label={`${data.request?.sector_proxy || 'Sector'} sensitivity`} value={betaText(independentSector?.independent_sector_beta)} detail="Sector return orthogonal to SPY" />
-        <MetricCard label="Market-model R²" value={percentText(marketModel?.r_squared)} detail={`Return correlation ${betaText(marketModel?.correlation)}`} />
-        <MetricCard label="Residual volatility" value={percentText(marketModel?.residual_volatility_annualized)} detail="Annualized unexplained daily-return volatility" />
+        <MetricCard label={`Market β · ${data.request?.market_benchmark || 'SPY'}`} value={betaText(marketModel?.beta)} detail={`${marketModel?.observations ?? data.sample?.observations ?? '—'} daily return observations`} explanation={explanations.market_beta} />
+        <MetricCard label="Uncertainty · 95% beta interval" value={betaInterval ? `${betaText(betaInterval[0])} to ${betaText(betaInterval[1])}` : '—'} detail={`Newey–West Bartlett lag ${marketModel?.hac_lag ?? '—'}`} explanation={explanations.confidence} />
+        <MetricCard label="Down-market sensitivity" value={betaText(conditional?.downside?.beta)} detail={`${conditional?.observations?.downside ?? '—'} SPY down sessions`} explanation={explanations.downside} />
+        <MetricCard label="Up-market sensitivity" value={betaText(conditional?.upside?.beta)} detail={`${conditional?.observations?.upside ?? '—'} SPY up sessions`} explanation={explanations.upside} />
+        <MetricCard label={`${data.request?.sector_proxy || 'Sector'} sensitivity`} value={betaText(independentSector?.independent_sector_beta)} detail="Sector return orthogonal to SPY" explanation={explanations.sector} />
+        <MetricCard label="Variation captured · R²" value={percentText(marketModel?.r_squared)} detail={`Return correlation ${betaText(marketModel?.correlation)}`} explanation={explanations.r_squared} />
+        <MetricCard label="Unexplained volatility" value={percentText(marketModel?.residual_volatility_annualized)} detail="Annualized unexplained daily-return volatility" explanation={explanations.residual_volatility} />
       </dl>
+
+      <section className={`${s.panel} ${s.factorModelMatrix}`} aria-labelledby="model-comparison-heading">
+        <div className={s.factorSectionHeading}><div><span className={s.eyebrow}>Specification comparison</span><h2 id="model-comparison-heading">What each model adds</h2></div><span className={s.factorMapLabel}>Samples can differ by model</span></div>
+        <div className={s.tableScroll}><table className={s.comparison}><caption className={s.srOnly}>Comparison of Factor Lab model specifications</caption><thead><tr><th scope="col">Specification</th><th scope="col">Matched returns</th><th scope="col">Market β</th><th scope="col">Additional exposure</th><th scope="col">R²</th><th scope="col">Use</th></tr></thead><tbody>
+          <tr><th scope="row">Market model</th><td>{marketModel?.observations ?? '—'}</td><td>{betaText(marketModel?.beta)}</td><td>—</td><td>{percentText(marketModel?.r_squared)}</td><td>Overall SPY sensitivity</td></tr>
+          <tr><th scope="row">Conditional model</th><td>{conditional?.observations?.downside ?? '—'} down / {conditional?.observations?.upside ?? '—'} up</td><td>{betaText(conditional?.downside?.beta)} down / {betaText(conditional?.upside?.beta)} up</td><td>Asymmetry {zText(conditional?.asymmetry)}</td><td>—</td><td>Different behavior across market signs</td></tr>
+          <tr><th scope="row">Market + sector</th><td>{independentSector?.observations ?? '—'}</td><td>{betaText(independentSector?.market_beta)}</td><td>{data.request?.sector_proxy || 'Sector'} β {betaText(independentSector?.independent_sector_beta)}</td><td>{percentText(independentSector?.r_squared)}</td><td>Sector sensitivity beyond broad-market co-movement</td></tr>
+        </tbody></table></div>
+        <p className={s.note}>The market model matches company and SPY dates. The sector model also needs sector prices; conditional models use only up or down days. Comparing R² across different samples does not establish which model is better.</p>
+      </section>
+
+      <section id="factor-scenario" className={`${s.panel} ${s.factorScenario}`} aria-labelledby="factor-scenario-heading">
+        <div className={s.factorSectionHeading}><div><span className={s.eyebrow}>Exposure translator</span><h2 id="factor-scenario-heading">Benchmark shock scenario</h2></div><strong>{scenarioMove > 0 ? '+' : ''}{scenarioMove.toFixed(1)}% SPY</strong></div>
+        <label htmlFor="factor-scenario-range">Hypothetical one-session SPY return</label>
+        <input id="factor-scenario-range" type="range" min="-15" max="15" step="0.5" value={scenarioMove} onChange={(event) => setScenarioMove(Number(event.target.value))} />
+        <div className={s.factorScenarioResults}>
+          <div><span>Market-linked return component</span><strong>{scenario ? `${scenario.estimate >= 0 ? '+' : ''}${scenario.estimate.toFixed(1)}%` : '—'}</strong></div>
+          <div><span>From the 95% beta coefficient interval</span><strong>{scenario?.bounds ? `${scenario.bounds[0].toFixed(1)}% to ${scenario.bounds[1].toFixed(1)}%` : '—'}</strong></div>
+          <p>This converts the model’s log-return sensitivity to a percentage return. The range reflects beta uncertainty only; actual returns also include the intercept, other influences and residual movement. It is not a prediction interval.</p>
+        </div>
+      </section>
 
       <div className={s.factorFeatureGrid}>
         <section className={`${s.panel} ${s.factorGap}`} aria-labelledby="evidence-gap-heading">
-          <span className={s.eyebrow}>Custom SEC diagnostic</span>
+          <span className={s.eyebrow}>Do filings and the price response tell a similar story?</span>
           <h2 id="evidence-gap-heading">EDGAR Evidence Gap</h2>
           {data.evidence_gap?.available ? <>
             <strong>{zText(data.evidence_gap.evidence_gap)}</strong>
             <p><b>{classification}</b></p>
-            <p>{data.evidence_gap.gap_interpretation || classificationInterpretation || data.evidence_gap.formula || 'Clipped filing-change z minus clipped model-adjusted price-response z.'}</p>
+            <p>{evidenceExplanation.reading}</p>
           </> : <>
             <strong>Withheld</strong>
             <p>{data.evidence_gap?.reason || 'The required filing and price-response inputs are incomplete.'}</p>
@@ -797,7 +877,7 @@ export default function MarketFactorLab({
             <div><dt>20-session response z</dt><dd>{zText(responseZ)}</dd></div>
             <div><dt>20-session abnormal return</dt><dd>{percentText(event20?.cumulative_abnormal_return)}</dd></div>
           </dl>
-          <p className={s.note}>Positive means filing evidence sits higher relative to peers than the standardized price response sits relative to the event model. Negative means the reverse. Magnitude is disagreement, not mispricing.</p>
+          <p className={s.note}>Read both inputs before the gap: an above-peer filing score can reflect a smaller decline than peers. A gap near zero can mean two positive or two negative inputs. The gap is neither a percentage nor a statistical z score.</p>
         </section>
 
         <section className={`${s.panel} ${s.factorMap}`} aria-labelledby="filing-market-map-heading">
@@ -853,6 +933,11 @@ export default function MarketFactorLab({
           <div className={s.factorRollingSummary}><span>Current <b>{betaText(data.estimates?.rolling_beta?.current)}</b></span><span>Median <b>{betaText(data.estimates?.rolling_beta?.median)}</b></span><span>Range <b>{betaText(data.estimates?.rolling_beta?.range)}</b></span></div>
         </div>
         {rollingChart ? <>
+          {rolling ? <div className={s.factorRegimeGrid}>
+            <div><span>Latest versus rolling median</span><b>{rolling.direction}</b></div>
+            <div><span>Windows above β = 1</span><b>{percentText(rolling.aboveOne)}</b></div>
+            <div><span>Standard deviation across rolling betas</span><b>{betaText(rolling.standardDeviation)}</b></div>
+          </div> : null}
           <figure className={s.factorChartFigure}>
             <svg viewBox={`0 0 ${rollingChart.width} ${rollingChart.height}`} role="img" aria-labelledby={`${chartTitleId} ${chartDescriptionId}`} className={s.factorChartSvg}>
               <title id={chartTitleId}>{data.issuer?.ticker} rolling market beta</title>
@@ -865,7 +950,7 @@ export default function MarketFactorLab({
               <text x={rollingChart.width - rollingChart.right} y={rollingChart.height - 12} textAnchor="end" className={s.factorChartLabel}>{plainDate(rollingChart.end)}</text>
               <path d={rollingChart.path} className={s.factorChartLine} />
             </svg>
-            <figcaption>Windows advance in five-session steps; the latest endpoint is included. The dashed reference is β = 1.</figcaption>
+            <figcaption>Windows advance by five matched observations and can span calendar gaps; the latest endpoint is included. The dashed line marks β = 1. Window shares and dispersion are descriptive, not independent tests or probabilities.</figcaption>
           </figure>
           <details className={`${s.details} ${s.factorDetails}`}>
             <summary>Exact rolling-beta observations · {rollingChart.clean.length}</summary>
@@ -878,21 +963,45 @@ export default function MarketFactorLab({
         </> : <p className={s.factorUnavailable}>A rolling series is unavailable for this sample.</p>}
       </section>
 
+      <section className={`${s.panel} ${s.factorEvent}`} aria-labelledby="filing-event-heading">
+        <div className={s.factorSectionHeading}><div><span className={s.eyebrow}>Event-study path</span><h2 id="filing-event-heading">What happened after the filing, relative to the model</h2></div><span className={s.factorMapLabel}>First measured session: {plainDate(data.filing_event?.event_interval_end)}</span></div>
+        {eventWindows.some((point) => point.cumulativeAbnormalReturn != null) ? <>
+          <div className={s.factorEventBars} aria-label="Absolute magnitude of cumulative model-adjusted return by horizon; signed values follow">
+            {eventWindows.filter((point) => point.cumulativeAbnormalReturn != null).map((point) => <div key={point.sessions}><span>{point.sessions} sessions</span><div><i style={{ width: `${Math.abs(point.cumulativeAbnormalReturn!) / Math.max(0.000001, ...eventWindows.map((window) => Math.abs(window.cumulativeAbnormalReturn ?? 0))) * 100}%` }} data-negative={point.cumulativeAbnormalReturn! < 0 ? 'true' : 'false'} /></div><b>{percentText(point.cumulativeAbnormalReturn)}</b></div>)}
+          </div>
+          <div className={s.tableScroll}><table className={s.comparison}><caption className={s.srOnly}>Filing event term structure</caption><thead><tr><th scope="col">Horizon</th><th scope="col">Through</th><th scope="col">Cumulative abnormal return</th><th scope="col">Standardized response</th></tr></thead><tbody>{eventWindows.map((point) => <tr key={point.sessions}><th scope="row">{point.sessions} sessions</th><td>{plainDate(point.through)}</td><td>{percentText(point.cumulativeAbnormalReturn)}</td><td>{zText(point.standardizedResponse)}</td></tr>)}</tbody></table></div>
+        </> : <p className={s.factorUnavailable}>No complete filing-event horizon is available.</p>}
+        <p className={s.factorSectionCopy}>{explanations.event_return.meaning} {explanations.event_return.caution}</p>
+        <details className={s.factorMetricHelp}><summary>What does the standardized response mean?</summary><p>{explanations.event_z.meaning} {explanations.event_z.reading}</p><p>{explanations.event_z.caution}</p></details>
+        <p className={s.note}>Each horizon starts at the same measured session; they overlap and are not independent tests. Intraday and date-only filings begin with the next session. An unavailable horizon is unfinished or lacks the required prices or estimation history; it is not a zero response.</p>
+      </section>
+
+      {marketModel?.influential_dates?.length ? <section className={`${s.panel} ${s.factorInfluence}`} aria-labelledby="influential-dates-heading">
+        <div className={s.factorSectionHeading}><div><span className={s.eyebrow}>Robustness lens</span><h2 id="influential-dates-heading">Dates with the most regression influence</h2></div><span className={s.factorMapLabel}>{marketModel.influential_dates.length} observations</span></div>
+        <p className={s.factorSectionCopy}>Cook’s distance flags dates that influence the fitted regression through unusual benchmark moves, large residuals, or both. Review earnings, corporate actions and price data on these dates; high influence does not by itself justify removing an observation.</p>
+        <div className={s.factorInfluenceList}>{marketModel.influential_dates.map((point, index) => <div key={`${point.date}-${index}`}><span>{index + 1}</span><b>{plainDate(point.date)}</b><div><i style={{ width: `${(point.distance || 0) / Math.max(0.000001, ...marketModel.influential_dates!.map((observation) => observation.distance || 0)) * 100}%` }} /></div><small>Cook’s distance {finite(point.distance) ? point.distance.toPrecision(3) : 'Unavailable'}</small></div>)}</div>
+      </section> : null}
+
       <section className={`${s.panel} ${s.factorFiling}`} aria-labelledby="filing-score-heading">
         <div className={s.factorSectionHeading}>
           <div><span className={s.eyebrow}>SEC filing change</span><h2 id="filing-score-heading">Peer-robust filing components</h2></div>
-          <div className={s.factorFilingScore}><span>Composite z</span><strong>{zText(data.edgar_snapshot?.filing_change_z)}</strong><small>{labelText(data.edgar_snapshot?.direction)}</small></div>
+          <div className={s.factorFilingScore}><span>Composite peer-relative score</span><strong>{zText(data.edgar_snapshot?.filing_change_z)}</strong><small>{labelText(data.edgar_snapshot?.direction)}</small></div>
         </div>
-        <p className={s.factorSectionCopy}>Each available component compares the issuer with other companies in the selected research cohort. The target issuer is excluded from its own peer distribution; median and MAD-based scaling reduce outlier influence. Composite z is the sum of the displayed weighted z contributions. Peer reports form a calculation-time cross-section rather than a cross-section frozen at the focus event.</p>
+        <p className={s.factorSectionCopy}>Each available component compares the issuer with other companies in the selected research cohort. The target issuer is excluded from its own peer distribution. A positive score means a relatively higher change, which can still be an absolute decline. The composite adds the displayed weighted component scores. Peer reports form a calculation-time cross-section rather than a cross-section frozen at the focus event.</p>
         {peerClock ? <p className={s.note}>Peer filing clocks: {plainDate(peerClock.earliest_peer)} to {plainDate(peerClock.latest_peer)} · {peerClock.observed_peers ?? '—'} observed · {peerClock.peers_after_focus ?? '—'} became public after the focus filing.</p> : null}
         <div className={s.factorFilingRefs}>
           {filingReference(data.provenance?.sec?.current_filing, 'Current filing')}
           {filingReference(data.provenance?.sec?.prior_filing, 'Prior comparison')}
         </div>
-        {components.length ? <div className={s.tableScroll}>
+        {components.length ? <div className={s.factorComponentReadings}>{components.map((component) => {
+          const explanation = filingComponentReading(component);
+          return <article key={component.key || component.label}><h3>{component.label || words(component.key)}</h3><p>{explanation.reading}</p><details className={s.factorMetricHelp}><summary>What this change means</summary><p>{explanation.meaning}</p><p>{explanation.caution}</p></details></article>;
+        })}</div> : null}
+        <details className={s.factorMetricHelp}><summary>How to read the component calculations</summary><p>Percentage points are differences between percentage levels: 10% to 12% is +2 percentage points. The peer median is the middle peer change. Median absolute deviation (MAD) measures typical distance from that median; the primary scale is 1.4826 × MAD, with disclosed fallbacks when necessary.</p><p>Component z is (company change − peer median change) divided by the peer scale, capped at ±3. Peer percentile uses the percentage of smaller changes plus half the tied changes. Weight × clipped z gives the weighted contribution. Missing components are not assigned zero or redistributed weights. Book equity/assets is not a regulatory capital ratio.</p></details>
+        {components.length ? <details className={s.factorMetricHelp}><summary>Exact component values and calculation inputs</summary><div className={s.tableScroll}>
           <table className={s.comparison}>
             <caption className={s.srOnly}>Peer-normalized filing score components and exact inputs</caption>
-            <thead><tr><th scope="col">Component</th><th scope="col">Current (%)</th><th scope="col">Prior (%)</th><th scope="col">Input change (pp)</th><th scope="col">Peer median (pp)</th><th scope="col">MAD / scale (pp)</th><th scope="col">Peer percentile</th><th scope="col">Weight</th><th scope="col">z</th><th scope="col">Weighted z</th></tr></thead>
+            <thead><tr><th scope="col">Component</th><th scope="col">Current (%)</th><th scope="col">Prior (%)</th><th scope="col">Change (percentage points)</th><th scope="col">Peer median (points)</th><th scope="col">MAD / scale (points)</th><th scope="col">Peer percentile</th><th scope="col">Weight</th><th scope="col">z</th><th scope="col">Weighted z</th></tr></thead>
             <tbody>{components.map((component) => <tr key={component.key || component.label}>
               <th scope="row">{component.label || words(component.key)}{component.reason ? <small>{component.reason}</small> : null}</th>
               <td>{filingLevelText(component.current)}</td>
@@ -906,7 +1015,7 @@ export default function MarketFactorLab({
               <td>{zText(component.weighted_z)}</td>
             </tr>)}</tbody>
           </table>
-        </div> : <p className={s.factorUnavailable}>{data.edgar_snapshot?.reason || 'Comparable filing components are unavailable.'}</p>}
+        </div></details> : <p className={s.factorUnavailable}>{data.edgar_snapshot?.reason || 'Comparable filing components are unavailable.'}</p>}
       </section>
 
       <section className={`${s.panel} ${s.factorAudit}`} aria-labelledby="factor-audit-heading">
@@ -918,10 +1027,10 @@ export default function MarketFactorLab({
             <button type="button" className={s.button} onClick={exportMarkdown}><Download size={14} />Markdown</button>
           </div>
         </div>
-        <p className={s.factorSectionCopy}>The exports contain derived statistics, exact definitions, source clocks, quality fields, warnings, and nulls for unavailable values. They do not include bulk vendor price history.</p>
+        <p className={s.factorSectionCopy}>The exports include the same metric explanations shown here, along with exact statistics, sources, dates and missing-value reasons. “Prices” counts source price levels; matched-return observations are counted separately. “Through” is the last price date; “Fetched” is when that history was retrieved.</p>
         <div className={s.tableScroll}><table className={s.comparison}>
           <caption className={s.srOnly}>Price-series provenance</caption>
-          <thead><tr><th scope="col">Role</th><th scope="col">Ticker</th><th scope="col">Provider</th><th scope="col">Price basis</th><th scope="col">Prices</th><th scope="col">Through</th><th scope="col">Cache</th></tr></thead>
+          <thead><tr><th scope="col">Role</th><th scope="col">Ticker</th><th scope="col">Provider</th><th scope="col">Price basis</th><th scope="col">Prices</th><th scope="col">Through</th><th scope="col">Fetched</th></tr></thead>
           <tbody>
             <PriceProvenance label="Company" value={prices?.asset} />
             <PriceProvenance label="Market" value={prices?.market} />
@@ -943,6 +1052,11 @@ export default function MarketFactorLab({
           {data.links?.sec_companyfacts ? <a href={data.links.sec_companyfacts} target="_blank" rel="noreferrer">SEC Company Facts <ExternalLink size={12} /></a> : null}
         </div>
         {data.cite_as ? <p className={s.factorCitation}><b>Cite as:</b> {data.cite_as}</p> : null}
+      </section>
+
+      <section id="factor-metric-guide" className={`${s.panel} ${s.factorGuide}`} aria-labelledby="factor-guide-heading">
+        <span className={s.eyebrow}>Reference</span><h2 id="factor-guide-heading">Every metric, explained</h2><p>Select a metric to see its definition, your result, and the limit on its interpretation.</p>
+        {readingGuide.metrics.map((metric) => <details key={metric.id} className={s.factorGuideItem}><summary>{metric.label}<span>{metric.value}</span></summary><div><p><b>What it measures.</b> {metric.meaning}</p><p><b>Your result.</b> {metric.reading}</p><p><b>Keep in mind.</b> {metric.caution}</p></div></details>)}
       </section>
 
       <details className={`${s.panel} ${s.details} ${s.factorCaveats}`} open={Boolean(data.warnings?.length)}>

@@ -1,3 +1,4 @@
+import { withFactorReadingGuide } from '../../../../utils/marketFactorInsights.js';
 import {
   MARKET_SIGNALS_METHODOLOGY_VERSION,
   MARKET_SIGNALS_SCHEMA_VERSION,
@@ -54,7 +55,7 @@ export async function GET(request) {
 
   try {
     const options = readRequest(request.url);
-    const result = await loadMarketSignal(options);
+    const result = withFactorReadingGuide(await loadMarketSignal(options));
     const stale = result.cache_status === 'stale'
       || result.status === 'stale'
       || result.quality?.sec_snapshot_status === 'stale';

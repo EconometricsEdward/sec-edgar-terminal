@@ -26,3 +26,9 @@
 - Peer filing changes use the latest point-in-time company snapshots available at calculation time, not an event-time historical cross-section. Preserve the peer filing-clock fields and non-coeval warning.
 - The EDGAR Evidence Gap is a diagnostic comparison, not a valuation, forecast, recommendation, or trade signal.
 - Bulk vendor price histories are not distributed through the market-signals API; it returns derived statistics and compact chart points.
+
+## Interpreting Factor Lab results
+- `reading_guide` includes a version, three summary findings, coverage checks, and per-metric `meaning`, `reading`, and `caution`. Preserve these limitations when summarizing.
+- Beta measures historical market sensitivity; R² measures in-sample variation captured, not forecasting accuracy. The 95% beta interval is coefficient uncertainty, not a return prediction interval.
+- Above-peer filing change may still be an absolute decline. Read current, prior, and raw change before saying fundamentals improved. The Evidence Gap is a difference of scaled diagnostics, not a statistical z score or expected alpha.
+- Input completeness grades measure available evidence, not business quality. Conditional, market and sector models can use different samples.
