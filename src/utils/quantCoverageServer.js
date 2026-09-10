@@ -106,7 +106,7 @@ export async function refreshQuantBatch(batch, { signal, deadline = Date.now() +
   if (!Number.isSafeInteger(batch) || batch < 0 || batch >= QUANT_BATCHES) throw Object.assign(new Error('Invalid coverage batch.'), { status: 400 });
   if (!warmCacheEnabled()) throw new Error('Shared coverage storage is unavailable.');
   const lease = await warmAcquireLease(QUANT_COVERAGE_VERSION, `batch-${batch}`, 295000);
-  if (!lease) return { skipped: 'This coverage batch is already running.', batch };
+  if (!lease) return { skipped: 'Batch coordination is unavailable or another refresh is running.', batch };
   try {
     const membership = await readQuantMembership(), entries = membership.rows.filter(r => quantBatch(r.cik) === batch);
     const cached = await warmGetMany(QUANT_COMPANY_CACHE, entries.map(r => r.cik), {signal,deadline});
@@ -191,6 +191,14 @@ export async function compactQuantMigration() {
   const redundant=membership.rows.filter((entry,i)=>records[i]?.company&&!original.has(entry.ticker)).map(r=>r.ticker);
   const removed=await warmDeleteMany('stock-raw-yahoo',redundant);
   if(removed===null)throw new Error('Duplicate price-cache cleanup could not complete.');
-  if(!await warmSet(QUANT_COVERAGE_VERSION,'compact-price-storage',{at:new Date().toISOString(),removed},90*86400))throw new Error('Storage migration marker could not be saved.');
+  console.log('[Quant Lab] Duplicate cache cleanup:',JSON.stringify({candidates:redundant.length,removed}));
+  // Capacity accounting may lag acknowledged deletions briefly. Bound recovery
+  // rather than treating that interval as a completed storage migration.
+  let stored=false;
+  for(let attempt=0;attempt<3&&!stored;attempt++){
+    if(attempt)await new Promise(resolve=>setTimeout(resolve,2000));
+    stored=await warmSet(QUANT_COVERAGE_VERSION,'compact-price-storage',{at:new Date().toISOString(),removed},90*86400);
+  }
+  if(!stored)throw new Error('Storage migration marker could not be saved.');
   return {duplicate_price_histories_removed:removed};
 }
