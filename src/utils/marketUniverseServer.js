@@ -2,12 +2,12 @@ import { warmGet, warmSet, warmCacheEnabled, warmAcquireLease, warmReleaseLease 
 import { MARKET_VERSION } from './marketResearch.js';
 import { isMarketAtlas } from './marketResearchValidation.js';
 import { loadPriceSeries, warmYahooSeries } from './priceDataServer.js';
-import { buildUniverseSnapshot, uniqueIssuers, UNIVERSE_VERSION, UNIVERSE_METHOD, UNIVERSE_FRESH_MS, UNIVERSE_PROXIES } from './marketUniverse.js';
+import { buildUniverseSnapshot, uniqueIssuers, UNIVERSE_VERSION, UNIVERSE_METHOD, UNIVERSE_FRESH_MS, UNIVERSE_PROXIES, upgradeUniverseSnapshot } from './marketUniverse.js';
 
 const RETAIN_SECONDS=7*86400;
 const pending=new Map();
 export function isUniverseSnapshot(value) {
-  return value?.schema_version===UNIVERSE_VERSION && value?.methodology_version===UNIVERSE_METHOD && ['ttm','annual'].includes(value.basis) && Array.isArray(value.rows) && value.rows.length>0 && value.scopes?.all?.companies===value.rows.length && Number.isFinite(Date.parse(value.sec_snapshot_at)) && Number.isFinite(Date.parse(value.generated_at));
+  return value?.schema_version===UNIVERSE_VERSION && [UNIVERSE_METHOD,'factor-universe-1.0.0'].includes(value?.methodology_version) && ['ttm','annual'].includes(value.basis) && Array.isArray(value.rows) && value.rows.length>0 && value.scopes?.all?.companies===value.rows.length && Number.isFinite(Date.parse(value.sec_snapshot_at)) && Number.isFinite(Date.parse(value.generated_at));
 }
 async function cachedAtlas() {
   const values=await Promise.all([warmGet(MARKET_VERSION,'atlas'),warmGet(MARKET_VERSION,'atlas-last-good')]);
@@ -21,7 +21,7 @@ export async function readUniverseSnapshot(basis='ttm') {
     const age=Date.now()-Date.parse(cached.generated_at),secAge=Date.now()-Date.parse(cached.sec_snapshot_at);
     if(age>=0&&age<RETAIN_SECONDS*1000&&secAge>=0&&secAge<RETAIN_SECONDS*1000){
       const stale=cached.status==='stale'||cached.cache_status==='stale'||age>UNIVERSE_FRESH_MS||secAge>UNIVERSE_FRESH_MS||cached.sec_stale;
-      return {...cached,status:stale?'stale':cached.status,sec_stale:secAge>UNIVERSE_FRESH_MS||cached.sec_stale,cache_status:stale?'stale':'prepared'};
+      return {...upgradeUniverseSnapshot(cached),status:stale?'stale':cached.status,sec_stale:secAge>UNIVERSE_FRESH_MS||cached.sec_stale,cache_status:stale?'stale':'prepared'};
     }
   }
   if(pending.has(basis))return pending.get(basis);
@@ -42,7 +42,7 @@ function retainedHistory(previous,next) {
 export function chooseUniversePublication(previous,next,now=Date.now()) {
   const age=now-Date.parse(previous?.generated_at);
   if(isUniverseSnapshot(previous)&&age>=0&&age<RETAIN_SECONDS*1000&&previous.scopes.all.exposure.eligible>0&&next.scopes.all.exposure.eligible<previous.scopes.all.exposure.eligible*.95){
-    return {...previous,status:'stale',cache_status:'stale',refresh_warning:'The latest price refresh had lower coverage. The prior completed snapshot is retained with its original dates.'};
+    return {...upgradeUniverseSnapshot(previous),status:'stale',cache_status:'stale',refresh_warning:'The latest price refresh had lower coverage. The prior completed snapshot is retained with its original dates.'};
   }
   return {...next,history:retainedHistory(previous,next)};
 }

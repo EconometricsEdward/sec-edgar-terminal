@@ -31,7 +31,7 @@ const readCachedMarket = unstable_cache(
 
 export const metadata: Metadata = {
   ...buildPageMetadata({
-    title: 'Market Overview — SEC Breadth, Quantitative Research & Factor Lab',
+    title: 'Market Overview — SEC Breadth, Quantitative Research & Quant Lab',
     description:
       'Explore SEC fundamental breadth, dispersion, market exposure, stock co-movement and filing-response research across the EDGAR Terminal coverage universe.',
     path: '/market',

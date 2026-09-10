@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "EDGAR Terminal Factor Lab API",
-    "version": "1.1.0",
+    "title": "EDGAR Terminal Quant Lab API",
+    "version": "1.2.0",
     "description": "SEC-derived universe breadth, paired dispersion, exposure distributions, co-movement, descriptive filing-response associations, and detailed issuer econometric research. Derived statistics only; preserve dates, units, eligibility and unavailable values.",
     "contact": {
       "name": "EDGAR Terminal",
@@ -32,7 +32,7 @@
           "Market signals"
         ],
         "operationId": "getMarketSignal",
-        "summary": "Calculate an EDGAR Factor Lab diagnostic for one covered company",
+        "summary": "Calculate an EDGAR Quant Lab diagnostic for one covered company",
         "description": "Returns daily adjusted-close regression diagnostics against SPY and a sector proxy, a current peer-normalized filing-change snapshot, a filing-event response when estimable, and the descriptive Evidence Gap. Exact-date intersection, coverage gates, Newey-West HAC inference, source provenance, warnings, and interpretation limits are included. A result may be ready, partial, withheld, or stale. Missing statistics are null, never zero. This is not CAPM because no risk-free return is subtracted; the regression intercept is not Jensen alpha. The filing snapshot is not a historical factor return, and the Evidence Gap is not a forecast or trade signal. The optional reading_guide contains per-metric definitions, interpretations of this exact result, and limitations. The same guide appears in the interactive page and exported research notes. Its version is separate from the unchanged econometric methodology.",
         "parameters": [
           {
@@ -680,8 +680,8 @@
           "Factor universe"
         ],
         "operationId": "getFactorUniverse",
-        "summary": "Read the prepared market-wide Factor Lab snapshot",
-        "description": "Default Factor Lab data. One CIK per issuer and one primary research group per issuer. Absolute SEC changes drive breadth; co-movement compares a fixed complete issuer/pair set. Public reads never initiate SEC or price refreshes. If a prepared aggregate is missing, cached SEC-only breadth can be returned with partial status. Preserve sec_snapshot_at, price_through, status, all denominators and nulls. Groups are curated research themes, not official industry sectors. The universe exposure window is 252 SPY intervals; issuer drilldowns can differ. Spearman associations are descriptive cross-sections, not predictive tests or factor premiums.",
+        "summary": "Read the prepared market-wide Quant Lab snapshot",
+        "description": "Default Quant Lab data. One CIK per issuer and one primary research group per issuer. Absolute SEC changes drive breadth; co-movement compares a fixed complete issuer/pair set. Public reads never initiate SEC or price refreshes. If a prepared aggregate is missing, cached SEC-only breadth can be returned with partial status. Preserve sec_snapshot_at, price_through, status, all denominators and nulls. Groups are curated research themes, not official industry sectors. The universe exposure window is 252 SPY intervals; issuer drilldowns can differ. Spearman associations are descriptive cross-sections, not predictive tests or factor premiums. Absolute diagnostics include net direction balance, paired within/between-group population variance and a same-issuer growth/FCF-margin cross-table. API aggregates use a zero direction threshold. UI sensitivity bands at 0.5 or 1 percentage point retain all matched issuers; exported selected_diagnostics and analysis_settings reproduce those views. Cached source clocks and prices are preserved across additive diagnostic upgrades.",
         "parameters": [
           {
             "name": "basis",

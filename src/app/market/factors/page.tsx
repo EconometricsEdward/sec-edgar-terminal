@@ -23,7 +23,7 @@ const SCHEMA_URL = "/schemas/factor-universe-v1.schema.json";
 const OPENAPI_URL = "/openapi.json";
 
 export const metadata: Metadata = buildPageMetadata({
-  title: "EDGAR Factor Lab — Universe Breadth & Market Research Methodology",
+  title: "EDGAR Quant Lab — Universe Breadth & Market Research Methodology",
   description:
     "Understand universe-wide SEC breadth, paired dispersion, market exposure, fixed-sample co-movement and filing-response associations, with company econometric drilldowns.",
   path: PAGE_PATH,
@@ -33,7 +33,7 @@ const datasetJsonLd = {
   "@context": "https://schema.org",
   "@type": "Dataset",
   "@id": `${PAGE_URL}#dataset`,
-  name: "EDGAR Factor Lab derived market and filing diagnostics",
+  name: "EDGAR Quant Lab derived market and filing diagnostics",
   description:
     "Derived universe-wide SEC breadth, paired dispersion, market-exposure distributions and fixed-sample pairwise correlations, with source-linked issuer event studies.",
   url: PAGE_URL,
@@ -133,7 +133,7 @@ export default function MarketFactorsMethodologyPage() {
         <div className={styles.heroTopline}>
           <Link className={styles.backLink} href="/market?tab=factors">
             <Sigma size={16} aria-hidden="true" />
-            Open the interactive Factor Lab
+            Open the interactive Quant Lab
             <ArrowUpRight size={15} aria-hidden="true" />
           </Link>
           <span className={styles.version}>Methodology · version 1</span>
@@ -142,7 +142,7 @@ export default function MarketFactorsMethodologyPage() {
         <div className={styles.heroGrid}>
           <div>
             <p className={styles.eyebrow}>Econometric research methodology</p>
-            <h1>EDGAR Factor Lab</h1>
+            <h1>EDGAR Quant Lab</h1>
             <p className={styles.lede}>
               Quantify how fundamentals and return patterns differ across the
               EDGAR Terminal coverage universe. Begin with absolute filing-change
@@ -181,21 +181,24 @@ export default function MarketFactorsMethodologyPage() {
       </header>
 
       <section id="universe-method" className={styles.section}>
-        <div className={styles.sectionHeader}><p className={styles.eyebrow}>The default Factor Lab view</p><h2>A quantitative view of the covered universe</h2></div>
+        <div className={styles.sectionHeader}><p className={styles.eyebrow}>The default Quant Lab view</p><h2>A quantitative view of the covered universe</h2></div>
         <div className={styles.sectionBody}>
           <h3>Scope and weighting</h3><p>The universe consists of currently covered SEC issuers. Issuers are deduplicated by CIK, keeping the alphabetically first covered ticker when multiple share classes exist. Every issuer receives equal weight. This is a curated research universe with survivorship limitations, not the entire US equity market or an investable index.</p>
           <p>Aggregate groups use the first membership in the published research-cohort order, assigning each issuer exactly once. These are primary research themes, not GICS sectors. The company drilldown can use the original overlapping cohort for peer normalization; its score is separate from absolute breadth.</p>
           <h3>Fundamental breadth: direction and magnitude</h3><p>For each metric, compare the latest annual or trailing-12-month period with its comparable period ending 350–380 days earlier. Both values use information eligible at the current filing cutoff, including revised prior-year comparatives available then. The change is current minus prior, in percentage points. Higher share is 100 × positive changes / issuers with both values. Lower and unchanged shares use that same denominator; missing values are never assigned zero.</p>
           <p>The magnitude is the median of issuer-level changes. Revenue growth acceleration is the difference between two year-over-year growth rates; acceleration can occur while revenue is still falling. Free cash flow is operating cash flow minus purchases of property, plant and equipment. A lower free cash flow margin can reflect greater investment.</p>
           <p>Operating-margin, free-cash-flow-margin and cash/assets breadth exclude financial and property/investment issuers with SIC codes 6000–6799. Revenue growth, net margin and book equity/assets retain all eligible issuer types, with industry context required. Book equity/assets is not regulatory capital.</p>
+          <h3>Separate breadth, magnitude and dispersion</h3><p>Net direction balance equals 100 × (higher count − lower count) / paired count. It ranges from −100 to +100 percentage points and is separate from the median issuer change and the change in IQR. Balanced directions can produce a zero balance even when every company changed.</p><p>The default direction band is zero. Optional ±0.5 and ±1 percentage-point bands classify only changes outside the band as higher or lower. Inside-band companies remain in the denominator. Magnitude and dispersion retain all raw paired observations. These sensitivity settings do not define statistical significance or universally meaningful economic materiality.</p>
+          <h3>Growth and cash margins on the same companies</h3><p>The nine-cell cash-confirmation table requires comparable growth-acceleration and free-cash-flow-margin changes for the same operating issuers. Its growth and cash higher shares therefore have an identical denominator. Conditional confirmation is both-higher count divided by growth-higher count, with null when no issuer has higher growth. Financial and property/investment issuers are excluded. Every cell is traceable to its constituent companies, and source periods are disclosed.</p>
           <h3>Dispersion and simultaneous declines</h3><p>The interquartile range (IQR) is the 75th percentile minus the 25th percentile, using linear interpolation. Current and prior IQRs use exactly the same paired issuers. A positive difference means the range of reported outcomes widened across those companies relative to their comparable prior periods. The IQR of individual changes instead measures variation in how companies changed.</p>
           <p>Simultaneous declines require slower revenue growth, lower operating margin and lower free cash flow margin in the same operating issuer. Only companies with all three comparisons enter the denominator. This is an investigation screen, not a distress probability.</p>
+          <h3>Within-group and between-group dispersion</h3><p>A secondary population-variance decomposition keeps exactly the same eligible issuers and group assignments in both periods. Total variance equals within-group variance plus between-group variance. Within = Σ(n_g / N) × group population variance. Between = Σ(n_g / N) × (group mean − universe mean)². Each issuer has equal weight; groups contribute according to eligible counts. Units are squared percentage points.</p><p>This decomposition is sensitive to extreme observations, so the IQR remains the primary spread measure. Neither IQR nor standard deviation is additive in this formula. A higher component share need not mean a higher absolute component; both periods and absolute changes are supplied. Zero total variance produces null shares. A group with one eligible issuer contributes zero within-group variance.</p>
           <h3>Market exposure and co-movement</h3><p>Universe market models use fully adjusted Yahoo prices and daily log returns over the latest 252 SPY intervals. A model requires at least 240 exact start-and-end interval matches and the same final session. Down-market slopes require at least 30 negative-SPY observations. Sector sensitivity uses the cohort-matched ETF after removing its fitted SPY component. Newey–West beta coefficient intervals remain in the issuer data. Exposure distributions below 80% coverage are identified as subset results.</p>
           <p>Co-movement is the average Pearson correlation across company pairs. A fixed issuer set must have complete observations and nonzero return variance in every chart window on the latest 126 SPY intervals, with at least 8 issuers and 60% of the selected scope represented. Valid pairs are fixed across all chart windows, excluding pairs with undefined correlations in any window. The comparison uses two adjacent 63-session windows; the rolling chart advances by seven sessions. Correlation is not a portfolio-specific diversification estimate.</p>
           <h3>Filing-response research</h3><p>The universe map places absolute filing-measure change on the horizontal axis and standardized 20-session model-adjusted response on the vertical axis. It does not use a peer z-score on the horizontal axis. The response comes from the issuer event-study method below, and filing dates vary across issuers. Spearman correlations compare filing-change ranks with response ranks, requiring at least 12 paired observations and average ranks for ties.</p>
           <p>These associations are descriptive, unadjusted cross-sections. They do not establish significance, causality, prediction or a realized factor premium. The displayed period can contain earnings releases, guidance and other news. Company drilldowns have selectable calendar-year estimation windows, so their regression samples can differ from the universe’s 252-session models.</p>
           <h3>Freshness and reproducibility</h3><p>The SEC atlas is refreshed by the daily SEC job. A separate authenticated daily job, scheduled after it, prepares the universe price diagnostics using bounded shared provider pacing. Fresh, sufficiently long Yahoo histories are reused; unverified fallback prices are excluded. Initial production builds can prepare a missing aggregate snapshot. Public universe requests never start SEC or provider refreshes.</p>
-          <p>Prepared snapshots have a 25-hour fresh window and up to seven days of retained data. Incomplete refreshes cannot replace a materially fuller retained result within that period. Original source dates remain visible. If no aggregate exists, the endpoint can calculate real SEC-only breadth from the cached atlas, explicitly withholding price results. Historical observations begin with actual saved calculations and are not reconstructed backtests.</p>
+          <p>Prepared snapshots have a 25-hour fresh window and up to seven days of retained data. Incomplete refreshes cannot replace a materially fuller retained result within that period. Original source dates remain visible. If no aggregate exists, the endpoint can calculate real SEC-only breadth from the cached atlas, explicitly withholding price results. Historical observations begin with actual saved calculations and are not reconstructed backtests. Additive diagnostics can be recalculated from cached issuer rows while preserving the original source and calculation clocks; this requires no additional SEC or price request.</p>
           <p><a href="/api/v1/factor-universe?basis=ttm">Universe API</a> · <a href="/schemas/factor-universe-v1.schema.json">Universe JSON Schema</a> · <a href="/api/v1/market-signals?ticker=MSFT&amp;window=3y&amp;basis=ttm">Company API example</a></p>
         </div>
       </section>
@@ -593,7 +596,7 @@ export default function MarketFactorsMethodologyPage() {
           </p>
         </div>
         <Link href="/market?tab=factors">
-          Open Factor Lab
+          Open Quant Lab
           <ArrowUpRight size={16} aria-hidden="true" />
         </Link>
       </footer>

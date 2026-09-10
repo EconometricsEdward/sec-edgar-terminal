@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://secedgarterminal.com/schemas/factor-universe-v1.schema.json",
-  "title": "EDGAR Factor Lab coverage-universe snapshot",
+  "title": "EDGAR Quant Lab coverage-universe snapshot",
   "description": "Derived market research snapshot. Ratio levels and changes use percent and percentage points; event returns, residual volatility, coverage and R\u00b2 are decimals. Null is unavailable. Current cross-sections and observed snapshots are not factor-return backtests.",
   "type": "object",
   "properties": {
@@ -9,7 +9,10 @@
       "const": "edgar.factor-universe.v1"
     },
     "methodology_version": {
-      "const": "factor-universe-1.0.0"
+      "enum": [
+        "factor-universe-1.0.0",
+        "factor-universe-1.1.0"
+      ]
     },
     "generated_at": {
       "type": "string"
@@ -165,6 +168,23 @@
         "api"
       ],
       "additionalProperties": true
+    },
+    "diagnostics_version": {
+      "const": "absolute-diagnostics-1.1.0"
+    },
+    "fundamental_definitions": {
+      "type": "object",
+      "description": "Formulas, units, thresholds and interpretation limits for absolute diagnostics.",
+      "required": [
+        "direction",
+        "thresholds",
+        "balance",
+        "magnitude",
+        "dispersion",
+        "cash_confirmation",
+        "variance",
+        "limitations"
+      ]
     }
   },
   "required": [
@@ -368,6 +388,34 @@
         },
         "fiscal_ends": {
           "$ref": "#/$defs/date_range"
+        },
+        "threshold": {
+          "enum": [
+            0,
+            0.5,
+            1
+          ]
+        },
+        "balance_pct": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -100,
+          "maximum": 100,
+          "description": "Higher share minus lower share, in percentage points."
+        },
+        "prior_fiscal_ends": {
+          "$ref": "#/$defs/date_range"
+        },
+        "eligible_tickers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "variance": {
+          "$ref": "#/$defs/group_variance"
         }
       },
       "required": [
@@ -966,6 +1014,9 @@
             ],
             "additionalProperties": true
           }
+        },
+        "cash_confirmation": {
+          "$ref": "#/$defs/cash_confirmation"
         }
       },
       "required": [
@@ -981,6 +1032,326 @@
         "associations"
       ],
       "additionalProperties": true
+    },
+    "group_variance": {
+      "type": "object",
+      "properties": {
+        "eligible": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "groups": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "singleton_groups": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "units": {
+          "const": "squared_percentage_points"
+        },
+        "current": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "within": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "between": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "within_share": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "between_share": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "total",
+            "within",
+            "between",
+            "within_share",
+            "between_share"
+          ]
+        },
+        "prior": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "within": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "between": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "within_share": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "between_share": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "total",
+            "within",
+            "between",
+            "within_share",
+            "between_share"
+          ]
+        },
+        "change": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "within": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "between": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "total",
+            "within",
+            "between"
+          ]
+        }
+      },
+      "required": [
+        "eligible",
+        "groups",
+        "singleton_groups",
+        "units",
+        "current",
+        "prior",
+        "change"
+      ]
+    },
+    "cash_confirmation": {
+      "type": "object",
+      "properties": {
+        "population": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eligible": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "growth_higher": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cash_higher": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "both_higher": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coverage": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "growth_higher_pct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cash_higher_pct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "higher_share_gap": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "confirmation_pct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "threshold": {
+          "enum": [
+            0,
+            0.5,
+            1
+          ]
+        },
+        "filing_dates": {
+          "$ref": "#/$defs/date_range"
+        },
+        "fiscal_ends": {
+          "$ref": "#/$defs/date_range"
+        },
+        "prior_fiscal_ends": {
+          "$ref": "#/$defs/date_range"
+        },
+        "cells": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": {
+            "type": "object",
+            "properties": {
+              "growth": {
+                "enum": [
+                  "higher",
+                  "neutral",
+                  "lower"
+                ]
+              },
+              "cash": {
+                "enum": [
+                  "higher",
+                  "neutral",
+                  "lower"
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pct": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "tickers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "growth",
+              "cash",
+              "count",
+              "pct",
+              "tickers"
+            ]
+          }
+        }
+      },
+      "required": [
+        "population",
+        "eligible",
+        "missing",
+        "growth_higher",
+        "cash_higher",
+        "both_higher",
+        "coverage",
+        "growth_higher_pct",
+        "cash_higher_pct",
+        "higher_share_gap",
+        "confirmation_pct",
+        "threshold",
+        "filing_dates",
+        "fiscal_ends",
+        "prior_fiscal_ends",
+        "cells"
+      ]
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "methodology_version": {
+            "const": "factor-universe-1.1.0"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "diagnostics_version",
+          "fundamental_definitions"
+        ],
+        "properties": {
+          "scopes": {
+            "additionalProperties": {
+              "required": [
+                "cash_confirmation"
+              ],
+              "properties": {
+                "breadth": {
+                  "items": {
+                    "required": [
+                      "balance_pct",
+                      "threshold",
+                      "prior_fiscal_ends",
+                      "variance",
+                      "eligible_tickers"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

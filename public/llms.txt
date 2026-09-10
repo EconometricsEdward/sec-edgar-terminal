@@ -4,14 +4,14 @@
 
 ## Primary research surfaces
 
-- [Market overview](https://secedgarterminal.com/market): SEC fundamental briefing, sector heatmap, company screener, and interactive EDGAR Factor Lab.
-- [EDGAR Factor Lab methodology](https://secedgarterminal.com/market/factors): Definitions, equations, eligibility rules, limitations, and interpretation guidance for regression beta, filing-event response, and the EDGAR Evidence Gap.
+- [Market overview](https://secedgarterminal.com/market): SEC fundamental briefing, sector heatmap, company screener, and interactive EDGAR Quant Lab.
+- [EDGAR Quant Lab methodology](https://secedgarterminal.com/market/factors): Definitions, equations, eligibility rules, limitations, and interpretation guidance for regression beta, filing-event response, and the EDGAR Evidence Gap.
 - [Research guide](https://secedgarterminal.com/help): Product scope and data-source guidance.
 - [About and data sources](https://secedgarterminal.com/about): Provenance, methodology, and project information.
 
 ## Machine-readable interfaces
 
-- [Factor Lab universe API](https://secedgarterminal.com/api/v1/factor-universe?basis=ttm): Default market-wide snapshot with SEC breadth, paired dispersion, exposure distributions, fixed-sample pairwise correlations and source-linked constituents. Supports only basis=ttm or basis=annual.
+- [Quant Lab universe API](https://secedgarterminal.com/api/v1/factor-universe?basis=ttm): Default market-wide snapshot with SEC breadth, paired dispersion, exposure distributions, fixed-sample pairwise correlations and source-linked constituents. Supports only basis=ttm or basis=annual.
 - [Universe JSON Schema](https://secedgarterminal.com/schemas/factor-universe-v1.schema.json): Contract for edgar.factor-universe.v1.
 
 
@@ -31,7 +31,7 @@
 - The EDGAR Evidence Gap is a diagnostic comparison, not a valuation, forecast, recommendation, or trade signal.
 - Bulk vendor price histories are not distributed through the market-signals API; it returns derived statistics and compact chart points.
 
-## Interpreting the market-wide Factor Lab
+## Interpreting the market-wide Quant Lab
 - Start with scopes.all.brief and breadth. Values use percentage points; percentages are 0–100. Exposure R², annualized residual volatility and event returns use decimals.
 - Growth acceleration is a change in growth rates; it does not mean revenue increased. Cash-flow and book-equity ratios are not standalone health scores.
 - Groups count each CIK once using its first published cohort membership. They are curated primary research groups, not official industry sectors.
@@ -47,3 +47,13 @@
 - Beta measures historical market sensitivity; R² measures in-sample variation captured, not forecasting accuracy. The 95% beta interval is coefficient uncertainty, not a return prediction interval.
 - Above-peer filing change may still be an absolute decline. Read current, prior, and raw change before saying fundamentals improved. The Evidence Gap is a difference of scaled diagnostics, not a statistical z score or expected alpha.
 - Input completeness grades measure available evidence, not business quality. Conditional, market and sector models can use different samples.
+
+## Absolute quantitative diagnostics (method factor-universe-1.1.0)
+- Quant Lab is the new display name for Factor Lab. Existing /market?tab=factors, /market/factors and API URLs remain valid.
+- Keep breadth, magnitude and dispersion separate. Net direction balance = 100 × (higher − lower) / eligible; it is measured in percentage points, not expected return. Zero can mean offsetting increases and decreases.
+- Compare growth and cash-margin higher shares only on cash_confirmation's matched operating-issuer sample. Its nine cells include neutral outcomes; each supplies the actual tickers. A lower FCF margin can reflect investment and does not imply declining FCF dollars.
+- Default API direction threshold is zero. In the UI, cutoff=0.5 or cutoff=1 changes higher/lower classification only; neutral observations stay in the denominator, and raw magnitudes and paired IQR remain unchanged. These are sensitivity settings, not significance tests.
+- The revenue-growth IQR measures dispersion of growth-rate levels; their changes measure acceleration.
+- Group variance uses the identical issuer/group sample at both dates with population denominators: total = within + between. Units are squared percentage points; IQRs are not additive. Variance is sensitive to extremes. Shares are null at zero total variance.
+- Preserve original SEC, price and calculation dates on an upgraded cached snapshot. New diagnostics do not mean fresh underlying observations.
+- JSON downloads include analysis_settings, selected_diagnostics and selected_brief when a user chooses a scope or direction band.

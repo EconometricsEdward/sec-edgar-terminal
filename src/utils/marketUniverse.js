@@ -3,25 +3,13 @@ import { MARKET_LENSES } from './marketCohorts.js';
 import { priceLogReturns, alignReturnSeries, fitMarketModel, fitIndependentSectorModel, estimateFilingEvent } from './marketRegression.js';
 
 export const UNIVERSE_VERSION = 'edgar.factor-universe.v1';
-export const UNIVERSE_METHOD = 'factor-universe-1.0.0';
+export const UNIVERSE_METHOD = 'factor-universe-1.1.0';
 export const UNIVERSE_FRESH_MS = 25 * 3600_000;
 export const UNIVERSE_GROUPS = MARKET_LENSES.map(c => ({ id: c.id, label: c.assetClass }));
 export const UNIVERSE_PROXIES = { 'credit-banks':'XLF', 'private-capital':'XLF', 'real-estate':'XLRE', housing:'XHB', 'energy-commodities':'XLE', 'consumer-demand':'XLY', 'ai-infrastructure':'XLK', 'software-security':'XLK', 'transport-cyclicals':'XLI', insurance:'XLF', healthcare:'XLV', 'industrial-capex':'XLI', 'utilities-rates':'XLU' };
-export const UNIVERSE_METRICS = [
-  { key:'revenueGrowth', label:'Revenue growth acceleration', short:'Growth acceleration', population:'all', meaning:'Change in year-over-year revenue growth, compared with the comparable period one year earlier. Faster growth can still mean a smaller revenue decline.' },
-  { key:'operatingMargin', label:'Operating margin', short:'Operating margin', population:'operating', meaning:'Operating income as a share of revenue. A higher margin means more operating profit per dollar of sales; accounting changes and one-off items can also affect it.' },
-  { key:'freeCashFlowMargin', label:'Free cash flow margin', short:'Free cash flow margin', population:'operating', meaning:'Operating cash flow less purchases of property, plant and equipment, divided by revenue. A decline can reflect greater investment or working-capital needs.' },
-  { key:'equityToAssets', label:'Book equity / assets', short:'Book equity / assets', population:'all', meaning:'Book equity as a share of total assets. Higher or lower is a capital-structure change, not a standalone safety rating or regulatory capital measure.' },
-  { key:'netMargin', label:'Net margin', short:'Net margin', population:'all', meaning:'Net income divided by revenue. Financing, taxes and nonrecurring items can change this ratio.' },
-  { key:'cashToAssets', label:'Cash / assets', short:'Cash / assets', population:'operating', meaning:'Reported cash as a share of assets. A higher cash share may provide flexibility but does not by itself establish efficient capital allocation.' },
-];
-export const finite = value => typeof value === 'number' && Number.isFinite(value);
-const average = values => values.length ? values.reduce((a,b) => a+b,0)/values.length : null;
-export function distribution(values) {
-  const sorted = values.filter(finite).sort((a,b)=>a-b);
-  const q = p => { if (!sorted.length) return null; const i=(sorted.length-1)*p, lo=Math.floor(i); return sorted[lo]+(sorted[Math.ceil(i)]-sorted[lo])*(i-lo); };
-  return { count:sorted.length, median:q(.5), q25:q(.25), q75:q(.75), iqr:sorted.length ? q(.75)-q(.25) : null, minimum:sorted[0]??null, maximum:sorted.at(-1)??null };
-}
+export { UNIVERSE_METRICS, finite, distribution } from './marketFundamentals.js';
+import { UNIVERSE_METRICS, finite, distribution, computeFundamentalDiagnostics, normalizeChangeThreshold, FUNDAMENTAL_DEFINITIONS } from './marketFundamentals.js';
+const average = values => values.length ? values.reduce((a,b)=>a+b,0)/values.length : null;
 export function uniqueIssuers(companies) {
   const seen=new Set(); return [...companies].sort((a,b)=>a.ticker.localeCompare(b.ticker)).filter(c=>{const id=String(c.cik||c.ticker).replace(/^0+/,'');if(seen.has(id))return false;seen.add(id);return true;});
 }
@@ -41,16 +29,7 @@ function ranks(values) {
 export function spearman(pairs) {return pairs.length>=12 ? pearson(ranks(pairs.map(p=>p[0])),ranks(pairs.map(p=>p[1]))) : null;}
 
 export function summarizeScope(rows) {
-  const breadth=UNIVERSE_METRICS.map(def=>{
-    const population=rows.filter(r=>def.population==='all'||!r.financial);
-    const pairs=population.filter(r=>finite(r.metrics[def.key]?.current)&&finite(r.metrics[def.key]?.prior));
-    const changes=pairs.map(r=>r.metrics[def.key].change), higher=changes.filter(x=>x>1e-9).length, lower=changes.filter(x=>x< -1e-9).length;
-    const current=distribution(pairs.map(r=>r.metrics[def.key].current)), prior=distribution(pairs.map(r=>r.metrics[def.key].prior));
-    return {...def,population_count:population.length,eligible:pairs.length,missing:population.length-pairs.length,higher,lower,unchanged:pairs.length-higher-lower,higher_pct:pairs.length?100*higher/pairs.length:null,lower_pct:pairs.length?100*lower/pairs.length:null,change:distribution(changes),current,prior,paired_iqr_change:pairs.length?current.iqr-prior.iqr:null,filing_dates:dates(pairs.map(r=>r.filed)),fiscal_ends:dates(pairs.map(r=>r.fiscal_end))};
-  });
-  const operating=rows.filter(r=>!r.financial);
-  const joint=operating.filter(r=>['revenueGrowth','operatingMargin','freeCashFlowMargin'].every(k=>finite(r.metrics[k]?.change)));
-  const weakening=joint.filter(r=>['revenueGrowth','operatingMargin','freeCashFlowMargin'].every(k=>r.metrics[k].change< -1e-9));
+  const {breadth,simultaneous_weakening,cash_confirmation}=computeFundamentalDiagnostics(rows);
   const exposureRows=rows.filter(r=>r.exposure);
   const exposures=Object.fromEntries(['beta','downside_beta','sector_beta','r_squared','residual_volatility'].map(key=>[key,distribution(exposureRows.map(r=>r.exposure[key]))]));
   const map=rows.filter(r=>finite(r.metrics.revenueGrowth?.change)&&finite(r.event?.response_z));
@@ -58,7 +37,7 @@ export function summarizeScope(rows) {
     const pairs=rows.filter(r=>(def.population==='all'||!r.financial)&&finite(r.metrics[def.key]?.change)&&finite(r.event?.response_z));
     return {metric:def.key,label:def.label,observations:pairs.length,rho:spearman(pairs.map(r=>[r.metrics[def.key].change,r.event.response_z])),filing_dates:dates(pairs.map(r=>r.filed)),eligible_tickers:pairs.map(r=>r.ticker)};
   });
-  return {companies:rows.length,breadth,simultaneous_weakening:{eligible:joint.length,missing:operating.length-joint.length,count:weakening.length,pct:joint.length?100*weakening.length/joint.length:null,tickers:weakening.map(r=>r.ticker)},exposure:{eligible:exposureRows.length,coverage:rows.length?exposureRows.length/rows.length:0,distributions:exposures},map:{metric:'revenueGrowth',eligible:map.length,opposite_signs:map.filter(r=>r.metrics.revenueGrowth.change*r.event.response_z<0).length},associations};
+  return {companies:rows.length,breadth,simultaneous_weakening,cash_confirmation,exposure:{eligible:exposureRows.length,coverage:rows.length?exposureRows.length/rows.length:0,distributions:exposures},map:{metric:'revenueGrowth',eligible:map.length,opposite_signs:map.filter(r=>r.metrics.revenueGrowth.change*r.event.response_z<0).length},associations};
 }
 
 /** Fixed issuer set and exact 126 benchmark intervals; windows are adjacent, nonoverlapping 63-session periods. */
@@ -97,14 +76,25 @@ function makeExposure(asset,market,sector,benchmarkWindow) {
 }
 const pct=value=>finite(value)?`${value.toFixed(1)}%`:'unavailable';
 export function universeBrief(scope,coMovement) {
-  const growth=scope.breadth[0],cash=scope.breadth[2],weak=scope.simultaneous_weakening;
-  const notes=[];
-  if(growth.eligible>=8 && growth.eligible>=growth.population_count*.6)notes.push(`${growth.higher} of ${growth.eligible} companies (${pct(growth.higher_pct)}) reported faster revenue growth than their comparable prior period. The median acceleration was ${growth.change.median.toFixed(2)} percentage points.`);
-  else notes.push('Comparable revenue-growth coverage is too limited for a broad conclusion. The table shows the observations that are available.');
-  if(cash.eligible>=8 && cash.eligible>=cash.population_count*.6)notes.push(`Free cash flow margin rose at ${pct(cash.higher_pct)} of ${cash.eligible} eligible operating businesses. This captures cash after capital expenditure; investment can explain a decline.`);
-  if(weak.eligible>=8)notes.push(`${weak.count} of ${weak.eligible} operating businesses had slower revenue growth, lower operating margins and lower free cash flow margins together.`);
+  const growth=scope.breadth[0],cash=scope.cash_confirmation,margin=scope.breadth[1],notes=[],band=scope.threshold||0;
+  const bandNote=band?` Direction counts require a change beyond ±${band} percentage points.`:'';
+  if(growth.eligible>=8 && growth.eligible>=growth.population_count*.6)notes.push(`${growth.higher} of ${growth.eligible} companies (${pct(growth.higher_pct)}) reported faster revenue growth. The net direction balance is ${growth.balance_pct.toFixed(1)} percentage points; the median acceleration is ${growth.change.median.toFixed(2)} percentage points.${bandNote}`);
+  else notes.push('Comparable revenue-growth coverage is too limited for a broad conclusion. Available observations and missing counts are shown below.');
+  if(cash?.eligible>=8&&cash.coverage>=.6)notes.push(`On the same ${cash.eligible} operating businesses, revenue growth accelerated at ${cash.growth_higher} and free cash flow margin rose at ${cash.cash_higher}. ${cash.growth_higher?`${cash.both_higher} of the ${cash.growth_higher} faster-growth businesses also had higher cash margins.`:'No business exceeds the selected growth band, so conditional cash confirmation is unavailable.'} This compares cash after capital expenditure, so investment can explain a decline.`);
+  if(margin.eligible>=8&&margin.eligible>=margin.population_count*.6)notes.push(`Operating-margin outcomes are ${Math.abs(margin.paired_iqr_change)<.005?'approximately as dispersed as':margin.paired_iqr_change>0?'more dispersed than':'less dispersed than'} their comparable prior periods: the middle-50% range is ${margin.current.iqr.toFixed(2)} versus ${margin.prior.iqr.toFixed(2)} percentage points across the same ${margin.eligible} companies. This measures differences in outcomes, separately from their direction.`);
   if(coMovement?.available)notes.push(`Average company-pair correlation is ${coMovement.current.mean.toFixed(2)}, versus ${coMovement.prior.mean.toFixed(2)} in the preceding 63-session window, using the same ${coMovement.issuers} companies. ${Math.abs(coMovement.change)<.0001?'Co-movement was approximately unchanged.':coMovement.change>0?'Returns moved more closely together.':'Returns moved less closely together.'}`);
-  return notes.slice(0,4);
+  return notes;
+}
+
+/** Upgrade additive diagnostics from immutable cached issuer rows; preserve every source clock and price model. */
+export function upgradeUniverseSnapshot(snapshot) {
+  if(snapshot.methodology_version===UNIVERSE_METHOD&&snapshot.scopes?.all?.cash_confirmation&&snapshot.scopes.all.breadth?.[0]?.variance)return snapshot;
+  const scopes=Object.fromEntries(Object.entries(snapshot.scopes).map(([id,scope])=>{
+    const rows=id==='all'?snapshot.rows:snapshot.rows.filter(r=>r.group===id);
+    const enriched={...scope,...computeFundamentalDiagnostics(rows)};
+    return [id,{...enriched,brief:universeBrief(enriched,scope.co_movement)}];
+  }));
+  return {...snapshot,methodology_version:UNIVERSE_METHOD,diagnostics_version:'absolute-diagnostics-1.1.0',fundamental_definitions:FUNDAMENTAL_DEFINITIONS,scopes};
 }
 
 export function buildUniverseSnapshot(atlas, series={}, {basis='ttm',now=new Date()}={}) {
@@ -138,10 +128,13 @@ export function buildUniverseSnapshot(atlas, series={}, {basis='ttm',now=new Dat
     scopes[group.id]={...group,...summary,co_movement,brief:universeBrief(summary,co_movement)};
   }
   const age=now.getTime()-Date.parse(atlas.generatedAt),secStale=atlas.cache?.status==='stale'||!finite(age)||age<0||age>UNIVERSE_FRESH_MS;
-  return {schema_version:UNIVERSE_VERSION,methodology_version:UNIVERSE_METHOD,generated_at:now.toISOString(),sec_snapshot_at:atlas.generatedAt,sec_stale:secStale,price_through:benchmark.at(-1)?.endDate??null,basis,status:secStale?'stale':scopes.all.exposure.coverage>=.8?'ready':'partial',universe:{requested:atlas.requested,issuers:rows.length,share_classes_excluded:(atlas.companies?.length||0)-rows.length,grouping:'One primary research group per issuer: first membership in the published research-cohort order. These are curated groups, not official industry sectors.'},price_sample:{benchmark:'SPY',sessions:252,minimum_matched:240,adjustment:'Fully adjusted Yahoo histories only',minimum_coverage_for_brief:.8},scopes,rows,history:[],limitations:['Coverage is the current EDGAR Terminal research universe, not the whole US market; there are no market-cap weights.','Comparisons use the same issuer’s current and comparable prior-year values as known at the current filing cutoff, including eligible revised comparatives. Fiscal ends differ.','Primary research groups are mutually exclusive for aggregates. Company drilldown peer scores use the original overlapping cohorts and are separate from absolute market breadth.','Changes in ratios use percentage points. Missing values are excluded, never counted as unchanged. Financial issuers (SIC 6000–6799) are excluded from operating-margin, free-cash-flow-margin and cash/assets breadth.','Filing response windows differ by issuer and can include other news. Characteristic associations are descriptive cross-sections, not causal tests, forecasts or factor-return backtests.','Pairwise correlation describes return co-movement on a fixed complete sample. It does not quantify a particular portfolio’s diversification benefit.'],links:{methodology:'https://secedgarterminal.com/market/factors',schema:'https://secedgarterminal.com/schemas/factor-universe-v1.schema.json',api:`https://secedgarterminal.com/api/v1/factor-universe?basis=${basis}`}};
+  return {schema_version:UNIVERSE_VERSION,methodology_version:UNIVERSE_METHOD,diagnostics_version:'absolute-diagnostics-1.1.0',fundamental_definitions:FUNDAMENTAL_DEFINITIONS,generated_at:now.toISOString(),sec_snapshot_at:atlas.generatedAt,sec_stale:secStale,price_through:benchmark.at(-1)?.endDate??null,basis,status:secStale?'stale':scopes.all.exposure.coverage>=.8?'ready':'partial',universe:{requested:atlas.requested,issuers:rows.length,share_classes_excluded:(atlas.companies?.length||0)-rows.length,grouping:'One primary research group per issuer: first membership in the published research-cohort order. These are curated groups, not official industry sectors.'},price_sample:{benchmark:'SPY',sessions:252,minimum_matched:240,adjustment:'Fully adjusted Yahoo histories only',minimum_coverage_for_brief:.8},scopes,rows,history:[],limitations:['Coverage is the current EDGAR Terminal research universe, not the whole US market; there are no market-cap weights.','Comparisons use the same issuer’s current and comparable prior-year values as known at the current filing cutoff, including eligible revised comparatives. Fiscal ends differ.','Primary research groups are mutually exclusive for aggregates. Company drilldown peer scores use the original overlapping cohorts and are separate from absolute market breadth.','Changes in ratios use percentage points. Missing values are excluded, never counted as unchanged. Financial issuers (SIC 6000–6799) are excluded from operating-margin, free-cash-flow-margin and cash/assets breadth.','Filing response windows differ by issuer and can include other news. Characteristic associations are descriptive cross-sections, not causal tests, forecasts or factor-return backtests.','Pairwise correlation describes return co-movement on a fixed complete sample. It does not quantify a particular portfolio’s diversification benefit.'],links:{methodology:'https://secedgarterminal.com/market/factors',schema:'https://secedgarterminal.com/schemas/factor-universe-v1.schema.json',api:`https://secedgarterminal.com/api/v1/factor-universe?basis=${basis}`}};
 }
 
-export function universeMarkdown(snapshot,group='all') {
-  const scope=snapshot.scopes[group]||snapshot.scopes.all;
-  return [`# Factor Lab — ${scope.label}`,`SEC snapshot: ${snapshot.sec_snapshot_at} | Price through: ${snapshot.price_through||'unavailable'} | Basis: ${snapshot.basis} | Status: ${snapshot.status}`,`Methodology: ${snapshot.methodology_version}`,`Coverage: ${scope.companies} issuers; ${scope.exposure.eligible} eligible price models.`,...scope.brief.map(s=>`- ${s}`),'','## Fundamental breadth','| Metric | Higher / eligible | Lower | Median change (percentage points) |','|---|---:|---:|---:|',...scope.breadth.map(m=>`| ${m.label} | ${m.higher} / ${m.eligible} | ${m.lower} | ${finite(m.change.median)?m.change.median.toFixed(3):'unavailable'} |`),'','## Interpretation limits',...snapshot.limitations.map(s=>`- ${s}`),'',`Sources and full definitions: ${snapshot.links.methodology}`,`Reproducible derived data: ${snapshot.links.api}`].join('\n');
+export function universeMarkdown(snapshot,group='all',selectedThreshold=0) {
+  const base=snapshot.scopes[group]||snapshot.scopes.all,threshold=normalizeChangeThreshold(selectedThreshold);
+  const rows=base.id==='all'?snapshot.rows:snapshot.rows.filter(r=>r.group===base.id);
+  const scope={...base,...computeFundamentalDiagnostics(rows,threshold)};
+  const brief=universeBrief(scope,scope.co_movement),cash=scope.cash_confirmation;
+  return [`# Quant Lab — ${scope.label}`,`SEC snapshot: ${snapshot.sec_snapshot_at} | Price through: ${snapshot.price_through||'unavailable'} | Basis: ${snapshot.basis} | Status: ${snapshot.status}`,`Methodology: ${UNIVERSE_METHOD}`,`Direction threshold: ${threshold===0?'all measured changes':`outside ±${threshold} percentage points`}. Magnitude and dispersion retain all paired observations.`,`Coverage: ${scope.companies} issuers; ${scope.exposure.eligible} eligible price models.`,'',...brief.map(s=>`- ${s}`),'','## Separate fundamental diagnostics','| Metric | Higher / eligible | Lower | Neutral | Net balance | Median change | Change in IQR |','|---|---:|---:|---:|---:|---:|---:|',...scope.breadth.map(m=>`| ${m.label} | ${m.higher} / ${m.eligible} | ${m.lower} | ${m.unchanged} | ${finite(m.balance_pct)?m.balance_pct.toFixed(3):'unavailable'} | ${finite(m.change.median)?m.change.median.toFixed(3):'unavailable'} | ${finite(m.paired_iqr_change)?m.paired_iqr_change.toFixed(3):'unavailable'} |`),'','Net balance, median changes and changes in spread use percentage points. Revenue-growth dispersion uses growth-rate levels; their changes measure acceleration.','',`## Matched growth and cash margins`,`${cash.eligible} of ${cash.population} operating issuers have both comparisons; ${cash.missing} missing.`,...cash.cells.map(c=>`- Growth ${c.growth} / cash margin ${c.cash}: ${c.count} issuers.`),'','## Interpretation limits',...snapshot.limitations.map(s=>`- ${s}`),'',`Sources and full definitions: ${snapshot.links.methodology}`,`Reproducible derived data (default threshold): ${snapshot.links.api}`].join('\n');
 }
