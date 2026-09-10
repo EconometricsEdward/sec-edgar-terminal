@@ -172,6 +172,20 @@ export default function MarketFactorsMethodologyPage() {
         </nav>
       </header>
 
+      <section className={styles.intro} aria-labelledby="reading-results-heading">
+        <div><p className={styles.eyebrow}>Reading your results</p><h2 id="reading-results-heading">Sensitivity, uncertainty, and business change answer different questions</h2>
+          <p>Beta describes a historical relationship with SPY. A beta of 1.2 associates a small 1% market move with approximately 1.2% from the market component. The rest of the stock’s return comes from other influences. A low beta can coexist with high total risk.</p>
+          <p>The 95% beta interval describes sampling uncertainty in that slope. An interval that includes one does not clearly establish different sensitivity from SPY; an interval that includes zero leaves direction uncertain. The interval is not a range for future stock returns.</p>
+          <p>R² describes the share of historical daily return variation captured by the model. It is not forecast accuracy. The page shows actual interval width, matched observations, and coverage instead of combining them into an uncalibrated reliability score.</p>
+        </div>
+        <div><h3>Peer strength can still mean an absolute decline</h3>
+          <p>A margin that fell from 10% to 8% declined by 2 percentage points. If peers declined more, its peer score may be positive. Read the current and prior reported values before concluding that business conditions improved.</p>
+          <p>The Evidence Gap subtracts two separately scaled measures. It is not a statistical z score; zero can represent two positive or two negative inputs. Event response scores are descriptive residual-scale units, without a calibrated event significance test.</p>
+          <p>The scenario translator uses 100 × [exp(beta × log(1 + shock/100)) − 1] to convert the fitted log-return relationship to percentage returns. Its bounds transform the beta interval and exclude the intercept and residual movement.</p>
+          <p>Each interactive metric includes a definition, a result-specific interpretation, and a limitation. The same text is supplied in the optional API reading_guide and downloadable research notes. <a href="https://www.statsmodels.org/stable/generated/statsmodels.stats.sandwich_covariance.cov_hac.html">Newey–West inference reference</a> · <a href="https://www.statsmodels.org/stable/generated/statsmodels.regression.linear_model.OLSResults.rsquared.html">R² definition</a>.</p>
+        </div>
+      </section>
+
       <section className={styles.intro} aria-labelledby="purpose-heading">
         <div>
           <p className={styles.eyebrow}>Purpose</p>

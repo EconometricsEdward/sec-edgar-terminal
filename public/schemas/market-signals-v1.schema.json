@@ -30,6 +30,69 @@
     "cite_as"
   ],
   "properties": {
+    "reading_guide": {
+      "type": "object",
+      "description": "Versioned plain-language definitions, result-specific interpretations and limitations generated from this exact response. Additive field; clients can compute the same guide for older cached responses.",
+      "required": [
+        "version",
+        "summary",
+        "checks",
+        "metrics"
+      ],
+      "properties": {
+        "version": {
+          "const": "factor-reading-1.0.0"
+        },
+        "summary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "label",
+              "value",
+              "meaning",
+              "reading",
+              "caution"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              },
+              "meaning": {
+                "type": "string"
+              },
+              "reading": {
+                "type": "string"
+              },
+              "caution": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "schema_version": {
       "const": "edgar.market-signals.v1",
       "description": "Version of this response contract."
