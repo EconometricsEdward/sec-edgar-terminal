@@ -268,11 +268,11 @@
 .factorCaveatGrid li { padding:3px 0; }
 .factorCaveatGrid dl > div { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid var(--m-line); font-size:11px; }
 .factorCaveatGrid dt { color:var(--m-muted); }
-.factorJumpNav { position:sticky; top:58px; z-index:8; display:flex; align-items:center; gap:6px; overflow-x:auto; margin:0 0 14px; padding:8px; border:1px solid var(--m-line); border-radius:10px; background:color-mix(in srgb,var(--m-panel) 94%,transparent); backdrop-filter:blur(10px); box-shadow:0 8px 24px rgba(2,6,23,.08); }
+.factorJumpNav { position:sticky; top:calc(var(--factor-header-height, 160px) + 8px); z-index:8; display:flex; align-items:center; gap:6px; overflow-x:auto; margin:0 0 14px; padding:8px; border:1px solid var(--m-line); border-radius:10px; background:color-mix(in srgb,var(--m-panel) 94%,transparent); backdrop-filter:blur(10px); box-shadow:0 8px 24px rgba(2,6,23,.08); }
 .factorJumpNav a,.factorJumpNav span { flex:0 0 auto; padding:6px 9px; border-radius:7px; color:var(--m-muted); font-size:11px; text-decoration:none; }
 .factorJumpNav a:hover,.factorJumpNav a:focus-visible { color:var(--m-text); background:var(--m-raised); }
 .factorJumpNav span { display:inline-flex; align-items:center; gap:5px; margin-left:auto; color:var(--m-accent); }
-.factorDecisionBrief { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr); gap:24px; align-items:center; border-left:3px solid var(--m-accent); scroll-margin-top:115px; }
+.factorDecisionBrief { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr); gap:24px; align-items:center; border-left:3px solid var(--m-accent); scroll-margin-top:calc(var(--factor-header-height, 160px) + var(--factor-nav-height, 54px) + 24px); }
 .factorDecisionBrief h2 { margin:5px 0 8px; }
 .factorDecisionBrief p { color:var(--m-muted); }
 .factorReliability { padding:14px; border:1px solid var(--m-line); border-radius:10px; background:var(--m-raised); }
@@ -281,7 +281,7 @@
 .factorReliability strong small { font-size:11px; color:var(--m-muted); }
 .factorReliability progress { width:100%; height:7px; margin:10px 0 5px; accent-color:var(--m-accent); }
 .factorReliability p { font-size:10px; }
-.factorScenario { scroll-margin-top:115px; }
+.factorScenario { scroll-margin-top:calc(var(--factor-header-height, 160px) + var(--factor-nav-height, 54px) + 24px); }
 .factorScenario > label { display:block; margin-bottom:5px; color:var(--m-muted); font-size:11px; }
 .factorScenario > input[type="range"] { width:100%; accent-color:var(--m-accent); }
 .factorScenarioResults { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)) minmax(280px,1.2fr); gap:12px; align-items:center; margin-top:14px; }
@@ -293,7 +293,7 @@
 .factorRegimeGrid > div { padding:11px 12px; border:1px solid var(--m-line); border-radius:8px; background:var(--m-raised); }
 .factorRegimeGrid span { display:block; color:var(--m-muted); font-size:10px; }
 .factorRegimeGrid b { display:block; margin-top:3px; font-size:14px; }
-.factorEvent,.factorInfluence { scroll-margin-top:115px; }
+.factorEvent,.factorInfluence { scroll-margin-top:calc(var(--factor-header-height, 160px) + var(--factor-nav-height, 54px) + 24px); }
 .factorEventBars { display:grid; gap:8px; margin:8px 0 18px; }
 .factorEventBars > div { display:grid; grid-template-columns:76px minmax(120px,1fr) 70px; gap:10px; align-items:center; font-size:11px; }
 .factorEventBars > div > div { height:8px; overflow:hidden; border-radius:99px; background:var(--m-raised); }
@@ -315,7 +315,7 @@
 @media (max-width:760px) { .page { padding-top:16px; } .hero { display:block; padding-bottom:24px; } .heroAside { display:none; } .desktopBreak { display:none; } .topbar { display:block; padding-bottom:12px; } .tabs { gap:22px; } .tabs svg { display:none; } .topbar > .segmented { width:max-content; margin-top:10px; } .briefGrid,.methodology { grid-template-columns:1fr; gap:0; } .panel { padding:17px; } .sectionLink { align-items:start; flex-direction:column; } .toolbar { display:block; } .toolbar > label { max-width:100%; } .actions { margin-top:15px; } .actions .button { flex:1; } .basisNote { display:block; } .basisNote > span { display:block; text-align:left; margin-top:5px; } .filters .search { flex-basis:100%; } .filters > label:not(.search) { flex:1; } .filters select { width:100%; } .peerTray { flex-direction:column; align-items:stretch; gap:10px; bottom:5px; } .peerTray > div:last-child { justify-content:flex-end; } .dialogBody { padding:18px; } .sourceGrid { grid-template-columns:1fr; } .evidenceValue { align-items:start; flex-direction:column; gap:8px; } .saveForm { flex-wrap:wrap; } .saveForm label { flex-basis:100%; } .methodology { gap:15px; } }
 @media (max-width:430px) { .cards { gap:8px; } .stat { padding:13px; } .stat > strong { font-size:32px; } .stat > span:first-child { font-size:11px; } .stat small { font-size:10px; } .stat > span svg { display:none; } .sectionHeading { align-items:start; gap:10px; } .page h2 { font-size:18px; } .sectionHeading > .segmented { flex-direction:column; } .pagination { align-items:start; } .pagination > span { max-width:150px; } }
 @media (max-width:1100px) { .factorIntro,.factorDecisionBrief { grid-template-columns:1fr; } .factorControlGrid { grid-template-columns:repeat(2,minmax(0,1fr)); } .factorMetricGrid { grid-template-columns:repeat(2,minmax(0,1fr)); } .factorFeatureGrid { grid-template-columns:1fr; } .factorScenarioResults { grid-template-columns:repeat(2,minmax(0,1fr)); } .factorScenarioResults p { grid-column:1/-1; } }
-@media (max-width:760px) { .factorRunRow,.factorResultHeader,.factorSectionHeading { align-items:stretch; flex-direction:column; } .factorStatusGroup { align-items:flex-start; } .factorRunRow .primary { width:100%; } .factorFilingRefs,.factorClocks,.factorCaveatGrid,.factorRegimeGrid { grid-template-columns:1fr; } .factorRollingSummary { justify-content:flex-start; } .factorMapLabel { text-align:left; } .factorJumpNav { top:50px; } }
+@media (max-width:760px) { .factorRunRow,.factorResultHeader,.factorSectionHeading { align-items:stretch; flex-direction:column; } .factorStatusGroup { align-items:flex-start; } .factorRunRow .primary { width:100%; } .factorFilingRefs,.factorClocks,.factorCaveatGrid,.factorRegimeGrid { grid-template-columns:1fr; } .factorRollingSummary { justify-content:flex-start; } .factorMapLabel { text-align:left; } }
 @media (max-width:430px) { .factorControlGrid,.factorMetricGrid,.factorScenarioResults { grid-template-columns:1fr; } .factorScenarioResults p { grid-column:auto; } .factorIntro { padding:17px; } .factorEquationGrid code { font-size:10px; } .factorMapSvg { min-width:440px; } .factorChartSvg { min-width:620px; } .factorMapQuadrant { display:none; } .factorMapAxisLabel,.factorChartLabel { font-size:12px; } .factorMapNeutralLabel { font-size:11px; } .factorGap > strong { font-size:38px; } .factorInfluenceList > div { grid-template-columns:24px 1fr 70px; } .factorInfluenceList > div > div { grid-column:2/-1; grid-row:2; } }
 
 /* Plain-language Factor Lab: definitions stay close to values; detail is opt-in. */
@@ -347,7 +347,7 @@
 .factorComponentReadings { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:16px 0; }
 .factorComponentReadings article { padding:16px; border:1px solid var(--m-line); border-radius:9px; }
 .factorComponentReadings article > p { margin-top:8px; font-size:.875rem; color:var(--m-muted); }
-.factorGuide { scroll-margin-top:120px; }
+.factorGuide { scroll-margin-top:calc(var(--factor-header-height, 160px) + var(--factor-nav-height, 54px) + 24px); }
 .factorGuide > p { margin:12px 0 20px; font-size:1rem; color:var(--m-muted); }
 .factorGuideItem { border-top:1px solid var(--m-line); }
 .factorGuideItem summary { cursor:pointer; padding:14px 0; font-size:.875rem; }
@@ -359,7 +359,7 @@
 .factorLab .factorJumpNav a,.factorLab .factorJumpNav span { font-size:.875rem; }
 .factorLab .factorGap p,.factorLab .factorGapInputs dt,.factorLab .factorRegimeGrid span,.factorLab .factorScenarioResults span { font-size:.875rem; }
 .factorLab .factorChartFigure figcaption,.factorLab .factorMapFigure figcaption { font-size:.75rem; }
-.factorLab :is(h2,h3)[id] { scroll-margin-top:120px; }
+.factorLab :is(h2,h3)[id] { scroll-margin-top:calc(var(--factor-header-height, 160px) + var(--factor-nav-height, 54px) + 24px); }
 .factorLab .comparison { font-size:.875rem; }
 .factorModelMatrix { overflow:hidden; }
 .factorInfluenceList > div { grid-template-columns:24px 96px minmax(60px,1fr) 155px; }

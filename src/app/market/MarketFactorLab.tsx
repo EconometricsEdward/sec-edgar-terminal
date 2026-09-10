@@ -513,6 +513,7 @@ export default function MarketFactorLab({
   const mapTitleId = useId();
   const mapDescriptionId = useId();
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
+  const labRef = useRef<HTMLElement>(null);
   const eligibleCompanies = useMemo(() => {
     const rows = cohortId === 'all' ? companies : companies.filter((company) => company.cohorts.includes(cohortId));
     return [...rows].sort((a, b) => a.ticker.localeCompare(b.ticker));
@@ -533,6 +534,23 @@ export default function MarketFactorLab({
   const [error, setError] = useState<FactorError | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const [scenarioMove, setScenarioMove] = useState(-5);
+  const hasResult = Boolean(data);
+
+  useEffect(() => {
+    const lab = labRef.current;
+    const header = document.querySelector('header');
+    const navigation = lab?.querySelector('nav[aria-label="Factor Lab result sections"]');
+    if (!lab || !header || !navigation) return;
+    const measure = () => {
+      lab.style.setProperty('--factor-header-height', `${header.getBoundingClientRect().height}px`);
+      lab.style.setProperty('--factor-nav-height', `${navigation.getBoundingClientRect().height}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    observer.observe(navigation);
+    return () => observer.disconnect();
+  }, [hasResult]);
 
   useEffect(() => {
     if (!request) return;
@@ -721,7 +739,7 @@ export default function MarketFactorLab({
         ? s.factorStatusStale
         : s.factorStatusPartial;
 
-  return <section className={s.factorLab} aria-labelledby="factor-lab-heading">
+  return <section ref={labRef} className={s.factorLab} aria-labelledby="factor-lab-heading">
     <p className={s.srOnly} role="status" aria-live="polite" aria-atomic="true">{autoRunAnnouncement}</p>
     <div className={`${s.panel} ${s.factorIntro}`}>
       <div className={s.factorIntroCopy}>
