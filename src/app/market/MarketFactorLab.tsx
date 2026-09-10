@@ -499,7 +499,7 @@ export default function MarketFactorLab({
   onView,
   onNotice,
 }: {
-  companies: Company[];
+  companies: Pick<Company, 'ticker' | 'name' | 'cohorts'>[];
   basis: Basis;
   cohortId: string;
   factorTicker: string;

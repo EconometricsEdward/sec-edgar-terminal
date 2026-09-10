@@ -406,7 +406,7 @@ export function warmYahooSeries(envelope, fromIso) {
   };
 }
 
-async function loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh = false, signal) {
+async function loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh = false, signal, allowUnverifiedFallback = true) {
   const attempts = [];
   const warm = forceRefresh ? null : await warmGet('stock-raw-yahoo', ticker);
   if (warm) {
@@ -449,7 +449,7 @@ async function loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh
   try {
     for (const [provider, loader] of [
       ['yahoo_finance', () => yahooSeries(ticker, fromIso, toEpoch, exclusiveEnd, signal)],
-      ['stooq', () => stooqSeries(ticker, fromIso, signal)],
+      ...(allowUnverifiedFallback ? [['stooq', () => stooqSeries(ticker, fromIso, signal)]] : []),
     ]) {
       try {
         const result = await loader();
@@ -468,16 +468,16 @@ async function loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh
   throw new PriceDataError(`Price sources are unavailable for ${ticker}.`, { code: 'PRICE_DATA_UNAVAILABLE' });
 }
 
-export async function loadPriceSeries({ ticker: inputTicker, fromIso, now = new Date(), forceRefresh = false, signal }) {
+export async function loadPriceSeries({ ticker: inputTicker, fromIso, now = new Date(), forceRefresh = false, signal, allowUnverifiedFallback = true }) {
   const ticker = normalizePriceTicker(inputTicker);
   if (!ticker) throw new PriceDataError('Invalid ticker format.', { code: 'INVALID_TICKER', status: 400 });
   if (!validIsoDate(fromIso)) throw new PriceDataError('Invalid price start date.', { code: 'INVALID_START_DATE', status: 400 });
   const toEpoch = Math.floor(now.getTime() / 1000) + 86400;
   const exclusiveEnd = now.toISOString().slice(0, 10);
-  const key = `${ticker}:${fromIso}:${forceRefresh ? 'refresh' : 'cached'}`;
+  const key = `${ticker}:${fromIso}:${forceRefresh ? 'refresh' : 'cached'}:${allowUnverifiedFallback ? 'fallback' : 'adjusted-only'}`;
   if (pending.has(key)) return pending.get(key);
   if (signal?.aborted) throw abortError(signal);
-  const task = loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh, signal);
+  const task = loadUncached(ticker, fromIso, toEpoch, exclusiveEnd, forceRefresh, signal, allowUnverifiedFallback);
   pending.set(key, task);
   try {
     const result = await task;

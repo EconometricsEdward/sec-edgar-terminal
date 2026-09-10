@@ -18,14 +18,14 @@ import styles from "./factors.module.css";
 const PAGE_PATH = "/market/factors" as const;
 const PAGE_URL = canonicalUrl(PAGE_PATH);
 const API_EXAMPLE_URL =
-  "/api/v1/market-signals?ticker=MSFT&window=3y&basis=ttm";
-const SCHEMA_URL = "/schemas/market-signals-v1.schema.json";
+  "/api/v1/factor-universe?basis=ttm";
+const SCHEMA_URL = "/schemas/factor-universe-v1.schema.json";
 const OPENAPI_URL = "/openapi.json";
 
 export const metadata: Metadata = buildPageMetadata({
-  title: "EDGAR Factor Lab — Beta & SEC Filing-Event Methodology",
+  title: "EDGAR Factor Lab — Universe Breadth & Market Research Methodology",
   description:
-    "See how EDGAR Factor Lab estimates HAC market beta, conditional beta, independent sector sensitivity, filing-event response, and the EDGAR Evidence Gap.",
+    "Understand universe-wide SEC breadth, paired dispersion, market exposure, fixed-sample co-movement and filing-response associations, with company econometric drilldowns.",
   path: PAGE_PATH,
 });
 
@@ -35,7 +35,7 @@ const datasetJsonLd = {
   "@id": `${PAGE_URL}#dataset`,
   name: "EDGAR Factor Lab derived market and filing diagnostics",
   description:
-    "Source-aware estimates of market beta, conditional beta, independent sector sensitivity, filing-event abnormal returns, peer-normalized SEC filing change, and the EDGAR Evidence Gap.",
+    "Derived universe-wide SEC breadth, paired dispersion, market-exposure distributions and fixed-sample pairwise correlations, with source-linked issuer event studies.",
   url: PAGE_URL,
   creator: {
     "@type": "Organization",
@@ -44,6 +44,9 @@ const datasetJsonLd = {
   },
   isAccessibleForFree: true,
   keywords: [
+    "SEC fundamental breadth",
+    "paired fundamental dispersion",
+    "market co-movement",
     "market beta",
     "Newey-West HAC",
     "conditional beta",
@@ -53,6 +56,8 @@ const datasetJsonLd = {
     "EDGAR Evidence Gap",
   ],
   measurementTechnique: [
+    "Equal-issuer-weight absolute filing-change breadth and paired interquartile dispersion",
+    "Fixed-sample rolling pairwise correlation and descriptive Spearman rank association",
     "Ordinary least squares with Newey-West heteroskedasticity- and autocorrelation-consistent covariance",
     "Upside and downside conditional market regressions",
     "Sector-return residualization against a broad-market benchmark",
@@ -60,6 +65,9 @@ const datasetJsonLd = {
     "Leave-one-out peer normalization using median and median absolute deviation",
   ],
   variableMeasured: [
+    { "@type": "PropertyValue", name: "SEC fundamental breadth", description: "Share of comparable issuers with an increase, decrease or unchanged filing measure, with metric-specific denominators." },
+    { "@type": "PropertyValue", name: "Paired fundamental dispersion", description: "Current versus comparable prior-year interquartile ranges on the same eligible companies." },
+    { "@type": "PropertyValue", name: "Return co-movement", description: "Average company-pair correlation over adjacent 63-session windows on a fixed complete issuer set." },
     {
       "@type": "PropertyValue",
       name: "Market beta",
@@ -136,33 +144,33 @@ export default function MarketFactorsMethodologyPage() {
             <p className={styles.eyebrow}>Econometric research methodology</p>
             <h1>EDGAR Factor Lab</h1>
             <p className={styles.lede}>
-              Separate broad-market sensitivity, sector-specific movement,
-              filing change, and the price response after public SEC evidence
-              arrives. Every estimate carries its sample, dates, model
-              definition, coverage, and limitations.
+              Quantify how fundamentals and return patterns differ across the
+              EDGAR Terminal coverage universe. Begin with absolute filing-change
+              breadth and dispersion, then investigate market exposure, co-movement
+              and individual filing events. Each result carries its sample and dates.
             </p>
           </div>
           <aside className={styles.distinction} aria-label="Three distinct research questions">
             <p>Keep three questions separate</p>
             <dl>
               <div>
-                <dt>Risk β</dt>
-                <dd>How returns historically moved with market conditions.</dd>
+                <dt>Fundamental breadth</dt>
+                <dd>How widely reported measures are rising or falling.</dd>
               </div>
               <div>
-                <dt>Filing change</dt>
-                <dd>How reported fundamentals changed versus comparable peers.</dd>
+                <dt>Return behavior</dt>
+                <dd>Where sensitivities and common return movements concentrate.</dd>
               </div>
               <div>
-                <dt>Evidence Gap</dt>
-                <dd>Whether filing change and model-adjusted price response differ.</dd>
+                <dt>Filing response</dt>
+                <dd>How filing changes relate to subsequent model-adjusted responses.</dd>
               </div>
             </dl>
           </aside>
         </div>
 
         <nav className={styles.sectionLinks} aria-label="Factor methodology sections">
-          <a href="#risk-beta">Risk beta</a>
+          <a href="#universe-method">Universe methodology</a><a href="#risk-beta">Company model details</a>
           <a href="#conditional-beta">Conditional beta</a>
           <a href="#sector-sensitivity">Sector sensitivity</a>
           <a href="#filing-event">Filing event</a>
@@ -171,6 +179,26 @@ export default function MarketFactorsMethodologyPage() {
           <a href="#limitations">Limitations</a>
         </nav>
       </header>
+
+      <section id="universe-method" className={styles.section}>
+        <div className={styles.sectionHeader}><p className={styles.eyebrow}>The default Factor Lab view</p><h2>A quantitative view of the covered universe</h2></div>
+        <div className={styles.sectionBody}>
+          <h3>Scope and weighting</h3><p>The universe consists of currently covered SEC issuers. Issuers are deduplicated by CIK, keeping the alphabetically first covered ticker when multiple share classes exist. Every issuer receives equal weight. This is a curated research universe with survivorship limitations, not the entire US equity market or an investable index.</p>
+          <p>Aggregate groups use the first membership in the published research-cohort order, assigning each issuer exactly once. These are primary research themes, not GICS sectors. The company drilldown can use the original overlapping cohort for peer normalization; its score is separate from absolute breadth.</p>
+          <h3>Fundamental breadth: direction and magnitude</h3><p>For each metric, compare the latest annual or trailing-12-month period with its comparable period ending 350–380 days earlier. Both values use information eligible at the current filing cutoff, including revised prior-year comparatives available then. The change is current minus prior, in percentage points. Higher share is 100 × positive changes / issuers with both values. Lower and unchanged shares use that same denominator; missing values are never assigned zero.</p>
+          <p>The magnitude is the median of issuer-level changes. Revenue growth acceleration is the difference between two year-over-year growth rates; acceleration can occur while revenue is still falling. Free cash flow is operating cash flow minus purchases of property, plant and equipment. A lower free cash flow margin can reflect greater investment.</p>
+          <p>Operating-margin, free-cash-flow-margin and cash/assets breadth exclude financial and property/investment issuers with SIC codes 6000–6799. Revenue growth, net margin and book equity/assets retain all eligible issuer types, with industry context required. Book equity/assets is not regulatory capital.</p>
+          <h3>Dispersion and simultaneous declines</h3><p>The interquartile range (IQR) is the 75th percentile minus the 25th percentile, using linear interpolation. Current and prior IQRs use exactly the same paired issuers. A positive difference means the range of reported outcomes widened across those companies relative to their comparable prior periods. The IQR of individual changes instead measures variation in how companies changed.</p>
+          <p>Simultaneous declines require slower revenue growth, lower operating margin and lower free cash flow margin in the same operating issuer. Only companies with all three comparisons enter the denominator. This is an investigation screen, not a distress probability.</p>
+          <h3>Market exposure and co-movement</h3><p>Universe market models use fully adjusted Yahoo prices and daily log returns over the latest 252 SPY intervals. A model requires at least 240 exact start-and-end interval matches and the same final session. Down-market slopes require at least 30 negative-SPY observations. Sector sensitivity uses the cohort-matched ETF after removing its fitted SPY component. Newey–West beta coefficient intervals remain in the issuer data. Exposure distributions below 80% coverage are identified as subset results.</p>
+          <p>Co-movement is the average Pearson correlation across company pairs. A fixed issuer set must have complete observations and nonzero return variance in every chart window on the latest 126 SPY intervals, with at least 8 issuers and 60% of the selected scope represented. Valid pairs are fixed across all chart windows, excluding pairs with undefined correlations in any window. The comparison uses two adjacent 63-session windows; the rolling chart advances by seven sessions. Correlation is not a portfolio-specific diversification estimate.</p>
+          <h3>Filing-response research</h3><p>The universe map places absolute filing-measure change on the horizontal axis and standardized 20-session model-adjusted response on the vertical axis. It does not use a peer z-score on the horizontal axis. The response comes from the issuer event-study method below, and filing dates vary across issuers. Spearman correlations compare filing-change ranks with response ranks, requiring at least 12 paired observations and average ranks for ties.</p>
+          <p>These associations are descriptive, unadjusted cross-sections. They do not establish significance, causality, prediction or a realized factor premium. The displayed period can contain earnings releases, guidance and other news. Company drilldowns have selectable calendar-year estimation windows, so their regression samples can differ from the universe’s 252-session models.</p>
+          <h3>Freshness and reproducibility</h3><p>The SEC atlas is refreshed by the daily SEC job. A separate authenticated daily job, scheduled after it, prepares the universe price diagnostics using bounded shared provider pacing. Fresh, sufficiently long Yahoo histories are reused; unverified fallback prices are excluded. Initial production builds can prepare a missing aggregate snapshot. Public universe requests never start SEC or provider refreshes.</p>
+          <p>Prepared snapshots have a 25-hour fresh window and up to seven days of retained data. Incomplete refreshes cannot replace a materially fuller retained result within that period. Original source dates remain visible. If no aggregate exists, the endpoint can calculate real SEC-only breadth from the cached atlas, explicitly withholding price results. Historical observations begin with actual saved calculations and are not reconstructed backtests.</p>
+          <p><a href="/api/v1/factor-universe?basis=ttm">Universe API</a> · <a href="/schemas/factor-universe-v1.schema.json">Universe JSON Schema</a> · <a href="/api/v1/market-signals?ticker=MSFT&amp;window=3y&amp;basis=ttm">Company API example</a></p>
+        </div>
+      </section>
 
       <section className={styles.intro} aria-labelledby="reading-results-heading">
         <div><p className={styles.eyebrow}>Reading your results</p><h2 id="reading-results-heading">Sensitivity, uncertainty, and business change answer different questions</h2>
@@ -455,20 +483,19 @@ export default function MarketFactorsMethodologyPage() {
           <p className={styles.eyebrow}>Machine-readable research</p>
           <h2>One model definition for people and AI assistants</h2>
           <p>
-            The versioned response identifies the security and benchmarks,
-            effective dates, observation counts, overlap, return and price
-            basis, model coefficients, confidence interval, diagnostics,
-            filing-event windows, peer coverage, SEC evidence, calculation
-            definitions, and warnings. Missing outputs remain explicit rather
-            than being inferred.
+            The universe response supplies absolute breadth, paired dispersion,
+            market-exposure distributions, co-movement, issuer observations,
+            definitions and source dates. The separate company endpoint adds
+            detailed coefficients, confidence intervals, event windows and peer
+            evidence. Both preserve missing values, sample limits and methodology versions.
           </p>
           <div className={styles.apiLinks}>
             <a href={API_EXAMPLE_URL}>
-              View a derived API example
+              View the universe API example
               <ArrowUpRight size={15} aria-hidden="true" />
             </a>
             <a href={SCHEMA_URL}>
-              Open the response schema
+              Open the universe response schema
               <ArrowUpRight size={15} aria-hidden="true" />
             </a>
             <a href={OPENAPI_URL}>
