@@ -253,6 +253,7 @@ export default function MarketFactorsMethodologyPage() {
         <div className={styles.sectionBody}>
           <p className={styles.eyebrow}>Systematic sensitivity</p>
           <h2>Market beta with HAC uncertainty</h2>
+          <p>The universe uncertainty audit groups individual 95% HAC slope intervals into entirely above one, positive and entirely below one, entirely below zero, including zero, positive and including one, or unavailable. Intervals touching zero enter the zero group before testing one. Missing, nonfinite, reversed, or point-excluding intervals are unavailable. Groups partition all issuers in the selected scope; these individual intervals have no multiple-comparison adjustment and are not predictive return ranges.</p>
           <p>
             The model converts positive price observations into close-to-close
             log returns and keeps only intervals whose start and end dates match
