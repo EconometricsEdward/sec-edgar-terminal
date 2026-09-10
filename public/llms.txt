@@ -11,6 +11,10 @@
 
 ## Machine-readable interfaces
 
+- [Factor Lab universe API](https://secedgarterminal.com/api/v1/factor-universe?basis=ttm): Default market-wide snapshot with SEC breadth, paired dispersion, exposure distributions, fixed-sample pairwise correlations and source-linked constituents. Supports only basis=ttm or basis=annual.
+- [Universe JSON Schema](https://secedgarterminal.com/schemas/factor-universe-v1.schema.json): Contract for edgar.factor-universe.v1.
+
+
 - [OpenAPI](https://secedgarterminal.com/openapi.json): Public endpoint description.
 - [Market signals JSON Schema](https://secedgarterminal.com/schemas/market-signals-v1.schema.json): Versioned response contract for `GET /api/v1/market-signals`.
 - Example: `https://secedgarterminal.com/api/v1/market-signals?ticker=MSFT&window=3y&basis=ttm`
@@ -27,7 +31,18 @@
 - The EDGAR Evidence Gap is a diagnostic comparison, not a valuation, forecast, recommendation, or trade signal.
 - Bulk vendor price histories are not distributed through the market-signals API; it returns derived statistics and compact chart points.
 
-## Interpreting Factor Lab results
+## Interpreting the market-wide Factor Lab
+- Start with scopes.all.brief and breadth. Values use percentage points; percentages are 0–100. Exposure R², annualized residual volatility and event returns use decimals.
+- Growth acceleration is a change in growth rates; it does not mean revenue increased. Cash-flow and book-equity ratios are not standalone health scores.
+- Groups count each CIK once using its first published cohort membership. They are curated primary research groups, not official industry sectors.
+- Dispersion compares the same paired issuers at their current and comparable prior periods. Observed snapshot history is not a point-in-time backtest.
+- The universe filing map uses absolute selected metric change, not peer-normalized z. scopes.all.map describes revenue-growth acceleration; other selected metrics require their own eligibility filter.
+- Preserve the co-movement issuer/pair set, coverage and dates. It is actual company-pair correlation, not the median correlation with SPY.
+- Characteristic Spearman associations are descriptive, unadjusted and not predictive, causal, significance tests or factor premiums.
+- Status partial can still contain useful SEC breadth. Inspect section coverage and retain unavailable values.
+- The default universe exposure model uses 252 SPY intervals with at least 240 exact matches. Company drilldown calendar-year windows can differ.
+
+## Interpreting individual company drilldowns
 - `reading_guide` includes a version, three summary findings, coverage checks, and per-metric `meaning`, `reading`, and `caution`. Preserve these limitations when summarizing.
 - Beta measures historical market sensitivity; R² measures in-sample variation captured, not forecasting accuracy. The 95% beta interval is coefficient uncertainty, not a return prediction interval.
 - Above-peer filing change may still be an absolute decline. Read current, prior, and raw change before saying fundamentals improved. The Evidence Gap is a difference of scaled diagnostics, not a statistical z score or expected alpha.

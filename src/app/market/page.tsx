@@ -31,9 +31,9 @@ const readCachedMarket = unstable_cache(
 
 export const metadata: Metadata = {
   ...buildPageMetadata({
-    title: 'Market Overview — SEC Fundamentals, Betas & Factor Lab',
+    title: 'Market Overview — SEC Breadth, Quantitative Research & Factor Lab',
     description:
-      'Explore SEC fundamentals, sector heatmaps, company screening, regression betas, filing-event response, and the EDGAR Evidence Gap with source-aware research outputs.',
+      'Explore SEC fundamental breadth, dispersion, market exposure, stock co-movement and filing-response research across the EDGAR Terminal coverage universe.',
     path: '/market',
   }),
 };

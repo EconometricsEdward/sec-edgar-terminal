@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   PriceDataError,
+  loadPriceSeries,
   normalizePriceTicker,
   parsePriceRetryAfter,
   readBoundedPriceText,
@@ -99,4 +100,11 @@ test('Price-provider bodies are rejected before or during consumption when they 
     readBoundedPriceText(new Response(stream), 7),
     (error) => error.code === 'PRICE_PROVIDER_RESPONSE_TOO_LARGE',
   );
+});
+
+test('adjusted-only universe refresh does not contact an unverified fallback provider', async () => {
+  const original=globalThis.fetch, urls=[];
+  globalThis.fetch=async url=>{urls.push(String(url));return new Response('{}',{status:404});};
+  try{await assert.rejects(loadPriceSeries({ticker:'ADJTEST',fromIso:'2025-01-01',now:new Date('2026-09-10'),forceRefresh:true,allowUnverifiedFallback:false}));assert.ok(urls.length>0);assert.ok(urls.every(url=>url.includes('finance.yahoo.com')));}
+  finally{globalThis.fetch=original;}
 });

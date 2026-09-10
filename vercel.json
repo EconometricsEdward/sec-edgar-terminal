@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/prewarm",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/factor-universe",
+      "schedule": "0 5 * * *"
     }
   ]
 }

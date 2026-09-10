@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EDGAR Terminal Factor Lab API",
-    "version": "1.0.0",
-    "description": "A bounded, source-aware market diagnostic for analysts and connected AI tools. The EDGAR Factor Lab endpoint returns derived econometric diagnostics and filing-derived descriptive measures; it does not redistribute bulk vendor price histories, predict returns, or provide investment advice.",
+    "version": "1.1.0",
+    "description": "SEC-derived universe breadth, paired dispersion, exposure distributions, co-movement, descriptive filing-response associations, and detailed issuer econometric research. Derived statistics only; preserve dates, units, eligibility and unavailable values.",
     "contact": {
       "name": "EDGAR Terminal",
       "url": "https://secedgarterminal.com/about"
@@ -17,6 +17,10 @@
   ],
   "tags": [
     {
+      "name": "Factor universe",
+      "description": "Prepared market-wide quantitative snapshot across covered SEC issuers."
+    },
+    {
       "name": "Market signals",
       "description": "Regression diagnostics joined to current, source-linked SEC filing evidence. Methodology: https://secedgarterminal.com/market/factors"
     }
@@ -24,7 +28,9 @@
   "paths": {
     "/api/v1/market-signals": {
       "get": {
-        "tags": ["Market signals"],
+        "tags": [
+          "Market signals"
+        ],
         "operationId": "getMarketSignal",
         "summary": "Calculate an EDGAR Factor Lab diagnostic for one covered company",
         "description": "Returns daily adjusted-close regression diagnostics against SPY and a sector proxy, a current peer-normalized filing-change snapshot, a filing-event response when estimable, and the descriptive Evidence Gap. Exact-date intersection, coverage gates, Newey-West HAC inference, source provenance, warnings, and interpretation limits are included. A result may be ready, partial, withheld, or stale. Missing statistics are null, never zero. This is not CAPM because no risk-free return is subtracted; the regression intercept is not Jensen alpha. The filing snapshot is not a historical factor return, and the Evidence Gap is not a forecast or trade signal. The optional reading_guide contains per-metric definitions, interpretations of this exact result, and limitations. The same guide appears in the interactive page and exported research notes. Its version is separate from the unchanged econometric methodology.",
@@ -47,7 +53,11 @@
             "description": "Requested lookback window. The effective sample can start later because prices are aligned exactly by return interval.",
             "schema": {
               "type": "string",
-              "enum": ["1y", "3y", "5y"],
+              "enum": [
+                "1y",
+                "3y",
+                "5y"
+              ],
               "default": "3y"
             }
           },
@@ -58,7 +68,10 @@
             "description": "SEC comparison basis used by the filing-derived snapshot. It does not change the daily price-return frequency.",
             "schema": {
               "type": "string",
-              "enum": ["ttm", "annual"],
+              "enum": [
+                "ttm",
+                "annual"
+              ],
               "default": "ttm"
             }
           },
@@ -95,7 +108,18 @@
             "description": "ETF used for market-orthogonal sector sensitivity and filing-event adjustment. auto maps the selected cohort to a documented proxy.",
             "schema": {
               "type": "string",
-              "enum": ["auto", "XLF", "XLRE", "XHB", "XLE", "XLY", "XLK", "XLI", "XLV", "XLU"],
+              "enum": [
+                "auto",
+                "XLF",
+                "XLRE",
+                "XHB",
+                "XLE",
+                "XLY",
+                "XLK",
+                "XLI",
+                "XLV",
+                "XLU"
+              ],
               "default": "auto"
             }
           }
@@ -104,28 +128,51 @@
           "200": {
             "description": "Completed or retained diagnostic. Inspect status, quality, warnings, sample, and provenance before using estimates.",
             "headers": {
-              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
-              "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
-              "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" },
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              },
               "X-Schema-Version": {
                 "description": "Response schema version.",
-                "schema": { "type": "string", "const": "edgar.market-signals.v1" }
+                "schema": {
+                  "type": "string",
+                  "const": "edgar.market-signals.v1"
+                }
               },
               "X-Methodology-Version": {
                 "description": "Econometric and filing-score methodology version.",
-                "schema": { "type": "string", "const": "market-signals-1.0.0" }
+                "schema": {
+                  "type": "string",
+                  "const": "market-signals-1.0.0"
+                }
               },
               "X-Data-Through": {
                 "description": "Latest common price-input date or unavailable.",
-                "schema": { "type": "string" }
+                "schema": {
+                  "type": "string"
+                }
               },
               "X-Cache-Source": {
                 "description": "Result delivery state; this is not the underlying data provider.",
-                "schema": { "type": "string", "enum": ["computed", "warm", "stale"] }
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "computed",
+                    "warm",
+                    "stale"
+                  ]
+                }
               },
               "Warning": {
                 "description": "HTTP Warning 110 when a retained stale result is served.",
-                "schema": { "type": "string" }
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "content": {
@@ -159,7 +206,9 @@
                         "name": "NVIDIA Corporation",
                         "cik": "0001045810",
                         "sic": "3674",
-                        "cohorts": ["ai-infrastructure"]
+                        "cohorts": [
+                          "ai-infrastructure"
+                        ]
                       },
                       "sample": {
                         "requested_start": "2023-09-10",
@@ -180,7 +229,10 @@
                           "observations": 752,
                           "beta": 1.18,
                           "beta_standard_error": 0.05,
-                          "beta_confidence_interval95": [1.08, 1.28],
+                          "beta_confidence_interval95": [
+                            1.08,
+                            1.28
+                          ],
                           "r_squared": 0.62,
                           "hac_lag": 6
                         },
@@ -196,9 +248,15 @@
                         "cik": "0001045810",
                         "basis": "ttm",
                         "cohort_id": "ai-infrastructure",
-                        "template": { "id": "nonfinancial", "label": "Non-financial filing change" },
+                        "template": {
+                          "id": "nonfinancial",
+                          "label": "Non-financial filing change"
+                        },
                         "filing_change_z": 0.89,
-                        "direction": { "id": "stronger_relative_change", "label": "Stronger peer-relative filing change" },
+                        "direction": {
+                          "id": "stronger_relative_change",
+                          "label": "Stronger peer-relative filing change"
+                        },
                         "coverage": {
                           "required_components": 5,
                           "available_components": 5,
@@ -269,7 +327,18 @@
                             "peer_percentile": 68.8,
                             "peer_count": 24,
                             "peer_candidates": 24,
-                            "peer_distribution": { "count": 24, "median": 0.2, "mad": 0.67, "q1": -0.4, "q3": 0.9, "standard_deviation": 1.1, "scale": 1, "scale_method": "median_absolute_deviation", "min": -2.4, "max": 3.2 },
+                            "peer_distribution": {
+                              "count": 24,
+                              "median": 0.2,
+                              "mad": 0.67,
+                              "q1": -0.4,
+                              "q3": 0.9,
+                              "standard_deviation": 1.1,
+                              "scale": 1,
+                              "scale_method": "median_absolute_deviation",
+                              "min": -2.4,
+                              "max": 3.2
+                            },
                             "reason": null
                           },
                           {
@@ -292,7 +361,18 @@
                             "peer_percentile": 75,
                             "peer_count": 24,
                             "peer_candidates": 24,
-                            "peer_distribution": { "count": 24, "median": 0.5, "mad": 1.01, "q1": -0.7, "q3": 1.8, "standard_deviation": 1.8, "scale": 1.5, "scale_method": "median_absolute_deviation", "min": -4.1, "max": 5.2 },
+                            "peer_distribution": {
+                              "count": 24,
+                              "median": 0.5,
+                              "mad": 1.01,
+                              "q1": -0.7,
+                              "q3": 1.8,
+                              "standard_deviation": 1.8,
+                              "scale": 1.5,
+                              "scale_method": "median_absolute_deviation",
+                              "min": -4.1,
+                              "max": 5.2
+                            },
                             "reason": null
                           },
                           {
@@ -315,7 +395,18 @@
                             "peer_percentile": 66.7,
                             "peer_count": 24,
                             "peer_candidates": 24,
-                            "peer_distribution": { "count": 24, "median": 0.4, "mad": 0.54, "q1": -0.1, "q3": 0.9, "standard_deviation": 0.9, "scale": 0.8, "scale_method": "median_absolute_deviation", "min": -1.8, "max": 2.5 },
+                            "peer_distribution": {
+                              "count": 24,
+                              "median": 0.4,
+                              "mad": 0.54,
+                              "q1": -0.1,
+                              "q3": 0.9,
+                              "standard_deviation": 0.9,
+                              "scale": 0.8,
+                              "scale_method": "median_absolute_deviation",
+                              "min": -1.8,
+                              "max": 2.5
+                            },
                             "reason": null
                           },
                           {
@@ -338,13 +429,28 @@
                             "peer_percentile": 75,
                             "peer_count": 24,
                             "peer_candidates": 24,
-                            "peer_distribution": { "count": 24, "median": 0.3, "mad": 0.47, "q1": -0.2, "q3": 0.8, "standard_deviation": 0.8, "scale": 0.7, "scale_method": "median_absolute_deviation", "min": -1.4, "max": 2.1 },
+                            "peer_distribution": {
+                              "count": 24,
+                              "median": 0.3,
+                              "mad": 0.47,
+                              "q1": -0.2,
+                              "q3": 0.8,
+                              "standard_deviation": 0.8,
+                              "scale": 0.7,
+                              "scale_method": "median_absolute_deviation",
+                              "min": -1.4,
+                              "max": 2.1
+                            },
                             "reason": null
                           }
                         ],
                         "reason": null,
-                        "methodology": { "peer_method": "leave-one-out cohort comparison" },
-                        "claim_limits": ["Not a return forecast, trading signal, or recommendation."]
+                        "methodology": {
+                          "peer_method": "leave-one-out cohort comparison"
+                        },
+                        "claim_limits": [
+                          "Not a return forecast, trading signal, or recommendation."
+                        ]
                       },
                       "filing_event": {
                         "event_date": "2026-08-06",
@@ -359,9 +465,24 @@
                           "gap_sessions": 20
                         },
                         "windows": {
-                          "1": { "sessions": 1, "through": "2026-08-06", "cumulative_abnormal_return": 0.008, "standardized_response": 0.21 },
-                          "5": { "sessions": 5, "through": "2026-08-12", "cumulative_abnormal_return": 0.021, "standardized_response": 0.31 },
-                          "20": { "sessions": 20, "through": "2026-09-02", "cumulative_abnormal_return": 0.04, "standardized_response": 0.35 }
+                          "1": {
+                            "sessions": 1,
+                            "through": "2026-08-06",
+                            "cumulative_abnormal_return": 0.008,
+                            "standardized_response": 0.21
+                          },
+                          "5": {
+                            "sessions": 5,
+                            "through": "2026-08-12",
+                            "cumulative_abnormal_return": 0.021,
+                            "standardized_response": 0.31
+                          },
+                          "20": {
+                            "sessions": 20,
+                            "through": "2026-09-02",
+                            "cumulative_abnormal_return": 0.04,
+                            "standardized_response": 0.35
+                          }
                         }
                       },
                       "evidence_gap": {
@@ -385,8 +506,13 @@
                         "formula": "clip(filingChangeZ, -3, 3) - clip(priceResponseZ, -3, 3)",
                         "input_clip": 3,
                         "neutral_band": 0.5,
-                        "range": { "min": -6, "max": 6 },
-                        "claim_limits": ["Not a return forecast, trading signal, or recommendation."]
+                        "range": {
+                          "min": -6,
+                          "max": 6
+                        },
+                        "claim_limits": [
+                          "Not a return forecast, trading signal, or recommendation."
+                        ]
                       },
                       "quality": {
                         "grade": "A",
@@ -421,8 +547,14 @@
                             "form": "10-Q",
                             "accession": "0001045810-26-000123",
                             "source": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000123/",
-                            "factor_source_accessions": ["0001045810-26-000123"],
-                            "metric_source_accessions": { "revenue_growth": ["0001045810-26-000123"] }
+                            "factor_source_accessions": [
+                              "0001045810-26-000123"
+                            ],
+                            "metric_source_accessions": {
+                              "revenue_growth": [
+                                "0001045810-26-000123"
+                              ]
+                            }
                           },
                           "prior_filing": {
                             "end": "2025-07-27",
@@ -431,8 +563,14 @@
                             "form": "10-Q",
                             "accession": "0001045810-25-000117",
                             "source": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000117/",
-                            "factor_source_accessions": ["0001045810-25-000117"],
-                            "metric_source_accessions": { "revenue_growth": ["0001045810-25-000117"] }
+                            "factor_source_accessions": [
+                              "0001045810-25-000117"
+                            ],
+                            "metric_source_accessions": {
+                              "revenue_growth": [
+                                "0001045810-25-000117"
+                              ]
+                            }
                           }
                         },
                         "prices": {
@@ -476,7 +614,9 @@
                       },
                       "equations": [],
                       "warnings": [],
-                      "limitations": ["Illustrative response shape only; retrieve live data before analysis."],
+                      "limitations": [
+                        "Illustrative response shape only; retrieve live data before analysis."
+                      ],
                       "links": {
                         "methodology": "https://secedgarterminal.com/market/factors",
                         "api": "https://secedgarterminal.com/api/v1/market-signals?ticker=NVDA",
@@ -502,15 +642,26 @@
             "headers": {
               "Retry-After": {
                 "description": "Seconds until this client should retry.",
-                "schema": { "type": "integer", "minimum": 1 }
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
               },
-              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
-              "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
-              "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
             },
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/RateLimitError" }
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitError"
+                }
               }
             }
           },
@@ -522,34 +673,97 @@
           }
         }
       }
+    },
+    "/api/v1/factor-universe": {
+      "get": {
+        "tags": [
+          "Factor universe"
+        ],
+        "operationId": "getFactorUniverse",
+        "summary": "Read the prepared market-wide Factor Lab snapshot",
+        "description": "Default Factor Lab data. One CIK per issuer and one primary research group per issuer. Absolute SEC changes drive breadth; co-movement compares a fixed complete issuer/pair set. Public reads never initiate SEC or price refreshes. If a prepared aggregate is missing, cached SEC-only breadth can be returned with partial status. Preserve sec_snapshot_at, price_through, status, all denominators and nulls. Groups are curated research themes, not official industry sectors. The universe exposure window is 252 SPY intervals; issuer drilldowns can differ. Spearman associations are descriptive cross-sections, not predictive tests or factor premiums.",
+        "parameters": [
+          {
+            "name": "basis",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ttm",
+                "annual"
+              ],
+              "default": "ttm"
+            },
+            "description": "TTM vs comparable prior-year TTM or annual vs prior annual. Only this query key is accepted."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prepared, partial SEC-only, or explicitly stale snapshot. Inspect each section\u2019s coverage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://secedgarterminal.com/schemas/factor-universe-v1.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or duplicate query parameter; no-store."
+          },
+          "429": {
+            "description": "Rate limit; respect Retry-After."
+          },
+          "503": {
+            "description": "No usable cached SEC snapshot; no-store and Retry-After."
+          }
+        }
+      }
     }
   },
   "components": {
     "headers": {
       "RateLimitLimit": {
         "description": "Weighted quota units in the current fixed window.",
-        "schema": { "type": "integer", "minimum": 0 }
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
       },
       "RateLimitRemaining": {
         "description": "Weighted quota units remaining in the current fixed window.",
-        "schema": { "type": "integer", "minimum": 0 }
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
       },
       "RateLimitReset": {
         "description": "Seconds until the current fixed window resets.",
-        "schema": { "type": "integer", "minimum": 1 }
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "responses": {
       "ErrorResponse": {
         "description": "Versioned error response. Retry only when retryable is true, and always respect Retry-After on HTTP 429.",
         "headers": {
-          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
-          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
-          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+          "RateLimit-Limit": {
+            "$ref": "#/components/headers/RateLimitLimit"
+          },
+          "RateLimit-Remaining": {
+            "$ref": "#/components/headers/RateLimitRemaining"
+          },
+          "RateLimit-Reset": {
+            "$ref": "#/components/headers/RateLimitReset"
+          }
         },
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
           }
         }
       }
@@ -557,19 +771,52 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "required": ["schema_version", "error", "code", "retryable", "links"],
+        "required": [
+          "schema_version",
+          "error",
+          "code",
+          "retryable",
+          "links"
+        ],
         "properties": {
-          "schema_version": { "type": "string", "const": "edgar.market-signals.v1" },
-          "error": { "type": "string" },
-          "code": { "type": "string" },
-          "details": { "type": ["object", "array", "string", "number", "boolean", "null"] },
-          "retryable": { "type": "boolean" },
+          "schema_version": {
+            "type": "string",
+            "const": "edgar.market-signals.v1"
+          },
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "type": [
+              "object",
+              "array",
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          },
           "links": {
             "type": "object",
-            "required": ["methodology", "schema"],
+            "required": [
+              "methodology",
+              "schema"
+            ],
             "properties": {
-              "methodology": { "type": "string", "format": "uri" },
-              "schema": { "type": "string", "format": "uri" }
+              "methodology": {
+                "type": "string",
+                "format": "uri"
+              },
+              "schema": {
+                "type": "string",
+                "format": "uri"
+              }
             },
             "additionalProperties": true
           }
@@ -578,9 +825,13 @@
       },
       "RateLimitError": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
-          "error": { "type": "string" }
+          "error": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       }
