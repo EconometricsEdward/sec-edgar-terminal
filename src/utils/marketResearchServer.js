@@ -13,6 +13,10 @@ const MARKET_REBUILD_LEASE = 'sec-market-rebuild';
 const MARKET_REBUILD_LEASE_ID = 'global';
 const pending = new Map();
 const memory = new Map();
+function rememberCompany(ticker, company) {
+  memory.delete(ticker); memory.set(ticker, company);
+  while (memory.size > 64) memory.delete(memory.keys().next().value);
+}
 let atlas = null;
 let atlasPending = null;
 export const marketTickers = [...new Set(MARKET_LENSES.flatMap((c) => c.tickers))];
@@ -33,7 +37,7 @@ export async function loadMarketCompany(ticker, knownEntry = null, { signal, for
   if (pending.has(ticker)) return pending.get(ticker);
   const task = (async () => {
     const cached = await warmGet(MARKET_VERSION, ticker);
-    if (!forceRefresh && cached && Date.now() - Date.parse(cached.observedAt) < COMPANY_FRESH_MS) { memory.set(ticker, cached); return cached; }
+    if (!forceRefresh && cached && Date.now() - Date.parse(cached.observedAt) < COMPANY_FRESH_MS) { rememberCompany(ticker, cached); return cached; }
     try {
       const entry = knownEntry || await getOperatingTicker(ticker);
       if (!entry) { const error = new Error('Ticker is absent from the current SEC operating-company map.'); error.name = 'UnresolvedTicker'; throw error; }
@@ -45,13 +49,13 @@ export async function loadMarketCompany(ticker, knownEntry = null, { signal, for
       const company = buildMarketCompany({ ticker, cik, name: submissions.name || entry.name, sic: submissions.sic, facts: data.facts,
         acceptanceTimes: marketAcceptanceTimes(submissions) },
         MARKET_LENSES.filter((c) => c.tickers.includes(ticker)).map((c) => c.id));
-      memory.set(ticker, company);
+      rememberCompany(ticker, company);
       await warmSet(MARKET_VERSION, ticker, company, 7 * 86400);
       return company;
     } catch (error) {
       if (cached) {
         const stale = { ...cached, cache: { status: 'stale', warning: 'SEC refresh failed; using the last completed company snapshot.' } };
-        memory.set(ticker, stale);
+        rememberCompany(ticker, stale);
         return stale;
       }
       throw error;

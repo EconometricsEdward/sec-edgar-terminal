@@ -137,22 +137,23 @@ export function marketTrendPoints(evidence, key, basis) {
   });
 }
 export function marketBrief(companies, view, data, url) {
-  const scope = data.cohorts.find((c) => c.id === view.cohort)?.title || 'All covered companies';
+  const scope = [...data.cohorts, ...(data.themes || [])].find((c) => c.id === view.cohort)?.title || 'All covered companies';
   return [`# SEC Market research brief`, `Data observed: ${data.generatedAt}`, `View: ${url}`, `Scope: ${scope} · ${companies.length} companies in this screen`,
     `Basis: ${view.basis === 'ttm' ? 'Quarter-end balances and trailing twelve months' : 'Annual financial statements'}`,
     `Filter: ${view.screen}; search: ${view.query || 'none'}; sort: ${view.sort} ${view.direction}.`, '',
-    '## Methodology', 'Curated cohorts, not the entire stock market. Companies are counted once in the screen and can belong to multiple sectors. Fiscal ends differ. Missing metrics are excluded from their own denominators. No stock-price, return, credit-rating, or default-probability signals are inferred.',
+    '## Methodology', `${data.coverage ? `Coverage: ${data.companies.length} of ${data.requested} targeted SEC issuers, shared with Quant Lab. Each issuer belongs to one primary sector; optional research themes can overlap. Fund holdings are a coverage proxy, not certified current index membership. Sources: ${data.coverage.sources.map(source => `${source.fund} (${source.as_of}): ${source.url}`).join('; ')}.` : 'Curated research cohorts, not the entire stock market. Cohorts can overlap.'} Fiscal ends differ. Missing metrics are excluded from their own denominators. No stock-price, return, credit-rating, or default-probability signals are inferred.`,
     'Flow ratios require positive revenue; growth requires positive revenue for the comparable prior year. Free cash flow is operating cash flow less absolute PP&E purchases. Financial-company cash flows and capital structures require sector-specific interpretation.', '',
     ...MARKET_METRICS.slice(0, 9).map((m) => `${m.label}: ${m.formula}.`), '', '## Companies',
     ...companies.map((c) => `### ${c.ticker} — ${c.name}\nReporting end: ${c.reports[view.basis]?.end || 'Unavailable'}; filed: ${c.reports[view.basis]?.filed || 'Unavailable'}.\n${MARKET_METRICS.map((m) => `${m.label}: ${formatMarket(c.metrics[view.basis]?.[m.key], m.unit)}`).join('; ')}\nSEC facts: https://data.sec.gov/api/xbrl/companyfacts/CIK${c.cik}.json`),
     '', 'Values are the latest available filing contexts at retrieval, including subsequent revisions. This is not a historical point-in-time backtest. Open company evidence for the raw source values and filing accessions.'].join('\n');
 }
-export function marketCsv(companies, basis, observedAt) {
+/** @param {import('../app/market/marketTypes').MarketData | null} [data] */
+export function marketCsv(companies, basis, observedAt, data = null) {
   const cell = (value) => {
     if (isNumber(value)) return String(value);
     const text = String(value ?? '');
     return `"${(/^[\s]*[=+@-]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
   };
-  return [['Ticker', 'Company', 'Basis', 'Report end', 'Filed', 'Data observed', 'Cohorts', ...MARKET_METRICS.map((m) => `${m.label} (${m.unit === 'usd' ? 'USD' : '%'})`), 'SEC facts'],
-    ...companies.map((c) => [c.ticker, c.name, basis, c.reports[basis]?.end, c.reports[basis]?.filed, observedAt, c.cohorts.join('; '), ...MARKET_METRICS.map((m) => c.metrics[basis]?.[m.key]), `https://data.sec.gov/api/xbrl/companyfacts/CIK${c.cik}.json`])].map((row) => row.map(cell).join(',')).join('\r\n');
+  return [['Ticker', 'Company', 'Basis', 'Report end', 'Filed', 'Data observed', 'Cohorts', ...(data?.coverage ? ['CIK', 'Primary sector', 'Coverage fund', 'SEC checked', 'Facts retrieved', 'Coverage membership'] : []), ...MARKET_METRICS.map((m) => `${m.label} (${m.unit === 'usd' ? 'USD' : '%'})`), 'SEC facts'],
+    ...companies.map((c) => [c.ticker, c.name, basis, c.reports[basis]?.end, c.reports[basis]?.filed, observedAt, c.cohorts.join('; '), ...(data?.coverage ? [c.cik, c.sector, c.coverageFund, c.secCheckedAt, c.factsRetrievedAt, data.coverage.membership_id] : []), ...MARKET_METRICS.map((m) => c.metrics[basis]?.[m.key]), `https://data.sec.gov/api/xbrl/companyfacts/CIK${c.cik}.json`])].map((row) => row.map(cell).join(',')).join('\r\n');
 }

@@ -5,11 +5,14 @@
 ## Primary research surfaces
 
 - [Market overview](https://secedgarterminal.com/market): SEC fundamental briefing, sector heatmap, company screener, and interactive EDGAR Quant Lab.
+- The Market briefing, sector heatmap, Companies and Quant Lab share the prepared expanded SEC issuer universe. Primary sectors are mutually exclusive; optional research themes cover overlapping subsets. Preserve each metric's eligible count, since not every issuer has every measure.
 - [EDGAR Quant Lab methodology](https://secedgarterminal.com/market/factors): Definitions, equations, eligibility rules, limitations, and interpretation guidance for regression beta, filing-event response, and the EDGAR Evidence Gap.
 - [Research guide](https://secedgarterminal.com/help): Product scope and data-source guidance.
 - [About and data sources](https://secedgarterminal.com/about): Provenance, methodology, and project information.
 
 ## Machine-readable interfaces
+
+- [Market fundamentals](https://secedgarterminal.com/api/market-research): Compact current TTM and annual financial metrics, source clocks, primary sectors, research themes and dated coverage metadata for the same universe as Quant Lab. Company evidence is available with ?ticker=AAPL. Aggregate requests read prepared caches and never launch a bulk SEC refresh.
 
 - [Quant Lab universe API](https://secedgarterminal.com/api/v1/factor-universe?basis=ttm): Default market-wide snapshot with SEC breadth, paired dispersion, exposure distributions, fixed-sample pairwise correlations and source-linked constituents. Supports only basis=ttm or basis=annual.
 - [Universe JSON Schema](https://secedgarterminal.com/schemas/factor-universe-v1.schema.json): Contract for edgar.factor-universe.v1.

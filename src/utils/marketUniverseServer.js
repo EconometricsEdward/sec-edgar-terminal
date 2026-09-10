@@ -78,6 +78,7 @@ export async function refreshUniverseSnapshot({signal,deadline=Date.now()+275000
         const next=buildUniverseSnapshot(expanded,series,{basis,now:generationNow,shared});
         const publication=chooseUniversePublication(previous,next);
         if(publication.universe?.coverage?.membership_id!==expanded.coverage.membership_id)throw new Error('Expanded price coverage is incomplete; prior snapshot retained.');
+        if(publication.sec_snapshot_at!==expanded.generatedAt)throw new Error('The completed Quant snapshot was retained. Market coverage remains on the same SEC generation.');
         publications.push({basis,publication});
         outcomes.push({basis,status:publication.status,issuers:publication.rows.length,price_models:publication.scopes.all.exposure.eligible,map:publication.scopes.all.map.eligible});
       }
