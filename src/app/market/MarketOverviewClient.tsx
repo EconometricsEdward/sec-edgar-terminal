@@ -31,6 +31,7 @@ export default function MarketOverviewClient({ initialData = null }: { initialDa
   const [compareOpen, setCompareOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [viewName, setViewName] = useState('');
+  const isFactorTab = view.tab === 'factors';
 
   useEffect(() => {
     const restore = () => setView(parseMarketView(window.location.search, COHORT_IDS) as MarketView);
@@ -48,6 +49,7 @@ export default function MarketOverviewClient({ initialData = null }: { initialDa
       ? Date.now() - Date.parse(initialData.generatedAt)
       : Number.POSITIVE_INFINITY;
     if (initialData && initialData.cache?.status !== 'stale' && initialAge >= 0 && initialAge < MARKET_ATLAS_FRESH_MS && retry === 0) return;
+    setLoading(true); setSlow(false);
     const controller = new AbortController();
     const slowTimer = setTimeout(() => setSlow(true), 8000);
     const timeout = setTimeout(() => controller.abort(new Error('The Market snapshot is taking longer than expected. Please retry shortly.')), 285000);
@@ -64,7 +66,7 @@ export default function MarketOverviewClient({ initialData = null }: { initialDa
     }
     load();
     return () => { clearTimeout(slowTimer); clearTimeout(timeout); controller.abort(); };
-  }, [retry, initialData, view.tab]);
+  }, [retry, initialData, isFactorTab]);
 
   const companies = data?.companies || EMPTY_COMPANIES;
   const cohortCompanies = useMemo(() => view.cohort === 'all' ? companies : companies.filter((c) => c.cohorts.includes(view.cohort)), [companies, view.cohort]);
