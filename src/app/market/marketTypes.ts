@@ -1,5 +1,5 @@
 export type Basis = 'annual' | 'ttm';
-export type MarketView = { tab: string; basis: Basis; cohort: string; query: string; screen: string; sort: string; direction: string; metric: string; statistic: string; selected: string[]; factorTicker: string; factorWindow: '1y' | '3y' | '5y'; factorSector: string };
+export type MarketView = { tab: string; basis: Basis; cohort: string; query: string; screen: string; sort: string; direction: string; metric: string; statistic: string; selected: string[]; factorTicker: string; factorWindow: '1y' | '3y' | '5y'; factorSector: string; quantThreshold: number };
 export type Period = { end: string; start?: string | null; filed: string; form: string; accession: string; fy: number; fp: string };
 export type FilingMetricSource = { accession: string; filed: string; acceptedAt: string | null; form: string | null; start: string | null; end: string; taxonomy: string | null; tag: string | null; unit: string | null; value: number; source: string };
 type FilingComparisonPointBase = { end: string; filed: string; acceptedAt: string | null; form: string; accession: string; source?: string | null; metrics: Record<string, number | null> };

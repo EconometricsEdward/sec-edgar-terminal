@@ -83,6 +83,30 @@
 .loading { display:flex; align-items:center; gap:10px; padding:20px 0; }
 .drilldown { padding:24px 0; border-top:2px solid var(--m-accent); }
 .drilldown > button { margin-bottom:18px; }
+.thresholdControl { display:flex; align-items:center; gap:24px; margin:22px 0; padding:16px; border:1px solid var(--m-line); border-radius:8px; }
+.thresholdControl label { flex:0 0 260px; }
+.thresholdControl p { margin:0; font-size:.875rem; max-width:660px; }
+.diagnosticCards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-block:1px solid var(--m-line); margin:22px 0 18px; }
+.diagnosticCards article { padding:24px 20px; min-width:0; }
+.diagnosticCards article+article { border-left:1px solid var(--m-line); }
+.diagnosticCards h3 { color:var(--m-accent); font-weight:600; }
+.diagnosticCards h3 span { display:block; color:var(--m-muted); font-weight:400; font-size:.875rem; margin-top:5px; }
+.diagnosticCards strong { display:block; font-size:2rem; font-weight:600; line-height:1.3; margin:16px 0 10px; font-variant-numeric:tabular-nums; }
+.diagnosticCards strong small { font-size:.875rem; }
+.diagnosticCards p { font-size:.875rem; }
+.diagnosticCards dl div { margin-bottom:12px; font-size:.875rem; }
+.diagnosticCards dt { color:var(--m-muted); }
+.diagnosticCards dd { margin:2px 0 0; font-variant-numeric:tabular-nums; }
+.periodEvidence { font-size:.875rem; margin:16px 0; padding:14px 16px; background:var(--m-raised); border-radius:6px; }
+.periodEvidence p { margin:0 0 5px; }
+.periodEvidence p:last-child { margin:0; }
+.confirmationTable td { width:23%; padding:8px!important; }
+.matrixButton { width:100%; padding:16px 12px; min-height:76px; background:var(--m-raised); color:var(--m-text); border:1px solid var(--m-line); border-radius:7px; cursor:pointer; text-align:left; }
+.matrixButton b { font-size:1.35rem; font-weight:600; }
+.matrixButton:hover:not(:disabled) { border-color:var(--m-accent); }
+.matrixButton:disabled { cursor:default; opacity:.55; }
+@media(max-width:1000px) { .diagnosticCards { grid-template-columns:1fr; } .diagnosticCards article+article { border-left:0; border-top:1px solid var(--m-line); } }
+@media(max-width:760px) { .thresholdControl { flex-direction:column; align-items:stretch; gap:12px; } .thresholdControl label { flex:auto; } .diagnosticCards article { padding:18px 0; } }
 .lab ul { list-style:disc; padding-left:20px; }
 .lab li { margin-bottom:10px; }
 @media(max-width:1100px) { .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } .brief { grid-template-columns:1fr; gap:20px; } .brief aside { border-left:0; border-top:1px solid var(--m-line); padding:18px 0 0; } .handoff { flex-direction:column; align-items:start; } }

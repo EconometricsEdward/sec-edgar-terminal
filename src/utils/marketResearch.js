@@ -45,7 +45,7 @@ export function isOlderReport(company, basis, observedAt) {
 }
 export const DEFAULT_MARKET_VIEW = {
   tab: 'overview', basis: 'ttm', cohort: 'all', query: '', screen: 'all', sort: 'revenueGrowth', direction: 'desc',
-  metric: 'revenueGrowth', statistic: 'median', selected: [], factorTicker: 'MSFT', factorWindow: '3y', factorSector: 'auto',
+  metric: 'revenueGrowth', statistic: 'median', selected: [], factorTicker: 'MSFT', factorWindow: '3y', factorSector: 'auto', quantThreshold: 0,
 };
 export function parseMarketView(query, cohortIds = []) {
   const p = new URLSearchParams(query);
@@ -58,6 +58,7 @@ export function parseMarketView(query, cohortIds = []) {
     direction: choice('direction', ['asc', 'desc'], 'desc'), metric: choice('metric', MARKET_METRICS.map((m) => m.key), 'revenueGrowth'),
     statistic: choice('statistic', ['median', 'mean'], 'median'),
     selected: [...new Set((p.get('peers') || '').split(',').filter((t) => /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(t)))].slice(0, 5),
+    quantThreshold: Number(choice('cutoff', ['0', '0.5', '1'], '0')),
     factorTicker: /^[A-Z0-9][A-Z0-9.-]{0,9}$/.test(asset) ? asset : DEFAULT_MARKET_VIEW.factorTicker,
     factorWindow: choice('window', ['1y', '3y', '5y'], DEFAULT_MARKET_VIEW.factorWindow),
     factorSector: choice('proxy', ['auto', 'XLF', 'XLRE', 'XHB', 'XLE', 'XLY', 'XLK', 'XLI', 'XLV', 'XLU'], DEFAULT_MARKET_VIEW.factorSector),
@@ -66,6 +67,7 @@ export function parseMarketView(query, cohortIds = []) {
 export function marketViewQuery(view) {
   const p = new URLSearchParams();
   for (const key of ['tab', 'basis', 'cohort', 'screen', 'sort', 'direction', 'metric', 'statistic']) if (view[key] !== DEFAULT_MARKET_VIEW[key]) p.set(key, view[key]);
+  if ([0.5, 1].includes(view.quantThreshold)) p.set('cutoff', String(view.quantThreshold));
   if (view.query) p.set('q', view.query);
   if (view.selected.length) p.set('peers', view.selected.join(','));
   if (view.tab === 'factors') {

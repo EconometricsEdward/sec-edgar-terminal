@@ -349,7 +349,7 @@ function signalMarkdown(data: MarketSignalsResponse) {
     `- ${component.label || words(component.key)}: weight ${percentText(component.weight)}, z ${zText(component.z)}, weighted contribution ${zText(component.weighted_z)}`
   ));
   return [
-    `# EDGAR Factor Lab — ${data.issuer?.ticker || data.request?.ticker || 'Company'}`,
+    `# EDGAR Quant Lab — ${data.issuer?.ticker || data.request?.ticker || 'Company'}`,
     '',
     ...buildFactorReadingGuide(data).summary,
     '',
@@ -539,7 +539,7 @@ export default function MarketFactorLab({
   useEffect(() => {
     const lab = labRef.current;
     const header = document.querySelector('header');
-    const navigation = lab?.querySelector('nav[aria-label="Factor Lab result sections"]');
+    const navigation = lab?.querySelector('nav[aria-label="Quant Lab result sections"]');
     if (!lab || !header || !navigation) return;
     const measure = () => {
       lab.style.setProperty('--factor-header-height', `${header.getBoundingClientRect().height}px`);
@@ -653,15 +653,15 @@ export default function MarketFactorLab({
 
   function runAnalysis() {
     if (!validTicker) {
-      onNotice('Choose a covered company before running Factor Lab.');
+      onNotice('Choose a covered company before running Quant Lab.');
       return;
     }
     if (retryWaitSeconds > 0) {
-      onNotice(`The server asked clients to wait ${retryDelayText(retryWaitSeconds)} before another Factor Lab request.`);
+      onNotice(`The server asked clients to wait ${retryDelayText(retryWaitSeconds)} before another Quant Lab request.`);
       return;
     }
     if (unchangedNonRetryableError) {
-      onNotice('This request cannot be retried unchanged. Adjust a Factor Lab control before running another analysis.');
+      onNotice('This request cannot be retried unchanged. Adjust a Quant Lab control before running another analysis.');
       return;
     }
     setLoading(true);
@@ -680,7 +680,7 @@ export default function MarketFactorLab({
     if (!data) return;
     try {
       await navigator.clipboard.writeText(modelContext(data));
-      onNotice('Factor Lab model context copied.');
+      onNotice('Quant Lab model context copied.');
     } catch {
       onNotice('Clipboard access is unavailable. Download the JSON or Markdown record instead.');
     }
@@ -690,14 +690,14 @@ export default function MarketFactorLab({
     if (!data) return;
     const ticker = safeFileTicker(data.issuer?.ticker || data.request?.ticker);
     downloadText(`${ticker}-edgar-factor-lab.json`, JSON.stringify(withFactorReadingGuide(data), null, 2), 'application/json');
-    onNotice(`${ticker} Factor Lab JSON exported.`);
+    onNotice(`${ticker} Quant Lab JSON exported.`);
   }
 
   function exportMarkdown() {
     if (!data) return;
     const ticker = safeFileTicker(data.issuer?.ticker || data.request?.ticker);
     downloadText(`${ticker}-edgar-factor-lab.md`, signalMarkdown(data), 'text/markdown');
-    onNotice(`${ticker} Factor Lab research note exported.`);
+    onNotice(`${ticker} Quant Lab research note exported.`);
   }
 
   const marketModel = data?.estimates?.market_model;
@@ -743,11 +743,11 @@ export default function MarketFactorLab({
     <p className={s.srOnly} role="status" aria-live="polite" aria-atomic="true">{autoRunAnnouncement}</p>
     <div className={`${s.panel} ${s.factorIntro}`}>
       <div className={s.factorIntroCopy}>
-        <span className={s.eyebrow}><Sigma size={15} />EDGAR Factor Lab</span>
+        <span className={s.eyebrow}><Sigma size={15} />EDGAR Quant Lab</span>
         <h2 id="factor-lab-heading">Understand the stock’s market exposure and filing response</h2>
         <p>Start with three questions: how much did this stock move with the market, how much movement remains unexplained, and how did its filing changes compare with peers and the subsequent price response? SPY is the broad-market ETF used as the benchmark.</p>
       </div>
-      <details className={s.factorEquationDetails}><summary>Show the model equations</summary><div className={s.factorEquationGrid} aria-label="Factor Lab equations">
+      <details className={s.factorEquationDetails}><summary>Show the model equations</summary><div className={s.factorEquationGrid} aria-label="Quant Lab equations">
         <p><b>Market model</b><code>rᵢ = intercept + βₘrSPY + error</code><span>Daily log returns; Newey–West HAC inference.</span></p>
         <p><b>Sector sensitivity</b><code>rᵢ = intercept + βₘrSPY + βₛrsector⊥SPY + error</code><span>The sector ETF is residualized against SPY first.</span></p>
         <p><b>Evidence Gap</b><code>clip(filing z) − clip(price-response z)</code><span>A descriptive disagreement measure, not expected return.</span></p>
@@ -809,7 +809,7 @@ export default function MarketFactorLab({
     </div> : null}
 
     {data ? <>
-      <nav className={s.factorJumpNav} aria-label="Factor Lab result sections">
+      <nav className={s.factorJumpNav} aria-label="Quant Lab result sections">
         <a href="#factor-summary">Summary</a><a href="#factor-scenario">Scenario</a><a href="#evidence-gap-heading">Evidence gap</a><a href="#rolling-beta-heading">Stability</a><a href="#filing-event-heading">Filing event</a><a href="#filing-score-heading">SEC components</a><a href="#factor-audit-heading">Sources</a><a href="#factor-metric-guide">Metric guide</a>
         {loading ? <span><Loader2 className={s.spin} size={13} />Refreshing</span> : null}
       </nav>
@@ -859,7 +859,7 @@ export default function MarketFactorLab({
 
       <section className={`${s.panel} ${s.factorModelMatrix}`} aria-labelledby="model-comparison-heading">
         <div className={s.factorSectionHeading}><div><span className={s.eyebrow}>Specification comparison</span><h2 id="model-comparison-heading">What each model adds</h2></div><span className={s.factorMapLabel}>Samples can differ by model</span></div>
-        <div className={s.tableScroll}><table className={s.comparison}><caption className={s.srOnly}>Comparison of Factor Lab model specifications</caption><thead><tr><th scope="col">Specification</th><th scope="col">Matched returns</th><th scope="col">Market β</th><th scope="col">Additional exposure</th><th scope="col">R²</th><th scope="col">Use</th></tr></thead><tbody>
+        <div className={s.tableScroll}><table className={s.comparison}><caption className={s.srOnly}>Comparison of Quant Lab model specifications</caption><thead><tr><th scope="col">Specification</th><th scope="col">Matched returns</th><th scope="col">Market β</th><th scope="col">Additional exposure</th><th scope="col">R²</th><th scope="col">Use</th></tr></thead><tbody>
           <tr><th scope="row">Market model</th><td>{marketModel?.observations ?? '—'}</td><td>{betaText(marketModel?.beta)}</td><td>—</td><td>{percentText(marketModel?.r_squared)}</td><td>Overall SPY sensitivity</td></tr>
           <tr><th scope="row">Conditional model</th><td>{conditional?.observations?.downside ?? '—'} down / {conditional?.observations?.upside ?? '—'} up</td><td>{betaText(conditional?.downside?.beta)} down / {betaText(conditional?.upside?.beta)} up</td><td>Asymmetry {zText(conditional?.asymmetry)}</td><td>—</td><td>Different behavior across market signs</td></tr>
           <tr><th scope="row">Market + sector</th><td>{independentSector?.observations ?? '—'}</td><td>{betaText(independentSector?.market_beta)}</td><td>{data.request?.sector_proxy || 'Sector'} β {betaText(independentSector?.independent_sector_beta)}</td><td>{percentText(independentSector?.r_squared)}</td><td>Sector sensitivity beyond broad-market co-movement</td></tr>
