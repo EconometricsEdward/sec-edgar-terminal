@@ -13,10 +13,20 @@ if(process.env.VERCEL_ENV==='production'&&warmCacheEnabled()){
   const coverage=await readQuantMembership(), expanded=await readQuantAtlas();
   if(expanded?.coverage?.membership_id!==membershipId(coverage)){
     const migrationDeadline=Date.now()+25*60_000;
+    const deferred=[];
     for(let batch=0;batch<QUANT_BATCHES&&Date.now()<migrationDeadline-30000;batch++){
       const controller=new AbortController(),budget=Math.min(260000,migrationDeadline-Date.now()-10000),timer=setTimeout(()=>controller.abort(),budget);
-      try{console.log('[Quant Lab] Coverage checkpoint:',JSON.stringify(await refreshQuantBatch(batch,{signal:controller.signal,deadline:Date.now()+budget})));}
-      catch(error){console.warn('[Quant Lab] Coverage batch deferred:',batch,error.message);}
+      try{const result=await refreshQuantBatch(batch,{signal:controller.signal,deadline:Date.now()+budget});console.log('[Quant Lab] Coverage checkpoint:',JSON.stringify(result));if(result.skipped)deferred.push(batch);}
+      catch(error){deferred.push(batch);console.warn('[Quant Lab] Coverage batch deferred:',batch,error.message);}
+      finally{clearTimeout(timer);}
+    }
+    // Retry only deferred batches once after the first pass. This covers brief
+    // coordination/storage recovery without refetching completed checkpoints.
+    for(const batch of deferred){
+      if(Date.now()>=migrationDeadline-30000)break;
+      const controller=new AbortController(),budget=Math.min(260000,migrationDeadline-Date.now()-10000),timer=setTimeout(()=>controller.abort(),budget);
+      try{console.log('[Quant Lab] Resumed coverage checkpoint:',JSON.stringify(await refreshQuantBatch(batch,{signal:controller.signal,deadline:Date.now()+budget})));}
+      catch(error){console.warn('[Quant Lab] Coverage retry deferred:',batch,error.message);}
       finally{clearTimeout(timer);}
     }
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),260000);
