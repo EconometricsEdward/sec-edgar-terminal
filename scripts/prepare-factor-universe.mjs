@@ -5,12 +5,17 @@ import { refreshUniverseSnapshot, isUniverseSnapshot } from '../src/utils/market
 import { UNIVERSE_VERSION } from '../src/utils/marketUniverse.js';
 import { readQuantAtlas, refreshQuantBatch, readQuantMembership, membershipId, compactQuantMigration } from '../src/utils/quantCoverageServer.js';
 import { QUANT_BATCHES } from '../src/utils/quantGroups.js';
+import { publishMarketOverview } from '../src/utils/marketOverviewServer.js';
 if(process.env.VERCEL_ENV==='production'&&warmCacheEnabled()){
   try{console.log('[Quant Lab] Storage compaction:',JSON.stringify(await compactQuantMigration()));}
   catch(error){console.warn('[Quant Lab] Storage check:',error.message);}
   // One-time migration uses the same bounded/checkpointed jobs as the daily
   // schedule. A failed deployment can resume without refetching completed work.
   const coverage=await readQuantMembership(), expanded=await readQuantAtlas();
+  if(expanded){
+    try{const overview=await publishMarketOverview(expanded,membershipId(coverage)===expanded.coverage.membership_id?coverage:null);console.log('[Market] Shared overview:',JSON.stringify({companies:overview.companies.length,sectors:overview.cohorts.length,source:overview.generatedAt}));}
+    catch(error){console.warn('[Market] Prepared overview deferred:',error.message);}
+  }
   if(expanded?.coverage?.membership_id!==membershipId(coverage)){
     const migrationDeadline=Date.now()+25*60_000;
     const deferred=[];

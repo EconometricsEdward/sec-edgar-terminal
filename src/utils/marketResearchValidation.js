@@ -64,7 +64,7 @@ function validFilingComparison(comparison) {
     && comparison.gapDays <= 380;
 }
 
-function validCompany(company) {
+function validCompany(company, comparisons = true) {
   return record(company)
     && typeof company.version === 'string'
     && typeof company.ticker === 'string'
@@ -80,11 +80,11 @@ function validCompany(company) {
     && record(company.reports)
     && Object.hasOwn(company.reports, 'annual')
     && Object.hasOwn(company.reports, 'ttm')
-    && record(company.filingComparisons)
+    && (!comparisons || (record(company.filingComparisons)
     && Object.hasOwn(company.filingComparisons, 'annual')
     && Object.hasOwn(company.filingComparisons, 'ttm')
     && validFilingComparison(company.filingComparisons.annual)
-    && validFilingComparison(company.filingComparisons.ttm);
+    && validFilingComparison(company.filingComparisons.ttm)));
 }
 
 function validCohort(cohort) {
@@ -119,11 +119,35 @@ export function isMarketAtlas(value, expectedVersion) {
     && Number.isSafeInteger(value.requested)
     && value.requested >= 0
     && Array.isArray(value.companies)
-    && value.companies.every(validCompany)
+    && value.companies.every(company => validCompany(company))
     && Array.isArray(value.cohorts)
     && value.cohorts.every(validCohort)
     && Array.isArray(value.failures)
     && Array.isArray(value.observations)
     && value.observations.every(validObservation)
     && typeof value.historyPersistence === 'boolean';
+}
+
+/** Separate compact display contract; never accepted as a full research atlas. */
+export function isMarketOverview(value) {
+  return record(value) && value.version === 'market-research-v3' && value.viewVersion === 'market-overview-v1'
+    && validDate(value.generatedAt) && Number.isSafeInteger(value.requested) && value.requested > 0
+    && Array.isArray(value.companies) && value.companies.length > 0 && value.companies.length <= value.requested
+    && value.companies.every(company => validCompany(company, false)
+      && ['annual', 'ttm'].every(basis => Object.values(company.metrics[basis]).every(v => v === null || Number.isFinite(v))))
+    && new Set(value.companies.map(c => c.cik)).size === value.companies.length
+    && Array.isArray(value.cohorts) && value.cohorts.every(validCohort)
+    && Array.isArray(value.themes) && value.themes.every(validCohort)
+    && Array.isArray(value.failures) && Array.isArray(value.observations) && value.observations.every(validObservation)
+    && typeof value.historyPersistence === 'boolean'
+    && (!value.coverage || (record(value.coverage)
+      && typeof value.coverage.membership_id === 'string'
+      && value.coverage.target_issuers === value.requested
+      && value.coverage.loaded_issuers === value.companies.length
+      && value.coverage.missing_issuers === value.requested - value.companies.length
+      && Array.isArray(value.coverage.sources) && value.coverage.sources.length > 0
+      && value.coverage.sources.every(source => record(source) && typeof source.fund === 'string'
+        && validDate(source.as_of) && typeof source.url === 'string' && source.url.startsWith('https://'))
+      && value.companies.every(company => typeof company.sector === 'string'
+        && value.cohorts.filter(cohort => company.cohorts.includes(cohort.id)).length === 1)));
 }

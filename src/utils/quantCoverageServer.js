@@ -11,6 +11,7 @@ import { getOperatingTickers } from './tickerMap.js';
 import { loadPriceSeries, warmYahooSeries } from './priceDataServer.js';
 import { warmGet, warmSet, warmGetMany, warmDeleteMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
+import { publishMarketOverview } from './marketOverviewServer.js';
 
 export const QUANT_COMPANY_CACHE = 'quant-company-v1';
 export const QUANT_PRICE_CACHE = 'quant-adjusted-prices-v1';
@@ -167,6 +168,8 @@ export function assembleQuantAtlas(membership, records, now = Date.now()) {
 export async function publishQuantAtlas(atlas, options={}) {
   if (!await writeSnapshot(QUANT_ATLAS_CACHE, 'atlas-last-good', atlas, 7*86400, options)) throw new Error('Expanded SEC snapshot could not be persisted.');
   if (!await writeSnapshot(QUANT_ATLAS_CACHE, 'atlas', atlas, 7*86400, options)) throw new Error('Expanded SEC snapshot could not be published.');
+  const membership = await readQuantMembership();
+  await publishMarketOverview(atlas, membershipId(membership) === atlas.coverage.membership_id ? membership : null, options);
 }
 
 export async function readQuantPrices(atlas, { signal, deadline = Date.now()+240000 } = {}) {
