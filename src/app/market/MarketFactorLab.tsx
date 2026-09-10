@@ -26,7 +26,7 @@ import type { Basis, Company } from './marketTypes';
 import s from './market.module.css';
 
 export type FactorWindow = '1y' | '3y' | '5y';
-export type FactorSector = 'auto' | 'XLF' | 'XLRE' | 'XHB' | 'XLE' | 'XLY' | 'XLK' | 'XLI' | 'XLV' | 'XLU';
+export type FactorSector = 'auto' | 'XLF' | 'XLRE' | 'XHB' | 'XLE' | 'XLY' | 'XLK' | 'XLI' | 'XLV' | 'XLU' | 'XLC' | 'XLP' | 'XLB';
 
 type FactorViewPatch = {
   factorTicker?: string;
@@ -283,6 +283,9 @@ const SECTOR_OPTIONS: { value: FactorSector; label: string }[] = [
   { value: 'XLI', label: 'XLI · Industrials' },
   { value: 'XLV', label: 'XLV · Health care' },
   { value: 'XLU', label: 'XLU · Utilities' },
+  { value: 'XLC', label: 'XLC · Communication' },
+  { value: 'XLP', label: 'XLP · Consumer staples' },
+  { value: 'XLB', label: 'XLB · Materials' },
 ];
 
 const WINDOW_OPTIONS: { value: FactorWindow; label: string }[] = [

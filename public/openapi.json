@@ -39,7 +39,7 @@
             "name": "ticker",
             "in": "query",
             "required": true,
-            "description": "Uppercase ticker in the current curated Market universe. Class-share dots and hyphens are supported where present.",
+            "description": "Uppercase ticker in the prepared Market or expanded Quant Lab universe. Class-share dots and hyphens are supported where present.",
             "schema": {
               "type": "string",
               "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]{0,9}$"
@@ -96,7 +96,18 @@
                 "insurance",
                 "healthcare",
                 "industrial-capex",
-                "utilities-rates"
+                "utilities-rates",
+                "sector-technology",
+                "sector-financials",
+                "sector-healthcare",
+                "sector-consumer-discretionary",
+                "sector-communication",
+                "sector-industrials",
+                "sector-consumer-staples",
+                "sector-energy",
+                "sector-utilities",
+                "sector-real-estate",
+                "sector-materials"
               ],
               "default": "auto"
             }
@@ -118,7 +129,10 @@
                 "XLK",
                 "XLI",
                 "XLV",
-                "XLU"
+                "XLU",
+                "XLC",
+                "XLP",
+                "XLB"
               ],
               "default": "auto"
             }
@@ -681,7 +695,7 @@
         ],
         "operationId": "getFactorUniverse",
         "summary": "Read the prepared market-wide Quant Lab snapshot",
-        "description": "Default Quant Lab data. One CIK per issuer and one primary research group per issuer. Absolute SEC changes drive breadth; co-movement compares a fixed complete issuer/pair set. Public reads never initiate SEC or price refreshes. If a prepared aggregate is missing, cached SEC-only breadth can be returned with partial status. Preserve sec_snapshot_at, price_through, status, all denominators and nulls. Groups are curated research themes, not official industry sectors. The universe exposure window is 252 SPY intervals; issuer drilldowns can differ. Spearman associations are descriptive cross-sections, not predictive tests or factor premiums. Absolute diagnostics include net direction balance, paired within/between-group population variance and a same-issuer growth/FCF-margin cross-table. API aggregates use a zero direction threshold. UI sensitivity bands at 0.5 or 1 percentage point retain all matched issuers; exported selected_diagnostics and analysis_settings reproduce those views. Cached source clocks and prices are preserved across additive diagnostic upgrades.",
+        "description": "Default Quant Lab data. One CIK per issuer and one primary research group per issuer. Absolute SEC changes drive breadth; co-movement compares a fixed complete issuer/pair set. Public reads never initiate SEC or price refreshes. If a prepared aggregate is missing, cached SEC-only breadth can be returned with partial status. Preserve sec_snapshot_at, price_through, status, all denominators and nulls. Expanded coverage uses published IVV, IJH and IJR equity holdings mapped to unique SEC issuers, with source dates and fund-reported sectors. This is a coverage proxy, not certified current index membership. Public requests read compressed, prepared snapshots; 16 bounded daily coverage jobs preserve issuer checkpoints. Membership changes start new history segments. The universe exposure window is 252 SPY intervals; issuer drilldowns can differ. Spearman associations are descriptive cross-sections, not predictive tests or factor premiums. Absolute diagnostics include net direction balance, paired within/between-group population variance and a same-issuer growth/FCF-margin cross-table. API aggregates use a zero direction threshold. UI sensitivity bands at 0.5 or 1 percentage point retain all matched issuers; exported selected_diagnostics and analysis_settings reproduce those views. Cached source clocks and prices are preserved across additive diagnostic upgrades.",
         "parameters": [
           {
             "name": "basis",

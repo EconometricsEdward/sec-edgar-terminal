@@ -204,6 +204,7 @@ function issuerKey(company, fallback) {
 
 function usesFinancialTemplate(company, cohortId) {
   if (FINANCIAL_COHORTS.has(cohortId)) return true;
+  if (cohortId?.startsWith('sector-') && Number(company?.sic)>=6000 && Number(company?.sic)<=6799) return true;
   return Array.isArray(company?.cohorts) && company.cohorts.some((cohort) => FINANCIAL_COHORTS.has(cohort));
 }
 

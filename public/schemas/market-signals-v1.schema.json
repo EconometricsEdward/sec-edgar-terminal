@@ -425,7 +425,7 @@
         "window": { "type": "string", "enum": ["1y", "3y", "5y"] },
         "basis": { "type": "string", "enum": ["ttm", "annual"] },
         "cohort": { "type": "string" },
-        "sector_proxy": { "type": "string", "enum": ["XLF", "XLRE", "XHB", "XLE", "XLY", "XLK", "XLI", "XLV", "XLU"] },
+        "sector_proxy": { "type": "string", "enum": ["XLF", "XLRE", "XHB", "XLE", "XLY", "XLK", "XLI", "XLV", "XLU", "XLC", "XLP", "XLB"] },
         "market_benchmark": { "const": "SPY" },
         "frequency": { "const": "daily" }
       },

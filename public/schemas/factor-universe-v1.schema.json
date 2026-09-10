@@ -11,7 +11,8 @@
     "methodology_version": {
       "enum": [
         "factor-universe-1.0.0",
-        "factor-universe-1.1.0"
+        "factor-universe-1.1.0",
+        "factor-universe-1.2.0"
       ]
     },
     "generated_at": {
@@ -59,6 +60,79 @@
         },
         "grouping": {
           "type": "string"
+        },
+        "coverage": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Dated fund-holdings coverage, unique SEC issuer counts, missing checks and original verification clocks.",
+          "properties": {
+            "target_issuers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "loaded_issuers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missing_issuers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_securities": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "duplicate_share_classes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "membership_id": {
+              "type": "string"
+            },
+            "membership_checked_at": {
+              "type": "string"
+            },
+            "sec_checked_earliest": {
+              "type": "string"
+            },
+            "sec_checked_latest": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "fund",
+                  "as_of",
+                  "url",
+                  "securities"
+                ],
+                "properties": {
+                  "fund": {
+                    "enum": [
+                      "IVV",
+                      "IJH",
+                      "IJR"
+                    ]
+                  },
+                  "as_of": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "securities": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": true
         }
       },
       "required": [
@@ -185,6 +259,9 @@
         "variance",
         "limitations"
       ]
+    },
+    "history_note": {
+      "type": "string"
     }
   },
   "required": [
@@ -765,7 +842,10 @@
           ]
         },
         "sector_proxy": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "filed": {
           "type": [
@@ -838,6 +918,24 @@
               ],
               "additionalProperties": true
             }
+          ]
+        },
+        "sec_checked_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "facts_retrieved_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "coverage_fund": {
+          "type": [
+            "string",
+            "null"
           ]
         }
       },

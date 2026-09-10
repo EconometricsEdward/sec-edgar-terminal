@@ -26,7 +26,7 @@ export const FUNDAMENTAL_DEFINITIONS = {
   dispersion: 'Current IQR minus prior IQR on the same paired issuer set. IQR = 75th percentile − 25th percentile with linear interpolation.',
   cash_confirmation: 'Growth-acceleration and free-cash-flow-margin directions on the same operating issuers. Both-higher / growth-higher is null if no issuer has higher growth.',
   variance: 'Population total variance = count-weighted within-group population variance + count-weighted squared differences between group means and universe mean. Fixed paired issuer/group membership; units are squared percentage points.',
-  limitations: 'These are descriptive statistics of the covered universe. Thresholds are sensitivity settings, not statistical significance or universally meaningful economic cutoffs. Groups are curated research themes. Variance is sensitive to extreme observations; IQR is not additive.',
+  limitations: 'These are descriptive statistics of the covered universe. Thresholds are sensitivity settings, not statistical significance or universally meaningful economic cutoffs. Expanded groups use fund-reported sectors; legacy groups use curated research themes. Variance is sensitive to extreme observations; IQR is not additive.',
 };
 export const normalizeChangeThreshold = value => CHANGE_THRESHOLDS.includes(Number(value)) ? Number(value) : 0;
 export const changeDirection = (value, threshold = 0) => !finite(value) ? null : value > threshold + 1e-9 ? 'higher' : value < -threshold - 1e-9 ? 'lower' : 'neutral';
