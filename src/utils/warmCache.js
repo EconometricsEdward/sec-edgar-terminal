@@ -76,7 +76,7 @@ export async function warmGetMany(type, ids, { signal, deadline = Date.now() + 3
         signal: AbortSignal.any([requestSignal, AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now())))]),
       });
       const data = response.ok ? await response.json() : null;
-      if (!Array.isArray(data?.result) || data.result.length !== batch.ids.length) throw new Error('Incomplete cache batch.');
+      if (!Array.isArray(data?.result) || data.result.length !== batch.ids.length) throw new Error(`Incomplete cache batch: ${String(data?.error||response.status).slice(0,200)}`);
       data.result.forEach((value, index) => { try { output[batch.offset + index] = value === null ? null : JSON.parse(value); } catch { throw new Error('Corrupt cache checkpoint.'); } });
     }
   });
@@ -119,7 +119,12 @@ export async function warmSet(type, id, value, ttlSeconds = 25 * 3600) {
       body,
       signal: AbortSignal.timeout(5000),
     });
-    return res.ok;
+    const result = await res.json().catch(() => null);
+    if (!res.ok || result?.result !== 'OK') {
+      console.warn(`[warmCache] write rejected for ${type}: HTTP ${res.status}; ${String(result?.error || 'no write acknowledgement').slice(0, 200)}`);
+      return false;
+    }
+    return true;
   } catch (err) {
     console.warn(`[warmCache] write failed for ${type}/${id}: ${err.message}`);
     return false;
@@ -205,8 +210,13 @@ export async function warmAcquireLease(type, id, ttlMs = 60_000) {
       ]),
       signal: AbortSignal.timeout(2000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const error = await res.json().catch(() => null);
+      console.warn(`[warmCache] coordination unavailable: HTTP ${res.status}; ${String(error?.error || 'request rejected').slice(0, 200)}`);
+      return null;
+    }
     const data = await res.json();
+    if (data?.error) console.warn(`[warmCache] coordination unavailable: ${String(data.error).slice(0, 200)}`);
     return data?.result === 'OK' ? token : null;
   } catch (err) {
     console.warn(`[warmCache] lease acquisition failed for ${type}/${id}: ${err.message}`);
@@ -249,4 +259,22 @@ export async function warmReleaseLease(type, id, token) {
  */
 export function warmCacheEnabled() {
   return ENABLED;
+}
+
+/** Remove only explicitly named reproducible cache values, in bounded batches. */
+export async function warmDeleteMany(type, ids) {
+  if (!ENABLED) return null;
+  let removed = 0;
+  for (let i = 0; i < ids.length; i += 100) {
+    try {
+      const response = await fetch(REST_URL, { method: 'POST', headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(['DEL', ...ids.slice(i, i + 100).map(id => key(type, id))]), signal: AbortSignal.timeout(5000) });
+      const data = await response.json();
+      if (!response.ok || !Number.isSafeInteger(data?.result)) {
+        console.warn(`[warmCache] cache cleanup rejected: HTTP ${response.status}; ${String(data?.error || 'no acknowledgement').slice(0, 200)}`);
+        return null;
+      }
+      removed += data.result;
+    } catch { return null; }
+  }
+  return removed;
 }

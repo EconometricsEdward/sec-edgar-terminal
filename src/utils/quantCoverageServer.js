@@ -9,7 +9,7 @@ import { isMarketAtlas } from './marketResearchValidation.js';
 import { secFetch } from './secClient.js';
 import { getOperatingTickers } from './tickerMap.js';
 import { loadPriceSeries, warmYahooSeries } from './priceDataServer.js';
-import { warmGet, warmSet, warmGetMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
+import { warmGet, warmSet, warmGetMany, warmDeleteMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
 
 export const QUANT_COMPANY_CACHE = 'quant-company-v1';
@@ -94,7 +94,7 @@ async function refreshPrice(ticker, signal) {
   if (envelope && now.getTime() - Date.parse(envelope.retrievedAt) < 20 * 3600000) {
     try { result = warmYahooSeries(envelope, fromIso); } catch { /* insufficient historical coverage */ }
   }
-  if (!result) result = await loadPriceSeries({ ticker, fromIso: new Date(now.getTime() - 10 * 365 * DAY).toISOString().slice(0, 10), now, signal, forceRefresh: true, allowUnverifiedFallback: false });
+  if (!result) result = await loadPriceSeries({ ticker, fromIso, now, signal, forceRefresh: true, allowUnverifiedFallback: false, cacheRaw: false });
   if (result.provider !== 'yahoo_finance' || result.priceBasis !== 'adjusted_close') throw new Error('Verified adjusted prices unavailable.');
   const value = { provider: result.provider, priceBasis: result.priceBasis, retrievedAt: result.retrievedAt, prices: result.prices.filter(p => p.date >= fromIso && p.date < now.toISOString().slice(0, 10)).map(p => ({ date: p.date, adjustedClose: p.adjustedClose })) };
   if (!await warmSet(QUANT_PRICE_CACHE, ticker, value, RETENTION)) throw new Error('Adjusted-price checkpoint could not be persisted.');
@@ -176,4 +176,21 @@ export async function readQuantPrices(atlas, { signal, deadline = Date.now()+240
   const tickers = [...new Set([...proxies, ...atlas.companies.map(c => c.ticker)])];
   const records = await warmGetMany(QUANT_PRICE_CACHE, tickers, {signal,deadline});
   return Object.fromEntries(tickers.flatMap((ticker, index) => records[index] ? [[ticker, records[index]]] : []));
+}
+
+/** One-time removal of duplicate raw histories created by the initial migration.
+ * Preserve the original research universe and only remove reproducible price
+ * cache entries for newly checkpointed coverage names. No source facts are removed.
+ */
+export async function compactQuantMigration() {
+  const marker=await warmGet(QUANT_COVERAGE_VERSION,'compact-price-storage');
+  if(marker)return {already_compact:true};
+  const membership=await readQuantMembership();
+  const records=await warmGetMany(QUANT_COMPANY_CACHE,membership.rows.map(r=>r.cik));
+  const original=new Set(MARKET_LENSES.flatMap(c=>c.tickers));
+  const redundant=membership.rows.filter((entry,i)=>records[i]?.company&&!original.has(entry.ticker)).map(r=>r.ticker);
+  const removed=await warmDeleteMany('stock-raw-yahoo',redundant);
+  if(removed===null)throw new Error('Duplicate price-cache cleanup could not complete.');
+  if(!await warmSet(QUANT_COVERAGE_VERSION,'compact-price-storage',{at:new Date().toISOString(),removed},90*86400))throw new Error('Storage migration marker could not be saved.');
+  return {duplicate_price_histories_removed:removed};
 }

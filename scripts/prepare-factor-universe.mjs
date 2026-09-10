@@ -3,9 +3,11 @@
 import { warmCacheEnabled, warmGet } from '../src/utils/warmCache.js';
 import { refreshUniverseSnapshot, isUniverseSnapshot } from '../src/utils/marketUniverseServer.js';
 import { UNIVERSE_VERSION } from '../src/utils/marketUniverse.js';
-import { readQuantAtlas, refreshQuantBatch, readQuantMembership, membershipId } from '../src/utils/quantCoverageServer.js';
+import { readQuantAtlas, refreshQuantBatch, readQuantMembership, membershipId, compactQuantMigration } from '../src/utils/quantCoverageServer.js';
 import { QUANT_BATCHES } from '../src/utils/quantGroups.js';
 if(process.env.VERCEL_ENV==='production'&&warmCacheEnabled()){
+  try{console.log('[Quant Lab] Storage compaction:',JSON.stringify(await compactQuantMigration()));}
+  catch(error){console.warn('[Quant Lab] Storage check:',error.message);}
   // One-time migration uses the same bounded/checkpointed jobs as the daily
   // schedule. A failed deployment can resume without refetching completed work.
   const coverage=await readQuantMembership(), expanded=await readQuantAtlas();
