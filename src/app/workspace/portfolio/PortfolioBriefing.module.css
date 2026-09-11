@@ -381,7 +381,7 @@
 .root [data-color="12"] {
   background: #7e899c;
 }
-.groupLink {
+.root .groupLink {
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -390,6 +390,9 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  min-height: 0;
+  box-shadow: none;
+  font-weight: 500;
 }
 .classificationNote {
   color: var(--p-muted, #a7b4c7);
@@ -404,4 +407,18 @@
   flex-shrink: 1;
   min-width: 1px;
   background: #60728e;
+}
+
+@media (min-width: 1200px) {
+  .mixList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    row-gap: 16px;
+  }
+  .mixList li {
+    align-items: start;
+  }
+  .mixList .dot {
+    margin-top: 6px;
+  }
 }
