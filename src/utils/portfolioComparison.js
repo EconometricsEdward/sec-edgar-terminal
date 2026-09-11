@@ -185,6 +185,6 @@ export function comparePortfolioProfiles(a, b, metricId = "netMargin") {
       excluded,
     },
     interpretation:
-      "Allocation differences are right minus left on saved portfolio allocation weights, including any explicit normalization already chosen. Matched financial differences compare the same issuer, metric and full reporting period; differences can reflect revisions or retrieval methodology, not subsequent business growth. Whole-list medians can differ because membership differs. Overlap is issuer identity overlap, not economic diversification or performance.",
+      "Allocation differences are right minus left on saved portfolio allocation weights, including any explicit normalization already chosen. Matched financial differences compare the same holding, metric and full reporting period; differences can reflect revisions or retrieval methodology, not subsequent business growth. Whole-list medians can differ because membership differs. Overlap is holding identity overlap, not economic diversification or performance.",
   };
 }

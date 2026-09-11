@@ -124,6 +124,6 @@ export function buildCashEarnings(report, companies) {
     cells,
     excluded,
     interpretation:
-      "Positive net income and positive operating cash flow are compared on identical annual or TTM periods within each corporate issuer. Non-positive includes zero. Working capital and noncash items can explain disagreement. This measures cash accompaniment, not improving earnings, investment returns or an earnings-quality verdict.",
+      "Positive net income and positive operating cash flow are compared on identical annual or TTM periods within each corporate company. Non-positive includes zero. Working capital and noncash items can explain disagreement. This measures cash accompaniment, not improving earnings, investment returns or an earnings-quality verdict.",
   };
 }

@@ -385,7 +385,7 @@ export default function PortfolioFinancialTools({
             ))}
           </select>
           <p>
-            One observation per issuer. Share classes are combined; funds are
+            One observation per company. Share classes are combined; funds are
             excluded from company measures.
           </p>
         </div>
@@ -628,7 +628,7 @@ export default function PortfolioFinancialTools({
           <details className={s.method}>
             <summary>How peer percentiles work</summary>
             <p>
-              Each included issuer contributes one value, regardless of
+              Each included company contributes one value, regardless of
               portfolio weight. The percentile is 100 × (companies with lower
               values + half the companies tied at this value) / measured
               companies. This includes the selected company; equal values

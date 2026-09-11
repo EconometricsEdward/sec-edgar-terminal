@@ -463,8 +463,8 @@ export default function PortfolioMetricExplorer({
         <>
           <div className={s.finding}>
             <strong>
-              {result.available} of {result.population} selected issuers have a
-              measured {result.definition.label.toLowerCase()}.
+              {result.available} of {result.population} selected companies have
+              a measured {result.definition.label.toLowerCase()}.
             </strong>
             <p>
               Median {value(result.median)} · middle 50% {value(result.p25)} to{" "}
@@ -478,7 +478,7 @@ export default function PortfolioMetricExplorer({
             </p>
           </div>
           <p>
-            Select up to six issuers for a comparison below. Selection stays
+            Select up to six companies for a comparison below. Selection stays
             fixed while you filter or rank.
           </p>
           <div
@@ -558,7 +558,7 @@ export default function PortfolioMetricExplorer({
       {chosen.length > 0 && (
         <section>
           <div className={s.heading}>
-            <h4>Compare {chosen.length} selected issuers</h4>
+            <h4>Compare {chosen.length} selected companies</h4>
             <button onClick={() => setSelected([])}>Clear selection</button>
           </div>
           <p>

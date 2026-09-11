@@ -265,7 +265,7 @@ export default function PortfolioResearchDesk({
           }
           setStatus(
             error.message ||
-              "One issuer could not be retrieved; retry it below.",
+              "One company could not be retrieved; retry it below.",
           );
         }
         current.signal.throwIfAborted();
@@ -302,7 +302,7 @@ export default function PortfolioResearchDesk({
         (!archive && !Array.isArray(data.archives))
       )
         throw new Error(
-          "The filing response did not match the selected portfolio issuer.",
+          "The filing response did not match the selected portfolio company.",
         );
       setHistory((previous) => {
         const old = previous[issuer.cik];
@@ -420,7 +420,7 @@ export default function PortfolioResearchDesk({
         signal.throwIfAborted();
         if (data.cik !== issuer.cik || !Array.isArray(data.filings))
           throw new Error(
-            "Disclosure response did not match the selected SEC issuer.",
+            "Disclosure response did not match the selected SEC company.",
           );
         setScans((previous) => ({
           ...previous,
@@ -460,7 +460,7 @@ export default function PortfolioResearchDesk({
       signal.throwIfAborted();
       if (data.cik !== f.cik || data.accession !== f.accession)
         throw new Error(
-          "The retried filing did not match this issuer and accession.",
+          "The retried filing did not match this company and accession.",
         );
       const { matches, ...evidence } = data;
       setScans((previous) => ({
@@ -489,7 +489,7 @@ export default function PortfolioResearchDesk({
     >
       <div className={s.heading}>
         <div>
-          <p className={s.eyebrow}>Research only your selected issuers</p>
+          <p className={s.eyebrow}>Research only your selected companies</p>
           <h3>
             {activeTab === "filings"
               ? "Portfolio filing library"
@@ -519,7 +519,7 @@ export default function PortfolioResearchDesk({
       {activeTab === "filings" && (
         <>
           <p>
-            The saved feed opens immediately. Load each issuer’s full recent
+            The saved feed opens immediately. Load each company’s full recent
             submissions and then its historical archives to reach older filings
             and every available form. Coverage is explicit; unloaded archives
             are not counted as searched.
@@ -530,13 +530,13 @@ export default function PortfolioResearchDesk({
               onClick={() => work(historyPending.slice(0, 5), loadHistory)}
             >
               Load recent history for next {Math.min(5, historyPending.length)}{" "}
-              issuers
+              companies
             </button>
             <button
               disabled={disabled || !historyPending.length}
               onClick={() => work(historyPending, loadHistory)}
             >
-              Continue through all {historyPending.length} remaining issuers
+              Continue through all {historyPending.length} remaining companies
             </button>
             <button
               onClick={() =>
@@ -572,7 +572,7 @@ export default function PortfolioResearchDesk({
             </button>
           </div>
           <p>
-            {Object.keys(history).length} of {issuers.length} issuer recent
+            {Object.keys(history).length} of {issuers.length} company recent
             histories loaded ·{" "}
             {Object.values(history).reduce(
               (n: number, h: any) => n + (h.loadedArchives?.length || 0),
@@ -580,11 +580,11 @@ export default function PortfolioResearchDesk({
             )}{" "}
             archives loaded · {filings.length.toLocaleString()} filing
             references available. {issuers.filter((i) => !i.ticker).length}{" "}
-            issuers lack a ticker for this history endpoint.
+            companies lack a ticker for this history endpoint.
           </p>
           <div className={s.controls}>
             <label>
-              Issuer
+              Company
               <select
                 value={selectedIssuer}
                 onChange={(e) => {
@@ -592,7 +592,7 @@ export default function PortfolioResearchDesk({
                   setLimit(30);
                 }}
               >
-                <option value="">All portfolio issuers</option>
+                <option value="">All portfolio companies</option>
                 {issuers.map((i) => (
                   <option key={i.cik} value={i.cik}>
                     {i.ticker || i.cik} · {i.name}
@@ -670,7 +670,7 @@ export default function PortfolioResearchDesk({
                         disabled={disabled || !issuer.ticker}
                         onClick={() => work([issuer], loadHistory)}
                       >
-                        Load this issuer’s recent history
+                        Load this company’s recent history
                       </button>
                     ) : (
                       <>
@@ -692,7 +692,7 @@ export default function PortfolioResearchDesk({
                           }
                         >
                           Load all {remaining.length} remaining archives for
-                          this issuer
+                          this company
                         </button>
                         {remaining.map((archive: any) => (
                           <button
@@ -716,7 +716,7 @@ export default function PortfolioResearchDesk({
             </div>
           )}
           <p>
-            {visibleFilings.length} filing references match. Select an issuer
+            {visibleFilings.length} filing references match. Select a company
             above to load older archives.
           </p>
           <div
@@ -791,8 +791,8 @@ export default function PortfolioResearchDesk({
       {activeTab === "disclosures" && (
         <>
           <p>
-            Search filing text across {scope.length} portfolio issuers using the
-            Disclosures research engine. Start with two filings per company,
+            Search filing text across {scope.length} portfolio companies using
+            the Disclosures research engine. Start with two filings per company,
             inspect matching passages, then continue into older reports where
             needed.
           </p>
@@ -831,7 +831,7 @@ export default function PortfolioResearchDesk({
               />
             </label>
             <label>
-              Filings per issuer
+              Filings per company
               <select
                 value={settings.depth}
                 disabled={busy}
@@ -871,7 +871,7 @@ export default function PortfolioResearchDesk({
               </select>
             </label>
             <label>
-              Issuer scope
+              Company scope
               <select
                 value={
                   scopeCiks.length === 1
@@ -904,25 +904,25 @@ export default function PortfolioResearchDesk({
               disabled={disabled || !settings.query.trim()}
               onClick={() => scanBatch()}
             >
-              Search next 5 issuers
+              Search next 5 companies
             </button>
             <button
               disabled={disabled || !settings.query.trim()}
               onClick={() => scanBatch(true)}
             >
-              Continue through all unsearched issuers
+              Continue through all unsearched companies
             </button>
             <button
               disabled={disabled || !discoveredScans.some((c: any) => c.error)}
               onClick={() => scanBatch(false, true)}
             >
-              Retry failed issuers
+              Retry failed companies
             </button>
           </div>
           <div className={s.finding}>
             <strong>
-              {discoveredScans.filter((c: any) => !c.error).length} issuer scans
-              returned ·{" "}
+              {discoveredScans.filter((c: any) => !c.error).length} company
+              scans returned ·{" "}
               {discoveredScans.reduce(
                 (n: number, c: any) => n + (c.reviewed || 0),
                 0,
@@ -938,7 +938,7 @@ export default function PortfolioResearchDesk({
                 : ""}{" "}
               No match means no match in reviewed filings, not proof that the
               topic is absent. Coverage and older-history limits are shown per
-              issuer.
+              company.
             </p>
           </div>
           {matches.slice(0, disclosureLimit).map((f: any) => (
@@ -970,7 +970,7 @@ export default function PortfolioResearchDesk({
             </button>
           )}
           <details>
-            <summary>Search coverage for each issuer</summary>
+            <summary>Search coverage for each company</summary>
             {discoveredScans.map((c: any) => (
               <div key={c.cik} className={s.finding}>
                 <strong>
@@ -1008,7 +1008,7 @@ export default function PortfolioResearchDesk({
                       )
                     }
                   >
-                    Search older filings for this issuer
+                    Search older filings for this company
                   </button>
                 )}
               </div>

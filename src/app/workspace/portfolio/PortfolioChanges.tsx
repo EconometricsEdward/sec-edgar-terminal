@@ -167,8 +167,8 @@ export default function PortfolioChanges({
               <strong>{date(comparison.capturedAt)}</strong>
             </span>
             <span className={styles.checked}>
-              {comparison.checkedIssuers} issuer
-              {comparison.checkedIssuers === 1 ? "" : "s"} checked
+              {comparison.checkedIssuers}{" "}
+              {comparison.checkedIssuers === 1 ? "holding" : "holdings"} checked
               {comparison.uncheckedIssuers
                 ? ` · ${comparison.uncheckedIssuers} need a check`
                 : ""}
@@ -302,7 +302,9 @@ export default function PortfolioChanges({
                                 rel="noreferrer"
                               >
                                 SEC source
-                                {entry.links.length > 1 ? ` ${index + 1}` : ""}{" "}
+                                {entry.links.length > 1
+                                  ? ` ${index + 1}`
+                                  : ""}{" "}
                                 ↗
                               </a>
                             ))
@@ -334,7 +336,7 @@ export default function PortfolioChanges({
             </ol>
           )}
           <p className={styles.method}>
-            One observation per issuer, even when multiple share classes are
+            One observation per company, even when multiple share classes are
             selected. Filing comparisons use the captured recent filing lists.
             Coverage changes describe the evidence available to this workspace.
           </p>

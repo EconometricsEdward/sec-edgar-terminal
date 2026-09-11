@@ -223,6 +223,7 @@ export default function PortfolioAnalytics({
     "peers" | "relationships" | "compare"
   >("peers");
   const [financialToolsVisited, setFinancialToolsVisited] = useState(false);
+  const [statementsVisited, setStatementsVisited] = useState(false);
   const [coverageMode, setCoverageMode] = useState("summary");
   const [matrixVisited, setMatrixVisited] = useState(false);
   const changeArea = (next: string) => {
@@ -318,63 +319,72 @@ export default function PortfolioAnalytics({
 
   return (
     <section className={s.root} aria-labelledby={titleId}>
-      <header className={s.hero}>
-        <div className={s.heroHeading}>
-          <div>
-            <p className={s.eyebrow}>
-              From individual companies to the whole portfolio
-            </p>
-            <h2 id={titleId}>
-              {weighted
-                ? "Understand your portfolio."
-                : "Understand your company list."}
-            </h2>
-            <p className={s.intro}>
-              Explore concentration, compare company fundamentals, and test your
-              own assumptions. Every result keeps its coverage and reporting
-              dates in view.
-            </p>
-          </div>
+      {area === "overview" ? (
+        <header className={s.briefingHeading}>
+          <h2 id={titleId}>Portfolio analytics</h2>
           <span className={s.badge}>{report.label}</span>
-        </div>
-        <div className={s.summary}>
-          <div>
-            <span>Identified issuers</span>
-            <strong>{count(report.issuerCount)}</strong>
-            <small>
-              {count(report.holdingCount)} included positions ·{" "}
-              {count(report.unresolvedCount)} unresolved
-            </small>
+        </header>
+      ) : (
+        <header className={s.hero}>
+          <div className={s.heroHeading}>
+            <div>
+              <p className={s.eyebrow}>
+                From individual companies to the whole portfolio
+              </p>
+              <h2 id={titleId}>
+                {weighted
+                  ? "Understand your portfolio."
+                  : "Understand your company list."}
+              </h2>
+              <p className={s.intro}>
+                Explore concentration, compare company fundamentals, and test
+                your own assumptions. Every result keeps its coverage and
+                reporting dates in view.
+              </p>
+            </div>
+            <span className={s.badge}>{report.label}</span>
           </div>
-          <div>
-            <span>Financial ratio coverage</span>
-            <strong>
-              {count(financialCount)}
-              <em> / {count(report.operatingIssuerCount)}</em>
-            </strong>
-            <small>At least one of the tracked financial measures</small>
+          <div className={s.summary}>
+            <div>
+              <span>Identified holdings</span>
+              <strong>{count(report.issuerCount)}</strong>
+              <small>
+                {count(report.holdingCount)} included positions ·{" "}
+                {count(report.unresolvedCount)} unresolved
+              </small>
+            </div>
+            <div>
+              <span>Financial ratio coverage</span>
+              <strong>
+                {count(financialCount)}
+                <em> / {count(report.operatingIssuerCount)}</em>
+              </strong>
+              <small>At least one of the tracked financial measures</small>
+            </div>
+            <div>
+              <span>{weighted ? "Known allocation" : "Allocation basis"}</span>
+              <strong className={!weighted ? s.wordValue : undefined}>
+                {weighted
+                  ? percent(concentration.knownWeightPct)
+                  : "Ticker list"}
+              </strong>
+              <small>
+                {weighted
+                  ? `${concentration.missingWeightRows} positions without a usable weight`
+                  : "Company counts; no weights assumed"}
+              </small>
+            </div>
+            <div>
+              <span>Research snapshot</span>
+              <strong className={s.dateValue}>
+                {dateLabel(report.capturedAt)}
+              </strong>
+              <small>Company reporting periods may differ</small>
+            </div>
           </div>
-          <div>
-            <span>{weighted ? "Known allocation" : "Allocation basis"}</span>
-            <strong className={!weighted ? s.wordValue : undefined}>
-              {weighted ? percent(concentration.knownWeightPct) : "Ticker list"}
-            </strong>
-            <small>
-              {weighted
-                ? `${concentration.missingWeightRows} positions without a usable weight`
-                : "Company counts; no weights assumed"}
-            </small>
-          </div>
-          <div>
-            <span>Research snapshot</span>
-            <strong className={s.dateValue}>
-              {dateLabel(report.capturedAt)}
-            </strong>
-            <small>Company reporting periods may differ</small>
-          </div>
-        </div>
-      </header>
-      {report.warnings.length > 0 && (
+        </header>
+      )}
+      {area !== "overview" && report.warnings.length > 0 && (
         <details className={s.notes}>
           <summary>
             {report.warnings.length} coverage{" "}
@@ -415,18 +425,6 @@ export default function PortfolioAnalytics({
           }}
           onInspectCompany={onInspectCompany}
         />
-        <PortfolioConnections
-          report={report}
-          companies={companies}
-          onInspect={onInspectCompany}
-          onDisclosure={onDisclosure}
-        />
-        <CashEarnings
-          report={report}
-          companies={companies}
-          capturedAt={capturedAt}
-          onInspect={onInspectCompany}
-        />
       </div>
 
       {(visitedAreas.has("metrics") || area === "metrics") && (
@@ -453,7 +451,7 @@ export default function PortfolioAnalytics({
               </h3>
               <p>
                 {weighted
-                  ? "Issuer weights combine all included share classes. Known weights retain the portfolio allocation denominator."
+                  ? "Holding weights combine all included share classes. Known weights retain the portfolio allocation denominator."
                   : "Without position weights, this view counts companies and positions. A list of 100 tickers does not imply 1% in each company."}
               </p>
             </div>
@@ -469,9 +467,9 @@ export default function PortfolioAnalytics({
             <>
               <div className={s.concentrationStats}>
                 {[
-                  ["Largest issuer", concentration.largestIssuerWeightPct],
-                  ["Top 5 issuers", concentration.topFiveIssuerWeightPct],
-                  ["Top 10 issuers", concentration.topTenIssuerWeightPct],
+                  ["Largest holding", concentration.largestIssuerWeightPct],
+                  ["Top 5 holdings", concentration.topFiveIssuerWeightPct],
+                  ["Top 10 holdings", concentration.topTenIssuerWeightPct],
                 ].map(([label, value]) => (
                   <div key={String(label)}>
                     <span>{label}</span>
@@ -484,7 +482,7 @@ export default function PortfolioAnalytics({
                   </div>
                 ))}
                 <div>
-                  <span>Effective issuer count</span>
+                  <span>Effective holding count</span>
                   <strong>{number(concentration.effectiveIssuerCount)}</strong>
                   <small>
                     {concentration.complete
@@ -495,7 +493,7 @@ export default function PortfolioAnalytics({
               </div>
               <p className={s.note}>
                 {concentration.complete
-                  ? "Effective issuer count is 1 ÷ the sum of squared issuer weights expressed as fractions (1% = 0.01). Ten equally sized issuers produce a count of 10; larger concentrations lower it. This measures allocation concentration, not diversification across economic risks."
+                  ? "Effective holding count is 1 ÷ the sum of squared holding weights expressed as fractions (1% = 0.01). Ten equally sized holdings produce a count of 10; larger concentrations lower it. This measures allocation concentration, not diversification across economic risks."
                   : concentration.reason}
               </p>
             </>
@@ -509,22 +507,22 @@ export default function PortfolioAnalytics({
               className={s.chartCard}
               aria-label={
                 weighted
-                  ? "Largest issuer allocations"
-                  : "Included positions by issuer"
+                  ? "Largest holding allocations"
+                  : "Included positions by holding"
               }
             >
               <div className={s.cardHeading}>
                 <h4>
                   {weighted
-                    ? "Largest issuer allocations"
-                    : "Included positions by issuer"}
+                    ? "Largest holding allocations"
+                    : "Included positions by holding"}
                 </h4>
                 <span>{weighted ? "Known weight" : "Positions"}</span>
               </div>
               <p className={s.chartHelp}>
                 {weighted
-                  ? "Top 10 issuers by known allocation. Select a company to inspect its evidence."
-                  : "Share classes of the same issuer are combined. Select a company to inspect its evidence."}
+                  ? "Top 10 holdings by known allocation. Select a company to inspect its evidence."
+                  : "Share classes of the same company are combined. Select a company to inspect its evidence."}
               </p>
               <div className={s.barList}>
                 {rankedIssuers.map((issuer) => (
@@ -565,7 +563,7 @@ export default function PortfolioAnalytics({
               </div>
               {!rankedIssuers.length && (
                 <p className={s.empty}>
-                  Identify your companies to see issuer concentration.
+                  Identify your companies to see holding concentration.
                 </p>
               )}
             </section>
@@ -578,7 +576,7 @@ export default function PortfolioAnalytics({
                 <span>{weighted ? "Known weight" : "Companies"}</span>
               </div>
               <p className={s.chartHelp}>
-                Based on each issuer’s SEC SIC classification. Choose an
+                Based on each company’s SEC SIC classification. Choose an
                 industry to explore its companies below.
               </p>
               <div className={s.barList}>
@@ -685,7 +683,7 @@ export default function PortfolioAnalytics({
               {count(members.length)} companies match.{" "}
               {weighted
                 ? "Filtering does not change the portfolio weights or concentration totals above."
-                : "Each identified issuer counts once, including issuers with more than one share class."}
+                : "Each identified holding counts once, including holdings with more than one share class."}
             </p>
             {industry === "Unresolved positions" && (
               <button type="button" onClick={onReviewRows}>
@@ -714,6 +712,7 @@ export default function PortfolioAnalytics({
           <nav className={s.subnav} aria-label="Financial profile tools">
             {[
               ["distribution", "Distributions"],
+              ["statements", "Financial connections"],
               ["peers", "Peer benchmarks"],
               ["relationships", "Metric relationships"],
               ["compare", "Compare companies"],
@@ -724,7 +723,8 @@ export default function PortfolioAnalytics({
                 aria-pressed={financialMode === id}
                 onClick={() => {
                   setFinancialMode(id);
-                  if (id !== "distribution") {
+                  if (id === "statements") setStatementsVisited(true);
+                  if (["peers", "relationships", "compare"].includes(id)) {
                     setFinancialTool(
                       id as "peers" | "relationships" | "compare",
                     );
@@ -736,13 +736,29 @@ export default function PortfolioAnalytics({
               </button>
             ))}
           </nav>
+          {(statementsVisited || financialMode === "statements") && (
+            <div className={s.retained} hidden={financialMode !== "statements"}>
+              <PortfolioConnections
+                report={report}
+                companies={companies}
+                onInspect={onInspectCompany}
+                onDisclosure={onDisclosure}
+              />
+              <CashEarnings
+                report={report}
+                companies={companies}
+                capturedAt={capturedAt}
+                onInspect={onInspectCompany}
+              />
+            </div>
+          )}
           <div className={s.subpanel} hidden={financialMode !== "distribution"}>
             <div className={s.sectionHeading}>
               <div>
                 <p className={s.eyebrow}>Company fundamentals, together</p>
                 <h3>Find the outliers. Inspect the evidence.</h3>
                 <p>
-                  Each issuer contributes one observation. Medians and
+                  Each company contributes one observation. Medians and
                   percentiles describe the companies with supported evidence;
                   they are unweighted and do not represent a consolidated
                   portfolio ratio.
@@ -1054,7 +1070,9 @@ export default function PortfolioAnalytics({
           {financialToolsVisited && (
             <div
               className={s.retained}
-              hidden={financialMode === "distribution"}
+              hidden={
+                !["peers", "relationships", "compare"].includes(financialMode)
+              }
             >
               <PortfolioFinancialTools
                 report={report}
@@ -1160,7 +1178,7 @@ export default function PortfolioAnalytics({
               ))}
             </div>
             <p className={s.note}>
-              Status counts combine share classes for identified issuers;
+              Status counts combine share classes for identified holdings;
               unresolved entries count individual positions.{" "}
               {report.coverage.staleCount > 0
                 ? `${report.coverage.staleCount} companies also have older cached evidence or reporting periods relative to this snapshot.`
@@ -1196,7 +1214,7 @@ export default function PortfolioAnalytics({
             <section className={s.coverageTable}>
               <div className={s.cardHeading}>
                 <h4>Coverage by financial measure</h4>
-                <span>Unique operating issuers</span>
+                <span>Unique operating companies</span>
               </div>
               <div
                 className={s.tableWrap}

@@ -393,7 +393,7 @@ export function buildPortfolioCompany(
   if (compared.lensNote) warnings.push(compared.lensNote);
   if (company.kind === "foreign")
     warnings.push(
-      "Foreign issuer: only supported USD facts in the existing financial engine are used. IFRS/custom concepts, other currencies, and interim coverage may be unavailable.",
+      "Foreign company: only supported USD facts in the existing financial engine are used. IFRS/custom concepts, other currencies, and interim coverage may be unavailable.",
     );
   if (!period)
     warnings.push(
@@ -482,7 +482,7 @@ function feedFor(submissions, cik, retrievedAt) {
       limit: PORTFOLIO_FEED_LIMIT,
       truncated: filings.length > PORTFOLIO_FEED_LIMIT,
       checkedAt: retrievedAt,
-      note: "Up to 30 relevant filings per issuer from the recent submissions block. Older archive files are not scanned; this is not a complete filing history.",
+      note: "Up to 30 relevant filings per company from the recent submissions block. Older archive files are not scanned; this is not a complete filing history.",
     },
   };
 }
@@ -497,7 +497,7 @@ async function freshCompany(
   const submissions = await secJson(`/submissions/CIK${cik}.json`, signal);
   if (cikString(submissions?.cik) !== cik || !submissions.name)
     throw new Error(
-      "The SEC issuer identity could not be verified for this CIK.",
+      "The SEC company identity could not be verified for this CIK.",
     );
   const kind = portfolioCompanyKind(submissions, identity);
   const feed = feedFor(submissions, cik, retrievedAt);
@@ -543,7 +543,7 @@ async function freshCompany(
       signal,
     );
     if (cikString(facts?.cik) !== cik || !facts.facts)
-      throw new Error("SEC company facts did not match the requested issuer.");
+      throw new Error("SEC company facts did not match the requested company.");
     return buildPortfolioCompany(
       { ...company, facts: facts.facts },
       { basis, retrievedAt },
@@ -555,7 +555,7 @@ async function freshCompany(
       { basis, retrievedAt },
     );
     result.warnings.push(
-      "Company facts could not be retrieved; the verified identity and available filings are retained. Retry this issuer.",
+      "Company facts could not be retrieved; the verified identity and available filings are retained. Retry this company.",
     );
     result.factsUnavailable = true;
     return result;
@@ -692,7 +692,7 @@ export async function runPortfolioResearch(rawInput, dependencies = {}) {
     identities.length > PORTFOLIO_RESEARCH_BATCH
   )
     throw failure(
-      "Research accepts at most 5 distinct resolved issuers per request. Resolve up to 100 rows, then send batches of 5 issuers and combine companies by CIK.",
+      "Research accepts at most 5 distinct resolved companies per request. Resolve up to 100 rows, then send batches of 5 companies and combine companies by CIK.",
     );
   const companies = [];
   if (input.action === "research") {
@@ -714,8 +714,8 @@ export async function runPortfolioResearch(rawInput, dependencies = {}) {
               failedCompany(
                 identity,
                 dependencies.signal?.aborted
-                  ? "Retrieval was cancelled or exceeded the request time limit. Retry this issuer."
-                  : "SEC company data could not be retrieved. Retry this issuer; other companies remain usable.",
+                  ? "Retrieval was cancelled or exceeded the request time limit. Retry this company."
+                  : "SEC company data could not be retrieved. Retry this company; other companies remain usable.",
               ),
             );
           }
@@ -752,10 +752,10 @@ export async function runPortfolioResearch(rawInput, dependencies = {}) {
       .length,
     reportingEnds: endDates,
     mismatchedPeriods: endDates.length > 1,
-    filingScope: `Recent SEC submissions only; up to ${PORTFOLIO_FEED_LIMIT} relevant filings per issuer. No archived submission files are scanned.`,
+    filingScope: `Recent SEC submissions only; up to ${PORTFOLIO_FEED_LIMIT} relevant filings per company. No archived submission files are scanned.`,
     warnings: [
       ...(input.warnings || []),
-      "Coverage describes this request only. Combine issuer batches by CIK; recompute count and allocation coverage for the full input without reweighting covered companies.",
+      "Coverage describes this request only. Combine company batches by CIK; recompute count and allocation coverage for the full input without reweighting covered companies.",
       ...(endDates.length > 1
         ? [
             "Companies have different reporting period end dates; inspect their periods before making comparisons.",

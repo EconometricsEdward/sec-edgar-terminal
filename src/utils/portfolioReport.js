@@ -151,12 +151,12 @@ export function portfolioReportHtml(input, extras = {}) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${e(b.name)} — Portfolio research</title><style>
   body{font:16px/1.6 system-ui,sans-serif;color:#172537;max-width:1200px;margin:48px auto;padding:0 28px}h1{font-size:38px;line-height:1.15}h2{margin-top:44px;font-size:25px;border-bottom:2px solid #c6a044;padding-bottom:10px}h3{font-size:20px}small,.muted{color:#566779}a{color:#185b84;overflow-wrap:anywhere}.brief{background:#f0f4f8;padding:22px;border-left:4px solid #c6a044;margin:20px 0}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{border-bottom:1px solid #d7dfe7;text-align:left;vertical-align:top;padding:10px}th{background:#eef2f6}details{margin:20px 0}summary{cursor:pointer;font-weight:650;padding:10px;background:#eef2f6}blockquote{margin:16px 0;padding:16px;border-left:3px solid #c6a044;white-space:pre-wrap}p,td{overflow-wrap:anywhere}.metric{border-bottom:1px solid #d7dfe7;padding:14px 0}.metric h4{margin:0}button{padding:10px 16px;font:inherit;cursor:pointer}nav a{display:inline-block;margin-right:16px}li{margin:6px 0}@media print{body{max-width:none;margin:0;padding:0;font-size:11pt}button,nav{display:none}.scroll{overflow:visible}table{font-size:9pt}h2,h3,h4{break-after:avoid}tr{break-inside:avoid}a{color:inherit}details>*{display:block!important}}
   </style></head><body><header><p>EDGAR Terminal · Portfolio research report</p><h1>${e(b.name)}</h1><p>Financial capture: ${e(b.research_captured_at || "Not captured")} · Exported: ${e(b.generated_at)} · ${e(b.reporting_basis)} basis</p><button onclick="document.querySelectorAll('details').forEach(d=>d.open=true);window.print()">Print / save as PDF</button><nav><a href="#briefing">Briefing</a><a href="#metrics">Metric comparisons</a><a href="#companies">Company evidence</a><a href="#filings">Filings</a><a href="#disclosures">Disclosures</a><a href="#funds">Fund ownership</a></nav></header>
-  <section id="briefing"><h2>Research scope and findings</h2><div class="brief"><strong>${e(b.coverage.selected_companies_with_financial_evidence)} of ${e(b.coverage.selected_resolved_companies)} selected resolved issuers have financial evidence.</strong><p>${e(b.coverage.selected_positions)} input rows · ${e(b.coverage.selected_unresolved_positions)} unresolved · ${e(b.coverage.selected_excluded_positions)} excluded. Counts describe the selected company universe. Missing values are excluded, never replaced by zero.</p><p>${e(b.allocation.label || b.allocation.mode)}. ${b.export_options.selected_subset ? "This is a selected subset: original supplied weights are retained; count statistics are recalculated for these issuers." : "Issuer concentration combines share classes. Financial ratios are descriptive issuer distributions, not portfolio returns."}</p></div>
+  <section id="briefing"><h2>Research scope and findings</h2><div class="brief"><strong>${e(b.coverage.selected_companies_with_financial_evidence)} of ${e(b.coverage.selected_resolved_companies)} selected resolved holdings have financial evidence.</strong><p>${e(b.coverage.selected_positions)} input rows · ${e(b.coverage.selected_unresolved_positions)} unresolved · ${e(b.coverage.selected_excluded_positions)} excluded. Counts describe the selected company universe. Missing values are excluded, never replaced by zero.</p><p>${e(b.allocation.label || b.allocation.mode)}. ${b.export_options.selected_subset ? "This is a selected subset: original supplied weights are retained; count statistics are recalculated for these companies." : "Holding concentration combines share classes. Financial ratios are descriptive company distributions, not portfolio returns."}</p></div>
   ${d.connections.groups.map((g) => `<article><h3>${e(g.title)}</h3><p>${e(g.reading)}</p><p class="muted">Companies: ${e(g.ciks.map((cik) => b.companies.find((c) => canonicalPortfolioCik(c.cik) === cik)?.ticker || cik).join(", ") || "None in the measured group")}${g.paired !== undefined ? ` · paired observations ${e(g.paired)}; median explained ROE ${e(display(g.medianRoe, "%"))}; median equity multiplier ${e(display(g.medianLeverage, "x"))}` : ""}</p></article>`).join("")}
   ${
     b.analytics?.concentration
-      ? `<h3>Issuer concentration</h3>${table(
-          ["Issuer", "SEC industry", "Supplied weight"],
+      ? `<h3>Holding concentration</h3>${table(
+          ["Holding", "SEC industry", "Supplied weight"],
           b.analytics.concentration.issuers.map((i) => [
             e(i.tickers.join(" / ")),
             e(i.industry),
@@ -192,7 +192,7 @@ export function portfolioReportHtml(input, extras = {}) {
   <section id="metrics"><h2>How the companies compare</h2><p>Each row has its own measured denominator. The median and middle 50% describe company values without allocation weights. Higher values do not necessarily mean better outcomes. Business models and reporting periods can differ; use the site’s business-model and period filters for narrower comparisons.</p>${table(
     [
       "Measure",
-      "Measured issuers",
+      "Measured companies",
       "Median",
       "Middle 50%",
       "Full periods represented",
@@ -231,13 +231,13 @@ export function portfolioReportHtml(input, extras = {}) {
           .join("")}</details>`,
     )
     .join("")}</section>
-  <section id="filings"><h2>Portfolio filing library</h2><p>${filings.length} captured references. Full recent submissions were loaded for ${histories.length} issuers; ${histories.reduce((n, h) => n + (h.loadedArchives?.length || 0), 0)} historical archives loaded. The initial financial capture includes at most 30 relevant filings per company. Unloaded histories and archives are not represented.</p>${Object.entries(
+  <section id="filings"><h2>Portfolio filing library</h2><p>${filings.length} captured references. Full recent submissions were loaded for ${histories.length} companies; ${histories.reduce((n, h) => n + (h.loadedArchives?.length || 0), 0)} historical archives loaded. The initial financial capture includes at most 30 relevant filings per company. Unloaded histories and archives are not represented.</p>${Object.entries(
     d.filingErrors,
   )
     .filter(([, v]) => v)
     .map(([cik, error]) => `<p>${e(cik)}: ${e(error)}</p>`)
     .join("")}<details><summary>Filing references and sources</summary>${table(
-    ["Issuer", "Form", "Filed", "Report end", "Source"],
+    ["Company", "Form", "Filed", "Report end", "Source"],
     filings.map((f) => [
       e(f.ticker || f.cik),
       e(f.form),
@@ -248,9 +248,9 @@ export function portfolioReportHtml(input, extras = {}) {
   )}</details></section>
   <section id="disclosures"><h2>Portfolio disclosure research</h2>${
     settings
-      ? `<div class="brief"><strong>Query: ${e(settings.query)}</strong><p>Filed ${e(settings.start)} through ${e(settings.end)} · Forms ${e(settings.forms)} · Section ${e(settings.section)} · ${e(settings.depth)} filings per issuer batch.</p><p>${scans.length} issuer scans recorded. No match in reviewed filings does not establish that a topic is absent.</p></div>${table(
+      ? `<div class="brief"><strong>Query: ${e(settings.query)}</strong><p>Filed ${e(settings.start)} through ${e(settings.end)} · Forms ${e(settings.forms)} · Section ${e(settings.section)} · ${e(settings.depth)} filings per company batch.</p><p>${scans.length} company scans recorded. No match in reviewed filings does not establish that a topic is absent.</p></div>${table(
           [
-            "Issuer",
+            "Company",
             "Reviewed",
             "Matched",
             "Failed",

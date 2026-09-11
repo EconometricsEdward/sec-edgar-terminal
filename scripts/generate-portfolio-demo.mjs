@@ -2,7 +2,7 @@ import { packPortfolioSnapshot } from "../src/utils/portfolioEvidenceCodec.js";
 /**
  * Rebuild the public, 100-company demonstration and its literal-value templates.
  * node scripts/generate-portfolio-demo.mjs --refresh
- * Without --refresh, only rebuilds templates from the ticker list below.
+ * Without --refresh, updates hypothetical allocations and templates while preserving SEC evidence.
  * --resume reuses this script's bounded public-data checkpoint after interruption.
  */
 import fs from "node:fs/promises";
@@ -19,6 +19,11 @@ import {
   createPortfolio,
   validatePortfolios,
 } from "../src/utils/portfolioStorage.js";
+import { validatePortfolioDemo } from "../src/utils/portfolioDemo.js";
+import {
+  hypotheticalDemoHoldings,
+  DEMO_ALLOCATION_METHOD,
+} from "../src/utils/portfolioDemoAllocation.js";
 
 const output = fileURLToPath(new URL("../public/portfolio/", import.meta.url));
 const resultPath = path.join(output, "portfolio-demo-100-results.json");
@@ -131,9 +136,9 @@ const tickers = [
 ];
 const input = {
   schema_version: "edgar.portfolio.v1",
-  name: "100-company research demo",
-  holdings: tickers.map((ticker) => ({ ticker })),
-  allocation: { basis: "none", normalize: false },
+  name: "Hypothetical weighted portfolio · 100-company demo",
+  holdings: hypotheticalDemoHoldings(tickers),
+  allocation: { basis: "weights", normalize: false },
   research: { basis: "annual" },
 };
 if (tickers.length !== 100 || new Set(tickers).size !== 100)
@@ -359,8 +364,7 @@ async function capture() {
       captureEndpoint: endpoint,
       basis:
         "Annual reporting basis; company fiscal periods may differ. Missing values remain unavailable, and financial-sector companies use the applicable analysis lens.",
-      allocation:
-        "Research universe with no weights, market values, shares or private notes. Company counts are not portfolio exposures.",
+      allocation: DEMO_ALLOCATION_METHOD,
       freshness:
         "A captured example, not a live feed. Each company and metric retains its retrieval date, reporting period, source filings and calculation provenance. Refresh a local copy to request newer evidence.",
       requests: checkpoint.requests,
@@ -417,22 +421,23 @@ async function writeTemplates() {
       {
         name: "Instructions",
         rows: [
-          ["100-company research demo"],
+          ["Hypothetical weighted portfolio · 100-company demo"],
           [
             "Start",
-            "Upload this workbook in Research Hub → Portfolio research. The Holdings sheet is prefilled with exactly 100 company tickers.",
+            "Upload this workbook in Research Hub → Portfolio research. The Holdings sheet contains 100 company tickers and hypothetical weight_pct values totaling 100%. Select Weighted portfolio — supplied weight_pct in Allocation settings after import.",
           ],
           [
             "Expected result",
-            "Review company financial metrics, reporting periods, SEC filing sources, coverage and industry groups. Open the captured example at https://secedgarterminal.com/workspace/demo.",
+            "Explore weighted issuer and industry concentration, evidence coverage, scenarios, company metrics and SEC filing sources. Open https://secedgarterminal.com/workspace/demo to compare the example with equal weights or company counts.",
           ],
           [
             "Scope",
             "This is a selected demonstration list, not an index, a representative market sample, actual holdings or an investment recommendation.",
           ],
+          ["Hypothetical weights", DEMO_ALLOCATION_METHOD],
           [
-            "Optional fields",
-            "Ticker-only input is sufficient. Weights, market values, shares and private notes are intentionally blank. No equal-weight allocation is assumed.",
+            "Weight units",
+            "weight_pct uses percentage points: 5 means 5%, and 0.3 means 0.3%. These are literal values. The remaining input fields are blank. Clear the weights to use your own company research list.",
           ],
           [
             "Dates",
@@ -451,10 +456,46 @@ async function writeTemplates() {
     ]),
   );
   console.log(
-    "Wrote matching CSV, XLSX and JSON templates with 100 ticker-only rows.",
+    "Wrote matching CSV, XLSX and JSON templates with 100 hypothetical weights totaling 100%.",
   );
 }
 
-await writeTemplates();
+async function updateAllocationExample() {
+  const existing = JSON.parse(await fs.readFile(resultPath, "utf8"));
+  if (
+    JSON.stringify(existing.input.holdings.map((holding) => holding.ticker)) !==
+    JSON.stringify(tickers)
+  )
+    throw new Error(
+      "The financial capture belongs to a different company list. Refresh it before changing demo allocations.",
+    );
+  const weights = new Map(
+    input.holdings.map((holding) => [holding.ticker, holding.weight_pct]),
+  );
+  const updated = {
+    ...existing,
+    title: input.name,
+    description:
+      "A hypothetical 100-company portfolio with fixed illustrative weights and captured public SEC evidence. The allocations are educational inputs, not actual holdings, an index, or investment recommendations. Financial values and evidence dates are preserved independently of the weights.",
+    input,
+    rows: existing.rows.map((row) => ({
+      ...row,
+      input: { ...row.input, weight_pct: weights.get(row.input.ticker) },
+    })),
+    allocation_example: {
+      kind: "hypothetical",
+      methodology: DEMO_ALLOCATION_METHOD,
+    },
+    methodology: {
+      ...existing.methodology,
+      allocation: DEMO_ALLOCATION_METHOD,
+    },
+  };
+  validatePortfolioDemo(updated);
+  await fs.writeFile(resultPath, `${JSON.stringify(updated)}\n`);
+}
+
 if (process.argv.includes("--refresh") || process.argv.includes("--resume"))
   await capture();
+await updateAllocationExample();
+await writeTemplates();

@@ -589,18 +589,19 @@ export default function PortfolioImport({
 
       <aside className={s.demo} aria-labelledby="portfolio-demo-title">
         <div>
-          <h3 id="portfolio-demo-title">Try a 100-company example</h3>
+          <h3 id="portfolio-demo-title">Try the hypothetical weighted demo</h3>
           <p>
-            Start with a prefilled ticker list, or see its captured research
-            before uploading. No allocations are assumed.
+            Explore 100 companies with example weights totaling 100%. After CSV
+            or Excel import, select supplied weight percentages in Allocation
+            settings.
           </p>
         </div>
         <div className={s.inlineLinks}>
           <a href="/portfolio/portfolio-demo-100.csv" download>
-            <Download size={14} aria-hidden="true" /> 100-ticker CSV
+            <Download size={14} aria-hidden="true" /> Weighted CSV
           </a>
           <a href="/portfolio/portfolio-demo-100.xlsx" download>
-            <Download size={14} aria-hidden="true" /> 100-ticker Excel
+            <Download size={14} aria-hidden="true" /> Weighted Excel
           </a>
           <a href="/workspace/demo" target="_blank" rel="noopener noreferrer">
             Preview example results (new tab) ↗
@@ -673,7 +674,7 @@ export default function PortfolioImport({
         <p>
           Use <code>ticker</code>, <code>company_name</code>, or{" "}
           <code>cik</code> to identify a company. Company-name matches require
-          confirmation. An exact CIK identifies an issuer; it does not assume a
+          confirmation. An exact CIK identifies a company; it does not assume a
           share class.
         </p>
         <dl className={s.definitions}>
@@ -884,7 +885,7 @@ export default function PortfolioImport({
                   </strong>
                   {group.decided ? (
                     <p>
-                      Confirmed: keep separate positions. Issuer evidence is
+                      Confirmed: keep separate positions. Company evidence is
                       retrieved once.
                     </p>
                   ) : (
@@ -1129,7 +1130,7 @@ export default function PortfolioImport({
                         )}
                         {resolution.needsVerification && (
                           <p>
-                            Issuer CIK will be verified against SEC submissions
+                            Company CIK will be verified against SEC submissions
                             during research.
                           </p>
                         )}
@@ -1160,7 +1161,7 @@ export default function PortfolioImport({
                                       value={candidateIndex}
                                     >
                                       {candidate.name} ·{" "}
-                                      {candidate.ticker || "Issuer"} · CIK{" "}
+                                      {candidate.ticker || "Company"} · CIK{" "}
                                       {candidate.cik}
                                     </option>
                                   ),
@@ -1222,7 +1223,7 @@ export default function PortfolioImport({
                               ? "Keep the merged position; original rows are retained."
                               : resolution.status === "resolved"
                                 ? "Keep this position for research."
-                                : "Retain for correction; no issuer research until resolved."}
+                                : "Retain for correction; no company research until resolved."}
                         </p>
                         <label className={s.includeToggle}>
                           <input

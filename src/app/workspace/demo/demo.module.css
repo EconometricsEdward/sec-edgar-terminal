@@ -18,11 +18,11 @@
   outline-offset: 4px;
 }
 .page h1 {
-  font-size: clamp(36px, 4.8vw, 62px);
+  font-size: clamp(30px, 3.4vw, 44px);
   letter-spacing: -0.045em;
   line-height: 1.08;
   font-weight: 750;
-  margin: 12px 0 22px;
+  margin: 10px 0 14px;
   text-wrap: balance;
 }
 .page h2 {
@@ -40,13 +40,13 @@
 }
 .page p {
   color: var(--demo-muted);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.7;
   margin: 6px 0;
 }
 .page .eyebrow {
   color: var(--demo-gold);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -78,22 +78,22 @@
 }
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.8fr);
-  gap: 48px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
   align-items: center;
-  padding: 20px 0 40px;
+  padding: 0 0 22px;
   border-bottom: 1px solid var(--demo-line);
 }
 .page .lede {
   font-size: 17px;
-  max-width: 720px;
+  max-width: 940px;
 }
 .actions {
   display: flex;
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
-  margin-top: 24px;
+  margin-top: 16px;
 }
 .page .primary,
 .page .secondary {
@@ -175,7 +175,7 @@
   border: 1px solid var(--demo-line);
   border-radius: 6px;
   color: var(--demo-gold);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
   white-space: nowrap;
 }
@@ -212,7 +212,7 @@
 }
 .stats small {
   color: var(--demo-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .exploreBar {
@@ -231,6 +231,87 @@
 .exploreBar button {
   flex-shrink: 0;
   max-width: 300px;
+}
+.page .downloadHelp,
+.page .captureNote {
+  font-size: 14px;
+  margin-top: 12px;
+  max-width: 1040px;
+}
+.basisControl {
+  display: grid;
+  gap: 10px;
+}
+.basisButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.basisButtons button[aria-pressed="true"] {
+  background: var(--demo-gold);
+  color: #172033;
+  border-color: var(--demo-gold);
+  font-weight: 650;
+}
+.weightMethod {
+  border: 1px solid var(--demo-line);
+  border-radius: 9px;
+  padding: 16px 20px;
+}
+.weightMethod summary {
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+}
+.weightMethod p {
+  margin-top: 16px;
+}
+.weightStrip {
+  display: flex;
+  height: 18px;
+  gap: 3px;
+  overflow: hidden;
+  border-radius: 4px;
+  margin: 18px 0;
+}
+.weightStrip span {
+  background: var(--demo-gold);
+}
+.weightStrip span:nth-child(2) {
+  background: #7cc9bd;
+}
+.weightStrip span:nth-child(3) {
+  background: #82a9ed;
+}
+.weightStrip span:nth-child(4) {
+  background: #7b88a1;
+}
+.weightLegend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: 12px;
+}
+.weightLegend li {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+.weightLegend span {
+  color: var(--demo-muted);
+}
+.copyActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.weightCell {
+  color: var(--demo-gold);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
 }
 .tabs {
   display: flex;
@@ -496,7 +577,7 @@
     padding-top: 4px;
   }
   .page h1 {
-    font-size: 38px;
+    font-size: 30px;
   }
   .page .lede {
     font-size: 15px;

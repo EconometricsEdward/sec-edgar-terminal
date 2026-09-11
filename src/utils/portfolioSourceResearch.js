@@ -27,7 +27,7 @@ export function mergePortfolioFilingRows(previous, incoming) {
     ...new Map(
       [...previous, ...incoming].map((f) => [
         `${canonicalPortfolioCik(f.cik)}:${f.accession}`,
-        {...f,documentUrl:f.documentUrl||f.indexUrl||null},
+        { ...f, documentUrl: f.documentUrl || f.indexUrl || null },
       ]),
     ).values(),
   ].sort((a, b) => (b.filingDate || "").localeCompare(a.filingDate || ""));
@@ -69,7 +69,7 @@ export async function portfolioSourceJson(
       if (bytes > 12 * 1024 * 1024) {
         await reader.cancel();
         throw new Error(
-          "This response exceeds the portfolio viewer's 12 MiB limit. Open the issuer's dedicated research page for this archive.",
+          "This response exceeds the portfolio viewer's 12 MiB limit. Open the company's dedicated research page for this archive.",
         );
       }
       text += decoder.decode(value, { stream: true });

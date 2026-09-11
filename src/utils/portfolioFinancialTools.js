@@ -121,7 +121,7 @@ export function buildPeerBenchmarks(report, options = {}) {
   const values = eligible.map((point) => point.value).sort((a, b) => a - b);
   const median = quantile(values, 0.5);
   const ranks = new Map();
-  for (let start = 0; start < values.length;) {
+  for (let start = 0; start < values.length; ) {
     let end = start + 1;
     while (end < values.length && values[end] === values[start]) end++;
     ranks.set(
@@ -197,8 +197,8 @@ export function buildMetricRelationship(report, options = {}) {
       yPoint,
       samePeriodEnd: Boolean(
         xPoint.periodEnd &&
-        yPoint.periodEnd &&
-        xPoint.periodEnd === yPoint.periodEnd,
+          yPoint.periodEnd &&
+          xPoint.periodEnd === yPoint.periodEnd,
       ),
     });
   }
@@ -279,11 +279,11 @@ export function peerBenchmarksCsv(cohort, capturedAt = null) {
     "Unit",
     "Reporting end from",
     "Reporting end to",
-    "Cohort issuers",
-    "Measured issuers",
-    "Applicable issuers",
-    "Unavailable applicable issuers",
-    "Not applicable issuers",
+    "Cohort companies",
+    "Measured companies",
+    "Applicable companies",
+    "Unavailable applicable companies",
+    "Not applicable companies",
     "Unavailable or not applicable",
     "Outside date range",
     "Undated excluded",

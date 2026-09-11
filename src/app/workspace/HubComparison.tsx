@@ -156,7 +156,7 @@ export default function HubComparison({
                   <strong>
                     {profile.availableCompanies === null
                       ? "Not captured"
-                      : `${profile.availableCompanies} / ${profile.totalCompanies} operating issuers`}
+                      : `${profile.availableCompanies} / ${profile.totalCompanies} operating companies`}
                   </strong>
                   <p>
                     {profile.hasSnapshot
@@ -186,15 +186,15 @@ export default function HubComparison({
           </div>
           <div className={s.finding} role="status">
             <strong>
-              {comparison.membership.shared} shared issuers out of{" "}
+              {comparison.membership.shared} shared holdings out of{" "}
               {comparison.membership.union} across both portfolios.
             </strong>
             <p>
               {comparison.membership.leftOnly} appear only in A;{" "}
-              {comparison.membership.rightOnly} only in B. Shared issuers make
+              {comparison.membership.rightOnly} only in B. Shared holdings make
               up {number(comparison.membership.jaccardPct, "%")} of the combined
-              issuer set. Share classes count once; funds are not looked through
-              to their holdings.
+              holding set. Share classes count once; funds are not looked
+              through to their holdings.
             </p>
             {comparison.allocation.available ? (
               <p>
@@ -202,8 +202,8 @@ export default function HubComparison({
                   {number(comparison.allocation.overlapPct, "%")} allocation
                   overlap:
                 </strong>{" "}
-                the smaller allocation to each issuer, added across shared
-                issuers. This describes shared holdings; different issuers can
+                the smaller allocation to each holding, added across shared
+                holdings. This describes shared holdings; different holdings can
                 still carry similar economic risks. Saved allocation bases: A{" "}
                 {comparison.allocation.leftBasis}
                 {comparison.allocation.leftNormalized
@@ -224,7 +224,7 @@ export default function HubComparison({
           </div>
           <div className={s.controls}>
             <label>
-              Issuer group
+              Holding group
               <select
                 value={membership}
                 onChange={(e) => {
@@ -232,14 +232,14 @@ export default function HubComparison({
                   selectionChanged();
                 }}
               >
-                <option value="all">All issuers</option>
-                <option value="shared">Shared issuers</option>
+                <option value="all">All holdings</option>
+                <option value="shared">Shared holdings</option>
                 <option value="left">Only in A</option>
                 <option value="right">Only in B</option>
               </select>
             </label>
             <label>
-              Find an issuer
+              Find a holding
               <input
                 type="search"
                 value={query}
@@ -247,25 +247,25 @@ export default function HubComparison({
                   setQuery(e.target.value);
                   selectionChanged();
                 }}
-                placeholder="Ticker or company"
+                placeholder="Ticker or holding"
                 maxLength={160}
               />
             </label>
           </div>
           <p role="status">
-            {members.length} matching issuers. Complete allocations sort by
+            {members.length} matching holdings. Complete allocations sort by
             largest absolute difference.
           </p>
           <div
             className={s.tableWrap}
             tabIndex={0}
             role="region"
-            aria-label="Issuer and allocation comparison"
+            aria-label="Holding and allocation comparison"
           >
             <table>
               <thead>
                 <tr>
-                  <th>Issuer</th>
+                  <th>Holding</th>
                   <th>Membership</th>
                   <th>A allocation</th>
                   <th>B allocation</th>
@@ -317,7 +317,7 @@ export default function HubComparison({
           </div>
           {members.length > limit && (
             <button onClick={() => setLimit((n) => n + 20)}>
-              Show 20 more issuers
+              Show 20 more holdings
             </button>
           )}
           <details className={s.details}>
@@ -350,13 +350,13 @@ export default function HubComparison({
             </p>
             <div className={s.finding}>
               <strong>
-                {comparison.financial.pairedCount} shared issuers have
+                {comparison.financial.pairedCount} shared companies have
                 comparable {comparison.metricLabel.toLowerCase()} observations.
               </strong>
               <p>
                 Matching requires the same metric definition, unit, accounting
                 basis and full reporting period.{" "}
-                {comparison.financial.excluded.length} shared issuers are
+                {comparison.financial.excluded.length} shared companies are
                 excluded.
               </p>
               {comparison.financial.pairedCount > 0 ? (
@@ -371,7 +371,7 @@ export default function HubComparison({
                     comparison.financial.rightPairedMedian,
                     comparison.unit,
                   )}
-                  . The median issuer difference is{" "}
+                  . The median company difference is{" "}
                   {number(
                     comparison.financial.medianDifference,
                     comparison.unit === "%" ? " pp" : comparison.unit,
@@ -397,7 +397,7 @@ export default function HubComparison({
                 <table>
                   <thead>
                     <tr>
-                      <th>Issuer</th>
+                      <th>Company</th>
                       <th>Reporting period</th>
                       <th>A</th>
                       <th>B</th>
@@ -428,7 +428,7 @@ export default function HubComparison({
             )}
             {comparison.financial.excluded.length > 0 && (
               <details>
-                <summary>Why shared issuers were excluded</summary>
+                <summary>Why shared companies were excluded</summary>
                 <ul>
                   {comparison.financial.excluded.map((row: any) => (
                     <li key={row.cik}>
@@ -444,7 +444,7 @@ export default function HubComparison({
           </details>
           <small>
             The JSON export includes the selected measure, all comparison
-            results, the current issuer filter, timestamps and matched source
+            results, the current company filter, timestamps and matched source
             links. Private notes are omitted. No portfolio return or performance
             ranking is calculated.
           </small>

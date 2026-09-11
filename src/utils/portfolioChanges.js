@@ -191,7 +191,7 @@ export function validatePortfolioBaseline(value) {
     list.every((item) => index(item, value.sources));
   requireValue(
     Array.isArray(value.companies) && value.companies.length <= 100,
-    "A comparison checkpoint supports at most 100 issuers.",
+    "A comparison checkpoint supports at most 100 companies.",
   );
   const ciks = new Set();
   for (const company of value.companies) {
@@ -215,12 +215,12 @@ export function validatePortfolioBaseline(value) {
         ) &&
         typeof company.checked === "boolean" &&
         index(company.period, value.periods),
-      "A comparison issuer identity or status is invalid.",
+      "A comparison company identity or status is invalid.",
     );
     ciks.add(company.cik);
     requireValue(
       plain(company.metrics) && Object.keys(company.metrics).length <= 80,
-      "A comparison issuer contains too many metrics.",
+      "A comparison company contains too many metrics.",
     );
     for (const [key, point] of Object.entries(company.metrics)) {
       requireValue(
@@ -247,7 +247,7 @@ export function validatePortfolioBaseline(value) {
     }
     requireValue(
       Array.isArray(company.filings) && company.filings.length <= 40,
-      "A comparison issuer contains too many filings.",
+      "A comparison company contains too many filings.",
     );
     const accessions = new Set();
     for (const filing of company.filings) {
@@ -430,8 +430,8 @@ export function comparePortfolioResearch(baseline, snapshot, rows = []) {
       add("coverage", "unchecked", {
         title: "Current evidence needs a completed check",
         description: after
-          ? "This issuer was not checked successfully in the current capture. Earlier evidence may be retained; no financial change is inferred."
-          : "This issuer has no result in the current capture. Missing research is not evidence of a financial change.",
+          ? "This company was not checked successfully in the current capture. Earlier evidence may be retained; no financial change is inferred."
+          : "This company has no result in the current capture. Missing research is not evidence of a financial change.",
         before: before?.status || "No earlier capture",
         after: after?.refreshStatus || after?.status || "Not checked",
         beforeSources: before
@@ -450,7 +450,7 @@ export function comparePortfolioResearch(baseline, snapshot, rows = []) {
       add("coverage", "first", {
         title: "Evidence is now available for comparison",
         description:
-          "There is no successfully checked earlier issuer capture. This is a first observation, not a financial change.",
+          "There is no successfully checked earlier company capture. This is a first observation, not a financial change.",
         before: before?.status || "No earlier capture",
         after: after.status,
         beforeSources: [],
@@ -601,11 +601,11 @@ export function comparePortfolioResearch(baseline, snapshot, rows = []) {
   }
   if (result.uncheckedIssuers)
     result.warnings.push(
-      `${result.uncheckedIssuers} issuer${result.uncheckedIssuers === 1 ? " was" : "s were"} not checked successfully. Complete or retry the refresh before treating coverage as current.`,
+      `${result.uncheckedIssuers} ${result.uncheckedIssuers === 1 ? "holding was" : "holdings were"} not checked successfully. Complete or retry the refresh before treating coverage as current.`,
     );
   if (snapshot.cancelled)
     result.warnings.push(
-      "This refresh was cancelled. Only successfully checked issuers can show observed evidence changes.",
+      "This refresh was cancelled. Only successfully checked companies can show observed evidence changes.",
     );
   return result;
 }

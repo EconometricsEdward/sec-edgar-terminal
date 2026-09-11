@@ -112,7 +112,7 @@ export default function PortfolioScreener({
       setDownloadMessage(
         "CSV prepared with " +
           result.matches.length +
-          " matching issuers and their reporting dates and SEC sources.",
+          " matching companies and their reporting dates and SEC sources.",
       );
     } catch {
       setDownloadMessage(
@@ -129,7 +129,7 @@ export default function PortfolioScreener({
           <h3 id={id + "-title"}>Turn a research question into a shortlist.</h3>
           <p>
             Combine up to four financial rules. Every rule must pass, using one
-            observation per resolved issuer. Select a company to inspect its
+            observation per resolved company. Select a company to inspect its
             evidence.
           </p>
         </div>
@@ -287,7 +287,7 @@ export default function PortfolioScreener({
           </select>
         </label>
         <label>
-          Sort matching issuers
+          Sort matching companies
           <select
             value={effectiveSort}
             onChange={(event) => setSortBy(event.target.value)}
@@ -327,7 +327,7 @@ export default function PortfolioScreener({
         <>
           <div className={styles.stats} aria-live="polite" aria-atomic="true">
             <div>
-              <span>Matching issuers</span>
+              <span>Matching companies</span>
               <strong>{result.matchCount}</strong>
               <small>of {result.measuredCount} fully measured</small>
             </div>
@@ -356,7 +356,7 @@ export default function PortfolioScreener({
               Original portfolio weights are retained.{" "}
               {result.incompleteMatchedWeightCount > 0
                 ? result.incompleteMatchedWeightCount +
-                  " matching issuers have incomplete weights; this is a known subtotal."
+                  " matching companies have incomplete weights; this is a known subtotal."
                 : "The shortlist is not reweighted to 100%."}
             </p>
           ) : (
@@ -390,7 +390,7 @@ export default function PortfolioScreener({
             <div
               className={styles.tableWrap}
               role="region"
-              aria-label="Matching issuer financial measures"
+              aria-label="Matching company financial measures"
               tabIndex={0}
             >
               <table>
@@ -476,12 +476,12 @@ export default function PortfolioScreener({
             <details className={styles.exclusions}>
               <summary>
                 Why {result.missing.length + result.notApplicable.length}{" "}
-                issuers could not be screened
+                companies could not be screened
               </summary>
               <p>
                 Missing values never pass a rule. If any rule does not apply to
-                an issuer, that issuer is counted only in “does not apply,” even
-                when another measure is missing.
+                a company, that company is counted only in “does not apply,”
+                even when another measure is missing.
               </p>
               <ul>
                 {[...result.missing, ...result.notApplicable].map(
@@ -517,7 +517,7 @@ export default function PortfolioScreener({
       )}
       {downloadMessage ? <p role="status">{downloadMessage}</p> : null}
       <p className={styles.note}>
-        Scope: resolved issuers in this portfolio; share classes are combined.{" "}
+        Scope: resolved companies in this portfolio; share classes are combined.{" "}
         {result.unresolvedCount
           ? result.unresolvedCount +
             " unresolved positions are excluded until their identity is resolved. "

@@ -47,11 +47,22 @@ const secUrl = (value) => {
   );
 };
 
-test("all three demo templates import the same 100 unique ticker-only rows", () => {
+test("all three demo templates import the same 100 unique tickers and hypothetical weights", () => {
   assert.equal(tickers.length, 100);
   assert.equal(new Set(tickers).size, 100);
   assert.ok(tickers.every((ticker) => /^[A-Z][A-Z0-9.-]*$/.test(ticker)));
-  assert.deepEqual(input.allocation, { basis: "none", normalize: false });
+  assert.deepEqual(input.allocation, { basis: "weights", normalize: false });
+  assert.equal(demo.allocation_example.kind, "hypothetical");
+  assert.ok(
+    Math.abs(
+      input.holdings.reduce((total, holding) => total + holding.weight_pct, 0) -
+        100,
+    ) < 1e-8,
+  );
+  assert.equal(
+    new Set(input.holdings.map((holding) => holding.weight_pct)).size,
+    4,
+  );
   assert.deepEqual(input.research, { basis: "annual" });
   const templates = [
     [".csv", parsePortfolioCsv],
@@ -70,9 +81,12 @@ test("all three demo templates import the same 100 unique ticker-only rows", () 
       normalized.holdings.map((holding) => holding.ticker),
       tickers,
     );
+    assert.deepEqual(
+      normalized.holdings.map((holding) => Number(holding.weight_pct)),
+      input.holdings.map((holding) => holding.weight_pct),
+    );
     for (const holding of normalized.holdings) {
       for (const field of [
-        "weight_pct",
         "market_value",
         "shares",
         "currency",
@@ -82,7 +96,7 @@ test("all three demo templates import the same 100 unique ticker-only rows", () 
         assert.equal(
           holding[field],
           "",
-          `${extension} must not imply allocations or add private data`,
+          `${extension} must not add values, shares, dates, or private data`,
         );
     }
   }
@@ -191,8 +205,11 @@ test("demo coverage is recomputed over all companies and the full capture fits e
     ),
   );
   assert.ok(demo.coverage.filingCount > 0);
-  assert.equal(summary.mode, "universe");
-  assert.equal(summary.allocatedWeight, null);
+  assert.equal(summary.mode, "weighted");
+  assert.ok(Math.abs(summary.allocatedWeight - 100) < 1e-8);
+  assert.equal(summary.topFiveIssuerWeightPct, 25);
+  assert.ok(Math.abs(summary.coverage.percentOfSuppliedWeight - 95) < 1e-8);
+  assert.equal(summary.coverage.companyPct, 99);
   const document = createPortfolio({
     id: "demo-validation",
     name: input.name,

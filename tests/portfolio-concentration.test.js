@@ -251,13 +251,19 @@ test("briefing is useful in count mode, deduplicates missing share classes, and 
   const cards = buildPortfolioBriefing(report);
   assert.equal(
     cards.find((card) => card.id === "allocation").value,
-    "2 issuers",
+    "2 holdings",
   );
-  assert.equal(cards.find((card) => card.id === "coverage").value, "2 issuers");
-  assert.equal(cards.find((card) => card.id === "industry").value, "2 issuers");
+  assert.equal(
+    cards.find((card) => card.id === "coverage").value,
+    "2 companies",
+  );
+  assert.equal(
+    cards.find((card) => card.id === "industry").value,
+    "2 holdings",
+  );
   assert.match(
     cards.find((card) => card.id === "industry").text,
-    /issuer count, not a portfolio weight/,
+    /holding count, not a portfolio weight/,
   );
   assert.equal(
     cards.find((card) => card.id === "condition").value,
