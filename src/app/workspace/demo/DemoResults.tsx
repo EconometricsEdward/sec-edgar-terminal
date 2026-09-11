@@ -275,7 +275,7 @@ export default function DemoResults() {
         </div>
         {demo && (
           <div className={s.headerActions}>
-            <WorkspaceMenu label="Download">
+            <WorkspaceMenu label="Download" mobileAlign="start">
               <strong>Example portfolio · fixed hypothetical weights</strong>
               <a href="/portfolio/portfolio-demo-100.csv" download>
                 CSV spreadsheet ↓

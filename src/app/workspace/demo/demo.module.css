@@ -12,6 +12,8 @@
   --p-text: var(--demo-text);
   --p-muted: var(--demo-muted);
   --p-panel: var(--demo-panel);
+  --p-bg: var(--demo-panel);
+  --hub-bg: var(--demo-panel);
   --p-line: var(--demo-line);
   --p-gold: var(--demo-gold);
   color: var(--demo-text);

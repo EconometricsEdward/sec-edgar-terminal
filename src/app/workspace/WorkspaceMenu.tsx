@@ -7,9 +7,11 @@ import s from "./WorkspaceMenu.module.css";
 export default function WorkspaceMenu({
   label,
   children,
+  mobileAlign = "end",
 }: {
   label: string;
   children: ReactNode;
+  mobileAlign?: "start" | "end";
 }) {
   const root = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
@@ -23,6 +25,7 @@ export default function WorkspaceMenu({
   return (
     <details
       ref={root}
+      data-mobile-align={mobileAlign}
       className={s.menu}
       onKeyDown={(event) => {
         if (event.key === "Escape" && root.current?.open) {

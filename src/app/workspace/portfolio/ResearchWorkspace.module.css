@@ -75,7 +75,7 @@
 .content > [hidden] {
   display: none;
 }
-.mobileView {
+.workspace .mobileView {
   display: none;
 }
 @media (max-width: 1000px) {
@@ -90,13 +90,13 @@
   .navigation {
     display: none;
   }
-  .mobileView {
+  .workspace .mobileView {
     display: grid;
     gap: 8px;
     color: var(--workspace-muted);
     font-size: 14px;
   }
-  .mobileView select {
+  .workspace .mobileView select {
     width: 100%;
     min-height: 46px;
     padding: 10px 12px;

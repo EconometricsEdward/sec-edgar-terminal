@@ -27,6 +27,8 @@
   top: calc(100% + 8px);
   z-index: 30;
   width: 340px;
+  max-height: 55dvh;
+  overflow-y: auto;
   max-width: calc(100vw - 48px);
   background: var(--p-panel, var(--demo-panel, #101a2b));
   border: 1px solid var(--p-line, var(--demo-line, #29364c));
@@ -57,4 +59,11 @@
 .menu :is(summary, a, button):focus-visible {
   outline: 2px solid #f7c65a;
   outline-offset: 3px;
+}
+
+@media (max-width: 700px) {
+  .menu[data-mobile-align="start"] .body {
+    left: 0;
+    right: auto;
+  }
 }
