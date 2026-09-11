@@ -378,3 +378,27 @@ test("older captures expose only their saved measures and refreshed captures unl
     "availability must not modify saved evidence",
   );
 });
+
+test("older G&A-only evidence is withheld from combined SG&A choices and ranks", () => {
+  const old = company(1, {
+    sga: point(20, "USD", {
+      sources: [{ tag: "GeneralAndAdministrativeExpense" }],
+    }),
+  });
+  assert.deepEqual(portfolioAvailableMetrics([old]), []);
+  assert.equal(
+    rankPortfolioMetric(fixture([old]).report, [old], { metricId: "sga" })
+      .available,
+    0,
+  );
+  const corrected = company(1, {
+    sga: point(60, "USD", {
+      classification: "calculated",
+      sources: [
+        { tag: "SellingAndMarketingExpense" },
+        { tag: "GeneralAndAdministrativeExpense" },
+      ],
+    }),
+  });
+  assert.equal(portfolioAvailableMetrics([corrected])[0].key, "sga");
+});

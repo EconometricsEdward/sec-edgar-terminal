@@ -1,5 +1,5 @@
 import { classifyIndustry, INDUSTRY_GROUPS } from './industry.js';
-import { reportingPeriods, selectFinancialFact, daysBetween } from './xbrlPeriods.js';
+import { reportingPeriods, selectFinancialFact, sumCompatibleFinancialFacts, daysBetween } from './xbrlPeriods.js';
 export { withPeriodKind } from './xbrlPeriods.js';
 
 // ============================================================================
@@ -18,7 +18,7 @@ const DEFAULT_TAGS = {
   grossProfit: ['GrossProfit'],
   operatingExpenses: ['OperatingExpenses'],
   rnd: ['ResearchAndDevelopmentExpense'],
-  sga: ['SellingGeneralAndAdministrativeExpense', 'GeneralAndAdministrativeExpense'],
+  sga: ['SellingGeneralAndAdministrativeExpense'],
   operatingIncome: ['OperatingIncomeLoss'],
   interestExpense: ['InterestExpense'],
   pretaxIncome: [
@@ -161,7 +161,13 @@ export function buildMetricRow(facts, metricKey, label, periods, format = 'curre
 
   const values = periods.map((p) => {
     if (tags.length === 0) return { period: p, value: null, source: null };
-    const found = selectFinancialFact(facts, tags, p, scope, { additive: !['eps', 'shares'].includes(format) });
+    let found = selectFinancialFact(facts, tags, p, scope, { additive: !['eps', 'shares'].includes(format) });
+    if (!found && metricKey === 'sga') {
+      found = sumCompatibleFinancialFacts([
+        selectFinancialFact(facts, ['SellingAndMarketingExpense'], p, scope),
+        selectFinancialFact(facts, ['GeneralAndAdministrativeExpense'], p, scope),
+      ], 'Selling and marketing expense + general and administrative expense', p);
+    }
     if (!found) return { period: p, value: null, source: null, sources: [], classification: 'unavailable', note: 'No compatible context in the requested unit and reporting period.' };
     return { period: p, ...found };
 
@@ -194,7 +200,7 @@ export function buildBalanceSheet(facts, periods, sicCode = null) {
   return [
     buildMetricRow(facts, 'cash', 'Cash & Equivalents', periods, 'currency', g),
     buildMetricRow(facts, 'shortTermInvestments', 'Short-term Investments', periods, 'currency', g),
-    buildMetricRow(facts, 'receivables', 'Accounts Receivable', periods, 'currency', g),
+    buildMetricRow(facts, 'receivables', 'Receivables, net', periods, 'currency', g),
     buildMetricRow(facts, 'inventory', 'Inventory', periods, 'currency', g),
     buildMetricRow(facts, 'currentAssets', 'Total Current Assets', periods, 'currency', g),
     buildMetricRow(facts, 'ppe', 'Property, Plant & Equipment', periods, 'currency', g),

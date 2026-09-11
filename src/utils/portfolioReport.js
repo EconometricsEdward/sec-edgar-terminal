@@ -2,6 +2,7 @@ import { buildPortfolioAnalytics } from "./portfolioAnalytics.js";
 import { canonicalPortfolioCik } from "./portfolioModel.js";
 import {
   portfolioConnections,
+  portfolioMetricScopeValid,
   rankPortfolioMetric,
   metricDisplay,
   metricUnit,
@@ -213,7 +214,8 @@ export function portfolioReportHtml(input, extras = {}) {
           c.metrics || {},
         )
           .filter(
-            ([, p]) =>
+            ([key, p]) =>
+              portfolioMetricScopeValid(key, p) &&
               Number.isFinite(p.value) &&
               ["reported", "calculated"].includes(p.classification),
           )

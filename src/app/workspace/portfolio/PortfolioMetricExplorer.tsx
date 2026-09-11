@@ -1,4 +1,6 @@
 "use client";
+import { ANALYSIS_VERSION } from "../../../utils/analysisVersion.js";
+import { companyAvailable } from "../../../utils/portfolioModel.js";
 import { useMemo, useState } from "react";
 import { portfolioMetricDefinitionFor } from "../../../utils/portfolioMetricCatalog.js";
 import {
@@ -132,7 +134,9 @@ export default function PortfolioMetricExplorer({
     )
     .slice(0, requestedCompareKeys ? 10 : 6);
   const legacyCount = cohort.filter(
-    (i) => i.company && !i.company.analysisVersion,
+    (i) =>
+      companyAvailable(i.company) &&
+      i.company.analysisVersion !== ANALYSIS_VERSION,
   ).length;
   const resetFilters = () => {
     setLens("all");
@@ -241,10 +245,11 @@ export default function PortfolioMetricExplorer({
       </p>
       {legacyCount > 0 && onRefresh && (
         <div className={s.finding} role="status">
-          <strong>More financial measures can be retrieved.</strong>
+          <strong>Update this financial capture.</strong>
           <p>
-            {legacyCount} companies use an older capture from before the
-            expanded financial catalog.
+            {legacyCount} companies use an earlier financial capture. Refresh to
+            request additional supported measures and current calculation
+            corrections.
           </p>
           <button disabled={refreshing} onClick={onRefresh}>
             {refreshing

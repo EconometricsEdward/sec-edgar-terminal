@@ -122,7 +122,7 @@ export const PORTFOLIO_METRIC_CATALOG = [
   },
   {
     key: "receivables",
-    label: "Accounts Receivable",
+    label: "Receivables, net",
     format: "currency",
     category: "balance",
     order: 100,

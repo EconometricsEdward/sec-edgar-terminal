@@ -73,6 +73,16 @@ const metricApplies = (definition, lens) =>
       ].includes(definition?.key)
     : definition?.lenses?.includes(lens);
 
+/** Earlier captures sometimes labeled administrative expense alone as total SG&A. */
+export const portfolioMetricScopeValid = (key, point) =>
+  !(
+    key === "sga" &&
+    point?.sources?.length &&
+    point.sources.every(
+      (source) => source.tag === "GeneralAndAdministrativeExpense",
+    )
+  );
+
 /** The same eligibility contract powers choices, ranks and comparisons. */
 export function portfolioMetricState(company, definition, period = "all") {
   const point = company?.metrics?.[definition?.key];
@@ -84,6 +94,7 @@ export function portfolioMetricState(company, definition, period = "all") {
   )
     return "not-applicable";
   if (
+    !portfolioMetricScopeValid(definition?.key, point) ||
     !finiteFinancialMetric(point) ||
     point.unit !== metricUnit(definition?.format)
   )

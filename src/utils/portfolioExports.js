@@ -1,3 +1,4 @@
+import { portfolioMetricScopeValid } from "./portfolioDeepResearch.js";
 import {
   allocationSummary,
   companyAvailable,
@@ -429,7 +430,11 @@ function tableColumns(bundle, requested) {
     ...new Set(
       bundle.companies.flatMap((company) =>
         Object.entries(company.metrics || {})
-          .filter(([, point]) => finiteFinancialMetric(point))
+          .filter(
+            ([key, point]) =>
+              finiteFinancialMetric(point) &&
+              portfolioMetricScopeValid(key, point),
+          )
           .map(([key]) => key),
       ),
     ),
@@ -1206,7 +1211,11 @@ export function portfolioMarkdown(bundle) {
       "| Metric | Value and unit | Period | Evidence type |",
       "| --- | --- | --- | --- |",
       ...Object.entries(company.metrics || {})
-        .filter(([, point]) => finiteFinancialMetric(point))
+        .filter(
+          ([key, point]) =>
+            finiteFinancialMetric(point) &&
+            portfolioMetricScopeValid(key, point),
+        )
         .map(
           ([key, point]) =>
             `| ${md(key)} | ${finiteFinancialMetric(point) ? md(point.value) : "Unavailable"} ${md(point.unit)} | ${md(period(point.period || company.period))} | ${md(point.classification || "unavailable")} |`,
