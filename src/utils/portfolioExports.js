@@ -1,3 +1,4 @@
+import { resolveCompanyClassification } from "./companyClassification.js";
 import { portfolioMetricScopeValid } from "./portfolioDeepResearch.js";
 import {
   allocationSummary,
@@ -221,7 +222,12 @@ export function buildPortfolioResearchPackage(document, options = {}) {
     ? snapshot.companies
     : [];
   const companies = clean(
-    allCompanies.filter((company) => selectedCiks.has(String(company.cik))),
+    allCompanies
+      .filter((company) => selectedCiks.has(String(company.cik)))
+      .map((company) => ({
+        ...company,
+        companyClassification: resolveCompanyClassification(company),
+      })),
     false,
   );
   const fullAllocation = includeAllocations
@@ -460,6 +466,10 @@ function companyTable(bundle, columns) {
     "research_captured_at",
     "reporting_basis",
     ...BASE_COLUMNS,
+    "sector",
+    "sector_source_fund",
+    "sector_as_of",
+    "sector_source_url",
     "retrieved_at",
     "cache_status",
     "warnings",
@@ -489,8 +499,16 @@ function companyTable(bundle, columns) {
       bundle.research_captured_at,
       bundle.reporting_basis,
       ...BASE_COLUMNS.map((key) =>
-        key === "period" ? period(company[key]) : scalar(company[key]),
+        key === "period"
+          ? period(company[key])
+          : key === "industry"
+            ? resolveCompanyClassification(company).industry
+            : scalar(company[key]),
       ),
+      resolveCompanyClassification(company).sector || "",
+      resolveCompanyClassification(company).sectorSource?.fund || "",
+      resolveCompanyClassification(company).sectorSource?.asOf || "",
+      resolveCompanyClassification(company).sectorSource?.url || "",
       company.retrievedAt,
       company.cache?.status,
       scalar(company.warnings || []),
@@ -722,6 +740,12 @@ function analyticsTable(bundle) {
       known_weight_pct: issuer.weightPct,
       detail: `Tickers: ${issuer.tickers.join(", ")}. SEC industry: ${issuer.industry}. ${issuer.weightComplete ? "All position weights are available." : "Some position weights are unavailable."}`,
     });
+  for (const sector of concentration.sectors || [])
+    add("sector_exposure", sector.label, sector.label, sector.count, "count", {
+      count: sector.count,
+      known_weight_pct: sector.weightPct,
+      detail: `Fund-reported sector reference; funds are direct holdings only. ${[...new Set(concentration.issuers.filter((holding) => sector.ciks.includes(holding.cik) && holding.sectorSource).map((holding) => `${holding.sectorSource.provider} ${holding.sectorSource.fund}, as of ${holding.sectorSource.asOf}: ${holding.sectorSource.url}`))].join(" ; ")}`,
+    });
   for (const industry of concentration.industries)
     add(
       "industry_exposure",
@@ -945,6 +969,11 @@ export function portfolioXlsx(bundle) {
       "status",
       "kind",
       "SEC industry",
+      "sector",
+      "sector_provider",
+      "sector_source_fund",
+      "sector_as_of",
+      "sector_source_url",
       "reporting_basis",
       "metric",
       "value",
@@ -969,7 +998,12 @@ export function portfolioXlsx(bundle) {
         company.name,
         company.status,
         company.kind,
-        company.industry || company.sicDescription,
+        resolveCompanyClassification(company).industry,
+        company.companyClassification?.sector || "",
+        company.companyClassification?.sectorSource?.provider || "",
+        company.companyClassification?.sectorSource?.fund || "",
+        company.companyClassification?.sectorSource?.asOf || "",
+        company.companyClassification?.sectorSource?.url || "",
         bundle.reporting_basis,
         key,
         finiteFinancialMetric(point) ? point.value : "",
@@ -1206,7 +1240,12 @@ export function portfolioMarkdown(bundle) {
     lines.push(
       `### ${md(company.name)} (${md(company.ticker || company.cik)})`,
       "",
-      `Status: ${md(company.status)}; type: ${md(company.kind)}; SEC industry: ${md(company.industry || company.sicDescription || "Unavailable")}; period: ${md(period(company.period))}; retrieved: ${md(company.retrievedAt || "Unavailable")}; cache: ${md(company.cache?.status || "Unavailable")}.`,
+      ...(company.companyClassification?.sectorSource
+        ? [
+            `Fund-reported sector: ${md(company.companyClassification.sector)}; ${md(company.companyClassification.sectorSource.provider)} ${md(company.companyClassification.sectorSource.fund)} holdings as of ${md(company.companyClassification.sectorSource.asOf)}; source: ${md(company.companyClassification.sectorSource.url)}.`,
+          ]
+        : []),
+      `Status: ${md(company.status)}; type: ${md(company.kind)}; SEC industry: ${md(resolveCompanyClassification(company).industry)}; period: ${md(period(company.period))}; retrieved: ${md(company.retrievedAt || "Unavailable")}; cache: ${md(company.cache?.status || "Unavailable")}.`,
       "",
       "| Metric | Value and unit | Period | Evidence type |",
       "| --- | --- | --- | --- |",

@@ -15,8 +15,10 @@ export default function PortfolioBriefing({
   report,
   onNavigate,
   onInspectCompany,
+  onExploreGroup,
 }: {
   report: any;
+  onExploreGroup?: (dimension: string, label: string) => void;
   onNavigate: (area: string) => void;
   onInspectCompany: (rowId: string) => void;
 }) {
@@ -159,9 +161,21 @@ export default function PortfolioBriefing({
                       aria-hidden="true"
                     />
                     <span>
-                      {entry.label === "Funds (company metrics not applicable)"
-                        ? "Funds"
-                        : entry.label}
+                      <button
+                        type="button"
+                        className={s.groupLink}
+                        onClick={() =>
+                          onExploreGroup && overview.companyCount > 0
+                            ? onExploreGroup(overview.mixDimension, entry.label)
+                            : onNavigate("concentration")
+                        }
+                        aria-label={`Explore ${entry.label}`}
+                      >
+                        {entry.label ===
+                        "Funds (company metrics not applicable)"
+                          ? "Funds"
+                          : entry.label}
+                      </button>
                     </span>
                     <strong>
                       {overview.complete
@@ -176,6 +190,46 @@ export default function PortfolioBriefing({
             <p className={s.context}>
               Identify your holdings to see the portfolio mix.
             </p>
+          )}
+          {overview.companyCount > 0 && (
+            <div className={s.classificationNote}>
+              <p>
+                {overview.mixDimension === "sector"
+                  ? `Fund-reported sectors · ${overview.sectorCompanyCount} of ${overview.companyCount} companies covered`
+                  : `SEC industries · ${overview.industryCompanyCount} of ${overview.companyCount} companies classified`}
+              </p>
+              {overview.sectorSources.length > 0 && (
+                <p>
+                  iShares holdings as of{" "}
+                  {[
+                    ...new Set(
+                      overview.sectorSources.map((source: any) => source.asOf),
+                    ),
+                  ].join(", ")}
+                  .{" "}
+                  {overview.sectorSources.map((source: any, index: number) => (
+                    <span key={source.url}>
+                      {index > 0 ? " · " : ""}
+                      <a
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {source.fund} source ↗
+                      </a>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {overview.mixDimension === "sector" &&
+                overview.sectorCompanyCount < overview.companyCount && (
+                  <p>
+                    Companies outside the sector reference keep their SEC
+                    industry. Funds are shown separately without looking through
+                    to their holdings.
+                  </p>
+                )}
+            </div>
           )}
           {overview.largestHoldings.length > 0 && (
             <div className={s.holdings}>
@@ -200,7 +254,8 @@ export default function PortfolioBriefing({
             type="button"
             onClick={() => onNavigate("concentration")}
           >
-            Explore concentration <ArrowUpRight size={16} aria-hidden="true" />
+            Explore sectors & industries{" "}
+            <ArrowUpRight size={16} aria-hidden="true" />
           </button>
         </section>
         {overview.companyCount > 0 ? (

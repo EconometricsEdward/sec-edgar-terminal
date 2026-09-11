@@ -129,3 +129,24 @@ test("full-catalog peer currency differences retain currency units and compact d
   assert.match(html, /B USD/);
   assert.doesNotMatch(html, /[0-9,] x|percentage points/);
 });
+
+test("briefing renders all sector links and dated classification coverage", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/PortfolioBriefing.tsx",
+  ).default;
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      report,
+      onNavigate: () => {},
+      onInspectCompany: () => {},
+      onExploreGroup: () => {},
+    }),
+  );
+  assert.match(html, /100 of 100 companies covered/);
+  assert.match(html, /Fund-reported sectors/);
+  assert.match(html, /2026-09-08/);
+  assert.match(html, /aria-label="Explore Information Technology"/);
+  assert.match(html, /aria-label="Explore Real Estate"/);
+  assert.equal((html.match(/aria-label="Explore /g) || []).length, 11);
+  assert.doesNotMatch(html, /Other groups|NaN|Infinity|undefined/);
+});

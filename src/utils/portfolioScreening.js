@@ -3,6 +3,10 @@ import { csvString } from "./portfolioFiles.js";
 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const EMPTY = [];
+export const PORTFOLIO_SECTOR_UNCOVERED = "Sector not covered";
+const sectorLabel = (row) => row.sector || PORTFOLIO_SECTOR_UNCOVERED;
+const matchesSector = (row, sector) =>
+  !sector || (row.kind === "company" && sectorLabel(row) === sector);
 const LEGACY_LENSES = {
   revenueGrowth: ["corporate"],
   netMargin: ["corporate"],
@@ -123,7 +127,15 @@ export function buildPortfolioCoverageMatrix(
   const allRows = (report?.concentration?.issuers || [])
     .map((issuer) => {
       const cik = canonicalPortfolioCik(issuer.cik);
-      const normalized = { ...issuer, cik, rowId: issuer.rowIds?.[0] || null };
+      const normalized = {
+        ...issuer,
+        cik,
+        sector:
+          typeof issuer.sector === "string" && issuer.sector.trim()
+            ? issuer.sector.trim()
+            : null,
+        rowId: issuer.rowIds?.[0] || null,
+      };
       const company = companyByCik.get(cik);
       const cells = metrics.map((metric) => {
         const observation = observations.get(metric.id).get(cik);
@@ -155,16 +167,19 @@ export function buildPortfolioCoverageMatrix(
       return {
         ...normalized,
         cells,
-        lens: company?.lens || "unknown",
+        lens: company?.lens || issuer.lens || "unknown",
         availableCount,
         missingCount,
         notApplicableCount: cells.length - availableCount - missingCount,
         eligibleCount: availableCount + missingCount,
       };
     })
-    .filter((row) => row.cik);
+    .filter(
+      (row) => row.cik && (!filters.companiesOnly || row.kind === "company"),
+    );
   const scopedRows = allRows.filter(
     (row) =>
+      matchesSector(row, filters.sector) &&
       (!filters.industry || row.industry === filters.industry) &&
       (!filters.lens || row.lens === filters.lens) &&
       (!query ||
@@ -196,13 +211,46 @@ export function buildPortfolioCoverageMatrix(
       0,
     ),
     industries: [...new Set(allRows.map((row) => row.industry))].sort(),
+    sectors: [
+      ...new Set(
+        allRows.filter((row) => row.kind === "company").map(sectorLabel),
+      ),
+    ].sort(),
     filters: {
       query: String(filters.query || ""),
       industry: String(filters.industry || ""),
+      sector: String(filters.sector || ""),
+      lens: String(filters.lens || ""),
       metricId: String(filters.metricId || ""),
       gapsOnly: Boolean(filters.gapsOnly),
     },
   };
+}
+
+/** Offer measures only when the active company scope contains usable evidence. */
+export function availablePortfolioScreenMetrics(
+  report,
+  companies = EMPTY,
+  options = {},
+) {
+  const matrix = buildPortfolioCoverageMatrix(report, companies, {
+    sector: options.sector,
+    industry: options.industry,
+    lens: options.lens,
+    companiesOnly: true,
+  });
+  const availableIds = new Set(
+    matrix.rows.flatMap((row) =>
+      row.cells
+        .filter(
+          (cell) =>
+            cell.status === "available" &&
+            (!options.matchingPeriodOnly || cell.periodKey),
+        )
+        .map((cell) => cell.metricId),
+    ),
+  );
+  return matrix.metrics.filter((metric) => availableIds.has(metric.id));
 }
 
 function bound(value) {
@@ -230,8 +278,10 @@ export function buildPortfolioScreen(
   options = {},
 ) {
   const matrix = buildPortfolioCoverageMatrix(report, companies, {
+    sector: options.sector,
     industry: options.industry,
     lens: options.lens,
+    companiesOnly: true,
   });
   const metricById = new Map(
     matrix.metrics.map((metric) => [metric.id, metric]),
@@ -347,7 +397,9 @@ export function buildPortfolioScreen(
     weighted: Boolean(report?.weighted),
     unresolvedCount: report?.unresolvedCount || 0,
     industries: matrix.industries,
+    sectors: matrix.sectors,
     industry: String(options.industry || ""),
+    sector: String(options.sector || ""),
     scopeCount: matrix.rows.length,
     eligibleCount: valid ? resultRows.length - notApplicable.length : null,
     measuredCount: valid ? measuredCount : null,
@@ -380,6 +432,7 @@ export function portfolioScreenCsv(screen) {
     [
       "captured_at",
       "industry_scope",
+      "sector_filter",
       "business_model",
       "matching_full_periods_required",
       "period_mismatch_companies",
@@ -393,6 +446,7 @@ export function portfolioScreenCsv(screen) {
       "company",
       "tickers",
       "sec_industry",
+      "sector",
       "known_original_weight_pct",
       "weight_complete",
       ...screen.rules.flatMap((rule) => [
@@ -407,6 +461,7 @@ export function portfolioScreenCsv(screen) {
     ...screen.matches.map((row) => [
       screen.capturedAt,
       screen.industry || "All SEC industries",
+      screen.sector || "All sectors",
       screen.lens || "All business models",
       screen.matchingPeriodOnly,
       screen.mismatched?.length || 0,
@@ -420,6 +475,7 @@ export function portfolioScreenCsv(screen) {
       row.name,
       row.tickers.join("; "),
       row.industry,
+      sectorLabel(row),
       screen.weighted ? row.weightPct : null,
       screen.weighted ? row.weightComplete : null,
       ...row.cells.flatMap((cell) => [
@@ -439,12 +495,14 @@ export function portfolioCoverageCsv(matrix) {
     [
       "captured_at",
       "industry_filter",
+      "sector_filter",
       "company_filter",
       "gaps_only",
       "cik",
       "company",
       "tickers",
       "sec_industry",
+      "sector",
       "metric",
       "status",
       "value",
@@ -458,12 +516,14 @@ export function portfolioCoverageCsv(matrix) {
       row.cells.map((cell) => [
         matrix.capturedAt,
         matrix.filters.industry || "All SEC industries",
+        matrix.filters.sector || "All sectors",
         matrix.filters.query,
         matrix.filters.gapsOnly,
         row.cik,
         row.name,
         row.tickers.join("; "),
         row.industry,
+        row.kind === "company" ? sectorLabel(row) : "Not applicable",
         cell.label,
         cell.status,
         cell.value,

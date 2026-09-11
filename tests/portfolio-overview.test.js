@@ -147,7 +147,7 @@ test("funds have allocation but no company financial observations", () => {
   assert.equal(countView.mix[0].value, 1);
 });
 
-test("collapsed mix groups preserve the full allocation and do not call fund exposure an industry", () => {
+test("all mix groups remain explicit, including unknown classifications and funds", () => {
   const report = reportFor([{ ticker: "A", weight_pct: 100 }]);
   report.concentration.industries = [
     "One",
@@ -158,7 +158,20 @@ test("collapsed mix groups preserve the full allocation and do not call fund exp
     "Funds (company metrics not applicable)",
   ].map((label, index) => ({ label, weightPct: index < 4 ? 20 : 10 }));
   const view = buildPortfolioOverview(report);
-  assert.deepEqual(view.mix[4], { label: "Other groups", value: 20 });
+  assert.equal(view.mix.length, 6);
+  assert.ok(
+    view.mix.some(
+      (entry) => entry.label === "Unclassified" && entry.value === 10,
+    ),
+  );
+  assert.ok(
+    view.mix.some(
+      (entry) =>
+        entry.label === "Funds (company metrics not applicable)" &&
+        entry.value === 10,
+    ),
+  );
+  assert.ok(!view.mix.some((entry) => entry.label === "Other groups"));
   assert.equal(
     view.mix.reduce((sum, g) => sum + g.value, 0),
     100,

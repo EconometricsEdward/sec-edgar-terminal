@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveCompanyClassification } from "../../../utils/companyClassification.js";
+
 import Link from "next/link";
 import { portfolioAvailableMetrics } from "../../../utils/portfolioDeepResearch.js";
 import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
@@ -188,6 +190,10 @@ export default function CompanyFocus({
       : ticker
         ? `/fund?tickers=${encodeURIComponent(ticker)}`
         : "/fund";
+  const classification = resolveCompanyClassification(
+    { ...company, cik },
+    fund ? "fund" : company?.kind,
+  );
   const retrieval =
     company?.refreshStatus === "not_checked"
       ? "Not checked in the last refresh"
@@ -242,12 +248,22 @@ export default function CompanyFocus({
             </h2>
             <p id={descriptionId}>
               {cik ? `CIK ${cik}` : "Identity needs review"}
-              {company?.sicDescription
-                ? ` · ${company.sicDescription}`
-                : company?.industry
-                  ? ` · ${company.industry}`
-                  : ""}
+              {!fund &&
+                ` · ${classification.industry}${classification.sic ? ` (SIC ${classification.sic})` : ""}`}
             </p>
+            {classification.sector && classification.sectorSource && (
+              <p>
+                {classification.sector} · Fund-reported sector ·{" "}
+                {classification.sectorSource.asOf}{" "}
+                <a
+                  href={classification.sectorSource.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  iShares {classification.sectorSource.fund} source ↗
+                </a>
+              </p>
+            )}
           </div>
           <button
             className={s.close}
@@ -533,21 +549,25 @@ export default function CompanyFocus({
                         : ""}
                     </span>
                   </div>
-                  {onSaveFiling && !fund && identity.status === "resolved" && identity.ticker === ticker && validTicker(ticker) && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onSaveFiling({
-                          ...filing,
-                          cik,
-                          ticker,
-                          companyName: name,
-                        })
-                      }
-                    >
-                      Save to company notebook
-                    </button>
-                  )}
+                  {onSaveFiling &&
+                    !fund &&
+                    identity.status === "resolved" &&
+                    identity.ticker === ticker &&
+                    validTicker(ticker) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onSaveFiling({
+                            ...filing,
+                            cik,
+                            ticker,
+                            companyName: name,
+                          })
+                        }
+                      >
+                        Save to company notebook
+                      </button>
+                    )}
                 </li>
               ))}
             </ul>

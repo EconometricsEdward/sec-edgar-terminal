@@ -1,3 +1,4 @@
+import { resolveCompanyClassification } from "./companyClassification.js";
 /** Pure identity and allocation rules shared by the local workspace and batch API. */
 export const PORTFOLIO_SCHEMA_VERSION = "edgar.portfolio.v1";
 export const MAX_PORTFOLIO_ROWS = 100;
@@ -679,15 +680,7 @@ export function companyAvailable(company) {
   );
 }
 function companyIndustry(company) {
-  return (
-    text(
-      company?.sicDescription ||
-        company?.industry?.label ||
-        (typeof company?.industry === "string" ? company.industry : "") ||
-        company?.classification?.sicDescription ||
-        company?.sic_description,
-    ) || "Unclassified"
-  );
+  return resolveCompanyClassification(company).industry;
 }
 
 /** No data retrieval or persistence. Missing evidence never changes the allocation denominator. */

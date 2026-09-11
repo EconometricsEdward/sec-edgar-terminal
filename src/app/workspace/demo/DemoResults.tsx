@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveCompanyClassification } from "../../../utils/companyClassification.js";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -196,7 +198,7 @@ export default function DemoResults() {
         .filter((row: any) => {
           const company = byCik[row.resolution?.cik];
           const text =
-            `${row.input.ticker} ${company?.name || row.resolution?.name || ""} ${company?.sicDescription || ""}`.toLowerCase();
+            `${row.input.ticker} ${company?.name || row.resolution?.name || ""} ${resolveCompanyClassification(company).industry} ${resolveCompanyClassification(company).sector || ""}`.toLowerCase();
           return (
             text.includes(query.trim().toLowerCase()) &&
             rowMatchesPortfolioView(row, company, preset)
@@ -486,7 +488,9 @@ export default function DemoResults() {
                                   "Identity needs review"}
                               </span>
                               <small>
-                                {company?.sicDescription ||
+                                {resolveCompanyClassification(company).sector ||
+                                  resolveCompanyClassification(company)
+                                    .industry ||
                                   "Industry unavailable"}
                               </small>
                             </th>
