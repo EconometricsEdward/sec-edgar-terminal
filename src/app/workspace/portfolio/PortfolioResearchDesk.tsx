@@ -109,6 +109,7 @@ export default function PortfolioResearchDesk({
     ),
     [labels, setLabels] = useState<Record<string, string>>({});
   const controller = useRef<AbortController | null>(null);
+  useEffect(()=>{if(selectedIssuer&&!issuers.some(i=>i.cik===selectedIssuer))setSelectedIssuer("");if(fundTicker&&!issuers.some(i=>i.ticker===fundTicker))setFundTicker("");},[issuers,selectedIssuer,fundTicker]);
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
     if (cooldown) {
@@ -636,7 +637,7 @@ export default function PortfolioResearchDesk({
               />
             </label>
           </div>
-          {selectedIssuer && (
+          {selectedIssuer && issuers.some(i=>i.cik===selectedIssuer) && (
             <div className={s.finding}>
               {(() => {
                 const issuer = issuers.find((i) => i.cik === selectedIssuer)!;
