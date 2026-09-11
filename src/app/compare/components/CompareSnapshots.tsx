@@ -394,7 +394,7 @@ export default function CompareSnapshots({
         A changed input or value does not by itself establish a restatement or
         explain economic performance. Source links, original values and capture
         settings remain available for review. Snapshots are stored in this
-        browser and included in workspace backups.
+        browser.
       </div>
     </section>
   );

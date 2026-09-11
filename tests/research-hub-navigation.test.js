@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  HUB_VIEWS,
   parseHubLocation,
   hubDestination,
 } from "../src/utils/researchHubNavigation.js";
 test("Hub navigation preserves existing deep links and adds an overview default", () => {
   assert.equal(parseHubLocation("/workspace").view, "overview");
-  assert.equal(parseHubLocation("/workspace#research-vault").view, "library");
+  assert.equal(parseHubLocation("/workspace#research-vault").view, "overview");
   assert.deepEqual(
     parseHubLocation(
       "/workspace?view=portfolios&portfolio=portfolio-123&row=row-2",
@@ -15,15 +16,14 @@ test("Hub navigation preserves existing deep links and adds an overview default"
       view: "portfolios",
       portfolioId: "portfolio-123",
       rowId: "row-2",
-      briefId: "",
       portfolioViewId: "",
       portfolioTab: "",
       analyticsArea: "",
     },
   );
   assert.equal(
-    parseHubLocation("/workspace?view=briefs&brief=brief-1").briefId,
-    "brief-1",
+    parseHubLocation("/workspace?view=briefs&brief=brief-1").view,
+    "overview",
   );
 });
 
@@ -44,7 +44,7 @@ test("portfolio analytics routes preserve a valid tab without leaking scenario i
   );
   assert.equal(
     hubDestination("library", { portfolioTab: "analytics" }),
-    "/workspace?view=library",
+    "/workspace?view=overview",
   );
 });
 test("Hub routes include only valid local identifiers, never draft or allocation data", () => {
@@ -55,14 +55,14 @@ test("Hub routes include only valid local identifiers, never draft or allocation
       notes: "secret",
       weight: 80,
     }),
-    "/workspace?view=briefs&brief=brief-1",
+    "/workspace?view=overview",
   );
   assert.equal(
     hubDestination("library", {
       portfolioId: "portfolio-1",
       briefId: "brief-1",
     }),
-    "/workspace?view=library",
+    "/workspace?view=overview",
   );
   assert.equal(
     hubDestination("bad", { portfolioId: "<script>" }),
@@ -86,6 +86,18 @@ test("analysis areas round-trip safely and ignore private inputs", () => {
   );
   assert.equal(
     hubDestination("library", { analyticsArea: "scenario" }),
-    "/workspace?view=library",
+    "/workspace?view=overview",
   );
+});
+
+
+test("Hub offers exactly two sections and retired bookmarks cannot reopen removed screens", () => {
+  assert.deepEqual(HUB_VIEWS, [["overview", "Overview"], ["portfolios", "Portfolio research"]]);
+  for (const view of ["inbox", "briefs", "watchlist", "library"]) {
+    const legacy = parseHubLocation(`/workspace?view=${view}&brief=old-brief`);
+    assert.equal(legacy.view, "overview");
+    assert.equal("briefId" in legacy, false);
+    assert.equal(hubDestination(view, { briefId: "old-brief" }), "/workspace?view=overview");
+    assert.equal(parseHubLocation(`/workspace?view=${view}&portfolio=p-1`).view, "portfolios");
+  }
 });

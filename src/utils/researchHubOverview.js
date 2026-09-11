@@ -76,12 +76,10 @@ export function summarizeHubPortfolio(portfolio) {
 
 /**
  * Stable saved destinations only; private text is indexed locally, never retrieved.
- * @param {{portfolios?: any[], watchlist?: any[], entries?: any[]}} input
+ * @param {{portfolios?: any[]}} input
  */
 export function buildHubSearchIndex({
   portfolios = [],
-  watchlist = [],
-  entries = [],
 } = {}) {
   const items = [];
   const seen = new Set();
@@ -113,41 +111,6 @@ export function buildHubSearchIndex({
       source: "Portfolio Research",
       href: `/workspace?view=portfolios&portfolio=${encodeURIComponent(portfolio.id)}`,
       date: timestamp(portfolio.updatedAt),
-    });
-  }
-  for (const row of watchlist) {
-    const fund = row.kind === "fund";
-    add({
-      id: `watchlist:${row.kind}:${row.ticker}`,
-      title: row.name || row.ticker,
-      ticker: row.ticker,
-      description: `${row.ticker} · ${fund ? "Fund" : "Company"} on your watchlist`,
-      kind: "Watchlist",
-      source: fund ? "Funds" : "Analysis",
-      href: `/${fund ? "fund" : "analysis"}/${row.ticker}`,
-      date: timestamp(row.review?.reviewedAt),
-    });
-  }
-  for (const entry of entries) {
-    // Portfolio cards already provide a direct, useful result for their document.
-    if (entry.type === "portfolio") continue;
-    add({
-      id: `saved:${entry.id}`,
-      title: entry.title,
-      ticker: entry.ticker,
-      text: entry.text,
-      description: entry.text || `Saved in ${entry.source}`,
-      kind:
-        entry.type === "queue"
-          ? "Pending review"
-          : entry.type === "evidence"
-            ? "Evidence"
-            : entry.type === "note"
-              ? "Note"
-              : "Saved research",
-      source: entry.source,
-      href: entry.href,
-      date: timestamp(entry.date),
     });
   }
   return items;

@@ -708,7 +708,7 @@ export default function DemoResults() {
                 </div>
                 <p className={s.tableHelp}>
                   {priorities.length
-                    ? `Showing ${Math.min(6, priorities.length)} of ${priorities.length} captured review prompts. Open the full demo to inspect the portfolio and use the Review inbox.`
+                    ? `Showing ${Math.min(6, priorities.length)} of ${priorities.length} captured review prompts. Open the full demo to inspect company evidence and refresh the portfolio research.`
                     : "No review prompts were raised by these checks at capture time. This does not establish completeness or investment quality."}{" "}
                   “What changed” starts with this capture and becomes useful
                   after a subsequent research refresh.

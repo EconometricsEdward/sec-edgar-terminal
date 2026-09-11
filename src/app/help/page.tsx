@@ -13,7 +13,7 @@ import styles from "./help.module.css";
 export const metadata = buildPageMetadata({
   title: "Research Guide — Sources, Coverage & Your Workspace",
   description:
-    "Understand EDGAR Terminal data sources, reporting dates, document coverage, saved research, browser backups, and keyboard navigation.",
+    "Understand EDGAR Terminal data sources, reporting dates, document coverage, saved research, portfolio exports, and keyboard navigation.",
   path: "/help",
 });
 
@@ -54,9 +54,9 @@ const TOOLS = [
     "Search filing language, read passages, and assemble evidence.",
   ],
   [
-    "Workspace",
+    "Research Hub",
     "/workspace",
-    "Return to saved research, check followed companies, and manage backups.",
+    "Resume saved portfolios, compare companies, and explore SEC evidence.",
   ],
 ];
 
@@ -234,16 +234,16 @@ export default function HelpPage() {
                 notes that support your work.
               </li>
               <li>
-                Use the Workspace to return to research and manually check
-                followed companies for new filings.
+                Use Portfolio research to return to saved company lists and
+                refresh their financial evidence and filings.
               </li>
               <li>
                 Mark work reviewed after inspecting it. A successful data check
                 is separate from your review baseline.
               </li>
               <li>
-                Export a backup before switching browsers, clearing site data,
-                or making substantial changes.
+                Export your research before switching browsers or clearing
+                site data.
               </li>
             </ol>
             <Link className={styles.actionLink} href="/workspace">
@@ -266,10 +266,9 @@ export default function HelpPage() {
               cloud backup.
             </p>
             <p>
-              Workspace checks run when you request them. They do not send
-              email, schedule background monitoring, or run while the site is
-              closed. Review an import before confirming it and retain your
-              backup file.
+              Portfolio refreshes run when you request them. Review imported
+              rows before saving, and use the portfolio export controls to keep
+              a copy outside this browser.
             </p>
           </div>
         </div>

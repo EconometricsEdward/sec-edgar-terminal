@@ -7,8 +7,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
-  Bookmark,
-  CheckCheck,
   ClipboardList,
   Download,
   FileText,
@@ -21,7 +19,6 @@ import {
   readPortfolios,
   PORTFOLIOS_KEY,
 } from "../../utils/portfolioStorage.js";
-import { readResearchVault } from "../../utils/researchVault.js";
 import {
   summarizeHubPortfolio,
   buildHubSearchIndex,
@@ -38,17 +35,15 @@ type NavigationOptions = {
   portfolioTab?: string;
   rowId?: string;
   portfolioId?: string;
-  action?: "new" | "paste" | "watchlist";
+  action?: "new" | "paste";
 };
 type Props = {
-  watchlist: any[];
   onNavigate: (view: string, options?: NavigationOptions) => void;
 };
 const day = (value: string | null) => value?.slice(0, 10) || "Not captured";
 
-export default function HubOverview({ watchlist, onNavigate }: Props) {
+export default function HubOverview({ onNavigate }: Props) {
   const [saved, setSaved] = useState<any>({ portfolios: [], activeId: "" });
-  const [entries, setEntries] = useState<any[]>([]);
   const [issues, setIssues] = useState<string[]>([]);
   const [portfolioReadable, setPortfolioReadable] = useState(true);
   const [ready, setReady] = useState(false);
@@ -57,7 +52,6 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
   const [portfolioQuery, setPortfolioQuery] = useState("");
   const [portfolioStatus, setPortfolioStatus] = useState("all");
   const [portfolioSort, setPortfolioSort] = useState("recent");
-  const [searchKind, setSearchKind] = useState("all");
   const [searchSort, setSearchSort] = useState("relevance");
   const [searchLimit, setSearchLimit] = useState(12);
   const [comparing, setComparing] = useState(false);
@@ -73,16 +67,6 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
           ? error.message
           : "Saved portfolios could not be read.",
       );
-    }
-    try {
-      const vault = readResearchVault(localStorage);
-      setEntries(vault.entries);
-      failures.push(
-        ...vault.issues.map((issue: any) => `${issue.label}: ${issue.message}`),
-      );
-    } catch {
-      setEntries([]);
-      failures.push("The research library could not be indexed.");
     }
     setIssues([...new Set(failures)]);
     setReady(true);
@@ -114,18 +98,15 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
     () =>
       buildHubSearchIndex({
         portfolios: portfolioReadable ? saved.portfolios : [],
-        watchlist,
-        entries,
       }),
-    [saved, watchlist, entries, portfolioReadable],
+    [saved, portfolioReadable],
   );
   const search = useMemo(
     () =>
       searchHubResearch(index, query, searchLimit, {
-        kind: searchKind,
         sort: searchSort,
       }),
-    [index, query, searchLimit, searchKind, searchSort],
+    [index, query, searchLimit, searchSort],
   );
   const filteredPortfolios = useMemo(
     () =>
@@ -136,10 +117,6 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
       }),
     [portfolios, portfolioQuery, portfolioStatus, portfolioSort],
   );
-  const evidenceCount = entries.filter(
-    (entry) => entry.type === "evidence",
-  ).length;
-  const queuedCount = entries.filter((entry) => entry.type === "queue").length;
   const resume = portfolios[0];
   const canCreate = ready && portfolioReadable && portfolios.length < 20;
   const identityReview = portfolios.find(
@@ -182,28 +159,6 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
       view: "portfolios",
       options: { portfolioId: incomplete.id },
     });
-  if (queuedCount)
-    nextSteps.push({
-      title: "Work through your saved review queue",
-      detail: `${queuedCount} ${queuedCount === 1 ? "item is" : "items are"} waiting in your saved research. Open the inbox to review the evidence.`,
-      action: "Open inbox",
-      view: "inbox",
-    });
-  if (nextSteps.length < 3 && evidenceCount)
-    nextSteps.push({
-      title: "Build a brief from your evidence",
-      detail:
-        "Bring source passages and notes together around a question you want to answer.",
-      action: "Open research briefs",
-      view: "briefs",
-    });
-  if (nextSteps.length < 3 && watchlist.length)
-    nextSteps.push({
-      title: "Check the companies you follow",
-      detail: `${watchlist.length} saved ${watchlist.length === 1 ? "entity" : "entities"} across your watchlists and Funds shelf. Review company filings from one place.`,
-      action: "Open watchlists",
-      view: "watchlist",
-    });
 
   return (
     <section className={s.root} aria-labelledby="hub-overview-title">
@@ -212,7 +167,7 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
           <p className={s.eyebrow}>Your research, ready to continue</p>
           <h2 id="hub-overview-title">Choose your next research question.</h2>
           <p>
-            Your portfolios, source evidence, and next steps in one place. Start
+            Compare companies, understand portfolio concentration, and explore SEC evidence. Start
             with a company list, or return to the research you have saved.
           </p>
           <div className={s.heroActions}>
@@ -339,12 +294,8 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
         <div className={s.warning} role="status">
           <strong>Some saved research could not be loaded.</strong>
           <p>
-            Counts below cover readable data. Existing saved work is preserved;
-            the library shows storage details and backup options.
+            Existing saved portfolios are preserved. Reload the page to try again.
           </p>
-          <button onClick={() => onNavigate("library")}>
-            Open saved research
-          </button>
           <details>
             <summary>Read storage details</summary>
             <ul>
@@ -356,39 +307,16 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
         </div>
       )}
 
-      <div className={s.stats} aria-label="Saved research overview">
-        <button onClick={() => onNavigate("portfolios")} disabled={!ready}>
-          <Layers3 size={19} aria-hidden="true" />
-          <strong>
-            {ready && portfolioReadable ? portfolios.length : "—"}
-          </strong>
-          <span>Saved portfolios</span>
-          <ArrowUpRight size={16} aria-hidden="true" />
-        </button>
-        <button onClick={() => onNavigate("library")} disabled={!ready}>
-          <Bookmark size={19} aria-hidden="true" />
-          <strong>{ready ? evidenceCount : "—"}</strong>
-          <span>Indexed evidence items</span>
-          <ArrowUpRight size={16} aria-hidden="true" />
-        </button>
-        <button onClick={() => onNavigate("inbox")} disabled={!ready}>
-          <CheckCheck size={19} aria-hidden="true" />
-          <strong>{ready ? queuedCount : "—"}</strong>
-          <span>Saved pending reviews</span>
-          <ArrowUpRight size={16} aria-hidden="true" />
-        </button>
-      </div>
-
       <section className={s.searchPanel} aria-labelledby="hub-search-title">
         <div>
-          <h3 id="hub-search-title">Find anything you saved</h3>
+          <h3 id="hub-search-title">Find a saved portfolio</h3>
           <p>
-            Search portfolios, companies, notes, and source evidence together.
+            Search portfolio names, companies, tickers, and position notes.
           </p>
         </div>
         <label className={s.searchInput}>
           <Search size={20} aria-hidden="true" />
-          <span className={s.srOnly}>Search all saved research</span>
+          <span className={s.srOnly}>Search saved portfolios</span>
           <input
             type="search"
             value={query}
@@ -403,30 +331,6 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
           />
         </label>
         <div className={s.filterBar}>
-          <label>
-            Research type
-            <select
-              value={searchKind}
-              onChange={(event) => {
-                setSearchKind(event.target.value);
-                setSearchLimit(12);
-              }}
-            >
-              {[
-                "all",
-                "Portfolio",
-                "Watchlist",
-                "Pending review",
-                "Evidence",
-                "Note",
-                "Saved research",
-              ].map((kind) => (
-                <option key={kind} value={kind}>
-                  {kind === "all" ? "All saved research" : kind}
-                </option>
-              ))}
-            </select>
-          </label>
           <label>
             Order
             <select
@@ -446,7 +350,7 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
             <p role="status" className={s.resultCount}>
               {search.total
                 ? `${search.total} ${search.total === 1 ? "match" : "matches"}${search.total > search.results.length ? ` · showing the first ${search.results.length}` : ""}`
-                : "No saved research matches. Try a shorter name, ticker, or topic."}
+                : "No saved portfolios match. Try a shorter name, ticker, or topic."}
             </p>
             <ul className={s.searchResults}>
               {search.results.map((item: any) => (
@@ -486,18 +390,14 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
                 </li>
               ))}
             </ul>
-            {search.total > search.results.length && (
+            {search.total > search.results.length && searchLimit < 50 && (
               <button
                 className={s.textButton}
                 onClick={() =>
-                  searchLimit < 50
-                    ? setSearchLimit((value) => Math.min(50, value + 12))
-                    : onNavigate("library")
+                  setSearchLimit((value) => Math.min(50, value + 12))
                 }
               >
-                {searchLimit < 50
-                  ? "Show more matches"
-                  : "Open the full library"}{" "}
+                Show more matches{" "}
                 <ArrowRight size={15} />
               </button>
             )}
@@ -661,12 +561,6 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
               <p className={s.eyebrow}>Keep the work moving</p>
               <h3 id="hub-next-title">Useful next steps</h3>
             </div>
-            <button
-              className={s.textButton}
-              onClick={() => onNavigate("inbox")}
-            >
-              Research inbox <ArrowRight size={15} />
-            </button>
           </div>
           <div className={s.nextGrid}>
             {nextSteps.slice(0, 3).map((step, index) => (
@@ -722,19 +616,6 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
             <span>Build a research list without a spreadsheet.</span>
             <ArrowRight size={17} aria-hidden="true" />
           </button>
-          <button
-            disabled={!canCreate || !watchlist.length}
-            onClick={() => onNavigate("portfolios", { action: "watchlist" })}
-          >
-            <Bookmark size={20} aria-hidden="true" />
-            <strong>Use your watchlist</strong>
-            <span>
-              {watchlist.length
-                ? `${watchlist.length} saved entities ready to review.`
-                : "Save a company or fund to your watchlist first."}
-            </span>
-            <ArrowRight size={17} aria-hidden="true" />
-          </button>
         </div>
         {ready && portfolios.length >= 20 && (
           <p>
@@ -742,14 +623,7 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
             its rows, or manage your portfolios before starting another.
           </p>
         )}
-        {!watchlist.length && ready && (
-          <button
-            className={s.textButton}
-            onClick={() => onNavigate("watchlist")}
-          >
-            Add a company to your watchlist <ArrowRight size={15} />
-          </button>
-        )}
+
       </section>
     </section>
   );

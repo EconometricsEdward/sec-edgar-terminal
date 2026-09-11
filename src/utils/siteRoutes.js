@@ -12,7 +12,7 @@ export const SITE_TOOLS = Object.freeze([
     id: "workspace",
     label: "Research Hub",
     href: "/workspace",
-    description: "Saved research, review queues and backups",
+    description: "Portfolio overview, financial comparisons and SEC research",
   },
   {
     id: "filings",

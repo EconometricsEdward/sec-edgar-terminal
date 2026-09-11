@@ -104,7 +104,7 @@ test("stale or unchecked snapshots remain visible with an explicit refresh statu
   assert.equal(changedBasis.capturedAt, null);
 });
 
-test("search combines saved portfolios, tickers and private notes without permitting external destinations", () => {
+test("search includes portfolio tickers and notes while excluding retired Hub collections", () => {
   const index = buildHubSearchIndex({
     portfolios: [document([{ ticker: "AAPL", notes: "Verify supply chain" }])],
     watchlist: [{ ticker: "AAPL", kind: "company", name: "Apple Inc." }],
@@ -125,10 +125,10 @@ test("search combines saved portfolios, tickers and private notes without permit
       },
     ],
   });
-  assert.equal(index.length, 3);
-  assert.equal(searchHubResearch(index, "AAPL").results[0].kind, "Watchlist");
+  assert.equal(index.length, 1);
+  assert.equal(searchHubResearch(index, "AAPL").results[0].kind, "Portfolio");
   const result = searchHubResearch(index, "supply chain", 1);
-  assert.equal(result.total, 2);
+  assert.equal(result.total, 1);
   assert.equal(result.results.length, 1);
   assert.equal(searchHubResearch(index, "  ").total, 0);
   assert.equal(searchHubResearch(index, "supply unrelated").total, 0);

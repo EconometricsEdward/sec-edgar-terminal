@@ -1526,7 +1526,7 @@ function Workspace(props: any) {
                       <h2>{ticker} notebook</h2>
                     </div>
                     <Link href="/workspace" className={styles.textLink}>
-                      All saved research <ArrowUpRight size={14} />
+                      Research Hub <ArrowUpRight size={14} />
                     </Link>
                   </div>
                   <div className={styles.tools}>

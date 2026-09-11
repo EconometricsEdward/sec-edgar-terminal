@@ -107,7 +107,7 @@ const jsonLd = {
     "Peer comparisons for up to 12 public companies",
     "Disclosure queries, passage comparisons, and evidence collections",
     "Historical reported fund holdings and portfolio comparisons",
-    "Connected watchlists, research notes, evidence search, and portable backups",
+    "Portfolio research, company comparisons, SEC evidence, and research exports",
   ],
 };
 

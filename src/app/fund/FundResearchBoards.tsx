@@ -224,7 +224,7 @@ export default function FundResearchBoards({
         capture(update ? baseline.id : newId()),
         update
           ? "Board updated with the current workspace, captured reports, notes, and evidence."
-          : "Research board saved in this browser. It is included in Research Hub backups.",
+          : "Research board saved in this browser.",
       );
     } catch (error) {
       setMessage(
@@ -262,7 +262,7 @@ export default function FundResearchBoards({
           <p className={s.caption}>
             Save complete research settings, exact portfolio reports,
             source-backed findings, and your notes. Boards stay in this browser
-            and are included in Research Hub backups.
+            and do not automatically sync across devices.
           </p>
         </div>
         <button className={s.secondary} onClick={() => selectBoard(null)}>

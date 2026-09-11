@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2,
   Download,
   FileUp,
   ListPlus,
@@ -30,7 +29,6 @@ import s from "./PortfolioImport.module.css";
 
 type Props = {
   initialRows?: any[];
-  watchlist: any[];
   onCommit: (
     rows: any[],
     name: string,
@@ -38,7 +36,7 @@ type Props = {
   ) => void;
   onCancel?: () => void;
   initialName?: string;
-  initialAction?: "new" | "paste" | "watchlist";
+  initialAction?: "new" | "paste";
   onDirtyChange?: (dirty: boolean) => void;
 };
 
@@ -80,7 +78,6 @@ const COPY_EXAMPLE = JSON.stringify(
 
 export default function PortfolioImport({
   initialRows = [],
-  watchlist,
   onCommit,
   onCancel,
   initialName = "My research universe",
@@ -93,14 +90,7 @@ export default function PortfolioImport({
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [sourceName, setSourceName] = useState("");
   const [pasteOpen, setPasteOpen] = useState(initialAction !== "new");
-  const [paste, setPaste] = useState(
-    initialAction === "watchlist"
-      ? watchlist
-          .map((entry) => (typeof entry === "string" ? entry : entry.ticker))
-          .filter(Boolean)
-          .join("\n")
-      : "",
-  );
+  const [paste, setPaste] = useState("");
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -557,34 +547,6 @@ export default function PortfolioImport({
             Paste a list
           </button>
         </div>
-        <div className={s.entryCard}>
-          <CheckCircle2 size={21} aria-hidden="true" />
-          <strong>Use watchlist</strong>
-          <p>Make a separate copy of your saved list.</p>
-          <button
-            type="button"
-            className={s.secondary}
-            disabled={working || !watchlist.length}
-            onClick={() => {
-              try {
-                setSourceName("Watchlist");
-                beginReview(
-                  watchlist.map((entry) => ({
-                    ticker:
-                      typeof entry === "string" ? entry : entry.ticker || "",
-                    ...(!entry.ticker && typeof entry !== "string" && entry.cik
-                      ? { cik: String(entry.cik) }
-                      : {}),
-                  })),
-                );
-              } catch (failure) {
-                setError(errorMessage(failure));
-              }
-            }}
-          >
-            Use watchlist ({watchlist.length})
-          </button>
-        </div>
       </div>
 
       <aside className={s.demo} aria-labelledby="portfolio-demo-title">
@@ -622,7 +584,7 @@ export default function PortfolioImport({
       </div>
       {!!rows.length && (
         <p className={s.hint}>
-          A new upload, ticker list, or watchlist replaces this draft. Your
+          A new upload or ticker list replaces this draft. Your
           saved research changes only when you save below.
         </p>
       )}
@@ -1325,7 +1287,7 @@ export default function PortfolioImport({
               <p>
                 {pendingDuplicates.length
                   ? "Choose how to handle each duplicate group before saving."
-                  : `${resolved.length} identified; ${included.length - resolved.length} retained for identity review. Your existing watchlist is unchanged.`}
+                  : `${resolved.length} identified; ${included.length - resolved.length} retained for identity review.`}
               </p>
             </div>
             <button

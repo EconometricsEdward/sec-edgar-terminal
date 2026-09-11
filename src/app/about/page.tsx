@@ -140,13 +140,13 @@ export default function AboutPage() {
         <p>
           No account is required. Saved research and preferences use browser
           storage; they do not automatically synchronize across devices. The
-          Workspace brings saved work together and provides backup controls.
+          Research Hub provides portfolio overview and research tools.
           Keep an export before clearing site data.
         </p>
         <p>
           Research requests go to the application to retrieve public data.
           Vercel Analytics and Speed Insights measure page usage and
-          performance. Workspace filing checks run on request and do not send
+          performance. Portfolio research refreshes run on request and do not send
           background notifications or emails.
         </p>
         <Link href="/help#workspace" className={styles.actionLink}>

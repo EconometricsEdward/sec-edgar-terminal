@@ -40,7 +40,7 @@ export default function HomeResearch() {
       }
       setNotice(
         failure
-          ? "Some browser-saved research could not be read. Open Research Hub to inspect your stores."
+          ? "Some browser-saved research could not be read. Reload the page to try again."
           : "",
       );
     };
@@ -66,7 +66,7 @@ export default function HomeResearch() {
           <h2 id="resume-title">Pick up where you left off.</h2>
         </div>
         <Link href="/workspace">
-          All saved research <ArrowUpRight size={15} />
+          Research Hub <ArrowUpRight size={15} />
         </Link>
       </div>
       <div className={styles.resumeGrid}>
@@ -123,13 +123,13 @@ export default function HomeResearch() {
             </div>
           ) : (
             <p className={styles.empty}>
-              Save companies and funds in the Research Hub, Market, or Funds.
-              Your watchlist stays connected across those tools.
+              Save companies in Analysis or Market, and funds in Funds.
+              Return to them here.
             </p>
           )}
           <p className={styles.localNote}>
-            Stored in this browser. Use Research Hub to back up evidence and
-            notes before changing devices.
+            Stored in this browser. Use each tool’s export controls to keep
+            a copy of your research before changing devices.
           </p>
         </div>
       </div>
