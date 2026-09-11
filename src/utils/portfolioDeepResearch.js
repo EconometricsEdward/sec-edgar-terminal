@@ -73,6 +73,55 @@ const metricApplies = (definition, lens) =>
       ].includes(definition?.key)
     : definition?.lenses?.includes(lens);
 
+/** Earlier captures sometimes labeled administrative expense alone as total SG&A. */
+export const portfolioMetricScopeValid = (key, point) =>
+  !(
+    key === "sga" &&
+    point?.sources?.length &&
+    point.sources.every(
+      (source) => source.tag === "GeneralAndAdministrativeExpense",
+    )
+  );
+
+/** The same eligibility contract powers choices, ranks and comparisons. */
+export function portfolioMetricState(company, definition, period = "all") {
+  const point = company?.metrics?.[definition?.key];
+  if (!companyAvailable(company) || !company.lens || company.lens === "unknown")
+    return "unavailable";
+  if (
+    !metricApplies(definition, company.lens) ||
+    point?.classification === "not_applicable"
+  )
+    return "not-applicable";
+  if (
+    !portfolioMetricScopeValid(definition?.key, point) ||
+    !finiteFinancialMetric(point) ||
+    point.unit !== metricUnit(definition?.format)
+  )
+    return "unavailable";
+  if (!metricPeriodKey(point)) return "unknown-period";
+  if (period !== "all" && metricPeriodKey(point) !== period)
+    return "outside-period";
+  return "available";
+}
+
+export function portfolioAvailableMetrics(
+  companies,
+  { period = "all", requireAll = false } = {},
+) {
+  if (!companies.length) return [];
+  return PORTFOLIO_METRIC_CATALOG.flatMap((definition) => {
+    const availableCount = companies.filter(
+      (company) =>
+        portfolioMetricState(company, definition, period) === "available",
+    ).length;
+    return availableCount &&
+      (!requireAll || availableCount === companies.length)
+      ? [{ ...definition, availableCount }]
+      : [];
+  });
+}
+
 const quantile = (values, p) => {
   if (!values.length) return null;
   const i = (values.length - 1) * p;
@@ -95,7 +144,6 @@ export function rankPortfolioMetric(
 ) {
   const definition =
     portfolioMetricDefinitionFor(metricId) || PORTFOLIO_METRIC_CATALOG[0];
-  const targetUnit = metricUnit(definition.format);
   const universe = portfolioResearchIssuers(report, companies);
   const rows = universe
     .filter(
@@ -108,21 +156,7 @@ export function rankPortfolioMetric(
     )
     .map((i) => {
       const point = i.company?.metrics?.[definition.key];
-      const state =
-        !companyAvailable(i.company) || i.lens === "unknown"
-          ? "unavailable"
-          : !metricApplies(definition, i.lens) ||
-              point?.classification === "not_applicable"
-            ? "not-applicable"
-            : !companyAvailable(i.company) ||
-                !finiteFinancialMetric(point) ||
-                point.unit !== targetUnit
-              ? "unavailable"
-              : !metricPeriodKey(point)
-                ? "unknown-period"
-                : period !== "all" && metricPeriodKey(point) !== period
-                  ? "outside-period"
-                  : "available";
+      const state = portfolioMetricState(i.company, definition, period);
       return { ...i, point, state, rank: null };
     });
   const available = rows
@@ -207,9 +241,10 @@ export function portfolioConnections(report, companies) {
     count: members.length,
     ciks: members.map((i) => i.cik),
     rowIds: members.map((i) => i.rowIds[0]),
-    reading: eligible.length || id.startsWith("roe-")
-      ? reading
-      : `No eligible issuers have the complete, compatible inputs needed for this comparison. Refresh research or inspect missing evidence; an unmeasured result is not evidence that the condition is absent.`,
+    reading:
+      eligible.length || id.startsWith("roe-")
+        ? reading
+        : `No eligible issuers have the complete, compatible inputs needed for this comparison. Refresh research or inspect missing evidence; an unmeasured result is not evidence that the condition is absent.`,
     query,
     keys,
   });

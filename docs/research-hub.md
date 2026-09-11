@@ -17,3 +17,16 @@ New browser stores are `edgar:research-inbox:v1`, `edgar:portfolio-views:v1`, an
 ## Verification
 
 Pure-module tests cover navigation privacy, overview summaries, evidence-aware review states, baseline transitions through partial refreshes, saved-view validation, brief persistence and export privacy, and backup compatibility. Release verification also exercises navigation and the integrated workflows in a deployed preview.
+
+
+## Financial measure availability
+
+The metric explorer, company detail cards, company table choices and selected-company comparison use `portfolioAvailableMetrics`. It shares the ranking eligibility contract: a usable company capture, an applicable business lens, a finite value in the expected unit, and a complete annual or TTM period. Zero and negative values remain observations. Metrics with no eligible observations in the current scope are not offered, and empty metric families disappear. Rankings and their CSV include only measured issuers; coverage counts retain the full selected issuer denominator. Comparisons offer only measures observed for every selected company, with each observation's reporting dates shown.
+
+A selection that becomes unsupported resolves to an available choice during rendering. If no choices remain, the explorer offers filter reset and refresh instead of an empty ranking. Screening never transfers numeric bounds to a different metric or silently removes an AND rule; an unsupported saved screen requires new bounds.
+
+The September 8, 2026 demo captured 30 measures, before the expanded Analysis capture. Existing browser-saved copies do not change when the bundled demo is updated. Captures without `analysisVersion` receive a financial-refresh action using the existing bounded research workflow. The September 11 demo already contains short-term debt for 84 of 100 issuers. Remaining gaps can reflect missing compatible facts, required calculation inputs, business applicability or absent reporting periods. Do not infer zeros, substitute another CIK, change reporting basis, or broaden financial concept definitions to fill them.
+
+User-facing tables and reports omit all-empty metric columns and unmeasured company metric cards. Raw saved evidence and dedicated coverage diagnostics retain the original missing-value reasons and classifications for audit and refresh.
+
+The financial corrections from the earlier coverage draft are retained: reported combined SG&A takes precedence; otherwise both selling/marketing and general/administrative components must have compatible actual periods and units. Administrative expense alone is withheld from combined SG&A, including older saved captures. Analysis and risk calculation versions invalidate affected caches, and portfolio cache keys include the Analysis version. Older calculation versions receive the same refresh path as pre-expansion captures.

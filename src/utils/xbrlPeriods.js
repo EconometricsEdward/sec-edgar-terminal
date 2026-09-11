@@ -95,6 +95,21 @@ function calculated(value, inputs, formula, note, period) {
   };
 }
 
+/** Sum separately reported duration concepts only when their actual contexts agree. */
+export function sumCompatibleFinancialFacts(inputs, formula, period) {
+  if (inputs.length < 2 || inputs.some(p => !Number.isFinite(p?.value) ||
+      !p.source?.start || !p.source?.end || !p.source?.unit)) return null;
+  const first = inputs[0].source;
+  const expectedStart = period?.kind === 'ttm' ? period.ttmStart || period.start : period?.start;
+  if (!period?.end || first.end !== period.end || (expectedStart && first.start !== expectedStart)) return null;
+  if (inputs.some(p => p.source.start !== first.start || p.source.end !== first.end || p.source.unit !== first.unit)) return null;
+  const value = inputs.reduce((sum, p) => sum + p.value, 0);
+  if (!Number.isFinite(value)) return null;
+  return calculated(value, inputs, formula,
+    'Both separately reported components are required in the same currency and actual reporting period.',
+    { start: first.start, end: first.end });
+}
+
 /** No currency substitution or same-year fallback. Unknown means unavailable. */
 export function selectFinancialFact(facts, tags, period, unit = 'USD', { additive = true } = {}) {
   const kind = period.kind || (period.fp === 'FY' ? 'annual' : 'quarter');

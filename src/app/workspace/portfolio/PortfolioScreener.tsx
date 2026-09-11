@@ -6,6 +6,7 @@ import {
   portfolioScreenCsv,
   PORTFOLIO_SCREEN_PRESETS,
 } from "../../../utils/portfolioScreening.js";
+import { buildPeerBenchmarks } from "../../../utils/portfolioFinancialTools.js";
 import { downloadText } from "../../../utils/download.js";
 import styles from "./PortfolioScreener.module.css";
 
@@ -27,7 +28,7 @@ export default function PortfolioScreener({
   onInspectCompany,
 }: Props) {
   const id = useId();
-  const [rules, setRules] = useState<Rule[]>(() =>
+  const [requestedRules, setRules] = useState<Rule[]>(() =>
     PORTFOLIO_SCREEN_PRESETS[0].rules.map((rule) => ({ ...rule })),
   );
   const [industry, setIndustry] = useState("");
@@ -35,14 +36,51 @@ export default function PortfolioScreener({
   const [direction, setDirection] = useState("asc");
   const [showAll, setShowAll] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState("");
+  const availableMetrics = useMemo(
+    () =>
+      report.metrics.filter(
+        (metric: any) =>
+          buildPeerBenchmarks(report, { metricId: metric.id, industry })
+            .measuredCount > 0,
+      ),
+    [report, industry],
+  );
+  const staleRules = requestedRules.some(
+    (rule) =>
+      !availableMetrics.some((metric: any) => metric.id === rule.metricId),
+  );
+  // Never carry numeric bounds onto a replacement measure or silently drop an AND rule.
+  const rules = useMemo(
+    () =>
+      staleRules
+        ? availableMetrics.length
+          ? [{ metricId: availableMetrics[0].id, min: "", max: "" }]
+          : []
+        : requestedRules,
+    [staleRules, availableMetrics, requestedRules],
+  );
+  const presets = PORTFOLIO_SCREEN_PRESETS.filter(
+    (preset) =>
+      preset.rules.every((rule) =>
+        availableMetrics.some((metric: any) => metric.id === rule.metricId),
+      ) &&
+      (buildPortfolioScreen(report, companies, preset.rules, { industry })
+        ?.measuredCount || 0) > 0,
+  );
+  const effectiveSort =
+    sortBy === "name" ||
+    (sortBy === "weight" && report.weighted) ||
+    rules.some((rule) => rule.metricId === sortBy)
+      ? sortBy
+      : "name";
   const result = useMemo(
     () =>
       buildPortfolioScreen(report, companies, rules, {
         industry,
-        sortBy,
+        sortBy: effectiveSort,
         direction,
       }),
-    [report, companies, rules, industry, sortBy, direction],
+    [report, companies, rules, industry, effectiveSort, direction],
   );
   const selectedMetrics = [...new Set(rules.map((rule) => rule.metricId))]
     .map((metricId) =>
@@ -52,16 +90,14 @@ export default function PortfolioScreener({
   const visibleMatches = showAll ? result.matches : result.matches.slice(0, 20);
 
   function changeRule(index: number, patch: Partial<Rule>) {
-    setRules((current) =>
-      current.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
+    setRules(
+      rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
     );
     setShowAll(false);
     setDownloadMessage("");
   }
-  function applyPreset(index: number) {
-    setRules(
-      PORTFOLIO_SCREEN_PRESETS[index].rules.map((rule) => ({ ...rule })),
-    );
+  function applyPreset(preset: (typeof PORTFOLIO_SCREEN_PRESETS)[number]) {
+    setRules(preset.rules.map((rule) => ({ ...rule })));
     setSortBy("name");
     setShowAll(false);
     setDownloadMessage("");
@@ -101,11 +137,11 @@ export default function PortfolioScreener({
       </div>
       <div className={styles.presets} aria-label="Research screen presets">
         <span>Start with a screen</span>
-        {PORTFOLIO_SCREEN_PRESETS.map((preset, index) => (
+        {presets.map((preset) => (
           <button
             key={preset.id}
             type="button"
-            onClick={() => applyPreset(index)}
+            onClick={() => applyPreset(preset)}
             title={preset.description}
           >
             {preset.label}
@@ -117,6 +153,18 @@ export default function PortfolioScreener({
         measures and do not recommend buying or selling. Different business
         models use different measures.
       </p>
+      {!availableMetrics.length && (
+        <p role="status">
+          No financial measures match this industry. Choose another industry or
+          refresh portfolio research.
+        </p>
+      )}
+      {staleRules && availableMetrics.length > 0 && (
+        <p role="status">
+          The previous screen has no complete data in this selection. Choose a
+          supported measure and enter new bounds.
+        </p>
+      )}
       <div className={styles.rules}>
         {rules.map((rule, index) => {
           const metric = report.metrics.find(
@@ -141,7 +189,7 @@ export default function PortfolioScreener({
                     setSortBy("name");
                   }}
                 >
-                  {report.metrics.map((item: any) => (
+                  {availableMetrics.map((item: any) => (
                     <option key={item.id} value={item.id}>
                       {item.label} ({item.unit})
                     </option>
@@ -186,7 +234,7 @@ export default function PortfolioScreener({
                 aria-label={"Remove rule " + (index + 1)}
                 disabled={rules.length === 1}
                 onClick={() => {
-                  setRules((current) => current.filter((_, i) => i !== index));
+                  setRules(rules.filter((_, i) => i !== index));
                   setSortBy("name");
                   setDownloadMessage("");
                 }}
@@ -199,12 +247,12 @@ export default function PortfolioScreener({
         <div className={styles.ruleFooter}>
           <button
             type="button"
-            disabled={rules.length >= 4}
+            disabled={!availableMetrics.length || rules.length >= 4}
             onClick={() =>
-              setRules((current) => [
-                ...current,
+              setRules([
+                ...rules,
                 {
-                  metricId: report.metrics[0]?.id || "revenueGrowth",
+                  metricId: availableMetrics[0]?.id,
                   min: "0",
                   max: "",
                 },
@@ -241,7 +289,7 @@ export default function PortfolioScreener({
         <label>
           Sort matching issuers
           <select
-            value={sortBy}
+            value={effectiveSort}
             onChange={(event) => setSortBy(event.target.value)}
           >
             <option value="name">Company name</option>

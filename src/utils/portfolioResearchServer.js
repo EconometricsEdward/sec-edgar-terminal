@@ -581,7 +581,7 @@ function decodeCache(value) {
 }
 
 async function cachedCompany(identity, basis, options) {
-  const key = `${COMPARE_VERSION}:${identity.cik}:${basis}`;
+  const key = `${COMPARE_VERSION}:${ANALYSIS_VERSION}:${identity.cik}:${basis}`;
   const candidate =
     localCache.get(key) || decodeCache(await warmGet(CACHE_NAMESPACE, key));
   const cached =

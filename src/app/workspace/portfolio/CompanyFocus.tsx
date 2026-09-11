@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { portfolioAvailableMetrics } from "../../../utils/portfolioDeepResearch.js";
 import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowUpRight, FileText, X } from "lucide-react";
@@ -147,11 +148,18 @@ export default function CompanyFocus({
   const lens = METRICS[company?.lens] ? company.lens : "common";
   const [metricQuery, setMetricQuery] = useState("");
   const [allMetrics, setAllMetrics] = useState(false);
-  const summaryMetrics = allMetrics
-    ? PORTFOLIO_METRIC_CATALOG.filter((d) =>
-        `${d.label} ${d.key}`.toLowerCase().includes(metricQuery.toLowerCase()),
-      ).map((d) => [d.key, d.label])
-    : METRICS[lens];
+  const availableKeys = new Set(
+    portfolioAvailableMetrics([company]).map((d) => d.key),
+  );
+  const summaryMetrics = (
+    allMetrics
+      ? PORTFOLIO_METRIC_CATALOG.filter((d) =>
+          `${d.label} ${d.key}`
+            .toLowerCase()
+            .includes(metricQuery.toLowerCase()),
+        ).map((d) => [d.key, d.label])
+      : METRICS[lens]
+  ).filter(([key]) => availableKeys.has(key));
   const filings = (company?.filings || [])
     .filter((filing: any) => secUrl(filing.documentUrl))
     .slice(0, 8);
@@ -386,7 +394,7 @@ export default function CompanyFocus({
                   checked={allMetrics}
                   onChange={(e) => setAllMetrics(e.target.checked)}
                 />{" "}
-                Explore all Analysis metrics
+                Explore available financial measures
               </label>
               {allMetrics && (
                 <label>
@@ -400,6 +408,12 @@ export default function CompanyFocus({
                 </label>
               )}
             </div>
+            {!summaryMetrics.length && (
+              <p>
+                No financial measures match this view. Explore available
+                measures or refresh portfolio research.
+              </p>
+            )}
             <div className={s.metrics}>
               {summaryMetrics.map(([key, label]) => {
                 const point = company?.metrics?.[key];

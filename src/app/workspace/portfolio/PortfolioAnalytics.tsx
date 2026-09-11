@@ -251,9 +251,12 @@ export default function PortfolioAnalytics({
   const concentration = report.concentration;
   const issuers: Issuer[] = concentration.issuers;
   const weighted = report.weighted;
+  const availableMetrics = report.metrics.filter(
+    (entry: any) => entry.availableCount > 0,
+  );
   const metric =
-    report.metrics.find((entry: any) => entry.id === metricId) ||
-    report.metrics[0];
+    availableMetrics.find((entry: any) => entry.id === metricId) ||
+    availableMetrics[0];
   const bin = binIndex === null ? null : metric?.bins[binIndex];
   const binRows = new Set<string>(bin?.rowIds || []);
   const observations = (metric?.observations || []).filter(
@@ -429,6 +432,8 @@ export default function PortfolioAnalytics({
       {(visitedAreas.has("metrics") || area === "metrics") && (
         <div hidden={area !== "metrics"}>
           <PortfolioMetricExplorer
+            onRefresh={preview ? undefined : onRefresh}
+            refreshing={refreshing}
             report={report}
             companies={companies}
             onInspect={onInspectCompany}
@@ -756,7 +761,7 @@ export default function PortfolioAnalytics({
                       setObservationLimit(20);
                     }}
                   >
-                    {report.metrics.map((entry: any) => (
+                    {availableMetrics.map((entry: any) => (
                       <option value={entry.id} key={entry.id}>
                         {entry.label}
                       </option>
@@ -980,50 +985,52 @@ export default function PortfolioAnalytics({
                 </div>
               </div>
               <div className={s.conditionGrid}>
-                {report.conditions.map((condition: any) => (
-                  <button
-                    type="button"
-                    key={condition.id}
-                    className={s.conditionCard}
-                    aria-pressed={conditionId === condition.id}
-                    disabled={condition.measuredCount === 0}
-                    onClick={() =>
-                      setConditionId(
-                        conditionId === condition.id ? "" : condition.id,
-                      )
-                    }
-                  >
-                    <span>{condition.label}</span>
-                    <strong
-                      className={
-                        condition.measuredCount === 0
-                          ? s.notAssessed
-                          : undefined
+                {report.conditions
+                  .filter((condition: any) => condition.measuredCount > 0)
+                  .map((condition: any) => (
+                    <button
+                      type="button"
+                      key={condition.id}
+                      className={s.conditionCard}
+                      aria-pressed={conditionId === condition.id}
+                      disabled={condition.measuredCount === 0}
+                      onClick={() =>
+                        setConditionId(
+                          conditionId === condition.id ? "" : condition.id,
+                        )
                       }
                     >
-                      {condition.measuredCount === 0 ? (
-                        "Not assessed"
-                      ) : (
-                        <>
-                          {condition.matchedCount}
-                          <em> companies</em>
-                        </>
+                      <span>{condition.label}</span>
+                      <strong
+                        className={
+                          condition.measuredCount === 0
+                            ? s.notAssessed
+                            : undefined
+                        }
+                      >
+                        {condition.measuredCount === 0 ? (
+                          "Not assessed"
+                        ) : (
+                          <>
+                            {condition.matchedCount}
+                            <em> companies</em>
+                          </>
+                        )}
+                      </strong>
+                      <small>{condition.description}</small>
+                      <span className={s.conditionCoverage}>
+                        {condition.measuredCount} measured ·{" "}
+                        {condition.missingCount} unavailable ·{" "}
+                        {condition.notApplicableCount} not applicable
+                      </span>
+                      {weighted && condition.measuredCount > 0 && (
+                        <b>
+                          {percent(condition.knownMatchedWeightPct)} known
+                          allocation matches
+                        </b>
                       )}
-                    </strong>
-                    <small>{condition.description}</small>
-                    <span className={s.conditionCoverage}>
-                      {condition.measuredCount} measured ·{" "}
-                      {condition.missingCount} unavailable ·{" "}
-                      {condition.notApplicableCount} not applicable
-                    </span>
-                    {weighted && condition.measuredCount > 0 && (
-                      <b>
-                        {percent(condition.knownMatchedWeightPct)} known
-                        allocation matches
-                      </b>
-                    )}
-                  </button>
-                ))}
+                    </button>
+                  ))}
               </div>
               {selectedCondition && selectedCondition.measuredCount > 0 && (
                 <div className={s.conditionMembers}>

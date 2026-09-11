@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import {
   allocationSummary,
   companyAvailable,
+  finiteFinancialMetric,
 } from "../../../utils/portfolioModel.js";
 import { portfolioFilingFeed } from "../../../utils/portfolioClient.js";
 import { portfolioReviewPriorities } from "../../../utils/portfolioInsights.js";
@@ -178,6 +179,11 @@ export default function DemoResults() {
     [rows, byCik, query, preset],
   );
 
+  const shownColumns = view.columns.filter((key: string) =>
+    shown.some((row: any) =>
+      finiteFinancialMetric(byCik[row.resolution?.cik]?.metrics?.[key]),
+    ),
+  );
   const supported = companies.filter(companyAvailable).length;
   const partial = companies.filter(
     (company: any) => company.status === "partial",
@@ -446,7 +452,7 @@ export default function DemoResults() {
                     <tr>
                       <th scope="col">Company</th>
                       <th scope="col">Coverage & annual period</th>
-                      {view.columns.map((key: string) => (
+                      {shownColumns.map((key: string) => (
                         <th key={key} scope="col">
                           {METRICS[key] || key}
                         </th>
@@ -480,8 +486,16 @@ export default function DemoResults() {
                             </span>
                             <small>Ending {day(company?.period?.end)}</small>
                           </td>
-                          {view.columns.map((key: string) => {
+                          {shownColumns.map((key: string) => {
                             const point = company?.metrics?.[key];
+                            if (!finiteFinancialMetric(point))
+                              return (
+                                <td key={key}>
+                                  <span aria-label="No comparable value">
+                                    —
+                                  </span>
+                                </td>
+                              );
                             return (
                               <td key={key}>
                                 <button
