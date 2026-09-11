@@ -64,3 +64,11 @@
 - Membership changes start a new history segment. Do not interpret a larger issuer count as improving fundamentals.
 - sec_checked_at is the last issuer filing-history check; facts_retrieved_at is the underlying financial-facts retrieval clock. Reusing unchanged facts does not restamp them.
 - SEC eligibility and adjusted-price-model eligibility are separate. Missing financial inputs and unverified price bases remain excluded.
+
+## Portfolio-specific research
+- [Research Hub](https://secedgarterminal.com/workspace) supports 1–100 user-selected company rows, full Analysis metrics, financial rankings, up to six-company comparisons, connected statement diagnostics, a filing library, portfolio disclosure searches and fund ownership discovery.
+- [Portfolio guide](https://secedgarterminal.com/workspace/portfolio-guide) documents basis, applicability, source limits and the bounded research API. [The 100-company example](https://secedgarterminal.com/workspace/demo) uses the same engine.
+- Portfolio report JSON includes deep_research.metricSummaries, connections, filingHistory, disclosures and fundOwnership when captured. HTML reports contain the same findings and source appendices. Preserve each measured denominator and full period; ranks are numerical order, not investment quality.
+- Core captures contain at most 30 recent relevant filing references per issuer; additional all-form submissions and historical archives load only on request. Unloaded history is not searched. No-match disclosure results apply only to the reviewed forms, dates, sections and documents.
+- Fund ownership discovery describes funds reporting holdings in selected companies, not the investor’s fund exposure or complete market ownership. Percentages use each fund’s net assets and retain separate report dates.
+- Public demo and browser stores may use portfolio-metric-templates-v1 snapshot templates and portfolio-evidence-pool-v1 company source/calculation/period catalogs. Resolve templateId, sourceIds, calculationIds and periodId before interpreting metrics. User-exported research JSON is expanded with explicit values and sources.

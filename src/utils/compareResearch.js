@@ -312,7 +312,7 @@ function derived(metric, period, points, beginning) {
 /** Compact, provenance-preserving response: the browser never downloads entire companyfacts files. */
 export function buildCompareCompany(
   company,
-  { basis = "annual", asOf = "" } = {},
+  { basis = "annual", asOf = "", periodLimit = null } = {},
 ) {
   const facts = company.facts;
   const lens = companyLens(company.sic);
@@ -320,7 +320,14 @@ export function buildCompareCompany(
     basis === "annual"
       ? extractAnnualPeriods(facts, asOf)
       : withPeriodKind(extractQuarterlyPeriods(facts, asOf), basis)
-  ).slice(0, basis === "annual" ? 11 : 41);
+  ).slice(
+    0,
+    Number.isInteger(periodLimit) && periodLimit > 0
+      ? Math.min(periodLimit, basis === "annual" ? 11 : 41)
+      : basis === "annual"
+        ? 11
+        : 41,
+  );
   const cache = new Map();
   const get = (key, period) => {
     const id = `${key}:${period.end}:${period.start}:${period.kind}`;

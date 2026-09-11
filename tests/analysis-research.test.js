@@ -452,3 +452,16 @@ test("Analysis exports preserve raw negatives, source dates, settings and safe a
   assert.ok(brief.includes("2026-02-15"));
   assert.ok(brief.includes("www.sec.gov/Archives/edgar/data/"));
 });
+
+test("latest-only Analysis retains exact annual and TTM values with one observation per metric", () => {
+  for (const basis of ["annual", "ttm"]) {
+    const input = company(base());
+    const full = buildAnalysisCompany(input, { basis });
+    const latest = buildAnalysisCompany(input, { basis, latestOnly: true });
+    assert.equal(latest.periods.length, Math.min(1, full.periods.length));
+    for (const [key, values] of Object.entries(latest.metrics)) {
+      assert.equal(values.length, latest.periods.length, `${basis} ${key}`);
+      assert.deepEqual(values[0], full.metrics[key][0], `${basis} ${key}`);
+    }
+  }
+});

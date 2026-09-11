@@ -1,3 +1,4 @@
+import { packPortfolioSnapshot } from "../src/utils/portfolioEvidenceCodec.js";
 /**
  * Rebuild the public, 100-company demonstration and its literal-value templates.
  * node scripts/generate-portfolio-demo.mjs --refresh
@@ -369,11 +370,15 @@ async function capture() {
     portfolios: [document],
     activeId: document.id,
   });
-  await fs.writeFile(resultPath, `${JSON.stringify(result)}\n`);
+  const encodedResult = {
+    ...result,
+    snapshot: packPortfolioSnapshot(snapshot),
+  };
+  await fs.writeFile(resultPath, `${JSON.stringify(encodedResult)}\n`);
   console.log(
     JSON.stringify({
       coverage,
-      assetBytes: Buffer.byteLength(JSON.stringify(result)),
+      assetBytes: Buffer.byteLength(JSON.stringify(encodedResult)),
       documentBytes: Buffer.byteLength(JSON.stringify(document)),
     }),
   );

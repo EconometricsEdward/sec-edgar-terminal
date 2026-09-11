@@ -1,3 +1,4 @@
+import { buildAnalysisCompany, ANALYSIS_VERSION } from "./analysisResearch.js";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { getOperatingDirectory, getFundDirectory } from "./tickerMap.js";
 import { secResearchJson, submissionRows } from "./secResearchData.js";
@@ -24,7 +25,7 @@ export const PORTFOLIO_API_VERSION = "edgar.portfolio.v1";
 export const PORTFOLIO_RESEARCH_BATCH = 5;
 export const PORTFOLIO_BODY_BYTES = 256 * 1024;
 export const PORTFOLIO_FEED_LIMIT = 30;
-const CACHE_NAMESPACE = "portfolio-company-v1";
+const CACHE_NAMESPACE = "portfolio-company-v2-analysis";
 const CACHE_FRESH_MS = 5 * 60 * 1000;
 const CACHE_MAX_MS = 24 * 60 * 60 * 1000;
 const localCache = new Map();
@@ -203,7 +204,10 @@ export function buildPortfolioCompany(
   company,
   { basis = "annual", retrievedAt = nowIso() } = {},
 ) {
-  const compared = buildCompareCompany(company, { basis });
+  const compared = buildCompareCompany(company, {
+    basis,
+    periodLimit: basis === "annual" ? 2 : 5,
+  });
   const period = compared.periods[0] || null;
   const metricDefinitions = Object.fromEntries(
     COMPARE_METRICS.map((metric) => [metric.key, metric]),
@@ -348,6 +352,38 @@ export function buildPortfolioCompany(
         label: metrics[key].label,
       };
   }
+  const analysis = buildAnalysisCompany(company, { basis, latestOnly: true });
+  const units = {
+    currency: "USD",
+    percent: "%",
+    decimal: "x",
+    eps: "USD/shares",
+    shares: "shares",
+  };
+  for (const definition of analysis.definitions) {
+    const existing = metrics[definition.key];
+    // Keep established common/broker applicability and explicit debt/growth contracts.
+    if (["debt", "revenueGrowth"].includes(definition.key)) continue;
+    if (
+      compared.businessModel === "broker-dealer" &&
+      !["income", "balance", "cashflow"].includes(definition.category) &&
+      (!existing || existing.classification === "not_applicable")
+    )
+      continue;
+    const point = analysis.metrics[definition.key]?.[0];
+    metrics[definition.key] = {
+      ...pointWithSources(
+        point,
+        company,
+        units[definition.format] || "USD",
+        period,
+      ),
+      label: definition.label,
+      format: definition.format,
+      category: definition.category,
+      definitionFormula: definition.formula || null,
+    };
+  }
   const relevant = Object.values(metrics).filter(
     (point) => point.classification !== "not_applicable",
   );
@@ -392,6 +428,7 @@ export function buildPortfolioCompany(
     industry: company.sic ? industryLabel(group) : "Unclassified",
     industrySystem: "SEC SIC analytical groups",
     period,
+    analysisVersion: ANALYSIS_VERSION,
     metrics,
     filings: company.filings || [],
     latestAnnualFiling: company.latestAnnualFiling || null,

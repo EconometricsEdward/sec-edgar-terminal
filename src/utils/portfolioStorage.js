@@ -1,3 +1,7 @@
+import {
+  packPortfolioStore,
+  unpackPortfolioStore,
+} from "./portfolioEvidenceCodec.js";
 import { validatePortfolioBaseline } from "./portfolioChanges.js";
 
 /** Versioned, browser-local portfolio documents. Uploaded file contents are never stored. */
@@ -555,6 +559,7 @@ export function validatePortfolios(data) {
     "Saved portfolios use an unsupported format or exceed the 20-portfolio limit.",
   );
   inspectPortfolioTree(data);
+  data = unpackPortfolioStore(data);
   const ids = new Set();
   for (const portfolio of data.portfolios) {
     validatePortfolio(portfolio);
@@ -567,7 +572,7 @@ export function validatePortfolios(data) {
     "The active saved portfolio is invalid.",
   );
   requireValue(
-    bytes(JSON.stringify(data)) <= PORTFOLIO_STORAGE_LIMIT,
+    bytes(JSON.stringify(packPortfolioStore(data))) <= PORTFOLIO_STORAGE_LIMIT,
     "Saved portfolios exceed the 4 MiB browser-storage budget. Export a backup and remove an older portfolio or research snapshot before saving again. Existing saved data has been preserved.",
   );
   return data;
@@ -733,7 +738,7 @@ export function writePortfolio(storage, options) {
     );
   }
   validatePortfolios(current);
-  const raw = JSON.stringify(current);
+  const raw = JSON.stringify(packPortfolioStore(current));
   try {
     requireValue(
       storage.getItem(PORTFOLIOS_KEY) === original,

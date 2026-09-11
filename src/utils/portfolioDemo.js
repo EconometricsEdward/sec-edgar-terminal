@@ -1,3 +1,7 @@
+import {
+  packPortfolioSnapshot,
+  unpackPortfolioSnapshot,
+} from "./portfolioEvidenceCodec.js";
 import { allocationSummary, PORTFOLIO_COLUMNS } from "./portfolioModel.js";
 import { isCompletePortfolioCheck } from "./portfolioClient.js";
 import { createPortfolio, writePortfolio } from "./portfolioStorage.js";
@@ -61,8 +65,12 @@ function inspectDemo(value) {
   }
   walk(value);
   requireValue(
-    new TextEncoder().encode(JSON.stringify(value)).length <=
-      DEMO_RESULTS_MAX_BYTES,
+    new TextEncoder().encode(
+      JSON.stringify({
+        ...value,
+        snapshot: packPortfolioSnapshot(value.snapshot),
+      }),
+    ).length <= DEMO_RESULTS_MAX_BYTES,
     "The capture exceeds the 4 MiB download limit.",
   );
 }
@@ -133,6 +141,7 @@ function checkCoverage(demo) {
 /** Validate a public capture without changing identities, values, or retrieval status. */
 export function validatePortfolioDemo(value) {
   inspectDemo(value);
+  value = { ...value, snapshot: unpackPortfolioSnapshot(value.snapshot) };
   requireValue(
     object(value) && value.schema_version === "edgar.portfolio.demo.v1",
     "This capture version is not supported.",

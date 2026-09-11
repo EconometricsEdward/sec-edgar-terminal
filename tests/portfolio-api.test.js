@@ -1,3 +1,4 @@
+import { packPortfolioSnapshot } from "../src/utils/portfolioEvidenceCodec.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -202,7 +203,9 @@ test("100-company resolve plus twenty bounded research batches retains every dis
   assert.equal(highestConcurrency, 2);
   assert.equal(companies.length, 100);
   // Representative compact fixture snapshots remain comfortably inside the browser portfolio budget.
-  const snapshotBytes = Buffer.byteLength(JSON.stringify(companies));
+  const snapshotBytes = Buffer.byteLength(
+    JSON.stringify(packPortfolioSnapshot({ companies })),
+  );
   assert.ok(snapshotBytes < 4 * 1024 * 1024);
   context.diagnostic(
     `100-company representative fixture snapshot: ${snapshotBytes} bytes.`,
@@ -287,7 +290,10 @@ test("portfolio financials use the existing Compare engine, coherent periods, fo
     retrievedAt: "2026-09-07T12:00:00.000Z",
   });
   assert.equal(result.metrics.roe.value, compared.metrics.roe[0].value);
-  assert.deepEqual(result.metrics.roe.sources, compared.metrics.roe[0].sources);
+  assert.deepEqual(
+    result.metrics.roe.sources.map(({ revisions: _revisions, ...source }) => source),
+    compared.metrics.roe[0].sources,
+  );
   assert.equal(result.metrics.freeCashFlow.value, 30);
   assert.equal(result.metrics.capex.value, 10);
   assert.equal(result.metrics.debt.value, 100);

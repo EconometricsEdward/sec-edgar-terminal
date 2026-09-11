@@ -1,3 +1,7 @@
+import {
+  unpackPortfolioSnapshot,
+  packPortfolioStore,
+} from "../src/utils/portfolioEvidenceCodec.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -24,7 +28,11 @@ const asset = (suffix) =>
     new URL(`../public/portfolio/portfolio-demo-100${suffix}`, import.meta.url),
   );
 const input = JSON.parse(asset(".json"));
-const demo = JSON.parse(asset("-results.json"));
+const encodedDemo = JSON.parse(asset("-results.json"));
+const demo = {
+  ...encodedDemo,
+  snapshot: unpackPortfolioSnapshot(encodedDemo.snapshot),
+};
 const tickers = input.holdings.map((holding) => holding.ticker);
 const secUrl = (value) => {
   const url = new URL(value);
@@ -194,5 +202,8 @@ test("demo coverage is recomputed over all companies and the full capture fits e
   });
   const store = { version: 1, portfolios: [document], activeId: document.id };
   assert.doesNotThrow(() => validatePortfolios(store));
-  assert.ok(Buffer.byteLength(JSON.stringify(store)) < PORTFOLIO_STORAGE_LIMIT);
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(packPortfolioStore(store))) <
+      PORTFOLIO_STORAGE_LIMIT,
+  );
 });

@@ -1,6 +1,6 @@
 /** Compact, public-evidence-only checkpoints for comparisons between research runs. */
 export const PORTFOLIO_BASELINE_VERSION = "edgar.portfolio.baseline.v1";
-export const PORTFOLIO_BASELINE_LIMIT = 500 * 1024;
+export const PORTFOLIO_BASELINE_LIMIT = 1024 * 1024;
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const plain = (value) =>
   value !== null &&
@@ -257,7 +257,7 @@ export function validatePortfolioBaseline(value) {
   }
   requireValue(
     size(value) <= PORTFOLIO_BASELINE_LIMIT,
-    "The comparison checkpoint exceeds its 500 KiB limit. Current research has been preserved.",
+    "The comparison checkpoint exceeds its 1 MiB limit. Current research has been preserved.",
   );
   return value;
 }
