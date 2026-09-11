@@ -42,7 +42,10 @@ import { downloadText } from "../../../utils/download.js";
 import s from "./PortfolioResearch.module.css";
 import { rowMatchesPortfolioView } from "../../../utils/portfolioViews.js";
 import { advancePortfolioBaseline } from "../../../utils/portfolioChanges.js";
-import { PORTFOLIO_TABS } from "../../../utils/researchHubNavigation.js";
+import {
+  PORTFOLIO_TABS,
+  ANALYTICS_AREAS,
+} from "../../../utils/researchHubNavigation.js";
 
 const PortfolioImport = dynamic(() => import("./PortfolioImport"), {
   loading: () => <p role="status">Opening import and review…</p>,
@@ -177,6 +180,7 @@ export default function PortfolioResearch({
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [workingSnapshot, setWorkingSnapshot] = useState<any>(null);
   const [tab, setTab] = useState("analytics");
+  const [analyticsArea, setAnalyticsArea] = useState("overview");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [industryFilter, setIndustryFilter] = useState("");
@@ -448,6 +452,11 @@ export default function PortfolioResearch({
       );
       if (request.rowId) setFocusedRowId(request.rowId);
     }
+    setAnalyticsArea(
+      ANALYTICS_AREAS.includes(request.analyticsArea)
+        ? request.analyticsArea
+        : "overview",
+    );
     if (PORTFOLIO_TABS.includes(request.portfolioTab))
       setTab(request.portfolioTab);
     if (request.portfolioViewId) setTab("research");
@@ -1302,6 +1311,16 @@ export default function PortfolioResearch({
             <PortfolioAnalytics
               key={document.id}
               rows={rows}
+              analyticsArea={analyticsArea}
+              onAreaChange={(area: string) => {
+                if (!ANALYTICS_AREAS.includes(area)) return;
+                setAnalyticsArea(area);
+                const url = new URL(window.location.href);
+                url.searchParams.set("portfolio", document.id);
+                url.searchParams.set("analyticsArea", area);
+                url.searchParams.set("portfolioTab", "analytics");
+                window.history.pushState(null, "", url.pathname + url.search);
+              }}
               settings={document.allocation}
               companies={companies}
               capturedAt={captured?.generated_at || null}

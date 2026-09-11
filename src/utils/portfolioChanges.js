@@ -65,7 +65,7 @@ function periodFor(point, company) {
     ),
   );
 }
-function definitionFor(point) {
+export function portfolioMetricDefinition(point) {
   const tags = (point.sources || [])
     .map((source) => `${cleanText(source.taxonomy)}:${cleanText(source.tag)}`)
     .filter((tag) => tag !== ":");
@@ -298,7 +298,7 @@ export function createPortfolioBaseline(snapshot) {
           unit: cleanText(point.unit, 100),
           label: cleanText(point.label || key, 200),
           period: intern("periods", periodFor(point, company)),
-          definition: intern("definitions", definitionFor(point)),
+          definition: intern("definitions", portfolioMetricDefinition(point)),
           sources: sourcesFor(point).map((url) => intern("sources", url)),
         },
       ]),
@@ -534,7 +534,7 @@ export function comparePortfolioResearch(baseline, snapshot, rows = []) {
           baseline.periods[left.period] !== "" &&
           baseline.periods[left.period] === periodFor(right, after);
         const sameDefinition =
-          baseline.definitions[left.definition] === definitionFor(right) &&
+          baseline.definitions[left.definition] === portfolioMetricDefinition(right) &&
           left.unit === cleanText(right.unit, 100);
         if (
           samePeriod &&

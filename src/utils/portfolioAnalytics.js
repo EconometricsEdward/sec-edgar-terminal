@@ -149,7 +149,7 @@ function periodEnd(value) {
     : null;
 }
 
-function sourceUrl(point) {
+export function portfolioMetricSourceUrl(point) {
   for (const source of point?.sources || []) {
     try {
       const url = new URL(source.documentUrl);
@@ -356,7 +356,7 @@ export function buildPortfolioAnalytics(
         value: point.value,
         periodEnd:
           periodEnd(point.period?.end) || periodEnd(company.period?.end),
-        sourceUrl: sourceUrl(point),
+        sourceUrl: portfolioMetricSourceUrl(point),
       });
     }
     observations.sort(

@@ -48,6 +48,8 @@ const ResearchBriefs = dynamic(() => import("./ResearchBriefs"), {
   loading: () => <p role="status">Opening your research briefs…</p>,
 });
 
+import { nextWatchlistBatch } from "../../utils/hubResearchTools.js";
+
 export default function WorkspaceClient() {
   const { data, ready, error, update } = useWorkspace();
   const [ticker, setTicker] = useState("");
@@ -59,6 +61,7 @@ export default function WorkspaceClient() {
   const [status, setStatus] = useState("");
   const [storageError, setStorageError] = useState("");
   const [filter, setFilter] = useState("all");
+  const [watchQuery, setWatchQuery] = useState("");
   const [hubView, setHubView] = useState("overview");
   const [visitedViews, setVisitedViews] = useState(["overview"]);
   const [portfolioRequest, setPortfolioRequest] = useState<any>(null);
@@ -128,7 +131,9 @@ export default function WorkspaceClient() {
       (options.portfolioId ||
         options.action ||
         options.rowId ||
-        options.portfolioViewId)
+        options.portfolioViewId ||
+        options.analyticsArea ||
+        options.portfolioTab)
     )
       setPortfolioRequest({ ...options, nonce: ++navigationSequence.current });
     if (view === "briefs" && options.briefId)
@@ -148,19 +153,29 @@ export default function WorkspaceClient() {
   const companies = watchlist.filter((row) => row.kind === "company");
   const visible = watchlist.filter(
     (row) =>
-      filter === "all" ||
-      (filter === "fund" && row.kind === "fund") ||
-      (filter === "company" && row.kind === "company") ||
-      (filter === "attention" &&
-        row.kind === "company" &&
-        (!row.review.reviewedAt ||
-          results[row.ticker]?.count > 0 ||
-          results[row.ticker]?.error ||
-          (results[row.ticker]?.coverage &&
-            !results[row.ticker].coverage.completeSinceReview))),
+      (filter === "all" ||
+        (filter === "fund" && row.kind === "fund") ||
+        (filter === "company" && row.kind === "company") ||
+        (filter === "attention" &&
+          row.kind === "company" &&
+          (!row.review.reviewedAt ||
+            results[row.ticker]?.count > 0 ||
+            results[row.ticker]?.error ||
+            (results[row.ticker]?.coverage &&
+              !results[row.ticker].coverage.completeSinceReview)))) &&
+      `${row.ticker} ${row.name || ""}`
+        .toLowerCase()
+        .includes(watchQuery.trim().toLowerCase()),
   );
 
-  async function checkCompanies(requested = companies) {
+  const unchecked = companies.filter((row) => !results[row.ticker]).length;
+  const failedChecks = companies.filter(
+    (row) => results[row.ticker]?.error,
+  ).length;
+  async function checkCompanies(
+    requested = nextWatchlistBatch(companies, results),
+  ) {
+    if (!requested.length) return;
     controller.current?.abort();
     const requestController = new AbortController();
     controller.current = requestController;
@@ -231,7 +246,7 @@ export default function WorkspaceClient() {
     if (!requestController.signal.aborted) {
       setBusy(false);
       setStatus(
-        `Check finished: ${completed} successful, ${failed} failed.${requested.length > 20 ? " First 20 companies checked; use each remaining company’s Check filings button." : ""} Review baselines are unchanged.`,
+        `Check finished: ${completed} successful, ${failed} failed. Review baselines are unchanged.`,
       );
     }
   }
@@ -447,14 +462,45 @@ export default function WorkspaceClient() {
               ) : (
                 <button
                   className={styles.secondary}
-                  disabled={!ready || !companies.length}
+                  disabled={!ready || !unchecked}
                   onClick={() => checkCompanies()}
                 >
-                  <RefreshCw size={15} /> Check company filings
+                  <RefreshCw size={15} />{" "}
+                  {unchecked
+                    ? `Check next ${Math.min(20, unchecked)} companies`
+                    : "No unchecked companies"}
+                </button>
+              )}
+              {!busy && !unchecked && !failedChecks && companies.length > 0 && (
+                <button
+                  className={styles.secondary}
+                  onClick={() => {
+                    setResults({});
+                    checkCompanies(companies.slice(0, 20));
+                  }}
+                >
+                  Start a new check pass
+                </button>
+              )}
+              {!busy && failedChecks > 0 && (
+                <button
+                  className={styles.secondary}
+                  onClick={() =>
+                    checkCompanies(
+                      nextWatchlistBatch(companies, results, "failed"),
+                    )
+                  }
+                >
+                  Retry failed checks ({failedChecks})
                 </button>
               )}
             </div>
           </div>
+          <p>
+            {companies.length - unchecked - failedChecks} checked successfully ·{" "}
+            {unchecked} unchecked · {failedChecks} failed this visit. Each batch
+            checks up to 20 companies, with two requests at a time.
+          </p>
           <div className={styles.toolbar}>
             <form onSubmit={saveEntity}>
               <label htmlFor="watch-ticker" className={styles.srOnly}>
@@ -484,6 +530,18 @@ export default function WorkspaceClient() {
                 <option value="fund">Funds</option>
                 <option value="attention">Needs attention</option>
               </select>
+            </label>
+          </div>
+          <div className={styles.toolbar}>
+            <label>
+              Find saved entities{" "}
+              <input
+                type="search"
+                value={watchQuery}
+                onChange={(event) => setWatchQuery(event.target.value)}
+                placeholder="Ticker or company name"
+                maxLength={160}
+              />
             </label>
           </div>
           <p role="status" className={styles.status}>
