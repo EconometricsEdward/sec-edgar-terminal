@@ -11,6 +11,7 @@ import {
 } from "../../../utils/portfolioFinancialTools.js";
 import { downloadText } from "../../../utils/download.js";
 import s from "./PortfolioFinancialTools.module.css";
+import insightStyles from "./PortfolioInsightTools.module.css";
 
 type View = "peers" | "relationships" | "compare";
 type Props = {
@@ -93,7 +94,7 @@ function RelationshipChart({
     return (
       <div className={s.empty}>
         No companies have both measures within these filters. Try another metric
-        pair or include differing reporting ends.
+        pair or include differing reporting periods.
       </div>
     );
   const width = 780,
@@ -220,10 +221,43 @@ function RelationshipChart({
 }
 
 export default function PortfolioFinancialTools({
-  report,
+  report: rawReport,
   onInspectCompany,
   view,
 }: Props) {
+  const [lens, setLens] = useState("");
+  const [exactPeriod, setExactPeriod] = useState("");
+  const [comparePeriods, setComparePeriods] = useState(true);
+  const report = useMemo(
+    () => ({
+      ...rawReport,
+      concentration: {
+        ...rawReport.concentration,
+        issuers: rawReport.concentration.issuers.filter(
+          (row: any) => !lens || row.lens === lens,
+        ),
+      },
+      metrics: rawReport.metrics.map((metric: any) => ({
+        ...metric,
+        observations: metric.observations.filter(
+          (point: any) =>
+            (!lens || point.lens === lens) &&
+            (!exactPeriod || point.periodKey === exactPeriod),
+        ),
+      })),
+    }),
+    [rawReport, lens, exactPeriod],
+  );
+  const periodChoices = [
+    ...new Set<string>(
+      rawReport.metrics.flatMap((metric: any) =>
+        metric.observations
+          .filter((point: any) => !lens || point.lens === lens)
+          .map((point: any) => point.periodKey)
+          .filter(Boolean),
+      ),
+    ),
+  ].sort();
   const id = useId();
   const [activeView, setActiveView] = useState<View>("peers");
   const selectedView = view || activeView;
@@ -234,7 +268,9 @@ export default function PortfolioFinancialTools({
   const [peerLimit, setPeerLimit] = useState(20);
   const [requestedXMetricId, setXMetricId] = useState("revenueGrowth");
   const [requestedYMetricId, setYMetricId] = useState("netMargin");
-  const [matchingPeriodOnly, setMatchingPeriodOnly] = useState(false);
+  const [matchingPeriodOnly, setMatchingPeriodOnly] = useState(
+    Boolean(rawReport.fullPeriodEvidence),
+  );
   const [selectedCik, setSelectedCik] = useState("");
   const [pairLimit, setPairLimit] = useState(20);
   const [compareCiks, setCompareCiks] = useState<string[]>([]);
@@ -305,10 +341,13 @@ export default function PortfolioFinancialTools({
       metrics: result.metrics.filter(
         (item) =>
           item.values.length > 0 &&
-          item.values.every((point) => point && finite(point.value)),
+          item.values.every((point) => point && finite(point.value)) &&
+          (!comparePeriods ||
+            !report.fullPeriodEvidence ||
+            new Set(item.values.map((point) => point.periodKey)).size === 1),
       ),
     };
-  }, [report, compareCiks]);
+  }, [report, compareCiks, comparePeriods]);
   const selected = relationship.points.find(
     (point) => point.cik === selectedCik,
   );
@@ -335,7 +374,7 @@ export default function PortfolioFinancialTools({
       ? "Compare a company with other included companies in the same SEC industry. Benchmarks use the companies in this portfolio, not the wider market."
       : selectedView === "relationships"
         ? "See which companies combine growth, profitability, leverage or liquidity characteristics. Every plotted company has both selected measures."
-        : "Choose up to four included companies to review eight supported financial measures, reporting dates and original SEC evidence side by side.";
+        : "Choose up to four included companies to review every mutually supported financial measure, reporting dates and original SEC evidence side by side.";
   const changeIndustry = (value: string) => {
     setIndustry(value);
     setPeerLimit(20);
@@ -366,6 +405,57 @@ export default function PortfolioFinancialTools({
         <h3 id={`${id}-heading`}>{heading}</h3>
         <p>{description}</p>
       </div>
+      {rawReport.fullPeriodEvidence && (
+        <div className={insightStyles.controls}>
+          <label className={insightStyles.selector}>
+            Business model
+            <select
+              value={lens}
+              onChange={(event) => {
+                setLens(event.target.value);
+                setExactPeriod("");
+              }}
+            >
+              <option value="">All business models</option>
+              {[
+                ...new Set<string>(
+                  rawReport.concentration.issuers.map((row: any) => row.lens),
+                ),
+              ]
+                .filter(Boolean)
+                .map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className={insightStyles.selector}>
+            Full reporting period
+            <select
+              value={exactPeriod}
+              onChange={(event) => setExactPeriod(event.target.value)}
+            >
+              <option value="">All captured periods</option>
+              {periodChoices.map((item) => (
+                <option key={item} value={item}>
+                  {item.replaceAll("|", " · ")}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedView === "compare" && (
+            <label>
+              <input
+                type="checkbox"
+                checked={comparePeriods}
+                onChange={(event) => setComparePeriods(event.target.checked)}
+              />{" "}
+              Require the same full period across selected companies
+            </label>
+          )}
+        </div>
+      )}
       {selectedView !== "compare" ? (
         <div className={s.cohortControl}>
           <label htmlFor={`${id}-industry`}>Peer group</label>
@@ -570,7 +660,12 @@ export default function PortfolioFinancialTools({
                           </div>
                         </td>
                         <td>
-                          <span>{dateLabel(point.periodEnd)}</span>
+                          <span>
+                            {dateLabel(
+                              point.periodKey?.replaceAll("|", " · ") ||
+                                point.periodEnd,
+                            )}
+                          </span>
                           <EvidenceLink point={point} />
                         </td>
                       </tr>
@@ -702,7 +797,7 @@ export default function PortfolioFinancialTools({
                 setPairLimit(20);
               }}
             />{" "}
-            Only pairs with the same known reporting end
+            Only pairs with the same full reporting period
           </label>
           <div className={s.stats}>
             <div>
@@ -722,7 +817,7 @@ export default function PortfolioFinancialTools({
               <span>
                 {matchingPeriodOnly
                   ? "Excluded by date alignment"
-                  : "Pairs with different reporting ends"}
+                  : "Pairs with different reporting periods"}
               </span>
               <strong>
                 {matchingPeriodOnly
@@ -769,7 +864,12 @@ export default function PortfolioFinancialTools({
                 <strong>
                   {valueLabel(selected.x, relationship.xMetric?.unit || "")}
                 </strong>
-                <span>{dateLabel(selected.xPoint.periodEnd)}</span>
+                <span>
+                  {dateLabel(
+                    selected.xPoint.periodKey?.replaceAll("|", " · ") ||
+                      selected.xPoint.periodEnd,
+                  )}
+                </span>
                 <EvidenceLink point={selected.xPoint} />
               </div>
               <div>
@@ -777,7 +877,12 @@ export default function PortfolioFinancialTools({
                 <strong>
                   {valueLabel(selected.y, relationship.yMetric?.unit || "")}
                 </strong>
-                <span>{dateLabel(selected.yPoint.periodEnd)}</span>
+                <span>
+                  {dateLabel(
+                    selected.yPoint.periodKey?.replaceAll("|", " · ") ||
+                      selected.yPoint.periodEnd,
+                  )}
+                </span>
                 <EvidenceLink point={selected.yPoint} />
               </div>
               <button
@@ -841,10 +946,18 @@ export default function PortfolioFinancialTools({
                         </td>
                         <td>
                           <span>
-                            Horizontal: {dateLabel(point.xPoint.periodEnd)}
+                            Horizontal:{" "}
+                            {dateLabel(
+                              point.xPoint.periodKey?.replaceAll("|", " · ") ||
+                                point.xPoint.periodEnd,
+                            )}
                           </span>
                           <span>
-                            Vertical: {dateLabel(point.yPoint.periodEnd)}
+                            Vertical:{" "}
+                            {dateLabel(
+                              point.yPoint.periodKey?.replaceAll("|", " · ") ||
+                                point.yPoint.periodEnd,
+                            )}
                           </span>
                         </td>
                       </tr>
@@ -1001,7 +1114,12 @@ export default function PortfolioFinancialTools({
                                 <strong className={s.numeric}>
                                   {valueLabel(point.value, item.unit)}
                                 </strong>
-                                <span>{dateLabel(point.periodEnd)}</span>
+                                <span>
+                                  {dateLabel(
+                                    point.periodKey?.replaceAll("|", " · ") ||
+                                      point.periodEnd,
+                                  )}
+                                </span>
                                 <EvidenceLink point={point} />
                               </>
                             ) : (

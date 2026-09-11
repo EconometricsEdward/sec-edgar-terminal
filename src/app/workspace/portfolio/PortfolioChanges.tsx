@@ -3,6 +3,12 @@
 import { useMemo, useState } from "react";
 import { comparePortfolioResearch } from "../../../utils/portfolioChanges.js";
 import styles from "./PortfolioChanges.module.css";
+import {
+  analyzeRevisions,
+  analysisRowsCsv,
+} from "../../../utils/portfolioEnrichment.js";
+import { downloadText } from "../../../utils/download.js";
+import { number } from "./PortfolioInsightTools";
 
 const KINDS = [
   ["filing", "Newly observed filings"],
@@ -39,6 +45,7 @@ function observation(value: string, kind: string) {
 
 type Props = {
   baseline: any;
+  allocation?: any;
   snapshot: any;
   rows: any[];
   onInspectCompany: (rowId: string) => void;
@@ -48,6 +55,7 @@ type Props = {
 
 export default function PortfolioChanges({
   baseline,
+  allocation,
   snapshot,
   rows,
   onInspectCompany,
@@ -60,6 +68,11 @@ export default function PortfolioChanges({
   );
   const [kind, setKind] = useState("all");
   const [company, setCompany] = useState("all");
+  const [unit, setUnit] = useState("");
+  const [minimum, setMinimum] = useState("0");
+  const [sortBy, setSortBy] = useState("company");
+  const [limit, setLimit] = useState(20);
+  const [exportMessage, setExportMessage] = useState("");
   const companies = useMemo(
     () =>
       [
@@ -72,11 +85,46 @@ export default function PortfolioChanges({
       ] as { cik: string; name: string }[],
     [comparison],
   );
-  const changes = comparison.changes.filter(
-    (change: any) =>
-      (kind === "all" || change.kind === kind) &&
-      (company === "all" || change.cik === company),
+  const revisionAnalysis = useMemo(
+    () =>
+      analyzeRevisions(comparison.changes, {
+        kind,
+        company,
+        unit,
+        minimum,
+        sortBy,
+        weights:
+          allocation?.basis && allocation.basis !== "none"
+            ? Object.fromEntries(
+                allocation.issuers.map((row: any) => [row.cik, row.weightPct]),
+              )
+            : {},
+      }),
+    [comparison, kind, company, unit, minimum, sortBy, allocation],
   );
+  const changes = revisionAnalysis.rows;
+  function exportChanges() {
+    try {
+      downloadText(
+        "portfolio-research-changes.csv",
+        analysisRowsCsv(changes, {
+          earlier_capture: comparison.baselineAt,
+          current_capture: comparison.capturedAt,
+          kind,
+          company,
+          revision_unit: unit,
+          minimum_absolute_revision: minimum,
+          sort_by: sortBy,
+        }),
+        "text/csv;charset=utf-8",
+      );
+      setExportMessage(
+        `CSV prepared for ${changes.length} observations with both source sets.`,
+      );
+    } catch {
+      setExportMessage("Export could not be prepared. Please try again.");
+    }
+  }
   const startingPoint =
     comparison.baselineAt === comparison.capturedAt &&
     !comparison.changes.length;
@@ -199,10 +247,72 @@ export default function PortfolioChanges({
                 ))}
               </select>
             </label>
+            <label>
+              Revision unit
+              <select
+                value={unit}
+                onChange={(event) => {
+                  setUnit(event.target.value);
+                  setMinimum("0");
+                }}
+              >
+                <option value="">All observations</option>
+                {revisionAnalysis.units.map((value: string) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {unit && (
+              <label>
+                Minimum absolute revision ({unit})
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={minimum}
+                  onChange={(event) => setMinimum(event.target.value)}
+                />
+              </label>
+            )}
+            <label>
+              Sort observations
+              <select
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
+              >
+                <option value="company">Group by company</option>
+                {allocation?.basis && allocation.basis !== "none" && (
+                  <option value="weight">Largest known allocation</option>
+                )}
+                {unit && (
+                  <option value="magnitude">Largest absolute revision</option>
+                )}
+              </select>
+            </label>
+            <button
+              type="button"
+              className={styles.button}
+              disabled={!changes.length || Boolean(revisionAnalysis.error)}
+              onClick={exportChanges}
+            >
+              Export filtered changes
+            </button>
             <span className={styles.resultCount} aria-live="polite">
               {changes.length} observation{changes.length === 1 ? "" : "s"}
             </span>
           </div>
+          {revisionAnalysis.error && (
+            <p role="alert">{revisionAnalysis.error}</p>
+          )}
+          {exportMessage && <p role="status">{exportMessage}</p>}
+          {unit && (
+            <p>
+              Numeric differences are verified same-period revisions. Percentage
+              measures change in percentage points; they are not growth rates.
+            </p>
+          )}
           {!changes.length ? (
             <div className={styles.empty}>
               <div>
@@ -236,7 +346,7 @@ export default function PortfolioChanges({
             </div>
           ) : (
             <ol className={styles.list}>
-              {changes.map((change: any) => (
+              {changes.slice(0, limit).map((change: any) => (
                 <li key={change.id} className={styles.change}>
                   <div className={styles.changeHeader}>
                     <span className={styles.company}>
@@ -250,6 +360,18 @@ export default function PortfolioChanges({
                     )}
                   </div>
                   <h4>{change.title}</h4>
+                  {change.knownWeightPct !== null && (
+                    <p>
+                      Known allocation: {number(change.knownWeightPct, "%")}
+                    </p>
+                  )}
+                  {change.delta !== null && (
+                    <p>
+                      <strong>
+                        Revision: {number(change.delta, change.deltaUnit)}
+                      </strong>
+                    </p>
+                  )}
                   <p>{change.description}</p>
                   <div className={styles.comparison}>
                     {[
@@ -302,6 +424,19 @@ export default function PortfolioChanges({
                 </li>
               ))}
             </ol>
+          )}
+          {changes.length > 20 && (
+            <button
+              type="button"
+              className={styles.button}
+              onClick={() =>
+                setLimit(limit >= changes.length ? 20 : limit + 20)
+              }
+            >
+              {limit >= changes.length
+                ? "Show first 20 observations"
+                : `Show more (${Math.min(limit, changes.length)} of ${changes.length})`}
+            </button>
           )}
           <p className={styles.method}>
             One observation per company, even when multiple share classes are

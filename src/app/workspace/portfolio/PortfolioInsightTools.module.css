@@ -1,0 +1,210 @@
+.tool {
+  color: var(--p-text, #e8edf5);
+  min-width: 0;
+  display: grid;
+  gap: 22px;
+  padding: 12px 0;
+}
+.tool h3 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  line-height: 1.25;
+}
+.tool h4 {
+  margin: 0;
+  font-size: 17px;
+}
+.tool p {
+  margin: 0;
+  max-width: 90ch;
+  color: var(--p-muted, #a7b4c7);
+  font-size: 16px;
+  line-height: 1.65;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+}
+.tool label,
+.selector {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--p-muted, #a7b4c7);
+}
+.tool select,
+.tool input,
+.selector select {
+  min-height: 42px;
+  max-width: 100%;
+  border: 1px solid #344258;
+  border-radius: 6px;
+  padding: 9px 12px;
+  color: #e8edf5;
+  background: #172131;
+  font: inherit;
+  font-size: 14px;
+}
+.tool select {
+  max-width: min(100%, 500px);
+}
+.tool input[type="number"] {
+  width: 160px;
+}
+.tool input[type="checkbox"] {
+  min-height: 18px;
+  width: 18px;
+  accent-color: #f7c65a;
+}
+.tool button {
+  min-height: 40px;
+  border: 1px solid #344258;
+  border-radius: 6px;
+  padding: 9px 14px;
+  background: transparent;
+  color: #f7c65a;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.tool button:hover {
+  background: #1c293b;
+}
+.tool button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.tool :is(button, input, select, summary):focus-visible {
+  outline: 2px solid #f7c65a;
+  outline-offset: 3px;
+}
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 40px;
+  padding: 20px 0;
+  border-block: 1px solid #29364c;
+}
+.stat {
+  display: grid;
+  gap: 6px;
+  flex: 1 1 170px;
+}
+.stat strong {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.stat span {
+  font-size: 14px;
+  color: #a7b4c7;
+}
+.tableArea {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+.tableHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.tableWrap {
+  overflow-x: auto;
+  min-width: 0;
+}
+.tableWrap table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+.tableWrap :is(th, td) {
+  padding: 14px 12px;
+  border-bottom: 1px solid #29364c;
+  vertical-align: top;
+  text-align: left;
+  max-width: 360px;
+  overflow-wrap: anywhere;
+}
+.tableWrap th {
+  color: #a7b4c7;
+  font-size: 12px;
+  font-weight: 600;
+}
+.tableWrap td {
+  font-variant-numeric: tabular-nums;
+}
+.tableWrap td small {
+  display: block;
+  color: #a7b4c7;
+  margin-top: 6px;
+}
+.tableWrap .company {
+  border: 0;
+  padding: 0;
+  text-align: left;
+  min-height: 28px;
+  font-weight: 600;
+}
+.checks {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.checks label {
+  display: flex;
+  align-items: center;
+}
+.note {
+  border-left: 2px solid #f7c65a;
+  padding-left: 16px;
+}
+.error {
+  color: #ffb3ae !important;
+}
+.tool details {
+  border-top: 1px solid #29364c;
+  padding-top: 16px;
+}
+.tool summary {
+  cursor: pointer;
+  color: #a7b4c7;
+  font-size: 14px;
+}
+.tool details p {
+  margin-top: 12px;
+}
+.override {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #29364c;
+}
+.override select {
+  max-width: 350px;
+}
+.selector {
+  margin: 0 0 24px;
+  max-width: 390px;
+}
+@media (max-width: 640px) {
+  .controls > label,
+  .override > label {
+    width: 100%;
+  }
+  .tool select,
+  .tool input[type="number"] {
+    width: 100%;
+  }
+  .stats {
+    gap: 20px;
+  }
+  .stat strong {
+    font-size: 23px;
+  }
+}
