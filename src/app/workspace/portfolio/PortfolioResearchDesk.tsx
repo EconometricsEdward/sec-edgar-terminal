@@ -102,6 +102,7 @@ export default function PortfolioResearchDesk({
     [dateFrom, setDateFrom] = useState(""),
     [dateTo, setDateTo] = useState(""),
     [limit, setLimit] = useState(30),
+    [disclosureLimit, setDisclosureLimit] = useState(30),
     [selectedIssuer, setSelectedIssuer] = useState(""),
     [reader, setReader] = useState<any>(null),
     [quotes, setQuotes] = useState<any[]>(
@@ -109,7 +110,12 @@ export default function PortfolioResearchDesk({
     ),
     [labels, setLabels] = useState<Record<string, string>>({});
   const controller = useRef<AbortController | null>(null);
-  useEffect(()=>{if(selectedIssuer&&!issuers.some(i=>i.cik===selectedIssuer))setSelectedIssuer("");if(fundTicker&&!issuers.some(i=>i.ticker===fundTicker))setFundTicker("");},[issuers,selectedIssuer,fundTicker]);
+  useEffect(() => {
+    if (selectedIssuer && !issuers.some((i) => i.cik === selectedIssuer))
+      setSelectedIssuer("");
+    if (fundTicker && !issuers.some((i) => i.ticker === fundTicker))
+      setFundTicker("");
+  }, [issuers, selectedIssuer, fundTicker]);
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
     if (cooldown) {
@@ -393,6 +399,7 @@ export default function PortfolioResearchDesk({
     if (changed) {
       setReader(null);
       setScans({});
+      setDisclosureLimit(30);
       setQuotes([]);
       setCapturedSettings(nextSettings);
     }
@@ -637,7 +644,7 @@ export default function PortfolioResearchDesk({
               />
             </label>
           </div>
-          {selectedIssuer && issuers.some(i=>i.cik===selectedIssuer) && (
+          {selectedIssuer && issuers.some((i) => i.cik === selectedIssuer) && (
             <div className={s.finding}>
               {(() => {
                 const issuer = issuers.find((i) => i.cik === selectedIssuer)!;
@@ -934,7 +941,7 @@ export default function PortfolioResearchDesk({
               issuer.
             </p>
           </div>
-          {matches.map((f: any) => (
+          {matches.slice(0, disclosureLimit).map((f: any) => (
             <article className={s.finding} key={`${f.cik}:${f.accession}`}>
               <div className={s.heading}>
                 <strong>
@@ -957,6 +964,11 @@ export default function PortfolioResearchDesk({
               </a>
             </article>
           ))}
+          {matches.length > disclosureLimit && (
+            <button onClick={() => setDisclosureLimit((n) => n + 30)}>
+              Show 30 more matching filings ({matches.length} total)
+            </button>
+          )}
           <details>
             <summary>Search coverage for each issuer</summary>
             {discoveredScans.map((c: any) => (

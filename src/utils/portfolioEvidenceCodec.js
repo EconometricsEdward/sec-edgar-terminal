@@ -1,3 +1,7 @@
+import {
+  packPortfolioBaseline,
+  unpackPortfolioBaseline,
+} from "./portfolioBaselineCodec.js";
 /** Deduplicate repeated public evidence without discarding any metric or source. */
 const ENCODING = "portfolio-evidence-pool-v1";
 export const PORTFOLIO_DECODED_LIMIT = 32 * 1024 * 1024;
@@ -238,6 +242,9 @@ export const packPortfolioStore = (store) => ({
   portfolios: store.portfolios.map((p) => ({
     ...p,
     snapshot: packPortfolioSnapshot(p.snapshot),
+    ...(p.comparisonBaseline
+      ? { comparisonBaseline: packPortfolioBaseline(p.comparisonBaseline) }
+      : {}),
   })),
 });
 export const unpackPortfolioStore = (store) => {
@@ -252,7 +259,15 @@ export const unpackPortfolioStore = (store) => {
         throw new Error(
           "Expanded portfolio evidence exceeds its safe memory budget.",
         );
-      return { ...p, snapshot };
+      return {
+        ...p,
+        snapshot,
+        ...(p.comparisonBaseline
+          ? {
+              comparisonBaseline: unpackPortfolioBaseline(p.comparisonBaseline),
+            }
+          : {}),
+      };
     }),
   };
 };

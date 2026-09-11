@@ -1,3 +1,5 @@
+import { packPortfolioBaseline, unpackPortfolioBaseline } from "../src/utils/portfolioBaselineCodec.js";
+import { createPortfolioBaseline, validatePortfolioBaseline, comparePortfolioResearch } from "../src/utils/portfolioChanges.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -262,3 +264,11 @@ test("source requests preserve Retry-After and cancellation stops queued work", 
   controller.abort(new Error("Stopped"));
   await assert.rejects(researchPause(1000, controller.signal), /Stopped/);
 });
+
+ test("checkpoint encoding preserves comparisons and rejects malformed references",()=>{
+  const input={basis:"annual",generated_at:"2026-09-11T00:00:00Z",companies:[company(1,{netIncome:point(10,"USD")})]};
+  const baseline=createPortfolioBaseline(input);const encoded=packPortfolioBaseline(baseline);
+  assert.deepEqual(unpackPortfolioBaseline(encoded),baseline);assert.deepEqual(validatePortfolioBaseline(encoded),baseline);
+  assert.deepEqual(comparePortfolioResearch(encoded,input,fixture(input.companies).rows),comparePortfolioResearch(baseline,input,fixture(input.companies).rows));
+  const invalid=structuredClone(encoded);invalid.companies[0].metrics.netIncome[1]=999999;assert.throws(()=>validatePortfolioBaseline(invalid),/reference/);
+ });
