@@ -21,7 +21,10 @@ const EMPTY_COMPANIES: any[] = [];
 const format = (value: number | null, unit = "") =>
   value === null || !Number.isFinite(value)
     ? "Unavailable"
-    : value.toLocaleString("en-US", { maximumFractionDigits: 2 }) + unit;
+    : value.toLocaleString("en-US", {
+        maximumFractionDigits: 2,
+        notation: unit === "USD" || unit === "shares" ? "compact" : "standard",
+      }) + unit;
 
 export default function PortfolioScreener({
   report,

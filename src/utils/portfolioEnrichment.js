@@ -251,6 +251,12 @@ export function financingBuffers(report, companies) {
                 ...identity(row),
                 value,
                 unit: measure.unit,
+                inputValues: measure.keys.map((key, i) => ({
+                  key,
+                  label: portfolioMetricDefinitionFor(key).label,
+                  value: points[i].value,
+                  unit: points[i].unit,
+                })),
                 inputs: measure.keys
                   .map((key, i) => `${key}: ${points[i].value} USD`)
                   .join(" ; "),
@@ -290,6 +296,12 @@ export function conditionOverlap(
         return [
           {
             ...identity(row),
+            conditionValues: keys.map((key, i) => ({
+              key,
+              label: FINANCIAL_CONDITIONS.find((item) => item.id === key).label,
+              value: points[i].value,
+              unit: points[i].unit,
+            })),
             conditions: keys
               .map(
                 (key, i) =>

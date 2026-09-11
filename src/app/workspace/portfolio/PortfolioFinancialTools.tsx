@@ -34,7 +34,9 @@ const num = (value: unknown, signed = false) =>
       })
     : "Unavailable";
 const valueLabel = (value: unknown, unit: string) =>
-  finite(value) ? `${num(value)}${unit}` : "Unavailable or not applicable";
+  finite(value)
+    ? `${["USD", "shares"].includes(unit.trim()) ? value.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 }) : num(value)}${unit === "%" ? "" : " "}${unit.trim()}`
+    : "Unavailable or not applicable";
 const dateLabel = (value: string | null) => value || "Date unavailable";
 
 function EvidenceLink({ point }: { point: any }) {
@@ -141,8 +143,10 @@ function RelationshipChart({
               textAnchor="end"
               className={s.tick}
             >
-              {num(maxY - part * (maxY - minY))}
-              {relationship.yMetric.unit}
+              {valueLabel(
+                maxY - part * (maxY - minY),
+                relationship.yMetric.unit,
+              )}
             </text>
             <text
               x={left + part * (right - left)}
@@ -150,8 +154,10 @@ function RelationshipChart({
               textAnchor="middle"
               className={s.tick}
             >
-              {num(minX + part * (maxX - minX))}
-              {relationship.xMetric.unit}
+              {valueLabel(
+                minX + part * (maxX - minX),
+                relationship.xMetric.unit,
+              )}
             </text>
           </g>
         ))}
@@ -642,8 +648,13 @@ export default function PortfolioFinancialTools({
                           {valueLabel(point.value, metric?.unit || "")}
                         </td>
                         <td className={s.numeric}>
-                          {num(point.differenceFromMedian, true)}{" "}
-                          {metric?.unit === "%" ? "percentage points" : "x"}
+                          {point.differenceFromMedian > 0 ? "+" : ""}
+                          {valueLabel(
+                            point.differenceFromMedian,
+                            metric?.unit === "%"
+                              ? " percentage points"
+                              : ` ${metric?.unit || ""}`,
+                          )}
                         </td>
                         <td>
                           <div className={s.percentile}>

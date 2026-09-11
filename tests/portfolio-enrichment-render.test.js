@@ -111,3 +111,21 @@ test("multiple-shock and rebalancing workbenches render usable initial allocatio
     assert.match(html, /100/);
   }
 });
+test("full-catalog peer currency differences retain currency units and compact display", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/PortfolioFinancialTools.tsx",
+  ).default;
+  const catalog = buildCatalogReport(report, companies);
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      report: {
+        ...catalog,
+        metrics: catalog.metrics.filter((metric) => metric.id === "revenue"),
+      },
+      view: "peers",
+      onInspectCompany: () => {},
+    }),
+  );
+  assert.match(html, /B USD/);
+  assert.doesNotMatch(html, /[0-9,] x|percentage points/);
+});

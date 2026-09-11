@@ -411,7 +411,16 @@ export default function PortfolioInsightTools({
                 columns={[
                   { key: "value", label: buffer.label, unit: buffer.unit },
                   ...weights,
-                  { key: "inputs", label: "Reported inputs" },
+                  {
+                    key: "inputs",
+                    label: "Reported inputs",
+                    render: (row) =>
+                      row.inputValues.map((input: any) => (
+                        <div key={input.key}>
+                          {input.label}: {number(input.value, input.unit)}
+                        </div>
+                      )),
+                  },
                   periodColumn,
                   evidenceColumn,
                 ]}
@@ -482,7 +491,17 @@ export default function PortfolioInsightTools({
             rows={overlap.rows}
             onInspect={onInspect}
             columns={[
-              { key: "conditions", label: "Observed conditions" },
+              {
+                key: "conditions",
+                label: "Observed conditions",
+                render: (row) =>
+                  row.conditionValues.map((condition: any) => (
+                    <div key={condition.key}>
+                      {condition.label}:{" "}
+                      {number(condition.value, condition.unit)}
+                    </div>
+                  )),
+              },
               ...weights,
               periodColumn,
               evidenceColumn,
