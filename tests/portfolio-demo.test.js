@@ -1,3 +1,4 @@
+import { createPortfolioBaseline } from "../src/utils/portfolioChanges.js";
 import {
   unpackPortfolioSnapshot,
   packPortfolioStore,
@@ -200,6 +201,7 @@ test("demo coverage is recomputed over all companies and the full capture fits e
     snapshot: demo.snapshot,
     now: demo.captured_at,
   });
+  document.comparisonBaseline = createPortfolioBaseline(document.snapshot);
   const store = { version: 1, portfolios: [document], activeId: document.id };
   assert.doesNotThrow(() => validatePortfolios(store));
   assert.ok(

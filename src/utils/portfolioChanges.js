@@ -1,3 +1,7 @@
+import {
+  packPortfolioBaseline,
+  unpackPortfolioBaseline,
+} from "./portfolioBaselineCodec.js";
 /** Compact, public-evidence-only checkpoints for comparisons between research runs. */
 export const PORTFOLIO_BASELINE_VERSION = "edgar.portfolio.baseline.v1";
 export const PORTFOLIO_BASELINE_LIMIT = 1024 * 1024;
@@ -142,6 +146,7 @@ export function validatePortfolioBaseline(value) {
       );
   }
   inspect(value);
+  value = unpackPortfolioBaseline(value);
   const fields = (record, allowed) =>
     requireValue(
       plain(record) &&
@@ -256,7 +261,7 @@ export function validatePortfolioBaseline(value) {
     }
   }
   requireValue(
-    size(value) <= PORTFOLIO_BASELINE_LIMIT,
+    size(packPortfolioBaseline(value)) <= PORTFOLIO_BASELINE_LIMIT,
     "The comparison checkpoint exceeds its 1 MiB limit. Current research has been preserved.",
   );
   return value;
@@ -371,7 +376,7 @@ export function comparePortfolioResearch(baseline, snapshot, rows = []) {
     return result;
   }
   try {
-    validatePortfolioBaseline(baseline);
+    baseline = validatePortfolioBaseline(baseline);
   } catch (error) {
     result.state = "incompatible";
     result.warnings.push(error.message);
@@ -534,7 +539,8 @@ export function comparePortfolioResearch(baseline, snapshot, rows = []) {
           baseline.periods[left.period] !== "" &&
           baseline.periods[left.period] === periodFor(right, after);
         const sameDefinition =
-          baseline.definitions[left.definition] === portfolioMetricDefinition(right) &&
+          baseline.definitions[left.definition] ===
+            portfolioMetricDefinition(right) &&
           left.unit === cleanText(right.unit, 100);
         if (
           samePeriod &&

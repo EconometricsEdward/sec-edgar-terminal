@@ -160,15 +160,25 @@ async function request(payload) {
         );
       if (attempt === 2)
         throw new Error(result.error || `HTTP ${response.status}`);
-      const retryAfter = Number(response.headers.get("retry-after"));
-      await pause(
-        Math.min(
-          30000,
-          Number.isFinite(retryAfter) && retryAfter > 0
-            ? retryAfter * 1000
-            : 2000 * (attempt + 1),
-        ),
+      const retryHeader = response.headers.get("retry-after");
+      const retryAfter =
+        retryHeader && /^\d+$/.test(retryHeader)
+          ? Number(retryHeader) * 1000
+          : retryHeader
+            ? Date.parse(retryHeader) - Date.now()
+            : NaN;
+      let remaining =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter
+          : 2000 * (attempt + 1);
+      console.log(
+        `Provider requested a ${Math.ceil(remaining / 1000)} second pause; completed capture batches are retained.`,
       );
+      while (remaining > 0) {
+        const delay = Math.min(30000, remaining);
+        await pause(delay);
+        remaining -= delay;
+      }
     } catch (error) {
       if (error.terminal || attempt === 2) throw error;
       await pause(2000 * (attempt + 1));
