@@ -118,29 +118,33 @@ export default function PortfolioGuidePage() {
         </p>
         <h3>Try the prefilled 100-company demo</h3>
         <p>
-          Download a ready-to-import list of 100 tickers, then preview the
-          research captured for those companies. The demo shows company metrics,
-          reporting periods, SEC filing links, and coverage so you can see what
-          to expect before running your own research.
+          Explore 100 companies with hypothetical weights totaling 100%, then
+          switch to equal weights or company counts. The demo shows
+          concentration, scenarios, company metrics, reporting periods, SEC
+          filing links and allocation coverage.
         </p>
         <div className={styles.downloads}>
           <a href="/portfolio/portfolio-demo-100.csv" download>
-            Prefilled 100-ticker CSV ↓
+            Hypothetical weighted CSV ↓
           </a>
           <a href="/portfolio/portfolio-demo-100.xlsx" download>
-            Prefilled 100-ticker Excel ↓
+            Hypothetical weighted Excel ↓
+          </a>
+          <a href="/portfolio/portfolio-demo-100.json" download>
+            Hypothetical weighted JSON ↓
           </a>
           <Link href="/workspace/demo" prefetch={false}>
             Preview example results →
           </Link>
         </div>
         <p>
-          This is a company research universe with no supplied or assumed
-          allocations. It demonstrates the workflow, not an investment
-          recommendation. Results are a dated capture of public SEC evidence;
-          each company retains its reporting and retrieval dates. Refreshing
-          later may produce different figures, filings, or coverage. The preview
-          can be opened as a separate saved example in your workspace.
+          The fixed weights are educational inputs, not actual holdings or
+          investment recommendations. After importing CSV or Excel, select
+          supplied weight percentages in Allocation settings; JSON preserves
+          this setting. Results are a dated capture of public SEC evidence; each
+          company retains its reporting and retrieval dates. Refreshing later
+          may produce different figures, filings, or coverage. The preview can
+          be opened as a separate saved example in your workspace.
         </p>
         <p>
           The supported workflow contains up to <strong>100 rows</strong>.

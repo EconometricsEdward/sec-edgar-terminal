@@ -52,6 +52,14 @@ export default function PortfolioScenario({
   const controlId = useId();
   const singleScenarioButton = useRef<HTMLButtonElement>(null);
   const [scenario, setScenario] = useState(DEFAULT_SCENARIO);
+  const [previousBasis, setPreviousBasis] = useState(settings.basis);
+  // A newly selected portfolio basis supersedes the temporary equal-weight override.
+  // Keep the user's shocks, target and cases while updating the allocation assumption.
+  if (previousBasis !== settings.basis) {
+    setPreviousBasis(settings.basis);
+    if (scenario.equalWeight)
+      setScenario((current) => ({ ...current, equalWeight: false }));
+  }
   const [toolArea, setToolArea] = useState("scenario");
   const [expanded, setExpanded] = useState(false);
   const [exportError, setExportError] = useState("");

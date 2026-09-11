@@ -16,6 +16,8 @@ import {
   readPortfolios,
   writePortfolio,
 } from "../src/utils/portfolioStorage.js";
+import { buildPortfolioResearchPackage } from "../src/utils/portfolioExports.js";
+import { portfolioReportHtml } from "../src/utils/portfolioReport.js";
 
 const capturedAt = "2026-09-08T01:00:00.000Z";
 const now = "2026-09-09T02:00:00.000Z";
@@ -123,6 +125,98 @@ function storage() {
     setItem: (key, value) => values.set(key, value),
   };
 }
+
+function weightedDemo() {
+  const capture = demo();
+  capture.input.allocation.basis = "weights";
+  capture.allocation_example = {
+    kind: "hypothetical",
+    methodology: "Fixed educational allocations, independent of SEC evidence.",
+  };
+  capture.input.holdings.forEach((holding, index) => {
+    holding.weight_pct = index < 5 ? 5 : index < 20 ? 2 : index < 50 ? 1 : 0.3;
+    capture.rows[index].input.weight_pct = holding.weight_pct;
+  });
+  return capture;
+}
+
+test("hypothetical demo modes carry into saved copies and reports without changing SEC evidence", () => {
+  const capture = weightedDemo();
+  const original = structuredClone(capture);
+  const browser = storage();
+  for (const [mode, expectedBasis, topFive] of [
+    ["example", "weights", 25],
+    ["equal", "equal", 5],
+    ["none", "none", null],
+  ]) {
+    const { portfolio } = saveDemoPortfolio(browser, capture, {
+      id: `copy-${mode}`,
+      now,
+      allocationBasis: mode,
+    });
+    assert.equal(portfolio.allocation.basis, expectedBasis);
+    assert.match(portfolio.name, /Hypothetical/);
+    const allocation = allocationSummary(portfolio.rows, portfolio.allocation);
+    assert.equal(allocation.topFiveIssuerWeightPct, topFive);
+    assert.equal(
+      portfolio.rows[0].input.weight_pct,
+      5,
+      "original illustrative inputs survive a view change",
+    );
+    assert.deepEqual(portfolio.snapshot, capture.snapshot);
+    const bundle = buildPortfolioResearchPackage(portfolio, {
+      includeAllocations: true,
+    });
+    assert.equal(bundle.export_options.include_allocations, true);
+    assert.match(portfolioReportHtml(bundle), /Hypothetical/);
+  }
+  assert.deepEqual(capture, original);
+  assert.equal(
+    readPortfolios(browser.getItem(PORTFOLIOS_KEY)).portfolios.length,
+    3,
+  );
+  assert.throws(() =>
+    createDemoPortfolio(capture, { allocationBasis: "market_value" }),
+  );
+});
+
+test("weighted captures reject undisclosed, incomplete, mismatched or invalid allocations", () => {
+  const mutations = [
+    (value) => {
+      delete value.allocation_example;
+    },
+    (value) => {
+      value.allocation_example.kind = "actual";
+    },
+    (value) => {
+      value.input.holdings[0].weight_pct = 4;
+      value.rows[0].input.weight_pct = 4;
+    },
+    (value) => {
+      value.rows[0].input.weight_pct = 4;
+    },
+    (value) => {
+      delete value.input.holdings[0].weight_pct;
+    },
+    (value) => {
+      value.input.holdings[0].weight_pct = -5;
+    },
+    (value) => {
+      value.input.holdings[0].weight_pct = Infinity;
+    },
+    (value) => {
+      value.input.allocation.normalize = true;
+    },
+    (value) => {
+      value.rows[0].input.market_value = 500;
+    },
+  ];
+  for (const mutate of mutations) {
+    const capture = weightedDemo();
+    mutate(capture);
+    assert.throws(() => validatePortfolioDemo(capture));
+  }
+});
 
 function updateCoverage(capture) {
   const companies = capture.snapshot.companies;

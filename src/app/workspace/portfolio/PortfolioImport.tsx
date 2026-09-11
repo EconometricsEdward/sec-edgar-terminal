@@ -589,18 +589,19 @@ export default function PortfolioImport({
 
       <aside className={s.demo} aria-labelledby="portfolio-demo-title">
         <div>
-          <h3 id="portfolio-demo-title">Try a 100-company example</h3>
+          <h3 id="portfolio-demo-title">Try the hypothetical weighted demo</h3>
           <p>
-            Start with a prefilled ticker list, or see its captured research
-            before uploading. No allocations are assumed.
+            Explore 100 companies with example weights totaling 100%. After CSV
+            or Excel import, select supplied weight percentages in Allocation
+            settings.
           </p>
         </div>
         <div className={s.inlineLinks}>
           <a href="/portfolio/portfolio-demo-100.csv" download>
-            <Download size={14} aria-hidden="true" /> 100-ticker CSV
+            <Download size={14} aria-hidden="true" /> Weighted CSV
           </a>
           <a href="/portfolio/portfolio-demo-100.xlsx" download>
-            <Download size={14} aria-hidden="true" /> 100-ticker Excel
+            <Download size={14} aria-hidden="true" /> Weighted Excel
           </a>
           <a href="/workspace/demo" target="_blank" rel="noopener noreferrer">
             Preview example results (new tab) ↗

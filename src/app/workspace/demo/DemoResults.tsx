@@ -16,7 +16,9 @@ import {
 import {
   validatePortfolioDemo,
   saveDemoPortfolio,
+  createDemoPortfolio,
 } from "../../../utils/portfolioDemo.js";
+import { demoAllocationSettings } from "../../../utils/portfolioDemoAllocation.js";
 import { hubDestination } from "../../../utils/researchHubNavigation.js";
 import { buildPortfolioResearchPackage } from "../../../utils/portfolioExports.js";
 import { portfolioReportHtml } from "../../../utils/portfolioReport.js";
@@ -56,6 +58,10 @@ const METRICS: Record<string, string> = {
   totalAssets: "Total assets",
 };
 const day = (value?: string | null) => value?.slice(0, 10) || "Unavailable";
+const pct = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? `${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`
+    : "—";
 function present(point: any) {
   if (typeof point?.value !== "number" || !Number.isFinite(point.value))
     return point?.classification === "not_applicable"
@@ -88,6 +94,8 @@ export default function DemoResults() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [area, setArea] = useState("analytics");
+  const [allocationBasis, setAllocationBasis] = useState("example");
+  const [analyticsArea, setAnalyticsArea] = useState("concentration");
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const companyTabRef = useRef<HTMLButtonElement | null>(null);
   const [query, setQuery] = useState("");
@@ -136,10 +144,35 @@ export default function DemoResults() {
       ),
     [companies],
   );
-  const allocation = useMemo(
-    () => allocationSummary(rows, { basis: "none", normalize: false }, byCik),
-    [rows, byCik],
+  const settings = useMemo(
+    () =>
+      demo
+        ? demoAllocationSettings(demo, allocationBasis)
+        : { basis: "none", normalize: false },
+    [demo, allocationBasis],
   );
+  const allocation = useMemo(
+    () => allocationSummary(rows, settings, byCik),
+    [rows, settings, byCik],
+  );
+  const weighted = allocation.mode === "weighted";
+  const weights = useMemo(
+    () =>
+      new Map(
+        allocation.allocations.map((row: any) => [row.rowId, row.weightPct]),
+      ),
+    [allocation],
+  );
+  const weightGroups = useMemo(() => {
+    const groups = new Map<number, number>();
+    if (weighted)
+      allocation.allocations.forEach((row: any) =>
+        groups.set(row.weightPct, (groups.get(row.weightPct) || 0) + 1),
+      );
+    return [...groups]
+      .sort(([a], [b]) => b - a)
+      .map(([weight, count]) => ({ weight, count, total: weight * count }));
+  }, [allocation, weighted]);
   const feed = useMemo(() => {
     const tickers = new Map(
       rows.map((row: any) => [
@@ -167,16 +200,23 @@ export default function DemoResults() {
     PORTFOLIO_VIEW_PRESETS[0];
   const shown = useMemo(
     () =>
-      rows.filter((row: any) => {
-        const company = byCik[row.resolution?.cik];
-        const text =
-          `${row.input.ticker} ${company?.name || row.resolution?.name || ""} ${company?.sicDescription || ""}`.toLowerCase();
-        return (
-          text.includes(query.trim().toLowerCase()) &&
-          rowMatchesPortfolioView(row, company, preset)
-        );
-      }),
-    [rows, byCik, query, preset],
+      rows
+        .filter((row: any) => {
+          const company = byCik[row.resolution?.cik];
+          const text =
+            `${row.input.ticker} ${company?.name || row.resolution?.name || ""} ${company?.sicDescription || ""}`.toLowerCase();
+          return (
+            text.includes(query.trim().toLowerCase()) &&
+            rowMatchesPortfolioView(row, company, preset)
+          );
+        })
+        .sort(
+          (a: any, b: any) =>
+            (weighted
+              ? Number(weights.get(b.id)) - Number(weights.get(a.id))
+              : 0) || a.input.ticker.localeCompare(b.input.ticker),
+        ),
+    [rows, byCik, query, preset, weights, weighted],
   );
 
   const shownColumns = view.columns.filter((key: string) =>
@@ -185,9 +225,6 @@ export default function DemoResults() {
     ),
   );
   const supported = companies.filter(companyAvailable).length;
-  const partial = companies.filter(
-    (company: any) => company.status === "partial",
-  ).length;
   const missing = rows.filter(
     (row: any) => !companyAvailable(byCik[row.resolution?.cik]),
   ).length;
@@ -195,17 +232,11 @@ export default function DemoResults() {
   function downloadReport() {
     if (!demo) return;
     const bundle = buildPortfolioResearchPackage(
-      {
-        name: demo.title,
-        rows,
-        allocation: demo.input.allocation,
-        research: demo.input.research,
-        snapshot: demo.snapshot,
-      },
-      { includeAllocations: false },
+      createDemoPortfolio(demo, { allocationBasis }),
+      { includeAllocations: true },
     );
     downloadText(
-      "edgar-100-company-research.html",
+      `edgar-demo-${settings.basis}-research.html`,
       portfolioReportHtml(bundle, sourceEvidence),
       "text/html;charset=utf-8",
     );
@@ -215,12 +246,15 @@ export default function DemoResults() {
     setSaving(true);
     setSaveError("");
     try {
-      const { portfolio } = saveDemoPortfolio(localStorage, demo);
+      const { portfolio } = saveDemoPortfolio(localStorage, demo, {
+        allocationBasis,
+      });
       // Re-enter the workspace with its saved portfolio route initialized.
       window.location.assign(
         hubDestination("portfolios", {
           portfolioId: portfolio.id,
           portfolioTab: "analytics",
+          analyticsArea,
         }),
       );
     } catch (failure) {
@@ -241,12 +275,7 @@ export default function DemoResults() {
     >
       <div className={s.sectionHeading}>
         <div>
-          <p className={s.eyebrow}>What you get back</p>
-          <h2 id="demo-results-heading">Real research. Ready to explore.</h2>
-          <p>
-            This is a captured run through the same SEC research workflow used
-            for your own uploads.
-          </p>
+          <h2 id="demo-results-heading">Explore the portfolio</h2>
         </div>
         <span className={s.badge}>
           {demo
@@ -269,54 +298,144 @@ export default function DemoResults() {
       )}
       {demo && (
         <>
-          <p className={s.notice}>
-            Example company list, not a suggested portfolio. Values are
-            historical SEC evidence captured on {day(demo.captured_at)}.
-            Reporting periods vary by company; a new research run may return
-            different results.
-          </p>
-          <div className={s.stats} aria-label="Captured example coverage">
+          <div className={s.basisControl}>
+            <div
+              role="group"
+              aria-label="Demo allocation basis"
+              className={s.basisButtons}
+            >
+              {[
+                ["example", "Hypothetical weights"],
+                ["equal", "Equal weights"],
+                ["none", "Company counts"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  aria-pressed={allocationBasis === value}
+                  onClick={() => setAllocationBasis(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p aria-live="polite">
+              {settings.basis === "weights"
+                ? "Unequal example weights total 100%."
+                : settings.basis === "equal"
+                  ? "A hypothetical 1% allocation to each of the 100 companies."
+                  : "Company counts only; no allocation is applied."}{" "}
+              {weighted
+                ? "Weights change concentration, exposure coverage and scenarios; financial ratios still describe individual companies."
+                : "The same SEC financial evidence remains available for comparison."}
+            </p>
+          </div>
+          <div
+            className={s.stats}
+            aria-label="Demo allocation and evidence coverage"
+          >
             <div>
               <strong>{rows.length}</strong>
-              <span>Tickers in the template</span>
-              <small>Same list in CSV and Excel</small>
-            </div>
-            <div>
-              <strong>
-                {supported} / {rows.length}
-              </strong>
-              <span>Companies with financial evidence</span>
+              <span>Companies in the demo</span>
               <small>
-                {partial} with partial coverage · {missing} without supported
-                measures
+                {weighted
+                  ? `${pct(allocation.allocatedWeight)} allocated · hypothetical holdings`
+                  : "Research universe · company counts"}
               </small>
             </div>
             <div>
-              <strong>{feed.length.toLocaleString("en-US")}</strong>
-              <span>Captured filing references</span>
-              <small>Up to 30 recent filings per issuer</small>
+              <strong>
+                {weighted
+                  ? pct(allocation.topFiveIssuerWeightPct)
+                  : feed.length.toLocaleString("en-US")}
+              </strong>
+              <span>
+                {weighted
+                  ? "Allocation in the five largest companies"
+                  : "Captured filing references"}
+              </span>
+              <small>
+                {weighted
+                  ? `${allocation.topHoldings.map((holding: any) => holding.ticker).join(" · ")}`
+                  : "Up to 30 recent filings per issuer"}
+              </small>
+            </div>
+            <div>
+              <strong>
+                {pct(
+                  weighted
+                    ? allocation.coverage.percentOfSuppliedWeight
+                    : allocation.coverage.companyPct,
+                )}
+              </strong>
+              <span>
+                {weighted
+                  ? "Allocation with financial evidence"
+                  : "Companies with financial evidence"}
+              </span>
+              <small>
+                {supported} of {rows.length} companies · {missing} without
+                supported measures. At least one usable metric; coverage varies
+                by measure.
+              </small>
             </div>
           </div>
+          {weighted && (
+            <details className={s.weightMethod}>
+              <summary>How the hypothetical weights work</summary>
+              <p>
+                {settings.basis === "equal"
+                  ? "Each company receives 1%. This comparison changes the allocation only; it does not change the SEC evidence or overwrite the downloaded example weights."
+                  : demo.allocation_example.methodology}
+              </p>
+              <div className={s.weightStrip} aria-hidden="true">
+                {weightGroups.map((group) => (
+                  <span key={group.weight} style={{ flexGrow: group.total }} />
+                ))}
+              </div>
+              <ul className={s.weightLegend}>
+                {weightGroups.map((group) => (
+                  <li key={group.weight}>
+                    <span>
+                      {group.count} companies × {pct(group.weight)}
+                    </span>
+                    <strong>{pct(group.total)} total</strong>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <div className={s.exploreBar}>
             <div>
-              <h3>Try the full result, with no upload or wait.</h3>
+              <h3>Make a copy and explore your own assumptions.</h3>
               <p>
-                Open a separate copy in your browser to use company focus, saved
-                views, coverage, the filing feed, briefs, and exports. Refresh
-                research there when you want a new capture. Explore every
-                Analysis metric, select peers, search disclosures and discover
-                reporting funds.
+                Your selected allocation basis carries into the full Hub and
+                report. Edit the weights or refresh the financial evidence in
+                your saved copy.
               </p>
             </div>
-            <button className={s.primary} onClick={openInHub} disabled={saving}>
-              {saving
-                ? "Opening the example…"
-                : "Open full demo in Research Hub →"}
-            </button>
+            <div className={s.copyActions}>
+              <button
+                className={s.primary}
+                onClick={openInHub}
+                disabled={saving}
+              >
+                {saving
+                  ? "Opening the example…"
+                  : "Open full demo in Research Hub →"}
+              </button>
+              <button className={s.secondary} onClick={downloadReport}>
+                Download example report
+              </button>
+            </div>
           </div>
-          <button className={s.primary} onClick={downloadReport}>
-            Download the complete example report
-          </button>
+          <p className={s.captureNote}>
+            Hypothetical allocations are educational inputs, not actual holdings
+            or investment recommendations. Financial values are public SEC
+            evidence captured on {day(demo.captured_at)}; company reporting
+            periods differ. {feed.length.toLocaleString("en-US")} filing
+            references are included. Refreshing can change financial values and
+            coverage.
+          </p>
           {saveError && (
             <p role="alert" className={s.notice}>
               {saveError}
@@ -375,7 +494,9 @@ export default function DemoResults() {
           <div hidden={area !== "analytics"}>
             <PortfolioAnalytics
               rows={rows}
-              settings={demo.input.allocation}
+              settings={settings}
+              analyticsArea={analyticsArea}
+              onAreaChange={setAnalyticsArea}
               companies={companies}
               capturedAt={demo.captured_at}
               onDisclosure={openDisclosures}
@@ -451,6 +572,7 @@ export default function DemoResults() {
                   <thead>
                     <tr>
                       <th scope="col">Company</th>
+                      {weighted && <th scope="col">Hypothetical weight</th>}
                       <th scope="col">Coverage & annual period</th>
                       {shownColumns.map((key: string) => (
                         <th key={key} scope="col">
@@ -476,6 +598,11 @@ export default function DemoResults() {
                                 "Industry unavailable"}
                             </small>
                           </th>
+                          {weighted && (
+                            <td className={s.weightCell}>
+                              {pct(Number(weights.get(row.id)))}
+                            </td>
+                          )}
                           <td>
                             <span className={s.status}>
                               {company?.status === "ready"
@@ -661,9 +788,9 @@ export default function DemoResults() {
                   measures. They are research prompts, not investment ratings.
                 </p>
                 <p>
-                  No portfolio weights or performance estimates are produced
-                  from a ticker-only list. Add allocations in your own copy if
-                  you want allocation coverage.
+                  {weighted
+                    ? "The selected hypothetical weights show how much allocation is affected by evidence gaps. Financial findings remain tied to the captured company facts."
+                    : "This view uses company counts. Switch to hypothetical or equal weights to see how allocation changes the evidence coverage."}
                 </p>
               </div>
               <div className={s.followups}>

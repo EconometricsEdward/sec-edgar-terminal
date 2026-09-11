@@ -4,9 +4,9 @@ import DemoResults from "./DemoResults";
 import s from "./demo.module.css";
 
 export const metadata = buildPageMetadata({
-  title: "100-Company Portfolio Research Example",
+  title: "Hypothetical Weighted Portfolio Demo",
   description:
-    "Download a prefilled 100-ticker CSV or Excel template and explore its captured SEC research results, financial evidence, and filings before starting your own research.",
+    "Explore 100 companies with hypothetical weights totaling 100%. Compare concentration, weighted evidence coverage and scenarios using captured SEC research, then make your own copy.",
   path: "/workspace/demo",
 });
 
@@ -18,16 +18,12 @@ export default function PortfolioDemoPage() {
       </Link>
       <header className={s.hero}>
         <div>
-          <p className={s.eyebrow}>A worked example · 100 company tickers</p>
-          <h1>
-            Your list goes in.
-            <br />
-            The evidence comes together.
-          </h1>
+          <p className={s.eyebrow}>Research Hub demo · 100 companies</p>
+          <h1>A hypothetical portfolio. Real SEC evidence.</h1>
           <p className={s.lede}>
-            Try a prefilled company list, then explore what the analysis
-            produces: financial measures, reporting dates, SEC sources, and
-            questions to follow up.
+            Explore unequal weights totaling 100%, compare them with equal
+            weights, and see which holdings drive concentration and evidence
+            gaps.
           </p>
           <div className={s.actions}>
             <a
@@ -35,42 +31,29 @@ export default function PortfolioDemoPage() {
               href="/portfolio/portfolio-demo-100.csv"
               download
             >
-              Download 100-ticker CSV ↓
+              Weighted CSV ↓
             </a>
             <a
               className={s.secondary}
               href="/portfolio/portfolio-demo-100.xlsx"
               download
             >
-              Download Excel ↓
+              Weighted Excel ↓
             </a>
-            <a className={s.textLink} href="#example-results">
-              See example results ↓
+            <a
+              className={s.secondary}
+              href="/portfolio/portfolio-demo-100.json"
+              download
+            >
+              Weighted JSON ↓
             </a>
           </div>
-        </div>
-        <aside className={s.recipe} aria-label="How to try the example">
-          <span className={s.eyebrow}>From template to research</span>
-          <ol>
-            <li>
-              <strong>100 prefilled tickers</strong>
-              <span>Keep the list or replace companies with your own.</span>
-            </li>
-            <li>
-              <strong>Review company matches</strong>
-              <span>Confirm the issuer before retrieving its evidence.</span>
-            </li>
-            <li>
-              <strong>Research, inspect, export</strong>
-              <span>
-                Explore the captured example below, then try the full Hub.
-              </span>
-            </li>
-          </ol>
-          <p>
-            A company research list. No allocations or holdings are assumed.
+          <p className={s.downloadHelp}>
+            Downloads contain the fixed hypothetical weights. After CSV or Excel
+            import, select supplied weight percentages in Allocation settings.
+            JSON preserves that setting.
           </p>
-        </aside>
+        </div>
       </header>
       <DemoResults />
       <section className={s.nextSteps} aria-labelledby="demo-next-heading">
@@ -80,9 +63,9 @@ export default function PortfolioDemoPage() {
             Keep the format. Make the questions yours.
           </h2>
           <p>
-            Edit the tickers in the downloaded file, upload it in Portfolio
-            research, and review the matches. Tickers alone are enough; weights
-            and notes are optional.
+            Replace the example tickers and weights with your own, upload the
+            file, and review the company matches. Clear the weights if you only
+            want a company research list.
           </p>
         </div>
         <div className={s.actions}>

@@ -30,3 +30,9 @@ The September 8, 2026 demo captured 30 measures, before the expanded Analysis ca
 User-facing tables and reports omit all-empty metric columns and unmeasured company metric cards. Raw saved evidence and dedicated coverage diagnostics retain the original missing-value reasons and classifications for audit and refresh.
 
 The financial corrections from the earlier coverage draft are retained: reported combined SG&A takes precedence; otherwise both selling/marketing and general/administrative components must have compatible actual periods and units. Administrative expense alone is withheld from combined SG&A, including older saved captures. Analysis and risk calculation versions invalidate affected caches, and portfolio cache keys include the Analysis version. Older calculation versions receive the same refresh path as pre-expansion captures.
+
+## Hypothetical weighted demo
+
+The public 100-company demo applies explicit illustrative weights: five companies at 5%, fifteen at 2%, thirty at 1%, and fifty at 0.3%, totaling 100%. These fixed educational inputs are independent of market prices and financial evidence. The default view opens concentration; users can compare equal weights and company counts without changing the captured facts. Saved copies and reports preserve the chosen analysis basis and identify the allocations as hypothetical. Company results show model weights in descending order.
+
+`node scripts/generate-portfolio-demo.mjs` rebuilds matching CSV, XLSX, JSON and capture allocation inputs while preserving the original SEC snapshot, source dates and request history. Only `--refresh` / `--resume` retrieve evidence. CSV/XLSX retain literal `weight_pct` values but require choosing the weighting basis after import; JSON includes the allocation settings. Legacy ticker-only captures remain supported.

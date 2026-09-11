@@ -1,310 +1,410 @@
 {
   "schema_version": "edgar.portfolio.v1",
-  "name": "100-company research demo",
+  "name": "Hypothetical weighted portfolio · 100-company demo",
   "holdings": [
     {
-      "ticker": "AAPL"
+      "ticker": "AAPL",
+      "weight_pct": 5
     },
     {
-      "ticker": "MSFT"
+      "ticker": "MSFT",
+      "weight_pct": 5
     },
     {
-      "ticker": "NVDA"
+      "ticker": "NVDA",
+      "weight_pct": 2
     },
     {
-      "ticker": "ORCL"
+      "ticker": "ORCL",
+      "weight_pct": 1
     },
     {
-      "ticker": "ADBE"
+      "ticker": "ADBE",
+      "weight_pct": 1
     },
     {
-      "ticker": "CRM"
+      "ticker": "CRM",
+      "weight_pct": 1
     },
     {
-      "ticker": "AMD"
+      "ticker": "AMD",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "INTC"
+      "ticker": "INTC",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "CSCO"
+      "ticker": "CSCO",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "IBM"
+      "ticker": "IBM",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "AMZN"
+      "ticker": "AMZN",
+      "weight_pct": 2
     },
     {
-      "ticker": "TSLA"
+      "ticker": "TSLA",
+      "weight_pct": 1
     },
     {
-      "ticker": "HD"
+      "ticker": "HD",
+      "weight_pct": 1
     },
     {
-      "ticker": "LOW"
+      "ticker": "LOW",
+      "weight_pct": 1
     },
     {
-      "ticker": "NKE"
+      "ticker": "NKE",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "MCD"
+      "ticker": "MCD",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "SBUX"
+      "ticker": "SBUX",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "TGT"
+      "ticker": "TGT",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "TJX"
+      "ticker": "TJX",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "BKNG"
+      "ticker": "BKNG",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "WMT"
+      "ticker": "WMT",
+      "weight_pct": 2
     },
     {
-      "ticker": "COST"
+      "ticker": "COST",
+      "weight_pct": 2
     },
     {
-      "ticker": "PG"
+      "ticker": "PG",
+      "weight_pct": 2
     },
     {
-      "ticker": "KO"
+      "ticker": "KO",
+      "weight_pct": 1
     },
     {
-      "ticker": "PEP"
+      "ticker": "PEP",
+      "weight_pct": 1
     },
     {
-      "ticker": "MDLZ"
+      "ticker": "MDLZ",
+      "weight_pct": 1
     },
     {
-      "ticker": "CL"
+      "ticker": "CL",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "KMB"
+      "ticker": "KMB",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "GIS"
+      "ticker": "GIS",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "KHC"
+      "ticker": "KHC",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "JPM"
+      "ticker": "JPM",
+      "weight_pct": 5
     },
     {
-      "ticker": "BAC"
+      "ticker": "BAC",
+      "weight_pct": 2
     },
     {
-      "ticker": "WFC"
+      "ticker": "WFC",
+      "weight_pct": 1
     },
     {
-      "ticker": "C"
+      "ticker": "C",
+      "weight_pct": 1
     },
     {
-      "ticker": "GS"
+      "ticker": "GS",
+      "weight_pct": 1
     },
     {
-      "ticker": "MS"
+      "ticker": "MS",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "AXP"
+      "ticker": "AXP",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "SCHW"
+      "ticker": "SCHW",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "USB"
+      "ticker": "USB",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "PNC"
+      "ticker": "PNC",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "UNH"
+      "ticker": "UNH",
+      "weight_pct": 2
     },
     {
-      "ticker": "JNJ"
+      "ticker": "JNJ",
+      "weight_pct": 5
     },
     {
-      "ticker": "LLY"
+      "ticker": "LLY",
+      "weight_pct": 1
     },
     {
-      "ticker": "MRK"
+      "ticker": "MRK",
+      "weight_pct": 1
     },
     {
-      "ticker": "ABBV"
+      "ticker": "ABBV",
+      "weight_pct": 1
     },
     {
-      "ticker": "ABT"
+      "ticker": "ABT",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "TMO"
+      "ticker": "TMO",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "DHR"
+      "ticker": "DHR",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "AMGN"
+      "ticker": "AMGN",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "GILD"
+      "ticker": "GILD",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "CAT"
+      "ticker": "CAT",
+      "weight_pct": 2
     },
     {
-      "ticker": "DE"
+      "ticker": "DE",
+      "weight_pct": 1
     },
     {
-      "ticker": "GE"
+      "ticker": "GE",
+      "weight_pct": 2
     },
     {
-      "ticker": "HON"
+      "ticker": "HON",
+      "weight_pct": 1
     },
     {
-      "ticker": "UPS"
+      "ticker": "UPS",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "FDX"
+      "ticker": "FDX",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "RTX"
+      "ticker": "RTX",
+      "weight_pct": 1
     },
     {
-      "ticker": "LMT"
+      "ticker": "LMT",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "NOC"
+      "ticker": "NOC",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "GD"
+      "ticker": "GD",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "XOM"
+      "ticker": "XOM",
+      "weight_pct": 5
     },
     {
-      "ticker": "CVX"
+      "ticker": "CVX",
+      "weight_pct": 2
     },
     {
-      "ticker": "COP"
+      "ticker": "COP",
+      "weight_pct": 1
     },
     {
-      "ticker": "EOG"
+      "ticker": "EOG",
+      "weight_pct": 1
     },
     {
-      "ticker": "SLB"
+      "ticker": "SLB",
+      "weight_pct": 1
     },
     {
-      "ticker": "OXY"
+      "ticker": "OXY",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "PSX"
+      "ticker": "PSX",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "VLO"
+      "ticker": "VLO",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "MPC"
+      "ticker": "MPC",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "KMI"
+      "ticker": "KMI",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "NEE"
+      "ticker": "NEE",
+      "weight_pct": 2
     },
     {
-      "ticker": "DUK"
+      "ticker": "DUK",
+      "weight_pct": 1
     },
     {
-      "ticker": "SO"
+      "ticker": "SO",
+      "weight_pct": 1
     },
     {
-      "ticker": "AEP"
+      "ticker": "AEP",
+      "weight_pct": 1
     },
     {
-      "ticker": "EXC"
+      "ticker": "EXC",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "SRE"
+      "ticker": "SRE",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "XEL"
+      "ticker": "XEL",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "WEC"
+      "ticker": "WEC",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "ED"
+      "ticker": "ED",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "D"
+      "ticker": "D",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "GOOGL"
+      "ticker": "GOOGL",
+      "weight_pct": 2
     },
     {
-      "ticker": "META"
+      "ticker": "META",
+      "weight_pct": 2
     },
     {
-      "ticker": "NFLX"
+      "ticker": "NFLX",
+      "weight_pct": 1
     },
     {
-      "ticker": "DIS"
+      "ticker": "DIS",
+      "weight_pct": 1
     },
     {
-      "ticker": "CMCSA"
+      "ticker": "CMCSA",
+      "weight_pct": 1
     },
     {
-      "ticker": "VZ"
+      "ticker": "VZ",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "T"
+      "ticker": "T",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "CHTR"
+      "ticker": "CHTR",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "TTWO"
+      "ticker": "TTWO",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "WBD"
+      "ticker": "WBD",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "LIN"
+      "ticker": "LIN",
+      "weight_pct": 2
     },
     {
-      "ticker": "APD"
+      "ticker": "APD",
+      "weight_pct": 1
     },
     {
-      "ticker": "SHW"
+      "ticker": "SHW",
+      "weight_pct": 1
     },
     {
-      "ticker": "FCX"
+      "ticker": "FCX",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "NEM"
+      "ticker": "NEM",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "NUE"
+      "ticker": "NUE",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "PLD"
+      "ticker": "PLD",
+      "weight_pct": 2
     },
     {
-      "ticker": "AMT"
+      "ticker": "AMT",
+      "weight_pct": 1
     },
     {
-      "ticker": "SPG"
+      "ticker": "SPG",
+      "weight_pct": 0.3
     },
     {
-      "ticker": "O"
+      "ticker": "O",
+      "weight_pct": 0.3
     }
   ],
   "allocation": {
-    "basis": "none",
+    "basis": "weights",
     "normalize": false
   },
   "research": {

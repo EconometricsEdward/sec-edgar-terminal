@@ -310,11 +310,11 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
       <section className={s.demoCard} aria-labelledby="hub-demo-title">
         <div className={s.demoCopy}>
           <p className={s.eyebrow}>See what you can build</p>
-          <h3 id="hub-demo-title">Try a 100-company example</h3>
+          <h3 id="hub-demo-title">Explore a hypothetical weighted portfolio</h3>
           <p>
-            Download a prefilled ticker list and explore its captured SEC
-            research: company metrics, filing evidence, and coverage. No
-            allocations are assumed.
+            Start with 100 companies and example weights totaling 100%. Compare
+            concentration, scenarios and financial evidence with equal weights
+            or company counts.
           </p>
         </div>
         <div className={s.demoActions}>
@@ -323,13 +323,13 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
           </Link>
           <div
             className={s.demoDownloads}
-            aria-label="Prefilled 100-ticker templates"
+            aria-label="Hypothetical weighted portfolio templates"
           >
             <a href="/portfolio/portfolio-demo-100.csv" download>
-              <Download size={14} aria-hidden="true" /> 100-ticker CSV
+              <Download size={14} aria-hidden="true" /> Weighted CSV
             </a>
             <a href="/portfolio/portfolio-demo-100.xlsx" download>
-              <Download size={14} aria-hidden="true" /> 100-ticker Excel
+              <Download size={14} aria-hidden="true" /> Weighted Excel
             </a>
           </div>
         </div>
