@@ -176,7 +176,7 @@ export default function RootLayout({
               </Suspense>
               {children}
             </main>
-            <footer className={styles.footer}>
+            <footer className={styles.footer} data-site-footer>
               <div className={styles.footerContent}>
                 <div>
                   SEC.gov sources · Public EDGAR APIs · XBRL financial facts

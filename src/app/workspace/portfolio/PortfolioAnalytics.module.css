@@ -34,7 +34,7 @@
   border-radius: 9px;
   background: var(--a-panel);
   color: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   line-height: 1.4;
   padding: 10px 14px;
@@ -73,7 +73,7 @@
   color: var(--a-gold);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 780;
   line-height: 1.6;
 }
@@ -90,7 +90,7 @@
   border-radius: 999px;
   color: var(--a-gold);
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 .summary {
@@ -133,7 +133,7 @@
 .summary small,
 .concentrationStats small {
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .summary .wordValue {
@@ -147,7 +147,7 @@
   border: 1px solid var(--a-line);
   background: var(--a-panel);
   border-radius: 11px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--a-muted);
 }
 .notes summary {
@@ -230,7 +230,7 @@
 }
 .sectionHeading p:not(.eyebrow) {
   color: var(--a-muted);
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.7;
   margin-top: 10px;
   max-width: 850px;
@@ -294,7 +294,7 @@
 .cardHeading > span {
   color: var(--a-muted);
   text-align: right;
-  font-size: 11px;
+  font-size: 12px;
 }
 .cardHeading > button {
   flex-shrink: 0;
@@ -340,7 +340,7 @@
   overflow-wrap: anywhere;
 }
 .barCaption small {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--a-muted);
   font-weight: 400;
   white-space: nowrap;
@@ -349,7 +349,7 @@
 }
 .barCaption b {
   flex-shrink: 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
@@ -398,7 +398,7 @@
   min-height: 44px;
   background: var(--p-bg, #0b1220);
   color: var(--a-text);
-  font-size: 13px;
+  font-size: 14px;
 }
 .search > span:last-child {
   position: relative;
@@ -441,7 +441,7 @@
 }
 .table thead th {
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -455,7 +455,7 @@
   margin-top: 4px;
   color: var(--a-muted);
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .table tbody tr:last-child :is(th, td) {
@@ -478,13 +478,13 @@
   align-items: center;
   margin-top: 12px;
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .metricSelect {
   max-width: 440px;
 }
 .root .description {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
   color: var(--a-muted);
   margin-top: -10px;
@@ -508,7 +508,7 @@
   text-align: center;
   font-weight: 500;
   gap: 9px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .root .histogramBin:hover,
 .root .histogramBin[aria-pressed="true"] {
@@ -520,7 +520,7 @@
   font-variant-numeric: tabular-nums;
 }
 .histogramBin > small {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--a-muted);
 }
 .histogramTrack {
@@ -605,13 +605,13 @@
   font-size: 22px;
 }
 .conditionCard em {
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   color: var(--a-muted);
   font-weight: 450;
 }
 .conditionCard small {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.65;
   font-weight: 400;
   color: var(--a-muted);
@@ -622,11 +622,11 @@
   border-top: 1px solid var(--a-line);
   color: var(--a-muted);
   font-weight: 400;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .conditionCard b {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--a-gold);
 }
@@ -650,7 +650,7 @@
   padding: 18px;
 }
 .statusCard > span {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--a-muted);
 }
 .statusCard > strong {
@@ -660,7 +660,7 @@
 .statusCard > small {
   font-weight: 450;
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .coverageTable {
   min-width: 0;
@@ -690,11 +690,11 @@
   font-size: 12px;
 }
 .missingList span {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--a-muted);
 }
 .missingList small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--a-muted);
   line-height: 1.6;
 }
@@ -704,7 +704,7 @@
 }
 .root .empty {
   padding: 25px 8px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
   color: var(--a-muted);
 }
@@ -862,4 +862,20 @@
     flex-direction: column;
     gap: 8px;
   }
+}
+
+.toolDetails {
+  border-block: 1px solid var(--a-line);
+}
+.toolDetails > summary {
+  cursor: pointer;
+  padding: 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.toolDetails > div {
+  margin-bottom: 20px;
+}
+.twoColumns > section:only-child {
+  grid-column: 1 / -1;
 }

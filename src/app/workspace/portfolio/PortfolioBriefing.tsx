@@ -22,20 +22,10 @@ export default function PortfolioBriefing({
 }) {
   const overview = useMemo(() => buildPortfolioOverview(report), [report]);
   if (!report.holdingCount) return null;
-  const date =
-    report.capturedAt && Number.isFinite(Date.parse(report.capturedAt))
-      ? new Date(report.capturedAt).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-          timeZone: "UTC",
-        })
-      : null;
   return (
     <section className={s.root} aria-label="Portfolio briefing">
       <header className={s.heading}>
         <div>
-          <p className={s.eyebrow}>The big picture</p>
           <h3>Portfolio at a glance</h3>
           <p className={s.intro}>
             {overview.companyCount > 0
@@ -50,7 +40,6 @@ export default function PortfolioBriefing({
               : " Explore the mix and the financial picture below."}
           </p>
         </div>
-        {date && <span className={s.date}>Snapshot · {date}</span>}
       </header>
       {(report.unresolvedCount > 0 ||
         (report.weighted && !overview.complete)) && (

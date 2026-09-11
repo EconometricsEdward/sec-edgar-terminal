@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import ResearchWorkspace from "../portfolio/ResearchWorkspace";
+import WorkspaceMenu from "../WorkspaceMenu";
 import {
   allocationSummary,
-  companyAvailable,
   finiteFinancialMetric,
 } from "../../../utils/portfolioModel.js";
 import { portfolioFilingFeed } from "../../../utils/portfolioClient.js";
@@ -163,16 +165,6 @@ export default function DemoResults() {
       ),
     [allocation],
   );
-  const weightGroups = useMemo(() => {
-    const groups = new Map<number, number>();
-    if (weighted)
-      allocation.allocations.forEach((row: any) =>
-        groups.set(row.weightPct, (groups.get(row.weightPct) || 0) + 1),
-      );
-    return [...groups]
-      .sort(([a], [b]) => b - a)
-      .map(([weight, count]) => ({ weight, count, total: weight * count }));
-  }, [allocation, weighted]);
   const feed = useMemo(() => {
     const tickers = new Map(
       rows.map((row: any) => [
@@ -224,10 +216,6 @@ export default function DemoResults() {
       finiteFinancialMetric(byCik[row.resolution?.cik]?.metrics?.[key]),
     ),
   );
-  const supported = companies.filter(companyAvailable).length;
-  const missing = rows.filter(
-    (row: any) => !companyAvailable(byCik[row.resolution?.cik]),
-  ).length;
 
   function downloadReport() {
     if (!demo) return;
@@ -273,16 +261,46 @@ export default function DemoResults() {
       className={s.results}
       aria-labelledby="demo-results-heading"
     >
-      <div className={s.sectionHeading}>
+      <header className={s.workspaceHeader}>
         <div>
-          <h2 id="demo-results-heading">Explore the portfolio</h2>
+          <Link className={s.back} href="/workspace">
+            Research Hub
+          </Link>
+          <h1 id="demo-results-heading">
+            100-company portfolio <span className={s.demoTag}>Demo</span>
+          </h1>
+          <p>
+            Explore a portfolio with hypothetical weights and real SEC evidence.
+          </p>
         </div>
-        <span className={s.badge}>
-          {demo
-            ? `Captured ${day(demo.captured_at)} · UTC`
-            : "Captured example"}
-        </span>
-      </div>
+        {demo && (
+          <div className={s.headerActions}>
+            <WorkspaceMenu label="Download">
+              <strong>Example portfolio · fixed hypothetical weights</strong>
+              <a href="/portfolio/portfolio-demo-100.csv" download>
+                CSV spreadsheet ↓
+              </a>
+              <a href="/portfolio/portfolio-demo-100.xlsx" download>
+                Excel workbook ↓
+              </a>
+              <a href="/portfolio/portfolio-demo-100.json" download>
+                JSON portfolio ↓
+              </a>
+              <small>
+                After CSV or Excel import, choose supplied weight percentages in
+                Allocation settings. JSON keeps that setting.
+              </small>
+              <button onClick={downloadReport}>Research report ↓</button>
+              <small>
+                The report uses your currently selected allocation basis.
+              </small>
+            </WorkspaceMenu>
+            <button className={s.primary} onClick={openInHub} disabled={saving}>
+              {saving ? "Opening…" : "Make a copy →"}
+            </button>
+          </div>
+        )}
+      </header>
       {!demo && !error && (
         <p className={s.notice} role="status">
           Loading the 100-company example results…
@@ -298,526 +316,409 @@ export default function DemoResults() {
       )}
       {demo && (
         <>
-          <div className={s.basisControl}>
-            <div
-              role="group"
-              aria-label="Demo allocation basis"
-              className={s.basisButtons}
-            >
-              {[
-                ["example", "Hypothetical weights"],
-                ["equal", "Equal weights"],
-                ["none", "Company counts"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  aria-pressed={allocationBasis === value}
-                  onClick={() => setAllocationBasis(value)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+          <div className={s.workspaceToolbar}>
+            <label className={s.allocationSelect}>
+              Allocation
+              <select
+                value={allocationBasis}
+                onChange={(event) => setAllocationBasis(event.target.value)}
+              >
+                <option value="example">Hypothetical weights</option>
+                <option value="equal">Equal weights</option>
+                <option value="none">Company counts</option>
+              </select>
+            </label>
             <p aria-live="polite">
               {settings.basis === "weights"
-                ? "Unequal example weights total 100%."
+                ? "100% allocated · unequal example weights"
                 : settings.basis === "equal"
-                  ? "A hypothetical 1% allocation to each of the 100 companies."
-                  : "Company counts only; no allocation is applied."}{" "}
-              {weighted
-                ? "Weights change concentration, exposure coverage and scenarios; financial ratios still describe individual companies."
-                : "The same SEC financial evidence remains available for comparison."}
+                  ? "1% per company · equal-weight assumption"
+                  : "Company list · no weights assumed"}
+              <span>SEC evidence captured {day(demo.captured_at)}</span>
             </p>
-          </div>
-          {(area !== "analytics" || analyticsArea !== "overview") && (
-            <div
-              className={s.stats}
-              aria-label="Demo allocation and evidence coverage"
-            >
-              <div>
-                <strong>{rows.length}</strong>
-                <span>Companies in the demo</span>
-                <small>
-                  {weighted
-                    ? `${pct(allocation.allocatedWeight)} allocated · hypothetical holdings`
-                    : "Research universe · company counts"}
-                </small>
-              </div>
-              <div>
-                <strong>
-                  {weighted
-                    ? pct(allocation.topFiveIssuerWeightPct)
-                    : feed.length.toLocaleString("en-US")}
-                </strong>
-                <span>
-                  {weighted
-                    ? "Allocation in the five largest companies"
-                    : "Captured filing references"}
-                </span>
-                <small>
-                  {weighted
-                    ? `${allocation.topHoldings.map((holding: any) => holding.ticker).join(" · ")}`
-                    : "Up to 30 recent filings per company"}
-                </small>
-              </div>
-              <div>
-                <strong>
-                  {pct(
-                    weighted
-                      ? allocation.coverage.percentOfSuppliedWeight
-                      : allocation.coverage.companyPct,
-                  )}
-                </strong>
-                <span>
-                  {weighted
-                    ? "Allocation with financial evidence"
-                    : "Companies with financial evidence"}
-                </span>
-                <small>
-                  {supported} of {rows.length} companies · {missing} without
-                  supported measures. At least one usable metric; coverage
-                  varies by measure.
-                </small>
-              </div>
-            </div>
-          )}
-          {weighted && (
-            <details className={s.weightMethod}>
-              <summary>How the hypothetical weights work</summary>
+            <WorkspaceMenu label="About this demo">
+              <strong>A starting point for your research</strong>
+              <p>
+                Use the overview for the big picture. Choose a research view to
+                compare companies, review filings or test a scenario.
+              </p>
               <p>
                 {settings.basis === "equal"
-                  ? "Each company receives 1%. This comparison changes the allocation only; it does not change the SEC evidence or overwrite the downloaded example weights."
+                  ? "Each company receives a hypothetical 1%."
                   : demo.allocation_example.methodology}
               </p>
-              <div className={s.weightStrip} aria-hidden="true">
-                {weightGroups.map((group) => (
-                  <span key={group.weight} style={{ flexGrow: group.total }} />
-                ))}
-              </div>
-              <ul className={s.weightLegend}>
-                {weightGroups.map((group) => (
-                  <li key={group.weight}>
-                    <span>
-                      {group.count} companies × {pct(group.weight)}
-                    </span>
-                    <strong>{pct(group.total)} total</strong>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-          <nav className={s.tabs} aria-label="Example result sections">
-            <button
-              aria-pressed={area === "analytics"}
-              onClick={() => {
-                setArea("analytics");
-                setEvidence(null);
-              }}
-            >
-              Portfolio analytics
-            </button>
-            <button
-              ref={companyTabRef}
-              aria-pressed={area === "companies"}
-              onClick={() => {
-                setArea("companies");
-                setLimit(20);
-                setEvidence(null);
-              }}
-            >
-              Company results
-            </button>
-            <button
-              aria-pressed={area === "filings"}
-              onClick={() => {
-                setArea("filings");
-                setLimit(20);
-                setEvidence(null);
-              }}
-            >
-              Filing library
-            </button>
-            <button
-              aria-pressed={area === "followups"}
-              onClick={() => {
-                setArea("followups");
-                setEvidence(null);
-              }}
-            >
-              Example follow-ups
-            </button>
-            {["disclosures", "ownership"].map((tab) => (
-              <button
-                key={tab}
-                aria-pressed={area === tab}
-                onClick={() => setArea(tab)}
-              >
-                {tab === "disclosures" ? "Disclosure search" : "Fund ownership"}
-              </button>
-            ))}
-          </nav>
-          <div hidden={area !== "analytics"}>
-            <PortfolioAnalytics
-              rows={rows}
-              settings={settings}
-              analyticsArea={analyticsArea}
-              onAreaChange={setAnalyticsArea}
-              companies={companies}
-              capturedAt={demo.captured_at}
-              onDisclosure={openDisclosures}
-              onInspectCompany={setFocusedRowId}
-              onReviewRows={openInHub}
-              onRefresh={openInHub}
-              refreshing={saving}
-              preview
-            />
-          </div>
-          {area === "companies" && (
-            <div className={s.filters}>
-              <label>
-                Search{" "}
-                {area === "companies"
-                  ? "companies or industries"
-                  : "companies or filing forms"}
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(event) => {
-                    setQuery(event.target.value);
-                    setLimit(20);
-                  }}
-                  placeholder={
-                    area === "companies"
-                      ? "Try Apple, JPM, or semiconductors"
-                      : "Try AAPL or 10-K"
-                  }
-                />
-              </label>
-              {area === "companies" && (
-                <label>
-                  Research view
-                  <select
-                    value={preset}
-                    onChange={(event) => {
-                      setPreset(event.target.value);
-                      setLimit(20);
-                      setEvidence(null);
-                    }}
-                  >
-                    {PORTFOLIO_VIEW_PRESETS.map((item: any) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <p role="status">
-                {area === "companies"
-                  ? `${shown.length} of ${rows.length} companies`
-                  : `${feed.length} filing references`}{" "}
-                match
-              </p>
-            </div>
-          )}
-          {area === "companies" && (
-            <>
-              <p className={s.tableHelp}>
-                {view.description} Click a financial measure to see its
-                reporting period, calculation, and SEC sources. Missing values
-                are never treated as zero.
-              </p>
-              <div
-                className={s.tableScroll}
-                role="region"
-                aria-label="100-company example results table"
-                tabIndex={0}
-              >
-                <table>
-                  <thead>
-                    <tr>
-                      <th scope="col">Company</th>
-                      {weighted && <th scope="col">Hypothetical weight</th>}
-                      <th scope="col">Coverage & annual period</th>
-                      {shownColumns.map((key: string) => (
-                        <th key={key} scope="col">
-                          {METRICS[key] || key}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shown.slice(0, limit).map((row: any) => {
-                      const company = byCik[row.resolution?.cik];
-                      return (
-                        <tr key={row.id}>
-                          <th scope="row">
-                            <strong>{row.input.ticker}</strong>
-                            <span>
-                              {company?.name ||
-                                row.resolution?.name ||
-                                "Identity needs review"}
-                            </span>
-                            <small>
-                              {company?.sicDescription ||
-                                "Industry unavailable"}
-                            </small>
-                          </th>
-                          {weighted && (
-                            <td className={s.weightCell}>
-                              {pct(Number(weights.get(row.id)))}
-                            </td>
-                          )}
-                          <td>
-                            <span className={s.status}>
-                              {company?.status === "ready"
-                                ? "Available"
-                                : company?.status === "partial"
-                                  ? "Partial evidence"
-                                  : company?.status || "Not retrieved"}
-                            </span>
-                            <small>Ending {day(company?.period?.end)}</small>
-                          </td>
-                          {shownColumns.map((key: string) => {
-                            const point = company?.metrics?.[key];
-                            if (!finiteFinancialMetric(point))
-                              return (
-                                <td key={key}>
-                                  <span aria-label="No comparable value">
-                                    —
-                                  </span>
-                                </td>
-                              );
-                            return (
-                              <td key={key}>
-                                <button
-                                  className={s.valueButton}
-                                  disabled={!company}
-                                  aria-label={`${row.input.ticker}: ${METRICS[key] || key} ${present(point)}; inspect evidence`}
-                                  onClick={(event) => {
-                                    evidenceTrigger.current =
-                                      event.currentTarget;
-                                    setEvidence({
-                                      company: {
-                                        ...company,
-                                        ticker:
-                                          company.ticker ||
-                                          row.resolution?.ticker ||
-                                          row.input.ticker,
-                                      },
-                                      key,
-                                      point,
-                                    });
-                                  }}
-                                >
-                                  {present(point)}
-                                </button>
-                                <small>
-                                  {point?.classification === "calculated"
-                                    ? "Calculated"
-                                    : point?.classification === "reported"
-                                      ? "Reported"
-                                      : ""}
-                                </small>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {shown.length === 0 && (
-                <p className={s.notice}>
-                  No companies match this view and search. Try Financial
-                  overview or clear the search.
-                </p>
-              )}
-              {shown.length > limit && (
-                <button
-                  className={s.secondary}
-                  onClick={() => setLimit((value) => value + 20)}
-                >
-                  Show next {Math.min(20, shown.length - limit)} companies
-                </button>
-              )}
-              {evidence && (
-                <section
-                  ref={evidenceRef}
-                  tabIndex={-1}
-                  className={s.evidence}
-                  aria-labelledby="demo-evidence-heading"
-                >
-                  <div className={s.sectionHeading}>
-                    <div>
-                      <p className={s.eyebrow}>
-                        Behind the number · {evidence.company.ticker}
-                      </p>
-                      <h3 id="demo-evidence-heading">
-                        {METRICS[evidence.key] || evidence.key}:{" "}
-                        {present(evidence.point)}
-                      </h3>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setEvidence(null);
-                        if (evidenceTrigger.current?.isConnected)
-                          evidenceTrigger.current.focus();
-                        else companyTabRef.current?.focus();
-                      }}
-                      aria-label="Close example metric evidence"
-                    >
-                      Close
-                    </button>
-                  </div>
-                  <p>
-                    {evidence.company.name} ·{" "}
-                    {evidence.point?.classification?.replaceAll("_", " ") ||
-                      "unavailable"}{" "}
-                    · {evidence.point?.unit || "Unit unavailable"}
-                  </p>
-                  <p>
-                    Metric period:{" "}
-                    {evidence.point?.period?.start
-                      ? `${day(evidence.point.period.start)} to `
-                      : ""}
-                    {day(evidence.point?.period?.end)}. Company evidence
-                    captured {day(evidence.company.retrievedAt)}.
-                  </p>
-                  {evidence.point?.formula && (
-                    <p>
-                      Calculation:{" "}
-                      {typeof evidence.point.formula === "string"
-                        ? evidence.point.formula
-                        : JSON.stringify(evidence.point.formula)}
-                    </p>
-                  )}
-                  {evidence.point?.reason && <p>{evidence.point.reason}</p>}
-                  {evidence.point?.sources?.length ? (
-                    <ul className={s.sourceList}>
-                      {evidence.point.sources.map(
-                        (source: any, index: number) => (
-                          <li
-                            key={`${source.documentUrl}:${source.tag}:${index}`}
-                          >
-                            <a
-                              href={source.documentUrl || source.url}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {source.form || "SEC filing"} ·{" "}
-                              {source.tag || "Source evidence"} ↗
-                            </a>
-                            <span>
-                              Filed {day(source.filed || source.filingDate)} ·{" "}
-                              {source.accession || "Accession unavailable"}
-                            </span>
-                            {typeof source.value === "number" && (
-                              <small>
-                                Source input:{" "}
-                                {source.value.toLocaleString("en-US")}{" "}
-                                {source.unit || source.units || ""}
-                              </small>
-                            )}
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  ) : (
-                    <p>
-                      No supported SEC source is available for this measure.
-                      Open the full demo to review coverage details and company
-                      filings.
-                    </p>
-                  )}
-                </section>
-              )}
-            </>
-          )}
-          <PortfolioResearchDesk
-            rows={rows}
-            companies={companies}
-            activeTab={area}
-            request={disclosureRequest}
-            onEvidence={captureSources}
-          />
-          {area === "followups" && (
-            <>
-              <div className={s.explanation}>
-                <h3>The next questions are part of the result.</h3>
-                <p>
-                  These checks were generated from the captured evidence on{" "}
-                  {day(demo.captured_at)}. They point to missing coverage,
-                  reporting freshness, recent filings, or negative reported
-                  measures. They are research prompts, not investment ratings.
-                </p>
-                <p>
-                  {weighted
-                    ? "The selected hypothetical weights show how much allocation is affected by evidence gaps. Financial findings remain tied to the captured company facts."
-                    : "This view uses company counts. Switch to hypothetical or equal weights to see how allocation changes the evidence coverage."}
-                </p>
-              </div>
-              <div className={s.followups}>
-                {priorities.slice(0, 6).map((item: any) => (
-                  <article key={item.key}>
-                    <span className={s.eyebrow}>{item.kind}</span>
-                    <h3>{item.label}</h3>
-                    <p>{item.reason}</p>
-                    {item.url && (
-                      <a href={item.url} target="_blank" rel="noreferrer">
-                        Verify SEC evidence ↗
-                      </a>
-                    )}
-                  </article>
-                ))}
-              </div>
-              <p className={s.tableHelp}>
-                {priorities.length
-                  ? `Showing ${Math.min(6, priorities.length)} of ${priorities.length} captured review prompts. Open the full demo to inspect the portfolio and use the Review inbox.`
-                  : "No review prompts were raised by these checks at capture time. This does not establish completeness or investment quality."}{" "}
-                “What changed” starts with this capture and becomes useful after
-                a subsequent research refresh.
-              </p>
-            </>
-          )}
-          <div className={s.exploreBar}>
-            <div>
-              <h3>Make a copy and explore your own assumptions.</h3>
               <p>
-                Your selected allocation basis carries into the full Hub and
-                report. Edit the weights or refresh the financial evidence in
-                your saved copy.
+                Weights affect concentration, coverage and scenarios. Financial
+                ratios describe individual companies.
               </p>
-            </div>
-            <div className={s.copyActions}>
-              <button
-                className={s.primary}
-                onClick={openInHub}
-                disabled={saving}
-              >
-                {saving
-                  ? "Opening the example…"
-                  : "Open full demo in Research Hub →"}
-              </button>
-              <button className={s.secondary} onClick={downloadReport}>
-                Download example report
-              </button>
-            </div>
+              <p>
+                Make a copy to edit holdings and weights or refresh the
+                evidence. {feed.length.toLocaleString("en-US")} filing
+                references are included.
+              </p>
+              <small>
+                Allocations are illustrative, not actual holdings or investment
+                recommendations. Company reporting periods differ.
+              </small>
+              <Link href="/workspace/portfolio-guide">
+                Import & format guide ↗
+              </Link>
+            </WorkspaceMenu>
           </div>
-          <p className={s.captureNote}>
-            Hypothetical allocations are educational inputs, not actual holdings
-            or investment recommendations. Financial values are public SEC
-            evidence captured on {day(demo.captured_at)}; company reporting
-            periods differ. {feed.length.toLocaleString("en-US")} filing
-            references are included. Refreshing can change financial values and
-            coverage.
-          </p>
           {saveError && (
             <p role="alert" className={s.notice}>
               {saveError}
             </p>
           )}
+          <ResearchWorkspace
+            demo
+            companyRef={companyTabRef}
+            selected={
+              area === "analytics" ? `analytics:${analyticsArea}` : area
+            }
+            onSelect={(value) => {
+              if (value.startsWith("analytics:")) {
+                setArea("analytics");
+                setAnalyticsArea(value.slice(10));
+              } else setArea(value);
+              setLimit(20);
+              setEvidence(null);
+            }}
+          >
+            <div hidden={area !== "analytics"}>
+              <PortfolioAnalytics
+                embedded
+                rows={rows}
+                settings={settings}
+                analyticsArea={analyticsArea}
+                onAreaChange={setAnalyticsArea}
+                companies={companies}
+                capturedAt={demo.captured_at}
+                onDisclosure={openDisclosures}
+                onInspectCompany={setFocusedRowId}
+                onReviewRows={openInHub}
+                onRefresh={openInHub}
+                refreshing={saving}
+                preview
+              />
+            </div>
+            {area === "companies" && (
+              <div className={s.filters}>
+                <label>
+                  Search{" "}
+                  {area === "companies"
+                    ? "companies or industries"
+                    : "companies or filing forms"}
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setLimit(20);
+                    }}
+                    placeholder={
+                      area === "companies"
+                        ? "Try Apple, JPM, or semiconductors"
+                        : "Try AAPL or 10-K"
+                    }
+                  />
+                </label>
+                {area === "companies" && (
+                  <label>
+                    Research view
+                    <select
+                      value={preset}
+                      onChange={(event) => {
+                        setPreset(event.target.value);
+                        setLimit(20);
+                        setEvidence(null);
+                      }}
+                    >
+                      {PORTFOLIO_VIEW_PRESETS.map((item: any) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <p role="status">
+                  {area === "companies"
+                    ? `${shown.length} of ${rows.length} companies`
+                    : `${feed.length} filing references`}{" "}
+                  match
+                </p>
+              </div>
+            )}
+            {area === "companies" && (
+              <>
+                <p className={s.tableHelp}>
+                  {view.description} Click a financial measure to see its
+                  reporting period, calculation, and SEC sources. Missing values
+                  are never treated as zero.
+                </p>
+                <div
+                  className={s.tableScroll}
+                  role="region"
+                  aria-label="100-company example results table"
+                  tabIndex={0}
+                >
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">Company</th>
+                        {weighted && <th scope="col">Hypothetical weight</th>}
+                        <th scope="col">Coverage & annual period</th>
+                        {shownColumns.map((key: string) => (
+                          <th key={key} scope="col">
+                            {METRICS[key] || key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shown.slice(0, limit).map((row: any) => {
+                        const company = byCik[row.resolution?.cik];
+                        return (
+                          <tr key={row.id}>
+                            <th scope="row">
+                              <strong>{row.input.ticker}</strong>
+                              <span>
+                                {company?.name ||
+                                  row.resolution?.name ||
+                                  "Identity needs review"}
+                              </span>
+                              <small>
+                                {company?.sicDescription ||
+                                  "Industry unavailable"}
+                              </small>
+                            </th>
+                            {weighted && (
+                              <td className={s.weightCell}>
+                                {pct(Number(weights.get(row.id)))}
+                              </td>
+                            )}
+                            <td>
+                              <span className={s.status}>
+                                {company?.status === "ready"
+                                  ? "Available"
+                                  : company?.status === "partial"
+                                    ? "Partial evidence"
+                                    : company?.status || "Not retrieved"}
+                              </span>
+                              <small>Ending {day(company?.period?.end)}</small>
+                            </td>
+                            {shownColumns.map((key: string) => {
+                              const point = company?.metrics?.[key];
+                              if (!finiteFinancialMetric(point))
+                                return (
+                                  <td key={key}>
+                                    <span aria-label="No comparable value">
+                                      —
+                                    </span>
+                                  </td>
+                                );
+                              return (
+                                <td key={key}>
+                                  <button
+                                    className={s.valueButton}
+                                    disabled={!company}
+                                    aria-label={`${row.input.ticker}: ${METRICS[key] || key} ${present(point)}; inspect evidence`}
+                                    onClick={(event) => {
+                                      evidenceTrigger.current =
+                                        event.currentTarget;
+                                      setEvidence({
+                                        company: {
+                                          ...company,
+                                          ticker:
+                                            company.ticker ||
+                                            row.resolution?.ticker ||
+                                            row.input.ticker,
+                                        },
+                                        key,
+                                        point,
+                                      });
+                                    }}
+                                  >
+                                    {present(point)}
+                                  </button>
+                                  <small>
+                                    {point?.classification === "calculated"
+                                      ? "Calculated"
+                                      : point?.classification === "reported"
+                                        ? "Reported"
+                                        : ""}
+                                  </small>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {shown.length === 0 && (
+                  <p className={s.notice}>
+                    No companies match this view and search. Try Financial
+                    overview or clear the search.
+                  </p>
+                )}
+                {shown.length > limit && (
+                  <button
+                    className={s.secondary}
+                    onClick={() => setLimit((value) => value + 20)}
+                  >
+                    Show next {Math.min(20, shown.length - limit)} companies
+                  </button>
+                )}
+                {evidence && (
+                  <section
+                    ref={evidenceRef}
+                    tabIndex={-1}
+                    className={s.evidence}
+                    aria-labelledby="demo-evidence-heading"
+                  >
+                    <div className={s.sectionHeading}>
+                      <div>
+                        <p className={s.eyebrow}>
+                          Behind the number · {evidence.company.ticker}
+                        </p>
+                        <h3 id="demo-evidence-heading">
+                          {METRICS[evidence.key] || evidence.key}:{" "}
+                          {present(evidence.point)}
+                        </h3>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEvidence(null);
+                          if (evidenceTrigger.current?.isConnected)
+                            evidenceTrigger.current.focus();
+                          else {
+                            const region = companyTabRef.current
+                              ?.closest("aside")
+                              ?.parentElement?.querySelector(
+                                "[data-portfolio-view]",
+                              ) as HTMLElement | null;
+                            region?.focus({ preventScroll: true });
+                          }
+                        }}
+                        aria-label="Close example metric evidence"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <p>
+                      {evidence.company.name} ·{" "}
+                      {evidence.point?.classification?.replaceAll("_", " ") ||
+                        "unavailable"}{" "}
+                      · {evidence.point?.unit || "Unit unavailable"}
+                    </p>
+                    <p>
+                      Metric period:{" "}
+                      {evidence.point?.period?.start
+                        ? `${day(evidence.point.period.start)} to `
+                        : ""}
+                      {day(evidence.point?.period?.end)}. Company evidence
+                      captured {day(evidence.company.retrievedAt)}.
+                    </p>
+                    {evidence.point?.formula && (
+                      <p>
+                        Calculation:{" "}
+                        {typeof evidence.point.formula === "string"
+                          ? evidence.point.formula
+                          : JSON.stringify(evidence.point.formula)}
+                      </p>
+                    )}
+                    {evidence.point?.reason && <p>{evidence.point.reason}</p>}
+                    {evidence.point?.sources?.length ? (
+                      <ul className={s.sourceList}>
+                        {evidence.point.sources.map(
+                          (source: any, index: number) => (
+                            <li
+                              key={`${source.documentUrl}:${source.tag}:${index}`}
+                            >
+                              <a
+                                href={source.documentUrl || source.url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {source.form || "SEC filing"} ·{" "}
+                                {source.tag || "Source evidence"} ↗
+                              </a>
+                              <span>
+                                Filed {day(source.filed || source.filingDate)} ·{" "}
+                                {source.accession || "Accession unavailable"}
+                              </span>
+                              {typeof source.value === "number" && (
+                                <small>
+                                  Source input:{" "}
+                                  {source.value.toLocaleString("en-US")}{" "}
+                                  {source.unit || source.units || ""}
+                                </small>
+                              )}
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    ) : (
+                      <p>
+                        No supported SEC source is available for this measure.
+                        Open the full demo to review coverage details and
+                        company filings.
+                      </p>
+                    )}
+                  </section>
+                )}
+              </>
+            )}
+            <PortfolioResearchDesk
+              rows={rows}
+              companies={companies}
+              activeTab={area}
+              request={disclosureRequest}
+              onEvidence={captureSources}
+            />
+            {area === "followups" && (
+              <>
+                <div className={s.explanation}>
+                  <h3>The next questions are part of the result.</h3>
+                  <p>
+                    These checks were generated from the captured evidence on{" "}
+                    {day(demo.captured_at)}. They point to missing coverage,
+                    reporting freshness, recent filings, or negative reported
+                    measures. They are research prompts, not investment ratings.
+                  </p>
+                  <p>
+                    {weighted
+                      ? "The selected hypothetical weights show how much allocation is affected by evidence gaps. Financial findings remain tied to the captured company facts."
+                      : "This view uses company counts. Switch to hypothetical or equal weights to see how allocation changes the evidence coverage."}
+                  </p>
+                </div>
+                <div className={s.followups}>
+                  {priorities.slice(0, 6).map((item: any) => (
+                    <article key={item.key}>
+                      <span className={s.eyebrow}>{item.kind}</span>
+                      <h3>{item.label}</h3>
+                      <p>{item.reason}</p>
+                      {item.url && (
+                        <a href={item.url} target="_blank" rel="noreferrer">
+                          Verify SEC evidence ↗
+                        </a>
+                      )}
+                    </article>
+                  ))}
+                </div>
+                <p className={s.tableHelp}>
+                  {priorities.length
+                    ? `Showing ${Math.min(6, priorities.length)} of ${priorities.length} captured review prompts. Open the full demo to inspect the portfolio and use the Review inbox.`
+                    : "No review prompts were raised by these checks at capture time. This does not establish completeness or investment quality."}{" "}
+                  “What changed” starts with this capture and becomes useful
+                  after a subsequent research refresh.
+                </p>
+              </>
+            )}
+          </ResearchWorkspace>
           {focusedRowId && rows.find((row: any) => row.id === focusedRowId) && (
             <CompanyFocus
               row={rows.find((row: any) => row.id === focusedRowId)}

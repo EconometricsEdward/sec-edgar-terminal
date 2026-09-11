@@ -343,6 +343,7 @@ export default function WorkspaceClient() {
   return (
     <div
       className={styles.page}
+      data-research-workspace
       onClickCapture={(event) => {
         if (
           event.defaultPrevented ||
@@ -372,30 +373,24 @@ export default function WorkspaceClient() {
       }}
     >
       <div className={styles.heading}>
-        <div>
-          <span className={styles.eyebrow}>Your research, connected</span>
-          <h1>Research Hub</h1>
-          <p>
-            Research a portfolio or company list, follow your watchlists, and
-            keep the evidence behind your work.
-          </p>
-        </div>
+        <h1>Research Hub</h1>
+        <label className={styles.hubSwitcher}>
+          <span>Workspace</span>
+          <select
+            value={hubView}
+            onChange={(event) => navigate(event.target.value)}
+          >
+            {HUB_VIEWS.map(([view, label]) => (
+              <option key={view} value={view}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         <Link href="/workspace?view=library" className={styles.secondary}>
-          Find saved evidence <ArrowUpRight size={16} />
+          Saved evidence <ArrowUpRight size={16} />
         </Link>
       </div>
-      <nav className={styles.hubTabs} aria-label="Research Hub areas">
-        {HUB_VIEWS.map(([view, label]) => (
-          <button
-            key={view}
-            type="button"
-            aria-pressed={hubView === view}
-            onClick={() => navigate(view)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
       <div hidden={hubView !== "overview"}>
         <HubOverview watchlist={watchlist} onNavigate={navigate} />
       </div>

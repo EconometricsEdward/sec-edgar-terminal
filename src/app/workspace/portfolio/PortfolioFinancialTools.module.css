@@ -23,7 +23,7 @@
   border-radius: 9px;
   background: var(--f-panel);
   color: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   cursor: pointer;
 }
@@ -55,7 +55,7 @@
   color: var(--f-text);
   padding: 10px 12px;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   color-scheme: dark;
 }
 .navigation {
@@ -77,7 +77,7 @@
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--f-gold);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 .heading h3 {
@@ -154,7 +154,7 @@
 }
 .stats small {
   color: var(--f-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .coverage {
@@ -175,7 +175,7 @@
   border-radius: 0 8px 8px 0;
   background: color-mix(in srgb, var(--f-gold) 6%, var(--f-panel));
   padding: 12px 16px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.65;
 }
 .empty {
@@ -230,7 +230,7 @@
 }
 .table small {
   color: var(--f-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   margin-top: 6px;
 }
@@ -255,11 +255,11 @@
 }
 .companyButton strong {
   color: var(--f-gold);
-  font-size: 13px;
+  font-size: 14px;
 }
 .companyButton span {
   color: var(--f-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   font-weight: 500;
   white-space: normal;
@@ -274,7 +274,7 @@
   width: fit-content;
   min-height: 28px;
   color: var(--f-gold);
-  font-size: 11px;
+  font-size: 12px;
   text-decoration: none;
   margin-top: 5px;
 }
@@ -371,7 +371,7 @@
 }
 .tick {
   fill: var(--f-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .axisTitle {
   fill: var(--f-text);
@@ -416,7 +416,7 @@
   font-size: 14px;
 }
 .pointDetail :is(small, span) {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--f-muted);
   line-height: 1.5;
 }

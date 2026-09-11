@@ -1,0 +1,109 @@
+.workspace {
+  --workspace-text: var(--p-text, var(--demo-text, #e8edf5));
+  --workspace-muted: var(--p-muted, var(--demo-muted, #a7b4c7));
+  --workspace-line: var(--p-line, var(--demo-line, #29364c));
+  --workspace-accent: var(--p-gold, var(--demo-gold, #f7c65a));
+  display: grid;
+  grid-template-columns: 218px minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+  min-width: 0;
+}
+.sidebar {
+  min-width: 0;
+  border-right: 1px solid var(--workspace-line);
+  padding-right: 18px;
+}
+.navigation {
+  display: grid;
+  gap: 22px;
+}
+.group {
+  display: grid;
+  gap: 3px;
+}
+.workspace .group p {
+  color: var(--workspace-muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 8px 12px;
+}
+.workspace .navigation button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--workspace-muted);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.navigation svg {
+  flex-shrink: 0;
+}
+.workspace .navigation button:hover {
+  background: color-mix(in srgb, var(--workspace-text) 5%, transparent);
+  color: var(--workspace-text);
+}
+.workspace .navigation button[aria-current="page"] {
+  background: color-mix(in srgb, var(--workspace-accent) 12%, transparent);
+  color: var(--workspace-accent);
+  font-weight: 700;
+  box-shadow: inset 3px 0 var(--workspace-accent);
+}
+.workspace .navigation button:focus-visible {
+  outline: 2px solid var(--workspace-accent);
+  outline-offset: 3px;
+}
+.content {
+  min-width: 0;
+  display: grid;
+  gap: 24px;
+  scroll-margin-top: calc(var(--site-header-height, 120px) + 20px);
+}
+.content:focus {
+  outline: none;
+}
+.content > [hidden] {
+  display: none;
+}
+.mobileView {
+  display: none;
+}
+@media (max-width: 1000px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .sidebar {
+    border: 0;
+    padding: 0;
+  }
+  .navigation {
+    display: none;
+  }
+  .mobileView {
+    display: grid;
+    gap: 8px;
+    color: var(--workspace-muted);
+    font-size: 14px;
+  }
+  .mobileView select {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 12px;
+    font-size: 16px;
+    color: var(--workspace-text);
+    background: var(--p-panel, var(--demo-panel, #101a2b));
+    border: 1px solid var(--workspace-line);
+    border-radius: 6px;
+  }
+}

@@ -33,7 +33,7 @@
 }
 .dialog .eyebrow {
   color: var(--focus-gold);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -53,7 +53,7 @@
 .dialog h4 {
   margin: 0;
   color: var(--focus-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   font-weight: 500;
 }
@@ -139,7 +139,7 @@
   flex-wrap: wrap;
 }
 .actions a {
-  font-size: 13px;
+  font-size: 14px;
   min-height: 44px;
 }
 .dialog .primary {
@@ -195,7 +195,7 @@
   font-size: 12px;
 }
 .dialog .muted {
-  font-size: 13px;
+  font-size: 14px;
   margin-bottom: 14px;
 }
 .tableScroll {
@@ -206,7 +206,7 @@
 .dialog table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
 }
 .dialog th,
@@ -250,7 +250,7 @@
   font-size: 14px;
 }
 .filings strong {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   overflow-wrap: anywhere;
 }
@@ -273,7 +273,7 @@
   padding-left: 18px;
 }
 .note li {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.65;
   margin: 5px 0;
   overflow-wrap: anywhere;

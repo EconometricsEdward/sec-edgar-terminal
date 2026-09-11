@@ -48,7 +48,7 @@
   color: var(--hub-accent, #f7c65a);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 .hero {
@@ -142,7 +142,7 @@
 }
 .demoCopy p:last-child {
   margin-bottom: 0;
-  font-size: 13px;
+  font-size: 14px;
 }
 .demoActions {
   display: grid;
@@ -233,7 +233,7 @@
 }
 .localNote {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--hub-muted, #98a9bf);
   margin-top: 11px;
@@ -265,7 +265,7 @@
 .resultKind {
   display: block;
   color: var(--hub-muted, #98a9bf);
-  font-size: 10px;
+  font-size: 12px;
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -297,7 +297,7 @@
 .searchResults time {
   white-space: nowrap;
   color: var(--hub-muted, #98a9bf);
-  font-size: 11px;
+  font-size: 12px;
 }
 .sectionHeading {
   display: flex;
@@ -316,7 +316,7 @@
   gap: 7px;
   min-height: 40px;
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--hub-accent, #f7c65a);
   font-weight: 600;
 }
@@ -347,7 +347,7 @@
   flex-wrap: wrap;
   gap: 8px;
   color: var(--hub-muted, #98a9bf);
-  font-size: 11px;
+  font-size: 12px;
   margin-bottom: 16px;
 }
 .activeBadge {
@@ -400,7 +400,7 @@
   background: var(--hub-accent, #f7c65a);
 }
 .coverage small {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--hub-muted, #98a9bf);
   display: block;
   line-height: 1.6;
@@ -421,7 +421,7 @@
 }
 .cardFooter small {
   color: var(--hub-muted, #98a9bf);
-  font-size: 11px;
+  font-size: 12px;
 }
 .cardStatus,
 .attention {
@@ -437,14 +437,14 @@
   min-height: 40px;
 }
 .root .coverageNote {
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 13px;
 }
 .showAll {
   color: var(--hub-accent, #f7c65a);
   display: block;
   min-height: 44px;
-  font-size: 13px;
+  font-size: 14px;
   padding: 8px 0;
   margin-top: 10px;
 }
@@ -471,7 +471,7 @@
   font-size: 17px;
 }
 .nextCard p {
-  font-size: 13px;
+  font-size: 14px;
   margin: 10px 0 15px;
 }
 .nextCard button {
@@ -510,7 +510,7 @@
 }
 .shortcuts span {
   grid-column: 2;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--hub-muted, #98a9bf);
 }
@@ -605,7 +605,7 @@
   }
   .stats span {
     grid-column: 1;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.5;
   }
   .stats svg:last-child {
@@ -639,7 +639,7 @@
     padding: 13px 11px;
   }
   .stats span {
-    font-size: 10px;
+    font-size: 12px;
   }
   .searchResults li {
     flex-direction: column;

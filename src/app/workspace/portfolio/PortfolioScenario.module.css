@@ -7,10 +7,10 @@
   display: grid;
   gap: 20px;
   min-width: 0;
-  padding: clamp(18px, 3vw, 28px);
-  border: 1px solid var(--sc-line);
-  border-radius: 16px;
-  background: var(--sc-panel);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--sc-text);
 }
 .scenario h3 {
@@ -46,7 +46,7 @@
 }
 .eyebrow {
   color: var(--sc-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -55,7 +55,7 @@
 .targetBadge {
   border: 1px solid var(--sc-line);
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
   padding: 5px 8px;
   white-space: nowrap;
   color: var(--sc-muted);
@@ -65,7 +65,7 @@
   border: 1px solid var(--sc-line);
   border-radius: 7px;
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--sc-text);
   background: transparent;
@@ -143,7 +143,7 @@
 .controls label {
   display: grid;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   min-width: 0;
 }
@@ -205,7 +205,7 @@
   gap: 7px;
 }
 .total > span {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--sc-muted);
 }
 .total > strong {
@@ -251,7 +251,7 @@
   width: 100%;
   min-width: 760px;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 .tableWrap caption {
@@ -274,7 +274,7 @@
   min-width: 200px;
 }
 .tableWrap thead th {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--sc-muted);
   font-weight: 650;
 }
@@ -284,7 +284,7 @@
 .tableWrap th > small {
   color: var(--sc-muted);
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   max-width: 240px;
   line-height: 1.4;
   margin: 3px 0 7px;
@@ -294,14 +294,14 @@
   border: 0;
   padding: 0;
   color: var(--sc-accent);
-  font-size: 13px;
+  font-size: 14px;
   text-align: left;
 }
 .scenario .issuerButton:hover {
   text-decoration: underline;
 }
 .targetBadge {
-  font-size: 10px;
+  font-size: 12px;
   padding: 2px 5px;
 }
 .tableWrap tfoot {
@@ -325,7 +325,7 @@
 .footer summary {
   cursor: pointer;
   color: var(--sc-muted);
-  font-size: 13px;
+  font-size: 14px;
   padding: 10px 0;
 }
 .footer > button {
@@ -391,7 +391,7 @@
   outline-offset: 0;
 }
 .toolDetails {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--sc-muted);
 }
 .toolDetails summary {
@@ -422,13 +422,13 @@
 }
 .comparisonTable td small {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 4px;
   color: var(--sc-muted);
 }
 .comparisonTable thead th > strong {
   color: var(--sc-text);
-  font-size: 13px;
+  font-size: 14px;
 }
 .comparisonReturn {
   font-size: 22px;
@@ -441,7 +441,7 @@
   margin-top: 10px;
 }
 .scenario .caseActions button {
-  font-size: 11px;
+  font-size: 12px;
   min-height: 32px;
   padding: 5px 7px;
 }

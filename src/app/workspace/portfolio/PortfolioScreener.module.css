@@ -6,10 +6,10 @@
   display: grid;
   gap: 20px;
   min-width: 0;
-  padding: clamp(18px, 3vw, 28px);
-  border: 1px solid var(--ps-line);
-  border-radius: 16px;
-  background: var(--hub-panel, #101a2b);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--ps-text);
 }
 .screener h3 {
@@ -30,7 +30,7 @@
 }
 .eyebrow {
   color: var(--ps-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -52,7 +52,7 @@
   padding: 6px 9px;
   white-space: nowrap;
   color: var(--ps-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .screener button {
   min-height: 40px;
@@ -61,7 +61,7 @@
   border-radius: 7px;
   background: transparent;
   color: var(--ps-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -139,7 +139,7 @@
   background: var(--hub-input, #0c1524);
   color: var(--ps-text);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
 }
 .screener input[aria-invalid="true"] {
   border-color: #f5a3a3;
@@ -202,7 +202,7 @@
   color: var(--ps-accent);
 }
 .stats small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ps-muted);
   line-height: 1.5;
 }
@@ -210,7 +210,7 @@
   padding: 12px 15px;
   border-left: 3px solid var(--ps-accent);
   background: #f7c65a08;
-  font-size: 13px;
+  font-size: 14px;
 }
 .notice strong {
   color: var(--ps-text);
@@ -233,7 +233,7 @@
 .tableWrap table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
 }
 .tableWrap th,
 .tableWrap td {
@@ -243,7 +243,7 @@
   border-bottom: 1px solid var(--ps-line);
 }
 .tableWrap thead th {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.025em;
   color: var(--ps-muted);
   font-weight: 650;
@@ -265,7 +265,7 @@
 .tableWrap th > small {
   display: block;
   margin-top: 5px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ps-muted);
   font-weight: 400;
   line-height: 1.4;
@@ -274,7 +274,7 @@
   display: inline-block;
   margin-top: 6px;
   color: var(--ps-accent);
-  font-size: 11px;
+  font-size: 12px;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -296,7 +296,7 @@
   padding: 15px;
   border: 1px solid var(--ps-line);
   border-radius: 10px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .exclusions summary {
   cursor: pointer;

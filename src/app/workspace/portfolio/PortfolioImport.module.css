@@ -18,7 +18,7 @@
   gap: 20px;
 }
 .eyebrow {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   font-weight: 700;
@@ -46,7 +46,7 @@
 .importer label {
   display: grid;
   gap: 7px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   min-width: 0;
 }
@@ -99,7 +99,7 @@
   font-size: 16px;
 }
 .entryCard p {
-  font-size: 13px;
+  font-size: 14px;
   margin: 0 0 4px;
   flex: 1;
 }
@@ -120,7 +120,7 @@
   padding: 10px 14px;
   border: 1px solid var(--pi-border);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   cursor: pointer;
   text-align: center;
@@ -154,7 +154,7 @@
   color: var(--pi-accent);
   text-decoration: underline;
   text-underline-offset: 4px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .inlineLinks a {
   display: inline-flex;
@@ -181,7 +181,7 @@
 }
 .importer .demo p {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
 }
 .privacy {
   display: flex;
@@ -218,7 +218,7 @@
 .importer summary {
   cursor: pointer;
   color: var(--pi-accent);
-  font-size: 13px;
+  font-size: 14px;
   min-height: 32px;
   line-height: 1.6;
 }
@@ -236,7 +236,7 @@
   display: grid;
   grid-template-columns: 160px 1fr;
   gap: 14px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
 }
 .definitions dt {
@@ -262,7 +262,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--pi-muted);
 }
 .status > span {
@@ -325,7 +325,7 @@
   border-radius: 10px;
   padding: 18px;
   background: #b9902f0b;
-  font-size: 13px;
+  font-size: 14px;
 }
 .notice ul,
 .rowWarnings {
@@ -386,13 +386,13 @@
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
   table-layout: fixed;
   min-width: 740px;
 }
 .table th {
   padding: 14px 16px;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   background: var(--pi-panel);
@@ -428,7 +428,7 @@
 }
 .rowNumber {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--pi-muted);
   margin-bottom: 4px;
 }
@@ -446,7 +446,7 @@
   padding: 10px;
   border-radius: 6px;
   margin: 8px 0 14px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .original > div {
   display: grid;
@@ -478,7 +478,7 @@
   gap: 6px 12px;
   margin-top: 10px;
   color: var(--pi-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .allocationPreview {
@@ -503,7 +503,7 @@
   padding: 4px 8px;
   border: 1px solid currentColor;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   font-weight: 650;
 }
@@ -648,7 +648,7 @@
     gap: 0 12px;
   }
   .privacy p {
-    font-size: 11px;
+    font-size: 12px;
   }
   .mappingGrid {
     grid-template-columns: 1fr;

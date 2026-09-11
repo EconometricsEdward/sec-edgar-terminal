@@ -5,17 +5,17 @@
   --mix-3: #85bba8;
   --mix-4: #60728e;
   color: var(--p-text, #e8edf5);
-  background: var(--p-panel, #101a2b);
-  border: 1px solid var(--p-line, #29364c);
-  border-radius: 16px;
-  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
   min-width: 0;
 }
 .root :is(h3, h4, p) {
   margin: 0;
 }
 .heading {
-  padding: 28px 30px 24px;
+  padding: 0 0 24px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -23,7 +23,7 @@
 }
 .root .eyebrow {
   color: var(--p-gold, #f7c65a);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -35,10 +35,10 @@
   letter-spacing: -0.035em;
 }
 .root .intro {
-  max-width: 680px;
+  max-width: 850px;
   margin-top: 12px;
   color: var(--p-muted, #a7b4c7);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.65;
 }
 .date {
@@ -50,20 +50,20 @@
 .stats {
   display: flex;
   border-block: 1px solid var(--p-line, #29364c);
-  background: color-mix(in srgb, var(--p-text, #e8edf5) 2%, transparent);
+  background: transparent;
 }
 .stats > div {
   flex: 1;
   min-width: 0;
   display: grid;
   gap: 8px;
-  padding: 22px 30px;
+  padding: 24px 20px;
 }
 .stats > div + div {
   border-left: 1px solid var(--p-line, #29364c);
 }
 .stats span {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--p-muted, #a7b4c7);
 }
 .stats strong {
@@ -88,15 +88,17 @@
 .body {
   display: grid;
   grid-template-columns: 1.1fr 1fr;
+
+  gap: 32px;
 }
 .body > section {
   min-width: 0;
-  padding: 26px 30px;
+  padding: 28px 0;
   display: flex;
   flex-direction: column;
 }
 .financial {
-  border-left: 1px solid var(--p-line, #29364c);
+  border-left: 0;
 }
 .sectionHeading {
   display: flex;
@@ -113,7 +115,7 @@
 }
 .sectionHeading > span {
   color: var(--p-muted, #a7b4c7);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .mixBar {
@@ -150,7 +152,7 @@
   grid-template-columns: 8px 1fr auto;
   align-items: baseline;
   gap: 10px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
 }
 .dot {
@@ -250,7 +252,7 @@
   border-radius: 0;
   color: var(--p-gold, #f7c65a);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   text-align: left;
 }
@@ -260,7 +262,7 @@
   align-items: center;
   justify-content: space-between;
   border-top: 1px solid var(--p-line, #29364c);
-  padding: 17px 30px;
+  padding: 18px 0;
 }
 .footer p {
   color: var(--p-muted, #a7b4c7);
@@ -284,11 +286,11 @@
   cursor: pointer;
 }
 .root .notice {
-  margin: 0 30px 20px;
+  margin: 0 0 20px;
   padding: 12px 16px;
   border-left: 2px solid var(--p-gold, #f7c65a);
   background: color-mix(in srgb, var(--p-gold, #f7c65a) 5%, transparent);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 .root .notice button {
@@ -329,7 +331,7 @@
     font-size: 29px;
   }
   .stats small {
-    font-size: 11px;
+    font-size: 12px;
   }
   .stats span {
     font-size: 12px;

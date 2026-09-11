@@ -55,6 +55,7 @@ type Props = {
   onRefresh: () => void;
   refreshing: boolean;
   preview?: boolean;
+  embedded?: boolean;
 };
 type Issuer = {
   cik: string;
@@ -90,15 +91,6 @@ const metricRange = (low: unknown, high: unknown, unit: string) =>
   finite(low) && finite(high)
     ? `${metricValue(low, unit)} – ${metricValue(high, unit)}`
     : "Unavailable";
-const dateLabel = (value: string | null | undefined) => {
-  if (!value || !Number.isFinite(Date.parse(value))) return "Not captured";
-  return new Date(value).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-};
 const barWidth = (value: number, maximum: number) =>
   `${maximum > 0 ? Math.max(0, Math.min(100, (value / maximum) * 100)) : 0}%`;
 
@@ -201,6 +193,7 @@ export default function PortfolioAnalytics({
   onRefresh,
   refreshing,
   preview = false,
+  embedded = false,
   analyticsArea,
   onAreaChange,
   onDisclosure,
@@ -272,11 +265,6 @@ export default function PortfolioAnalytics({
           .toLowerCase()
           .includes(queryText)),
   );
-  const financialCount = new Set(
-    report.metrics.flatMap((entry: any) =>
-      entry.observations.map((observation: any) => observation.cik),
-    ),
-  ).size;
   const selectedCondition = report.conditions.find(
     (entry: any) => entry.id === conditionId,
   );
@@ -318,102 +306,35 @@ export default function PortfolioAnalytics({
   );
 
   return (
-    <section className={s.root} aria-labelledby={titleId}>
-      {area === "overview" ? (
-        <header className={s.briefingHeading}>
-          <h2 id={titleId}>Portfolio analytics</h2>
-          <span className={s.badge}>{report.label}</span>
-        </header>
-      ) : (
-        <header className={s.hero}>
-          <div className={s.heroHeading}>
-            <div>
-              <p className={s.eyebrow}>
-                From individual companies to the whole portfolio
-              </p>
-              <h2 id={titleId}>
-                {weighted
-                  ? "Understand your portfolio."
-                  : "Understand your company list."}
-              </h2>
-              <p className={s.intro}>
-                Explore concentration, compare company fundamentals, and test
-                your own assumptions. Every result keeps its coverage and
-                reporting dates in view.
-              </p>
-            </div>
+    <section
+      className={s.root}
+      aria-labelledby={embedded ? undefined : titleId}
+      aria-label={embedded ? "Portfolio analytics" : undefined}
+    >
+      {!embedded && (
+        <>
+          <header className={s.briefingHeading}>
+            <h2 id={titleId}>Portfolio research</h2>
             <span className={s.badge}>{report.label}</span>
-          </div>
-          <div className={s.summary}>
-            <div>
-              <span>Identified holdings</span>
-              <strong>{count(report.issuerCount)}</strong>
-              <small>
-                {count(report.holdingCount)} included positions ·{" "}
-                {count(report.unresolvedCount)} unresolved
-              </small>
-            </div>
-            <div>
-              <span>Financial ratio coverage</span>
-              <strong>
-                {count(financialCount)}
-                <em> / {count(report.operatingIssuerCount)}</em>
-              </strong>
-              <small>At least one of the tracked financial measures</small>
-            </div>
-            <div>
-              <span>{weighted ? "Known allocation" : "Allocation basis"}</span>
-              <strong className={!weighted ? s.wordValue : undefined}>
-                {weighted
-                  ? percent(concentration.knownWeightPct)
-                  : "Ticker list"}
-              </strong>
-              <small>
-                {weighted
-                  ? `${concentration.missingWeightRows} positions without a usable weight`
-                  : "Company counts; no weights assumed"}
-              </small>
-            </div>
-            <div>
-              <span>Research snapshot</span>
-              <strong className={s.dateValue}>
-                {dateLabel(report.capturedAt)}
-              </strong>
-              <small>Company reporting periods may differ</small>
-            </div>
-          </div>
-        </header>
-      )}
-      {area !== "overview" && report.warnings.length > 0 && (
-        <details className={s.notes}>
-          <summary>
-            {report.warnings.length} coverage{" "}
-            {report.warnings.length === 1 ? "note" : "notes"} to keep in mind
-          </summary>
-          <ul>
-            {report.warnings.map((warning: string) => (
-              <li key={warning}>{warning}</li>
+          </header>
+          <nav className={s.nav} aria-label="Portfolio analytics views">
+            {AREAS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                ref={(node) => {
+                  areaButtons.current[id] = node;
+                }}
+                type="button"
+                aria-pressed={area === id}
+                onClick={() => changeArea(id)}
+              >
+                <Icon size={18} aria-hidden="true" />
+                {label}
+              </button>
             ))}
-          </ul>
-        </details>
+          </nav>
+        </>
       )}
-      <nav className={s.nav} aria-label="Portfolio analytics views">
-        {AREAS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            ref={(node) => {
-              areaButtons.current[id] = node;
-            }}
-            type="button"
-            aria-pressed={area === id}
-            onClick={() => changeArea(id)}
-          >
-            <Icon size={18} aria-hidden="true" />
-            {label}
-          </button>
-        ))}
-      </nav>
-
       <div className={s.retained} hidden={area !== "overview"}>
         <PortfolioBriefing
           report={report}
@@ -421,7 +342,7 @@ export default function PortfolioAnalytics({
             if (next === "financial") setFinancialMode("distribution");
             if (next === "coverage") setCoverageMode("summary");
             changeArea(next);
-            areaButtons.current[next]?.focus();
+            if (!embedded) areaButtons.current[next]?.focus();
           }}
           onInspectCompany={onInspectCompany}
         />
@@ -498,75 +419,82 @@ export default function PortfolioAnalytics({
               </p>
             </>
           )}
-          <PortfolioConcentrationTools
-            report={report}
-            onInspectCompany={onInspectCompany}
-          />
+          {weighted && (
+            <details className={s.toolDetails}>
+              <summary>Review allocation limits & cumulative exposure</summary>
+              <PortfolioConcentrationTools
+                report={report}
+                onInspectCompany={onInspectCompany}
+              />
+            </details>
+          )}
           <div className={s.twoColumns}>
-            <section
-              className={s.chartCard}
-              aria-label={
-                weighted
-                  ? "Largest holding allocations"
-                  : "Included positions by holding"
-              }
-            >
-              <div className={s.cardHeading}>
-                <h4>
-                  {weighted
+            {weighted && (
+              <section
+                className={s.chartCard}
+                aria-label={
+                  weighted
                     ? "Largest holding allocations"
-                    : "Included positions by holding"}
-                </h4>
-                <span>{weighted ? "Known weight" : "Positions"}</span>
-              </div>
-              <p className={s.chartHelp}>
-                {weighted
-                  ? "Top 10 holdings by known allocation. Select a company to inspect its evidence."
-                  : "Share classes of the same company are combined. Select a company to inspect its evidence."}
-              </p>
-              <div className={s.barList}>
-                {rankedIssuers.map((issuer) => (
-                  <button
-                    className={s.barButton}
-                    type="button"
-                    key={issuer.cik || issuer.rowIds[0]}
-                    onClick={() => onInspectCompany(issuer.rowIds[0])}
-                    aria-label={`Inspect ${issuer.name}, ${weighted ? `${percent(issuer.weightPct)} known allocation` : `${issuer.rowIds.length} included positions`}`}
-                  >
-                    <span className={s.barCaption}>
-                      <span>
-                        <strong>
-                          {issuer.tickers.join(" / ") || issuer.name}
-                        </strong>
-                        <small>{issuer.name}</small>
-                      </span>
-                      <b>
-                        {weighted
-                          ? percent(issuer.weightPct)
-                          : count(issuer.rowIds.length)}
-                      </b>
-                    </span>
-                    <span className={s.barTrack} aria-hidden="true">
-                      <span
-                        style={{
-                          width: barWidth(
-                            weighted
-                              ? issuer.weightPct || 0
-                              : issuer.rowIds.length,
-                            maxIssuer,
-                          ),
-                        }}
-                      />
-                    </span>
-                  </button>
-                ))}
-              </div>
-              {!rankedIssuers.length && (
-                <p className={s.empty}>
-                  Identify your companies to see holding concentration.
+                    : "Included positions by holding"
+                }
+              >
+                <div className={s.cardHeading}>
+                  <h4>
+                    {weighted
+                      ? "Largest holding allocations"
+                      : "Included positions by holding"}
+                  </h4>
+                  <span>{weighted ? "Known weight" : "Positions"}</span>
+                </div>
+                <p className={s.chartHelp}>
+                  {weighted
+                    ? "Top 10 holdings by known allocation. Select a company to inspect its evidence."
+                    : "Share classes of the same company are combined. Select a company to inspect its evidence."}
                 </p>
-              )}
-            </section>
+                <div className={s.barList}>
+                  {rankedIssuers.map((issuer) => (
+                    <button
+                      className={s.barButton}
+                      type="button"
+                      key={issuer.cik || issuer.rowIds[0]}
+                      onClick={() => onInspectCompany(issuer.rowIds[0])}
+                      aria-label={`Inspect ${issuer.name}, ${weighted ? `${percent(issuer.weightPct)} known allocation` : `${issuer.rowIds.length} included positions`}`}
+                    >
+                      <span className={s.barCaption}>
+                        <span>
+                          <strong>
+                            {issuer.tickers.join(" / ") || issuer.name}
+                          </strong>
+                          <small>{issuer.name}</small>
+                        </span>
+                        <b>
+                          {weighted
+                            ? percent(issuer.weightPct)
+                            : count(issuer.rowIds.length)}
+                        </b>
+                      </span>
+                      <span className={s.barTrack} aria-hidden="true">
+                        <span
+                          style={{
+                            width: barWidth(
+                              weighted
+                                ? issuer.weightPct || 0
+                                : issuer.rowIds.length,
+                              maxIssuer,
+                            ),
+                          }}
+                        />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {!rankedIssuers.length && (
+                  <p className={s.empty}>
+                    Identify your companies to see holding concentration.
+                  </p>
+                )}
+              </section>
+            )}
             <section
               className={s.chartCard}
               aria-label="SEC industry concentration"
@@ -1107,6 +1035,16 @@ export default function PortfolioAnalytics({
 
       {(visitedAreas.has("coverage") || area === "coverage") && (
         <div className={s.panel} hidden={area !== "coverage"}>
+          {report.warnings.length > 0 && (
+            <details className={s.notes}>
+              <summary>{report.warnings.length} coverage notes</summary>
+              <ul>
+                {report.warnings.map((warning: string) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </details>
+          )}
           <nav className={s.subnav} aria-label="Evidence coverage tools">
             <button
               type="button"

@@ -11,6 +11,7 @@ import {
 } from "../../../utils/portfolioDeepResearch.js";
 import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
 import dynamic from "next/dynamic";
+import ResearchWorkspace from "./ResearchWorkspace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
@@ -101,10 +102,6 @@ const present = (point: any) => {
     }).format(point.value);
   return `${point.value.toLocaleString("en-US", { maximumFractionDigits: 3 })}${point.unit && point.unit !== "ratio" ? ` ${point.unit}` : ""}`;
 };
-const activeRows = (document: any) =>
-  (document?.rows || []).filter(
-    (row: any) => !row.excluded && row.duplicateChoice !== "remove",
-  );
 const companyLink = (row: any, company: any) =>
   row.resolution?.ticker || company?.ticker || "";
 const documentKey = (document: any) =>
@@ -488,6 +485,18 @@ export default function PortfolioResearch({
     url.searchParams.delete("portfolioView");
     window.history.replaceState(window.history.state, "", url);
   }
+  function navigateAnalytics(area: string) {
+    if (!ANALYTICS_AREAS.includes(area)) return;
+    setAnalyticsArea(area);
+    setTab("analytics");
+    const url = new URL(window.location.href);
+    url.searchParams.set("portfolio", document.id);
+    url.searchParams.set("analyticsArea", area);
+    url.searchParams.set("portfolioTab", "analytics");
+    url.searchParams.delete("row");
+    url.searchParams.delete("portfolioView");
+    window.history.pushState(null, "", url.pathname + url.search);
+  }
   const companies = useMemo(() => captured?.companies || [], [captured]);
   const companiesByCik = useMemo(
     () =>
@@ -511,7 +520,6 @@ export default function PortfolioResearch({
     ? companiesByCik[focusedRow.resolution?.cik]
     : null;
 
-  const included = activeRows(document);
   const filteredRows = useMemo(
     () =>
       rows.filter((row: any) => {
@@ -890,21 +898,23 @@ export default function PortfolioResearch({
   if (!ready)
     return <p role="status">Opening your browser-local portfolios…</p>;
   return (
-    <section className={s.root} aria-labelledby="portfolio-title">
-      <header className={s.intro}>
-        <div>
-          <p className={s.eyebrow}>Portfolio Research</p>
-          <h2 id="portfolio-title">One list. A connected research view.</h2>
-          <p>
-            Upload or paste up to 100 companies. Review their identities,
-            retrieve SEC evidence, and export a research package. Tickers alone
-            are enough.
-          </p>
-        </div>
-        <Link className={s.secondary} href="/workspace/portfolio-guide">
-          Templates & AI / API guide <ArrowUpRight size={16} />
-        </Link>
-      </header>
+    <section className={s.root} aria-label="Portfolio research">
+      {(editor || !document) && (
+        <header className={s.intro}>
+          <div>
+            <p className={s.eyebrow}>Portfolio Research</p>
+            <h2 id="portfolio-title">Add a portfolio or company list.</h2>
+            <p>
+              Upload or paste up to 100 companies. Review their identities,
+              retrieve SEC evidence, and export a research package. Tickers
+              alone are enough.
+            </p>
+          </div>
+          <Link className={s.secondary} href="/workspace/portfolio-guide">
+            Templates & AI / API guide <ArrowUpRight size={16} />
+          </Link>
+        </header>
+      )}
       {error && (
         <div className={s.error} role="alert">
           {error}
@@ -964,7 +974,7 @@ export default function PortfolioResearch({
       {store.portfolios.length > 0 && (
         <div className={s.savedBar}>
           <label>
-            Saved portfolios & universes
+            Portfolio
             <select
               value={document?.id || ""}
               disabled={busy || editorDirty}
@@ -1099,14 +1109,20 @@ export default function PortfolioResearch({
       ) : (
         <>
           <div className={s.researchControls}>
-            <div>
-              <p className={s.eyebrow}>{summary.label}</p>
-              <h3>{document.name}</h3>
+            <div className={s.portfolioContext}>
               <p>
-                {included.length} included rows · {summary.issuers.length}{" "}
-                identified holdings · {summary.coverage.unresolvedPositions}{" "}
-                unresolved rows. Original inputs remain saved.
+                <strong>{summary.issuers.length} holdings</strong> ·{" "}
+                {summary.mode === "universe"
+                  ? "Company counts"
+                  : `${pct(summary.allocatedWeight)} allocated`}
+                {summary.coverage.unresolvedPositions > 0 &&
+                  ` · ${summary.coverage.unresolvedPositions} unresolved`}
               </p>
+              <span>
+                {captured
+                  ? `Evidence captured ${date(captured.generated_at)}`
+                  : "Run research to retrieve SEC evidence"}
+              </span>
             </div>
             <label>
               Reporting basis
@@ -1138,7 +1154,7 @@ export default function PortfolioResearch({
                 onClick={() => run()}
               >
                 <RefreshCw size={16} />{" "}
-                {captured ? "Refresh research & filings" : "Run research"}
+                {captured ? "Refresh evidence" : "Run research"}
               </button>
             )}
           </div>
@@ -1156,880 +1172,840 @@ export default function PortfolioResearch({
               </p>
             </div>
           )}
-          <details className={s.settings}>
-            <summary>
-              Allocation settings ·{" "}
-              {summary.mode === "universe"
-                ? "No weights assumed"
-                : summary.label}
-            </summary>
-            <div className={s.settingsBody}>
-              <label>
-                Analysis mode and weighting basis
-                <select
-                  value={document.allocation.basis}
-                  disabled={busy}
-                  onChange={(event) =>
-                    persist(
-                      {
-                        mode: "update",
-                        id: document.id,
-                        patch: {
-                          allocation: {
-                            basis: event.target.value,
-                            normalize: false,
-                          },
-                        },
-                      },
-                      "Allocation basis updated. Original inputs are preserved.",
-                    )
-                  }
-                >
-                  <option value="none">
-                    Research universe — company counts only
-                  </option>
-                  <option value="weights">
-                    Weighted portfolio — supplied weight_pct
-                  </option>
-                  <option value="market_value">
-                    Weighted portfolio — comparable market_value
-                  </option>
-                  <option value="equal">
-                    Model as equal-weighted — explicit assumption
-                  </option>
-                </select>
-              </label>
-              {document.allocation.basis === "weights" && (
-                <div>
-                  <p>
-                    Original supplied weights:{" "}
-                    <strong>{pct(summary.originalWeightTotal)}</strong>.
-                    Normalization changes the model, never the imported weights.
-                  </p>
-                  <button
-                    className={s.secondary}
-                    disabled={
-                      busy ||
-                      !number(summary.originalWeightTotal) ||
-                      summary.originalWeightTotal <= 0
-                    }
-                    onClick={() =>
-                      persist({
-                        mode: "update",
-                        id: document.id,
-                        patch: {
-                          allocation: {
-                            ...document.allocation,
-                            normalize: !document.allocation.normalize,
-                          },
-                        },
-                      })
-                    }
-                  >
-                    {document.allocation.normalize
-                      ? "Use original weights"
-                      : "Explicitly normalize to 100%"}
-                  </button>
-                </div>
-              )}
-              <p>
-                Position values require one stated currency and compatible
-                dates. Shares remain metadata; no price or weight is inferred.
-                Negative allocations are unsupported. An unspecified balance is
-                not automatically cash.
-              </p>
-            </div>
-          </details>
-          {(summary.warnings.length > 0 ||
-            summary.issues.length > 0 ||
-            summary.assumptions?.length > 0) && (
-            <div className={s.notice}>
-              {(summary.assumptions || []).map((text: string) => (
-                <p key={text}>
-                  <strong>{text}</strong>
-                </p>
-              ))}
-              {summary.warnings.map((text: string) => (
-                <p key={text}>{text}</p>
-              ))}
-              {summary.issues.length > 0 && (
-                <p>
-                  {summary.issues.length} row validation issues affect
-                  allocation calculations.{" "}
-                  <button onClick={() => openEditor("edit")}>
-                    Review and correct rows
-                  </button>
-                  .
-                </p>
-              )}
-            </div>
-          )}
-          <div className={s.stats}>
-            <div>
-              <span>Financial evidence</span>
-              <strong>
-                {summary.coverage.availableCompanies} /{" "}
-                {summary.coverage.totalCompanies}
-              </strong>
-              <small>
-                Resolved operating companies;{" "}
-                {summary.coverage.unresolvedPositions} unresolved rows shown
-                separately
-              </small>
-            </div>
-            <div>
-              <span>
-                {summary.mode === "universe"
-                  ? "Research mode"
-                  : "Weight with financial evidence"}
-              </span>
-              <strong>
-                {summary.mode === "universe"
-                  ? "Company list"
-                  : pct(summary.coverage.availableWeight)}
-              </strong>
-              <small>
-                {summary.mode === "universe"
-                  ? "No claim about your economic exposure"
-                  : `Of ${pct(summary.allocatedWeight)} known modeled allocation; missing coverage is not reweighted`}
-              </small>
-            </div>
-            <div>
-              <span>Captured evidence</span>
-              <strong className={s.dateMetric}>
-                {date(captured?.generated_at)}
-              </strong>
-              <small>
-                SEC public facts;{" "}
-                {document.research.basis === "annual" ? "annual" : "TTM"}{" "}
-                periods can differ by company
-              </small>
-            </div>
-          </div>
-          <nav className={s.tabs} aria-label="Portfolio research views">
-            {[
-              ["analytics", "Portfolio analytics"],
-              ["research", "Company research"],
-              ["changes", "What changed"],
-              ["allocation", "Allocation & coverage"],
-              ["filings", "Filing library"],
-              ["disclosures", "Portfolio disclosures"],
-              ["ownership", "Fund ownership"],
-              ["exports", "Export & AI context"],
-            ].map(([value, label]) => (
+          {(summary.warnings.length > 0 || summary.issues.length > 0) &&
+            tab !== "allocation" && (
               <button
-                key={value}
-                aria-pressed={tab === value}
-                onClick={() => changePortfolioTab(value)}
+                className={s.allocationNote}
+                onClick={() => changePortfolioTab("allocation")}
               >
-                {label}
+                {summary.warnings.length + summary.issues.length} allocation
+                notes · Review settings →
               </button>
-            ))}
-          </nav>
-          <div hidden={tab !== "analytics"}>
-            <PortfolioAnalytics
-              key={document.id}
-              rows={rows}
-              onDisclosure={openPortfolioDisclosures}
-              analyticsArea={analyticsArea}
-              onAreaChange={(area: string) => {
-                if (!ANALYTICS_AREAS.includes(area)) return;
-                setAnalyticsArea(area);
-                const url = new URL(window.location.href);
-                url.searchParams.set("portfolio", document.id);
-                url.searchParams.set("analyticsArea", area);
-                url.searchParams.set("portfolioTab", "analytics");
-                window.history.pushState(null, "", url.pathname + url.search);
-              }}
-              settings={document.allocation}
-              companies={companies}
-              capturedAt={captured?.generated_at || null}
-              onInspectCompany={setFocusedRowId}
-              onReviewRows={() => openEditor("edit")}
-              onRefresh={() => run(false)}
-              refreshing={busy}
-            />
-            <div className={s.exportButtons}>
-              <button
-                className={s.secondary}
-                onClick={() => changePortfolioTab("exports")}
-              >
-                <ArrowDownToLine size={16} /> Export analytics & evidence
-              </button>
-              <Link href="/workspace/portfolio-guide#analytics">
-                How these analytics work ↗
-              </Link>
-            </div>
-          </div>
-          {tab === "research" && (
-            <>
-              <PortfolioViews
-                value={viewSettings}
-                onChange={applyView}
-                portfolioId={document.id}
-                requestedViewId={
-                  consumedViewRequest === navigationRequest?.nonce
-                    ? ""
-                    : navigationRequest?.portfolioViewId || ""
-                }
-                requestNonce={navigationRequest?.nonce || 0}
-                onRequestHandled={() =>
-                  setConsumedViewRequest(navigationRequest?.nonce || 0)
-                }
+            )}
+          <ResearchWorkspace
+            selected={
+              tab === "analytics"
+                ? `analytics:${analyticsArea}`
+                : tab === "research"
+                  ? "companies"
+                  : tab
+            }
+            onSelect={(value) => {
+              if (value.startsWith("analytics:"))
+                navigateAnalytics(value.slice(10));
+              else
+                changePortfolioTab(value === "companies" ? "research" : value);
+            }}
+          >
+            <div hidden={tab !== "analytics"}>
+              <PortfolioAnalytics
+                embedded
+                key={document.id}
+                rows={rows}
+                onDisclosure={openPortfolioDisclosures}
+                analyticsArea={analyticsArea}
+                onAreaChange={navigateAnalytics}
+                settings={document.allocation}
+                companies={companies}
+                capturedAt={captured?.generated_at || null}
+                onInspectCompany={setFocusedRowId}
+                onReviewRows={() => changePortfolioTab("allocation")}
+                onRefresh={() => run(false)}
+                refreshing={busy}
               />
-              <div className={s.tableToolbar}>
-                <label className={s.search}>
-                  Search companies
-                  <span>
-                    <Search size={17} />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Ticker, company or CIK"
-                    />
-                  </span>
-                </label>
-                <label>
-                  Coverage
-                  <select
-                    value={filter}
-                    onChange={(event) => setFilter(event.target.value)}
-                  >
-                    <option value="all">All rows</option>
-                    <option value="ready">Ready</option>
-                    <option value="partial">Partial evidence</option>
-                    <option value="failed">Retrieval failed</option>
-                    <option value="needs-review">
-                      Needs review / not retrieved
-                    </option>
-                    <option value="unsupported">Unsupported</option>
-                    <option value="excluded">Excluded</option>
-                  </select>
-                </label>
-                <label>
-                  SEC industry
-                  <select
-                    value={industryFilter}
-                    onChange={(event) => setIndustryFilter(event.target.value)}
-                  >
-                    <option value="">All SEC industries</option>
-                    {[
-                      ...new Set<string>(
-                        companies.map(
-                          (company: any) =>
-                            company.sicDescription ||
-                            company.industry ||
-                            "Unclassified",
-                        ),
-                      ),
-                    ]
-                      .sort()
-                      .map((industry) => (
-                        <option key={industry}>{industry}</option>
-                      ))}
-                  </select>
-                </label>
-                <label>
-                  Sort by
-                  <select
-                    value={effectiveSort}
-                    onChange={(event) => setSort(event.target.value)}
-                  >
-                    <option value="name">Company name</option>
-                    {summary.mode !== "universe" && (
-                      <option value="weight">Modeled weight</option>
-                    )}
-                    {availableMetrics.map(({ key, label }) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  className={s.secondary}
-                  onClick={() =>
-                    setDirection(direction === "asc" ? "desc" : "asc")
+            </div>
+            {tab === "research" && (
+              <>
+                <PortfolioViews
+                  value={viewSettings}
+                  onChange={applyView}
+                  portfolioId={document.id}
+                  requestedViewId={
+                    consumedViewRequest === navigationRequest?.nonce
+                      ? ""
+                      : navigationRequest?.portfolioViewId || ""
                   }
-                >
-                  {direction === "asc" ? "Ascending ↑" : "Descending ↓"}
-                </button>
-              </div>
-              <details className={s.settings}>
-                <summary>
-                  Choose financial columns · {availableColumns.length} visible
-                </summary>
-                <div className={s.columnChoices}>
-                  {availableMetrics.map(({ key, label }) => (
-                    <label key={key}>
+                  requestNonce={navigationRequest?.nonce || 0}
+                  onRequestHandled={() =>
+                    setConsumedViewRequest(navigationRequest?.nonce || 0)
+                  }
+                />
+                <div className={s.tableToolbar}>
+                  <label className={s.search}>
+                    Search companies
+                    <span>
+                      <Search size={17} />
                       <input
-                        type="checkbox"
-                        checked={columns.includes(key)}
-                        onChange={() =>
-                          setColumns((current) =>
-                            current.includes(key)
-                              ? current.filter((column) => column !== key)
-                              : [...current, key],
-                          )
-                        }
-                      />{" "}
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </details>
-              <div className={s.selectionBar}>
-                <span>
-                  {visibleRows.length} rows shown · {selected.length} selected
-                </span>
-                <button
-                  onClick={() =>
-                    setSelected(visibleRows.map((row: any) => row.id))
-                  }
-                >
-                  Select shown
-                </button>
-                <button onClick={() => setSelected([])}>Clear selection</button>
-                {comparisonTickers.length >= 2 &&
-                comparisonTickers.length <= MAX_COMPARE_COMPANIES ? (
-                  <Link
-                    href={`/compare/${comparisonTickers.join(",")}`}
-                    prefetch={false}
-                  >
-                    Compare {comparisonTickers.length} tickers{" "}
-                    <ArrowUpRight size={14} />
-                  </Link>
-                ) : (
-                  <span>
-                    Choose 2–{MAX_COMPARE_COMPANIES} supported company tickers
-                    for Compare.
-                  </span>
-                )}
-                {companies.some(
-                  (company: any) =>
-                    company.status === "failed" ||
-                    ["failed", "not_checked", "pending", "stale"].includes(
-                      company.refreshStatus,
-                    ),
-                ) && (
-                  <button disabled={busy} onClick={() => run(true)}>
-                    Retry failed / unchecked companies
-                  </button>
-                )}
-              </div>
-              <div
-                className={s.tableWrap}
-                tabIndex={0}
-                role="region"
-                aria-label="Portfolio company research table"
-              >
-                <table>
-                  <thead>
-                    <tr>
-                      <th scope="col">Select</th>
-                      <th scope="col">Company / security</th>
-                      <th scope="col">Status & reporting period</th>
-                      {summary.mode !== "universe" && (
-                        <th scope="col">Modeled weight</th>
-                      )}
-                      <th scope="col">Latest annual / interim filing</th>
-                      {availableColumns.map((key) => (
-                        <th scope="col" key={key}>
-                          {METRICS.find(([id]) => id === key)?.[1] || key}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleRows.map((row: any) => {
-                      const company = companiesByCik[row.resolution?.cik];
-                      const symbol = companyLink(row, company);
-                      const fund =
-                        company?.kind === "fund" ||
-                        row.resolution?.kind === "fund";
-                      const annual =
-                        company?.latestAnnualFiling ||
-                        company?.filings?.find((filing: any) =>
-                          /^(10-K|20-F|40-F)/.test(filing.form),
-                        );
-                      const interim =
-                        company?.latestInterimFiling ||
-                        company?.filings?.find((filing: any) =>
-                          /^(10-Q|6-K)/.test(filing.form),
-                        );
-                      return (
-                        <tr
-                          key={row.id}
-                          className={row.excluded ? s.excluded : undefined}
-                        >
-                          <td>
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${row.resolution?.name || row.input.ticker || row.id}`}
-                              checked={selected.includes(row.id)}
-                              onChange={() =>
-                                setSelected((current) =>
-                                  current.includes(row.id)
-                                    ? current.filter((id) => id !== row.id)
-                                    : [...current, row.id],
-                                )
-                              }
-                            />
-                          </td>
-                          <th scope="row">
-                            <strong>
-                              {row.resolution?.ticker ||
-                                row.input.ticker ||
-                                "CIK-only holding"}
-                            </strong>
-                            <button
-                              className={s.focusButton}
-                              onClick={() => setFocusedRowId(row.id)}
-                            >
-                              Open company focus
-                            </button>
-                            <span>
-                              {company?.name ||
-                                row.resolution?.name ||
-                                row.input.company_name ||
-                                "Unidentified"}
-                            </span>
-                            <small>
-                              CIK {row.resolution?.cik || "unresolved"} ·{" "}
-                              {company?.kind ||
-                                row.resolution?.kind ||
-                                "unknown"}
-                            </small>
-                            {company && (
-                              <small>
-                                {company.sic ? `SEC SIC ${company.sic}: ` : ""}
-                                {company.sicDescription || company.industry}
-                              </small>
-                            )}
-                            <div className={s.drill}>
-                              {["resolved", "unsupported"].includes(
-                                row.resolution?.status,
-                              ) &&
-                                (fund ? (
-                                  <Link
-                                    href={
-                                      company?.fundUrl ||
-                                      (symbol
-                                        ? `/fund?tickers=${encodeURIComponent(symbol)}`
-                                        : "/fund")
-                                    }
-                                    prefetch={false}
-                                  >
-                                    Fund research
-                                  </Link>
-                                ) : (
-                                  <>
-                                    {symbol && (
-                                      <>
-                                        <Link
-                                          href={`/analysis/${encodeURIComponent(symbol)}`}
-                                          prefetch={false}
-                                        >
-                                          Analysis
-                                        </Link>
-                                        <Link
-                                          href={`/risk?ticker=${encodeURIComponent(symbol)}`}
-                                          prefetch={false}
-                                        >
-                                          Risk
-                                        </Link>
-                                      </>
-                                    )}
-                                    <Link
-                                      href={`/disclosures?tickers=${encodeURIComponent(symbol || row.resolution.cik)}&mode=companies`}
-                                      prefetch={false}
-                                    >
-                                      Disclosures
-                                    </Link>
-                                    {!symbol && (
-                                      <small>
-                                        Confirm a ticker in Edit rows to open
-                                        Analysis and Risk.
-                                      </small>
-                                    )}
-                                  </>
-                                ))}
-                            </div>
-                          </th>
-                          <td>
-                            <span className={s.badge}>
-                              {statusLabel(row, company)}
-                            </span>
-                            <span>
-                              {company?.period
-                                ? `${company.period.kind} · ${company.period.start || "instant"} → ${company.period.end}`
-                                : "Reporting period unavailable"}
-                            </span>
-                            {company && (
-                              <small>
-                                {company.cache?.status || "fresh"} · retrieved{" "}
-                                {date(company.retrievedAt)}
-                              </small>
-                            )}
-                            {company?.refreshStatus &&
-                              company.refreshStatus !== "checked" && (
-                                <small>
-                                  Latest refresh:{" "}
-                                  {company.refreshStatus.replaceAll("_", " ")}.
-                                  Earlier evidence keeps its original retrieval
-                                  date.
-                                </small>
-                              )}
-                            {company?.warnings?.length > 0 && (
-                              <details>
-                                <summary>Coverage details</summary>
-                                {company.warnings.map((text: string) => (
-                                  <p key={text}>{text}</p>
-                                ))}
-                              </details>
-                            )}
-                          </td>
-                          {summary.mode !== "universe" && (
-                            <td>
-                              {pct(
-                                summary.allocations.find(
-                                  (entry: any) => entry.rowId === row.id,
-                                )?.weightPct,
-                              )}
-                            </td>
-                          )}
-                          <td>
-                            {[
-                              ["Annual", annual],
-                              ["Interim", interim],
-                            ].map(([label, filing]: any[]) => (
-                              <span key={label}>
-                                {label}:{" "}
-                                {filing && validSecUrl(filing.documentUrl) ? (
-                                  <a
-                                    href={filing.documentUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    {filing.filingDate} · {filing.form}
-                                  </a>
-                                ) : (
-                                  "Unavailable"
-                                )}
-                              </span>
-                            ))}
-                          </td>
-                          {availableColumns.map((key) => {
-                            const point = company?.metrics?.[key];
-                            if (
-                              portfolioMetricState(
-                                company,
-                                PORTFOLIO_METRIC_CATALOG.find(
-                                  (d) => d.key === key,
-                                ),
-                              ) !== "available"
-                            )
-                              return (
-                                <td key={key}>
-                                  <span aria-label="No comparable value">
-                                    —
-                                  </span>
-                                </td>
-                              );
-                            return (
-                              <td key={key}>
-                                <button
-                                  className={s.metric}
-                                  disabled={!company}
-                                  onClick={() =>
-                                    setEvidence({ company, key, point })
-                                  }
-                                >
-                                  {present(point)}
-                                </button>
-                                {point && (
-                                  <small>
-                                    {point.classification === "calculated"
-                                      ? "Calculated"
-                                      : point.classification ===
-                                          "not_applicable"
-                                        ? "Not applicable"
-                                        : point.value === null
-                                          ? "Missing evidence"
-                                          : "Reported"}
-                                  </small>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {!visibleRows.length && (
-                  <p className={s.empty}>No rows match these filters.</p>
-                )}
-              </div>
-              <p className={s.caption}>
-                Values describe whole companies, not the portion economically
-                owned by this portfolio. Financial figures use supported USD
-                contexts. Click a value to inspect its period, formula, inputs,
-                and SEC sources. Share classes retain separate positions and
-                reuse one company retrieval.
-              </p>
-              {evidence && (
-                <section
-                  ref={evidenceRef}
-                  tabIndex={-1}
-                  className={s.evidence}
-                  aria-labelledby="portfolio-evidence-title"
-                >
-                  <div className={s.sectionHeading}>
-                    <h4 id="portfolio-evidence-title">
-                      {evidence.company.name} ·{" "}
-                      {METRICS.find(([key]) => key === evidence.key)?.[1] ||
-                        evidence.key}
-                    </h4>
-                    <button
-                      className={s.secondary}
-                      onClick={() =>
-                        draftBrief({
-                          title: `${evidence.company.name} · ${evidence.point?.label || evidence.key}`,
-                          question: `What does the reported ${evidence.point?.label || evidence.key} evidence tell us, and what remains uncertain?`,
-                          ticker: evidence.company.ticker || "",
-                          cik: evidence.company.cik,
-                          sources: (evidence.point?.sources || [])
-                            .filter((source: any) =>
-                              validSecUrl(source.documentUrl || source.url),
-                            )
-                            .map((source: any) => ({
-                              url: source.documentUrl || source.url,
-                              label: `${source.form || "SEC filing"} · ${source.filed || source.end || "source evidence"}`,
-                              annotation: "context",
-                              origin: "Portfolio metric evidence",
-                              capturedAt:
-                                source.observedAt ||
-                                evidence.company.retrievedAt,
-                            })),
-                        })
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Ticker, company or CIK"
+                      />
+                    </span>
+                  </label>
+                  <label>
+                    Coverage
+                    <select
+                      value={filter}
+                      onChange={(event) => setFilter(event.target.value)}
+                    >
+                      <option value="all">All rows</option>
+                      <option value="ready">Ready</option>
+                      <option value="partial">Partial evidence</option>
+                      <option value="failed">Retrieval failed</option>
+                      <option value="needs-review">
+                        Needs review / not retrieved
+                      </option>
+                      <option value="unsupported">Unsupported</option>
+                      <option value="excluded">Excluded</option>
+                    </select>
+                  </label>
+                  <label>
+                    SEC industry
+                    <select
+                      value={industryFilter}
+                      onChange={(event) =>
+                        setIndustryFilter(event.target.value)
                       }
                     >
-                      Draft a research brief
-                    </button>
-                    <button
-                      className={s.secondary}
-                      onClick={() => setEvidence(null)}
+                      <option value="">All SEC industries</option>
+                      {[
+                        ...new Set<string>(
+                          companies.map(
+                            (company: any) =>
+                              company.sicDescription ||
+                              company.industry ||
+                              "Unclassified",
+                          ),
+                        ),
+                      ]
+                        .sort()
+                        .map((industry) => (
+                          <option key={industry}>{industry}</option>
+                        ))}
+                    </select>
+                  </label>
+                  <label>
+                    Sort by
+                    <select
+                      value={effectiveSort}
+                      onChange={(event) => setSort(event.target.value)}
                     >
-                      Close evidence
-                    </button>
+                      <option value="name">Company name</option>
+                      {summary.mode !== "universe" && (
+                        <option value="weight">Modeled weight</option>
+                      )}
+                      {availableMetrics.map(({ key, label }) => (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className={s.secondary}
+                    onClick={() =>
+                      setDirection(direction === "asc" ? "desc" : "asc")
+                    }
+                  >
+                    {direction === "asc" ? "Ascending ↑" : "Descending ↓"}
+                  </button>
+                </div>
+                <details className={s.settings}>
+                  <summary>
+                    Choose financial columns · {availableColumns.length} visible
+                  </summary>
+                  <div className={s.columnChoices}>
+                    {availableMetrics.map(({ key, label }) => (
+                      <label key={key}>
+                        <input
+                          type="checkbox"
+                          checked={columns.includes(key)}
+                          onChange={() =>
+                            setColumns((current) =>
+                              current.includes(key)
+                                ? current.filter((column) => column !== key)
+                                : [...current, key],
+                            )
+                          }
+                        />{" "}
+                        {label}
+                      </label>
+                    ))}
                   </div>
-                  <p>
-                    <strong>{present(evidence.point)}</strong> ·{" "}
-                    {evidence.point?.classification || "Unavailable"} ·{" "}
-                    {evidence.point?.unit || "Unit unavailable"}
-                  </p>
-                  <p>
-                    Period: {evidence.point?.period?.start || "instant"} to{" "}
-                    {evidence.point?.period?.end || "unavailable"}.
-                  </p>
-                  {evidence.point?.formula && (
-                    <p>Formula: {evidence.point.formula}</p>
+                </details>
+                <div className={s.selectionBar}>
+                  <span>
+                    {visibleRows.length} rows shown · {selected.length} selected
+                  </span>
+                  <button
+                    onClick={() =>
+                      setSelected(visibleRows.map((row: any) => row.id))
+                    }
+                  >
+                    Select shown
+                  </button>
+                  <button onClick={() => setSelected([])}>
+                    Clear selection
+                  </button>
+                  {comparisonTickers.length >= 2 &&
+                  comparisonTickers.length <= MAX_COMPARE_COMPANIES ? (
+                    <Link
+                      href={`/compare/${comparisonTickers.join(",")}`}
+                      prefetch={false}
+                    >
+                      Compare {comparisonTickers.length} tickers{" "}
+                      <ArrowUpRight size={14} />
+                    </Link>
+                  ) : (
+                    <span>
+                      Choose 2–{MAX_COMPARE_COMPANIES} supported company tickers
+                      for Compare.
+                    </span>
                   )}
-                  {evidence.point?.reason && <p>{evidence.point.reason}</p>}
-                  {evidence.point?.note && <p>{evidence.point.note}</p>}
-                  <ul>
-                    {(evidence.point?.sources || []).map(
-                      (source: any, index: number) => (
-                        <li key={index}>
-                          <strong>
-                            {source.tag || source.label || "Reported input"}
-                          </strong>
-                          :{" "}
-                          {number(source.value)
-                            ? source.value.toLocaleString("en-US", {
-                                maximumFractionDigits: 5,
-                              })
+                  {companies.some(
+                    (company: any) =>
+                      company.status === "failed" ||
+                      ["failed", "not_checked", "pending", "stale"].includes(
+                        company.refreshStatus,
+                      ),
+                  ) && (
+                    <button disabled={busy} onClick={() => run(true)}>
+                      Retry failed / unchecked companies
+                    </button>
+                  )}
+                </div>
+                <div
+                  className={s.tableWrap}
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Portfolio company research table"
+                >
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">Select</th>
+                        <th scope="col">Company / security</th>
+                        <th scope="col">Status & reporting period</th>
+                        {summary.mode !== "universe" && (
+                          <th scope="col">Modeled weight</th>
+                        )}
+                        <th scope="col">Latest annual / interim filing</th>
+                        {availableColumns.map((key) => (
+                          <th scope="col" key={key}>
+                            {METRICS.find(([id]) => id === key)?.[1] || key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleRows.map((row: any) => {
+                        const company = companiesByCik[row.resolution?.cik];
+                        const symbol = companyLink(row, company);
+                        const fund =
+                          company?.kind === "fund" ||
+                          row.resolution?.kind === "fund";
+                        const annual =
+                          company?.latestAnnualFiling ||
+                          company?.filings?.find((filing: any) =>
+                            /^(10-K|20-F|40-F)/.test(filing.form),
+                          );
+                        const interim =
+                          company?.latestInterimFiling ||
+                          company?.filings?.find((filing: any) =>
+                            /^(10-Q|6-K)/.test(filing.form),
+                          );
+                        return (
+                          <tr
+                            key={row.id}
+                            className={row.excluded ? s.excluded : undefined}
+                          >
+                            <td>
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${row.resolution?.name || row.input.ticker || row.id}`}
+                                checked={selected.includes(row.id)}
+                                onChange={() =>
+                                  setSelected((current) =>
+                                    current.includes(row.id)
+                                      ? current.filter((id) => id !== row.id)
+                                      : [...current, row.id],
+                                  )
+                                }
+                              />
+                            </td>
+                            <th scope="row">
+                              <strong>
+                                {row.resolution?.ticker ||
+                                  row.input.ticker ||
+                                  "CIK-only holding"}
+                              </strong>
+                              <button
+                                className={s.focusButton}
+                                onClick={() => setFocusedRowId(row.id)}
+                              >
+                                Open company focus
+                              </button>
+                              <span>
+                                {company?.name ||
+                                  row.resolution?.name ||
+                                  row.input.company_name ||
+                                  "Unidentified"}
+                              </span>
+                              <small>
+                                CIK {row.resolution?.cik || "unresolved"} ·{" "}
+                                {company?.kind ||
+                                  row.resolution?.kind ||
+                                  "unknown"}
+                              </small>
+                              {company && (
+                                <small>
+                                  {company.sic
+                                    ? `SEC SIC ${company.sic}: `
+                                    : ""}
+                                  {company.sicDescription || company.industry}
+                                </small>
+                              )}
+                              <div className={s.drill}>
+                                {["resolved", "unsupported"].includes(
+                                  row.resolution?.status,
+                                ) &&
+                                  (fund ? (
+                                    <Link
+                                      href={
+                                        company?.fundUrl ||
+                                        (symbol
+                                          ? `/fund?tickers=${encodeURIComponent(symbol)}`
+                                          : "/fund")
+                                      }
+                                      prefetch={false}
+                                    >
+                                      Fund research
+                                    </Link>
+                                  ) : (
+                                    <>
+                                      {symbol && (
+                                        <>
+                                          <Link
+                                            href={`/analysis/${encodeURIComponent(symbol)}`}
+                                            prefetch={false}
+                                          >
+                                            Analysis
+                                          </Link>
+                                          <Link
+                                            href={`/risk?ticker=${encodeURIComponent(symbol)}`}
+                                            prefetch={false}
+                                          >
+                                            Risk
+                                          </Link>
+                                        </>
+                                      )}
+                                      <Link
+                                        href={`/disclosures?tickers=${encodeURIComponent(symbol || row.resolution.cik)}&mode=companies`}
+                                        prefetch={false}
+                                      >
+                                        Disclosures
+                                      </Link>
+                                      {!symbol && (
+                                        <small>
+                                          Confirm a ticker in Edit rows to open
+                                          Analysis and Risk.
+                                        </small>
+                                      )}
+                                    </>
+                                  ))}
+                              </div>
+                            </th>
+                            <td>
+                              <span className={s.badge}>
+                                {statusLabel(row, company)}
+                              </span>
+                              <span>
+                                {company?.period
+                                  ? `${company.period.kind} · ${company.period.start || "instant"} → ${company.period.end}`
+                                  : "Reporting period unavailable"}
+                              </span>
+                              {company && (
+                                <small>
+                                  {company.cache?.status || "fresh"} · retrieved{" "}
+                                  {date(company.retrievedAt)}
+                                </small>
+                              )}
+                              {company?.refreshStatus &&
+                                company.refreshStatus !== "checked" && (
+                                  <small>
+                                    Latest refresh:{" "}
+                                    {company.refreshStatus.replaceAll("_", " ")}
+                                    . Earlier evidence keeps its original
+                                    retrieval date.
+                                  </small>
+                                )}
+                              {company?.warnings?.length > 0 && (
+                                <details>
+                                  <summary>Coverage details</summary>
+                                  {company.warnings.map((text: string) => (
+                                    <p key={text}>{text}</p>
+                                  ))}
+                                </details>
+                              )}
+                            </td>
+                            {summary.mode !== "universe" && (
+                              <td>
+                                {pct(
+                                  summary.allocations.find(
+                                    (entry: any) => entry.rowId === row.id,
+                                  )?.weightPct,
+                                )}
+                              </td>
+                            )}
+                            <td>
+                              {[
+                                ["Annual", annual],
+                                ["Interim", interim],
+                              ].map(([label, filing]: any[]) => (
+                                <span key={label}>
+                                  {label}:{" "}
+                                  {filing && validSecUrl(filing.documentUrl) ? (
+                                    <a
+                                      href={filing.documentUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      {filing.filingDate} · {filing.form}
+                                    </a>
+                                  ) : (
+                                    "Unavailable"
+                                  )}
+                                </span>
+                              ))}
+                            </td>
+                            {availableColumns.map((key) => {
+                              const point = company?.metrics?.[key];
+                              if (
+                                portfolioMetricState(
+                                  company,
+                                  PORTFOLIO_METRIC_CATALOG.find(
+                                    (d) => d.key === key,
+                                  ),
+                                ) !== "available"
+                              )
+                                return (
+                                  <td key={key}>
+                                    <span aria-label="No comparable value">
+                                      —
+                                    </span>
+                                  </td>
+                                );
+                              return (
+                                <td key={key}>
+                                  <button
+                                    className={s.metric}
+                                    disabled={!company}
+                                    onClick={() =>
+                                      setEvidence({ company, key, point })
+                                    }
+                                  >
+                                    {present(point)}
+                                  </button>
+                                  {point && (
+                                    <small>
+                                      {point.classification === "calculated"
+                                        ? "Calculated"
+                                        : point.classification ===
+                                            "not_applicable"
+                                          ? "Not applicable"
+                                          : point.value === null
+                                            ? "Missing evidence"
+                                            : "Reported"}
+                                    </small>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {!visibleRows.length && (
+                    <p className={s.empty}>No rows match these filters.</p>
+                  )}
+                </div>
+                <p className={s.caption}>
+                  Values describe whole companies, not the portion economically
+                  owned by this portfolio. Financial figures use supported USD
+                  contexts. Click a value to inspect its period, formula,
+                  inputs, and SEC sources. Share classes retain separate
+                  positions and reuse one company retrieval.
+                </p>
+                {evidence && (
+                  <section
+                    ref={evidenceRef}
+                    tabIndex={-1}
+                    className={s.evidence}
+                    aria-labelledby="portfolio-evidence-title"
+                  >
+                    <div className={s.sectionHeading}>
+                      <h4 id="portfolio-evidence-title">
+                        {evidence.company.name} ·{" "}
+                        {METRICS.find(([key]) => key === evidence.key)?.[1] ||
+                          evidence.key}
+                      </h4>
+                      <button
+                        className={s.secondary}
+                        onClick={() =>
+                          draftBrief({
+                            title: `${evidence.company.name} · ${evidence.point?.label || evidence.key}`,
+                            question: `What does the reported ${evidence.point?.label || evidence.key} evidence tell us, and what remains uncertain?`,
+                            ticker: evidence.company.ticker || "",
+                            cik: evidence.company.cik,
+                            sources: (evidence.point?.sources || [])
+                              .filter((source: any) =>
+                                validSecUrl(source.documentUrl || source.url),
+                              )
+                              .map((source: any) => ({
+                                url: source.documentUrl || source.url,
+                                label: `${source.form || "SEC filing"} · ${source.filed || source.end || "source evidence"}`,
+                                annotation: "context",
+                                origin: "Portfolio metric evidence",
+                                capturedAt:
+                                  source.observedAt ||
+                                  evidence.company.retrievedAt,
+                              })),
+                          })
+                        }
+                      >
+                        Draft a research brief
+                      </button>
+                      <button
+                        className={s.secondary}
+                        onClick={() => setEvidence(null)}
+                      >
+                        Close evidence
+                      </button>
+                    </div>
+                    <p>
+                      <strong>{present(evidence.point)}</strong> ·{" "}
+                      {evidence.point?.classification || "Unavailable"} ·{" "}
+                      {evidence.point?.unit || "Unit unavailable"}
+                    </p>
+                    <p>
+                      Period: {evidence.point?.period?.start || "instant"} to{" "}
+                      {evidence.point?.period?.end || "unavailable"}.
+                    </p>
+                    {evidence.point?.formula && (
+                      <p>Formula: {evidence.point.formula}</p>
+                    )}
+                    {evidence.point?.reason && <p>{evidence.point.reason}</p>}
+                    {evidence.point?.note && <p>{evidence.point.note}</p>}
+                    <ul>
+                      {(evidence.point?.sources || []).map(
+                        (source: any, index: number) => (
+                          <li key={index}>
+                            <strong>
+                              {source.tag || source.label || "Reported input"}
+                            </strong>
+                            :{" "}
+                            {number(source.value)
+                              ? source.value.toLocaleString("en-US", {
+                                  maximumFractionDigits: 5,
+                                })
+                              : "Unavailable"}{" "}
+                            {source.unit}. {source.start || "instant"} →{" "}
+                            {source.end}; filed {source.filed}; accession{" "}
+                            {source.accession}.{" "}
+                            {validSecUrl(source.documentUrl) && (
+                              <a
+                                href={source.documentUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                SEC source ↗
+                              </a>
+                            )}
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                    {(evidence.point?.calculations || []).map(
+                      (calculation: any, index: number) => (
+                        <p key={index}>
+                          {calculation.formula} · {calculation.start} →{" "}
+                          {calculation.end} ·{" "}
+                          {number(calculation.value)
+                            ? calculation.value
                             : "Unavailable"}{" "}
-                          {source.unit}. {source.start || "instant"} →{" "}
-                          {source.end}; filed {source.filed}; accession{" "}
-                          {source.accession}.{" "}
-                          {validSecUrl(source.documentUrl) && (
-                            <a
-                              href={source.documentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              SEC source ↗
-                            </a>
-                          )}
-                        </li>
+                          {calculation.unit}
+                        </p>
                       ),
                     )}
-                  </ul>
-                  {(evidence.point?.calculations || []).map(
-                    (calculation: any, index: number) => (
-                      <p key={index}>
-                        {calculation.formula} · {calculation.start} →{" "}
-                        {calculation.end} ·{" "}
-                        {number(calculation.value)
-                          ? calculation.value
-                          : "Unavailable"}{" "}
-                        {calculation.unit}
+                    {!evidence.point?.sources?.length && (
+                      <p>
+                        No supporting compatible fact is available for this
+                        metric.
                       </p>
-                    ),
-                  )}
-                  {!evidence.point?.sources?.length && (
-                    <p>
-                      No supporting compatible fact is available for this
-                      metric.
-                    </p>
-                  )}
-                </section>
-              )}
-              <ReviewPriorities
-                priorities={priorities}
-                onReview={() => openEditor("edit")}
-              />
-            </>
-          )}
-          {tab === "allocation" && (
-            <AllocationView summary={summary} columns={availableColumns} />
-          )}
-          {tab === "changes" && (
-            <PortfolioChanges
-              baseline={document.comparisonBaseline || null}
-              snapshot={captured}
-              rows={rows}
-              onInspectCompany={setFocusedRowId}
-              onCreateBrief={draftBrief}
-              onRefresh={() => run(false)}
-              refreshing={busy}
-            />
-          )}
-          <PortfolioResearchDesk
-            key={document.id}
-            rows={rows}
-            companies={companies}
-            activeTab={tab}
-            request={
-              disclosureRequest?.portfolioId === document.id
-                ? disclosureRequest
-                : null
-            }
-            initialEvidence={sourceEvidence[document.id]}
-            onEvidence={captureSourceEvidence}
-            onSaveFiling={saveFiling}
-          />
-          {tab === "exports" && (
-            <section className={s.panel}>
-              <h3>A portable research snapshot</h3>
-              <p>
-                Download verified facts, identifiers, reporting periods,
-                calculation inputs, SEC sources, allocation assumptions,
-                exclusions, and coverage. These files do not update themselves.
-              </p>
-              <div className={s.exportOptions}>
-                <label>
-                  Rows to include
-                  <select
-                    value={exportScope}
-                    onChange={(event) => setExportScope(event.target.value)}
-                  >
-                    <option value="all">All portfolio rows</option>
-                    <option value="visible">
-                      Rows matching the company-table filters (
-                      {visibleRows.length})
-                    </option>
-                    <option value="selected">
-                      Selected rows ({selected.length})
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={includeAllocations}
-                    onChange={(event) =>
-                      setIncludeAllocations(event.target.checked)
-                    }
-                  />{" "}
-                  Include supplied allocations, values and quantities
-                  (sensitive)
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={includeNotes}
-                    onChange={(event) => setIncludeNotes(event.target.checked)}
-                  />{" "}
-                  Include private notes (off by default)
-                </label>
-              </div>
-              <p className={s.notice}>
-                {includeAllocations
-                  ? "This package includes your supplied allocation information. Share it only with a recipient or AI service you trust."
-                  : "Allocation details and quantities are excluded. The package is presented as company research."}{" "}
-                {includeNotes
-                  ? "Your private notes will also be included."
-                  : "Private notes remain excluded."}
-              </p>
-              <div className={s.exportButtons}>
-                {[
-                  ["html", "Download complete portfolio report"],
-                  ["csv", "Company table CSV"],
-                  ["analytics", "Analytics summary CSV"],
-                  ["xlsx", "Research workbook XLSX"],
-                  ["json", "Structured JSON"],
-                  ["md", "Research brief Markdown"],
-                  ["copy", "Copy research context"],
-                ].map(([format, label]) => (
-                  <button
-                    key={format}
-                    className={format === "copy" ? s.primary : s.secondary}
-                    disabled={
-                      selectedIds?.length === 0 ||
-                      (format === "analytics" && exportScope !== "all")
-                    }
-                    onClick={() => exportResearch(format)}
-                  >
-                    {format === "copy" ? (
-                      <Copy size={16} />
-                    ) : (
-                      <ArrowDownToLine size={16} />
                     )}
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p>
-                The complete report includes every captured metric, connected
-                findings, filings, disclosure searches and fund ownership
-                results from this session. Open the HTML file to print or save
-                as PDF. JSON includes the same research for AI assistants. CSV
-                follows your chosen financial columns and includes source
-                context. XLSX separates holdings, company research, portfolio
-                summary, analytics, metric observations, sources, and coverage.
-                Full-portfolio exports include concentration and financial
-                distributions. Select all portfolio rows for the analytics CSV.
-                Selected subsets retain their original portfolio denominator.
-              </p>
-              {copyFallback && (
-                <label className={s.copyArea}>
-                  Research context
-                  <textarea
-                    value={copyFallback}
-                    readOnly
-                    rows={12}
-                    onFocus={(event) => event.target.select()}
-                  />
-                </label>
-              )}
-              <Link href="/workspace/portfolio-guide">
-                Read the versioned input format and batch API documentation ↗
-              </Link>
-            </section>
-          )}
+                  </section>
+                )}
+                <ReviewPriorities
+                  priorities={priorities}
+                  onReview={() => openEditor("edit")}
+                />
+              </>
+            )}
+            {tab === "allocation" && (
+              <>
+                <section className={s.settings}>
+                  <h3>Allocation settings</h3>
+                  <div className={s.settingsBody}>
+                    <label>
+                      Analysis mode and weighting basis
+                      <select
+                        value={document.allocation.basis}
+                        disabled={busy}
+                        onChange={(event) =>
+                          persist(
+                            {
+                              mode: "update",
+                              id: document.id,
+                              patch: {
+                                allocation: {
+                                  basis: event.target.value,
+                                  normalize: false,
+                                },
+                              },
+                            },
+                            "Allocation basis updated. Original inputs are preserved.",
+                          )
+                        }
+                      >
+                        <option value="none">
+                          Research universe — company counts only
+                        </option>
+                        <option value="weights">
+                          Weighted portfolio — supplied weight_pct
+                        </option>
+                        <option value="market_value">
+                          Weighted portfolio — comparable market_value
+                        </option>
+                        <option value="equal">
+                          Model as equal-weighted — explicit assumption
+                        </option>
+                      </select>
+                    </label>
+                    {document.allocation.basis === "weights" && (
+                      <div>
+                        <p>
+                          Original supplied weights:{" "}
+                          <strong>{pct(summary.originalWeightTotal)}</strong>.
+                          Normalization changes the model, never the imported
+                          weights.
+                        </p>
+                        <button
+                          className={s.secondary}
+                          disabled={
+                            busy ||
+                            !number(summary.originalWeightTotal) ||
+                            summary.originalWeightTotal <= 0
+                          }
+                          onClick={() =>
+                            persist({
+                              mode: "update",
+                              id: document.id,
+                              patch: {
+                                allocation: {
+                                  ...document.allocation,
+                                  normalize: !document.allocation.normalize,
+                                },
+                              },
+                            })
+                          }
+                        >
+                          {document.allocation.normalize
+                            ? "Use original weights"
+                            : "Explicitly normalize to 100%"}
+                        </button>
+                      </div>
+                    )}
+                    <p>
+                      Position values require one stated currency and compatible
+                      dates. Shares remain metadata; no price or weight is
+                      inferred. Negative allocations are unsupported. An
+                      unspecified balance is not automatically cash.
+                    </p>
+                  </div>
+                </section>
+                {(summary.warnings.length > 0 ||
+                  summary.issues.length > 0 ||
+                  summary.assumptions?.length > 0) && (
+                  <div className={s.notice}>
+                    {(summary.assumptions || []).map((text: string) => (
+                      <p key={text}>
+                        <strong>{text}</strong>
+                      </p>
+                    ))}
+                    {summary.warnings.map((text: string) => (
+                      <p key={text}>{text}</p>
+                    ))}
+                    {summary.issues.length > 0 && (
+                      <p>
+                        {summary.issues.length} row validation issues affect
+                        allocation calculations.{" "}
+                        <button onClick={() => openEditor("edit")}>
+                          Review and correct rows
+                        </button>
+                        .
+                      </p>
+                    )}
+                  </div>
+                )}
+                <button
+                  className={s.secondary}
+                  onClick={() => openEditor("edit")}
+                >
+                  Edit holdings & supplied weights
+                </button>
+                <AllocationView summary={summary} columns={availableColumns} />
+              </>
+            )}
+            {tab === "changes" && (
+              <PortfolioChanges
+                baseline={document.comparisonBaseline || null}
+                snapshot={captured}
+                rows={rows}
+                onInspectCompany={setFocusedRowId}
+                onCreateBrief={draftBrief}
+                onRefresh={() => run(false)}
+                refreshing={busy}
+              />
+            )}
+            <PortfolioResearchDesk
+              key={document.id}
+              rows={rows}
+              companies={companies}
+              activeTab={tab}
+              request={
+                disclosureRequest?.portfolioId === document.id
+                  ? disclosureRequest
+                  : null
+              }
+              initialEvidence={sourceEvidence[document.id]}
+              onEvidence={captureSourceEvidence}
+              onSaveFiling={saveFiling}
+            />
+            {tab === "exports" && (
+              <section className={s.panel}>
+                <h3>A portable research snapshot</h3>
+                <p>
+                  Download verified facts, identifiers, reporting periods,
+                  calculation inputs, SEC sources, allocation assumptions,
+                  exclusions, and coverage. These files do not update
+                  themselves.
+                </p>
+                <div className={s.exportOptions}>
+                  <label>
+                    Rows to include
+                    <select
+                      value={exportScope}
+                      onChange={(event) => setExportScope(event.target.value)}
+                    >
+                      <option value="all">All portfolio rows</option>
+                      <option value="visible">
+                        Rows matching the company-table filters (
+                        {visibleRows.length})
+                      </option>
+                      <option value="selected">
+                        Selected rows ({selected.length})
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={includeAllocations}
+                      onChange={(event) =>
+                        setIncludeAllocations(event.target.checked)
+                      }
+                    />{" "}
+                    Include supplied allocations, values and quantities
+                    (sensitive)
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={includeNotes}
+                      onChange={(event) =>
+                        setIncludeNotes(event.target.checked)
+                      }
+                    />{" "}
+                    Include private notes (off by default)
+                  </label>
+                </div>
+                <p className={s.notice}>
+                  {includeAllocations
+                    ? "This package includes your supplied allocation information. Share it only with a recipient or AI service you trust."
+                    : "Allocation details and quantities are excluded. The package is presented as company research."}{" "}
+                  {includeNotes
+                    ? "Your private notes will also be included."
+                    : "Private notes remain excluded."}
+                </p>
+                <div className={s.exportButtons}>
+                  {[
+                    ["html", "Download complete portfolio report"],
+                    ["csv", "Company table CSV"],
+                    ["analytics", "Analytics summary CSV"],
+                    ["xlsx", "Research workbook XLSX"],
+                    ["json", "Structured JSON"],
+                    ["md", "Research brief Markdown"],
+                    ["copy", "Copy research context"],
+                  ].map(([format, label]) => (
+                    <button
+                      key={format}
+                      className={format === "copy" ? s.primary : s.secondary}
+                      disabled={
+                        selectedIds?.length === 0 ||
+                        (format === "analytics" && exportScope !== "all")
+                      }
+                      onClick={() => exportResearch(format)}
+                    >
+                      {format === "copy" ? (
+                        <Copy size={16} />
+                      ) : (
+                        <ArrowDownToLine size={16} />
+                      )}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p>
+                  The complete report includes every captured metric, connected
+                  findings, filings, disclosure searches and fund ownership
+                  results from this session. Open the HTML file to print or save
+                  as PDF. JSON includes the same research for AI assistants. CSV
+                  follows your chosen financial columns and includes source
+                  context. XLSX separates holdings, company research, portfolio
+                  summary, analytics, metric observations, sources, and
+                  coverage. Full-portfolio exports include concentration and
+                  financial distributions. Select all portfolio rows for the
+                  analytics CSV. Selected subsets retain their original
+                  portfolio denominator.
+                </p>
+                {copyFallback && (
+                  <label className={s.copyArea}>
+                    Research context
+                    <textarea
+                      value={copyFallback}
+                      readOnly
+                      rows={12}
+                      onFocus={(event) => event.target.select()}
+                    />
+                  </label>
+                )}
+                <Link href="/workspace/portfolio-guide">
+                  Read the versioned input format and batch API documentation ↗
+                </Link>
+              </section>
+            )}
+          </ResearchWorkspace>
         </>
       )}
       {focusedRow && !editor && (
