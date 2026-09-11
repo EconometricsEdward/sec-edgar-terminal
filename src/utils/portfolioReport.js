@@ -206,12 +206,17 @@ export function portfolioReportHtml(input, extras = {}) {
         e(m.reportingPeriods),
       ]),
   )}</section>
-  <section id="companies"><h2>Company metrics and SEC evidence</h2><p>All captured Analysis measures are included below. Each value retains its formula or reported concept, unit, full period, and source. Open a company to inspect the detailed evidence. Print / save PDF expands every company.</p>${b.companies
+  <section id="companies"><h2>Company metrics and SEC evidence</h2><p>Available captured financial measures are included below. Each value retains its formula or reported concept, unit, full period, and source. Open a company to inspect the detailed evidence. Print / save PDF expands every company.</p>${b.companies
     .map(
       (c) =>
         `<details><summary>${e(c.ticker || c.cik)} · ${e(c.name)} · ${e(c.lens)} · ${e(c.status)}</summary><p>CIK ${e(c.cik)} · ${e(c.sicDescription)} · Retrieved ${e(c.retrievedAt || c.retrieved_at || "unknown")}</p>${Object.entries(
           c.metrics || {},
         )
+          .filter(
+            ([, p]) =>
+              Number.isFinite(p.value) &&
+              ["reported", "calculated"].includes(p.classification),
+          )
           .map(([key, p]) => {
             const def = portfolioMetricDefinitionFor(key) || {
               key,

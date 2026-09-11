@@ -5,6 +5,10 @@ import {
 } from "../../../utils/portfolioReport.js";
 
 import Link from "next/link";
+import {
+  portfolioAvailableMetrics,
+  portfolioMetricState,
+} from "../../../utils/portfolioDeepResearch.js";
 import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -508,30 +512,51 @@ export default function PortfolioResearch({
     : null;
 
   const included = activeRows(document);
+  const filteredRows = useMemo(
+    () =>
+      rows.filter((row: any) => {
+        const company = companiesByCik[row.resolution?.cik];
+        const state = statusLabel(row, company).toLowerCase();
+        const text =
+          `${row.input.ticker} ${row.input.company_name} ${row.resolution?.name} ${row.resolution?.cik} ${company?.industry || ""}`.toLowerCase();
+        return (
+          rowMatchesPortfolioView(row, company, preset) &&
+          (!query.trim() || text.includes(query.toLowerCase().trim())) &&
+          (filter === "all" ||
+            (filter === "needs-review"
+              ? !["ready", "partial"].includes(state)
+              : filter === "failed"
+                ? state === "failed" || state === "refresh failed"
+                : state === filter)) &&
+          (!industryFilter ||
+            (company?.sicDescription || company?.industry || "Unclassified") ===
+              industryFilter)
+        );
+      }),
+    [rows, companiesByCik, preset, query, filter, industryFilter],
+  );
+  const availableMetrics = useMemo(
+    () =>
+      portfolioAvailableMetrics([
+        ...new Set(
+          filteredRows.map((row: any) => companiesByCik[row.resolution?.cik]),
+        ),
+      ]),
+    [filteredRows, companiesByCik],
+  );
+  const availableColumns = columns.filter((key) =>
+    availableMetrics.some((d) => d.key === key),
+  );
+  const effectiveSort =
+    ["name", "weight"].includes(sort) ||
+    availableMetrics.some((d) => d.key === sort)
+      ? sort
+      : "name";
   const visibleRows = useMemo(() => {
-    const visible = rows.filter((row: any) => {
-      const company = companiesByCik[row.resolution?.cik];
-      const state = statusLabel(row, company).toLowerCase();
-      const text =
-        `${row.input.ticker} ${row.input.company_name} ${row.resolution?.name} ${row.resolution?.cik} ${company?.industry || ""}`.toLowerCase();
-      return (
-        rowMatchesPortfolioView(row, company, preset) &&
-        (!query.trim() || text.includes(query.toLowerCase().trim())) &&
-        (filter === "all" ||
-          (filter === "needs-review"
-            ? !["ready", "partial"].includes(state)
-            : filter === "failed"
-              ? state === "failed" || state === "refresh failed"
-              : state === filter)) &&
-        (!industryFilter ||
-          (company?.sicDescription || company?.industry || "Unclassified") ===
-            industryFilter)
-      );
-    });
-    return visible.sort((left: any, right: any) => {
+    return [...filteredRows].sort((left: any, right: any) => {
       const a = companiesByCik[left.resolution?.cik],
         b = companiesByCik[right.resolution?.cik];
-      if (sort === "name")
+      if (effectiveSort === "name")
         return (
           String(
             a?.name || left.resolution?.name || left.input.ticker,
@@ -540,30 +565,20 @@ export default function PortfolioResearch({
           ) * (direction === "asc" ? 1 : -1)
         );
       const av =
-        sort === "weight"
+        effectiveSort === "weight"
           ? summary.allocations.find((entry: any) => entry.rowId === left.id)
               ?.weightPct
-          : a?.metrics?.[sort]?.value;
+          : a?.metrics?.[effectiveSort]?.value;
       const bv =
-        sort === "weight"
+        effectiveSort === "weight"
           ? summary.allocations.find((entry: any) => entry.rowId === right.id)
               ?.weightPct
-          : b?.metrics?.[sort]?.value;
+          : b?.metrics?.[effectiveSort]?.value;
       if (!number(av)) return number(bv) ? 1 : 0;
       if (!number(bv)) return -1;
       return (av - bv) * (direction === "asc" ? 1 : -1);
     });
-  }, [
-    rows,
-    companiesByCik,
-    query,
-    filter,
-    industryFilter,
-    sort,
-    direction,
-    summary,
-    preset,
-  ]);
+  }, [filteredRows, companiesByCik, effectiveSort, direction, summary]);
   const viewSettings = useMemo(
     () => ({ query, filter, industryFilter, sort, direction, columns, preset }),
     [query, filter, industryFilter, sort, direction, columns, preset],
@@ -757,7 +772,7 @@ export default function PortfolioResearch({
           includeNotes,
           includeAllocations,
           selectedRowIds: selectedIds,
-          columns,
+          columns: availableColumns,
         }),
         sourceEvidence[document.id],
       );
@@ -790,7 +805,7 @@ export default function PortfolioResearch({
       } else if (format === "csv")
         downloadText(
           `${filename}.csv`,
-          portfolioCsv(pack, columns),
+          portfolioCsv(pack, availableColumns),
           "text/csv;charset=utf-8",
         );
       else if (format === "analytics")
@@ -1417,14 +1432,14 @@ export default function PortfolioResearch({
                 <label>
                   Sort by
                   <select
-                    value={sort}
+                    value={effectiveSort}
                     onChange={(event) => setSort(event.target.value)}
                   >
                     <option value="name">Company name</option>
                     {summary.mode !== "universe" && (
                       <option value="weight">Modeled weight</option>
                     )}
-                    {METRICS.map(([key, label]) => (
+                    {availableMetrics.map(({ key, label }) => (
                       <option key={key} value={key}>
                         {label}
                       </option>
@@ -1442,10 +1457,10 @@ export default function PortfolioResearch({
               </div>
               <details className={s.settings}>
                 <summary>
-                  Choose financial columns · {columns.length} visible
+                  Choose financial columns · {availableColumns.length} visible
                 </summary>
                 <div className={s.columnChoices}>
-                  {METRICS.map(([key, label]) => (
+                  {availableMetrics.map(({ key, label }) => (
                     <label key={key}>
                       <input
                         type="checkbox"
@@ -1518,7 +1533,7 @@ export default function PortfolioResearch({
                         <th scope="col">Modeled weight</th>
                       )}
                       <th scope="col">Latest annual / interim filing</th>
-                      {columns.map((key) => (
+                      {availableColumns.map((key) => (
                         <th scope="col" key={key}>
                           {METRICS.find(([id]) => id === key)?.[1] || key}
                         </th>
@@ -1704,8 +1719,23 @@ export default function PortfolioResearch({
                               </span>
                             ))}
                           </td>
-                          {columns.map((key) => {
+                          {availableColumns.map((key) => {
                             const point = company?.metrics?.[key];
+                            if (
+                              portfolioMetricState(
+                                company,
+                                PORTFOLIO_METRIC_CATALOG.find(
+                                  (d) => d.key === key,
+                                ),
+                              ) !== "available"
+                            )
+                              return (
+                                <td key={key}>
+                                  <span aria-label="No comparable value">
+                                    —
+                                  </span>
+                                </td>
+                              );
                             return (
                               <td key={key}>
                                 <button
@@ -1864,7 +1894,7 @@ export default function PortfolioResearch({
             </>
           )}
           {tab === "allocation" && (
-            <AllocationView summary={summary} columns={columns} />
+            <AllocationView summary={summary} columns={availableColumns} />
           )}
           {tab === "changes" && (
             <PortfolioChanges

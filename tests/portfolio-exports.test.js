@@ -520,3 +520,19 @@ test("100 issuers export all evidence even when the source sheet exceeds 10,000 
   assert.equal((sourceSheet.match(/<row r=/g) || []).length, 12701);
   assert.match(sourceSheet, /0000000100/);
 });
+
+test("company tables omit empty metric columns and honor explicitly empty selections", () => {
+  const input = document();
+  const bundle = buildPortfolioResearchPackage(input);
+  const header = portfolioCsv(bundle).split("\n")[0];
+  assert.ok(header.includes("revenue"));
+  assert.ok(!header.includes("debt_value"));
+  const empty = portfolioCsv(bundle, []).split("\n")[0];
+  assert.ok(!empty.includes("revenue"));
+  const saved = buildPortfolioResearchPackage(input, { columns: [] });
+  assert.ok(!portfolioCsv(saved).split("\n")[0].includes("revenue"));
+  assert.ok(
+    bundle.companies[0].metrics.debt,
+    "raw missing evidence remains auditable",
+  );
+});

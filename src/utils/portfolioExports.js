@@ -387,6 +387,7 @@ export function buildPortfolioResearchPackage(document, options = {}) {
       include_allocations: includeAllocations,
       selected_subset: isSubset,
       columns: clean(options.columns || []),
+      columns_selected: Array.isArray(options.columns),
     },
     positions: selectedRows.map((row) =>
       positionRow(row, includeNotes, includeAllocations, weights),
@@ -426,14 +427,19 @@ export function buildPortfolioResearchPackage(document, options = {}) {
 function tableColumns(bundle, requested) {
   const keys = [
     ...new Set(
-      bundle.companies.flatMap((company) => Object.keys(company.metrics || {})),
+      bundle.companies.flatMap((company) =>
+        Object.entries(company.metrics || {})
+          .filter(([, point]) => finiteFinancialMetric(point))
+          .map(([key]) => key),
+      ),
     ),
   ];
   const valid = new Set([...BASE_COLUMNS, ...keys]);
   const selected = (
-    requested?.length
+    Array.isArray(requested)
       ? requested
-      : bundle.export_options?.columns?.length
+      : bundle.export_options?.columns_selected ||
+          bundle.export_options?.columns?.length
         ? bundle.export_options.columns
         : [...BASE_COLUMNS, ...keys]
   ).filter((key) => valid.has(key));
@@ -1069,19 +1075,23 @@ function analyticsMarkdown(bundle) {
     "",
     `| Measure | Median | 25th–75th percentile | Available / eligible issuers | Missing | Not applicable |${analytics.weighted ? " Known covered weight |" : ""}`,
     `| --- | --- | --- | --- | --- | --- |${analytics.weighted ? " --- |" : ""}`,
-    ...analytics.metrics.map(
-      (metric) =>
-        `| ${md(metric.label)} (${md(metric.unit)}) | ${number(metric.median)} | ${number(metric.p25)}–${number(metric.p75)} | ${metric.availableCount} / ${metric.eligibleCount} | ${metric.missingCount} | ${metric.notApplicableCount} |${analytics.weighted ? ` ${number(metric.coveredWeightPct, "%")} |` : ""}`,
-    ),
+    ...analytics.metrics
+      .filter((metric) => metric.availableCount > 0)
+      .map(
+        (metric) =>
+          `| ${md(metric.label)} (${md(metric.unit)}) | ${number(metric.median)} | ${number(metric.p25)}–${number(metric.p75)} | ${metric.availableCount} / ${metric.eligibleCount} | ${metric.missingCount} | ${metric.notApplicableCount} |${analytics.weighted ? ` ${number(metric.coveredWeightPct, "%")} |` : ""}`,
+      ),
     "",
     "### Financial review conditions",
     "",
     `| Condition | Matched / measured issuers | Missing | Not applicable |${analytics.weighted ? " Known matched weight |" : ""}`,
     `| --- | --- | --- | --- |${analytics.weighted ? " --- |" : ""}`,
-    ...analytics.conditions.map(
-      (condition) =>
-        `| ${md(condition.label)} | ${condition.matchedCount} / ${condition.measuredCount} | ${condition.missingCount} | ${condition.notApplicableCount} |${analytics.weighted ? ` ${number(condition.knownMatchedWeightPct, "%")} |` : ""}`,
-    ),
+    ...analytics.conditions
+      .filter((condition) => condition.measuredCount > 0)
+      .map(
+        (condition) =>
+          `| ${md(condition.label)} | ${condition.matchedCount} / ${condition.measuredCount} | ${condition.missingCount} | ${condition.notApplicableCount} |${analytics.weighted ? ` ${number(condition.knownMatchedWeightPct, "%")} |` : ""}`,
+      ),
     "",
     "Known covered or matched weights keep the full saved portfolio denominator. Missing financial measures are not treated as zero, and descriptive conditions are not risk ratings.",
     "",
@@ -1195,10 +1205,12 @@ export function portfolioMarkdown(bundle) {
       "",
       "| Metric | Value and unit | Period | Evidence type |",
       "| --- | --- | --- | --- |",
-      ...Object.entries(company.metrics || {}).map(
-        ([key, point]) =>
-          `| ${md(key)} | ${finiteFinancialMetric(point) ? md(point.value) : "Unavailable"} ${md(point.unit)} | ${md(period(point.period || company.period))} | ${md(point.classification || "unavailable")} |`,
-      ),
+      ...Object.entries(company.metrics || {})
+        .filter(([, point]) => finiteFinancialMetric(point))
+        .map(
+          ([key, point]) =>
+            `| ${md(key)} | ${finiteFinancialMetric(point) ? md(point.value) : "Unavailable"} ${md(point.unit)} | ${md(period(point.period || company.period))} | ${md(point.classification || "unavailable")} |`,
+        ),
     );
     for (const [key, point] of Object.entries(company.metrics || {})) {
       const sources = evidenceSources(point);

@@ -3,6 +3,7 @@ import {
   unpackPortfolioSnapshot,
   packPortfolioStore,
 } from "../src/utils/portfolioEvidenceCodec.js";
+import { portfolioAvailableMetrics } from "../src/utils/portfolioDeepResearch.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -208,4 +209,14 @@ test("demo coverage is recomputed over all companies and the full capture fits e
     Buffer.byteLength(JSON.stringify(packPortfolioStore(store))) <
       PORTFOLIO_STORAGE_LIMIT,
   );
+});
+
+test("the expanded demo exposes measured debt and never offers empty investment income", () => {
+  const available = portfolioAvailableMetrics(demo.snapshot.companies);
+  assert.equal(
+    available.find((metric) => metric.key === "shortTermDebt").availableCount,
+    84,
+  );
+  assert.ok(!available.some((metric) => metric.key === "investmentIncome"));
+  assert.ok(available.every((metric) => metric.availableCount > 0));
 });

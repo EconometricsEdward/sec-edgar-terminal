@@ -228,12 +228,12 @@ export default function PortfolioFinancialTools({
   const [activeView, setActiveView] = useState<View>("peers");
   const selectedView = view || activeView;
   const [industry, setIndustry] = useState("");
-  const [metricId, setMetricId] = useState("netMargin");
+  const [requestedMetricId, setMetricId] = useState("netMargin");
   const [periodFrom, setPeriodFrom] = useState("");
   const [periodTo, setPeriodTo] = useState("");
   const [peerLimit, setPeerLimit] = useState(20);
-  const [xMetricId, setXMetricId] = useState("revenueGrowth");
-  const [yMetricId, setYMetricId] = useState("netMargin");
+  const [requestedXMetricId, setXMetricId] = useState("revenueGrowth");
+  const [requestedYMetricId, setYMetricId] = useState("netMargin");
   const [matchingPeriodOnly, setMatchingPeriodOnly] = useState(false);
   const [selectedCik, setSelectedCik] = useState("");
   const [pairLimit, setPairLimit] = useState(20);
@@ -245,6 +245,43 @@ export default function PortfolioFinancialTools({
   const industries = useMemo(
     () => [...new Set<string>(issuers.map((issuer) => issuer.industry))].sort(),
     [issuers],
+  );
+  const metrics = useMemo(
+    () =>
+      (report.metrics || []).filter(
+        (item: any) =>
+          buildPeerBenchmarks(report, {
+            metricId: item.id,
+            industry,
+            ...(selectedView === "peers" ? { periodFrom, periodTo } : {}),
+          }).measuredCount > 0,
+      ),
+    [report, industry, periodFrom, periodTo, selectedView],
+  );
+  const metricId = String(
+    metrics.find((item: any) => item.id === requestedMetricId)?.id ||
+      metrics[0]?.id ||
+      "",
+  );
+  const xMetricId = String(
+    metrics.find((item: any) => item.id === requestedXMetricId)?.id ||
+      metrics[0]?.id ||
+      "",
+  );
+  const pairedMetrics = metrics.filter(
+    (item: any) =>
+      item.id !== xMetricId &&
+      buildMetricRelationship(report, {
+        xMetricId,
+        yMetricId: item.id,
+        industry,
+        matchingPeriodOnly,
+      }).points.length > 0,
+  );
+  const yMetricId = String(
+    pairedMetrics.find((item: any) => item.id === requestedYMetricId)?.id ||
+      pairedMetrics[0]?.id ||
+      "",
   );
   const cohort = useMemo(
     () =>
@@ -261,15 +298,21 @@ export default function PortfolioFinancialTools({
       }),
     [report, xMetricId, yMetricId, industry, matchingPeriodOnly],
   );
-  const comparison = useMemo(
-    () => buildFinancialComparison(report, compareCiks),
-    [report, compareCiks],
-  );
+  const comparison = useMemo(() => {
+    const result = buildFinancialComparison(report, compareCiks);
+    return {
+      ...result,
+      metrics: result.metrics.filter(
+        (item) =>
+          item.values.length > 0 &&
+          item.values.every((point) => point && finite(point.value)),
+      ),
+    };
+  }, [report, compareCiks]);
   const selected = relationship.points.find(
     (point) => point.cik === selectedCik,
   );
   const metric = cohort.metric;
-  const metrics = report.metrics || [];
   const selectedCompareCiks = new Set(
     comparison.companies.map((issuer) => issuer.cik),
   );
@@ -406,33 +449,35 @@ export default function PortfolioFinancialTools({
               {cohort.error}
             </p>
           ) : null}
-          <div className={s.stats}>
-            <div>
-              <span>Cohort median</span>
-              <strong>
-                {metric
-                  ? valueLabel(cohort.median, metric.unit)
-                  : "Unavailable"}
-              </strong>
-              <small>Unweighted company values</small>
+          {cohort.measuredCount > 0 && (
+            <div className={s.stats}>
+              <div>
+                <span>Cohort median</span>
+                <strong>
+                  {metric
+                    ? valueLabel(cohort.median, metric.unit)
+                    : "Unavailable"}
+                </strong>
+                <small>Unweighted company values</small>
+              </div>
+              <div>
+                <span>Middle 50% of values</span>
+                <strong>
+                  {cohort.measuredCount && metric
+                    ? `${valueLabel(cohort.p25, metric.unit)} – ${valueLabel(cohort.p75, metric.unit)}`
+                    : "Unavailable"}
+                </strong>
+                <small>25th to 75th percentile</small>
+              </div>
+              <div>
+                <span>Measured in this view</span>
+                <strong>
+                  {cohort.measuredCount} <em>/ {cohort.cohortCount}</em>
+                </strong>
+                <small>Companies in selected peer group</small>
+              </div>
             </div>
-            <div>
-              <span>Middle 50% of values</span>
-              <strong>
-                {cohort.measuredCount && metric
-                  ? `${valueLabel(cohort.p25, metric.unit)} – ${valueLabel(cohort.p75, metric.unit)}`
-                  : "Unavailable"}
-              </strong>
-              <small>25th to 75th percentile</small>
-            </div>
-            <div>
-              <span>Measured in this view</span>
-              <strong>
-                {cohort.measuredCount} <em>/ {cohort.cohortCount}</em>
-              </strong>
-              <small>Companies in selected peer group</small>
-            </div>
-          </div>
+          )}
           <div className={s.coverage} role="status">
             {cohort.eligibleCount !== null ? (
               <span>
@@ -452,6 +497,12 @@ export default function PortfolioFinancialTools({
               </span>
             ) : null}
           </div>
+          {!metrics.length && (
+            <p role="status" className={s.notice}>
+              No financial measures match these filters. Clear the dates or
+              choose another industry.
+            </p>
+          )}
           <p className={s.caption}>
             {metric?.description} Reporting ends may differ, and the same ending
             date can cover different durations. Higher values are not always
@@ -623,7 +674,7 @@ export default function PortfolioFinancialTools({
                   setPairLimit(20);
                 }}
               >
-                {metrics.map((item: any) => (
+                {pairedMetrics.map((item: any) => (
                   <option
                     key={item.id}
                     value={item.id}
@@ -635,6 +686,12 @@ export default function PortfolioFinancialTools({
               </select>
             </label>
           </div>
+          {!pairedMetrics.length && (
+            <p role="status" className={s.notice}>
+              No pair of financial measures has shared company evidence in this
+              selection. Change the industry or reporting-period filter.
+            </p>
+          )}
           <label className={s.check}>
             <input
               type="checkbox"
@@ -896,9 +953,15 @@ export default function PortfolioFinancialTools({
               <p className={s.caption}>
                 Company values are shown as reported or derived in the captured
                 research. Business models, reporting dates and durations may
-                differ. Missing and inapplicable measures remain explicit; no
-                combined score is calculated.
+                differ. Only measures available for every selected company are
+                included.
               </p>
+              {!comparison.metrics.length && (
+                <p className={s.empty}>
+                  These companies have no common financial measures. Adjust the
+                  selection to compare similar businesses.
+                </p>
+              )}
               <div
                 className={s.tableWrap}
                 tabIndex={0}

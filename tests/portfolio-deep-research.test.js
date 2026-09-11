@@ -1,5 +1,12 @@
-import { packPortfolioBaseline, unpackPortfolioBaseline } from "../src/utils/portfolioBaselineCodec.js";
-import { createPortfolioBaseline, validatePortfolioBaseline, comparePortfolioResearch } from "../src/utils/portfolioChanges.js";
+import {
+  packPortfolioBaseline,
+  unpackPortfolioBaseline,
+} from "../src/utils/portfolioBaselineCodec.js";
+import {
+  createPortfolioBaseline,
+  validatePortfolioBaseline,
+  comparePortfolioResearch,
+} from "../src/utils/portfolioChanges.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -10,6 +17,7 @@ import { buildPortfolioAnalytics } from "../src/utils/portfolioAnalytics.js";
 import { buildPortfolioResearchPackage } from "../src/utils/portfolioExports.js";
 import {
   rankPortfolioMetric,
+  portfolioAvailableMetrics,
   portfolioConnections,
   metricPeriodKey,
 } from "../src/utils/portfolioDeepResearch.js";
@@ -265,10 +273,108 @@ test("source requests preserve Retry-After and cancellation stops queued work", 
   await assert.rejects(researchPause(1000, controller.signal), /Stopped/);
 });
 
- test("checkpoint encoding preserves comparisons and rejects malformed references",()=>{
-  const input={basis:"annual",generated_at:"2026-09-11T00:00:00Z",companies:[company(1,{netIncome:point(10,"USD")})]};
-  const baseline=createPortfolioBaseline(input);const encoded=packPortfolioBaseline(baseline);
-  assert.deepEqual(unpackPortfolioBaseline(encoded),baseline);assert.deepEqual(validatePortfolioBaseline(encoded),baseline);
-  assert.deepEqual(comparePortfolioResearch(encoded,input,fixture(input.companies).rows),comparePortfolioResearch(baseline,input,fixture(input.companies).rows));
-  const invalid=structuredClone(encoded);invalid.companies[0].metrics.netIncome[1]=999999;assert.throws(()=>validatePortfolioBaseline(invalid),/reference/);
- });
+test("checkpoint encoding preserves comparisons and rejects malformed references", () => {
+  const input = {
+    basis: "annual",
+    generated_at: "2026-09-11T00:00:00Z",
+    companies: [company(1, { netIncome: point(10, "USD") })],
+  };
+  const baseline = createPortfolioBaseline(input);
+  const encoded = packPortfolioBaseline(baseline);
+  assert.deepEqual(unpackPortfolioBaseline(encoded), baseline);
+  assert.deepEqual(validatePortfolioBaseline(encoded), baseline);
+  assert.deepEqual(
+    comparePortfolioResearch(encoded, input, fixture(input.companies).rows),
+    comparePortfolioResearch(baseline, input, fixture(input.companies).rows),
+  );
+  const invalid = structuredClone(encoded);
+  invalid.companies[0].metrics.netIncome[1] = 999999;
+  assert.throws(() => validatePortfolioBaseline(invalid), /reference/);
+});
+
+test("metric choices use the ranking eligibility contract, retain zero, and omit empty families", () => {
+  const companies = [
+    company(1, { netMargin: point(0), shortTermDebt: point(null, "USD") }),
+    company(2, { netMargin: point(-5), shortTermDebt: point(10, "%") }),
+    company(3, { netMargin: point(9, "%", { classification: "unavailable" }) }),
+    company(4, { netMargin: point(Infinity) }),
+    company(5, { netMargin: point(10) }, { status: "failed" }),
+    company(6, {
+      netMargin: point(10, "%", { period: { ...period, start: null } }),
+    }),
+  ];
+  const choices = portfolioAvailableMetrics(companies);
+  assert.deepEqual(
+    choices.map((d) => d.key),
+    ["netMargin"],
+  );
+  assert.equal(choices[0].availableCount, 2);
+  const ranked = rankPortfolioMetric(fixture(companies).report, companies);
+  assert.equal(choices[0].availableCount, ranked.available);
+  assert.equal(ranked.median, -2.5);
+  assert.equal(
+    choices.some((d) => d.category === "balance"),
+    false,
+  );
+  assert.deepEqual(portfolioAvailableMetrics([]), []);
+});
+
+test("metric choices respect reporting periods and require complete comparison coverage", () => {
+  const prior = { kind: "annual", start: "2024-01-01", end: "2024-12-31" };
+  const corporate = company(1, {
+    netMargin: point(10),
+    totalAssets: point(0, "USD"),
+  });
+  const bank = company(
+    2,
+    {
+      totalAssets: point(5, "USD", { period: prior }),
+      currentRatio: point(2, "x"),
+    },
+    { lens: "banking" },
+  );
+  assert.deepEqual(
+    portfolioAvailableMetrics([corporate, bank], { requireAll: true }).map(
+      (d) => d.key,
+    ),
+    ["totalAssets"],
+  );
+  assert.deepEqual(
+    portfolioAvailableMetrics([bank], {
+      period: "annual|2025-01-01|2025-12-31",
+    }),
+    [],
+  );
+  assert.equal(
+    portfolioAvailableMetrics([bank]).some((d) => d.key === "currentRatio"),
+    false,
+  );
+  assert.deepEqual(
+    portfolioAvailableMetrics([corporate, undefined], { requireAll: true }),
+    [],
+  );
+});
+
+test("older captures expose only their saved measures and refreshed captures unlock new choices", () => {
+  const old = company(1, { netMargin: point(12) });
+  assert.equal(
+    portfolioAvailableMetrics([old]).some((d) => d.key === "shortTermDebt"),
+    false,
+  );
+  const refreshed = {
+    ...old,
+    analysisVersion: "current",
+    metrics: { ...old.metrics, shortTermDebt: point(0, "USD") },
+  };
+  assert.equal(
+    portfolioAvailableMetrics([refreshed]).find(
+      (d) => d.key === "shortTermDebt",
+    ).availableCount,
+    1,
+  );
+  assert.equal(
+    old.metrics.shortTermDebt,
+    undefined,
+    "availability must not modify saved evidence",
+  );
+});
