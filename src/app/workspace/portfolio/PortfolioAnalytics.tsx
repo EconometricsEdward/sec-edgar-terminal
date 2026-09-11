@@ -15,6 +15,9 @@ import {
 import { buildPortfolioAnalytics } from "../../../utils/portfolioAnalytics.js";
 import CashEarnings from "./CashEarnings";
 import PortfolioScenario from "./PortfolioScenario";
+import { buildCatalogReport } from "../../../utils/portfolioEnrichment.js";
+import insightStyles from "./PortfolioInsightTools.module.css";
+const PortfolioInsightTools = dynamic(() => import("./PortfolioInsightTools"));
 import s from "./PortfolioAnalytics.module.css";
 
 const PortfolioMetricExplorer = dynamic(
@@ -244,6 +247,10 @@ export default function PortfolioAnalytics({
   );
   const concentration = report.concentration;
   const issuers: Issuer[] = concentration.issuers;
+  const catalogReport = useMemo(
+    () => buildCatalogReport(report, companies),
+    [report, companies],
+  );
   const weighted = report.weighted;
   const availableMetrics = report.metrics.filter(
     (entry: any) => entry.availableCount > 0,
@@ -637,33 +644,44 @@ export default function PortfolioAnalytics({
 
       {(visitedAreas.has("financial") || area === "financial") && (
         <div className={s.panel} hidden={area !== "financial"}>
-          <nav className={s.subnav} aria-label="Financial profile tools">
-            {[
-              ["distribution", "Distributions"],
-              ["statements", "Financial connections"],
-              ["peers", "Peer benchmarks"],
-              ["relationships", "Metric relationships"],
-              ["compare", "Compare companies"],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={financialMode === id}
-                onClick={() => {
-                  setFinancialMode(id);
-                  if (id === "statements") setStatementsVisited(true);
-                  if (["peers", "relationships", "compare"].includes(id)) {
-                    setFinancialTool(
-                      id as "peers" | "relationships" | "compare",
-                    );
-                    setFinancialToolsVisited(true);
-                  }
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
+          <label className={insightStyles.selector}>
+            Financial profile tool
+            <select
+              value={financialMode}
+              onChange={(event) => {
+                const id = event.target.value;
+                setFinancialMode(id);
+                if (id === "statements") setStatementsVisited(true);
+                if (["peers", "relationships", "compare"].includes(id)) {
+                  setFinancialTool(id as "peers" | "relationships" | "compare");
+                  setFinancialToolsVisited(true);
+                }
+              }}
+            >
+              {[
+                ["distribution", "Distributions"],
+                ["weighted", "Weighted fundamentals"],
+                ["buffers", "Cash & debt"],
+                ["overlap", "Overlapping conditions"],
+                ["statements", "Financial connections"],
+                ["peers", "Peer benchmarks"],
+                ["relationships", "Metric relationships"],
+                ["compare", "Compare companies"],
+              ].map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {["weighted", "buffers", "overlap"].includes(financialMode) && (
+            <PortfolioInsightTools
+              report={report}
+              companies={companies}
+              view={financialMode}
+              onInspect={onInspectCompany}
+            />
+          )}
           {(statementsVisited || financialMode === "statements") && (
             <div className={s.retained} hidden={financialMode !== "statements"}>
               <PortfolioConnections
@@ -1003,7 +1021,7 @@ export default function PortfolioAnalytics({
               }
             >
               <PortfolioFinancialTools
-                report={report}
+                report={catalogReport}
                 onInspectCompany={onInspectCompany}
                 view={financialTool}
               />
@@ -1015,7 +1033,8 @@ export default function PortfolioAnalytics({
       {(visitedAreas.has("screener") || area === "screener") && (
         <div className={s.retained} hidden={area !== "screener"}>
           <PortfolioScreener
-            report={report}
+            onDisclosure={onDisclosure}
+            report={catalogReport}
             companies={companies}
             onInspectCompany={onInspectCompany}
           />
@@ -1025,6 +1044,7 @@ export default function PortfolioAnalytics({
       {(visitedAreas.has("scenario") || area === "scenario") && (
         <div className={s.retained} hidden={area !== "scenario"}>
           <PortfolioScenario
+            report={report}
             rows={rows}
             settings={settings}
             companies={companies}
@@ -1048,6 +1068,13 @@ export default function PortfolioAnalytics({
           <nav className={s.subnav} aria-label="Evidence coverage tools">
             <button
               type="button"
+              aria-pressed={coverageMode === "impact"}
+              onClick={() => setCoverageMode("impact")}
+            >
+              Allocation & evidence priorities
+            </button>
+            <button
+              type="button"
               aria-pressed={coverageMode === "summary"}
               onClick={() => setCoverageMode("summary")}
             >
@@ -1064,6 +1091,14 @@ export default function PortfolioAnalytics({
               Company & metric matrix
             </button>
           </nav>
+          {coverageMode === "impact" && (
+            <PortfolioInsightTools
+              report={report}
+              companies={companies}
+              view="impact"
+              onInspect={onInspectCompany}
+            />
+          )}
           <div className={s.subpanel} hidden={coverageMode !== "summary"}>
             <div className={s.sectionHeading}>
               <div>

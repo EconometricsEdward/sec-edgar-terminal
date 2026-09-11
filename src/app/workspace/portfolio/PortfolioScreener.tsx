@@ -14,16 +14,21 @@ type Rule = { metricId: string; min: string; max: string };
 type Props = {
   report: any;
   companies?: any[];
+  onDisclosure?: (query: string, ciks: string[]) => void;
   onInspectCompany: (rowId: string) => void;
 };
 const EMPTY_COMPANIES: any[] = [];
 const format = (value: number | null, unit = "") =>
   value === null || !Number.isFinite(value)
     ? "Unavailable"
-    : value.toLocaleString("en-US", { maximumFractionDigits: 2 }) + unit;
+    : value.toLocaleString("en-US", {
+        maximumFractionDigits: 2,
+        notation: unit === "USD" || unit === "shares" ? "compact" : "standard",
+      }) + unit;
 
 export default function PortfolioScreener({
   report,
+  onDisclosure,
   companies = EMPTY_COMPANIES,
   onInspectCompany,
 }: Props) {
@@ -31,6 +36,9 @@ export default function PortfolioScreener({
   const [requestedRules, setRules] = useState<Rule[]>(() =>
     PORTFOLIO_SCREEN_PRESETS[0].rules.map((rule) => ({ ...rule })),
   );
+  const [lens, setLens] = useState("");
+  const [matchingPeriodOnly, setMatchingPeriodOnly] = useState(true);
+  const [disclosureQuery, setDisclosureQuery] = useState("liquidity");
   const [industry, setIndustry] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [direction, setDirection] = useState("asc");
@@ -40,10 +48,16 @@ export default function PortfolioScreener({
     () =>
       report.metrics.filter(
         (metric: any) =>
+          (!lens ||
+            metric.observations.some(
+              (point: any) =>
+                point.lens === lens &&
+                (!industry || point.industry === industry),
+            )) &&
           buildPeerBenchmarks(report, { metricId: metric.id, industry })
             .measuredCount > 0,
       ),
-    [report, industry],
+    [report, industry, lens],
   );
   const staleRules = requestedRules.some(
     (rule) =>
@@ -64,8 +78,11 @@ export default function PortfolioScreener({
       preset.rules.every((rule) =>
         availableMetrics.some((metric: any) => metric.id === rule.metricId),
       ) &&
-      (buildPortfolioScreen(report, companies, preset.rules, { industry })
-        ?.measuredCount || 0) > 0,
+      (buildPortfolioScreen(report, companies, preset.rules, {
+        industry,
+        lens,
+        matchingPeriodOnly: report.fullPeriodEvidence && matchingPeriodOnly,
+      })?.measuredCount || 0) > 0,
   );
   const effectiveSort =
     sortBy === "name" ||
@@ -77,10 +94,21 @@ export default function PortfolioScreener({
     () =>
       buildPortfolioScreen(report, companies, rules, {
         industry,
+        lens,
+        matchingPeriodOnly: report.fullPeriodEvidence && matchingPeriodOnly,
         sortBy: effectiveSort,
         direction,
       }),
-    [report, companies, rules, industry, effectiveSort, direction],
+    [
+      report,
+      companies,
+      rules,
+      industry,
+      lens,
+      matchingPeriodOnly,
+      effectiveSort,
+      direction,
+    ],
   );
   const selectedMetrics = [...new Set(rules.map((rule) => rule.metricId))]
     .map((metricId) =>
@@ -269,6 +297,32 @@ export default function PortfolioScreener({
       </div>
       <div className={styles.controls}>
         <label>
+          Business model
+          <select
+            value={lens}
+            onChange={(event) => setLens(event.target.value)}
+          >
+            <option value="">All business models</option>
+            {[...new Set<string>(companies.map((company: any) => company.lens))]
+              .filter(Boolean)
+              .map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+          </select>
+        </label>
+        {report.fullPeriodEvidence && (
+          <label>
+            <input
+              type="checkbox"
+              checked={matchingPeriodOnly}
+              onChange={(event) => setMatchingPeriodOnly(event.target.checked)}
+            />{" "}
+            Require matching full periods within each company
+          </label>
+        )}
+        <label>
           SEC industry scope
           <select
             value={industry}
@@ -314,6 +368,57 @@ export default function PortfolioScreener({
           </select>
         </label>
       </div>
+      {result.mismatched.length > 0 && (
+        <p className={styles.notice}>
+          {result.mismatched.length} companies are excluded because selected
+          measures do not share a full reporting period.
+        </p>
+      )}
+      {onDisclosure && result.matches.length > 0 && (
+        <div className={styles.controls}>
+          <label>
+            Search the shortlist’s disclosures
+            <input
+              value={disclosureQuery}
+              maxLength={200}
+              onChange={(event) => setDisclosureQuery(event.target.value)}
+              placeholder="Topic or phrase"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={!disclosureQuery.trim()}
+            onClick={() =>
+              onDisclosure(
+                disclosureQuery.trim(),
+                result.matches.map((row: any) => row.cik),
+              )
+            }
+          >
+            Search matching companies’ disclosures
+          </button>
+        </div>
+      )}
+      {result.outside.length > 0 && (
+        <details className={styles.exclusions}>
+          <summary>
+            Why {result.outside.length} measured companies failed the rules
+          </summary>
+          <ul>
+            {result.outside.map((row: any) => (
+              <li key={row.cik}>
+                <button
+                  type="button"
+                  onClick={() => onInspectCompany(row.rowId)}
+                >
+                  {row.tickers.join(" / ") || row.name}
+                </button>
+                <span>Outside bounds: {row.failures.join(" · ")}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {!result.valid ? (
         <div className={styles.error} role="alert">
           <strong>Complete the rules to see results.</strong>
@@ -428,7 +533,9 @@ export default function PortfolioScreener({
                           <td key={metric.id}>
                             <strong>{format(cell.value, cell.unit)}</strong>
                             <span>
-                              {cell.periodEnd || "Period unavailable"}
+                              {cell.periodKey?.replaceAll("|", " · ") ||
+                                cell.periodEnd ||
+                                "Period unavailable"}
                             </span>
                             {cell.sourceUrl ? (
                               <a

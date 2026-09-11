@@ -136,6 +136,12 @@ export function buildPortfolioCoverageMatrix(
           value: status === "available" ? observation.value : null,
           periodEnd:
             status === "available" ? validDate(observation.periodEnd) : null,
+          periodKey:
+            status === "available" ? observation.periodKey || null : null,
+          definition:
+            status === "available" ? observation.definition || null : null,
+          evidence:
+            status === "available" ? observation.evidence || null : null,
           sourceUrl:
             status === "available" ? secUrl(observation.sourceUrl) : null,
         };
@@ -149,6 +155,7 @@ export function buildPortfolioCoverageMatrix(
       return {
         ...normalized,
         cells,
+        lens: company?.lens || "unknown",
         availableCount,
         missingCount,
         notApplicableCount: cells.length - availableCount - missingCount,
@@ -159,6 +166,7 @@ export function buildPortfolioCoverageMatrix(
   const scopedRows = allRows.filter(
     (row) =>
       (!filters.industry || row.industry === filters.industry) &&
+      (!filters.lens || row.lens === filters.lens) &&
       (!query ||
         [row.name, row.cik, ...(row.tickers || [])]
           .join(" ")
@@ -223,6 +231,7 @@ export function buildPortfolioScreen(
 ) {
   const matrix = buildPortfolioCoverageMatrix(report, companies, {
     industry: options.industry,
+    lens: options.lens,
   });
   const metricById = new Map(
     matrix.metrics.map((metric) => [metric.id, metric]),
@@ -270,20 +279,34 @@ export function buildPortfolioScreen(
           (cell) => cell.status === "not-applicable",
         );
         const hasMissing = cells.some((cell) => cell.status === "missing");
+        const mismatched =
+          options.matchingPeriodOnly &&
+          cells.every((cell) => cell.status === "available") &&
+          (cells.some((cell) => !cell.periodKey) ||
+            new Set(cells.map((cell) => cell.periodKey)).size !== 1);
         const status = hasNotApplicable
           ? "not-applicable"
           : hasMissing
             ? "missing"
-            : cells.every(
-                  (cell, index) =>
-                    (validatedRules[index].min === null ||
-                      cell.value >= validatedRules[index].min) &&
-                    (validatedRules[index].max === null ||
-                      cell.value <= validatedRules[index].max),
-                )
-              ? "match"
-              : "outside-rules";
-        return { ...row, cells, status };
+            : mismatched
+              ? "period-mismatch"
+              : cells.every(
+                    (cell, index) =>
+                      (validatedRules[index].min === null ||
+                        cell.value >= validatedRules[index].min) &&
+                      (validatedRules[index].max === null ||
+                        cell.value <= validatedRules[index].max),
+                  )
+                ? "match"
+                : "outside-rules";
+        const failures = validatedRules.flatMap((rule, index) =>
+          cells[index].status === "available" &&
+          ((rule.min !== null && cells[index].value < rule.min) ||
+            (rule.max !== null && cells[index].value > rule.max))
+            ? [rule.label]
+            : [],
+        );
+        return { ...row, cells, status, failures };
       })
     : [];
   const matches = resultRows.filter((row) => row.status === "match");
@@ -291,8 +314,15 @@ export function buildPortfolioScreen(
   const notApplicable = resultRows.filter(
     (row) => row.status === "not-applicable",
   );
+  const mismatched = resultRows.filter(
+    (row) => row.status === "period-mismatch",
+  );
+  const outside = resultRows.filter((row) => row.status === "outside-rules");
   const measuredCount =
-    resultRows.length - missing.length - notApplicable.length;
+    resultRows.length -
+    missing.length -
+    notApplicable.length -
+    mismatched.length;
   const sortBy = options.sortBy || "name";
   const direction = options.direction === "desc" ? -1 : 1;
   matches.sort((a, b) => {
@@ -327,6 +357,10 @@ export function buildPortfolioScreen(
     knownMatchedWeightPct: valid ? knownWeight(matches, report) : null,
     incompleteMatchedWeightCount: matches.filter((row) => !row.weightComplete)
       .length,
+    lens: options.lens || "",
+    matchingPeriodOnly: Boolean(options.matchingPeriodOnly),
+    mismatched,
+    outside,
     matches,
     missing,
     notApplicable,
@@ -346,6 +380,9 @@ export function portfolioScreenCsv(screen) {
     [
       "captured_at",
       "industry_scope",
+      "business_model",
+      "matching_full_periods_required",
+      "period_mismatch_companies",
       "rules_inclusive_and",
       "scope_issuers",
       "eligible_issuers",
@@ -362,12 +399,17 @@ export function portfolioScreenCsv(screen) {
         `${rule.metricId}_value`,
         `${rule.metricId}_unit`,
         `${rule.metricId}_period_end`,
+        `${rule.metricId}_full_period`,
+        `${rule.metricId}_definition`,
         `${rule.metricId}_sec_source`,
       ]),
     ],
     ...screen.matches.map((row) => [
       screen.capturedAt,
       screen.industry || "All SEC industries",
+      screen.lens || "All business models",
+      screen.matchingPeriodOnly,
+      screen.mismatched?.length || 0,
       ruleText,
       screen.scopeCount,
       screen.eligibleCount,
@@ -384,7 +426,9 @@ export function portfolioScreenCsv(screen) {
         cell.value,
         cell.unit,
         cell.periodEnd,
-        cell.sourceUrl,
+        cell.periodKey,
+        cell.definition,
+        cell.evidence || cell.sourceUrl,
       ]),
     ]),
   ]);

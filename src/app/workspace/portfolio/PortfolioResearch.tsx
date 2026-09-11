@@ -1844,6 +1844,7 @@ export default function PortfolioResearch({
             )}
             {tab === "changes" && (
               <PortfolioChanges
+                allocation={summary}
                 baseline={document.comparisonBaseline || null}
                 snapshot={captured}
                 rows={rows}

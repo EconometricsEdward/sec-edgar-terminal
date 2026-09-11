@@ -198,7 +198,9 @@ export function buildMetricRelationship(report, options = {}) {
       samePeriodEnd: Boolean(
         xPoint.periodEnd &&
           yPoint.periodEnd &&
-          xPoint.periodEnd === yPoint.periodEnd,
+          (report.fullPeriodEvidence
+            ? xPoint.periodKey && xPoint.periodKey === yPoint.periodKey
+            : xPoint.periodEnd === yPoint.periodEnd),
       ),
     });
   }
@@ -294,6 +296,8 @@ export function peerBenchmarksCsv(cohort, capturedAt = null) {
     "Difference from cohort median",
     "Midrank percentile",
     "Reporting end",
+    "Full reporting period",
+    "Definition",
     "SEC evidence",
   ];
   const prefix = [
@@ -324,7 +328,9 @@ export function peerBenchmarksCsv(cohort, capturedAt = null) {
       point.differenceFromMedian,
       point.percentile,
       point.periodEnd,
-      point.sourceUrl,
+      point.periodKey,
+      point.definition,
+      point.evidence || point.sourceUrl,
     ]),
   ]);
 }

@@ -322,7 +322,7 @@ test("benchmark CSV exports the filtered cohort, units, exact coverage and evide
   const parsed = parsePortfolioCsv(csv);
   const rows = [parsed.headers, ...parsed.records];
   assert.equal(rows.length, 3);
-  assert.ok(rows.every((row) => row.length === 23));
+  assert.ok(rows.every((row) => row.length === 25));
   const headers = rows[0];
   const first = Object.fromEntries(
     headers.map((header, index) => [header, rows[1][index]]),
