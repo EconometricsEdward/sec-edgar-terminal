@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { filterHubPortfolios } from "../../utils/hubResearchTools.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -27,7 +29,14 @@ import {
 } from "../../utils/researchHubOverview.js";
 import s from "./HubOverview.module.css";
 
+const HubComparison = dynamic(() => import("./HubComparison"), {
+  loading: () => <p role="status">Opening portfolio comparison…</p>,
+});
+
 type NavigationOptions = {
+  analyticsArea?: string;
+  portfolioTab?: string;
+  rowId?: string;
   portfolioId?: string;
   action?: "new" | "paste" | "watchlist";
 };
@@ -45,6 +54,13 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
   const [ready, setReady] = useState(false);
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const [portfolioQuery, setPortfolioQuery] = useState("");
+  const [portfolioStatus, setPortfolioStatus] = useState("all");
+  const [portfolioSort, setPortfolioSort] = useState("recent");
+  const [searchKind, setSearchKind] = useState("all");
+  const [searchSort, setSearchSort] = useState("relevance");
+  const [searchLimit, setSearchLimit] = useState(12);
+  const [comparing, setComparing] = useState(false);
   const read = useCallback(() => {
     const failures: string[] = [];
     try {
@@ -103,7 +119,23 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
       }),
     [saved, watchlist, entries, portfolioReadable],
   );
-  const search = useMemo(() => searchHubResearch(index, query), [index, query]);
+  const search = useMemo(
+    () =>
+      searchHubResearch(index, query, searchLimit, {
+        kind: searchKind,
+        sort: searchSort,
+      }),
+    [index, query, searchLimit, searchKind, searchSort],
+  );
+  const filteredPortfolios = useMemo(
+    () =>
+      filterHubPortfolios(portfolios, {
+        query: portfolioQuery,
+        status: portfolioStatus,
+        sort: portfolioSort,
+      }),
+    [portfolios, portfolioQuery, portfolioStatus, portfolioSort],
+  );
   const evidenceCount = entries.filter(
     (entry) => entry.type === "evidence",
   ).length;
@@ -178,9 +210,7 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
       <div className={s.hero}>
         <div className={s.heroCopy}>
           <p className={s.eyebrow}>Your research, ready to continue</p>
-          <h2 id="hub-overview-title">
-            Pick up where your questions left off.
-          </h2>
+          <h2 id="hub-overview-title">Choose your next research question.</h2>
           <p>
             Your portfolios, source evidence, and next steps in one place. Start
             with a company list, or return to the research you have saved.
@@ -231,6 +261,51 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
           </span>
         </div>
       </div>
+
+      <nav className={s.toolStrip} aria-label="Research by question">
+        {[
+          ["concentration", "Where is my exposure concentrated?"],
+          ["financial", "How do company fundamentals compare?"],
+          ["screener", "Which companies meet my criteria?"],
+          ["coverage", "Where is my evidence incomplete?"],
+        ].map(([area, label]) => (
+          <button
+            key={area}
+            className={s.secondary}
+            disabled={!resume}
+            onClick={() =>
+              onNavigate("portfolios", {
+                portfolioId: resume.id,
+                portfolioTab: "analytics",
+                analyticsArea: area,
+              })
+            }
+          >
+            {label}
+            <ArrowRight size={15} />
+          </button>
+        ))}
+        <button
+          className={s.secondary}
+          disabled={portfolios.length < 2}
+          onClick={() => setComparing((value) => !value)}
+          aria-expanded={comparing}
+        >
+          Compare saved portfolios <Layers3 size={16} />
+        </button>
+        <small>
+          {resume
+            ? `Portfolio questions open ${resume.name}. Choose a different saved portfolio below.`
+            : "Create a portfolio or preview the example to explore these questions."}
+        </small>
+      </nav>
+      {comparing && portfolioReadable && (
+        <HubComparison
+          documents={saved.portfolios}
+          activeId={saved.activeId}
+          onNavigate={onNavigate}
+        />
+      )}
 
       <section className={s.demoCard} aria-labelledby="hub-demo-title">
         <div className={s.demoCopy}>
@@ -317,13 +392,55 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
           <input
             type="search"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSearchLimit(12);
+            }}
             placeholder="Try a ticker, portfolio name, or research question"
             maxLength={300}
             autoComplete="off"
             disabled={!ready}
           />
         </label>
+        <div className={s.filterBar}>
+          <label>
+            Research type
+            <select
+              value={searchKind}
+              onChange={(event) => {
+                setSearchKind(event.target.value);
+                setSearchLimit(12);
+              }}
+            >
+              {[
+                "all",
+                "Portfolio",
+                "Watchlist",
+                "Pending review",
+                "Evidence",
+                "Note",
+                "Saved research",
+              ].map((kind) => (
+                <option key={kind} value={kind}>
+                  {kind === "all" ? "All saved research" : kind}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Order
+            <select
+              value={searchSort}
+              onChange={(event) => {
+                setSearchSort(event.target.value);
+                setSearchLimit(12);
+              }}
+            >
+              <option value="relevance">Best match</option>
+              <option value="recent">Most recent</option>
+            </select>
+          </label>
+        </div>
         {query.trim() && (
           <div>
             <p role="status" className={s.resultCount}>
@@ -372,9 +489,16 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
             {search.total > search.results.length && (
               <button
                 className={s.textButton}
-                onClick={() => onNavigate("library")}
+                onClick={() =>
+                  searchLimit < 50
+                    ? setSearchLimit((value) => Math.min(50, value + 12))
+                    : onNavigate("library")
+                }
               >
-                Open the full library <ArrowRight size={15} />
+                {searchLimit < 50
+                  ? "Show more matches"
+                  : "Open the full library"}{" "}
+                <ArrowRight size={15} />
               </button>
             )}
           </div>
@@ -401,88 +525,125 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
               <Plus size={16} /> New portfolio
             </button>
           </div>
+          <div className={s.filterBar}>
+            <label>
+              Find a portfolio
+              <input
+                type="search"
+                value={portfolioQuery}
+                onChange={(event) => setPortfolioQuery(event.target.value)}
+                maxLength={160}
+                placeholder="Portfolio name"
+              />
+            </label>
+            <label>
+              Research status
+              <select
+                value={portfolioStatus}
+                onChange={(event) => setPortfolioStatus(event.target.value)}
+              >
+                <option value="all">All portfolios</option>
+                <option value="unresearched">No snapshot</option>
+                <option value="attention">Needs attention</option>
+                <option value="captured">Captured, no retrieval gaps</option>
+              </select>
+            </label>
+            <label>
+              Sort
+              <select
+                value={portfolioSort}
+                onChange={(event) => setPortfolioSort(event.target.value)}
+              >
+                <option value="recent">Recently updated</option>
+                <option value="name">Name</option>
+                <option value="coverage">Lowest coverage first</option>
+              </select>
+            </label>
+          </div>
+          <p className={s.resultCount} role="status">
+            {filteredPortfolios.length} of {portfolios.length} portfolios match.
+          </p>
           <div className={s.portfolioGrid}>
-            {(showAll ? portfolios : portfolios.slice(0, 6)).map(
-              (portfolio: any) => (
-                <article className={s.portfolioCard} key={portfolio.id}>
-                  <div className={s.cardMeta}>
-                    <span>
-                      {portfolio.basis} ·{" "}
-                      {portfolio.weighted
-                        ? "Weighted portfolio"
-                        : "Company list"}
-                    </span>
-                    {portfolio.id === saved.activeId && (
-                      <span className={s.activeBadge}>Last active</span>
-                    )}
+            {(showAll
+              ? filteredPortfolios
+              : filteredPortfolios.slice(0, 6)
+            ).map((portfolio: any) => (
+              <article className={s.portfolioCard} key={portfolio.id}>
+                <div className={s.cardMeta}>
+                  <span>
+                    {portfolio.basis} ·{" "}
+                    {portfolio.weighted ? "Weighted portfolio" : "Company list"}
+                  </span>
+                  {portfolio.id === saved.activeId && (
+                    <span className={s.activeBadge}>Last active</span>
+                  )}
+                </div>
+                <h4>{portfolio.name}</h4>
+                <p>
+                  {portfolio.rowCount} included positions ·{" "}
+                  {portfolio.issuerCount} identified issuers
+                </p>
+                <div className={s.coverage}>
+                  <div>
+                    <span>Financial evidence</span>
+                    <strong>
+                      {!portfolio.hasSnapshot
+                        ? "Not researched"
+                        : portfolio.totalCompanies
+                          ? `${portfolio.availableCompanies} / ${portfolio.totalCompanies} issuers`
+                          : "No operating issuers"}
+                    </strong>
                   </div>
-                  <h4>{portfolio.name}</h4>
-                  <p>
-                    {portfolio.rowCount} included positions ·{" "}
-                    {portfolio.issuerCount} identified issuers
-                  </p>
-                  <div className={s.coverage}>
-                    <div>
-                      <span>Financial evidence</span>
-                      <strong>
-                        {!portfolio.hasSnapshot
-                          ? "Not researched"
-                          : portfolio.totalCompanies
-                            ? `${portfolio.availableCompanies} / ${portfolio.totalCompanies} issuers`
-                            : "No operating issuers"}
-                      </strong>
-                    </div>
-                    {portfolio.coveragePct !== null && (
-                      <progress
-                        value={portfolio.coveragePct}
-                        max={100}
-                        aria-label={`${portfolio.name}: financial evidence for ${portfolio.availableCompanies} of ${portfolio.totalCompanies} resolved operating issuers`}
-                      />
-                    )}
-                    <small>
-                      {portfolio.unresolved > 0 &&
-                        `${portfolio.unresolved} unresolved positions · `}
-                      {portfolio.fundCount > 0 &&
-                        `${portfolio.fundCount} funds · `}
-                      Resolved operating issuers counted once.
-                    </small>
-                  </div>
-                  <div className={s.cardFooter}>
-                    <div>
-                      <span
-                        className={
-                          portfolio.incomplete || portfolio.unresolved
-                            ? s.attention
-                            : s.cardStatus
-                        }
-                      >
-                        {portfolio.status}
-                      </span>
-                      <small>
-                        {portfolio.capturedAt
-                          ? `Captured ${day(portfolio.capturedAt)}`
-                          : "No research snapshot saved"}
-                      </small>
-                    </div>
-                    <button
-                      className={s.openButton}
-                      aria-label={`Open ${portfolio.name}`}
-                      onClick={() =>
-                        onNavigate("portfolios", { portfolioId: portfolio.id })
+                  {portfolio.coveragePct !== null && (
+                    <progress
+                      value={portfolio.coveragePct}
+                      max={100}
+                      aria-label={`${portfolio.name}: financial evidence for ${portfolio.availableCompanies} of ${portfolio.totalCompanies} resolved operating issuers`}
+                    />
+                  )}
+                  <small>
+                    {portfolio.unresolved > 0 &&
+                      `${portfolio.unresolved} unresolved positions · `}
+                    {portfolio.fundCount > 0 &&
+                      `${portfolio.fundCount} funds · `}
+                    Resolved operating issuers counted once.
+                  </small>
+                </div>
+                <div className={s.cardFooter}>
+                  <div>
+                    <span
+                      className={
+                        portfolio.incomplete || portfolio.unresolved
+                          ? s.attention
+                          : s.cardStatus
                       }
                     >
-                      Open <ArrowRight size={15} />
-                    </button>
+                      {portfolio.status}
+                    </span>
+                    <small>
+                      {portfolio.capturedAt
+                        ? `Captured ${day(portfolio.capturedAt)}`
+                        : "No research snapshot saved"}
+                    </small>
                   </div>
-                </article>
-              ),
-            )}
+                  <button
+                    className={s.openButton}
+                    aria-label={`Open ${portfolio.name}`}
+                    onClick={() =>
+                      onNavigate("portfolios", { portfolioId: portfolio.id })
+                    }
+                  >
+                    Open <ArrowRight size={15} />
+                  </button>
+                </div>
+              </article>
+            ))}
           </div>
-          {portfolios.length > 6 && (
+          {filteredPortfolios.length > 6 && (
             <button className={s.showAll} onClick={() => setShowAll(!showAll)}>
               {showAll
                 ? "Show recent portfolios"
-                : `Show all ${portfolios.length} portfolios`}
+                : `Show all ${filteredPortfolios.length} portfolios`}
             </button>
           )}
           <p className={s.coverageNote}>

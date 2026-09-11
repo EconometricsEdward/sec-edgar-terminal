@@ -18,6 +18,7 @@ test("Hub navigation preserves existing deep links and adds an overview default"
       briefId: "",
       portfolioViewId: "",
       portfolioTab: "",
+      analyticsArea: "",
     },
   );
   assert.equal(
@@ -66,5 +67,25 @@ test("Hub routes include only valid local identifiers, never draft or allocation
   assert.equal(
     hubDestination("bad", { portfolioId: "<script>" }),
     "/workspace?view=overview",
+  );
+});
+
+test("analysis areas round-trip safely and ignore private inputs", () => {
+  const url = hubDestination("portfolios", {
+    portfolioId: "p-1",
+    portfolioTab: "analytics",
+    analyticsArea: "scenario",
+    shock: -25,
+    notes: "private",
+  });
+  assert.equal(parseHubLocation(url).analyticsArea, "scenario");
+  assert.ok(!url.includes("private") && !url.includes("shock"));
+  assert.equal(
+    parseHubLocation("/workspace?analyticsArea=unexpected").analyticsArea,
+    "",
+  );
+  assert.equal(
+    hubDestination("library", { analyticsArea: "scenario" }),
+    "/workspace?view=library",
   );
 });

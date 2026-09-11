@@ -7,6 +7,14 @@ export const HUB_VIEWS = [
   ["library", "Evidence & backups"],
 ];
 const ids = new Set(HUB_VIEWS.map(([id]) => id));
+export const ANALYTICS_AREAS = [
+  "overview",
+  "concentration",
+  "financial",
+  "screener",
+  "scenario",
+  "coverage",
+];
 export const PORTFOLIO_TABS = [
   "analytics",
   "research",
@@ -36,6 +44,11 @@ export function parseHubLocation(value) {
     rowId: localId(url.searchParams.get("row")),
     portfolioViewId: localId(url.searchParams.get("portfolioView")),
     portfolioTab: portfolioTab(url.searchParams.get("portfolioTab")),
+    analyticsArea: ANALYTICS_AREAS.includes(
+      url.searchParams.get("analyticsArea"),
+    )
+      ? url.searchParams.get("analyticsArea")
+      : "",
   };
 }
 /** Only local navigation identifiers enter the URL; research text stays in this browser. */
@@ -50,6 +63,8 @@ export function hubDestination(view, options = {}) {
     params.set("portfolioView", options.portfolioViewId);
   if (view === "portfolios" && portfolioTab(options.portfolioTab))
     params.set("portfolioTab", options.portfolioTab);
+  if (view === "portfolios" && ANALYTICS_AREAS.includes(options.analyticsArea))
+    params.set("analyticsArea", options.analyticsArea);
   if (view === "briefs" && localId(options.briefId))
     params.set("brief", options.briefId);
   return `/workspace?${params}`;

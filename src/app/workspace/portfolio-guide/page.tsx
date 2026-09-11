@@ -242,6 +242,35 @@ export default function PortfolioGuidePage() {
         </p>
       </section>
 
+      <section id="hub-comparisons">
+        <h2>Choose a question and compare saved portfolios</h2>
+        <p>
+          The Research Hub overview links directly to concentration, financial
+          profiles, screening and evidence coverage for your last active
+          portfolio. Filter saved portfolios by name, research status or
+          coverage, and search saved evidence by type or recency. Analysis-area
+          links reopen the selected tool; your research data and private notes
+          remain in this browser.
+        </p>
+        <p>
+          Choose “Compare saved portfolios” to inspect two local snapshots side
+          by side. Issuer overlap counts share classes once and does not look
+          through funds. Allocation overlap adds the smaller saved weight for
+          each shared issuer; both portfolios require complete, resolved
+          allocations totaling 100%. Explicit normalization remains labeled.
+          Missing weights are never assumed to be zero.
+        </p>
+        <p>
+          Whole-list financial medians describe their own covered samples.
+          Matched differences require the same issuer, metric definition, unit,
+          accounting basis and full reporting period. A difference for the same
+          period may be a revision; it is not later growth. Exclusion reasons
+          and snapshot dates remain visible. Export the comparison as JSON with
+          your selected measure, issuer filter, all results and matched SEC
+          links.
+        </p>
+      </section>
+
       <section id="analytics">
         <h2>Understand the list as a whole</h2>
         <p>
@@ -256,6 +285,18 @@ export default function PortfolioGuidePage() {
             exposures, financial conditions and evidence gaps. Each finding
             leads to a relevant view or company. Counts describe identified
             issuers; a ticker list does not imply invested weights.
+          </li>
+          <li>
+            <strong>Cash backing of earnings:</strong> the briefing compares
+            positive versus non-positive net income and operating cash flow for
+            corporate issuers with aligned full annual or TTM periods and USD
+            measures. Financial-company lenses and SIC 6798 REITs are excluded.
+            Zero is non-positive. The headline uses profitable paired issuers as
+            its denominator; the four cells use all paired issuers. Working
+            capital and non-cash items can explain differences. Select a cell to
+            inspect its companies or export the values, full periods and SEC
+            source links. This is a statement-reading diagnostic, not a quality
+            score.
           </li>
           <li>
             <strong>Concentration:</strong> see combined issuer exposure across

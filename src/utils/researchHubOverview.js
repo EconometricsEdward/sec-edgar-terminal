@@ -154,15 +154,22 @@ export function buildHubSearchIndex({
 }
 
 /** Exact ticker/title matches lead; all search terms must match. Results are bounded. */
-export function searchHubResearch(index, query, limit = 12) {
+export function searchHubResearch(
+  index,
+  query,
+  limit = 12,
+  { kind = "all", sort = "relevance" } = {},
+) {
   const text = String(query || "")
     .trim()
     .toLocaleLowerCase("en-US")
     .slice(0, 300);
   if (!text) return { results: [], total: 0 };
   const terms = text.split(/\s+/);
-  const matches = index.filter((item) =>
-    terms.every((term) => item.searchText.includes(term)),
+  const matches = index.filter(
+    (item) =>
+      (kind === "all" || item.kind === kind) &&
+      terms.every((term) => item.searchText.includes(term)),
   );
   const rank = (item) =>
     item.ticker?.toLocaleLowerCase("en-US") === text
@@ -174,7 +181,7 @@ export function searchHubResearch(index, query, limit = 12) {
           : 3;
   matches.sort(
     (a, b) =>
-      rank(a) - rank(b) ||
+      (sort === "recent" ? 0 : rank(a) - rank(b)) ||
       (b.date || "").localeCompare(a.date || "") ||
       a.title.localeCompare(b.title),
   );

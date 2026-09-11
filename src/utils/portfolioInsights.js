@@ -125,6 +125,7 @@ export function portfolioReviewPriorities(
       const point = company.metrics?.[key];
       if (
         companyAvailable(company) &&
+        (key !== "operatingCashFlow" || company.lens === "corporate") &&
         finiteFinancialMetric(point) &&
         point.value < 0
       )

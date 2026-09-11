@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   ArrowUpRight,
@@ -13,6 +13,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { buildPortfolioAnalytics } from "../../../utils/portfolioAnalytics.js";
+import CashEarnings from "./CashEarnings";
 import PortfolioScenario from "./PortfolioScenario";
 import s from "./PortfolioAnalytics.module.css";
 
@@ -37,6 +38,8 @@ const PortfolioCoverageMatrix = dynamic(
 );
 
 type Props = {
+  analyticsArea?: string;
+  onAreaChange?: (area: string) => void;
   rows: any[];
   settings: any;
   companies: any[];
@@ -191,12 +194,22 @@ export default function PortfolioAnalytics({
   onRefresh,
   refreshing,
   preview = false,
+  analyticsArea,
+  onAreaChange,
 }: Props) {
   const titleId = useId();
   const coverageSelectionId = useId();
   const areaButtons = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [area, setArea] = useState<string>("overview");
+  const [localArea, setLocalArea] = useState<string>("overview");
+  const area = AREAS.some((entry) => entry.id === analyticsArea)
+    ? analyticsArea!
+    : localArea;
   const [visitedAreas, setVisitedAreas] = useState(() => new Set(["overview"]));
+  useEffect(() => {
+    setVisitedAreas((current) =>
+      current.has(area) ? current : new Set([...current, area]),
+    );
+  }, [area]);
   const [financialMode, setFinancialMode] = useState("distribution");
   const [financialTool, setFinancialTool] = useState<
     "peers" | "relationships" | "compare"
@@ -206,8 +219,9 @@ export default function PortfolioAnalytics({
   const [matrixVisited, setMatrixVisited] = useState(false);
   const changeArea = (next: string) => {
     if (!AREAS.some((entry) => entry.id === next)) return;
-    setArea(next);
-    setVisitedAreas((current) => new Set([...current, next]));
+    setLocalArea(next);
+    onAreaChange?.(next);
+    setVisitedAreas((current) => new Set([...current, area, next]));
   };
   const [industry, setIndustry] = useState("");
   const [query, setQuery] = useState("");
@@ -390,9 +404,15 @@ export default function PortfolioAnalytics({
           }}
           onInspectCompany={onInspectCompany}
         />
+        <CashEarnings
+          report={report}
+          companies={companies}
+          capturedAt={capturedAt}
+          onInspect={onInspectCompany}
+        />
       </div>
 
-      {visitedAreas.has("concentration") && (
+      {(visitedAreas.has("concentration") || area === "concentration") && (
         <div className={s.panel} hidden={area !== "concentration"}>
           <div className={s.sectionHeading}>
             <div>
@@ -660,7 +680,7 @@ export default function PortfolioAnalytics({
         </div>
       )}
 
-      {visitedAreas.has("financial") && (
+      {(visitedAreas.has("financial") || area === "financial") && (
         <div className={s.panel} hidden={area !== "financial"}>
           <nav className={s.subnav} aria-label="Financial profile tools">
             {[
@@ -1015,7 +1035,7 @@ export default function PortfolioAnalytics({
         </div>
       )}
 
-      {visitedAreas.has("screener") && (
+      {(visitedAreas.has("screener") || area === "screener") && (
         <div className={s.retained} hidden={area !== "screener"}>
           <PortfolioScreener
             report={report}
@@ -1025,7 +1045,7 @@ export default function PortfolioAnalytics({
         </div>
       )}
 
-      {visitedAreas.has("scenario") && (
+      {(visitedAreas.has("scenario") || area === "scenario") && (
         <div className={s.retained} hidden={area !== "scenario"}>
           <PortfolioScenario
             rows={rows}
@@ -1036,7 +1056,7 @@ export default function PortfolioAnalytics({
         </div>
       )}
 
-      {visitedAreas.has("coverage") && (
+      {(visitedAreas.has("coverage") || area === "coverage") && (
         <div className={s.panel} hidden={area !== "coverage"}>
           <nav className={s.subnav} aria-label="Evidence coverage tools">
             <button
