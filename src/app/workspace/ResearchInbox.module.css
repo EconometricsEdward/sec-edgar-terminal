@@ -50,7 +50,7 @@
   max-width: 760px;
 }
 .hero .eyebrow {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.14em;
   color: var(--i-accent);
@@ -95,7 +95,7 @@
   color: var(--i-text);
 }
 .explanation {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--i-muted);
   max-width: 1080px;
 }
@@ -221,13 +221,13 @@
 }
 .tag {
   color: var(--i-accent);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
 .state {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--i-muted);
 }
 .reviewed {
@@ -245,7 +245,7 @@
   font-weight: 750;
 }
 .company span {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--i-muted);
   overflow-wrap: anywhere;
 }
@@ -266,7 +266,7 @@
 }
 .card .provenance {
   color: var(--i-muted);
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 12px;
 }
 .evidenceActions {
@@ -285,7 +285,7 @@
   color: var(--i-accent);
   border: 0;
   background: transparent;
-  font-size: 13px;
+  font-size: 14px;
   padding: 2px 0;
 }
 .evidenceActions a:hover,
@@ -367,7 +367,7 @@
   border-radius: 8px;
   color: var(--i-text);
   background: color-mix(in srgb, var(--i-accent) 5%, transparent);
-  font-size: 13px;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 .alert ul {
@@ -381,7 +381,7 @@
   border-top: 1px solid var(--i-line);
   padding-top: 20px;
   color: var(--i-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .methodology summary {
   color: var(--i-text);

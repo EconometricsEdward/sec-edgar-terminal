@@ -6,10 +6,10 @@
   display: grid;
   gap: 18px;
   min-width: 0;
-  padding: clamp(18px, 3vw, 28px);
-  border: 1px solid var(--pm-line);
-  border-radius: 16px;
-  background: var(--hub-panel, #101a2b);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--pm-text);
 }
 .matrix h3 {
@@ -26,7 +26,7 @@
 }
 .eyebrow {
   color: var(--pm-accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -52,7 +52,7 @@
   border-radius: 7px;
   background: transparent;
   color: var(--pm-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -99,7 +99,7 @@
   background: var(--hub-input, #0c1524);
   color: var(--pm-text);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
 }
 .matrix .check {
   display: flex;
@@ -174,7 +174,7 @@
   top: 0;
   z-index: 2;
   color: var(--pm-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   background: var(--hub-panel, #101a2b);
   box-shadow: 0 1px 0 var(--pm-line);
@@ -199,7 +199,7 @@
   display: block;
   margin-top: 6px;
   color: var(--pm-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 .tableWrap thead small {
@@ -232,7 +232,7 @@
 .cellLabel {
   display: block;
   margin-bottom: 7px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   color: var(--pm-muted);
 }
@@ -249,14 +249,14 @@
 .date {
   display: block;
   margin-top: 7px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--pm-muted);
   line-height: 1.5;
 }
 .tableWrap a {
   display: inline-block;
   margin-top: 7px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--pm-accent);
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -266,7 +266,7 @@
   min-height: 30px;
   border: 0;
   border-radius: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--pm-accent);
   text-align: left;
   text-decoration: underline;

@@ -15,7 +15,7 @@
 }
 .root .eyebrow {
   margin: 0 0 5px;
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--p-gold, #f7c65a);
@@ -91,7 +91,7 @@
   min-width: 180px;
 }
 .root .manage p {
-  font-size: 13px;
+  font-size: 14px;
 }
 .list {
   list-style: none;
@@ -113,7 +113,7 @@
 .root .status {
   color: var(--p-gold, #f7c65a);
   margin-bottom: 0;
-  font-size: 13px;
+  font-size: 14px;
 }
 .status:empty {
   display: none;

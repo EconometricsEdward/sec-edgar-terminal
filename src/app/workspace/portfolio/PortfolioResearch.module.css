@@ -19,8 +19,12 @@
   text-align: left;
   padding: 4px 0;
 }
-.root .focusButton:hover { text-decoration: underline; }
-.root .intro h2 { font-size: clamp(24px, 2.6vw, 31px); }
+.root .focusButton:hover {
+  text-decoration: underline;
+}
+.root .intro h2 {
+  font-size: clamp(24px, 2.6vw, 31px);
+}
 .root h2 {
   font-size: clamp(26px, 3.2vw, 38px);
   line-height: 1.2;
@@ -40,7 +44,7 @@
 }
 .root p {
   color: var(--p-muted);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.65;
   margin: 6px 0;
 }
@@ -54,7 +58,7 @@
 .root label {
   display: grid;
   gap: 7px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   color: var(--p-muted);
 }
@@ -111,7 +115,7 @@
 }
 .root .eyebrow {
   color: var(--p-gold);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -169,11 +173,11 @@
 .savedBar {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
-  padding: 18px;
-  background: var(--p-panel);
-  border: 1px solid var(--p-line);
-  border-radius: 12px;
+  gap: 12px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   flex-wrap: wrap;
 }
 .savedBar > label {
@@ -207,15 +211,19 @@
 .researchControls {
   display: flex;
   align-items: flex-end;
-  gap: 18px;
+  gap: 20px;
   flex-wrap: wrap;
+
+  padding-bottom: 20px;
+
+  border-bottom: 1px solid var(--p-line);
 }
 .researchControls > div {
   flex: 1;
   min-width: 260px;
 }
 .researchControls > label {
-  width: 275px;
+  width: 220px;
 }
 .progress {
   padding: 14px 18px;
@@ -268,7 +276,7 @@
   min-width: 0;
 }
 .stats span {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--p-muted);
 }
 .stats strong {
@@ -347,7 +355,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 20px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--p-muted);
 }
 .selectionBar :is(a, button) {
@@ -366,7 +374,7 @@
 .tableWrap table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   text-align: left;
 }
@@ -408,7 +416,7 @@
   min-width: 190px;
 }
 .tableWrap small {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--p-muted);
 }
@@ -440,7 +448,7 @@
   padding: 3px 7px;
   margin-bottom: 5px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
   text-transform: capitalize;
   background: var(--p-panel);
 }
@@ -550,7 +558,7 @@
 }
 .chart small {
   color: var(--p-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .new {
   color: var(--p-gold) !important;
@@ -580,7 +588,7 @@
 }
 .copyArea textarea {
   font-family: monospace;
-  font-size: 13px !important;
+  font-size: 14px !important;
 }
 .root .privacy {
   font-size: 12px;
@@ -657,4 +665,25 @@
   .exportButtons > button {
     width: 100%;
   }
+}
+
+.portfolioContext > span {
+  font-size: 14px;
+  color: var(--p-muted);
+}
+.root .portfolioContext p {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.portfolioContext strong {
+  color: var(--p-text);
+  font-weight: 600;
+}
+.root .allocationNote {
+  text-align: left;
+  font-size: 14px;
+  color: var(--p-gold);
+  width: fit-content;
+  padding: 0;
+  background: none;
 }

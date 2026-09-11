@@ -1,13 +1,13 @@
 .root {
   min-width: 0;
-  padding: 24px;
-  border: 1px solid var(--hub-border, #344154);
-  background: var(--hub-panel, #182131);
-  border-radius: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
   color: var(--hub-text, #e8edf5);
   display: grid;
-  gap: 16px;
-  margin-top: 16px;
+  gap: 24px;
+  margin-top: 0;
 }
 .root h3 {
   margin: 0;
@@ -38,7 +38,7 @@
   gap: 16px;
 }
 .eyebrow {
-  font-size: 11px !important;
+  font-size: 12px !important;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--hub-accent, #f7c65a) !important;
@@ -112,7 +112,6 @@
 }
 .tableWrap {
   overflow-x: auto;
-  max-height: 520px;
   border: 1px solid var(--hub-border, #344154);
   border-radius: 8px;
 }
@@ -186,4 +185,19 @@
   }
 }
 
-.root[hidden] { display: none; }
+.root[hidden] {
+  display: none;
+}
+
+.methodology summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--hub-accent, #f7c65a);
+  padding: 6px 0;
+}
+.methodology p {
+  margin-top: 12px;
+}
+.controls label:has(select[data-financial-measure]) {
+  flex-basis: 280px;
+}
