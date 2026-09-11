@@ -32,6 +32,32 @@ const GUIDES = {
     "mda",
     ["corporate"],
   ),
+  costOfRevenue: guide(
+    "Reported costs assigned to goods sold or services delivered in the period, within the scope of the source concept.",
+    "Compare with revenue and gross profit to investigate input costs and product mix.",
+    "Companies classify costs differently. A missing subtotal is not zero; inspect whether the filing separates goods and service costs.",
+    '"cost of revenue" OR "cost of sales"',
+    "mda",
+    ["corporate"],
+  ),
+  sga: guide(
+    "Selling, general and administrative costs, reported together or calculated from compatible selling/marketing and general/administrative components.",
+    "Compare with revenue to understand the cost of selling products and running the business.",
+    "General and administrative expense alone is not total SG&A. Both components are required for a calculated total; classifications differ across companies.",
+    '"selling" AND "administrative"',
+  ),
+  accountsPayable: guide(
+    "Current amounts owed to suppliers for goods or services already received.",
+    "Read alongside purchases, inventory and operating cash flow to investigate payment timing.",
+    "A larger balance can reflect growth or slower payments. Payables combined with accrued liabilities are not substituted for separately reported accounts payable.",
+    '"accounts payable" OR "payment terms"',
+  ),
+  receivables: guide(
+    "Current receivables after the allowances included in the reported SEC concept. The source may cover trade receivables or a broader receivables balance.",
+    "Compare with revenue and cash collections to investigate billing and collection timing.",
+    "Check the source scope before comparing companies. Receivables growth alone does not establish collection problems or a deterioration in credit quality.",
+    '"receivables" AND ("allowance" OR "collections")',
+  ),
   grossProfit: guide(
     "Revenue remaining after the cost of revenue included in this reported measure.",
     "Read about selling prices, input costs and the mix of products or services.",

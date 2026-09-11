@@ -433,6 +433,9 @@ export default function PortfolioAnalytics({
             companies={companies}
             onInspect={onInspectCompany}
             onDisclosure={onDisclosure}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            preview={preview}
           />
         </div>
       )}

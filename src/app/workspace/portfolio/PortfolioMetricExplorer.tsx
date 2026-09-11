@@ -10,6 +10,11 @@ import {
   metricDisplay,
   metricPeriodKey,
   metricUnit,
+  portfolioMetricObservation,
+  portfolioMetricCoverage,
+  portfolioCaptureCoverage,
+  filterPortfolioMetricIssuers,
+  PORTFOLIO_COVERAGE_REASONS,
 } from "../../../utils/portfolioDeepResearch.js";
 import { analysisMetricGuide } from "../../../utils/analysisMetricGuide.js";
 import { portfolioMetricSourceUrl } from "../../../utils/portfolioAnalytics.js";
@@ -22,13 +27,19 @@ export default function PortfolioMetricExplorer({
   companies,
   onInspect,
   onDisclosure,
+  onRefresh,
+  refreshing = false,
+  preview = false,
 }: {
   report: any;
   companies: any[];
   onInspect: (id: string) => void;
   onDisclosure?: (query: string, ciks: string[]) => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  preview?: boolean;
 }) {
-  const [metricId, setMetricId] = useState("netMargin"),
+  const [requestedMetricId, setMetricId] = useState("netMargin"),
     [category, setCategory] = useState("all"),
     [lens, setLens] = useState("all"),
     [industry, setIndustry] = useState("all"),
@@ -50,6 +61,29 @@ export default function PortfolioMetricExplorer({
     () => portfolioResearchIssuers(report, companies),
     [report, companies],
   );
+  const scopedIssuers = useMemo(
+    () => filterPortfolioMetricIssuers(issuers, { lens, industry, query }),
+    [issuers, lens, industry, query],
+  );
+  // Do not prune the measure menu by the period filter: changing measures resets it.
+  const coverage = useMemo(
+    () => portfolioMetricCoverage(scopedIssuers),
+    [scopedIssuers],
+  );
+  const captureCoverage = useMemo(
+    () => portfolioCaptureCoverage(issuers),
+    [issuers],
+  );
+  const familyCoverage = coverage.filter(
+    (d) => category === "all" || d.category === category,
+  );
+  const definitions = familyCoverage.filter((d) => d.available > 0);
+  const metricId =
+    definitions.find((d) => d.key === requestedMetricId)?.key ||
+    definitions.find((d) => d.key === "netMargin")?.key ||
+    definitions[0]?.key ||
+    familyCoverage[0]?.key ||
+    requestedMetricId;
   const result = useMemo(
     () =>
       rankPortfolioMetric(report, companies, {
@@ -72,9 +106,28 @@ export default function PortfolioMetricExplorer({
     .sort()
     .reverse();
   const chosen = issuers.filter((i) => selected.includes(i.cik));
-  const definitions = PORTFOLIO_METRIC_CATALOG.filter(
-    (d) => category === "all" || d.category === category,
+  const comparisonCoverage = portfolioMetricCoverage(chosen).filter(
+    (d) => d.available > 0,
   );
+  const visibleCompareKeys = compareKeys.filter((key) =>
+    comparisonCoverage.some((d) => d.key === key),
+  );
+  const measuredRows = result.rows.filter((row) => row.state === "available");
+  const excludedRows = result.rows.filter((row) => row.state !== "available");
+  const missingDefinitions = familyCoverage.filter((d) => !d.available);
+  const refreshLabel = refreshing
+    ? "Refreshing research…"
+    : preview
+      ? "Open demo in Research Hub"
+      : "Refresh financial research";
+  const clearFilters = () => {
+    setCategory("all");
+    setLens("all");
+    setIndustry("all");
+    setQuery("");
+    setPeriod("all");
+    setLimit(25);
+  };
   const guide = inspector
     ? analysisMetricGuide(
         portfolioMetricDefinitionFor(inspector.key),
@@ -132,6 +185,7 @@ export default function PortfolioMetricExplorer({
                   "value",
                   "unit",
                   "status",
+                  "coverage_reason",
                   "report_start",
                   "report_end",
                   "captured_at",
@@ -152,6 +206,7 @@ export default function PortfolioMetricExplorer({
                   r.state === "available" ? r.point.value : null,
                   r.point?.unit,
                   r.state,
+                  r.reason,
                   r.point?.period?.start,
                   r.point?.period?.end,
                   r.company?.retrievedAt,
@@ -169,8 +224,29 @@ export default function PortfolioMetricExplorer({
         Statements, cash flows, ratios and accounting checks share the same
         financial engine as Analysis. Select a measure to understand it, then
         compare companies with similar business models and reporting periods.
-        Older captures may need a refresh.
+        Only measures with usable observations appear in the menu. Coverage
+        remains visible, and missing values are never replaced by zero.
       </p>
+      {captureCoverage.legacy + captureCoverage.outdated > 0 && (
+        <div className={s.finding} role="status">
+          <strong>Update your saved financial capture</strong>
+          <p>
+            {captureCoverage.legacy + captureCoverage.outdated} of{" "}
+            {captureCoverage.population} issuers use an earlier financial
+            calculation version. Fields absent from those captures are not
+            evidence that the companies failed to report them. Refresh to
+            retrieve the expanded catalog and current metric definitions; your
+            company list and allocations stay in place.
+          </p>
+          {onRefresh && (
+            <div>
+              <button onClick={onRefresh} disabled={refreshing}>
+                {refreshLabel}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <div className={s.controls}>
         <label>
           Metric family
@@ -178,9 +254,10 @@ export default function PortfolioMetricExplorer({
             value={category}
             onChange={(e) => {
               setCategory(e.target.value);
-              const first = PORTFOLIO_METRIC_CATALOG.find(
+              const first = coverage.find(
                 (d) =>
-                  e.target.value === "all" || d.category === e.target.value,
+                  d.available > 0 &&
+                  (e.target.value === "all" || d.category === e.target.value),
               );
               if (first) setMetricId(first.key);
               setPeriod("all");
@@ -199,19 +276,23 @@ export default function PortfolioMetricExplorer({
             ))}
           </select>
         </label>
-        <label>
-          Financial measure
+        <label className={s.metricControl}>
+          Financial measure · measured issuers
           <select
-            value={metricId}
+            disabled={!definitions.length}
+            value={definitions.length ? metricId : ""}
             onChange={(e) => {
               setMetricId(e.target.value);
               setPeriod("all");
               setLimit(25);
             }}
           >
+            {!definitions.length && (
+              <option value="">No measured values in this scope</option>
+            )}
             {definitions.map((d) => (
               <option key={d.key} value={d.key}>
-                {d.label}
+                {d.label} · {d.available}/{d.population}
               </option>
             ))}
           </select>
@@ -292,20 +373,111 @@ export default function PortfolioMetricExplorer({
           />
         </label>
       </div>
-      <div className={s.finding}>
-        <strong>
-          {result.available} of {result.population} selected issuers have a
-          measured {result.definition.label.toLowerCase()}.
-        </strong>
+      {result.available > 0 ? (
+        <div className={s.finding} aria-live="polite">
+          <strong>
+            {result.available} of {result.population} selected issuers have a
+            measured {result.definition.label.toLowerCase()}.
+          </strong>
+          <p>
+            Median {value(result.median)} · middle 50% {value(result.p25)} to{" "}
+            {value(result.p75)} · {result.periodCount} reporting periods.{" "}
+            {result.excluded} excluded from ranks. {result.interpretation}
+          </p>
+          <p>
+            {result.guide.meaning} {result.guide.caution}
+          </p>
+        </div>
+      ) : (
+        <div className={s.finding} role="status">
+          <strong>No comparable observations in this selection</strong>
+          <p>
+            {scopedIssuers.length === 0
+              ? "No companies match the current filters. Clear them to return to your portfolio."
+              : period !== "all"
+                ? "No measured values match this full reporting period. Choose all captured periods or adjust the company filters."
+                : "No measures in this family have the complete inputs, units and reporting periods needed for a comparison. Try another family or review coverage below."}
+          </p>
+          <div className={s.actions}>
+            <button onClick={clearFilters}>Clear filters</button>
+            {onRefresh && (
+              <button onClick={onRefresh} disabled={refreshing}>
+                {refreshLabel}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <details className={s.details}>
+        <summary>
+          Coverage: {result.excluded} excluded issuers ·{" "}
+          {missingDefinitions.length} measures without results in this family
+        </summary>
         <p>
-          Median {value(result.median)} · middle 50% {value(result.p25)} to{" "}
-          {value(result.p75)} · {result.periodCount} reporting periods.{" "}
-          {result.excluded} are excluded from ranks. {result.interpretation}
+          The measured denominator always includes only compatible observations.
+          These exclusions remain in ranking exports.
         </p>
+        {Object.entries(result.reasons).length > 0 && (
+          <ul>
+            {Object.entries(result.reasons).map(([code, count]) => (
+              <li key={code}>
+                {
+                  PORTFOLIO_COVERAGE_REASONS[
+                    code as keyof typeof PORTFOLIO_COVERAGE_REASONS
+                  ]
+                }
+                : {String(count)}
+              </li>
+            ))}
+          </ul>
+        )}
+        {excludedRows.length > 0 && (
+          <details>
+            <summary>
+              Review excluded companies for {result.definition.label}
+            </summary>
+            <ul className={s.coverageList}>
+              {excludedRows.map((row) => (
+                <li key={row.cik}>
+                  <button onClick={() => onInspect(row.rowIds[0])}>
+                    {row.ticker}
+                  </button>{" "}
+                  {row.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {missingDefinitions.length > 0 && (
+          <details>
+            <summary>Review measures omitted from the menu</summary>
+            <ul className={s.coverageList}>
+              {missingDefinitions.map((d) => (
+                <li key={d.key}>
+                  <strong>{d.label}</strong> —{" "}
+                  {Object.entries(d.reasons)
+                    .map(
+                      ([code, count]) =>
+                        `${count} ${PORTFOLIO_COVERAGE_REASONS[code as keyof typeof PORTFOLIO_COVERAGE_REASONS].toLowerCase()}`,
+                    )
+                    .join("; ") || "No companies match the current filters"}
+                  .
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {onRefresh && (
+          <button onClick={onRefresh} disabled={refreshing}>
+            {refreshLabel}
+          </button>
+        )}
         <p>
-          {result.guide.meaning} {result.guide.caution}
+          Refreshing retrieves supported SEC facts through the shared cache and
+          request queue. It cannot fill facts a company does not report
+          separately or make an inapplicable ratio meaningful.
         </p>
-      </div>
+      </details>
       {inspector && (
         <section
           className={s.finding}
@@ -368,81 +540,85 @@ export default function PortfolioMetricExplorer({
           )}
         </section>
       )}
-      <p>
-        Select up to six issuers for a comparison below. Selection stays fixed
-        while you filter or rank.
-      </p>
-      <div
-        className={s.tableWrap}
-        tabIndex={0}
-        role="region"
-        aria-label="Portfolio metric rankings"
-      >
-        <table>
-          <thead>
-            <tr>
-              <th>Compare</th>
-              <th>Rank</th>
-              <th>Company</th>
-              <th>{result.definition.label}</th>
-              <th>Full reporting period</th>
-              <th>Evidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.rows.slice(0, limit).map((row) => (
-              <tr key={row.cik}>
-                <td>
-                  <input
-                    aria-label={`Compare ${row.ticker}`}
-                    type="checkbox"
-                    checked={selected.includes(row.cik)}
-                    disabled={
-                      !selected.includes(row.cik) && selected.length >= 6
-                    }
-                    onChange={() =>
-                      setSelected((v) =>
-                        v.includes(row.cik)
-                          ? v.filter((c) => c !== row.cik)
-                          : [...v, row.cik],
-                      )
-                    }
-                  />
-                </td>
-                <td>{row.rank ?? "—"}</td>
-                <th>
-                  {row.ticker}
-                  <small>
-                    {row.name} · {row.lens}
-                  </small>
-                </th>
-                <td>
-                  <button onClick={() => inspect(row, metricId)}>
-                    {metricDisplay(row.point)}
-                  </button>
-                  {row.state !== "available" && (
-                    <small>{row.state.replaceAll("-", " ")}</small>
-                  )}
-                </td>
-                <td>
-                  {row.point?.period?.start || "Instant / unknown"} to{" "}
-                  {row.point?.period?.end || "unknown"}
-                  <small>{row.point?.period?.kind}</small>
-                </td>
-                <td>
-                  <button onClick={() => onInspect(row.rowIds[0])}>
-                    Company details
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {result.rows.length > limit && (
-        <button onClick={() => setLimit((n) => n + 25)}>
-          Show 25 more companies
-        </button>
+      {measuredRows.length > 0 && (
+        <>
+          <p>
+            Select up to six issuers for a comparison below. Selection stays
+            fixed while you filter or rank.
+          </p>
+          <div
+            className={s.tableWrap}
+            tabIndex={0}
+            role="region"
+            aria-label="Portfolio metric rankings"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>Compare</th>
+                  <th>Rank</th>
+                  <th>Company</th>
+                  <th>{result.definition.label}</th>
+                  <th>Full reporting period</th>
+                  <th>Evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {measuredRows.slice(0, limit).map((row) => (
+                  <tr key={row.cik}>
+                    <td>
+                      <input
+                        aria-label={`Compare ${row.ticker}`}
+                        type="checkbox"
+                        checked={selected.includes(row.cik)}
+                        disabled={
+                          !selected.includes(row.cik) && selected.length >= 6
+                        }
+                        onChange={() =>
+                          setSelected((v) =>
+                            v.includes(row.cik)
+                              ? v.filter((c) => c !== row.cik)
+                              : [...v, row.cik],
+                          )
+                        }
+                      />
+                    </td>
+                    <td>{row.rank ?? "—"}</td>
+                    <th>
+                      {row.ticker}
+                      <small>
+                        {row.name} · {row.lens}
+                      </small>
+                    </th>
+                    <td>
+                      <button onClick={() => inspect(row, metricId)}>
+                        {metricDisplay(row.point)}
+                      </button>
+                      {row.state !== "available" && (
+                        <small>{row.state.replaceAll("-", " ")}</small>
+                      )}
+                    </td>
+                    <td>
+                      {row.point?.period?.start || "Instant / unknown"} to{" "}
+                      {row.point?.period?.end || "unknown"}
+                      <small>{row.point?.period?.kind}</small>
+                    </td>
+                    <td>
+                      <button onClick={() => onInspect(row.rowIds[0])}>
+                        Company details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {measuredRows.length > limit && (
+            <button onClick={() => setLimit((n) => n + 25)}>
+              Show 25 more companies
+            </button>
+          )}
+        </>
       )}
       {chosen.length > 0 && (
         <section>
@@ -450,27 +626,41 @@ export default function PortfolioMetricExplorer({
             <h4>Compare {chosen.length} selected issuers</h4>
             <button onClick={() => setSelected([])}>Clear selection</button>
           </div>
-          <details>
+          <p>
+            Measures with no usable values among these companies are omitted.
+            Each remaining cell retains its own reporting period; “Not measured”
+            is excluded, not zero.
+          </p>
+          {visibleCompareKeys.length === 0 && (
+            <p>Choose an available comparison measure below.</p>
+          )}
+          <details open={visibleCompareKeys.length === 0}>
             <summary>Choose comparison measures (up to 10)</summary>
             <div className={s.controls}>
-              {PORTFOLIO_METRIC_CATALOG.map((d) => (
+              {comparisonCoverage.map((d) => (
                 <label key={d.key}>
                   <span>
                     <input
                       type="checkbox"
-                      checked={compareKeys.includes(d.key)}
+                      checked={visibleCompareKeys.includes(d.key)}
                       disabled={
-                        !compareKeys.includes(d.key) && compareKeys.length >= 10
+                        !visibleCompareKeys.includes(d.key) &&
+                        visibleCompareKeys.length >= 10
                       }
                       onChange={() =>
                         setCompareKeys((v) =>
                           v.includes(d.key)
                             ? v.filter((k) => k !== d.key)
-                            : [...v, d.key],
+                            : [
+                                ...v.filter((k) =>
+                                  comparisonCoverage.some((c) => c.key === k),
+                                ),
+                                d.key,
+                              ],
                         )
                       }
                     />{" "}
-                    {d.label}
+                    {d.label} · {d.available}/{d.population}
                   </span>
                 </label>
               ))}
@@ -497,20 +687,37 @@ export default function PortfolioMetricExplorer({
                 </tr>
               </thead>
               <tbody>
-                {compareKeys.map((key) => (
+                {visibleCompareKeys.map((key) => (
                   <tr key={key}>
                     <th>{portfolioMetricDefinitionFor(key)?.label}</th>
-                    {chosen.map((i) => (
-                      <td key={i.cik}>
-                        <button onClick={() => inspect(i, key)}>
-                          {metricDisplay(i.company?.metrics?.[key])}
-                        </button>
-                        <small>
-                          {i.company?.metrics?.[key]?.period?.end ||
-                            "Unknown period"}
-                        </small>
-                      </td>
-                    ))}
+                    {chosen.map((i) => {
+                      const observation = portfolioMetricObservation(
+                        i,
+                        portfolioMetricDefinitionFor(key),
+                      );
+                      return (
+                        <td key={i.cik}>
+                          {observation.state === "available" ? (
+                            <>
+                              <button onClick={() => inspect(i, key)}>
+                                {metricDisplay(observation.point)}
+                              </button>
+                              <small>
+                                {observation.point.period.start} to{" "}
+                                {observation.point.period.end} ·{" "}
+                                {observation.point.period.kind}
+                              </small>
+                            </>
+                          ) : (
+                            <span title={observation.reason || ""}>
+                              {observation.state === "not-applicable"
+                                ? "Not applicable"
+                                : "Not measured"}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>

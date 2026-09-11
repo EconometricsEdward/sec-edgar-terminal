@@ -272,3 +272,41 @@ test("source requests preserve Retry-After and cancellation stops queued work", 
   assert.deepEqual(comparePortfolioResearch(encoded,input,fixture(input.companies).rows),comparePortfolioResearch(baseline,input,fixture(input.companies).rows));
   const invalid=structuredClone(encoded);invalid.companies[0].metrics.netIncome[1]=999999;assert.throws(()=>validatePortfolioBaseline(invalid),/reference/);
  });
+
+test("metric coverage separates old captures, missing facts, business scope, units and periods", async () => {
+  const { portfolioMetricCoverage, portfolioResearchIssuers, portfolioCaptureCoverage } = await import('../src/utils/portfolioDeepResearch.js');
+  const { ANALYSIS_VERSION } = await import('../src/utils/analysisVersion.js');
+  const companies = [
+    company(1, { accountsPayable: point(0, 'USD') }, { analysisVersion: ANALYSIS_VERSION }),
+    company(2),
+    company(3, { accountsPayable: point(null, 'USD', { reason: 'Separate payable subtotal is not reported.' }) }, { analysisVersion: ANALYSIS_VERSION }),
+    company(4, { accountsPayable: point(10, '%') }),
+    company(5, { accountsPayable: point(10, 'USD', { period: null }) }),
+    company(6, {}, { lens: 'banking', analysisVersion: ANALYSIS_VERSION }),
+  ];
+  const { report } = fixture(companies);
+  const issuers = portfolioResearchIssuers(report, companies);
+  const coverage = portfolioMetricCoverage(issuers).find(d => d.key === 'accountsPayable');
+  const result = rankPortfolioMetric(report, companies, { metricId: 'accountsPayable' });
+  assert.equal(coverage.available, result.available);
+  assert.equal(result.available, 1);
+  assert.equal(result.median, 0);
+  assert.deepEqual(coverage.reasons, { 'not-captured':1, 'missing-inputs':1, 'incompatible-unit':1, 'unknown-period':1, 'not-applicable':1 });
+  assert.match(result.rows.find(r => r.cik === cik(3)).reason, /Separate payable/);
+  assert.equal(portfolioCaptureCoverage(issuers).legacy, 3);
+  assert.equal(portfolioMetricCoverage(issuers, {period: 'annual|2024-01-01|2024-12-31'}).find(d=>d.key==='accountsPayable').reasons['outside-period'], 1);
+});
+
+test("old G&A-only observations cannot enter SG&A rankings or measured report cards", () => {
+  const companies = [company(1, {sga: point(123,'USD',{sources:[{tag:'GeneralAndAdministrativeExpense'}]})})];
+  const {rows, report} = fixture(companies);
+  const result = rankPortfolioMetric(report, companies, {metricId:'sga'});
+  assert.equal(result.available,0);
+  assert.equal(result.reasons['incomplete-scope'],1);
+  const bundle = buildPortfolioResearchPackage({name:'Scope check',rows,allocation:{basis:'none'},snapshot:{companies,basis:'annual',generated_at:'2026-09-11T00:00:00Z'}});
+  const enriched = enrichPortfolioReport(bundle);
+  assert.equal(enriched.companies[0].metrics.sga.value,123, 'raw captured evidence remains intact');
+  const html = portfolioReportHtml(enriched);
+  assert.doesNotMatch(html, /<h4>SG&amp;A Expense:/);
+  assert.match(html, /general and administrative expense alone/);
+});

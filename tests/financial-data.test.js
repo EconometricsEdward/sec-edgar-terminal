@@ -80,3 +80,54 @@ test('trailing periods stay unavailable when an intermediate quarter is missing'
   const data = facts([obs(110, '2026-04-01')]);
   assert.equal(value(data, { ...quarter, kind: 'ttm' }).value, null);
 });
+
+const expenseFacts = (entries) => ({ 'us-gaap': Object.fromEntries(Object.entries(entries).map(([tag, values]) => [tag, { units: { USD: values } }])) });
+const sgaPoint = (data, period = {kind:'annual',fp:'FY',start:'2025-01-01',end:'2025-12-31'}) => buildMetricRow(data,'sga','SG&A',[period]).values[0];
+const expense = (value, extra={}) => obs(value,'2025-01-01','2025-12-31',{fp:'FY',fy:2025,form:'10-K',filed:'2026-02-01',...extra});
+
+test('SG&A prefers the reported total and requires both compatible components for a fallback', () => {
+  const data = expenseFacts({SellingGeneralAndAdministrativeExpense:[expense(70)],SellingAndMarketingExpense:[expense(40)],GeneralAndAdministrativeExpense:[expense(20)]});
+  assert.equal(sgaPoint(data).value,70);
+  delete data['us-gaap'].SellingGeneralAndAdministrativeExpense;
+  const sum = sgaPoint(data);
+  assert.equal(sum.value,60);
+  assert.equal(sum.classification,'calculated');
+  assert.equal(sum.sources.length,2);
+  assert.match(sum.formula,/Selling and marketing/);
+  delete data['us-gaap'].SellingAndMarketingExpense;
+  assert.equal(sgaPoint(data).value,null);
+});
+
+test('SG&A rejects currency/period mismatches and facts unavailable at the filing cutoff', () => {
+  const data = expenseFacts({SellingAndMarketingExpense:[expense(40)],GeneralAndAdministrativeExpense:[expense(20)]});
+  data['us-gaap'].GeneralAndAdministrativeExpense.units.USD[0].start='2025-02-01';
+  assert.equal(sgaPoint(data).value,null);
+  data['us-gaap'].SellingAndMarketingExpense.units.USD[0].start='2025-02-01';
+  assert.equal(sgaPoint(data).value,null, 'two matching components still must cover the requested year');
+  data['us-gaap'].SellingAndMarketingExpense.units.USD=[expense(40)];
+  data['us-gaap'].GeneralAndAdministrativeExpense.units.USD=[expense(20)];
+  assert.equal(sgaPoint(data,{kind:'annual',fp:'FY',start:'2025-01-01',end:'2025-12-31',asOf:'2026-01-31'}).value,null);
+  data['us-gaap'].GeneralAndAdministrativeExpense.units={EUR:[expense(20)]};
+  assert.equal(sgaPoint(data).value,null);
+});
+
+test('calculated quarterly and TTM SG&A retain component and cumulative evidence', () => {
+  const entries = [
+    expense(100,{start:'2024-01-01',end:'2024-12-31',fy:2024,filed:'2025-02-01'}),
+    obs(70,'2024-01-01','2024-09-30',{fy:2024,fp:'Q3',filed:'2024-11-01'}),
+    obs(150,'2025-01-01','2025-09-30',{fy:2025,fp:'Q3',filed:'2025-11-01'}),
+    obs(90,'2025-01-01','2025-06-30',{fy:2025,fp:'Q2',filed:'2025-08-01'}),
+    obs(40,'2025-01-01','2025-03-31',{fy:2025,fp:'Q1',filed:'2025-05-01'}),
+  ];
+  const identified = entries.map((e,index)=>({...e,accn:`0000000001-25-${String(index+1).padStart(6,'0')}`}));
+  const data = expenseFacts({Revenues:identified,SellingAndMarketingExpense:identified,GeneralAndAdministrativeExpense:identified.map(e=>({...e,val:e.val/2}))});
+  const periods = extractQuarterlyPeriods(data);
+  const quarter = sgaPoint(data,periods[0]);
+  assert.equal(quarter.value,90);
+  assert.equal(quarter.sources.length,4);
+  const ttm = sgaPoint(data,{...periods[0],kind:'ttm'});
+  assert.equal(ttm.value,270);
+  assert.ok(ttm.sources.some(s=>s.tag==='SellingAndMarketingExpense'));
+  assert.ok(ttm.sources.some(s=>s.tag==='GeneralAndAdministrativeExpense'));
+  assert.equal(ttm.source.start,'2024-10-01');
+});

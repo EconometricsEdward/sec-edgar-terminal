@@ -1,3 +1,4 @@
+import { ANALYSIS_VERSION } from "./analysisVersion.js";
 import {
   PORTFOLIO_METRIC_CATALOG,
   portfolioMetricDefinitionFor,
@@ -73,6 +74,133 @@ const metricApplies = (definition, lens) =>
       ].includes(definition?.key)
     : definition?.lenses?.includes(lens);
 
+const captureRetrieved = company => Boolean(company) && ["ready", "partial", "ok", "success", "cached", "stale"].includes(company.status);
+
+// One eligibility contract for selectors, rankings, comparisons and coverage.
+// A missing field in an older capture is different from an explicitly null result.
+export function portfolioMetricObservation(issuer, definition, period = "all") {
+  const company = issuer.company;
+  const point = company?.metrics?.[definition?.key];
+  const excluded = (state, reasonCode, reason) => ({
+    point,
+    state,
+    reasonCode,
+    reason,
+  });
+  if (!captureRetrieved(company) || issuer.lens === "unknown")
+    return excluded(
+      "unavailable",
+      "company-unavailable",
+      "Financial evidence has not been retrieved successfully for this issuer. Refresh research or review its filings.",
+    );
+  if (
+    !metricApplies(definition, issuer.lens) ||
+    point?.classification === "not_applicable"
+  )
+    return excluded(
+      "not-applicable",
+      "not-applicable",
+      "This measure does not apply to the selected business model.",
+    );
+  if (!point)
+    return excluded(
+      "unavailable",
+      "not-captured",
+      "This measure is not in the saved capture. Refresh research to request the expanded financial catalog.",
+    );
+  // Historical captures can contain the old G&A-only fallback. Do not rank it as combined SG&A.
+  if (
+    definition.key === "sga" &&
+    point.sources?.length &&
+    point.sources.every((s) => s.tag === "GeneralAndAdministrativeExpense")
+  )
+    return excluded(
+      "unavailable",
+      "incomplete-scope",
+      "This older capture contains general and administrative expense alone, not combined SG&A. Refresh to request both selling and administrative components.",
+    );
+  if (!finiteFinancialMetric(point))
+    return excluded(
+      "unavailable",
+      "missing-inputs",
+      point.reason ||
+        "The captured SEC evidence does not contain the compatible inputs needed for this measure. Review the filing; refreshing may not resolve a reporting gap.",
+    );
+  if (point.unit !== metricUnit(definition.format))
+    return excluded(
+      "unavailable",
+      "incompatible-unit",
+      "The reported unit does not match this measure, so the value cannot be compared.",
+    );
+  if (!metricPeriodKey(point))
+    return excluded(
+      "unknown-period",
+      "unknown-period",
+      "A complete, supported reporting period is missing. The value is withheld from comparisons.",
+    );
+  if (period !== "all" && metricPeriodKey(point) !== period)
+    return excluded(
+      "outside-period",
+      "outside-period",
+      "The captured value belongs to a different reporting period than the selected filter.",
+    );
+  return { point, state: "available", reasonCode: null, reason: null };
+}
+export function filterPortfolioMetricIssuers(
+  issuers,
+  { lens = "all", industry = "all", query = "" } = {},
+) {
+  const needle = query.trim().toLowerCase();
+  return issuers.filter(
+    (i) =>
+      (lens === "all" || i.lens === lens) &&
+      (industry === "all" || i.industry === industry) &&
+      `${i.ticker} ${i.name}`.toLowerCase().includes(needle),
+  );
+}
+export const PORTFOLIO_COVERAGE_REASONS = {
+  "not-captured": "Not in this saved capture",
+  "incomplete-scope": "Incomplete metric scope — refresh needed",
+  "missing-inputs": "Missing or incompatible SEC inputs",
+  "not-applicable": "Not applicable to this business model",
+  "company-unavailable": "Issuer evidence needs review",
+  "incompatible-unit": "Incompatible reported unit",
+  "unknown-period": "Incomplete reporting period",
+  "outside-period": "Outside the selected period",
+};
+export function portfolioMetricCoverage(issuers, { period = "all" } = {}) {
+  return PORTFOLIO_METRIC_CATALOG.map((definition) => {
+    let available = 0;
+    const reasons = {};
+    for (const issuer of issuers) {
+      const observation = portfolioMetricObservation(
+        issuer,
+        definition,
+        period,
+      );
+      if (observation.state === "available") available++;
+      else
+        reasons[observation.reasonCode] =
+          (reasons[observation.reasonCode] || 0) + 1;
+    }
+    return { ...definition, available, population: issuers.length, reasons };
+  });
+}
+export function portfolioCaptureCoverage(issuers) {
+  return {
+    legacy: issuers.filter(
+      (i) => captureRetrieved(i.company) && !i.company.analysisVersion,
+    ).length,
+    outdated: issuers.filter(
+      (i) =>
+        captureRetrieved(i.company) &&
+        i.company.analysisVersion &&
+        i.company.analysisVersion !== ANALYSIS_VERSION,
+    ).length,
+    population: issuers.length,
+  };
+}
+
 const quantile = (values, p) => {
   if (!values.length) return null;
   const i = (values.length - 1) * p;
@@ -95,36 +223,16 @@ export function rankPortfolioMetric(
 ) {
   const definition =
     portfolioMetricDefinitionFor(metricId) || PORTFOLIO_METRIC_CATALOG[0];
-  const targetUnit = metricUnit(definition.format);
   const universe = portfolioResearchIssuers(report, companies);
-  const rows = universe
-    .filter(
-      (i) =>
-        (lens === "all" || i.lens === lens) &&
-        (industry === "all" || i.industry === industry) &&
-        `${i.ticker} ${i.name}`
-          .toLowerCase()
-          .includes(query.trim().toLowerCase()),
-    )
-    .map((i) => {
-      const point = i.company?.metrics?.[definition.key];
-      const state =
-        !companyAvailable(i.company) || i.lens === "unknown"
-          ? "unavailable"
-          : !metricApplies(definition, i.lens) ||
-              point?.classification === "not_applicable"
-            ? "not-applicable"
-            : !companyAvailable(i.company) ||
-                !finiteFinancialMetric(point) ||
-                point.unit !== targetUnit
-              ? "unavailable"
-              : !metricPeriodKey(point)
-                ? "unknown-period"
-                : period !== "all" && metricPeriodKey(point) !== period
-                  ? "outside-period"
-                  : "available";
-      return { ...i, point, state, rank: null };
-    });
+  const rows = filterPortfolioMetricIssuers(universe, {
+    lens,
+    industry,
+    query,
+  }).map((i) => ({
+    ...i,
+    ...portfolioMetricObservation(i, definition, period),
+    rank: null,
+  }));
   const available = rows
     .filter((r) => r.state === "available")
     .sort(
@@ -160,6 +268,11 @@ export function rankPortfolioMetric(
     p25: quantile(values, 0.25),
     p75: quantile(values, 0.75),
     periodCount: periods.length,
+    reasons: rows.reduce((counts, row) => {
+      if (row.reasonCode)
+        counts[row.reasonCode] = (counts[row.reasonCode] || 0) + 1;
+      return counts;
+    }, {}),
     rows: [...available, ...rows.filter((r) => r.state !== "available")],
     interpretation:
       "Ranks order numerical values within the selected saved issuer group; ties share a rank. Higher does not mean better. Each issuer counts once. Reporting dates, accounting scope and business models may differ; unavailable values are never ranked or imputed.",
@@ -207,9 +320,10 @@ export function portfolioConnections(report, companies) {
     count: members.length,
     ciks: members.map((i) => i.cik),
     rowIds: members.map((i) => i.rowIds[0]),
-    reading: eligible.length || id.startsWith("roe-")
-      ? reading
-      : `No eligible issuers have the complete, compatible inputs needed for this comparison. Refresh research or inspect missing evidence; an unmeasured result is not evidence that the condition is absent.`,
+    reading:
+      eligible.length || id.startsWith("roe-")
+        ? reading
+        : `No eligible issuers have the complete, compatible inputs needed for this comparison. Refresh research or inspect missing evidence; an unmeasured result is not evidence that the condition is absent.`,
     query,
     keys,
   });

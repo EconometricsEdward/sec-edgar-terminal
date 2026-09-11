@@ -13,11 +13,11 @@ import {
   selectFinancialFact,
   daysBetween,
   sourceDocumentUrl,
-  FINANCIAL_DATA_VERSION,
 } from "./xbrlPeriods.js";
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
 
-export const ANALYSIS_VERSION = `analysis-v1.2:${FINANCIAL_DATA_VERSION}`;
+import { ANALYSIS_VERSION } from "./analysisVersion.js";
+export { ANALYSIS_VERSION } from "./analysisVersion.js";
 const finite = (p) => Number.isFinite(p?.value);
 const missing = (
   period,

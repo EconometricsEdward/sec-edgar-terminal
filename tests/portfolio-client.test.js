@@ -407,3 +407,18 @@ test("incoming cache and failure states cannot advance a complete filing-check b
     false,
   );
 });
+
+test('full refresh upgrades successful legacy captures and retains them honestly after a failed refresh', async () => {
+  const previous={cik:row(1).resolution.cik,ticker:'T1',status:'ready',refreshStatus:'checked',metrics:{netIncome:{value:50,unit:'USD',classification:'reported'}}};
+  let calls=0;
+  const upgraded=await researchPortfolioRows([row(1)],{previousCompanies:[previous],onlyFailed:false,fetcher:async()=>{
+    calls++;
+    return {ok:true,json:async()=>({companies:[{...previous,analysisVersion:'updated',metrics:{...previous.metrics,accountsPayable:{value:20,unit:'USD',classification:'reported'}}}]})};
+  }});
+  assert.equal(calls,1);
+  assert.equal(upgraded.companies[0].metrics.accountsPayable.value,20);
+  const failed=await researchPortfolioRows([row(1)],{previousCompanies:[previous],onlyFailed:false,fetcher:async()=>{throw new Error('Temporary outage');}});
+  assert.equal(failed.companies[0].metrics.netIncome.value,50);
+  assert.equal(failed.companies[0].analysisVersion,undefined);
+  assert.equal(failed.companies[0].refreshStatus,'failed');
+});

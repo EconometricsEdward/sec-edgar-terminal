@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
+import {
+  PORTFOLIO_METRIC_CATALOG,
+  portfolioMetricDefinitionFor,
+} from "../../../utils/portfolioMetricCatalog.js";
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowUpRight, FileText, X } from "lucide-react";
 import {
   portfolioNumber,
   finiteFinancialMetric,
 } from "../../../utils/portfolioModel.js";
+import { portfolioMetricObservation } from "../../../utils/portfolioDeepResearch.js";
 import s from "./CompanyFocus.module.css";
 
 type Props = {
@@ -147,11 +151,21 @@ export default function CompanyFocus({
   const lens = METRICS[company?.lens] ? company.lens : "common";
   const [metricQuery, setMetricQuery] = useState("");
   const [allMetrics, setAllMetrics] = useState(false);
-  const summaryMetrics = allMetrics
+  const requestedMetrics = allMetrics
     ? PORTFOLIO_METRIC_CATALOG.filter((d) =>
         `${d.label} ${d.key}`.toLowerCase().includes(metricQuery.toLowerCase()),
       ).map((d) => [d.key, d.label])
     : METRICS[lens];
+  const metricRows = requestedMetrics.map(([key, label]) => ({
+    key,
+    label,
+    ...portfolioMetricObservation(
+      { company, lens },
+      portfolioMetricDefinitionFor(key),
+    ),
+  }));
+  const summaryMetrics = metricRows.filter((m) => m.state === "available");
+  const missingMetrics = metricRows.filter((m) => m.state !== "available");
   const filings = (company?.filings || [])
     .filter((filing: any) => secUrl(filing.documentUrl))
     .slice(0, 8);
@@ -386,7 +400,7 @@ export default function CompanyFocus({
                   checked={allMetrics}
                   onChange={(e) => setAllMetrics(e.target.checked)}
                 />{" "}
-                Explore all Analysis metrics
+                Explore measured Analysis metrics
               </label>
               {allMetrics && (
                 <label>
@@ -401,14 +415,14 @@ export default function CompanyFocus({
               )}
             </div>
             <div className={s.metrics}>
-              {summaryMetrics.map(([key, label]) => {
+              {summaryMetrics.map(({ key, label }) => {
                 const point = company?.metrics?.[key];
                 const sources = (point?.sources || []).filter((source: any) =>
                   secUrl(source.documentUrl),
                 );
                 return (
                   <article className={s.metric} key={key}>
-                    <h4>{point?.label || label}</h4>
+                    <h4>{label}</h4>
                     <strong>{metricValue(point, true)}</strong>
                     {finiteFinancialMetric(point) && (
                       <small>
@@ -454,6 +468,31 @@ export default function CompanyFocus({
                 );
               })}
             </div>
+            {!summaryMetrics.length && (
+              <p className={s.muted}>
+                No measured values match this selection. Try another measure or
+                refresh financial research from the portfolio.
+              </p>
+            )}
+            {missingMetrics.length > 0 && (
+              <details>
+                <summary>
+                  {missingMetrics.length} other measures · review coverage
+                </summary>
+                <p className={s.muted}>
+                  Missing observations remain excluded from comparisons. A
+                  refresh can add fields absent from an older capture; it cannot
+                  supply undisclosed inputs.
+                </p>
+                <ul>
+                  {missingMetrics.map((m) => (
+                    <li key={m.key}>
+                      <strong>{m.label}:</strong> {m.reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
             {company?.lens === "common" && (
               <p className={s.muted}>
                 Common measures are used because this company’s business model

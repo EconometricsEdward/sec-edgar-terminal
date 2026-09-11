@@ -5,6 +5,9 @@ import {
   rankPortfolioMetric,
   metricDisplay,
   metricUnit,
+  portfolioMetricObservation,
+  portfolioCaptureCoverage,
+  portfolioResearchIssuers,
 } from "./portfolioDeepResearch.js";
 import {
   PORTFOLIO_METRIC_CATALOG,
@@ -108,6 +111,9 @@ export function enrichPortfolioReport(bundle, extras = {}) {
         ? "selected_issuer_counts_only"
         : "saved_portfolio",
       connections: portfolioConnections(analytics, bundle.companies),
+      captureCoverage: portfolioCaptureCoverage(
+        portfolioResearchIssuers(analytics, bundle.companies),
+      ),
       metricSummaries: PORTFOLIO_METRIC_CATALOG.map((d) => {
         const r = rankPortfolioMetric(analytics, bundle.companies, {
           metricId: d.key,
@@ -122,6 +128,7 @@ export function enrichPortfolioReport(bundle, extras = {}) {
           p25: r.p25,
           p75: r.p75,
           reportingPeriods: r.periodCount,
+          exclusionReasons: r.reasons,
           interpretation: r.interpretation,
         };
       }),
@@ -130,6 +137,22 @@ export function enrichPortfolioReport(bundle, extras = {}) {
   };
 }
 
+function companyMetricRows(company) {
+  return PORTFOLIO_METRIC_CATALOG.map((def) => ({
+    definition: def,
+    ...portfolioMetricObservation(
+      { company, lens: company.lens || "unknown" },
+      def,
+    ),
+  }));
+}
+function companyCoverageHtml(company) {
+  const excluded = companyMetricRows(company).filter(
+    (m) => m.state !== "available",
+  );
+  if (!excluded.length) return "";
+  return `<details class="coverage"><summary>${excluded.length} other measures: coverage and reasons</summary><ul>${excluded.map((m) => `<li><strong>${e(m.definition.label)}:</strong> ${e(m.reason)}</li>`).join("")}</ul></details>`;
+}
 /** Standalone, printable report; every user string is escaped and links are SEC-only. */
 export function portfolioReportHtml(input, extras = {}) {
   const b = input.deep_research ? input : enrichPortfolioReport(input, extras),
@@ -188,7 +211,7 @@ export function portfolioReportHtml(input, extras = {}) {
       ),
     ]),
   )}</details></section>
-  <section id="metrics"><h2>How the companies compare</h2><p>Each row has its own measured denominator. The median and middle 50% describe company values without allocation weights. Higher values do not necessarily mean better outcomes. Business models and reporting periods can differ; use the site’s business-model and period filters for narrower comparisons.</p>${table(
+  <section id="metrics"><h2>How the companies compare</h2>${(d.captureCoverage?.legacy || 0) + (d.captureCoverage?.outdated || 0) > 0 ? `<p>Earlier financial captures: ${e((d.captureCoverage?.legacy || 0) + (d.captureCoverage?.outdated || 0))} issuers. Refresh the saved portfolio to request current metric definitions and additional fields. Missing capture fields do not establish that a company failed to report them.</p>` : ""}<p>Each row has its own measured denominator. The median and middle 50% describe company values without allocation weights. Higher values do not necessarily mean better outcomes. Business models and reporting periods can differ; use the site’s business-model and period filters for narrower comparisons.</p>${table(
     [
       "Measure",
       "Measured issuers",
@@ -206,12 +229,19 @@ export function portfolioReportHtml(input, extras = {}) {
         e(m.reportingPeriods),
       ]),
   )}</section>
-  <section id="companies"><h2>Company metrics and SEC evidence</h2><p>All captured Analysis measures are included below. Each value retains its formula or reported concept, unit, full period, and source. Open a company to inspect the detailed evidence. Print / save PDF expands every company.</p>${b.companies
+  <section id="companies"><h2>Company metrics and SEC evidence</h2><p>Measured Analysis values appear first; other measures are summarized in each company’s coverage notes. Each value retains its formula or reported concept, unit, full period, and source. Open a company to inspect the detailed evidence. Print / save PDF expands every company.</p>${b.companies
     .map(
       (c) =>
         `<details><summary>${e(c.ticker || c.cik)} · ${e(c.name)} · ${e(c.lens)} · ${e(c.status)}</summary><p>CIK ${e(c.cik)} · ${e(c.sicDescription)} · Retrieved ${e(c.retrievedAt || c.retrieved_at || "unknown")}</p>${Object.entries(
           c.metrics || {},
         )
+          .filter(
+            ([key]) =>
+              portfolioMetricObservation(
+                { company: c, lens: c.lens || "unknown" },
+                portfolioMetricDefinitionFor(key),
+              ).state === "available",
+          )
           .map(([key, p]) => {
             const def = portfolioMetricDefinitionFor(key) || {
               key,
@@ -221,7 +251,7 @@ export function portfolioReportHtml(input, extras = {}) {
             const guide = analysisMetricGuide(def, p, c.lens);
             return `<article class="metric"><h4>${e(def.label)}: ${e(metricDisplay(p, false))}</h4><small>${e(date(p))} · ${e(p.classification)}</small><p>${e(guide.meaning)} ${e(guide.caution)}</p><p>${e(p.formula || p.definitionFormula || p.reason || "Reported value; inspect the SEC concept below.")}</p>${(p.calculations || []).length ? `<p>Calculation steps: ${e(p.calculations.map((x) => `${x.label || ""}: ${x.formula || ""}`).join("; "))}</p>` : ""}<ul>${(p.sources || []).map((source) => `<li>${sourceLink(source.documentUrl || source.sourceUrl, `${source.tag || source.label || "SEC evidence"} · ${source.accession || ""}`)} · ${e(source.start || "Instant")} to ${e(source.end)} · filed ${e(source.filed)} · ${e(source.value)} ${e(source.unit)}</li>`).join("")}</ul></article>`;
           })
-          .join("")}</details>`,
+          .join("")}${companyCoverageHtml(c)}</details>`,
     )
     .join("")}</section>
   <section id="filings"><h2>Portfolio filing library</h2><p>${filings.length} captured references. Full recent submissions were loaded for ${histories.length} issuers; ${histories.reduce((n, h) => n + (h.loadedArchives?.length || 0), 0)} historical archives loaded. The initial financial capture includes at most 30 relevant filings per company. Unloaded histories and archives are not represented.</p>${Object.entries(
