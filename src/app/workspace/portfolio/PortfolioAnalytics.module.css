@@ -388,7 +388,7 @@
 .root label > span:first-child {
   font-weight: 650;
 }
-.root input,
+.root input:not([type="checkbox"]),
 .root select {
   width: 100%;
   min-width: 0;
@@ -878,4 +878,11 @@
 }
 .twoColumns > section:only-child {
   grid-column: 1 / -1;
+}
+
+.root input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  accent-color: var(--a-gold);
 }
