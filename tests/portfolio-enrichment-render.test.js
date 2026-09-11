@@ -21,7 +21,7 @@ function component(file) {
       jsx: ts.JsxEmit.ReactJSX,
     },
   }).outputText;
-  const module = { exports: {} };
+  const testModule = { exports: {} };
   new Function("require", "module", "exports", compiled)(
     (name) => {
       if (name.endsWith(".css")) return {};
@@ -33,10 +33,10 @@ function component(file) {
         return component(resolve(dirname(path), `${name}.tsx`));
       return localRequire(name);
     },
-    module,
-    module.exports,
+    testModule,
+    testModule.exports,
   );
-  return module.exports;
+  return testModule.exports;
 }
 const demo = JSON.parse(
   readFileSync(
