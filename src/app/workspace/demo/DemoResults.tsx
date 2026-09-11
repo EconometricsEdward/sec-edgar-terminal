@@ -329,56 +329,58 @@ export default function DemoResults() {
                 : "The same SEC financial evidence remains available for comparison."}
             </p>
           </div>
-          <div
-            className={s.stats}
-            aria-label="Demo allocation and evidence coverage"
-          >
-            <div>
-              <strong>{rows.length}</strong>
-              <span>Companies in the demo</span>
-              <small>
-                {weighted
-                  ? `${pct(allocation.allocatedWeight)} allocated · hypothetical holdings`
-                  : "Research universe · company counts"}
-              </small>
+          {(area !== "analytics" || analyticsArea !== "overview") && (
+            <div
+              className={s.stats}
+              aria-label="Demo allocation and evidence coverage"
+            >
+              <div>
+                <strong>{rows.length}</strong>
+                <span>Companies in the demo</span>
+                <small>
+                  {weighted
+                    ? `${pct(allocation.allocatedWeight)} allocated · hypothetical holdings`
+                    : "Research universe · company counts"}
+                </small>
+              </div>
+              <div>
+                <strong>
+                  {weighted
+                    ? pct(allocation.topFiveIssuerWeightPct)
+                    : feed.length.toLocaleString("en-US")}
+                </strong>
+                <span>
+                  {weighted
+                    ? "Allocation in the five largest companies"
+                    : "Captured filing references"}
+                </span>
+                <small>
+                  {weighted
+                    ? `${allocation.topHoldings.map((holding: any) => holding.ticker).join(" · ")}`
+                    : "Up to 30 recent filings per company"}
+                </small>
+              </div>
+              <div>
+                <strong>
+                  {pct(
+                    weighted
+                      ? allocation.coverage.percentOfSuppliedWeight
+                      : allocation.coverage.companyPct,
+                  )}
+                </strong>
+                <span>
+                  {weighted
+                    ? "Allocation with financial evidence"
+                    : "Companies with financial evidence"}
+                </span>
+                <small>
+                  {supported} of {rows.length} companies · {missing} without
+                  supported measures. At least one usable metric; coverage
+                  varies by measure.
+                </small>
+              </div>
             </div>
-            <div>
-              <strong>
-                {weighted
-                  ? pct(allocation.topFiveIssuerWeightPct)
-                  : feed.length.toLocaleString("en-US")}
-              </strong>
-              <span>
-                {weighted
-                  ? "Allocation in the five largest companies"
-                  : "Captured filing references"}
-              </span>
-              <small>
-                {weighted
-                  ? `${allocation.topHoldings.map((holding: any) => holding.ticker).join(" · ")}`
-                  : "Up to 30 recent filings per company"}
-              </small>
-            </div>
-            <div>
-              <strong>
-                {pct(
-                  weighted
-                    ? allocation.coverage.percentOfSuppliedWeight
-                    : allocation.coverage.companyPct,
-                )}
-              </strong>
-              <span>
-                {weighted
-                  ? "Allocation with financial evidence"
-                  : "Companies with financial evidence"}
-              </span>
-              <small>
-                {supported} of {rows.length} companies · {missing} without
-                supported measures. At least one usable metric; coverage varies
-                by measure.
-              </small>
-            </div>
-          </div>
+          )}
           {weighted && (
             <details className={s.weightMethod}>
               <summary>How the hypothetical weights work</summary>
@@ -403,43 +405,6 @@ export default function DemoResults() {
                 ))}
               </ul>
             </details>
-          )}
-          <div className={s.exploreBar}>
-            <div>
-              <h3>Make a copy and explore your own assumptions.</h3>
-              <p>
-                Your selected allocation basis carries into the full Hub and
-                report. Edit the weights or refresh the financial evidence in
-                your saved copy.
-              </p>
-            </div>
-            <div className={s.copyActions}>
-              <button
-                className={s.primary}
-                onClick={openInHub}
-                disabled={saving}
-              >
-                {saving
-                  ? "Opening the example…"
-                  : "Open full demo in Research Hub →"}
-              </button>
-              <button className={s.secondary} onClick={downloadReport}>
-                Download example report
-              </button>
-            </div>
-          </div>
-          <p className={s.captureNote}>
-            Hypothetical allocations are educational inputs, not actual holdings
-            or investment recommendations. Financial values are public SEC
-            evidence captured on {day(demo.captured_at)}; company reporting
-            periods differ. {feed.length.toLocaleString("en-US")} filing
-            references are included. Refreshing can change financial values and
-            coverage.
-          </p>
-          {saveError && (
-            <p role="alert" className={s.notice}>
-              {saveError}
-            </p>
           )}
           <nav className={s.tabs} aria-label="Example result sections">
             <button
@@ -815,6 +780,43 @@ export default function DemoResults() {
                 a subsequent research refresh.
               </p>
             </>
+          )}
+          <div className={s.exploreBar}>
+            <div>
+              <h3>Make a copy and explore your own assumptions.</h3>
+              <p>
+                Your selected allocation basis carries into the full Hub and
+                report. Edit the weights or refresh the financial evidence in
+                your saved copy.
+              </p>
+            </div>
+            <div className={s.copyActions}>
+              <button
+                className={s.primary}
+                onClick={openInHub}
+                disabled={saving}
+              >
+                {saving
+                  ? "Opening the example…"
+                  : "Open full demo in Research Hub →"}
+              </button>
+              <button className={s.secondary} onClick={downloadReport}>
+                Download example report
+              </button>
+            </div>
+          </div>
+          <p className={s.captureNote}>
+            Hypothetical allocations are educational inputs, not actual holdings
+            or investment recommendations. Financial values are public SEC
+            evidence captured on {day(demo.captured_at)}; company reporting
+            periods differ. {feed.length.toLocaleString("en-US")} filing
+            references are included. Refreshing can change financial values and
+            coverage.
+          </p>
+          {saveError && (
+            <p role="alert" className={s.notice}>
+              {saveError}
+            </p>
           )}
           {focusedRowId && rows.find((row: any) => row.id === focusedRowId) && (
             <CompanyFocus

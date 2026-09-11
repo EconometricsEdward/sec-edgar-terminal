@@ -42,13 +42,14 @@ export default function PortfolioConnections({
             <article key={g.id}>
               <h4>{g.title}</h4>
               <p>{g.reading}</p>
-              <button
-                disabled={!g.count}
-                aria-pressed={selected === g.id}
-                onClick={() => setSelected(selected === g.id ? "" : g.id)}
-              >
-                Inspect {g.count} {g.count === 1 ? "company" : "companies"}
-              </button>
+              {g.count > 0 && (
+                <button
+                  aria-pressed={selected === g.id}
+                  onClick={() => setSelected(selected === g.id ? "" : g.id)}
+                >
+                  Inspect {g.count} {g.count === 1 ? "company" : "companies"}
+                </button>
+              )}
             </article>
           ))}
       </div>
