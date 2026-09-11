@@ -64,8 +64,16 @@ export function calculateAnalysisPoint(period, inputs, formula, compute) {
 
 /** Financial statements and diagnostics share one period and one filing cutoff. */
 export function buildAnalysisCompany(company, settings = {}) {
-  const comparison = buildCompareCompany(company, settings);
-  const { periods, lens } = comparison;
+  const comparison = buildCompareCompany(
+    company,
+    settings.latestOnly
+      ? { ...settings, periodLimit: settings.basis === "ttm" ? 5 : 2 }
+      : settings,
+  );
+  const periods = settings.latestOnly
+    ? comparison.periods.slice(0, 1)
+    : comparison.periods;
+  const { lens } = comparison;
   const industry = lens === "banking" ? "banking" : company.sic;
   const metrics = {};
   const definitions = {};
@@ -77,7 +85,7 @@ export function buildAnalysisCompany(company, settings = {}) {
       category,
       ...extra,
     };
-    metrics[row.key] = row.values;
+    metrics[row.key] = row.values.slice(0, periods.length);
   }
   for (const [category, build] of [
     ["income", buildIncomeStatement],
@@ -522,6 +530,7 @@ export function buildAnalysisCompany(company, settings = {}) {
   return {
     ...comparison,
     version: ANALYSIS_VERSION,
+    periods,
     metrics,
     definitions: Object.values(definitions).sort((a, b) => a.order - b.order),
     revenueKey,

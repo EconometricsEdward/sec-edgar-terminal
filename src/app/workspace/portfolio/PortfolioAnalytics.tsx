@@ -17,6 +17,11 @@ import CashEarnings from "./CashEarnings";
 import PortfolioScenario from "./PortfolioScenario";
 import s from "./PortfolioAnalytics.module.css";
 
+const PortfolioMetricExplorer = dynamic(
+  () => import("./PortfolioMetricExplorer"),
+);
+const PortfolioConnections = dynamic(() => import("./PortfolioConnections"));
+
 const loading = () => <p role="status">Opening analytics tools…</p>;
 const PortfolioBriefing = dynamic(() => import("./PortfolioBriefing"), {
   loading,
@@ -38,6 +43,7 @@ const PortfolioCoverageMatrix = dynamic(
 );
 
 type Props = {
+  onDisclosure?: (query: string, ciks: string[]) => void;
   analyticsArea?: string;
   onAreaChange?: (area: string) => void;
   rows: any[];
@@ -62,6 +68,7 @@ type Issuer = {
 };
 const AREAS = [
   { id: "overview", label: "Portfolio briefing", icon: ClipboardList },
+  { id: "metrics", label: "Metrics & rankings", icon: BarChart3 },
   { id: "concentration", label: "Concentration", icon: Layers3 },
   { id: "financial", label: "Financial profile", icon: BarChart3 },
   { id: "screener", label: "Company screener", icon: ListFilter },
@@ -196,6 +203,7 @@ export default function PortfolioAnalytics({
   preview = false,
   analyticsArea,
   onAreaChange,
+  onDisclosure,
 }: Props) {
   const titleId = useId();
   const coverageSelectionId = useId();
@@ -404,6 +412,12 @@ export default function PortfolioAnalytics({
           }}
           onInspectCompany={onInspectCompany}
         />
+        <PortfolioConnections
+          report={report}
+          companies={companies}
+          onInspect={onInspectCompany}
+          onDisclosure={onDisclosure}
+        />
         <CashEarnings
           report={report}
           companies={companies}
@@ -412,6 +426,16 @@ export default function PortfolioAnalytics({
         />
       </div>
 
+      {(visitedAreas.has("metrics") || area === "metrics") && (
+        <div hidden={area !== "metrics"}>
+          <PortfolioMetricExplorer
+            report={report}
+            companies={companies}
+            onInspect={onInspectCompany}
+            onDisclosure={onDisclosure}
+          />
+        </div>
+      )}
       {(visitedAreas.has("concentration") || area === "concentration") && (
         <div className={s.panel} hidden={area !== "concentration"}>
           <div className={s.sectionHeading}>

@@ -151,11 +151,13 @@ export default function GlobalSecurityFinder({
   onPatch,
   onAddFund,
   selectedTickers,
+  onResult,
 }: {
   settings: Settings;
   onPatch: (patch: Partial<Settings>) => unknown;
   onAddFund: (ticker: string, accession: string) => void;
   selectedTickers: string[];
+  onResult?: (result: any) => void;
 }) {
   const externalQuery = (settings.securityQuery || "").trim();
   const externalAsset = normalizeAsset(settings.securityAsset);
@@ -174,6 +176,7 @@ export default function GlobalSecurityFinder({
       : null,
   );
   const [result, setResult] = useState<SearchResponse | null>(null);
+  useEffect(() => { if(result) onResult?.(result); }, [result, onResult]);
   const [loading, setLoading] = useState(Boolean(externalQuery));
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");

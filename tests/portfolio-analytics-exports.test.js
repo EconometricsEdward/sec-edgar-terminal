@@ -1,3 +1,4 @@
+import { unpackPortfolioSnapshot } from "../src/utils/portfolioEvidenceCodec.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -201,7 +202,7 @@ test("the captured 100-company demo exports all 800 metric observations with mat
     rows: demo.rows,
     allocation: { basis: "none", normalize: false },
     research: { basis: "annual" },
-    snapshot: demo.snapshot,
+    snapshot: unpackPortfolioSnapshot(demo.snapshot),
   });
   const observations = csvObservationRows(bundle);
   assert.equal(observations.length, 800);

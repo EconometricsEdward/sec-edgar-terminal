@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   allocationSummary,
@@ -17,6 +17,9 @@ import {
   saveDemoPortfolio,
 } from "../../../utils/portfolioDemo.js";
 import { hubDestination } from "../../../utils/researchHubNavigation.js";
+import { buildPortfolioResearchPackage } from "../../../utils/portfolioExports.js";
+import { portfolioReportHtml } from "../../../utils/portfolioReport.js";
+import { downloadText } from "../../../utils/download.js";
 import s from "./demo.module.css";
 
 const PortfolioAnalytics = dynamic(
@@ -24,6 +27,9 @@ const PortfolioAnalytics = dynamic(
   {
     loading: () => <p role="status">Opening example analytics…</p>,
   },
+);
+const PortfolioResearchDesk = dynamic(
+  () => import("../portfolio/PortfolioResearchDesk"),
 );
 const CompanyFocus = dynamic(() => import("../portfolio/CompanyFocus"));
 
@@ -65,6 +71,16 @@ function present(point: any) {
 }
 
 export default function DemoResults() {
+  const [sourceEvidence, setSourceEvidence] = useState<any>({});
+  const [disclosureRequest, setDisclosureRequest] = useState<any>(null);
+  const captureSources = useCallback(
+    (value: any) => setSourceEvidence(value),
+    [],
+  );
+  function openDisclosures(query: string, ciks: string[]) {
+    setDisclosureRequest({ query, ciks, nonce: Date.now() });
+    setArea("disclosures");
+  }
   const [demo, setDemo] = useState<any>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -161,15 +177,7 @@ export default function DemoResults() {
       }),
     [rows, byCik, query, preset],
   );
-  const visibleFeed = useMemo(
-    () =>
-      feed.filter((filing: any) =>
-        `${filing.ticker} ${filing.companyName} ${filing.form}`
-          .toLowerCase()
-          .includes(query.trim().toLowerCase()),
-      ),
-    [feed, query],
-  );
+
   const supported = companies.filter(companyAvailable).length;
   const partial = companies.filter(
     (company: any) => company.status === "partial",
@@ -178,6 +186,24 @@ export default function DemoResults() {
     (row: any) => !companyAvailable(byCik[row.resolution?.cik]),
   ).length;
 
+  function downloadReport() {
+    if (!demo) return;
+    const bundle = buildPortfolioResearchPackage(
+      {
+        name: demo.title,
+        rows,
+        allocation: demo.input.allocation,
+        research: demo.input.research,
+        snapshot: demo.snapshot,
+      },
+      { includeAllocations: false },
+    );
+    downloadText(
+      "edgar-100-company-research.html",
+      portfolioReportHtml(bundle, sourceEvidence),
+      "text/html;charset=utf-8",
+    );
+  }
   function openInHub() {
     if (!demo || saving) return;
     setSaving(true);
@@ -271,7 +297,9 @@ export default function DemoResults() {
               <p>
                 Open a separate copy in your browser to use company focus, saved
                 views, coverage, the filing feed, briefs, and exports. Refresh
-                research there when you want a new capture.
+                research there when you want a new capture. Explore every
+                Analysis metric, select peers, search disclosures and discover
+                reporting funds.
               </p>
             </div>
             <button className={s.primary} onClick={openInHub} disabled={saving}>
@@ -280,6 +308,9 @@ export default function DemoResults() {
                 : "Open full demo in Research Hub →"}
             </button>
           </div>
+          <button className={s.primary} onClick={downloadReport}>
+            Download the complete example report
+          </button>
           {saveError && (
             <p role="alert" className={s.notice}>
               {saveError}
@@ -314,7 +345,7 @@ export default function DemoResults() {
                 setEvidence(null);
               }}
             >
-              Filing evidence
+              Filing library
             </button>
             <button
               aria-pressed={area === "followups"}
@@ -325,6 +356,15 @@ export default function DemoResults() {
             >
               Example follow-ups
             </button>
+            {["disclosures", "ownership"].map((tab) => (
+              <button
+                key={tab}
+                aria-pressed={area === tab}
+                onClick={() => setArea(tab)}
+              >
+                {tab === "disclosures" ? "Disclosure search" : "Fund ownership"}
+              </button>
+            ))}
           </nav>
           <div hidden={area !== "analytics"}>
             <PortfolioAnalytics
@@ -332,6 +372,7 @@ export default function DemoResults() {
               settings={demo.input.allocation}
               companies={companies}
               capturedAt={demo.captured_at}
+              onDisclosure={openDisclosures}
               onInspectCompany={setFocusedRowId}
               onReviewRows={openInHub}
               onRefresh={openInHub}
@@ -339,7 +380,7 @@ export default function DemoResults() {
               preview
             />
           </div>
-          {(area === "companies" || area === "filings") && (
+          {area === "companies" && (
             <div className={s.filters}>
               <label>
                 Search{" "}
@@ -382,7 +423,7 @@ export default function DemoResults() {
               <p role="status">
                 {area === "companies"
                   ? `${shown.length} of ${rows.length} companies`
-                  : `${visibleFeed.length} filing references`}{" "}
+                  : `${feed.length} filing references`}{" "}
                 match
               </p>
             </div>
@@ -588,48 +629,13 @@ export default function DemoResults() {
               )}
             </>
           )}
-          {area === "filings" && (
-            <>
-              <p className={s.tableHelp}>
-                Recent filings captured for these companies, newest first.
-                Filing dates and financial reporting periods describe different
-                things.
-              </p>
-              <div className={s.filingList}>
-                {visibleFeed.slice(0, limit).map((filing: any) => (
-                  <article key={`${filing.cik}:${filing.accession}`}>
-                    <span className={s.badge}>{filing.form}</span>
-                    <div>
-                      <h3>{filing.ticker || filing.companyName}</h3>
-                      <p>{filing.companyName}</p>
-                      <small>
-                        Filed {day(filing.filingDate)} · Report period{" "}
-                        {day(filing.reportDate)}
-                      </small>
-                    </div>
-                    <a
-                      href={filing.documentUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Read SEC filing ↗
-                    </a>
-                  </article>
-                ))}
-              </div>
-              {visibleFeed.length === 0 && (
-                <p className={s.notice}>No filings match your search.</p>
-              )}
-              {visibleFeed.length > limit && (
-                <button
-                  className={s.secondary}
-                  onClick={() => setLimit((value) => value + 20)}
-                >
-                  Show next {Math.min(20, visibleFeed.length - limit)} filings
-                </button>
-              )}
-            </>
-          )}
+          <PortfolioResearchDesk
+            rows={rows}
+            companies={companies}
+            activeTab={area}
+            request={disclosureRequest}
+            onEvidence={captureSources}
+          />
           {area === "followups" && (
             <>
               <div className={s.explanation}>

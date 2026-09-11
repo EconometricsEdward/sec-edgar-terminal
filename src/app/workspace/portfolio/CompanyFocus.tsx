@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef } from "react";
+import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
+import { useEffect, useId, useRef, useState } from "react";
 import { ArrowUpRight, FileText, X } from "lucide-react";
 import {
   portfolioNumber,
@@ -144,7 +145,13 @@ export default function CompanyFocus({
     "Unidentified position";
   const fund = company?.kind === "fund" || identity.kind === "fund";
   const lens = METRICS[company?.lens] ? company.lens : "common";
-  const summaryMetrics = METRICS[lens];
+  const [metricQuery, setMetricQuery] = useState("");
+  const [allMetrics, setAllMetrics] = useState(false);
+  const summaryMetrics = allMetrics
+    ? PORTFOLIO_METRIC_CATALOG.filter((d) =>
+        `${d.label} ${d.key}`.toLowerCase().includes(metricQuery.toLowerCase()),
+      ).map((d) => [d.key, d.label])
+    : METRICS[lens];
   const filings = (company?.filings || [])
     .filter((filing: any) => secUrl(filing.documentUrl))
     .slice(0, 8);
@@ -364,6 +371,34 @@ export default function CompanyFocus({
                       : "Common financial measures"}
               </h3>
               <span>Values retain their own period, unit and source.</span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 12,
+              }}
+            >
+              <label>
+                <input
+                  type="checkbox"
+                  checked={allMetrics}
+                  onChange={(e) => setAllMetrics(e.target.checked)}
+                />{" "}
+                Explore all Analysis metrics
+              </label>
+              {allMetrics && (
+                <label>
+                  Find a measure{" "}
+                  <input
+                    type="search"
+                    value={metricQuery}
+                    onChange={(e) => setMetricQuery(e.target.value)}
+                    maxLength={100}
+                  />
+                </label>
+              )}
             </div>
             <div className={s.metrics}>
               {summaryMetrics.map(([key, label]) => {

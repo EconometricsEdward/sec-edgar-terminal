@@ -242,6 +242,50 @@ export default function PortfolioGuidePage() {
         </p>
       </section>
 
+      <section id="deep-portfolio-research">
+        <h2>Bring the research tools to your own portfolio</h2>
+        <p>
+          The Metrics &amp; rankings view includes the Analysis page’s
+          statement, cash-flow, profitability, banking and accounting-check
+          catalog. Filter by business model, SEC industry and full reporting
+          period; sort any measure and select up to six issuers with up to ten
+          comparison measures. Every value opens its explanation, formula,
+          reporting dates and SEC sources. Refresh older portfolio captures to
+          populate the expanded catalog.
+        </p>
+        <p>
+          Connected findings identify cash use above operating cash generation,
+          growth alongside losses, deposit funding of loans, and the drivers of
+          return on equity. These use eligible issuer counts and compatible
+          observations. They are prompts to investigate; company cash flows are
+          not summed as portfolio cash flows.
+        </p>
+        <p>
+          The Filing library starts with the saved references, then loads full
+          recent submissions and historical archives on request. Disclosure
+          search applies an explicit query, date range, forms and section to up
+          to 100 portfolio issuers. Work proceeds in paced batches, retains
+          completed results when stopped, and provides retries and older-filing
+          continuation. No match in reviewed filings is not evidence that a
+          topic is absent.
+        </p>
+        <p>
+          Fund ownership discovers reporting funds holding a selected portfolio
+          company. The percentage of fund net assets is that fund’s allocation,
+          not your portfolio exposure or market ownership. Fund dates, verified
+          series, unavailable reports and remaining candidates stay visible.
+        </p>
+        <p>
+          Download the complete portfolio report for all captured metrics,
+          connected findings, SEC evidence, filing references, disclosure
+          previews and collected passages, and fund results. The standalone HTML
+          can be printed or saved as PDF. Structured JSON includes the same
+          additional research. Source searches remain in the current session;
+          financial captures remain browser-local and use shared evidence
+          catalogs to preserve sources within the existing 4 MiB storage budget.
+        </p>
+      </section>
+
       <section id="hub-comparisons">
         <h2>Choose a question and compare saved portfolios</h2>
         <p>

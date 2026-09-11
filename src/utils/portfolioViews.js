@@ -1,29 +1,12 @@
+import { PORTFOLIO_METRIC_CATALOG } from "./portfolioMetricCatalog.js";
 import { companyAvailable } from "./portfolioModel.js";
 
 export const PORTFOLIO_VIEWS_KEY = "edgar:portfolio-views:v1";
 export const PORTFOLIO_VIEW_LIMIT = 20;
 export const PORTFOLIO_VIEWS_BYTES = 128 * 1024;
-export const PORTFOLIO_VIEW_COLUMNS = [
-  "revenue",
-  "revenueGrowth",
-  "netIncome",
-  "operatingCashFlow",
-  "capex",
-  "freeCashFlow",
-  "cash",
-  "debt",
-  "totalAssets",
-  "stockholdersEquity",
-  "roe",
-  "roa",
-  "netMargin",
-  "netInterestIncome",
-  "deposits",
-  "loans",
-  "loanDeposits",
-  "premiumsEarned",
-  "investmentIncome",
-];
+export const PORTFOLIO_VIEW_COLUMNS = PORTFOLIO_METRIC_CATALOG.map(
+  (d) => d.key,
+);
 export const DEFAULT_PORTFOLIO_VIEW = {
   query: "",
   filter: "all",

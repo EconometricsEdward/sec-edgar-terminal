@@ -22,7 +22,7 @@
   margin: 0;
   line-height: 1.65;
   color: var(--hub-muted, #b6c2d4);
-  font-size: 14px;
+  font-size: 16px;
 }
 .root small {
   display: block;
@@ -50,7 +50,7 @@
   background: transparent;
   color: inherit;
   padding: 9px 12px;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
 }
 .root button:hover {
@@ -73,7 +73,7 @@
   display: grid;
   gap: 7px;
   flex: 1 1 180px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--hub-muted, #b6c2d4);
 }
 .controls :is(select, input) {
@@ -119,7 +119,7 @@
 .root table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
 }
 .root th,
@@ -129,7 +129,7 @@
   border-bottom: 1px solid var(--hub-border, #344154);
 }
 .root thead th {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--hub-muted, #b6c2d4);
   background: var(--hub-panel, #182131);
   position: sticky;
@@ -185,3 +185,5 @@
     font-size: 20px;
   }
 }
+
+.root[hidden] { display: none; }

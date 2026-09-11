@@ -363,6 +363,6 @@ test("untrusted checkpoints reject external URLs, unknown fields, invalid pool r
   );
   assert.throws(() => validatePortfolioBaseline(unsafe), /Unsafe/);
   const large = structuredClone(baseline);
-  large.definitions = Array.from({ length: 40 }, () => "x".repeat(15999));
-  assert.throws(() => validatePortfolioBaseline(large), /500 KiB/);
+  large.definitions = Array.from({ length: 80 }, () => "x".repeat(15999));
+  assert.throws(() => validatePortfolioBaseline(large), /1 MiB/);
 });

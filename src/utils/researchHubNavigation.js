@@ -9,6 +9,7 @@ export const HUB_VIEWS = [
 const ids = new Set(HUB_VIEWS.map(([id]) => id));
 export const ANALYTICS_AREAS = [
   "overview",
+  "metrics",
   "concentration",
   "financial",
   "screener",
@@ -21,6 +22,8 @@ export const PORTFOLIO_TABS = [
   "changes",
   "allocation",
   "filings",
+  "disclosures",
+  "ownership",
   "exports",
 ];
 const portfolioTab = (value) => (PORTFOLIO_TABS.includes(value) ? value : "");

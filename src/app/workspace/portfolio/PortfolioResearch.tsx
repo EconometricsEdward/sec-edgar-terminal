@@ -1,6 +1,11 @@
 "use client";
+import {
+  enrichPortfolioReport,
+  portfolioReportHtml,
+} from "../../../utils/portfolioReport.js";
 
 import Link from "next/link";
+import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -25,7 +30,6 @@ import {
 import {
   portfolioIssuerRequests,
   researchPortfolioRows,
-  portfolioFilingFeed,
   isCompletePortfolioCheck,
 } from "../../../utils/portfolioClient.js";
 import { portfolioReviewPriorities } from "../../../utils/portfolioInsights.js";
@@ -47,6 +51,8 @@ import {
   ANALYTICS_AREAS,
 } from "../../../utils/researchHubNavigation.js";
 
+const PortfolioResearchDesk = dynamic(() => import("./PortfolioResearchDesk"));
+
 const PortfolioImport = dynamic(() => import("./PortfolioImport"), {
   loading: () => <p role="status">Opening import and review…</p>,
 });
@@ -56,30 +62,10 @@ const PortfolioChanges = dynamic(() => import("./PortfolioChanges"));
 const PortfolioAnalytics = dynamic(() => import("./PortfolioAnalytics"), {
   loading: () => <p role="status">Opening portfolio analytics…</p>,
 });
-const METRICS: [string, string][] = [
-  ["revenue", "Revenue"],
-  ["revenueGrowth", "Revenue growth"],
-  ["netIncome", "Net income"],
-  ["operatingCashFlow", "Operating cash flow"],
-  ["capex", "Capital expenditures"],
-  ["freeCashFlow", "Free cash flow"],
-  ["cash", "Cash"],
-  ["debt", "Reported debt"],
-  ["totalAssets", "Total assets"],
-  ["stockholdersEquity", "Equity"],
-  ["roe", "Return on equity"],
-  ["roa", "Return on assets"],
-  ["netMargin", "Net margin"],
-  ["netInterestIncome", "Net interest income"],
-  ["deposits", "Deposits"],
-  ["loans", "Net loans"],
-  ["loanDeposits", "Loans / deposits"],
-  ["premiumsEarned", "Insurance premiums earned"],
-  ["investmentIncome", "Investment income"],
-  ["operatingMargin", "Operating margin"],
-  ["debtAssets", "Reported debt / assets"],
-  ["currentRatio", "Current ratio"],
-];
+const METRICS: [string, string][] = PORTFOLIO_METRIC_CATALOG.map((d) => [
+  d.key,
+  d.label,
+]);
 const DEFAULT_COLUMNS = [
   "revenue",
   "netIncome",
@@ -181,6 +167,8 @@ export default function PortfolioResearch({
   const [workingSnapshot, setWorkingSnapshot] = useState<any>(null);
   const [tab, setTab] = useState("analytics");
   const [analyticsArea, setAnalyticsArea] = useState("overview");
+  const [sourceEvidence, setSourceEvidence] = useState<Record<string, any>>({});
+  const [disclosureRequest, setDisclosureRequest] = useState<any>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [industryFilter, setIndustryFilter] = useState("");
@@ -200,10 +188,6 @@ export default function PortfolioResearch({
   const [includeAllocations, setIncludeAllocations] = useState(true);
   const [exportScope, setExportScope] = useState("all");
   const [copyFallback, setCopyFallback] = useState("");
-  const [feedCompany, setFeedCompany] = useState("");
-  const [feedForm, setFeedForm] = useState("");
-  const [feedStart, setFeedStart] = useState("");
-  const [feedEnd, setFeedEnd] = useState("");
   const [evidence, setEvidence] = useState<any>(null);
   const evidenceRef = useRef<HTMLElement | null>(null);
   const controller = useRef<AbortController | null>(null);
@@ -602,17 +586,7 @@ export default function PortfolioResearch({
     () => portfolioReviewPriorities(rows, companies, summary),
     [rows, companies, summary],
   );
-  const feed = useMemo(
-    () =>
-      portfolioFilingFeed(rows, companies, {
-        company: feedCompany,
-        form: feedForm,
-        start: feedStart,
-        end: feedEnd,
-        previousCheck: priorCheck,
-      }),
-    [rows, companies, feedCompany, feedForm, feedStart, feedEnd, priorCheck],
-  );
+
   const comparisonIssuers = new Map<string, string>();
   for (const row of rows) {
     const symbol = companyLink(row, companiesByCik[row.resolution?.cik]);
@@ -747,6 +721,26 @@ export default function PortfolioResearch({
       setEvidence(null);
     }
   }
+  const captureSourceEvidence = useCallback(
+    (value: any) => {
+      if (document?.id)
+        setSourceEvidence((previous) => ({
+          ...previous,
+          [document.id]: value,
+        }));
+    },
+    [document?.id],
+  );
+  function openPortfolioDisclosures(query: string, ciks: string[]) {
+    setDisclosureRequest({
+      query,
+      ciks,
+      portfolioId: document?.id,
+      nonce: Date.now(),
+    });
+    changePortfolioTab("disclosures");
+  }
+
   async function exportResearch(format: string) {
     if (!document) return;
     try {
@@ -759,12 +753,15 @@ export default function PortfolioResearch({
           companies: [],
         },
       };
-      const pack = buildPortfolioResearchPackage(snapshotDocument, {
-        includeNotes,
-        includeAllocations,
-        selectedRowIds: selectedIds,
-        columns,
-      });
+      const pack = enrichPortfolioReport(
+        buildPortfolioResearchPackage(snapshotDocument, {
+          includeNotes,
+          includeAllocations,
+          selectedRowIds: selectedIds,
+          columns,
+        }),
+        sourceEvidence[document.id],
+      );
       const filename = `${document.name.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 65) || "portfolio"}-research`;
       if (format === "copy") {
         const text = researchContext(pack);
@@ -802,6 +799,12 @@ export default function PortfolioResearch({
           `${filename}-analytics.csv`,
           portfolioAnalyticsCsv(pack),
           "text/csv;charset=utf-8",
+        );
+      else if (format === "html")
+        downloadText(
+          `${filename}.html`,
+          portfolioReportHtml(pack),
+          "text/html;charset=utf-8",
         );
       else if (format === "json")
         downloadText(
@@ -1295,7 +1298,9 @@ export default function PortfolioResearch({
               ["research", "Company research"],
               ["changes", "What changed"],
               ["allocation", "Allocation & coverage"],
-              ["filings", "Filing feed"],
+              ["filings", "Filing library"],
+              ["disclosures", "Portfolio disclosures"],
+              ["ownership", "Fund ownership"],
               ["exports", "Export & AI context"],
             ].map(([value, label]) => (
               <button
@@ -1311,6 +1316,7 @@ export default function PortfolioResearch({
             <PortfolioAnalytics
               key={document.id}
               rows={rows}
+              onDisclosure={openPortfolioDisclosures}
               analyticsArea={analyticsArea}
               onAreaChange={(area: string) => {
                 if (!ANALYTICS_AREAS.includes(area)) return;
@@ -1872,190 +1878,20 @@ export default function PortfolioResearch({
               refreshing={busy}
             />
           )}
-          {tab === "filings" && (
-            <section className={s.panel}>
-              <div className={s.sectionHeading}>
-                <div>
-                  <h3>Portfolio filing feed</h3>
-                  <p>
-                    Recent SEC submissions only, up to 30 relevant filings per
-                    issuer. Full archived history is not searched.
-                  </p>
-                </div>
-                <button
-                  className={s.secondary}
-                  disabled={busy}
-                  onClick={() => run()}
-                >
-                  <RefreshCw size={16} /> Refresh / check filings
-                </button>
-              </div>
-              <p>
-                {document.previousCheckedAt
-                  ? `New labels use your prior successful full check (${document.previousCheckedAt}). Same-day filing times are unknown; same-day records are not labeled new.`
-                  : "No prior successful full-check baseline. Filings are not labeled new."}
-              </p>
-              <div className={s.tableToolbar}>
-                <label>
-                  Company
-                  <select
-                    value={feedCompany}
-                    onChange={(event) => setFeedCompany(event.target.value)}
-                  >
-                    <option value="">All researched companies</option>
-                    {companies.map((company: any) => (
-                      <option key={company.cik} value={company.cik}>
-                        {company.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Filing form
-                  <select
-                    value={feedForm}
-                    onChange={(event) => setFeedForm(event.target.value)}
-                  >
-                    <option value="">All relevant forms</option>
-                    {["10-K", "10-Q", "20-F", "40-F", "8-K", "6-K"].map(
-                      (form) => (
-                        <option key={form}>{form}</option>
-                      ),
-                    )}
-                  </select>
-                </label>
-                <label>
-                  From
-                  <input
-                    type="date"
-                    value={feedStart}
-                    onChange={(event) => setFeedStart(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Through
-                  <input
-                    type="date"
-                    value={feedEnd}
-                    onChange={(event) => setFeedEnd(event.target.value)}
-                  />
-                </label>
-              </div>
-              <p>
-                {feed.length} filings in this view. The latest successful full
-                check is {document.lastCheckedAt || "not recorded"}; failed or
-                cancelled refreshes do not advance it.
-              </p>
-              <div
-                className={s.tableWrap}
-                tabIndex={0}
-                role="region"
-                aria-label="Consolidated portfolio filing feed"
-              >
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Company</th>
-                      <th>Form</th>
-                      <th>Filed</th>
-                      <th>Report date</th>
-                      <th>Description / evidence</th>
-                      <th>Research library</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {feed.map((filing: any) => (
-                      <tr key={`${filing.cik}:${filing.accession}`}>
-                        <th scope="row">{filing.companyName}</th>
-                        <td>
-                          {filing.form}
-                          {filing.isNew && (
-                            <small className={s.new}>
-                              New since prior check
-                            </small>
-                          )}
-                        </td>
-                        <td>{filing.filingDate}</td>
-                        <td>{filing.reportDate || "Unavailable"}</td>
-                        <td>
-                          {filing.description || `${filing.form} filing`}
-                          <span>
-                            {validSecUrl(filing.documentUrl) && (
-                              <a
-                                href={filing.documentUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                Open SEC filing ↗
-                              </a>
-                            )}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className={s.secondary}
-                            onClick={() => saveFiling(filing)}
-                          >
-                            Save evidence
-                          </button>
-                          <button
-                            className={s.focusButton}
-                            onClick={() =>
-                              draftBrief({
-                                title: `${filing.companyName} · ${filing.form}`,
-                                ticker: filing.ticker || "",
-                                cik: filing.cik,
-                                question: `What should we investigate in this ${filing.form} filing?`,
-                                sources: validSecUrl(filing.documentUrl)
-                                  ? [
-                                      {
-                                        url: filing.documentUrl,
-                                        label: `${filing.form} · ${filing.filingDate}`,
-                                        annotation: "context",
-                                        origin: "Portfolio filing feed",
-                                        capturedAt:
-                                          filing.observedAt ||
-                                          companiesByCik[filing.cik]
-                                            ?.retrievedAt,
-                                      },
-                                    ]
-                                  : [],
-                              })
-                            }
-                          >
-                            Add to a brief
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!feed.length && (
-                  <p className={s.empty}>
-                    No filings match this view. Run research or broaden the
-                    filters.
-                  </p>
-                )}
-              </div>
-              <details>
-                <summary>Feed coverage by issuer</summary>
-                <ul>
-                  {companies.map((company: any) => (
-                    <li key={company.cik}>
-                      {company.name}:{" "}
-                      {company.filingCoverage?.returnedCount ??
-                        company.filings?.length ??
-                        0}{" "}
-                      returned;{" "}
-                      {company.filingCoverage?.scope ||
-                        "No filing data retrieved"}
-                      . Retrieved {date(company.retrievedAt)}.
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </section>
-          )}
+          <PortfolioResearchDesk
+            key={document.id}
+            rows={rows}
+            companies={companies}
+            activeTab={tab}
+            request={
+              disclosureRequest?.portfolioId === document.id
+                ? disclosureRequest
+                : null
+            }
+            initialEvidence={sourceEvidence[document.id]}
+            onEvidence={captureSourceEvidence}
+            onSaveFiling={saveFiling}
+          />
           {tab === "exports" && (
             <section className={s.panel}>
               <h3>A portable research snapshot</h3>
@@ -2111,6 +1947,7 @@ export default function PortfolioResearch({
               </p>
               <div className={s.exportButtons}>
                 {[
+                  ["html", "Download complete portfolio report"],
                   ["csv", "Company table CSV"],
                   ["analytics", "Analytics summary CSV"],
                   ["xlsx", "Research workbook XLSX"],
@@ -2137,7 +1974,11 @@ export default function PortfolioResearch({
                 ))}
               </div>
               <p>
-                CSV follows your chosen financial columns and includes source
+                The complete report includes every captured metric, connected
+                findings, filings, disclosure searches and fund ownership
+                results from this session. Open the HTML file to print or save
+                as PDF. JSON includes the same research for AI assistants. CSV
+                follows your chosen financial columns and includes source
                 context. XLSX separates holdings, company research, portfolio
                 summary, analytics, metric observations, sources, and coverage.
                 Full-portfolio exports include concentration and financial
