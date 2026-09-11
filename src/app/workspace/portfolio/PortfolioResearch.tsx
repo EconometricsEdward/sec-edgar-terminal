@@ -49,6 +49,7 @@ import {
 import { MAX_COMPARE_COMPANIES } from "../../../utils/compareLimits.js";
 import { downloadText } from "../../../utils/download.js";
 import s from "./PortfolioResearch.module.css";
+import { validTicker } from "../../../utils/researchWorkspace.js";
 import { rowMatchesPortfolioView } from "../../../utils/portfolioViews.js";
 import { advancePortfolioBaseline } from "../../../utils/portfolioChanges.js";
 import {
@@ -133,14 +134,10 @@ const validSecUrl = (value: unknown) => {
 };
 
 export default function PortfolioResearch({
-  watchlist,
   navigationRequest,
-  onCreateBrief,
   active = true,
 }: {
-  watchlist: any[];
   navigationRequest?: any;
-  onCreateBrief: (draft: any) => void;
   active?: boolean;
 }) {
   const workspace = useWorkspace();
@@ -176,7 +173,7 @@ export default function PortfolioResearch({
   const [sort, setSort] = useState("name");
   const [preset, setPreset] = useState("overview");
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
-  const [importStart, setImportStart] = useState<"new" | "paste" | "watchlist">(
+  const [importStart, setImportStart] = useState<"new" | "paste">(
     "new",
   );
   const [importEpoch, setImportEpoch] = useState(0);
@@ -445,7 +442,7 @@ export default function PortfolioResearch({
     if (PORTFOLIO_TABS.includes(request.portfolioTab))
       setTab(request.portfolioTab);
     if (request.portfolioViewId) setTab("research");
-    if (["new", "paste", "watchlist"].includes(request.action)) {
+    if (["new", "paste"].includes(request.action)) {
       editorOwner.current = documentKey(document);
       setImportStart(request.action);
       setImportEpoch((value) => value + 1);
@@ -463,7 +460,7 @@ export default function PortfolioResearch({
     const replacesDraft =
       (navigationRequest.portfolioId &&
         navigationRequest.portfolioId !== document?.id) ||
-      ["new", "paste", "watchlist"].includes(navigationRequest.action);
+      ["new", "paste"].includes(navigationRequest.action);
     if (editorDirtyRef.current && replacesDraft) {
       setPendingNavigation(navigationRequest);
       return;
@@ -600,10 +597,6 @@ export default function PortfolioResearch({
     setColumns(value.columns);
     setPreset(value.preset);
     setSelected([]);
-  }
-  function draftBrief(draft: any) {
-    setFocusedRowId(null);
-    onCreateBrief({ ...draft, portfolioId: document?.id || "" });
   }
   const priorities = useMemo(
     () => portfolioReviewPriorities(rows, companies, summary),
@@ -852,8 +845,17 @@ export default function PortfolioResearch({
     }
   }
   function saveFiling(filing: any) {
-    if (!validSecUrl(filing.documentUrl)) return;
-    const key = filing.ticker || filing.cik;
+    if (
+      !validSecUrl(filing.documentUrl) ||
+      !validTicker(filing.ticker) ||
+      !rows.some((row: any) =>
+        row.resolution?.status === "resolved" &&
+        row.resolution?.kind === "company" &&
+        row.resolution?.cik === filing.cik &&
+        row.resolution?.ticker === filing.ticker
+      )
+    ) return;
+    const key = filing.ticker;
     const saved = workspace.update((current) => {
       const existing = current.companies[key] || {
         ticker: key,
@@ -889,7 +891,7 @@ export default function PortfolioResearch({
     });
     if (saved) {
       setMessage(
-        "Filing saved in the existing research library. Your watchlist is unchanged.",
+        "Filing saved in this company’s Analysis notebook.",
       );
       window.dispatchEvent(new Event("research-storage"));
     }
@@ -1093,7 +1095,6 @@ export default function PortfolioResearch({
           initialAction={editor === "edit" ? "new" : importStart}
           initialRows={editor === "edit" ? document?.rows : undefined}
           initialName={editor === "edit" ? document?.name : undefined}
-          watchlist={watchlist}
           onDirtyChange={onEditorDirtyChange}
           onCommit={commitRows}
           onCancel={
@@ -1652,32 +1653,6 @@ export default function PortfolioResearch({
                       </h4>
                       <button
                         className={s.secondary}
-                        onClick={() =>
-                          draftBrief({
-                            title: `${evidence.company.name} · ${evidence.point?.label || evidence.key}`,
-                            question: `What does the reported ${evidence.point?.label || evidence.key} evidence tell us, and what remains uncertain?`,
-                            ticker: evidence.company.ticker || "",
-                            cik: evidence.company.cik,
-                            sources: (evidence.point?.sources || [])
-                              .filter((source: any) =>
-                                validSecUrl(source.documentUrl || source.url),
-                              )
-                              .map((source: any) => ({
-                                url: source.documentUrl || source.url,
-                                label: `${source.form || "SEC filing"} · ${source.filed || source.end || "source evidence"}`,
-                                annotation: "context",
-                                origin: "Portfolio metric evidence",
-                                capturedAt:
-                                  source.observedAt ||
-                                  evidence.company.retrievedAt,
-                              })),
-                          })
-                        }
-                      >
-                        Draft a research brief
-                      </button>
-                      <button
-                        className={s.secondary}
                         onClick={() => setEvidence(null)}
                       >
                         Close evidence
@@ -1873,7 +1848,6 @@ export default function PortfolioResearch({
                 snapshot={captured}
                 rows={rows}
                 onInspectCompany={setFocusedRowId}
-                onCreateBrief={draftBrief}
                 onRefresh={() => run(false)}
                 refreshing={busy}
               />
@@ -1955,7 +1929,7 @@ export default function PortfolioResearch({
                     ["analytics", "Analytics summary CSV"],
                     ["xlsx", "Research workbook XLSX"],
                     ["json", "Structured JSON"],
-                    ["md", "Research brief Markdown"],
+                    ["md", "Research report Markdown"],
                     ["copy", "Copy research context"],
                   ].map(([format, label]) => (
                     <button
@@ -2024,7 +1998,6 @@ export default function PortfolioResearch({
             changePortfolioTab("research");
             setEvidence({ company: focusedCompany, key, point });
           }}
-          onCreateBrief={draftBrief}
           onSaveFiling={(filing: any) =>
             saveFiling({
               ...filing,
@@ -2040,8 +2013,8 @@ export default function PortfolioResearch({
         Saved only in this browser, with up to 20 portfolios and a 4 MiB
         portfolio-storage budget. Uploaded files are parsed locally. Company
         retrieval sends public identifiers; notes and allocation amounts stay
-        here. Clearing browser data removes saved work. Full Research Hub
-        backups include private notes and allocations—store them securely.
+        here. Clearing browser data removes saved work. Export your portfolio to
+        keep a copy outside this browser.
       </p>
     </section>
   );

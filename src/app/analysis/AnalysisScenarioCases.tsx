@@ -454,9 +454,8 @@ export default function AnalysisScenarioCases({
       {storeError && (
         <p className={styles.warning} role="alert">
           Saved cases could not be opened: {storeError} Existing data has been
-          kept. Export a backup from Research before restoring valid saved
-          research. You can still preview the current calculation to preserve
-          your draft.
+          kept. You can still preview and export the current calculation to
+          preserve your draft.
         </p>
       )}
       {draftsPending && (

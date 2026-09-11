@@ -42,7 +42,6 @@ type Props = {
   snapshot: any;
   rows: any[];
   onInspectCompany: (rowId: string) => void;
-  onCreateBrief: (draft: any) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
 };
@@ -52,7 +51,6 @@ export default function PortfolioChanges({
   snapshot,
   rows,
   onInspectCompany,
-  onCreateBrief,
   onRefresh,
   refreshing = false,
 }: Props) {
@@ -82,29 +80,6 @@ export default function PortfolioChanges({
   const startingPoint =
     comparison.baselineAt === comparison.capturedAt &&
     !comparison.changes.length;
-
-  function createBrief(change: any) {
-    onCreateBrief({
-      title: `${change.ticker || change.companyName}: ${change.title}`,
-      ticker: change.ticker,
-      cik: change.cik,
-      question: `What explains this observed evidence change, and does it alter the research thesis?\n\n${change.title}. ${change.description}\n\nEarlier capture (${date(comparison.baselineAt)}): ${observation(change.before, change.kind)}\nCurrent capture (${date(comparison.capturedAt)}): ${observation(change.after, change.kind)}\n\nVerify the source documents before drawing a conclusion.`,
-      sources: [
-        ...change.beforeSources.map((url: string) => ({
-          url,
-          label: `${change.ticker || change.companyName}: earlier capture`,
-          capturedAt: comparison.baselineAt,
-          origin: "portfolio-change",
-        })),
-        ...change.afterSources.map((url: string) => ({
-          url,
-          label: `${change.ticker || change.companyName}: current capture`,
-          capturedAt: comparison.capturedAt,
-          origin: "portfolio-change",
-        })),
-      ],
-    });
-  }
 
   return (
     <section
@@ -322,13 +297,6 @@ export default function PortfolioChanges({
                       onClick={() => onInspectCompany(change.rowId)}
                     >
                       Inspect company
-                    </button>
-                    <button
-                      className={styles.button}
-                      type="button"
-                      onClick={() => createBrief(change)}
-                    >
-                      Create follow-up brief
                     </button>
                   </div>
                 </li>

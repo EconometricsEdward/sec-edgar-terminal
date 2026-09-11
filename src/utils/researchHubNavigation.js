@@ -1,10 +1,6 @@
 export const HUB_VIEWS = [
   ["overview", "Overview"],
   ["portfolios", "Portfolio research"],
-  ["inbox", "Review inbox"],
-  ["briefs", "Research briefs"],
-  ["watchlist", "Watchlists"],
-  ["library", "Evidence & backups"],
 ];
 const ids = new Set(HUB_VIEWS.map(([id]) => id));
 export const ANALYTICS_AREAS = [
@@ -37,13 +33,10 @@ export function parseHubLocation(value) {
   return {
     view: ids.has(view)
       ? view
-      : url.hash === "#research-vault"
-        ? "library"
-        : url.searchParams.has("portfolio")
-          ? "portfolios"
-          : "overview",
+      : url.searchParams.has("portfolio")
+        ? "portfolios"
+        : "overview",
     portfolioId: localId(url.searchParams.get("portfolio")),
-    briefId: localId(url.searchParams.get("brief")),
     rowId: localId(url.searchParams.get("row")),
     portfolioViewId: localId(url.searchParams.get("portfolioView")),
     portfolioTab: portfolioTab(url.searchParams.get("portfolioTab")),
@@ -68,7 +61,5 @@ export function hubDestination(view, options = {}) {
     params.set("portfolioTab", options.portfolioTab);
   if (view === "portfolios" && ANALYTICS_AREAS.includes(options.analyticsArea))
     params.set("analyticsArea", options.analyticsArea);
-  if (view === "briefs" && localId(options.briefId))
-    params.set("brief", options.briefId);
   return `/workspace?${params}`;
 }

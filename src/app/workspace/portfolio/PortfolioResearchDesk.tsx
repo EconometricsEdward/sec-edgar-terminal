@@ -14,6 +14,7 @@ import { portfolioScopedSources } from "../../../utils/portfolioReport.js";
 import { downloadText } from "../../../utils/download.js";
 import { csvString } from "../../../utils/portfolioFiles.js";
 import s from "../ResearchTools.module.css";
+import { validTicker } from "../../../utils/researchWorkspace.js";
 const GlobalSecurityFinder = dynamic(
   () => import("../../fund/GlobalSecurityFinder"),
   { loading: () => <p role="status">Opening fund ownership research…</p> },
@@ -758,9 +759,9 @@ export default function PortfolioResearchDesk({
                       )}
                     </td>
                     <td>
-                      {onSaveFiling && (
+                      {onSaveFiling && validTicker(f.ticker) && issuers.some((issuer) => issuer.cik === f.cik && issuer.ticker === f.ticker) && (
                         <button onClick={() => onSaveFiling(f)}>
-                          Save evidence
+                          Save to company notebook
                         </button>
                       )}
                     </td>

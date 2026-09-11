@@ -113,7 +113,7 @@ Financial-evidence count coverage requires at least one finite supported company
 | `429`       | Rate limit reached. Respect `Retry-After`.                                                                                                    |
 | `502`       | A required shared upstream service, such as the SEC issuer directory, is unavailable. Retry later.                                            |
 
-CSV/XLSX/JSON parsing and saved portfolios use the browser where practical. The interactive research client sends identifiers needed to retrieve public company data, not private notes or allocation values. Browser-local portfolios do not automatically synchronize to other devices; include them in a Research Hub backup before clearing site data.
+CSV/XLSX/JSON parsing and saved portfolios use the browser where practical. The interactive research client sends identifiers needed to retrieve public company data, not private notes or allocation values. Browser-local portfolios do not automatically synchronize to other devices; export the portfolio before clearing site data.
 
 Programmatic request bodies may contain optional allocations or notes. They are processed for that request and are not stored in shared portfolio caches or routine application logs. Keep notes out of an API request unless needed: a remote request necessarily transmits any supplied field to the application. Shared caching contains public company facts only. This feature does not place private holdings in URLs, indexable pages or analytics events. It does not add background monitoring, emails or unattended notifications.
 

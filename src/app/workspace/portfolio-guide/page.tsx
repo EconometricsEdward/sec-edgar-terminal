@@ -96,9 +96,8 @@ export default function PortfolioGuidePage() {
         <h2>Start with a template or a short list</h2>
         <p>
           In Portfolio Research, upload a file, paste tickers separated by
-          commas, spaces or newlines, or use your existing watchlist. Review and
-          correct individual rows before starting research. Importing creates a
-          separate saved universe and does not replace your watchlist.
+          commas, spaces or newlines. Review and correct individual rows before
+          starting research, then save the portfolio.
         </p>
         <div className={styles.downloads}>
           <a href="/portfolio/portfolio-template.csv" download>
@@ -553,9 +552,8 @@ export default function PortfolioGuidePage() {
           quantities, currencies or holding dates.
         </p>
         <p>
-          Saved portfolios remain in this browser and can be included in
-          Research Hub backup/restore. They do not synchronize automatically
-          across devices. The interactive research client sends only company
+          Saved portfolios remain in this browser. Export your portfolio to keep
+          a copy; portfolios do not synchronize automatically across devices. The interactive research client sends only company
           identifiers needed for public-data retrieval; notes and allocation
           calculations stay local. Programmatic clients transmit whatever fields
           they send, but request-specific allocations and notes are not put in

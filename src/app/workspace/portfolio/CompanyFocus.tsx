@@ -4,12 +4,13 @@ import Link from "next/link";
 import { portfolioAvailableMetrics } from "../../../utils/portfolioDeepResearch.js";
 import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowUpRight, FileText, X } from "lucide-react";
+import { ArrowUpRight, X } from "lucide-react";
 import {
   portfolioNumber,
   finiteFinancialMetric,
 } from "../../../utils/portfolioModel.js";
 import s from "./CompanyFocus.module.css";
+import { validTicker } from "../../../utils/researchWorkspace.js";
 
 type Props = {
   row: any;
@@ -18,7 +19,6 @@ type Props = {
   allocations: any[];
   onClose: () => void;
   onInspectMetric: (key: string, point: any) => void;
-  onCreateBrief?: (draft: any) => void;
   onSaveFiling?: (filing: any) => void;
 };
 const finite = (value: unknown): value is number =>
@@ -107,7 +107,6 @@ export default function CompanyFocus({
   allocations,
   onClose,
   onInspectMetric,
-  onCreateBrief,
   onSaveFiling,
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -294,33 +293,6 @@ export default function CompanyFocus({
         </div>
 
         <div className={s.actions}>
-          {onCreateBrief && (
-            <button
-              className={s.primary}
-              type="button"
-              onClick={() => {
-                onClose();
-                onCreateBrief({
-                  title: `Review ${name}`.slice(0, 200),
-                  question: fund
-                    ? `What does the latest portfolio disclosure show about ${name}'s holdings and concentration?`
-                    : `What changed in ${name}'s latest SEC evidence, and what supports or challenges the research thesis?`,
-                  cik,
-                  ticker,
-                  sources: filings.slice(0, 5).map((filing: any) => ({
-                    label: `${filing.form} · ${filing.filingDate}`,
-                    url: secUrl(filing.documentUrl),
-                    annotation: "context",
-                    origin: "Company focus",
-                    capturedAt:
-                      company?.retrievedAt || new Date().toISOString(),
-                  })),
-                });
-              }}
-            >
-              <FileText size={17} /> Start a research brief
-            </button>
-          )}
           {fund ? (
             <Link href={fundHref}>
               Open fund holdings <ArrowUpRight size={15} />
@@ -561,7 +533,7 @@ export default function CompanyFocus({
                         : ""}
                     </span>
                   </div>
-                  {onSaveFiling && (
+                  {onSaveFiling && !fund && identity.status === "resolved" && identity.ticker === ticker && validTicker(ticker) && (
                     <button
                       type="button"
                       onClick={() =>
@@ -573,7 +545,7 @@ export default function CompanyFocus({
                         })
                       }
                     >
-                      Save filing
+                      Save to company notebook
                     </button>
                   )}
                 </li>
