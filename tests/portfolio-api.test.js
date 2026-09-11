@@ -291,7 +291,9 @@ test("portfolio financials use the existing Compare engine, coherent periods, fo
   });
   assert.equal(result.metrics.roe.value, compared.metrics.roe[0].value);
   assert.deepEqual(
-    result.metrics.roe.sources.map(({ revisions: _revisions, ...source }) => source),
+    result.metrics.roe.sources.map(
+      ({ revisions: _revisions, ...source }) => source,
+    ),
     compared.metrics.roe[0].sources,
   );
   assert.equal(result.metrics.freeCashFlow.value, 30);
@@ -336,7 +338,7 @@ test("bank and broker lenses reject ordinary corporate ratios and foreign curren
   );
   assert.equal(foreign.metrics.netIncome.value, null);
   assert.ok(
-    foreign.warnings.some((warning) => warning.includes("Foreign issuer")),
+    foreign.warnings.some((warning) => warning.includes("Foreign company")),
   );
 });
 

@@ -196,7 +196,7 @@ export function rankPortfolioMetric(
     periodCount: periods.length,
     rows: [...available, ...rows.filter((r) => r.state !== "available")],
     interpretation:
-      "Ranks order numerical values within the selected saved issuer group; ties share a rank. Higher does not mean better. Each issuer counts once. Reporting dates, accounting scope and business models may differ; unavailable values are never ranked or imputed.",
+      "Ranks order numerical values within the selected saved company group; ties share a rank. Higher does not mean better. Each company counts once. Reporting dates, accounting scope and business models may differ; unavailable values are never ranked or imputed.",
   };
 }
 
@@ -244,7 +244,7 @@ export function portfolioConnections(report, companies) {
     reading:
       eligible.length || id.startsWith("roe-")
         ? reading
-        : `No eligible issuers have the complete, compatible inputs needed for this comparison. Refresh research or inspect missing evidence; an unmeasured result is not evidence that the condition is absent.`,
+        : `No eligible companies have the complete, compatible inputs needed for this comparison. Refresh research or inspect missing evidence; an unmeasured result is not evidence that the condition is absent.`,
     query,
     keys,
   });
@@ -254,7 +254,7 @@ export function portfolioConnections(report, companies) {
       "Does operating cash cover investment and shareholder returns?",
       cash,
       deficit,
-      `${deficit.length} of ${cash.length} corporate issuers with complete inputs used more cash on PP&E, dividends and common-share repurchases than operations generated. Cash reserves, asset sales or financing can bridge the difference; inspect the cash-flow statement.`,
+      `${deficit.length} of ${cash.length} operating companies with complete inputs used more cash on PP&E, dividends and common-share repurchases than operations generated. Cash reserves, asset sales or financing can bridge the difference; inspect the cash-flow statement.`,
       '"capital resources" OR "share repurchase" OR "debt issuance"',
       [
         "operatingCashFlow",
@@ -269,7 +269,7 @@ export function portfolioConnections(report, companies) {
       "Is revenue growth reaching the bottom line?",
       growth,
       growthLoss,
-      `${growthLoss.length} of ${growth.length} paired corporate issuers reported growing revenue and a net loss. Check margins, operating costs, financing costs and unusual items; growth alone does not establish profitability.`,
+      `${growthLoss.length} of ${growth.length} paired operating companies reported growing revenue and a net loss. Check margins, operating costs, financing costs and unusual items; growth alone does not establish profitability.`,
       '"operating expenses" OR restructuring OR impairment',
       ["revenueGrowth", "netMargin", "operatingMargin", "netIncome"],
     ),
@@ -328,8 +328,8 @@ export function portfolioConnections(report, companies) {
         high,
         leveraged,
         paired.length < 4
-          ? `At least four ${lens} issuers with all three ROE drivers are required for a within-group comparison; ${paired.length} are available.`
-          : `${leveraged.length} of ${high.length} issuers above their ${lens} group's median explained ROE also have an above-median equity multiplier. Higher ROE can reflect margins, asset use or a smaller equity base. Compare the three drivers before drawing a conclusion.`,
+          ? `At least four ${lens} companies with all three ROE drivers are required for a within-group comparison; ${paired.length} are available.`
+          : `${leveraged.length} of ${high.length} companies above their ${lens} group's median explained ROE also have an above-median equity multiplier. Higher ROE can reflect margins, asset use or a smaller equity base. Compare the three drivers before drawing a conclusion.`,
         '"return on equity" OR leverage OR "capital management"',
         [
           lens === "banking" ? "bankNetMargin" : "netMargin",
@@ -348,6 +348,6 @@ export function portfolioConnections(report, companies) {
     issuerCount: issuers.length,
     groups,
     interpretation:
-      "Descriptive connections from compatible captured observations. Business types are separated; missing inputs are excluded. Counts are issuer counts, not ownership-weighted cash flows, returns or risk ratings.",
+      "Descriptive connections from compatible captured observations. Business types are separated; missing inputs are excluded. Counts are company counts, not ownership-weighted cash flows, returns or risk ratings.",
   };
 }

@@ -639,7 +639,7 @@ export default function PortfolioResearch({
       runGeneration.current === token && currentContext.current === ownerKey;
     setBusy(true);
     setError("");
-    setMessage("Retrieving public issuer evidence in batches of five…");
+    setMessage("Retrieving public company evidence in batches of five…");
     try {
       const result = await researchPortfolioRows(rows, {
         basis,
@@ -697,8 +697,8 @@ export default function PortfolioResearch({
           },
         },
         result.cancelled
-          ? "Research stopped. Completed evidence is retained; remaining issuers are unchecked."
-          : `Research finished: ${result.companies.filter(companyAvailable).length} issuers with financial evidence; ${result.companies.filter((entry: any) => entry.status === "failed" || entry.refreshStatus === "failed").length} retrieval failures. ${completeCheck ? "Full-check baseline updated. Open What changed to review differences." : "The full-check baseline is unchanged; review incomplete or stale results."}${comparisonWarning}`,
+          ? "Research stopped. Completed evidence is retained; remaining companies are unchecked."
+          : `Research finished: ${result.companies.filter(companyAvailable).length} companies with financial evidence; ${result.companies.filter((entry: any) => entry.status === "failed" || entry.refreshStatus === "failed").length} retrieval failures. ${completeCheck ? "Full-check baseline updated. Open What changed to review differences." : "The full-check baseline is unchanged; review incomplete or stale results."}${comparisonWarning}`,
       );
     } catch (failure) {
       if (!isCurrent()) return;
@@ -1104,7 +1104,7 @@ export default function PortfolioResearch({
               <h3>{document.name}</h3>
               <p>
                 {included.length} included rows · {summary.issuers.length}{" "}
-                identified issuers · {summary.coverage.unresolvedPositions}{" "}
+                identified holdings · {summary.coverage.unresolvedPositions}{" "}
                 unresolved rows. Original inputs remain saved.
               </p>
             </div>
@@ -1147,11 +1147,11 @@ export default function PortfolioResearch({
               <progress
                 value={progress.completed}
                 max={Math.max(1, progress.total)}
-                aria-label="Issuer research progress"
+                aria-label="Company research progress"
               />
               <p>
-                {progress.completed} of {progress.total} issuers processed. Five
-                issuers per request; successful results appear as batches
+                {progress.completed} of {progress.total} companies processed.
+                Five companies per request; successful results appear as batches
                 complete.
               </p>
             </div>
@@ -1272,7 +1272,7 @@ export default function PortfolioResearch({
                 {summary.coverage.totalCompanies}
               </strong>
               <small>
-                Resolved operating issuers;{" "}
+                Resolved operating companies;{" "}
                 {summary.coverage.unresolvedPositions} unresolved rows shown
                 separately
               </small>
@@ -1513,7 +1513,7 @@ export default function PortfolioResearch({
                     ),
                 ) && (
                   <button disabled={busy} onClick={() => run(true)}>
-                    Retry failed / unchecked issuers
+                    Retry failed / unchecked companies
                   </button>
                 )}
               </div>
@@ -1580,7 +1580,7 @@ export default function PortfolioResearch({
                             <strong>
                               {row.resolution?.ticker ||
                                 row.input.ticker ||
-                                "CIK-only issuer"}
+                                "CIK-only holding"}
                             </strong>
                             <button
                               className={s.focusButton}
@@ -1776,7 +1776,7 @@ export default function PortfolioResearch({
                 owned by this portfolio. Financial figures use supported USD
                 contexts. Click a value to inspect its period, formula, inputs,
                 and SEC sources. Share classes retain separate positions and
-                reuse one issuer retrieval.
+                reuse one company retrieval.
               </p>
               {evidence && (
                 <section
@@ -2145,7 +2145,7 @@ function AllocationView({
       <p>
         {weighted
           ? "Percentages use the selected allocation basis. Missing weights and missing evidence stay visible."
-          : "Distributions count identified issuers. They do not measure capital invested or portfolio exposure."}
+          : "Distributions count identified holdings. They do not measure capital invested or portfolio exposure."}
       </p>
       {weighted && (
         <div className={s.stats}>
@@ -2243,7 +2243,7 @@ function AllocationView({
             className={s.chart}
             role="img"
             aria-label={
-              weighted ? "SEC industry weights" : "SEC industry issuer counts"
+              weighted ? "SEC industry weights" : "SEC industry holding counts"
             }
           >
             {summary.distribution
@@ -2280,7 +2280,7 @@ function AllocationView({
               <thead>
                 <tr>
                   <th>Classification</th>
-                  <th>Issuer / unresolved row count</th>
+                  <th>Holding / unresolved row count</th>
                   {weighted && <th>Known weight</th>}
                 </tr>
               </thead>
@@ -2299,17 +2299,17 @@ function AllocationView({
       </div>
       {weighted && (
         <>
-          <h4>Issuer concentration across share classes</h4>
+          <h4>Holding concentration across share classes</h4>
           <div
             className={s.tableWrap}
             tabIndex={0}
             role="region"
-            aria-label="Issuer-level concentration"
+            aria-label="Holding concentration"
           >
             <table>
               <thead>
                 <tr>
-                  <th>Issuer</th>
+                  <th>Company</th>
                   <th>Securities</th>
                   <th>Known combined weight</th>
                   <th>Weight completeness</th>

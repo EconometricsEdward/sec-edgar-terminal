@@ -89,10 +89,10 @@ export default function PortfolioConcentrationTools({
           not recommendations. Changes apply only to this view.
         </p>
         <div className={s.controls}>
-          <label htmlFor={`${id}-issuer`}>
-            Issuer limit (%)
+          <label htmlFor={`${id}-holding`}>
+            Holding limit (%)
             <input
-              id={`${id}-issuer`}
+              id={`${id}-holding`}
               type="number"
               min="0"
               max="100"
@@ -131,7 +131,7 @@ export default function PortfolioConcentrationTools({
                   ? "Check your limits"
                   : `${analysis.breaches.length} known ${analysis.breaches.length === 1 ? "breach" : "breaches"}`}
             </strong>
-            <span>Issuer and industry checks can overlap.</span>
+            <span>Holding and industry checks can overlap.</span>
           </div>
         </div>
         {analysis.errors.length > 0 && (
@@ -159,7 +159,7 @@ export default function PortfolioConcentrationTools({
                   setRowsShown(10);
                 }}
               >
-                {value === "issuer" ? "Issuers" : "SEC industries"}
+                {value === "issuer" ? "Holdings" : "SEC industries"}
               </button>
             ))}
           </div>
@@ -185,7 +185,7 @@ export default function PortfolioConcentrationTools({
             <thead>
               <tr>
                 <th scope="col">
-                  {kind === "issuer" ? "Issuer" : "SEC industry"}
+                  {kind === "issuer" ? "Holding" : "SEC industry"}
                 </th>
                 <th scope="col">
                   {analysis.complete ? "Allocation" : "Known weight"}
@@ -326,7 +326,7 @@ export default function PortfolioConcentrationTools({
           </div>
         </div>
         <p className={s.intro}>
-          Issuers are ordered by{" "}
+          Holdings are ordered by{" "}
           {analysis.complete ? "allocation" : "known supplied weight"}, largest
           first. The curve adds their original weights; share classes are
           combined.
@@ -342,8 +342,8 @@ export default function PortfolioConcentrationTools({
               <div>
                 <span>
                   {analysis.complete
-                    ? "Issuers covering at least 50%"
-                    : "Known issuer exposure"}
+                    ? "Holdings covering at least 50%"
+                    : "Known holding exposure"}
                 </span>
                 <strong>
                   {analysis.complete
@@ -354,8 +354,8 @@ export default function PortfolioConcentrationTools({
               <div>
                 <span>
                   {analysis.complete
-                    ? "Issuers covering at least 80%"
-                    : "Issuers with incomplete weights"}
+                    ? "Holdings covering at least 80%"
+                    : "Holdings with incomplete weights"}
                 </span>
                 <strong>
                   {analysis.complete
@@ -378,9 +378,9 @@ export default function PortfolioConcentrationTools({
             </div>
             {!analysis.complete && (
               <p className={s.notice}>
-                This curve shows known issuer subtotals only. Missing weights
+                This curve shows known holding subtotals only. Missing weights
                 can change the order; unresolved positions are excluded from
-                issuer grouping. Full concentration statistics require a
+                holding grouping. Full concentration statistics require a
                 complete, reviewed 100% allocation.
               </p>
             )}
@@ -391,13 +391,14 @@ export default function PortfolioConcentrationTools({
               aria-labelledby={`${id}-curve-title ${id}-curve-desc`}
             >
               <title id={`${id}-curve-title`}>
-                Cumulative {analysis.complete ? "portfolio" : "known issuer"}{" "}
+                Cumulative {analysis.complete ? "portfolio" : "known holding"}{" "}
                 exposure
               </title>
               <desc id={`${id}-curve-desc`}>
-                Largest issuer first. {analysis.curve.length} issuers with known
-                weights sum to {percent(analysis.cumulativeKnownWeightPct)}.
-                Values are available in the table below.
+                Largest holding first. {analysis.curve.length} holdings with
+                known weights sum to{" "}
+                {percent(analysis.cumulativeKnownWeightPct)}. Values are
+                available in the table below.
               </desc>
               {[0, maxWeight / 2, maxWeight].map((value) => (
                 <g key={value}>
@@ -426,7 +427,7 @@ export default function PortfolioConcentrationTools({
                 {analysis.curve.length}
               </text>
               <text x="318" y="176" textAnchor="middle">
-                Number of issuers, largest known weight first
+                Number of holdings, largest known weight first
               </text>
             </svg>
             <div
@@ -439,7 +440,7 @@ export default function PortfolioConcentrationTools({
                 <thead>
                   <tr>
                     <th scope="col">Rank</th>
-                    <th scope="col">Issuer</th>
+                    <th scope="col">Holding</th>
                     <th scope="col">
                       {analysis.complete ? "Allocation" : "Known weight"}
                     </th>
@@ -490,18 +491,18 @@ export default function PortfolioConcentrationTools({
                 type="button"
                 onClick={() => setCurveRows((value) => value + 20)}
               >
-                Show more issuer contributions (
+                Show more holding contributions (
                 {Math.min(curveRows, analysis.curve.length)} of{" "}
                 {analysis.curve.length})
               </button>
             )}
             {analysis.complete && (
               <p className={s.footnote}>
-                HHI points = issuer weight in percentage points squared. Share
-                of HHI = issuer HHI points ÷ total HHI. A 60% issuer contributes
-                3,600 points. This measures direct issuer concentration; it does
-                not measure volatility, correlation, or underlying fund
-                holdings.
+                HHI points = holding weight in percentage points squared. Share
+                of HHI = holding HHI points ÷ total HHI. A 60% holding
+                contributes 3,600 points. This measures direct holding
+                concentration; it does not measure volatility, correlation, or
+                underlying fund holdings.
               </p>
             )}
           </>

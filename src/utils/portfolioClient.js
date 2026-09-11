@@ -153,7 +153,7 @@ export async function researchPortfolioRows(
         if (!company || refreshStatus(company) === "failed") {
           const message =
             company?.warnings?.[0] ||
-            "The response omitted this issuer or returned unavailable research. Retry it.";
+            "The response omitted this company or returned unavailable research. Retry it.";
           results.set(
             holding.cik,
             retainEarlierEvidence(
@@ -182,7 +182,7 @@ export async function researchPortfolioRows(
             previous,
             error instanceof Error
               ? error.message
-              : "Retrieval failed. Retry this issuer.",
+              : "Retrieval failed. Retry this company.",
           ),
         );
       }

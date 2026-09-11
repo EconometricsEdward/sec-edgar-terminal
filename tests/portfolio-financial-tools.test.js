@@ -329,10 +329,10 @@ test("benchmark CSV exports the filtered cohort, units, exact coverage and evide
   );
   assert.equal(first["SEC industry"], "Technology");
   assert.equal(first["Captured at"], "2026-09-08T00:00:00Z");
-  assert.equal(first["Cohort issuers"], "5");
-  assert.equal(first["Measured issuers"], "2");
-  assert.equal(first["Unavailable applicable issuers"], "1");
-  assert.equal(first["Not applicable issuers"], "0");
+  assert.equal(first["Cohort companies"], "5");
+  assert.equal(first["Measured companies"], "2");
+  assert.equal(first["Unavailable applicable companies"], "1");
+  assert.equal(first["Not applicable companies"], "0");
   assert.equal(first["Outside date range"], "1");
   assert.equal(first["Undated excluded"], "1");
   assert.ok(!/market_value|shares|notes|weight_pct/i.test(csv));

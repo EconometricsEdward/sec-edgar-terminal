@@ -674,7 +674,7 @@ export default function PortfolioImport({
         <p>
           Use <code>ticker</code>, <code>company_name</code>, or{" "}
           <code>cik</code> to identify a company. Company-name matches require
-          confirmation. An exact CIK identifies an issuer; it does not assume a
+          confirmation. An exact CIK identifies a company; it does not assume a
           share class.
         </p>
         <dl className={s.definitions}>
@@ -885,7 +885,7 @@ export default function PortfolioImport({
                   </strong>
                   {group.decided ? (
                     <p>
-                      Confirmed: keep separate positions. Issuer evidence is
+                      Confirmed: keep separate positions. Company evidence is
                       retrieved once.
                     </p>
                   ) : (
@@ -1130,7 +1130,7 @@ export default function PortfolioImport({
                         )}
                         {resolution.needsVerification && (
                           <p>
-                            Issuer CIK will be verified against SEC submissions
+                            Company CIK will be verified against SEC submissions
                             during research.
                           </p>
                         )}
@@ -1161,7 +1161,7 @@ export default function PortfolioImport({
                                       value={candidateIndex}
                                     >
                                       {candidate.name} ·{" "}
-                                      {candidate.ticker || "Issuer"} · CIK{" "}
+                                      {candidate.ticker || "Company"} · CIK{" "}
                                       {candidate.cik}
                                     </option>
                                   ),
@@ -1223,7 +1223,7 @@ export default function PortfolioImport({
                               ? "Keep the merged position; original rows are retained."
                               : resolution.status === "resolved"
                                 ? "Keep this position for research."
-                                : "Retain for correction; no issuer research until resolved."}
+                                : "Retain for correction; no company research until resolved."}
                         </p>
                         <label className={s.includeToggle}>
                           <input

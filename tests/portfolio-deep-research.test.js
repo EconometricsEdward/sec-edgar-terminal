@@ -232,7 +232,7 @@ test("report uses selected issuer denominators, honors privacy and excludes stal
   assert.ok(!html.includes("<script>bad"));
   assert.ok(html.includes("&lt;script&gt;bad"));
   assert.ok(html.includes("Print / save as PDF"));
-  assert.ok(html.includes("No eligible issuers"));
+  assert.ok(html.includes("No eligible companies"));
 });
 test("source issuer scope deduplicates share classes and omits removed and fund positions", () => {
   const companies = [company(1), company(2), company(3)];

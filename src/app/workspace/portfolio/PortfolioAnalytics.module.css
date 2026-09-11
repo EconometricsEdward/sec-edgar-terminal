@@ -834,3 +834,32 @@
     flex-direction: column;
   }
 }
+
+.briefingHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.briefingHeading h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+@media (min-width: 951px) {
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .nav button {
+    flex: 1 1 auto;
+    padding-inline: 12px;
+  }
+}
+@media (max-width: 600px) {
+  .briefingHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}

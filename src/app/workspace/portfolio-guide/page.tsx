@@ -51,9 +51,9 @@ const fields = [
   ["ticker", "Company/security ticker. Tickers alone are sufficient."],
   [
     "company_name",
-    "Issuer name. Ambiguous names remain available for review; they are not guessed.",
+    "Company name. Ambiguous names remain available for review; they are not guessed.",
   ],
-  ["cik", "Exact SEC issuer identifier. Use text to preserve leading zeroes."],
+  ["cik", "Exact SEC company identifier. Use text to preserve leading zeroes."],
   [
     "exchange",
     "Optional identification context; conflicting identifiers require review.",
@@ -149,7 +149,7 @@ export default function PortfolioGuidePage() {
         <p>
           The supported workflow contains up to <strong>100 rows</strong>.
           File-size limits are shown in the importer. Research runs in smaller
-          issuer batches, with partial results, cancellation and retries.
+          company batches, with partial results, cancellation and retries.
           Unsupported or unresolved entries remain visible so you can correct or
           exclude them while researching valid companies.
         </p>
@@ -199,8 +199,8 @@ export default function PortfolioGuidePage() {
         <p>
           <code>schema_version</code> must be <code>edgar.portfolio.v1</code>.
           The <code>holdings</code> array uses the fields above. Exact CIKs
-          identify issuers; share classes remain separate positions even when
-          they retrieve the same issuer data. Duplicates, conflicting
+          identify companies; share classes remain separate positions even when
+          they retrieve the same company data. Duplicates, conflicting
           identifiers and uncertain name matches require explicit review.
         </p>
       </section>
@@ -232,7 +232,7 @@ export default function PortfolioGuidePage() {
         <p>
           The initial model is long-only. Negative values and quantities require
           correction. Multiple share classes retain their own position rows and
-          combine at issuer level for concentration. SEC SIC-derived industry
+          combine at company level for concentration. SEC SIC-derived industry
           classifications are labeled accurately. Missing research does not
           cause the covered subset to be silently reweighted.
         </p>
@@ -252,7 +252,7 @@ export default function PortfolioGuidePage() {
           The Metrics &amp; rankings view includes the Analysis page’s
           statement, cash-flow, profitability, banking and accounting-check
           catalog. Filter by business model, SEC industry and full reporting
-          period; sort any measure and select up to six issuers with up to ten
+          period; sort any measure and select up to six companies with up to ten
           comparison measures. Every value opens its explanation, formula,
           reporting dates and SEC sources. Refresh older portfolio captures to
           populate the expanded catalog.
@@ -260,7 +260,7 @@ export default function PortfolioGuidePage() {
         <p>
           Connected findings identify cash use above operating cash generation,
           growth alongside losses, deposit funding of loans, and the drivers of
-          return on equity. These use eligible issuer counts and compatible
+          return on equity. These use eligible company counts and compatible
           observations. They are prompts to investigate; company cash flows are
           not summed as portfolio cash flows.
         </p>
@@ -268,7 +268,7 @@ export default function PortfolioGuidePage() {
           The Filing library starts with the saved references, then loads full
           recent submissions and historical archives on request. Disclosure
           search applies an explicit query, date range, forms and section to up
-          to 100 portfolio issuers. Work proceeds in paced batches, retains
+          to 100 portfolio companies. Work proceeds in paced batches, retains
           completed results when stopped, and provides retries and older-filing
           continuation. No match in reviewed filings is not evidence that a
           topic is absent.
@@ -302,19 +302,19 @@ export default function PortfolioGuidePage() {
         </p>
         <p>
           Choose “Compare saved portfolios” to inspect two local snapshots side
-          by side. Issuer overlap counts share classes once and does not look
+          by side. Company overlap counts share classes once and does not look
           through funds. Allocation overlap adds the smaller saved weight for
-          each shared issuer; both portfolios require complete, resolved
+          each shared company; both portfolios require complete, resolved
           allocations totaling 100%. Explicit normalization remains labeled.
           Missing weights are never assumed to be zero.
         </p>
         <p>
           Whole-list financial medians describe their own covered samples.
-          Matched differences require the same issuer, metric definition, unit,
+          Matched differences require the same company, metric definition, unit,
           accounting basis and full reporting period. A difference for the same
           period may be a revision; it is not later growth. Exclusion reasons
           and snapshot dates remain visible. Export the comparison as JSON with
-          your selected measure, issuer filter, all results and matched SEC
+          your selected measure, company filter, all results and matched SEC
           links.
         </p>
       </section>
@@ -332,38 +332,39 @@ export default function PortfolioGuidePage() {
             <strong>Portfolio briefing:</strong> start with the largest known
             exposures, financial conditions and evidence gaps. Each finding
             leads to a relevant view or company. Counts describe identified
-            issuers; a ticker list does not imply invested weights.
+            companies; a ticker list does not imply invested weights.
           </li>
           <li>
             <strong>Cash backing of earnings:</strong> the briefing compares
             positive versus non-positive net income and operating cash flow for
-            corporate issuers with aligned full annual or TTM periods and USD
+            operating companies with aligned full annual or TTM periods and USD
             measures. Financial-company lenses and SIC 6798 REITs are excluded.
-            Zero is non-positive. The headline uses profitable paired issuers as
-            its denominator; the four cells use all paired issuers. Working
+            Zero is non-positive. The headline uses profitable paired companies
+            as its denominator; the four cells use all paired companies. Working
             capital and non-cash items can explain differences. Select a cell to
             inspect its companies or export the values, full periods and SEC
             source links. This is a statement-reading diagnostic, not a quality
             score.
           </li>
           <li>
-            <strong>Concentration:</strong> see combined issuer exposure across
-            share classes and the SEC industry mix. Top-issuer percentages use
+            <strong>Concentration:</strong> see combined holding exposure across
+            share classes and the SEC industry mix. Top-holding percentages use
             known original weights. Complete, reviewed allocations totaling 100%
-            also show an effective issuer count: 1 divided by the sum of squared
-            issuer weight fractions. Ten equally weighted issuers produce 10;
-            one issuer produces 1. This measures allocation concentration and
-            does not account for correlations or fund holdings. Set your own
-            issuer and industry limits, inspect breaches, and trace cumulative
-            allocation across the largest holdings. Limit settings are research
-            assumptions. Incomplete weights cannot establish that exposure is
-            within a limit. HHI contributions use squared issuer weights only
-            when allocation is complete.
+            also show an effective holding count: 1 divided by the sum of
+            squared holding weight fractions. Ten equally weighted holdings
+            produce 10; one holding produces 1. This measures allocation
+            concentration and does not account for correlations or fund
+            holdings. Set your own holding and industry limits, inspect
+            breaches, and trace cumulative allocation across the largest
+            holdings. Limit settings are research assumptions. Incomplete
+            weights cannot establish that exposure is within a limit. HHI
+            contributions use squared holding weights only when allocation is
+            complete.
           </li>
           <li>
             <strong>Financial profile:</strong> compare company medians, the
             middle 50% of observations and distributions for growth, margins,
-            leverage and selected banking measures. Each issuer counts once.
+            leverage and selected banking measures. Each company counts once.
             Medians describe companies with supported evidence, rather than an
             investment return or an ownership share of company earnings. Missing
             and not-applicable observations stay separate.
@@ -372,15 +373,15 @@ export default function PortfolioGuidePage() {
             <strong>Peer benchmarks and relationships:</strong> choose a SEC
             industry and reporting dates to compare a relevant group. Percentile
             ranks describe position within the measured group; a higher rank is
-            not necessarily better. Two-metric charts use only issuers with both
-            measures, show their reporting dates, and can require matching
+            not necessarily better. Two-metric charts use only companies with
+            both measures, show their reporting dates, and can require matching
             period ends. These are financial relationships, not return
             correlations or forecasts.
           </li>
           <li>
-            <strong>Company comparisons:</strong> select up to four issuers and
-            compare supported measures, reporting periods and SEC sources side
-            by side. Missing values remain visible. Industry filters do not
+            <strong>Company comparisons:</strong> select up to four companies
+            and compare supported measures, reporting periods and SEC sources
+            side by side. Missing values remain visible. Industry filters do not
             change the saved portfolio or its weight denominator.
           </li>
           <li>
@@ -392,7 +393,7 @@ export default function PortfolioGuidePage() {
           </li>
           <li>
             <strong>Scenario lab:</strong> apply hypothetical price changes to
-            all holdings, an issuer or a SEC industry. A 60% holding falling
+            all holdings, a company or a SEC industry. A 60% holding falling
             20%, with the remaining 40% unchanged, contributes −12 percentage
             points to modeled portfolio value. Scenarios require complete
             reviewed allocations, or your explicit choice to try a temporary
@@ -410,8 +411,8 @@ export default function PortfolioGuidePage() {
             <strong>Evidence coverage:</strong> inspect metric coverage,
             reporting-date differences and the companies that need attention.
             Missing financial evidence never becomes a zero value. Reported
-            periods can differ across issuers, including in the same chart. The
-            company-by-metric matrix makes every supported, missing and
+            periods can differ across companies, including in the same chart.
+            The company-by-metric matrix makes every supported, missing and
             not-applicable measure visible, with inspection and CSV download.
           </li>
         </ul>
@@ -450,7 +451,7 @@ export default function PortfolioGuidePage() {
               <tr>
                 <th scope="row">Research</th>
                 <td>
-                  Up to 5 distinct resolved issuers per request; up to 100
+                  Up to 5 distinct resolved companies per request; up to 100
                   position rows
                 </td>
               </tr>
@@ -475,7 +476,7 @@ export default function PortfolioGuidePage() {
               <tr>
                 <th scope="row">Filing feed</th>
                 <td>
-                  Up to 30 relevant filings per issuer from recent SEC
+                  Up to 30 relevant filings per company from recent SEC
                   submissions; older archive files are not scanned
                 </td>
               </tr>
@@ -485,12 +486,12 @@ export default function PortfolioGuidePage() {
         <h3>Combine batches carefully</h3>
         <p>
           Resolve the full input, then retrieve batches of at most five distinct
-          issuers serially. Use <code>basis: &quot;none&quot;</code> for
+          companies serially. Use <code>basis: &quot;none&quot;</code> for
           retrieval batches. Combine company results by CIK and calculate
           allocation and coverage once over the full original position list.
           Never combine batch percentages or silently reweight companies with
           missing research. Share-class rows remain separate from deduplicated
-          issuer evidence.
+          company evidence.
         </p>
         <p>
           Responses include <code>schema_version</code>,{" "}
@@ -524,11 +525,11 @@ export default function PortfolioGuidePage() {
       <section id="exports">
         <h2>Keep sources and assumptions with the result</h2>
         <p>
-          Export the selected issuer table to CSV, or a captured research
+          Export the selected company table to CSV, or a captured research
           package to XLSX, JSON or Markdown. The workbook separates Holdings,
           Company research, Portfolio summary, Sources, Coverage &amp;
           methodology, Analytics, and Metric observations. The last sheet keeps
-          each issuer&apos;s supported values, reporting dates and source links
+          each company&apos;s supported values, reporting dates and source links
           alongside explicit missing and not-applicable states. An analytics CSV
           summarizes the full portfolio; full JSON and Markdown packages include
           those calculations too. Selected-row exports omit portfolio-wide

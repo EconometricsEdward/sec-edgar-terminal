@@ -140,7 +140,7 @@ export default function PortfolioScenarioTools({
               {scenario.scope === "all"
                 ? " All holdings receive the same change."
                 : " Rows change the target; columns change all other holdings."}{" "}
-              Select a cell to inspect its issuer contributions.
+              Select a cell to inspect its holding contributions.
             </p>
           </div>
           <label className={styles.gridStep} htmlFor={`${id}-step`}>
@@ -338,7 +338,7 @@ export default function PortfolioScenarioTools({
           <p>
             Required target change (%) = [−loss target (%) − other holdings’
             contribution (percentage points)] ÷ [target weight (%) ÷ 100]. The
-            result is checked with the same issuer-level calculation used by a
+            result is checked with the same holding-level calculation used by a
             single scenario.
           </p>
         </details>
@@ -366,7 +366,7 @@ export default function PortfolioScenarioTools({
             type="text"
             maxLength={60}
             value={caseName}
-            placeholder="For example: largest issuer declines"
+            placeholder="For example: largest holding declines"
             onChange={(event) => setCaseName(event.target.value)}
           />
         </label>
@@ -512,7 +512,7 @@ export default function PortfolioScenarioTools({
               ))}
             </tr>
             <tr>
-              <th scope="row">Largest ending issuer weight</th>
+              <th scope="row">Largest ending holding weight</th>
               {comparison.map((item: any) => {
                 const largest = item.result.endingWeightsDefined
                   ? item.result.contributions.reduce(
@@ -561,9 +561,9 @@ export default function PortfolioScenarioTools({
         </table>
       </div>
       <p className={styles.toolNote}>
-        The CSV includes each case’s assumptions, starting issuer weights,
-        contributions, and SEC issuer identity links. Restore a case to inspect
-        its full contribution table.
+        The CSV includes each case’s assumptions, starting holding weights,
+        contributions, and SEC identity links. Restore a case to inspect its
+        full contribution table.
       </p>
     </div>
   );

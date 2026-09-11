@@ -74,9 +74,9 @@ export function buildPortfolioScenario(
   const targetCik = canonicalPortfolioCik(scenario.targetCik);
   const targetIndustry = text(scenario.targetIndustry);
   if (!["all", "issuer", "industry"].includes(scope))
-    errors.push("Choose all holdings, one issuer, or one SEC industry.");
+    errors.push("Choose all holdings, one holding, or one SEC industry.");
   if (scope === "issuer" && !issuers.some((issuer) => issuer.cik === targetCik))
-    errors.push("Choose an identified issuer in this portfolio.");
+    errors.push("Choose an identified holding in this portfolio.");
   if (scope === "industry" && !industries.includes(targetIndustry))
     errors.push("Choose a reported SEC industry in this portfolio.");
 
@@ -108,11 +108,11 @@ export function buildPortfolioScenario(
     allocation.label,
     ...(temporaryEqualWeights
       ? [
-          "Temporary equal weights across included positions; saved portfolio allocations are unchanged. Share classes are combined by issuer after weights are assigned.",
+          "Temporary equal weights across included positions; saved portfolio allocations are unchanged. Share classes are combined by holding after weights are assigned.",
         ]
       : allocation.assumptions),
     "Hypothetical price changes only; not a forecast, historical stress test or value at risk estimate.",
-    "Each issuer receives one price change. All its share classes receive the same change; the remainder change applies only outside the target.",
+    "Each holding receives one price change. All its share classes receive the same change; the remainder change applies only outside the target.",
     "No correlations, spillovers, liquidity effects, trading, dividends, fees, taxes, currency moves or changes in company fundamentals are modeled.",
     "Contribution in percentage points = starting weight (%) × assumed price change (%) ÷ 100. Ending weight (%) = starting weight × (1 + price change ÷ 100) ÷ (1 + total return ÷ 100).",
   ];

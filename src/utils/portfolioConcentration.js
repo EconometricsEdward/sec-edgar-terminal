@@ -95,7 +95,7 @@ export function buildConcentrationAnalysis(
     complete,
     limits: { issuerPct: issuerLimit, industryPct: industryLimit },
     errors: [
-      issuerLimit === null ? "Enter an issuer limit from 0% to 100%." : null,
+      issuerLimit === null ? "Enter a holding limit from 0% to 100%." : null,
       industryLimit === null
         ? "Enter an industry limit from 0% to 100%."
         : null,
@@ -148,7 +148,7 @@ export function buildPortfolioBriefing(report) {
     cards.push({
       id: "allocation",
       label: "Your analysis basis",
-      value: `${report?.issuerCount || 0} issuers`,
+      value: `${report?.issuerCount || 0} holdings`,
       text: "This company list supports financial comparisons. Add an explicit allocation to assess portfolio concentration, or try a temporary equal-weight scenario.",
       action: "Explore a scenario",
       area: "scenario",
@@ -180,8 +180,8 @@ export function buildPortfolioBriefing(report) {
     cards.push({
       id: "coverage",
       label: "Financial evidence gaps",
-      value: `${missingIssuers.length} ${missingIssuers.length === 1 ? "issuer" : "issuers"}`,
-      text: "At least one applicable financial measure is unavailable for these issuers. Missing measures are excluded from financial statistics.",
+      value: `${missingIssuers.length} ${missingIssuers.length === 1 ? "company" : "companies"}`,
+      text: "At least one applicable financial measure is unavailable for these companies. Missing measures are excluded from financial statistics.",
       action: "See missing evidence",
       area: "coverage",
       tone: "attention",
@@ -202,7 +202,7 @@ export function buildPortfolioBriefing(report) {
     cards.push({
       id: "freshness",
       label: "Review older evidence",
-      value: `${report.coverage.staleCount} ${report.coverage.staleCount === 1 ? "issuer" : "issuers"}`,
+      value: `${report.coverage.staleCount} ${report.coverage.staleCount === 1 ? "company" : "companies"}`,
       text: "Cached evidence or reporting periods are flagged as older. Freshness is assessed against the captured research date when available.",
       action: "Check evidence dates",
       area: "coverage",
@@ -221,11 +221,11 @@ export function buildPortfolioBriefing(report) {
     cards.push({
       id: "largest",
       label: complete
-        ? "Largest issuer exposure"
-        : "Largest known issuer weight",
+        ? "Largest holding exposure"
+        : "Largest known holding weight",
       value: pct(largest.weightPct),
       text: `${largest.name}${largest.tickers?.length > 1 ? " (share classes combined)" : ""}.${complete ? " Inspect its financial evidence and contribution to concentration." : " This is a known subtotal; incomplete weights can change the ranking."}`,
-      action: "Inspect issuer",
+      action: "Inspect holding",
       area: "concentration",
       tone: "neutral",
       rowId: largest.rowIds[0] || null,
@@ -234,8 +234,8 @@ export function buildPortfolioBriefing(report) {
     cards.push({
       id: "industry",
       label: "Most represented SEC industry",
-      value: `${industry.count} ${industry.count === 1 ? "issuer" : "issuers"}`,
-      text: `${industry.label}. This is an issuer count, not a portfolio weight or fund look-through exposure.`,
+      value: `${industry.count} ${industry.count === 1 ? "holding" : "holdings"}`,
+      text: `${industry.label}. This is a holding count, not a portfolio weight or fund look-through exposure.`,
       action: "Explore concentration",
       area: "concentration",
       tone: "neutral",
@@ -249,7 +249,7 @@ export function buildPortfolioBriefing(report) {
       id: "condition",
       label: condition.label,
       value: `${condition.matchedCount} of ${condition.measuredCount} measured`,
-      text: `${condition.description}${condition.missingCount ? ` ${condition.missingCount} applicable ${condition.missingCount === 1 ? "issuer is" : "issuers are"} unmeasured.` : ""} These observations are research prompts, not an investment rating.`,
+      text: `${condition.description}${condition.missingCount ? ` ${condition.missingCount} applicable ${condition.missingCount === 1 ? "holding is" : "holdings are"} unmeasured.` : ""} These observations are research prompts, not an investment rating.`,
       action: "Inspect financial profile",
       area: "financial",
       tone: "neutral",

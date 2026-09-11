@@ -76,7 +76,7 @@ export default function PortfolioScenario({
       : scenario.scope === "issuer"
         ? result.issuers.find(
             (issuer: any) => issuer.cik === scenario.targetCik,
-          )?.name || "Choose an issuer"
+          )?.name || "Choose a holding"
         : scenario.targetIndustry || "Choose an industry";
   const rangeValue = Number(scenario.targetShockPct);
   const largestIssuer = result.issuers.find(
@@ -131,7 +131,7 @@ export default function PortfolioScenario({
       data.push(
         [],
         [
-          "Issuer",
+          "Holding",
           "Tickers",
           "CIK",
           "SEC industry",
@@ -173,9 +173,9 @@ export default function PortfolioScenario({
           <span className={styles.eyebrow}>Explore a what-if</span>
           <h3 id={`${controlId}-heading`}>What if prices moved?</h3>
           <p>
-            Set a price change and see each issuer’s contribution, the portfolio
-            impact, and how the remaining weights shift. Explore a range of
-            moves, solve a loss target, or compare named cases.
+            Set a price change and see each holding’s contribution, the
+            portfolio impact, and how the remaining weights shift. Explore a
+            range of moves, solve a loss target, or compare named cases.
           </p>
         </div>
         <span className={styles.hypothetical}>Hypothetical scenario</span>
@@ -224,7 +224,7 @@ export default function PortfolioScenario({
           <p>
             <strong>Equal-weight model · assumed allocations.</strong> Each
             included position starts with the same weight. Share classes are
-            combined by issuer.{" "}
+            combined by holding.{" "}
             {result.temporaryEqualWeights
               ? "This scenario does not change your saved allocations."
               : "Your portfolio has an explicit equal-weight model selected."}
@@ -267,7 +267,7 @@ export default function PortfolioScenario({
               })
             }
           >
-            Largest issuer −30%
+            Largest holding −30%
           </button>
           <button
             type="button"
@@ -307,19 +307,19 @@ export default function PortfolioScenario({
             }
           >
             <option value="all">All holdings</option>
-            <option value="issuer">One issuer</option>
+            <option value="issuer">One holding</option>
             <option value="industry">One SEC industry</option>
           </select>
         </label>
         {scenario.scope === "issuer" && (
-          <label htmlFor={`${controlId}-issuer`}>
-            Target issuer
+          <label htmlFor={`${controlId}-holding`}>
+            Target holding
             <select
-              id={`${controlId}-issuer`}
+              id={`${controlId}-holding`}
               value={scenario.targetCik}
               onChange={(event) => change({ targetCik: event.target.value })}
             >
-              <option value="">Choose an issuer</option>
+              <option value="">Choose a holding</option>
               {result.issuers.map((issuer: any) => (
                 <option key={issuer.cik} value={issuer.cik}>
                   {issuer.tickers.join(" / ")} · {issuer.name}
@@ -346,7 +346,7 @@ export default function PortfolioScenario({
               ))}
             </select>
             <small>
-              SEC SIC classifications; unclassified issuers stay in other
+              SEC SIC classifications; unclassified holdings stay in other
               holdings.
             </small>
           </label>
@@ -510,14 +510,14 @@ export default function PortfolioScenario({
             >
               <table>
                 <caption>
-                  {result.contributions.length} issuers ·{" "}
+                  {result.contributions.length} holdings ·{" "}
                   {result.equalWeight
                     ? "Equal-weight model; assumed allocations"
                     : "Selected portfolio allocation"}
                 </caption>
                 <thead>
                   <tr>
-                    <th scope="col">Issuer</th>
+                    <th scope="col">Holding</th>
                     <th scope="col">Starting weight</th>
                     <th scope="col">Price change</th>
                     <th scope="col">Contribution</th>
@@ -590,7 +590,7 @@ export default function PortfolioScenario({
               >
                 {expanded
                   ? "Show largest 10 contributions"
-                  : `Show all ${result.contributions.length} issuers`}
+                  : `Show all ${result.contributions.length} holdings`}
               </button>
             )}
           </>

@@ -169,7 +169,7 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
   if (unresearched)
     nextSteps.push({
       title: "Capture your first research snapshot",
-      detail: `${unresearched.name} has ${unresearched.totalCompanies} resolved operating ${unresearched.totalCompanies === 1 ? "issuer" : "issuers"} ready for research.`,
+      detail: `${unresearched.name} has ${unresearched.totalCompanies} resolved operating ${unresearched.totalCompanies === 1 ? "company" : "companies"} ready for research.`,
       action: "Open portfolio",
       view: "portfolios",
       options: { portfolioId: unresearched.id },
@@ -177,7 +177,7 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
   else if (incomplete)
     nextSteps.push({
       title: "Finish checking your evidence",
-      detail: `${incomplete.name} has ${incomplete.incomplete} ${incomplete.incomplete === 1 ? "issuer" : "issuers"} with missing, stale, failed, or unchecked retrievals.`,
+      detail: `${incomplete.name} has ${incomplete.incomplete} ${incomplete.incomplete === 1 ? "company" : "companies"} with missing, stale, failed, or unchecked retrievals.`,
       action: "Resume research",
       view: "portfolios",
       options: { portfolioId: incomplete.id },
@@ -581,7 +581,7 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
                 <h4>{portfolio.name}</h4>
                 <p>
                   {portfolio.rowCount} included positions ·{" "}
-                  {portfolio.issuerCount} identified issuers
+                  {portfolio.issuerCount} identified holdings
                 </p>
                 <div className={s.coverage}>
                   <div>
@@ -590,15 +590,15 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
                       {!portfolio.hasSnapshot
                         ? "Not researched"
                         : portfolio.totalCompanies
-                          ? `${portfolio.availableCompanies} / ${portfolio.totalCompanies} issuers`
-                          : "No operating issuers"}
+                          ? `${portfolio.availableCompanies} / ${portfolio.totalCompanies} companies`
+                          : "No operating companies"}
                     </strong>
                   </div>
                   {portfolio.coveragePct !== null && (
                     <progress
                       value={portfolio.coveragePct}
                       max={100}
-                      aria-label={`${portfolio.name}: financial evidence for ${portfolio.availableCompanies} of ${portfolio.totalCompanies} resolved operating issuers`}
+                      aria-label={`${portfolio.name}: financial evidence for ${portfolio.availableCompanies} of ${portfolio.totalCompanies} resolved operating companies`}
                     />
                   )}
                   <small>
@@ -606,7 +606,7 @@ export default function HubOverview({ watchlist, onNavigate }: Props) {
                       `${portfolio.unresolved} unresolved positions · `}
                     {portfolio.fundCount > 0 &&
                       `${portfolio.fundCount} funds · `}
-                    Resolved operating issuers counted once.
+                    Resolved operating companies counted once.
                   </small>
                 </div>
                 <div className={s.cardFooter}>

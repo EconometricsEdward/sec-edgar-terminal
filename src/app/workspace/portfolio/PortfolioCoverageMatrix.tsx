@@ -69,7 +69,7 @@ export default function PortfolioCoverageMatrix({
       setDownloadMessage(
         "CSV prepared for all " +
           matrix.rows.length +
-          " filtered issuers, including each measure's status, period and source.",
+          " filtered holdings, including each measure's status, period and source.",
       );
     } catch {
       setDownloadMessage("The CSV could not be prepared. Please try again.");
@@ -83,7 +83,7 @@ export default function PortfolioCoverageMatrix({
           <span className={styles.eyebrow}>Evidence matrix</span>
           <h3 id={id + "-title"}>See exactly which evidence is available.</h3>
           <p>
-            Read across an issuer to compare its financial measures. Missing
+            Read across a holding to compare its financial measures. Missing
             evidence and measures that do not apply have separate labels;
             neither is treated as zero.
           </p>
@@ -94,10 +94,10 @@ export default function PortfolioCoverageMatrix({
       </div>
       <div className={styles.controls}>
         <label>
-          Find an issuer
+          Find a holding
           <input
             type="search"
-            placeholder="Company, ticker or CIK"
+            placeholder="Holding, ticker or CIK"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -154,7 +154,7 @@ export default function PortfolioCoverageMatrix({
               setDownloadMessage("");
             }}
           />
-          Only issuers with missing selected measures
+          Only holdings with missing selected measures
         </label>
         {filtered ? (
           <button type="button" onClick={clearFilters}>
@@ -164,7 +164,7 @@ export default function PortfolioCoverageMatrix({
       </div>
       <div className={styles.summary} aria-live="polite" aria-atomic="true">
         <span>
-          <strong>{matrix.visibleIssuerCount}</strong> issuers in view
+          <strong>{matrix.visibleIssuerCount}</strong> holdings in view
         </span>
         <span className={styles.available}>
           <strong>{matrix.availableCount}</strong> available measures
@@ -179,28 +179,28 @@ export default function PortfolioCoverageMatrix({
       <p className={styles.note}>
         Counts describe the {matrix.metrics.length} selected{" "}
         {matrix.metrics.length === 1 ? "measure" : "measures"} across all{" "}
-        {matrix.visibleIssuerCount} filtered issuers. “Not applicable” includes
+        {matrix.visibleIssuerCount} filtered holdings. “Not applicable” includes
         funds and incompatible financial business models.{" "}
         {gapsOnly
-          ? "Issuers with the most missing selected measures appear first."
-          : "Issuers are sorted by company name."}
+          ? "Holdings with the most missing selected measures appear first."
+          : "Holdings are sorted by holding name."}
       </p>
       {matrix.rows.length ? (
         <div
           className={styles.tableWrap}
           role="region"
-          aria-label="Issuer by financial measure evidence coverage"
+          aria-label="Holding by financial measure evidence coverage"
           tabIndex={0}
         >
           <table>
             <caption className={styles.srOnly}>
-              Available values, reporting periods and SEC sources by issuer.
-              Missing values can be inspected through the company evidence
+              Available values, reporting periods and SEC sources by holding.
+              Missing values can be inspected through the holding evidence
               panel.
             </caption>
             <thead>
               <tr>
-                <th scope="col">Issuer / coverage</th>
+                <th scope="col">Holding / coverage</th>
                 {matrix.metrics.map((metric: any) => (
                   <th key={metric.id} scope="col" title={metric.description}>
                     {SHORT_LABELS[metric.id] || metric.label}
@@ -310,16 +310,16 @@ export default function PortfolioCoverageMatrix({
           <strong>
             {gapsOnly
               ? "No missing selected measures in this scope."
-              : "No issuers match these filters."}
+              : "No holdings match these filters."}
           </strong>
           <p>
             {gapsOnly
               ? "Not-applicable measures are excluded from the gap count. Clear filters to review all available evidence."
-              : "Try another company name, ticker, CIK or SEC industry."}
+              : "Try another holding name, ticker, CIK or SEC industry."}
           </p>
           {filtered ? (
             <button type="button" onClick={clearFilters}>
-              Show all issuers and measures
+              Show all holdings and measures
             </button>
           ) : null}
         </div>
@@ -328,27 +328,27 @@ export default function PortfolioCoverageMatrix({
         <div className={styles.footer}>
           <p>
             Showing {visibleRows.length} of {matrix.rows.length} filtered
-            issuers. The CSV includes all filtered issuers.
+            holdings. The CSV includes all filtered holdings.
           </p>
           <button
             type="button"
             onClick={() => setShowAll((current) => !current)}
           >
             {showAll
-              ? "Show first 20 issuers"
-              : "Show all " + matrix.rows.length + " issuers"}
+              ? "Show first 20 holdings"
+              : "Show all " + matrix.rows.length + " holdings"}
           </button>
         </div>
       ) : null}
       {downloadMessage ? <p role="status">{downloadMessage}</p> : null}
       <p className={styles.note}>
-        Each resolved issuer appears once, with share classes combined.{" "}
+        Each resolved holding appears once, with share classes combined.{" "}
         {matrix.unresolvedCount
           ? matrix.unresolvedCount +
-            " unresolved positions are excluded from this issuer matrix. "
+            " unresolved positions are excluded from this holding matrix. "
           : ""}
         Each value keeps its own reporting date and source; dates can differ
-        across columns. Selecting a company opens the captured evidence.
+        across columns. Selecting a holding opens the captured evidence.
       </p>
     </section>
   );

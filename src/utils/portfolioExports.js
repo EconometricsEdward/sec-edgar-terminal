@@ -27,8 +27,8 @@ const BASE_COLUMNS = [
   "period",
 ];
 const ANALYTICS_METHODOLOGY = [
-  "Financial distribution statistics use one observation per resolved operating issuer, including combined share classes. Medians and quartiles are unweighted summaries of available compatible observations; the eligible denominator depends on each metric's applicability and business lens. Missing observations are not zero.",
-  "Concentration combines positions belonging to the same resolved issuer. HHI is the sum of squared percentage weights on a 0–10,000 scale; effective issuer count is 10,000 / HHI. These complete-portfolio measures require valid, resolved allocations totaling 100%. Known issuer and industry exposures keep the original allocation denominator.",
+  "Financial distribution statistics use one observation per resolved operating company, including combined share classes. Medians and quartiles are unweighted summaries of available compatible observations; the eligible denominator depends on each metric's applicability and business lens. Missing observations are not zero.",
+  "Concentration combines positions belonging to the same resolved holding. HHI is the sum of squared percentage weights on a 0–10,000 scale; effective holding count is 10,000 / HHI. These complete-portfolio measures require valid, resolved allocations totaling 100%. Known holding and industry exposures keep the original allocation denominator.",
   "Fund positions appear only as direct holdings in concentration, without underlying-holdings look-through. Diagnostic conditions and financial distributions exclude funds. Financial distribution bins and review conditions are descriptive checks, not risk ratings or forecasts.",
 ];
 const OWN = (object, key) =>
@@ -319,7 +319,7 @@ export function buildPortfolioResearchPackage(document, options = {}) {
       resolved_companies: selectedActiveCiks.length,
     })),
     company_coverage_definition:
-      "Ready and partial responses count as researched. Financial coverage requires at least one finite supported metric; filings-only responses are not financial coverage. Selected company coverage uses all selected resolved issuers as its denominator, including unsupported funds; full-document operating-company coverage retains the shared model's separately labeled denominator. Selected researched weight means weight with financial evidence, without reweighting the covered subset.",
+      "Ready and partial responses count as researched. Financial coverage requires at least one finite supported metric; filings-only responses are not financial coverage. Selected company coverage uses all selected resolved holdings as its denominator, including unsupported funds; full-document operating-company coverage retains the shared model's separately labeled denominator. Selected researched weight means weight with financial evidence, without reweighting the covered subset.",
   };
   const allocation = fullAllocation
     ? {
@@ -589,7 +589,7 @@ function metricObservationRows(bundle) {
               : "This measure does not apply to the company's reporting lens or is marked not applicable in the captured evidence."
             : status === "missing"
               ? "No supported observation with a compatible unit is available. A missing value is not zero."
-              : "One supported observation per issuer. Share classes are combined; known weights retain the full saved portfolio denominator.",
+              : "One supported observation per company. Share classes are combined; known weights retain the full saved portfolio denominator.",
       };
     });
   });
@@ -687,10 +687,10 @@ function analyticsTable(bundle) {
   }
   for (const [key, label, unit] of [
     ["holdingCount", "Included positions", "positions"],
-    ["issuerCount", "Resolved issuers", "issuers"],
-    ["operatingIssuerCount", "Operating issuers", "issuers"],
+    ["issuerCount", "Resolved holdings", "count"],
+    ["operatingIssuerCount", "Operating companies", "count"],
     ["unresolvedCount", "Unresolved positions", "positions"],
-    ["fundCount", "Fund issuers", "issuers"],
+    ["fundCount", "Funds", "count"],
   ])
     add("scope", key, label, analytics[key], unit);
   add("scope", "allocationBasis", "Allocation basis", analytics.basis, "", {
@@ -700,11 +700,11 @@ function analyticsTable(bundle) {
   for (const [key, label, unit] of [
     ["knownWeightPct", "Known allocation weight", "%"],
     ["missingWeightRows", "Positions without valid weights", "positions"],
-    ["largestIssuerWeightPct", "Largest known issuer weight", "%"],
-    ["topFiveIssuerWeightPct", "Top five known issuer weights", "%"],
-    ["topTenIssuerWeightPct", "Top ten known issuer weights", "%"],
-    ["hhi", "Issuer concentration HHI", "0–10000"],
-    ["effectiveIssuerCount", "Effective issuer count", "issuers"],
+    ["largestIssuerWeightPct", "Largest known holding weight", "%"],
+    ["topFiveIssuerWeightPct", "Top five known holding weights", "%"],
+    ["topTenIssuerWeightPct", "Top ten known holding weights", "%"],
+    ["hhi", "Holding concentration HHI", "0–10000"],
+    ["effectiveIssuerCount", "Effective holding count", "count"],
   ])
     add("concentration", key, label, concentration[key], unit, {
       detail: concentration.reason,
@@ -728,7 +728,7 @@ function analyticsTable(bundle) {
       "sec_sic",
       industry.label,
       industry.count,
-      industry.label === "Unresolved positions" ? "positions" : "issuers",
+      industry.label === "Unresolved positions" ? "positions" : "count",
       {
         count: industry.count,
         known_weight_pct: industry.weightPct,
@@ -766,7 +766,7 @@ function analyticsTable(bundle) {
         metric.id,
         `${metric.label} · ${bin.label}`,
         bin.count,
-        "issuers",
+        "count",
         {
           ...context,
           count: bin.count,
@@ -789,7 +789,7 @@ function analyticsTable(bundle) {
       condition.id,
       condition.label,
       condition.matchedCount,
-      "issuers",
+      "count",
       {
         count: condition.matchedCount,
         measured_count: condition.measuredCount,
@@ -805,7 +805,7 @@ function analyticsTable(bundle) {
       status.id,
       status.label,
       status.count,
-      status.id === "unresolved" ? "positions" : "issuers",
+      status.id === "unresolved" ? "positions" : "count",
       {
         count: status.count,
         known_weight_pct: status.weightPct,
@@ -817,7 +817,7 @@ function analyticsTable(bundle) {
       "period_end",
       "Company reporting period end",
       group.count,
-      "issuers",
+      "count",
       { count: group.count, period: group.end },
     );
   add(
@@ -825,7 +825,7 @@ function analyticsTable(bundle) {
     "staleCount",
     "Stale evidence or older reporting periods",
     analytics.coverage.staleCount,
-    "issuers",
+    "count",
     {
       detail:
         "Freshness is evaluated against the captured research date, not the export date.",
@@ -886,9 +886,9 @@ function summaryRows(bundle) {
       key === "full_document" ? "Full saved document" : "Exported selection",
     ]),
     ...(bundle.allocation.issuers || []).map((issuer) => [
-      `Issuer ${issuer.cik}: ${issuer.name}`,
+      `Holding ${issuer.cik}: ${issuer.name}`,
       issuer.weightPct,
-      "Issuer weight (%), full saved document",
+      "Holding weight (%), full saved document",
     ]),
     ...(bundle.allocation.distribution || []).map((item) => [
       item.label,
@@ -1057,28 +1057,28 @@ function analyticsMarkdown(bundle) {
   const number = (value, unit = "") =>
     finite(value) ? `${md(Number(value.toFixed(4)))}${unit}` : "Unavailable";
   lines.push(
-    `${analytics.holdingCount} included positions represent ${analytics.issuerCount} resolved issuers, including ${analytics.operatingIssuerCount} operating issuers and ${analytics.fundCount} fund issuers. ${analytics.unresolvedCount} positions remain unresolved. Share classes of the same issuer are combined for financial statistics and issuer concentration.`,
+    `${analytics.holdingCount} included positions represent ${analytics.issuerCount} resolved holdings, including ${analytics.operatingIssuerCount} operating companies and ${analytics.fundCount} funds. ${analytics.unresolvedCount} positions remain unresolved. Share classes of the same holding are combined for financial statistics and holding concentration.`,
     "",
     `Research captured: ${md(analytics.capturedAt || "Not yet captured")}. ${md(analytics.label)}.`,
     "",
-    "### Issuer concentration",
+    "### Holding concentration",
     "",
   );
   if (analytics.weighted) {
     const concentration = analytics.concentration;
     lines.push(
-      `Known allocation weight: ${number(concentration.knownWeightPct, "%")}; largest known issuer: ${number(concentration.largestIssuerWeightPct, "%")}; top five known issuers: ${number(concentration.topFiveIssuerWeightPct, "%")}; top ten known issuers: ${number(concentration.topTenIssuerWeightPct, "%")}.`,
+      `Known allocation weight: ${number(concentration.knownWeightPct, "%")}; largest known holding: ${number(concentration.largestIssuerWeightPct, "%")}; top five known holdings: ${number(concentration.topFiveIssuerWeightPct, "%")}; top ten known holdings: ${number(concentration.topTenIssuerWeightPct, "%")}.`,
       "",
-      `Issuer HHI (0–10,000): ${number(concentration.hhi)}. Effective issuer count: ${number(concentration.effectiveIssuerCount)}. ${concentration.reason ? md(concentration.reason) : "All included positions have valid, resolved allocations totaling 100%."}`,
+      `Holding HHI (0–10,000): ${number(concentration.hhi)}. Effective holding count: ${number(concentration.effectiveIssuerCount)}. ${concentration.reason ? md(concentration.reason) : "All included positions have valid, resolved allocations totaling 100%."}`,
     );
   } else lines.push(md(analytics.concentration.reason));
   lines.push(
     "",
-    "### Available-issuer financial distributions",
+    "### Available-company financial distributions",
     "",
-    "Medians and quartiles use available observations with compatible units and applicable business lenses. They are unweighted issuer statistics. Counts show the coverage of each measure; they do not imply a portfolio return or an average weighted by holdings.",
+    "Medians and quartiles use available observations with compatible units and applicable business lenses. They are unweighted company statistics. Counts show the coverage of each measure; they do not imply a portfolio return or an average weighted by holdings.",
     "",
-    `| Measure | Median | 25th–75th percentile | Available / eligible issuers | Missing | Not applicable |${analytics.weighted ? " Known covered weight |" : ""}`,
+    `| Measure | Median | 25th–75th percentile | Available / eligible companies | Missing | Not applicable |${analytics.weighted ? " Known covered weight |" : ""}`,
     `| --- | --- | --- | --- | --- | --- |${analytics.weighted ? " --- |" : ""}`,
     ...analytics.metrics
       .filter((metric) => metric.availableCount > 0)
@@ -1089,7 +1089,7 @@ function analyticsMarkdown(bundle) {
     "",
     "### Financial review conditions",
     "",
-    `| Condition | Matched / measured issuers | Missing | Not applicable |${analytics.weighted ? " Known matched weight |" : ""}`,
+    `| Condition | Matched / measured companies | Missing | Not applicable |${analytics.weighted ? " Known matched weight |" : ""}`,
     `| --- | --- | --- | --- |${analytics.weighted ? " --- |" : ""}`,
     ...analytics.conditions
       .filter((condition) => condition.measuredCount > 0)
@@ -1108,9 +1108,9 @@ function analyticsMarkdown(bundle) {
         (status) =>
           `- ${md(status.label)}: ${status.count}${analytics.weighted ? `; known weight ${number(status.weightPct, "%")}` : ""}.`,
       ),
-    `- Stale cached evidence or older reporting periods: ${analytics.coverage.staleCount} issuers, assessed against the captured research date.`,
+    `- Stale cached evidence or older reporting periods: ${analytics.coverage.staleCount} companies, assessed against the captured research date.`,
     "",
-    "| Company reporting period end | Operating issuers |",
+    "| Company reporting period end | Operating companies |",
     "| --- | --- |",
     ...analytics.coverage.periodEnds.map(
       (group) => `| ${md(group.end)} | ${group.count} |`,
@@ -1134,7 +1134,7 @@ export function portfolioMarkdown(bundle) {
     "",
     "## Scope and coverage",
     "",
-    `Exported positions: ${bundle.coverage.selected_positions}; resolved issuers: ${bundle.coverage.selected_resolved_companies}; issuers with ready or partial research: ${bundle.coverage.selected_companies_with_research}; issuers with financial evidence: ${bundle.coverage.selected_companies_with_financial_evidence}; unresolved positions: ${bundle.coverage.selected_unresolved_positions}; excluded positions: ${bundle.coverage.selected_excluded_positions}.`,
+    `Exported positions: ${bundle.coverage.selected_positions}; resolved holdings: ${bundle.coverage.selected_resolved_companies}; companies with ready or partial research: ${bundle.coverage.selected_companies_with_research}; companies with financial evidence: ${bundle.coverage.selected_companies_with_financial_evidence}; unresolved positions: ${bundle.coverage.selected_unresolved_positions}; excluded positions: ${bundle.coverage.selected_excluded_positions}.`,
     "",
     md(bundle.coverage.company_coverage_definition),
     "",
@@ -1155,7 +1155,7 @@ export function portfolioMarkdown(bundle) {
     "",
     "## Imported positions",
     "",
-    "| Input | Resolved issuer / CIK | Status | Analysis weight |",
+    "| Input | Resolved company / CIK | Status | Analysis weight |",
     "| --- | --- | --- | --- |",
     ...bundle.positions.map(
       (row) =>

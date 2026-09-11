@@ -274,7 +274,7 @@ export function validatePortfolioDemo(value) {
     capturedCiks.size === value.snapshot.companies.length &&
       capturedCiks.size === rowCiks.size &&
       [...rowCiks].every((cik) => capturedCiks.has(cik)),
-    "The captured issuers do not match the reviewed input rows.",
+    "The captured companies do not match the reviewed input rows.",
   );
   for (const company of value.snapshot.companies) {
     requireValue(
@@ -285,7 +285,7 @@ export function validatePortfolioDemo(value) {
             canonicalTicker(row.resolution.ticker) ===
               canonicalTicker(company.ticker),
         ),
-      "A captured company ticker does not match its verified issuer.",
+      "A captured company ticker does not match its verified company.",
     );
     requireValue(
       company.basis === undefined || company.basis === "annual",

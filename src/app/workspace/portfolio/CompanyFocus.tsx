@@ -352,7 +352,7 @@ export default function CompanyFocus({
               target="_blank"
               rel="noreferrer"
             >
-              SEC issuer page <ArrowUpRight size={15} />
+              SEC company page <ArrowUpRight size={15} />
             </a>
           )}
         </div>
@@ -479,15 +479,15 @@ export default function CompanyFocus({
         )}
 
         <section>
-          <h3>Positions in this issuer</h3>
+          <h3>Positions in this company</h3>
           <p className={s.muted}>
-            Issuer evidence is retrieved once. Your original positions and share
-            classes stay separate.
+            Company evidence is retrieved once. Your original positions and
+            share classes stay separate.
           </p>
           <div
             className={s.tableScroll}
             role="region"
-            aria-label="Positions in this issuer"
+            aria-label="Positions in this company"
             tabIndex={0}
           >
             <table>
@@ -582,7 +582,7 @@ export default function CompanyFocus({
           ) : (
             <p className={s.note}>
               No source filings are available in the current snapshot. Run
-              research or open the SEC issuer page.
+              research or open the SEC company page.
             </p>
           )}
         </section>

@@ -207,16 +207,16 @@ function weightSum(issuers, knownWeights) {
 function concentrationReason(summary, complete) {
   if (complete) return null;
   if (summary.mode === "universe")
-    return "Choose an explicit allocation basis to measure issuer concentration. Company counts do not imply portfolio weights.";
+    return "Choose an explicit allocation basis to measure holding concentration. Company counts do not imply portfolio weights.";
   if (!summary.holdingCount)
     return "Add positions before measuring concentration.";
   if (summary.unresolvedCount)
-    return "Resolve every included position before measuring complete-portfolio issuer concentration.";
+    return "Resolve every included position before measuring complete-portfolio holding concentration.";
   if (!summary.allocationComplete)
     return "Complete valid weights and duplicate review for every included position. Known exposures remain visible.";
   if (Math.abs((summary.allocatedWeight ?? 0) - 100) > 0.000001)
     return "Complete-portfolio concentration requires weights totaling 100%. Original supplied weights remain unchanged.";
-  return "Resolve the allocation review issues before measuring complete-portfolio issuer concentration.";
+  return "Resolve the allocation review issues before measuring complete-portfolio holding concentration.";
 }
 
 /**
@@ -552,15 +552,15 @@ export function buildPortfolioAnalytics(
   const warnings = [...summary.warnings, ...summary.assumptions];
   if (distinctEnds.length > 1)
     warnings.push(
-      `Financial observations span ${distinctEnds.length} reporting dates. Distribution statistics describe available issuer observations, not a synchronized portfolio period.`,
+      `Financial observations span ${distinctEnds.length} reporting dates. Distribution statistics describe available company observations, not a synchronized portfolio period.`,
     );
   if (summary.fundCount)
     warnings.push(
-      "Funds remain direct issuer positions in concentration. Underlying fund holdings are not included; company financial diagnostics exclude funds.",
+      "Funds remain direct positions in concentration. Underlying fund holdings are not included; company financial diagnostics exclude funds.",
     );
   if (staleCount)
     warnings.push(
-      `${staleCount} ${staleCount === 1 ? "issuer uses" : "issuers use"} stale cached evidence or an older reporting period. Freshness is assessed against the captured research date when supplied.`,
+      `${staleCount} ${staleCount === 1 ? "company uses" : "companies use"} stale cached evidence or an older reporting period. Freshness is assessed against the captured research date when supplied.`,
     );
   return {
     mode: summary.mode,

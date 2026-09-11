@@ -95,7 +95,7 @@ export default function DemoResults() {
   const [saveError, setSaveError] = useState("");
   const [area, setArea] = useState("analytics");
   const [allocationBasis, setAllocationBasis] = useState("example");
-  const [analyticsArea, setAnalyticsArea] = useState("concentration");
+  const [analyticsArea, setAnalyticsArea] = useState("overview");
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const companyTabRef = useRef<HTMLButtonElement | null>(null);
   const [query, setQuery] = useState("");
@@ -356,7 +356,7 @@ export default function DemoResults() {
               <small>
                 {weighted
                   ? `${allocation.topHoldings.map((holding: any) => holding.ticker).join(" · ")}`
-                  : "Up to 30 recent filings per issuer"}
+                  : "Up to 30 recent filings per company"}
               </small>
             </div>
             <div>
@@ -762,7 +762,7 @@ export default function DemoResults() {
                   ) : (
                     <p>
                       No supported SEC source is available for this measure.
-                      Open the full demo to review coverage details and issuer
+                      Open the full demo to review coverage details and company
                       filings.
                     </p>
                   )}

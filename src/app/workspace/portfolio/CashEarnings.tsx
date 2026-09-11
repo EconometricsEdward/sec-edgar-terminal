@@ -82,8 +82,8 @@ export default function CashEarnings({
         </p>
       </div>
       <p>
-        {result.count} corporate issuers have both USD measures on the same full
-        annual or TTM period. Each issuer counts once. Zero is included in
+        {result.count} operating companies have both USD measures on the same
+        full annual or TTM period. Each company counts once. Zero is included in
         “non-positive.” Banks, insurers, REITs and funds are excluded because
         cash flows need different interpretation.
       </p>
@@ -103,16 +103,17 @@ export default function CashEarnings({
               <strong>{entry.observations.length}</strong>
               <small>
                 {result.count
-                  ? `${((100 * entry.observations.length) / result.count).toFixed(1)}% of ${result.count} paired issuers`
+                  ? `${((100 * entry.observations.length) / result.count).toFixed(1)}% of ${result.count} paired companies`
                   : "No paired observations"}
                 {report.weighted &&
-                  ` · ${entry.knownWeightPct === null ? "Unknown allocation" : `${entry.knownWeightPct.toFixed(2)}% known saved allocation`}${entry.missingWeightCount ? `; ${entry.missingWeightCount} incomplete issuer weights` : ""}`}
+                  ` · ${entry.knownWeightPct === null ? "Unknown allocation" : `${entry.knownWeightPct.toFixed(2)}% known saved allocation`}${entry.missingWeightCount ? `; ${entry.missingWeightCount} incomplete holding weights` : ""}`}
               </small>
             </button>
           ))}
         </div>
         <p role="status">
-          {cell.observations.length} issuers: {labels[selected].toLowerCase()}.
+          {cell.observations.length} companies: {labels[selected].toLowerCase()}
+          .
         </p>
         {cell.observations.length > 0 && (
           <div
@@ -124,7 +125,7 @@ export default function CashEarnings({
             <table>
               <thead>
                 <tr>
-                  <th>Issuer</th>
+                  <th>Company</th>
                   <th>Net income</th>
                   <th>Operating cash flow</th>
                   <th>Reporting period</th>
@@ -154,11 +155,11 @@ export default function CashEarnings({
         )}
         {cell.observations.length > limit && (
           <button onClick={() => setLimit((n) => n + 15)}>
-            Show 15 more issuers
+            Show 15 more companies
           </button>
         )}
         <p>
-          Excluded identified issuers: {result.excluded.businessType} business
+          Excluded identified holdings: {result.excluded.businessType} business
           types outside this diagnostic; {result.excluded.missing} missing or
           unsupported evidence; {result.excluded.period} mismatched or unknown
           full periods. Unresolved holdings cannot be classified. Fiscal periods

@@ -58,7 +58,7 @@ export function portfolioReviewPriorities(
         key: `identity:${row.id}`,
         rowId: row.id,
         label: name,
-        reason: "Identity needs review before issuer evidence can be matched.",
+        reason: "Identity needs review before company evidence can be matched.",
         kind: "identity",
         url: null,
       });

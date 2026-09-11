@@ -163,7 +163,7 @@ export function scenarioTargetLabel(result) {
     return result.targetIndustry || "Choose an industry";
   return (
     result.issuers.find((issuer) => issuer.cik === result.targetCik)?.name ||
-    "Choose an issuer"
+    "Choose a holding"
   );
 }
 
@@ -249,7 +249,7 @@ export function scenarioComparisonCsv(comparison) {
     [],
     [
       "Case",
-      "Issuer",
+      "Holding",
       "Tickers",
       "CIK",
       "SEC industry",
@@ -258,7 +258,7 @@ export function scenarioComparisonCsv(comparison) {
       "Price change (%)",
       "Contribution (percentage points)",
       "Ending weight (%)",
-      "SEC issuer identity",
+      "SEC identity",
     ],
     ...comparison.flatMap(({ name, result }) =>
       result.contributions.map((row) => [

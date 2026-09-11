@@ -37,13 +37,7 @@ export default function PortfolioConnections({
       <p>{result.interpretation}</p>
       <div className={s.cards}>
         {result.groups
-          .filter(
-            (g) =>
-              g.eligible ||
-              g.count ||
-              g.id === "cash-uses" ||
-              g.id === "growth-loss",
-          )
+          .filter((g) => g.eligible > 0)
           .map((g) => (
             <article key={g.id}>
               <h4>{g.title}</h4>
@@ -53,7 +47,7 @@ export default function PortfolioConnections({
                 aria-pressed={selected === g.id}
                 onClick={() => setSelected(selected === g.id ? "" : g.id)}
               >
-                Inspect {g.count} companies
+                Inspect {g.count} {g.count === 1 ? "company" : "companies"}
               </button>
             </article>
           ))}

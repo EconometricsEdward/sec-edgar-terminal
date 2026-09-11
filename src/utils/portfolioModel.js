@@ -265,7 +265,9 @@ export function resolvePortfolioRows(rows, directory = {}) {
     else if (match) {
       const issues = [];
       if (cik && cik !== match.cik)
-        issues.push("The supplied ticker and CIK identify different issuers.");
+        issues.push(
+          "The supplied ticker and CIK identify different companies or funds.",
+        );
       if (name && name !== canonicalName(match.name))
         issues.push(
           "The supplied company name does not match the ticker's SEC company name. Review the identification.",
@@ -292,7 +294,7 @@ export function resolvePortfolioRows(rows, directory = {}) {
         candidates,
         warnings: [
           cik
-            ? "The ticker was not verified. Review it before using the supplied CIK as its issuer."
+            ? "The ticker was not verified. Review it before associating it with the supplied CIK."
             : "Ticker not found in the available SEC company and fund directories.",
         ],
       };
@@ -304,12 +306,12 @@ export function resolvePortfolioRows(rows, directory = {}) {
           status: "conflict",
           candidates,
           warnings: [
-            "The supplied company name and CIK do not match. Choose the correct issuer.",
+            "The supplied company name and CIK do not match. Choose the correct company or fund.",
           ],
         };
       else {
         resolution = resolved({ ...issuer, ticker: "" }, [
-          "CIK identifies an issuer; no particular share class is assumed.",
+          "CIK identifies a company or fund; no particular share class is assumed.",
         ]);
         if (byCik.some((item) => item.kind !== issuer.kind))
           resolution = {
@@ -511,7 +513,7 @@ function mergeCompatibility(rows) {
       .filter(Boolean),
   );
   if (identities.length > 1)
-    issues.push("Conflicting issuers cannot be merged.");
+    issues.push("Conflicting companies cannot be merged.");
   for (const field of ["currency", "as_of_date", "exchange"])
     if (
       unique(rows.map((row) => text(row.input?.[field]).toUpperCase())).length >
@@ -1115,7 +1117,7 @@ export function allocationSummary(rows, settings = {}, companiesByCik = {}) {
       unresolvedPositions: unresolved.length,
       excludedPositions: rows.length - active.length,
       companyDefinition:
-        "Unique resolved operating-company issuers with at least one supported finite financial metric. Filings-only research, unresolved positions, and funds do not count as financial evidence coverage.",
+        "Unique resolved operating companies with at least one supported finite financial metric. Filings-only research, unresolved positions, and funds do not count as financial evidence coverage.",
       weightDefinition:
         "Known analysis percentage points with at least one supported finite company financial metric; filings-only research does not count and the covered subset is never reweighted.",
     },
