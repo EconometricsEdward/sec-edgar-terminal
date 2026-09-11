@@ -263,9 +263,6 @@ export default function DemoResults() {
     >
       <header className={s.workspaceHeader}>
         <div>
-          <Link className={s.back} href="/workspace">
-            Research Hub
-          </Link>
           <h1 id="demo-results-heading">
             100-company portfolio <span className={s.demoTag}>Demo</span>
           </h1>

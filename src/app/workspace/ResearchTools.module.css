@@ -185,4 +185,19 @@
   }
 }
 
-.root[hidden] { display: none; }
+.root[hidden] {
+  display: none;
+}
+
+.methodology summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--hub-accent, #f7c65a);
+  padding: 6px 0;
+}
+.methodology p {
+  margin-top: 12px;
+}
+.controls label:has(select[data-financial-measure]) {
+  flex-basis: 280px;
+}

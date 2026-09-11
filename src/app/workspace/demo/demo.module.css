@@ -113,7 +113,7 @@
 }
 .results {
   display: grid;
-  gap: 24px;
+  gap: 20px;
   min-width: 0;
   scroll-margin-top: 140px;
 }
@@ -368,7 +368,7 @@
   display: flex;
   align-items: center;
   gap: 24px;
-  padding: 18px 0 24px;
+  padding: 8px 0 20px;
   border-bottom: 1px solid var(--demo-line);
 }
 .allocationSelect {

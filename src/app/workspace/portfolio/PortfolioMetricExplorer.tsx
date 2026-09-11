@@ -176,12 +176,7 @@ export default function PortfolioMetricExplorer({
     <section className={s.root} aria-labelledby="portfolio-metrics-title">
       <div className={s.heading}>
         <div>
-          <p className={s.eyebrow}>
-            The Analysis catalog, applied to your companies
-          </p>
-          <h3 id="portfolio-metrics-title">
-            Explore, rank and compare financial measures
-          </h3>
+          <h3 id="portfolio-metrics-title">Metrics & rankings</h3>
         </div>
         <button
           disabled={!metricId}
@@ -238,10 +233,8 @@ export default function PortfolioMetricExplorer({
         </button>
       </div>
       <p>
-        Statements, cash flows, ratios and accounting checks share the same
-        financial engine as Analysis. Select a measure to understand it, then
-        compare companies with similar business models and reporting periods.
-        Only measures with usable values in this selection are offered.
+        Compare companies using reported financial measures. Only measures with
+        usable values are offered.
       </p>
       {legacyCount > 0 && onRefresh && (
         <div className={s.finding} role="status">
@@ -289,6 +282,7 @@ export default function PortfolioMetricExplorer({
         <label hidden={!metricId}>
           Financial measure
           <select
+            data-financial-measure
             value={metricId}
             onChange={(e) => {
               setMetricId(e.target.value);
@@ -469,13 +463,20 @@ export default function PortfolioMetricExplorer({
             <p>
               Median {value(result.median)} · middle 50% {value(result.p25)} to{" "}
               {value(result.p75)} · {result.periodCount} reporting periods.{" "}
-              {result.excluded > 0 &&
-                `${result.excluded} companies are omitted because they lack a comparable value. `}
-              {result.interpretation}
+              {result.excluded > 0 && `${result.excluded} companies omitted.`}
             </p>
-            <p>
-              {result.guide.meaning} {result.guide.caution}
-            </p>
+            <details className={s.methodology}>
+              <summary>About this measure & ranking</summary>
+              <p>{result.interpretation}</p>
+              <p>
+                {result.guide.meaning} {result.guide.caution}
+              </p>
+              <p>
+                Compare companies with similar business models and reporting
+                periods. The calculations use the same financial engine as
+                Analysis.
+              </p>
+            </details>
           </div>
           <p>
             Select up to six companies for a comparison below. Selection stays

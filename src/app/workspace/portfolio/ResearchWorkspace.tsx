@@ -48,6 +48,20 @@ export default function ResearchWorkspace({
   companyRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const content = useRef<HTMLDivElement>(null);
+  const workspace = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const header = document.querySelector("[data-site-header]");
+    if (!header) return;
+    const measure = () =>
+      workspace.current?.style.setProperty(
+        "--site-header-height",
+        `${header.getBoundingClientRect().height}px`,
+      );
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   const groups: {
     label: string;
     items: readonly (readonly [string, string, LucideIcon])[];
@@ -95,7 +109,7 @@ export default function ResearchWorkspace({
       .flatMap((group) => group.items)
       .find((item) => item[0] === selected)?.[1] || "Portfolio research";
   return (
-    <div className={s.workspace}>
+    <div ref={workspace} className={s.workspace}>
       <aside className={s.sidebar}>
         <label className={s.mobileView}>
           Research view

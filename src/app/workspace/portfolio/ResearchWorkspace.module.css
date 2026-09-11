@@ -107,3 +107,10 @@
     border-radius: 6px;
   }
 }
+
+@media (min-width: 1001px) and (min-height: 900px) {
+  .sidebar {
+    position: sticky;
+    top: calc(var(--site-header-height, 120px) + 20px);
+  }
+}
