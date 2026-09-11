@@ -506,7 +506,7 @@ export default function PortfolioResearch({
   const focusedCompany = focusedRow
     ? companiesByCik[focusedRow.resolution?.cik]
     : null;
-  const priorCheck = document?.previousCheckedAt || "";
+
   const included = activeRows(document);
   const visibleRows = useMemo(() => {
     const visible = rows.filter((row: any) => {
@@ -736,7 +736,6 @@ export default function PortfolioResearch({
       query,
       ciks,
       portfolioId: document?.id,
-      nonce: Date.now(),
     });
     changePortfolioTab("disclosures");
   }

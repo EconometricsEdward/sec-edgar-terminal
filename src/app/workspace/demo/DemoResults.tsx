@@ -78,7 +78,7 @@ export default function DemoResults() {
     [],
   );
   function openDisclosures(query: string, ciks: string[]) {
-    setDisclosureRequest({ query, ciks, nonce: Date.now() });
+    setDisclosureRequest({ query, ciks });
     setArea("disclosures");
   }
   const [demo, setDemo] = useState<any>(null);

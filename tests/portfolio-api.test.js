@@ -291,7 +291,7 @@ test("portfolio financials use the existing Compare engine, coherent periods, fo
   });
   assert.equal(result.metrics.roe.value, compared.metrics.roe[0].value);
   assert.deepEqual(
-    result.metrics.roe.sources.map(({ revisions, ...source }) => source),
+    result.metrics.roe.sources.map(({ revisions: _revisions, ...source }) => source),
     compared.metrics.roe[0].sources,
   );
   assert.equal(result.metrics.freeCashFlow.value, 30);
