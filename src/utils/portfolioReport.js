@@ -1,3 +1,4 @@
+import { resolveCompanyClassification } from "./companyClassification.js";
 import { buildPortfolioAnalytics } from "./portfolioAnalytics.js";
 import { canonicalPortfolioCik } from "./portfolioModel.js";
 import {
@@ -210,7 +211,7 @@ export function portfolioReportHtml(input, extras = {}) {
   <section id="companies"><h2>Company metrics and SEC evidence</h2><p>Available captured financial measures are included below. Each value retains its formula or reported concept, unit, full period, and source. Open a company to inspect the detailed evidence. Print / save PDF expands every company.</p>${b.companies
     .map(
       (c) =>
-        `<details><summary>${e(c.ticker || c.cik)} · ${e(c.name)} · ${e(c.lens)} · ${e(c.status)}</summary><p>CIK ${e(c.cik)} · ${e(c.sicDescription)} · Retrieved ${e(c.retrievedAt || c.retrieved_at || "unknown")}</p>${Object.entries(
+        `<details><summary>${e(c.ticker || c.cik)} · ${e(c.name)} · ${e(c.lens)} · ${e(c.status)}</summary><p>CIK ${e(c.cik)} · ${e(resolveCompanyClassification(c).industry)}${resolveCompanyClassification(c).sectorSource ? ` · ${e(resolveCompanyClassification(c).sector)} (iShares ${e(resolveCompanyClassification(c).sectorSource.fund)}, sector reference ${e(resolveCompanyClassification(c).sectorSource.asOf)})` : ""} · Retrieved ${e(c.retrievedAt || c.retrieved_at || "unknown")}</p>${Object.entries(
           c.metrics || {},
         )
           .filter(

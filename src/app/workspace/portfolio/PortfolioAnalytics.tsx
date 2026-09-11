@@ -69,6 +69,8 @@ type Issuer = {
   weightPct: number | null;
   weightComplete: boolean;
   industry: string;
+  sector: string | null;
+  sic: string | null;
 };
 const AREAS = [
   { id: "overview", label: "Portfolio briefing", icon: ClipboardList },
@@ -122,7 +124,7 @@ function MemberList({
           <thead>
             <tr>
               <th scope="col">Company</th>
-              <th scope="col">SEC industry</th>
+              <th scope="col">Sector / SEC industry</th>
               <th scope="col">
                 {weighted ? "Known allocation" : "Included positions"}
               </th>
@@ -143,7 +145,11 @@ function MemberList({
                     <small>Share classes combined</small>
                   )}
                 </th>
-                <td>{issuer.industry}</td>
+                <td>
+                  {issuer.sector && <strong>{issuer.sector}</strong>}
+                  <div>{issuer.industry}</div>
+                  <small>{issuer.sic ? `SEC SIC ${issuer.sic}` : ""}</small>
+                </td>
                 <td className={s.numeric}>
                   {weighted ? (
                     <>
@@ -229,6 +235,17 @@ export default function PortfolioAnalytics({
     setVisitedAreas((current) => new Set([...current, area, next]));
   };
   const [industry, setIndustry] = useState("");
+  const [sector, setSector] = useState("");
+  const [grouping, setGrouping] = useState("sector");
+  const membersHeading = useRef<HTMLHeadingElement>(null);
+  const [focusMembers, setFocusMembers] = useState(false);
+  useEffect(() => {
+    if (area === "concentration" && focusMembers && membersHeading.current) {
+      membersHeading.current.focus();
+      membersHeading.current.scrollIntoView({ block: "start" });
+      setFocusMembers(false);
+    }
+  }, [area, focusMembers]);
   const [query, setQuery] = useState("");
   const [showIndustries, setShowIndustries] = useState(false);
   const [metricId, setMetricId] = useState("netMargin");
@@ -247,6 +264,18 @@ export default function PortfolioAnalytics({
   );
   const concentration = report.concentration;
   const issuers: Issuer[] = concentration.issuers;
+  const classificationSources: any[] = [
+    ...new Map(
+      issuers
+        .filter((holding: any) => holding.sectorSource)
+        .map((holding: any) => [
+          holding.sectorSource.url,
+          holding.sectorSource,
+        ]),
+    ).values(),
+  ];
+  const mixGroups =
+    grouping === "sector" ? concentration.sectors : concentration.industries;
   const catalogReport = useMemo(
     () => buildCatalogReport(report, companies),
     [report, companies],
@@ -267,8 +296,12 @@ export default function PortfolioAnalytics({
   const members = issuers.filter(
     (issuer) =>
       (!industry || issuer.industry === industry) &&
+      (!sector ||
+        (issuer.kind === "fund"
+          ? "Funds (company metrics not applicable)"
+          : issuer.sector || "Sector not covered") === sector) &&
       (!queryText ||
-        `${issuer.tickers.join(" ")} ${issuer.name} ${issuer.industry}`
+        `${issuer.tickers.join(" ")} ${issuer.name} ${issuer.industry} ${issuer.sector || ""} ${issuer.sic || ""}`
           .toLowerCase()
           .includes(queryText)),
   );
@@ -299,7 +332,7 @@ export default function PortfolioAnalytics({
     : Math.max(0, ...rankedIssuers.map((entry) => entry.rowIds.length));
   const maxIndustry = Math.max(
     0,
-    ...concentration.industries.map((entry: any) =>
+    ...mixGroups.map((entry: any) =>
       weighted ? entry.weightPct || 0 : entry.count,
     ),
   );
@@ -345,6 +378,14 @@ export default function PortfolioAnalytics({
       <div className={s.retained} hidden={area !== "overview"}>
         <PortfolioBriefing
           report={report}
+          onExploreGroup={(dimension, label) => {
+            setGrouping(dimension);
+            setSector(dimension === "sector" ? label : "");
+            setIndustry(dimension === "industry" ? label : "");
+            setQuery("");
+            changeArea("concentration");
+            setFocusMembers(true);
+          }}
           onNavigate={(next) => {
             if (next === "financial") setFinancialMode("distribution");
             if (next === "coverage") setCoverageMode("summary");
@@ -504,30 +545,79 @@ export default function PortfolioAnalytics({
             )}
             <section
               className={s.chartCard}
-              aria-label="SEC industry concentration"
+              aria-label="Sector and industry concentration"
             >
               <div className={s.cardHeading}>
-                <h4>SEC industry mix</h4>
+                <h4>
+                  {grouping === "sector" ? "Sector mix" : "SEC industry mix"}
+                </h4>
                 <span>{weighted ? "Known weight" : "Companies"}</span>
               </div>
               <p className={s.chartHelp}>
-                Based on each company’s SEC SIC classification. Choose an
-                industry to explore its companies below.
+                {grouping === "sector"
+                  ? "Fund-reported sectors matched by SEC company ID. Companies outside this reference retain their SEC industry; fund holdings stay separate."
+                  : "Exact SEC SIC classifications. Choose an industry to explore its companies below."}
               </p>
+              {grouping === "sector" && classificationSources.length > 0 && (
+                <p className={s.note}>
+                  Sector reference:{" "}
+                  {classificationSources.map((source, index) => (
+                    <span key={source.url}>
+                      {index > 0 ? " · " : ""}
+                      <a
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {source.provider} {source.fund}
+                      </a>{" "}
+                      ({source.asOf})
+                    </span>
+                  ))}
+                </p>
+              )}
+              <label className={s.groupingControl}>
+                Group companies by
+                <select
+                  value={grouping}
+                  onChange={(event) => {
+                    setGrouping(event.target.value);
+                    setSector("");
+                    setIndustry("");
+                    setShowIndustries(false);
+                  }}
+                >
+                  <option value="sector">Sector</option>
+                  <option value="industry">SEC industry</option>
+                </select>
+              </label>
               <div className={s.barList}>
-                {concentration.industries
-                  .slice(0, showIndustries ? undefined : 8)
+                {mixGroups
+                  .slice(
+                    0,
+                    grouping === "sector" || showIndustries ? undefined : 8,
+                  )
                   .map((entry: any) => (
                     <button
                       className={s.barButton}
                       type="button"
                       key={entry.label}
-                      aria-pressed={industry === entry.label}
+                      aria-pressed={
+                        (grouping === "sector" ? sector : industry) ===
+                        entry.label
+                      }
                       onClick={() => {
-                        setIndustry(
-                          industry === entry.label ? "" : entry.label,
-                        );
+                        if (grouping === "sector") {
+                          setSector(sector === entry.label ? "" : entry.label);
+                          setIndustry("");
+                        } else {
+                          setIndustry(
+                            industry === entry.label ? "" : entry.label,
+                          );
+                          setSector("");
+                        }
                         setQuery("");
+                        setFocusMembers(true);
                       }}
                       aria-label={`Filter ${entry.label}, ${entry.count} companies${weighted ? `, ${percent(entry.weightPct)} known allocation` : ""}`}
                     >
@@ -562,17 +652,18 @@ export default function PortfolioAnalytics({
                     </button>
                   ))}
               </div>
-              {concentration.industries.length > 8 && (
-                <button
-                  className={s.showMore}
-                  type="button"
-                  onClick={() => setShowIndustries(!showIndustries)}
-                >
-                  {showIndustries
-                    ? "Show top 8 industries"
-                    : `Show all ${concentration.industries.length} industries`}
-                </button>
-              )}
+              {grouping === "industry" &&
+                concentration.industries.length > 8 && (
+                  <button
+                    className={s.showMore}
+                    type="button"
+                    onClick={() => setShowIndustries(!showIndustries)}
+                  >
+                    {showIndustries
+                      ? "Show top 8 industries"
+                      : `Show all ${concentration.industries.length} industries`}
+                  </button>
+                )}
             </section>
           </div>
           <section
@@ -580,10 +671,22 @@ export default function PortfolioAnalytics({
             aria-label="Explore portfolio companies"
           >
             <div className={s.cardHeading}>
-              <h4>{industry || "Explore all companies"}</h4>
-              {industry && (
-                <button type="button" onClick={() => setIndustry("")}>
-                  Clear industry
+              <h4
+                ref={membersHeading}
+                tabIndex={-1}
+                className={s.membersHeading}
+              >
+                {sector || industry || "Explore all companies"}
+              </h4>
+              {(industry || sector) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIndustry("");
+                    setSector("");
+                  }}
+                >
+                  Clear classification filters
                 </button>
               )}
             </div>
@@ -600,17 +703,47 @@ export default function PortfolioAnalytics({
                 </span>
               </label>
               <label>
+                <span>Sector</span>
+                <select
+                  value={sector}
+                  onChange={(event) => {
+                    setSector(event.target.value);
+                    setIndustry("");
+                  }}
+                >
+                  <option value="">All sectors</option>
+                  {concentration.sectors.map((entry: any) => (
+                    <option key={entry.label}>{entry.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 <span>SEC industry</span>
                 <select
                   value={industry}
                   onChange={(event) => setIndustry(event.target.value)}
                 >
                   <option value="">All industries</option>
-                  {concentration.industries.map((entry: any) => (
-                    <option key={entry.label} value={entry.label}>
-                      {entry.label}
-                    </option>
-                  ))}
+                  {concentration.industries
+                    .filter(
+                      (entry: any) =>
+                        !sector ||
+                        entry.ciks.some((cik: string) =>
+                          issuers.some(
+                            (issuer) =>
+                              issuer.cik === cik &&
+                              (issuer.kind === "fund"
+                                ? "Funds (company metrics not applicable)"
+                                : issuer.sector || "Sector not covered") ===
+                                sector,
+                          ),
+                        ),
+                    )
+                    .map((entry: any) => (
+                      <option key={entry.label} value={entry.label}>
+                        {entry.label}
+                      </option>
+                    ))}
                 </select>
               </label>
             </div>
@@ -620,7 +753,8 @@ export default function PortfolioAnalytics({
                 ? "Filtering does not change the portfolio weights or concentration totals above."
                 : "Each identified holding counts once, including holdings with more than one share class."}
             </p>
-            {industry === "Unresolved positions" && (
+            {(industry === "Unresolved positions" ||
+              sector === "Unresolved positions") && (
               <button type="button" onClick={onReviewRows}>
                 {preview
                   ? "Open full demo to review"
@@ -628,12 +762,13 @@ export default function PortfolioAnalytics({
               </button>
             )}
             <MemberList
-              key={`${industry}:${query}`}
+              key={`${sector}:${industry}:${query}`}
               issuers={members}
               weighted={weighted}
               onInspectCompany={onInspectCompany}
               empty={
-                industry === "Unresolved positions"
+                industry === "Unresolved positions" ||
+                sector === "Unresolved positions"
                   ? "These positions need confirmed identities before they can appear as companies. Review the input rows to resolve them."
                   : undefined
               }

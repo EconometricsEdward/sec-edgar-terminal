@@ -62,6 +62,8 @@ const identity = (row) => ({
   ticker: row.ticker,
   lens: row.lens,
   industry: row.industry,
+  sector: row.sector,
+  sectorSource: row.sectorSource,
   weightPct: row.weightPct,
   weightComplete: row.weightComplete,
 });

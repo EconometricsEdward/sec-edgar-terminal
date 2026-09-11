@@ -2,11 +2,12 @@
 
 import { useId, useMemo, useState } from "react";
 import {
+  availablePortfolioScreenMetrics,
   buildPortfolioScreen,
   portfolioScreenCsv,
   PORTFOLIO_SCREEN_PRESETS,
+  PORTFOLIO_SECTOR_UNCOVERED,
 } from "../../../utils/portfolioScreening.js";
-import { buildPeerBenchmarks } from "../../../utils/portfolioFinancialTools.js";
 import { downloadText } from "../../../utils/download.js";
 import styles from "./PortfolioScreener.module.css";
 
@@ -40,24 +41,20 @@ export default function PortfolioScreener({
   const [matchingPeriodOnly, setMatchingPeriodOnly] = useState(true);
   const [disclosureQuery, setDisclosureQuery] = useState("liquidity");
   const [industry, setIndustry] = useState("");
+  const [sector, setSector] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [direction, setDirection] = useState("asc");
   const [showAll, setShowAll] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState("");
   const availableMetrics = useMemo(
     () =>
-      report.metrics.filter(
-        (metric: any) =>
-          (!lens ||
-            metric.observations.some(
-              (point: any) =>
-                point.lens === lens &&
-                (!industry || point.industry === industry),
-            )) &&
-          buildPeerBenchmarks(report, { metricId: metric.id, industry })
-            .measuredCount > 0,
-      ),
-    [report, industry, lens],
+      availablePortfolioScreenMetrics(report, companies, {
+        sector,
+        industry,
+        lens,
+        matchingPeriodOnly: report.fullPeriodEvidence && matchingPeriodOnly,
+      }),
+    [report, companies, sector, industry, lens, matchingPeriodOnly],
   );
   const staleRules = requestedRules.some(
     (rule) =>
@@ -79,6 +76,7 @@ export default function PortfolioScreener({
         availableMetrics.some((metric: any) => metric.id === rule.metricId),
       ) &&
       (buildPortfolioScreen(report, companies, preset.rules, {
+        sector,
         industry,
         lens,
         matchingPeriodOnly: report.fullPeriodEvidence && matchingPeriodOnly,
@@ -93,6 +91,7 @@ export default function PortfolioScreener({
   const result = useMemo(
     () =>
       buildPortfolioScreen(report, companies, rules, {
+        sector,
         industry,
         lens,
         matchingPeriodOnly: report.fullPeriodEvidence && matchingPeriodOnly,
@@ -103,6 +102,7 @@ export default function PortfolioScreener({
       report,
       companies,
       rules,
+      sector,
       industry,
       lens,
       matchingPeriodOnly,
@@ -183,8 +183,8 @@ export default function PortfolioScreener({
       </p>
       {!availableMetrics.length && (
         <p role="status">
-          No financial measures match this industry. Choose another industry or
-          refresh portfolio research.
+          No financial measures match these filters. Broaden the sector,
+          industry or business model, or refresh portfolio research.
         </p>
       )}
       {staleRules && availableMetrics.length > 0 && (
@@ -296,6 +296,24 @@ export default function PortfolioScreener({
         </div>
       </div>
       <div className={styles.controls}>
+        <label>
+          Sector
+          <select
+            value={sector}
+            onChange={(event) => {
+              setSector(event.target.value);
+              setShowAll(false);
+              setDownloadMessage("");
+            }}
+          >
+            <option value="">All sectors</option>
+            {result.sectors.map((item: string) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           Business model
           <select
@@ -475,7 +493,7 @@ export default function PortfolioScreener({
               <h4>Matching companies</h4>
               <p>
                 {result.matchCount === 0
-                  ? "No measured companies satisfy every rule. Broaden a bound or industry scope to continue."
+                  ? "No measured companies satisfy every rule. Broaden a bound or company filter to continue."
                   : "Showing " +
                     visibleMatches.length +
                     " of " +
@@ -501,7 +519,7 @@ export default function PortfolioScreener({
               <table>
                 <thead>
                   <tr>
-                    <th scope="col">Company / SEC industry</th>
+                    <th scope="col">Company / classification</th>
                     {selectedMetrics.map((metric: any) => (
                       <th scope="col" key={metric.id}>
                         {metric.label}
@@ -523,6 +541,9 @@ export default function PortfolioScreener({
                           {row.tickers.join(" / ") || row.name}
                         </button>
                         <span>{row.name}</span>
+                        <small>
+                          {row.sector || PORTFOLIO_SECTOR_UNCOVERED}
+                        </small>
                         <small>{row.industry}</small>
                       </th>
                       {selectedMetrics.map((metric: any) => {

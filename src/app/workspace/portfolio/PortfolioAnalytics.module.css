@@ -886,3 +886,18 @@
   min-height: 18px;
   accent-color: var(--a-gold);
 }
+
+.groupingControl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  font-size: 14px;
+  color: var(--p-muted);
+}
+.groupingControl select {
+  min-height: 40px;
+}
+.membersHeading {
+  scroll-margin-top: 150px;
+}

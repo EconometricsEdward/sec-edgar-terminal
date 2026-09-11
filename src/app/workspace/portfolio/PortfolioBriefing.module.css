@@ -358,3 +358,50 @@
     margin-top: 0;
   }
 }
+
+.root [data-color="5"] {
+  background: #d598ba;
+}
+.root [data-color="6"] {
+  background: #dca279;
+}
+.root [data-color="7"] {
+  background: #8ca9e6;
+}
+.root [data-color="8"] {
+  background: #b0c77c;
+}
+.root [data-color="9"] {
+  background: #73c8c1;
+}
+.root [data-color="10"] {
+  background: #ceadc8;
+}
+.root [data-color="11"],
+.root [data-color="12"] {
+  background: #7e899c;
+}
+.groupLink {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.classificationNote {
+  color: var(--p-muted, #a7b4c7);
+  font-size: 12px;
+  line-height: 1.65;
+  margin-bottom: 20px;
+}
+.classificationNote a {
+  color: var(--p-gold, #f7c65a);
+}
+.mixBar > span {
+  flex-shrink: 1;
+  min-width: 1px;
+  background: #60728e;
+}

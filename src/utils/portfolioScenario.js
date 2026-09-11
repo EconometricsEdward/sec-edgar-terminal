@@ -1,15 +1,12 @@
+import { resolveCompanyClassification } from "./companyClassification.js";
 import { allocationSummary, canonicalPortfolioCik } from "./portfolioModel.js";
 
 const TOLERANCE = 0.000001;
 const text = (value) => (typeof value === "string" ? value.trim() : "");
-const industryLabel = (company) =>
-  text(
-    company?.sicDescription ||
-      company?.industry?.label ||
-      (typeof company?.industry === "string" ? company.industry : "") ||
-      company?.classification?.sicDescription ||
-      company?.sic_description,
-  );
+const industryLabel = (company) => {
+  const industry = resolveCompanyClassification(company).industry;
+  return industry === "Unclassified" ? "" : industry;
+};
 
 function shockNumber(value, label, errors) {
   if (

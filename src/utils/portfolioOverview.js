@@ -19,8 +19,14 @@ export function buildPortfolioOverview(report) {
   const industryCount = [...companyIndustries.keys()].filter(
     (label) => label && label !== "Unclassified",
   ).length;
+  const sectorCompanies = companies.filter((company) => company.sector);
+  const mixDimension = sectorCompanies.length ? "sector" : "industry";
+  const groups =
+    mixDimension === "sector"
+      ? concentration.sectors
+      : concentration.industries;
   const mix = complete
-    ? concentration.industries
+    ? groups
         .filter((entry) => finite(entry.weightPct) && entry.weightPct > 0)
         .map((entry) => ({ label: entry.label, value: entry.weightPct }))
     : fundsOnly
@@ -30,13 +36,22 @@ export function buildPortfolioOverview(report) {
             label: entry.tickers.join(" / ") || entry.name,
             value: 1,
           }))
-      : [...companyIndustries].map(([label, value]) => ({ label, value }));
+      : groups
+          .filter((entry) =>
+            entry.ciks.some((cik) =>
+              companies.some((company) => company.cik === cik),
+            ),
+          )
+          .map((entry) => ({ label: entry.label, value: entry.count }));
   mix.sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
-  const topMix = mix.slice(0, 4);
-  const remainder = mix
-    .slice(4)
-    .reduce((total, entry) => total + entry.value, 0);
-  if (remainder > 0) topMix.push({ label: "Other groups", value: remainder });
+  const sectorSources = [
+    ...new Map(
+      sectorCompanies.map((company) => [
+        company.sectorSource?.url,
+        company.sectorSource,
+      ]),
+    ).values(),
+  ].filter(Boolean);
   const financialGroups = report.coverage.statuses.filter((entry) =>
     ["ready", "partial"].includes(entry.id),
   );
@@ -86,7 +101,14 @@ export function buildPortfolioOverview(report) {
           .filter((entry) => finite(entry.weightPct) && entry.weightPct > 0)
           .slice(0, 5)
       : [],
-    mix: topMix,
+    mix,
+    mixDimension,
+    sectorCount: new Set(sectorCompanies.map((company) => company.sector)).size,
+    sectorCompanyCount: sectorCompanies.length,
+    sectorSources,
+    industryCompanyCount: companies.filter(
+      (company) => company.industry !== "Unclassified",
+    ).length,
     mixTotal: complete ? 100 : fundsOnly ? report.fundCount : companies.length,
     financialCount,
     financialWeight,

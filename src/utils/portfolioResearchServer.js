@@ -1,3 +1,4 @@
+import { resolveCompanyClassification } from "./companyClassification.js";
 import { buildAnalysisCompany, ANALYSIS_VERSION } from "./analysisResearch.js";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { getOperatingDirectory, getFundDirectory } from "./tickerMap.js";
@@ -728,6 +729,12 @@ export async function runPortfolioResearch(rawInput, dependencies = {}) {
         identities.findIndex((identity) => identity.cik === b.cik),
     );
   }
+  companies.forEach((company, index) => {
+    companies[index] = {
+      ...company,
+      companyClassification: resolveCompanyClassification(company),
+    };
+  });
   const byCik = Object.fromEntries(
     companies.map((company) => [company.cik, company]),
   );

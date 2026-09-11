@@ -7,11 +7,14 @@ import {
 import { buildPortfolioAnalytics } from "../src/utils/portfolioAnalytics.js";
 import {
   buildPortfolioCoverageMatrix,
+  availablePortfolioScreenMetrics,
   buildPortfolioScreen,
   portfolioScreenCsv,
   portfolioCoverageCsv,
   PORTFOLIO_SCREEN_PRESETS,
+  PORTFOLIO_SECTOR_UNCOVERED,
 } from "../src/utils/portfolioScreening.js";
+import { parsePortfolioCsv } from "../src/utils/portfolioFiles.js";
 
 const cik = (value) => String(value).padStart(10, "0");
 const directory = {
@@ -89,11 +92,11 @@ test("AND screens use inclusive bounds with separate measured, missing and not-a
     PORTFOLIO_SCREEN_PRESETS[0].rules,
   );
   assert.equal(result.valid, true);
-  assert.equal(result.scopeCount, 6);
+  assert.equal(result.scopeCount, 5);
   assert.equal(result.eligibleCount, 4);
   assert.equal(result.measuredCount, 3);
   assert.equal(result.missingCount, 1);
-  assert.equal(result.notApplicableCount, 2);
+  assert.equal(result.notApplicableCount, 1);
   assert.equal(result.matchCount, 2);
   assert.deepEqual(
     result.matches.map((row) => row.cik),
@@ -321,4 +324,149 @@ test("invalid SEC URLs and impossible dates are not exposed as evidence", () => 
   assert.equal(matrix.rows[0].cells[0].sourceUrl, null);
   assert.equal(matrix.rows[0].cells[0].periodEnd, null);
   assert.equal(matrix.rows[0].cells[0].value, 10);
+});
+
+function classify(report) {
+  const sectors = {
+    [cik(1)]: "Information Technology",
+    [cik(2)]: "Consumer Discretionary",
+    [cik(4)]: "Financials",
+    [cik(5)]: "Information Technology",
+    // A fund must not enter a company sector even if supplied bad metadata.
+    [cik(6)]: "Information Technology",
+  };
+  for (const row of report.concentration.issuers)
+    row.sector = sectors[row.cik] || null;
+  return report;
+}
+
+test("sector screens intersect industry and business model scopes without reweighting or duplicating share classes", () => {
+  const { companies } = fixture();
+  const rows = resolvePortfolioRows(
+    createPortfolioRows([
+      { ticker: "A", weight_pct: 20 },
+      { ticker: "A.B", weight_pct: 10 },
+      { ticker: "B", weight_pct: 15 },
+      { ticker: "C", weight_pct: 25 },
+      { ticker: "BANK", weight_pct: 10 },
+      { ticker: "FOREIGN", weight_pct: 10 },
+      { ticker: "FUND", weight_pct: 10 },
+    ]),
+    directory,
+  );
+  const report = classify(
+    buildPortfolioAnalytics(rows, { basis: "weights" }, companies),
+  );
+  const before = JSON.stringify(report);
+  const screen = buildPortfolioScreen(
+    report,
+    companies,
+    [{ metricId: "revenueGrowth", min: "0" }],
+    {
+      sector: "Information Technology",
+      industry: "Manufacturing",
+      lens: "corporate",
+    },
+  );
+  assert.equal(screen.scopeCount, 2);
+  assert.equal(screen.measuredCount, 2);
+  assert.equal(screen.knownMatchedWeightPct, 40);
+  assert.deepEqual(
+    screen.matches.map((row) => row.cik),
+    [cik(1), cik(5)],
+  );
+  assert.equal(screen.matches[0].rowIds.length, 2);
+  assert.equal(screen.matches[0].weightPct, 30);
+  assert.equal(screen.matches[1].weightPct, 10);
+  const csv = parsePortfolioCsv(portfolioScreenCsv(screen));
+  assert.ok(csv.records.every((row) => row.length === csv.headers.length));
+  assert.equal(
+    csv.records[0][csv.headers.indexOf("sector_filter")],
+    "Information Technology",
+  );
+  assert.equal(
+    csv.records[0][csv.headers.indexOf("sector")],
+    "Information Technology",
+  );
+  assert.equal(JSON.stringify(report), before);
+});
+
+test("sector coverage distinguishes uncovered companies from funds and preserves missing evidence", () => {
+  const { report, companies } = fixture();
+  classify(report);
+  const matrix = buildPortfolioCoverageMatrix(report, companies, {
+    sector: PORTFOLIO_SECTOR_UNCOVERED,
+    metricId: "operatingMargin",
+    gapsOnly: true,
+  });
+  assert.equal(matrix.totalIssuerCount, 6);
+  assert.equal(matrix.scopedIssuerCount, 1);
+  assert.equal(matrix.rows[0].cik, cik(3));
+  assert.equal(matrix.rows[0].sector, null);
+  assert.equal(matrix.rows[0].cells[0].value, null);
+  assert.equal(matrix.missingCount, 1);
+  assert.ok(matrix.sectors.includes(PORTFOLIO_SECTOR_UNCOVERED));
+  const csv = parsePortfolioCsv(portfolioCoverageCsv(matrix));
+  assert.equal(csv.records[0].length, csv.headers.length);
+  assert.equal(
+    csv.records[0][csv.headers.indexOf("sector_filter")],
+    PORTFOLIO_SECTOR_UNCOVERED,
+  );
+  assert.equal(
+    csv.records[0][csv.headers.indexOf("sector")],
+    PORTFOLIO_SECTOR_UNCOVERED,
+  );
+  const incompatible = buildPortfolioScreen(
+    report,
+    companies,
+    [{ metricId: "revenueGrowth", min: "0" }],
+    { sector: "Information Technology", lens: "banking" },
+  );
+  assert.equal(incompatible.scopeCount, 0);
+  assert.equal(incompatible.matchCount, 0);
+});
+
+test("offered screening metrics require available evidence in every active scope and retain zero and negative values", () => {
+  const { report, companies } = fixture();
+  classify(report);
+  const options = {
+    sector: "Consumer Discretionary",
+    industry: "Manufacturing",
+    lens: "corporate",
+  };
+  const offered = () =>
+    availablePortfolioScreenMetrics(report, companies, options).map(
+      (metric) => metric.id,
+    );
+  assert.deepEqual(offered().sort(), [
+    "currentRatio",
+    "operatingMargin",
+    "revenueGrowth",
+  ]);
+  assert.deepEqual(
+    availablePortfolioScreenMetrics(report, companies, {
+      ...options,
+      lens: "banking",
+    }),
+    [],
+  );
+  assert.deepEqual(
+    availablePortfolioScreenMetrics(report, companies, {
+      ...options,
+      matchingPeriodOnly: true,
+    }),
+    [],
+  );
+  const growth = report.metrics.find((metric) => metric.id === "revenueGrowth");
+  growth.observations.find((row) => row.cik === cik(2)).periodKey =
+    "annual|2025-01-01|2025-12-31";
+  assert.deepEqual(
+    availablePortfolioScreenMetrics(report, companies, {
+      ...options,
+      matchingPeriodOnly: true,
+    }).map((metric) => metric.id),
+    ["revenueGrowth"],
+  );
+  growth.observations = growth.observations.filter((row) => row.cik !== cik(2));
+  assert.ok(!offered().includes("revenueGrowth"));
 });

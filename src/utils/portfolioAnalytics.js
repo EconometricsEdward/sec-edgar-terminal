@@ -1,4 +1,8 @@
 import {
+  resolveCompanyClassification,
+  classificationGroups,
+} from "./companyClassification.js";
+import {
   allocationSummary,
   canonicalPortfolioCik,
   companyAvailable,
@@ -129,18 +133,6 @@ const CONDITIONS = [
   },
 ];
 
-function industryLabel(company, kind) {
-  if (kind === "fund") return "Funds (company metrics not applicable)";
-  return (
-    text(company?.sicDescription) ||
-    text(company?.industry?.label) ||
-    text(company?.industry) ||
-    text(company?.classification?.sicDescription) ||
-    text(company?.sic_description) ||
-    "Unclassified"
-  );
-}
-
 function periodEnd(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return null;
   const parsed = Date.parse(`${value}T00:00:00Z`);
@@ -249,7 +241,10 @@ export function buildPortfolioAnalytics(
     kind: issuer.kind,
     weightPct: issuer.weightPct,
     weightComplete: issuer.weightComplete,
-    industry: industryLabel(byCik[issuer.cik], issuer.kind),
+    ...resolveCompanyClassification(
+      { ...byCik[issuer.cik], cik: issuer.cik },
+      issuer.kind,
+    ),
   }));
   const operatingIssuers = issuers.filter(
     (issuer) => issuer.kind === "company",
@@ -297,6 +292,9 @@ export function buildPortfolioAnalytics(
   const hhi = complete
     ? sum(issuers.map((issuer) => issuer.weightPct ** 2))
     : null;
+  const sectors = classificationGroups(issuers, "sector", weighted);
+  if (unresolved.length)
+    sectors.push({ ...industries.get("Unresolved positions") });
   const concentration = {
     knownWeightPct: summary.allocatedWeight,
     missingWeightRows: summary.allocations.filter(
@@ -314,6 +312,7 @@ export function buildPortfolioAnalytics(
     hhi,
     effectiveIssuerCount: hhi > 0 ? 10000 / hhi : null,
     issuers,
+    sectors,
     industries: [...industries.values()].sort(
       (a, b) =>
         (weighted

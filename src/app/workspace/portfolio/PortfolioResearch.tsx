@@ -1,4 +1,7 @@
 "use client";
+
+import { resolveCompanyClassification } from "../../../utils/companyClassification.js";
+
 import {
   enrichPortfolioReport,
   portfolioReportHtml,
@@ -173,9 +176,7 @@ export default function PortfolioResearch({
   const [sort, setSort] = useState("name");
   const [preset, setPreset] = useState("overview");
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
-  const [importStart, setImportStart] = useState<"new" | "paste">(
-    "new",
-  );
+  const [importStart, setImportStart] = useState<"new" | "paste">("new");
   const [importEpoch, setImportEpoch] = useState(0);
   const handledNavigation = useRef(0);
   const [consumedViewRequest, setConsumedViewRequest] = useState(0);
@@ -521,9 +522,13 @@ export default function PortfolioResearch({
     () =>
       rows.filter((row: any) => {
         const company = companiesByCik[row.resolution?.cik];
+        const classification = resolveCompanyClassification(
+          { ...company, cik: row.resolution?.cik },
+          company?.kind || row.resolution?.kind,
+        );
         const state = statusLabel(row, company).toLowerCase();
         const text =
-          `${row.input.ticker} ${row.input.company_name} ${row.resolution?.name} ${row.resolution?.cik} ${company?.industry || ""}`.toLowerCase();
+          `${row.input.ticker} ${row.input.company_name} ${row.resolution?.name} ${row.resolution?.cik} ${classification.industry} ${classification.sector || ""} ${classification.sic || ""}`.toLowerCase();
         return (
           rowMatchesPortfolioView(row, company, preset) &&
           (!query.trim() || text.includes(query.toLowerCase().trim())) &&
@@ -534,8 +539,12 @@ export default function PortfolioResearch({
                 ? state === "failed" || state === "refresh failed"
                 : state === filter)) &&
           (!industryFilter ||
-            (company?.sicDescription || company?.industry || "Unclassified") ===
-              industryFilter)
+            (industryFilter.startsWith("sector:")
+              ? (company?.kind || row.resolution?.kind) !== "fund" &&
+                ["resolved", "unsupported"].includes(row.resolution?.status) &&
+                (classification.sector || "Sector not covered") ===
+                  industryFilter.slice(7)
+              : classification.industry === industryFilter))
         );
       }),
     [rows, companiesByCik, preset, query, filter, industryFilter],
@@ -848,13 +857,15 @@ export default function PortfolioResearch({
     if (
       !validSecUrl(filing.documentUrl) ||
       !validTicker(filing.ticker) ||
-      !rows.some((row: any) =>
-        row.resolution?.status === "resolved" &&
-        row.resolution?.kind === "company" &&
-        row.resolution?.cik === filing.cik &&
-        row.resolution?.ticker === filing.ticker
+      !rows.some(
+        (row: any) =>
+          row.resolution?.status === "resolved" &&
+          row.resolution?.kind === "company" &&
+          row.resolution?.cik === filing.cik &&
+          row.resolution?.ticker === filing.ticker,
       )
-    ) return;
+    )
+      return;
     const key = filing.ticker;
     const saved = workspace.update((current) => {
       const existing = current.companies[key] || {
@@ -890,9 +901,7 @@ export default function PortfolioResearch({
       };
     });
     if (saved) {
-      setMessage(
-        "Filing saved in this company’s Analysis notebook.",
-      );
+      setMessage("Filing saved in this company’s Analysis notebook.");
       window.dispatchEvent(new Event("research-storage"));
     }
   }
@@ -1261,28 +1270,47 @@ export default function PortfolioResearch({
                     </select>
                   </label>
                   <label>
-                    SEC industry
+                    Sector or SEC industry
                     <select
                       value={industryFilter}
                       onChange={(event) =>
                         setIndustryFilter(event.target.value)
                       }
                     >
-                      <option value="">All SEC industries</option>
-                      {[
-                        ...new Set<string>(
-                          companies.map(
-                            (company: any) =>
-                              company.sicDescription ||
-                              company.industry ||
-                              "Unclassified",
+                      <option value="">All sectors & industries</option>
+                      <optgroup label="Fund-reported sectors">
+                        {[
+                          ...new Set<string>(
+                            companies
+                              .filter((company: any) => company.kind !== "fund")
+                              .map(
+                                (company: any) =>
+                                  resolveCompanyClassification(company)
+                                    .sector || "Sector not covered",
+                              ),
                           ),
-                        ),
-                      ]
-                        .sort()
-                        .map((industry) => (
-                          <option key={industry}>{industry}</option>
-                        ))}
+                        ]
+                          .sort()
+                          .map((sector) => (
+                            <option key={sector} value={`sector:${sector}`}>
+                              {sector}
+                            </option>
+                          ))}
+                      </optgroup>
+                      <optgroup label="SEC industries">
+                        {[
+                          ...new Set<string>(
+                            companies.map(
+                              (company: any) =>
+                                resolveCompanyClassification(company).industry,
+                            ),
+                          ),
+                        ]
+                          .sort()
+                          .map((industry) => (
+                            <option key={industry}>{industry}</option>
+                          ))}
+                      </optgroup>
                     </select>
                   </label>
                   <label>
@@ -1401,6 +1429,10 @@ export default function PortfolioResearch({
                     <tbody>
                       {visibleRows.map((row: any) => {
                         const company = companiesByCik[row.resolution?.cik];
+                        const classification = resolveCompanyClassification(
+                          { ...company, cik: row.resolution?.cik },
+                          company?.kind || row.resolution?.kind,
+                        );
                         const symbol = companyLink(row, company);
                         const fund =
                           company?.kind === "fund" ||
@@ -1458,12 +1490,15 @@ export default function PortfolioResearch({
                                   row.resolution?.kind ||
                                   "unknown"}
                               </small>
+                              {classification.sector && (
+                                <small>{classification.sector}</small>
+                              )}
                               {company && (
                                 <small>
-                                  {company.sic
-                                    ? `SEC SIC ${company.sic}: `
+                                  {classification.sic
+                                    ? `SEC SIC ${classification.sic}: `
                                     : ""}
-                                  {company.sicDescription || company.industry}
+                                  {classification.industry}
                                 </small>
                               )}
                               <div className={s.drill}>
