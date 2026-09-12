@@ -18,6 +18,8 @@ const money = (n: number) =>
     maximumFractionDigits: 0,
     notation: "compact",
   });
+const companyCountLabel = (value: number, qualifier = "") =>
+  `${value}${qualifier ? ` ${qualifier}` : ""} ${value === 1 ? "company" : "companies"}`;
 export default function CashEarnings({
   report,
   companies,
@@ -70,7 +72,7 @@ export default function CashEarnings({
       <div className={s.finding}>
         <strong>
           {result.profitable
-            ? `${result.confirmed} of ${result.profitable} profitable companies with aligned evidence generated positive operating cash flow (${result.confirmationPct!.toFixed(1)}%).`
+            ? `${result.confirmed} of ${companyCountLabel(result.profitable, "profitable")} with aligned evidence generated positive operating cash flow (${result.confirmationPct!.toFixed(1)}%).`
             : "No profitable companies have aligned earnings and cash-flow evidence in this snapshot."}
         </strong>
         <p>
@@ -82,10 +84,10 @@ export default function CashEarnings({
         </p>
       </div>
       <p>
-        {result.count} operating companies have both USD measures on the same
-        full annual or TTM period. Each company counts once. Zero is included in
-        “non-positive.” Banks, insurers, REITs and funds are excluded because
-        cash flows need different interpretation.
+        {companyCountLabel(result.count, "operating")} {result.count === 1 ? "has" : "have"} both USD measures on the same full annual or TTM period.
+        Each company counts once. Zero is included in “non-positive.” Banks,
+        insurers, REITs and funds are excluded because cash flows need different
+        interpretation.
       </p>
       <details className={s.details}>
         <summary>Explore the four combinations and source companies</summary>
@@ -103,7 +105,7 @@ export default function CashEarnings({
               <strong>{entry.observations.length}</strong>
               <small>
                 {result.count
-                  ? `${((100 * entry.observations.length) / result.count).toFixed(1)}% of ${result.count} paired companies`
+                  ? `${((100 * entry.observations.length) / result.count).toFixed(1)}% of ${companyCountLabel(result.count, "paired")}`
                   : "No paired observations"}
                 {report.weighted &&
                   ` · ${entry.knownWeightPct === null ? "Unknown allocation" : `${entry.knownWeightPct.toFixed(2)}% known saved allocation`}${entry.missingWeightCount ? `; ${entry.missingWeightCount} incomplete holding weights` : ""}`}
@@ -112,8 +114,8 @@ export default function CashEarnings({
           ))}
         </div>
         <p role="status">
-          {cell.observations.length} companies: {labels[selected].toLowerCase()}
-          .
+          {companyCountLabel(cell.observations.length)}:{" "}
+          {labels[selected].toLowerCase()}.
         </p>
         {cell.observations.length > 0 && (
           <div
