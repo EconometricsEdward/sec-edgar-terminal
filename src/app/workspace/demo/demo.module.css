@@ -175,9 +175,7 @@
   max-width: 1000px;
 }
 .tableScroll {
-  overflow-x: auto;
-  border: 1px solid var(--demo-line);
-  border-radius: 10px;
+  min-width: 0;
 }
 .tableScroll table {
   width: 100%;

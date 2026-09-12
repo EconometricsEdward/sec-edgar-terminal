@@ -15,6 +15,7 @@ import {
 import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
 import dynamic from "next/dynamic";
 import ResearchWorkspace from "./ResearchWorkspace";
+import CompanyResearchTable from "./CompanyResearchTable";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
@@ -53,7 +54,11 @@ import { MAX_COMPARE_COMPANIES } from "../../../utils/compareLimits.js";
 import { downloadText } from "../../../utils/download.js";
 import s from "./PortfolioResearch.module.css";
 import { validTicker } from "../../../utils/researchWorkspace.js";
-import { rowMatchesPortfolioView } from "../../../utils/portfolioViews.js";
+import {
+  availablePortfolioViewPresets,
+  PORTFOLIO_VIEW_PRESETS,
+  rowMatchesPortfolioView,
+} from "../../../utils/portfolioViews.js";
 import { advancePortfolioBaseline } from "../../../utils/portfolioChanges.js";
 import {
   PORTFOLIO_TABS,
@@ -179,7 +184,6 @@ export default function PortfolioResearch({
   const [importStart, setImportStart] = useState<"new" | "paste">("new");
   const [importEpoch, setImportEpoch] = useState(0);
   const handledNavigation = useRef(0);
-  const [consumedViewRequest, setConsumedViewRequest] = useState(0);
   const [direction, setDirection] = useState("asc");
   const [columns, setColumns] = useState(DEFAULT_COLUMNS);
   const [selected, setSelected] = useState<string[]>([]);
@@ -344,7 +348,6 @@ export default function PortfolioResearch({
       if (next) {
         onEditorDirtyChange(false);
         if (pendingNavigation) {
-          setConsumedViewRequest(pendingNavigation.nonce || 0);
           restoreDraftUrl(next.activeId);
         }
         setPendingNavigation(null);
@@ -518,6 +521,16 @@ export default function PortfolioResearch({
     ? companiesByCik[focusedRow.resolution?.cik]
     : null;
 
+  const availablePresets = useMemo(() => {
+    const available = availablePortfolioViewPresets(rows, companies);
+    return available.length
+      ? available
+      : [{ ...PORTFOLIO_VIEW_PRESETS[0], columns: [], rowCount: rows.length }];
+  }, [rows, companies]);
+  const effectivePreset = availablePresets.some((entry) => entry.id === preset)
+    ? preset
+    : availablePresets[0].id;
+
   const filteredRows = useMemo(
     () =>
       rows.filter((row: any) => {
@@ -530,7 +543,7 @@ export default function PortfolioResearch({
         const text =
           `${row.input.ticker} ${row.input.company_name} ${row.resolution?.name} ${row.resolution?.cik} ${classification.industry} ${classification.sector || ""} ${classification.sic || ""}`.toLowerCase();
         return (
-          rowMatchesPortfolioView(row, company, preset) &&
+          rowMatchesPortfolioView(row, company, effectivePreset) &&
           (!query.trim() || text.includes(query.toLowerCase().trim())) &&
           (filter === "all" ||
             (filter === "needs-review"
@@ -547,7 +560,7 @@ export default function PortfolioResearch({
               : classification.industry === industryFilter))
         );
       }),
-    [rows, companiesByCik, preset, query, filter, industryFilter],
+    [rows, companiesByCik, effectivePreset, query, filter, industryFilter],
   );
   const availableMetrics = useMemo(
     () =>
@@ -558,7 +571,9 @@ export default function PortfolioResearch({
       ]),
     [filteredRows, companiesByCik],
   );
-  const availableColumns = columns.filter((key) =>
+  const chosenColumns =
+    effectivePreset === preset ? columns : availablePresets[0].columns;
+  const availableColumns = chosenColumns.filter((key) =>
     availableMetrics.some((d) => d.key === key),
   );
   const effectiveSort =
@@ -582,20 +597,46 @@ export default function PortfolioResearch({
         effectiveSort === "weight"
           ? summary.allocations.find((entry: any) => entry.rowId === left.id)
               ?.weightPct
-          : a?.metrics?.[effectiveSort]?.value;
+          : portfolioMetricState(
+                a,
+                PORTFOLIO_METRIC_CATALOG.find((d) => d.key === effectiveSort),
+              ) === "available"
+            ? a.metrics[effectiveSort].value
+            : null;
       const bv =
         effectiveSort === "weight"
           ? summary.allocations.find((entry: any) => entry.rowId === right.id)
               ?.weightPct
-          : b?.metrics?.[effectiveSort]?.value;
+          : portfolioMetricState(
+                b,
+                PORTFOLIO_METRIC_CATALOG.find((d) => d.key === effectiveSort),
+              ) === "available"
+            ? b.metrics[effectiveSort].value
+            : null;
       if (!number(av)) return number(bv) ? 1 : 0;
       if (!number(bv)) return -1;
       return (av - bv) * (direction === "asc" ? 1 : -1);
     });
   }, [filteredRows, companiesByCik, effectiveSort, direction, summary]);
   const viewSettings = useMemo(
-    () => ({ query, filter, industryFilter, sort, direction, columns, preset }),
-    [query, filter, industryFilter, sort, direction, columns, preset],
+    () => ({
+      query,
+      filter,
+      industryFilter,
+      sort: effectiveSort,
+      direction,
+      columns: chosenColumns,
+      preset: effectivePreset,
+    }),
+    [
+      query,
+      filter,
+      industryFilter,
+      effectiveSort,
+      direction,
+      chosenColumns,
+      effectivePreset,
+    ],
   );
   function applyView(value: any) {
     setQuery(value.query);
@@ -606,6 +647,7 @@ export default function PortfolioResearch({
     setColumns(value.columns);
     setPreset(value.preset);
     setSelected([]);
+    setEvidence(null);
   }
   const priorities = useMemo(
     () => portfolioReviewPriorities(rows, companies, summary),
@@ -960,7 +1002,6 @@ export default function PortfolioResearch({
             <button
               className={s.primary}
               onClick={() => {
-                setConsumedViewRequest(pendingNavigation.nonce || 0);
                 setPendingNavigation(null);
                 restoreDraftUrl();
                 setMessage("Your unsaved draft is still open.");
@@ -1229,16 +1270,7 @@ export default function PortfolioResearch({
                 <PortfolioViews
                   value={viewSettings}
                   onChange={applyView}
-                  portfolioId={document.id}
-                  requestedViewId={
-                    consumedViewRequest === navigationRequest?.nonce
-                      ? ""
-                      : navigationRequest?.portfolioViewId || ""
-                  }
-                  requestNonce={navigationRequest?.nonce || 0}
-                  onRequestHandled={() =>
-                    setConsumedViewRequest(navigationRequest?.nonce || 0)
-                  }
+                  presets={availablePresets}
                 />
                 <div className={s.tableToolbar}>
                   <label className={s.search}>
@@ -1348,14 +1380,17 @@ export default function PortfolioResearch({
                       <label key={key}>
                         <input
                           type="checkbox"
-                          checked={columns.includes(key)}
-                          onChange={() =>
-                            setColumns((current) =>
-                              current.includes(key)
-                                ? current.filter((column) => column !== key)
-                                : [...current, key],
-                            )
-                          }
+                          checked={chosenColumns.includes(key)}
+                          onChange={() => {
+                            setPreset(effectivePreset);
+                            setColumns(
+                              chosenColumns.includes(key)
+                                ? chosenColumns.filter(
+                                    (column) => column !== key,
+                                  )
+                                : [...chosenColumns, key],
+                            );
+                          }}
                         />{" "}
                         {label}
                       </label>
@@ -1403,11 +1438,20 @@ export default function PortfolioResearch({
                     </button>
                   )}
                 </div>
-                <div
-                  className={s.tableWrap}
-                  tabIndex={0}
-                  role="region"
-                  aria-label="Portfolio company research table"
+                <CompanyResearchTable
+                  className={`${s.tableWrap} ${s.companyTable}`}
+                  label="Portfolio company research table"
+                  selectionColumn
+                  resetKey={[
+                    document.id,
+                    effectivePreset,
+                    query,
+                    filter,
+                    industryFilter,
+                    effectiveSort,
+                    direction,
+                    availableColumns.join(","),
+                  ].join(":")}
                 >
                   <table>
                     <thead>
@@ -1663,9 +1707,12 @@ export default function PortfolioResearch({
                     </tbody>
                   </table>
                   {!visibleRows.length && (
-                    <p className={s.empty}>No rows match these filters.</p>
+                    <p className={s.empty}>
+                      No rows match these filters. Clear your search or choose a
+                      different lens.
+                    </p>
                   )}
-                </div>
+                </CompanyResearchTable>
                 <p className={s.caption}>
                   Values describe whole companies, not the portion economically
                   owned by this portfolio. Financial figures use supported USD

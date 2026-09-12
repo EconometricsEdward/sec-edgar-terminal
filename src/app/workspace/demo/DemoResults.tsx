@@ -6,15 +6,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import ResearchWorkspace from "../portfolio/ResearchWorkspace";
+import CompanyResearchTable from "../portfolio/CompanyResearchTable";
 import WorkspaceMenu from "../WorkspaceMenu";
-import {
-  allocationSummary,
-  finiteFinancialMetric,
-} from "../../../utils/portfolioModel.js";
+import { allocationSummary } from "../../../utils/portfolioModel.js";
+import { portfolioMetricState } from "../../../utils/portfolioDeepResearch.js";
+import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
 import { portfolioFilingFeed } from "../../../utils/portfolioClient.js";
 import { portfolioReviewPriorities } from "../../../utils/portfolioInsights.js";
 import {
   PORTFOLIO_VIEW_PRESETS,
+  availablePortfolioViewPresets,
   rowMatchesPortfolioView,
 } from "../../../utils/portfolioViews.js";
 import {
@@ -40,27 +41,18 @@ const PortfolioResearchDesk = dynamic(
 );
 const CompanyFocus = dynamic(() => import("../portfolio/CompanyFocus"));
 
-const METRICS: Record<string, string> = {
-  revenue: "Revenue",
-  netIncome: "Net income",
-  operatingCashFlow: "Operating cash flow",
-  freeCashFlow: "Free cash flow",
-  capex: "Capital expenditures",
-  cash: "Cash",
-  debt: "Reported debt",
-  netInterestIncome: "Net interest income",
-  deposits: "Deposits",
-  loans: "Net loans",
-  loanDeposits: "Loans / deposits",
-  operatingMargin: "Operating margin",
-  netMargin: "Net margin",
-  debtAssets: "Reported debt / assets",
-  currentRatio: "Current ratio",
-  roa: "Return on assets",
-  revenueGrowth: "Revenue growth",
-  roe: "Return on equity",
-  totalAssets: "Total assets",
-};
+const METRIC_DEFINITIONS = Object.fromEntries(
+  PORTFOLIO_METRIC_CATALOG.map((definition: any) => [
+    definition.key,
+    definition,
+  ]),
+);
+const METRICS: Record<string, string> = Object.fromEntries(
+  PORTFOLIO_METRIC_CATALOG.map((definition: any) => [
+    definition.key,
+    definition.label,
+  ]),
+);
 const day = (value?: string | null) => value?.slice(0, 10) || "Unavailable";
 const pct = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value)
@@ -189,33 +181,59 @@ export default function DemoResults() {
       ),
     [rows, companies, allocation, demo],
   );
-  const view =
-    PORTFOLIO_VIEW_PRESETS.find((item: any) => item.id === preset) ||
-    PORTFOLIO_VIEW_PRESETS[0];
-  const shown = useMemo(
-    () =>
-      rows
-        .filter((row: any) => {
-          const company = byCik[row.resolution?.cik];
-          const text =
-            `${row.input.ticker} ${company?.name || row.resolution?.name || ""} ${resolveCompanyClassification(company).industry} ${resolveCompanyClassification(company).sector || ""}`.toLowerCase();
-          return (
-            text.includes(query.trim().toLowerCase()) &&
-            rowMatchesPortfolioView(row, company, preset)
-          );
-        })
-        .sort(
-          (a: any, b: any) =>
-            (weighted
-              ? Number(weights.get(b.id)) - Number(weights.get(a.id))
-              : 0) || a.input.ticker.localeCompare(b.input.ticker),
-        ),
-    [rows, byCik, query, preset, weights, weighted],
+  const availableViews = useMemo(
+    () => availablePortfolioViewPresets(rows, companies),
+    [rows, companies],
   );
+  const view =
+    availableViews.find((item: any) => item.id === preset) ||
+    availableViews.find((item: any) => item.id === "overview") ||
+    PORTFOLIO_VIEW_PRESETS[0];
+  const shown = useMemo(() => {
+    const definition = METRIC_DEFINITIONS[view.sort];
+    return rows
+      .filter((row: any) => {
+        const company = byCik[row.resolution?.cik];
+        const classification = resolveCompanyClassification(company);
+        const text =
+          `${row.input.ticker} ${company?.name || row.resolution?.name || ""} ${classification.industry} ${classification.sector || ""}`.toLowerCase();
+        return (
+          text.includes(query.trim().toLowerCase()) &&
+          rowMatchesPortfolioView(row, company, view.id)
+        );
+      })
+      .sort((a: any, b: any) => {
+        if (definition) {
+          const left = byCik[a.resolution?.cik];
+          const right = byCik[b.resolution?.cik];
+          const leftAvailable =
+            portfolioMetricState(left, definition) === "available";
+          const rightAvailable =
+            portfolioMetricState(right, definition) === "available";
+          if (leftAvailable !== rightAvailable) return leftAvailable ? -1 : 1;
+          if (leftAvailable && rightAvailable) {
+            const difference =
+              left.metrics[definition.key].value -
+              right.metrics[definition.key].value;
+            if (difference)
+              return view.direction === "asc" ? difference : -difference;
+          }
+        }
+        return (
+          (weighted
+            ? Number(weights.get(b.id)) - Number(weights.get(a.id))
+            : 0) || a.input.ticker.localeCompare(b.input.ticker)
+        );
+      });
+  }, [rows, byCik, query, view, weights, weighted]);
 
   const shownColumns = view.columns.filter((key: string) =>
-    shown.some((row: any) =>
-      finiteFinancialMetric(byCik[row.resolution?.cik]?.metrics?.[key]),
+    shown.some(
+      (row: any) =>
+        portfolioMetricState(
+          byCik[row.resolution?.cik],
+          METRIC_DEFINITIONS[key],
+        ) === "available",
     ),
   );
 
@@ -424,18 +442,19 @@ export default function DemoResults() {
                 </label>
                 {area === "companies" && (
                   <label>
-                    Research view
+                    Research lens
                     <select
-                      value={preset}
+                      value={view.id}
                       onChange={(event) => {
                         setPreset(event.target.value);
                         setLimit(20);
                         setEvidence(null);
                       }}
                     >
-                      {PORTFOLIO_VIEW_PRESETS.map((item: any) => (
+                      {availableViews.map((item: any) => (
                         <option key={item.id} value={item.id}>
-                          {item.name}
+                          {item.name} · {item.rowCount}{" "}
+                          {item.rowCount === 1 ? "company" : "companies"}
                         </option>
                       ))}
                     </select>
@@ -452,15 +471,20 @@ export default function DemoResults() {
             {area === "companies" && (
               <>
                 <p className={s.tableHelp}>
-                  {view.description} Click a financial measure to see its
-                  reporting period, calculation, and SEC sources. Missing values
-                  are never treated as zero.
+                  {view.description}{" "}
+                  {METRICS[view.sort]
+                    ? `Sorted by ${METRICS[view.sort].toLowerCase()}, ${view.direction === "asc" ? "lowest" : "highest"} first. `
+                    : weighted
+                      ? "Largest hypothetical weights first. "
+                      : "Companies are ordered by ticker. "}
+                  Click a financial measure to see its reporting period,
+                  calculation, and SEC sources. Missing values are never treated
+                  as zero.
                 </p>
-                <div
+                <CompanyResearchTable
                   className={s.tableScroll}
-                  role="region"
-                  aria-label="100-company example results table"
-                  tabIndex={0}
+                  label="100-company example results table"
+                  resetKey={`${view.id}:${query}`}
                 >
                   <table>
                     <thead>
@@ -511,7 +535,12 @@ export default function DemoResults() {
                             </td>
                             {shownColumns.map((key: string) => {
                               const point = company?.metrics?.[key];
-                              if (!finiteFinancialMetric(point))
+                              if (
+                                portfolioMetricState(
+                                  company,
+                                  METRIC_DEFINITIONS[key],
+                                ) !== "available"
+                              )
                                 return (
                                   <td key={key}>
                                     <span aria-label="No comparable value">
@@ -558,7 +587,7 @@ export default function DemoResults() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </CompanyResearchTable>
                 {shown.length === 0 && (
                   <p className={s.notice}>
                     No companies match this view and search. Try Financial
