@@ -268,8 +268,8 @@ function SectorPicker({
             </strong>
             <small>
               {profile.weighted
-                ? `${companyCountLabel(group.companyCount)}${group.lensCount > 1 ? ` · ${group.lensCount} measure sets` : ""}`
-                : `${group.companyCount === 1 ? "company" : "companies"}${group.lensCount > 1 ? ` · ${group.lensCount} measure sets` : ""}`}
+                ? `${companyCountLabel(group.companyCount)}${group.lensCount > 1 ? ` · ${group.lensCount} sets` : ""}`
+                : `${group.companyCount === 1 ? "company" : "companies"}${group.lensCount > 1 ? ` · ${group.lensCount} sets` : ""}`}
             </small>
           </button>
         ))}
