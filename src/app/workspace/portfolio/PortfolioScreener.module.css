@@ -7,8 +7,14 @@
   --ps-bg: var(--hub-bg, #0b1018);
   display: grid;
   gap: 0;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   color: var(--ps-text);
+}
+
+.screener > * {
+  min-width: 0;
 }
 
 .screener :is(button, input, select, summary, a):focus-visible {
@@ -531,10 +537,20 @@
   justify-self: end;
 }
 
+.resultsPanel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .tableShell {
   --table-bg: var(--ps-bg);
   --table-header: var(--ps-panel);
   --table-line: var(--ps-line);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border-top: 0 !important;
   border-radius: 0 0 9px 9px !important;
 }

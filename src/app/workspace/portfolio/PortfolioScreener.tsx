@@ -188,6 +188,8 @@ const compactNumber = (value: number, digits = 2) =>
     notation: Math.abs(value) >= 10_000 ? "compact" : "standard",
     maximumFractionDigits: digits,
   });
+const decimalNumber = (value: number, digits = 2) =>
+  value.toLocaleString("en-US", { maximumFractionDigits: digits });
 const formatValue = (value: unknown, unit = "") => {
   if (!finite(value)) return "—";
   if (unit === "USD")
@@ -197,11 +199,11 @@ const formatValue = (value: unknown, unit = "") => {
       notation: "compact",
       maximumFractionDigits: 2,
     }).format(value);
-  if (unit === "%") return `${compactNumber(value)}%`;
-  if (unit === "USD/shares") return `$${compactNumber(value, 3)}`;
+  if (unit === "%") return `${decimalNumber(value)}%`;
+  if (unit === "USD/shares") return `$${decimalNumber(value, 3)}`;
   if (unit === "shares") return compactNumber(value);
-  if (unit === "x") return `${compactNumber(value, 2)}×`;
-  return `${compactNumber(value)}${unit ? ` ${unit}` : ""}`;
+  if (unit === "x") return `${decimalNumber(value, 2)}×`;
+  return `${decimalNumber(value)}${unit ? ` ${unit}` : ""}`;
 };
 const formatDate = (value: string | null | undefined) =>
   value
@@ -958,6 +960,7 @@ export default function PortfolioScreener({
 
           <div
             id={`${id}-results`}
+            className={styles.resultsPanel}
             role="tabpanel"
             aria-labelledby={`${id}-tab-${activeView.id}`}
           >
