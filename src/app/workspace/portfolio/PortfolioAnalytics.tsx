@@ -33,6 +33,10 @@ const PortfolioConcentrationTools = dynamic(
   () => import("./PortfolioConcentrationTools"),
   { loading },
 );
+const PortfolioConcentrationHeatMap = dynamic(
+  () => import("./PortfolioConcentrationHeatMap"),
+  { loading },
+);
 const PortfolioFinancialTools = dynamic(
   () => import("./PortfolioFinancialTools"),
   { loading },
@@ -482,6 +486,18 @@ export default function PortfolioAnalytics({
               </p>
             </>
           )}
+          <PortfolioConcentrationHeatMap
+            report={report}
+            onInspectCompany={onInspectCompany}
+            onReviewRows={onReviewRows}
+            onSelectGroup={(dimension, label) => {
+              setGrouping(dimension);
+              setSector(dimension === "sector" ? label : "");
+              setIndustry(dimension === "industry" ? label : "");
+              setQuery("");
+              setFocusMembers(true);
+            }}
+          />
           {weighted && (
             <details className={s.toolDetails}>
               <summary>Review allocation limits & cumulative exposure</summary>

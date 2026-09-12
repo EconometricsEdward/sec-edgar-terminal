@@ -152,6 +152,27 @@ test("briefing renders all sector links and dated classification coverage", () =
   assert.doesNotMatch(html, /Other groups|NaN|Infinity|undefined/);
 });
 
+test("concentration heat map renders the complete demo with accessible grouping and tile actions", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/PortfolioConcentrationHeatMap.tsx",
+  ).default;
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      report,
+      onInspectCompany: () => {},
+      onReviewRows: () => {},
+      onSelectGroup: () => {},
+    }),
+  );
+  assert.match(html, /Concentration heat map/);
+  assert.match(html, /100% mapped/);
+  assert.match(html, /role="group" aria-label="Heat map grouping"/);
+  assert.match(html, /aria-pressed="true">Holdings/);
+  assert.match(html, /aria-label="Inspect AAPL, 5% allocation"/);
+  assert.equal((html.match(/aria-label="Inspect /g) || []).length, 100);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined/);
+});
+
 test("metric rankings expose measured sector peers and a bounded first page", () => {
   const Component = component(
     "../src/app/workspace/portfolio/PortfolioMetricExplorer.tsx",

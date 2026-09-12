@@ -7,6 +7,7 @@ import {
 import { buildPortfolioAnalytics } from "../src/utils/portfolioAnalytics.js";
 import {
   buildConcentrationAnalysis,
+  buildConcentrationHeatMap,
   buildPortfolioBriefing,
 } from "../src/utils/portfolioConcentration.js";
 
@@ -293,4 +294,137 @@ test("concentration and briefing do not reorder or mutate the report or research
   buildConcentrationAnalysis(report, limits);
   buildPortfolioBriefing(report);
   assert.equal(JSON.stringify({ report, limits }), before);
+});
+
+test("concentration heat map preserves exact complete weights and proportional geometry", () => {
+  const report = reportFor([
+    { ticker: "A", weight_pct: 60 },
+    { ticker: "B", weight_pct: 25 },
+    { ticker: "C", weight_pct: 15 },
+  ]);
+  const result = buildConcentrationHeatMap(report, "issuer");
+  assert.equal(result.complete, true);
+  assert.equal(result.mappedValue, 100);
+  assert.equal(result.denominator, 100);
+  assert.equal(result.unmappedValue, 0);
+  assert.equal(result.overAllocated, false);
+  assert.deepEqual(
+    result.tiles.map((tile) => [tile.label, tile.value, tile.areaPct]),
+    [
+      ["A", 60, 60],
+      ["B", 25, 25],
+      ["C", 15, 15],
+    ],
+  );
+  for (const tile of result.tiles) {
+    assert.ok([tile.x, tile.y, tile.width, tile.height].every(Number.isFinite));
+    assert.ok(tile.x >= 0 && tile.y >= 0);
+    assert.ok(tile.x + tile.width <= 100 + 1e-9);
+    assert.ok(tile.y + tile.height <= 100 + 1e-9);
+    close((tile.width * tile.height) / 100, tile.areaPct);
+  }
+});
+
+test("partial heat map keeps known weights and shows an explicit unmapped remainder", () => {
+  const report = reportFor([
+    { ticker: "A", weight_pct: 60 },
+    { ticker: "B" },
+  ]);
+  const result = buildConcentrationHeatMap(report, "issuer");
+  assert.equal(result.complete, false);
+  assert.equal(result.mappedValue, 60);
+  assert.equal(result.denominator, 100);
+  assert.equal(result.unmappedValue, 40);
+  assert.equal(result.unavailableCount, 1);
+  assert.equal(result.tiles[0].label, "A");
+  assert.equal(result.tiles[0].value, 60);
+  assert.equal(result.tiles[0].lowerBound, true);
+  assert.equal(result.tiles[1].label, "Allocation not mapped");
+  assert.equal(result.tiles[1].placeholder, true);
+  assert.equal(result.tiles[1].value, 40);
+});
+
+test("over-allocated heat map reports the supplied total without changing tile values", () => {
+  const report = reportFor([
+    { ticker: "A", weight_pct: 60 },
+    { ticker: "B", weight_pct: 60 },
+  ]);
+  const result = buildConcentrationHeatMap(report, "issuer");
+  assert.equal(result.complete, false);
+  assert.equal(result.mappedValue, 120);
+  assert.equal(result.denominator, 120);
+  assert.equal(result.overAllocated, true);
+  assert.equal(result.excessPct, 20);
+  assert.equal(result.unmappedValue, 0);
+  assert.deepEqual(
+    result.tiles.map((tile) => tile.value),
+    [60, 60],
+  );
+  assert.deepEqual(
+    result.tiles.map((tile) => tile.areaPct),
+    [50, 50],
+  );
+});
+
+test("count heat map counts combined share classes once per issuer", () => {
+  const report = reportFor(
+    [{ ticker: "A" }, { ticker: "A.B" }, { ticker: "B" }],
+    "none",
+  );
+  const issuerMap = buildConcentrationHeatMap(report, "issuer");
+  assert.equal(issuerMap.weighted, false);
+  assert.equal(issuerMap.mappedValue, 2);
+  assert.deepEqual(
+    issuerMap.tiles.map((tile) => [tile.label, tile.value, tile.count]),
+    [
+      ["A / A.B", 1, 2],
+      ["B", 1, 1],
+    ],
+  );
+  const industryMap = buildConcentrationHeatMap(report, "industry");
+  assert.equal(industryMap.mappedValue, 2);
+  assert.equal(industryMap.tiles[0].label, "Technology");
+  assert.equal(industryMap.tiles[0].value, 2);
+});
+
+test("issuer heat map retains unresolved supplied exposure as a reviewable tile", () => {
+  const report = reportFor([
+    { ticker: "A", weight_pct: 60 },
+    { ticker: "UNKNOWN", weight_pct: 40 },
+  ]);
+  const result = buildConcentrationHeatMap(report, "issuer");
+  assert.equal(result.mappedValue, 100);
+  assert.equal(result.unmappedValue, 0);
+  assert.equal(result.complete, false);
+  assert.deepEqual(
+    result.tiles.map((tile) => [tile.label, tile.value, tile.action]),
+    [
+      ["A", 60, "inspect"],
+      ["Unresolved positions", 40, "review"],
+    ],
+  );
+});
+
+test("heat map modes are deterministic, bounded and do not mutate analytics", () => {
+  const report = reportFor([
+    { ticker: "B", weight_pct: 40 },
+    { ticker: "A", weight_pct: 60 },
+  ]);
+  const before = JSON.stringify(report);
+  const first = buildConcentrationHeatMap(report, "sector");
+  const second = buildConcentrationHeatMap(report, "sector");
+  assert.deepEqual(first, second);
+  assert.equal(buildConcentrationHeatMap(report, "invalid").mode, "issuer");
+  assert.equal(JSON.stringify(report), before);
+
+  for (let left = 0; left < first.tiles.length; left++) {
+    for (let right = left + 1; right < first.tiles.length; right++) {
+      const a = first.tiles[left];
+      const b = first.tiles[right];
+      const overlapWidth = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      const overlapHeight =
+        Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+      assert.ok(overlapWidth <= 1e-9 || overlapHeight <= 1e-9);
+    }
+  }
 });
