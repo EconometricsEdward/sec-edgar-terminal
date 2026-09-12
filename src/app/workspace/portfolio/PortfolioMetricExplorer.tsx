@@ -1,7 +1,7 @@
 "use client";
 import { ANALYSIS_VERSION } from "../../../utils/analysisVersion.js";
 import { companyAvailable } from "../../../utils/portfolioModel.js";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { portfolioMetricDefinitionFor } from "../../../utils/portfolioMetricCatalog.js";
 import {
   rankPortfolioMetric,
@@ -11,12 +11,48 @@ import {
   metricUnit,
   portfolioAvailableMetrics,
   portfolioMetricState,
+  portfolioMetricPeerOptions,
+  filterPortfolioRankingRows,
 } from "../../../utils/portfolioDeepResearch.js";
-import { analysisMetricGuide } from "../../../utils/analysisMetricGuide.js";
 import { portfolioMetricSourceUrl } from "../../../utils/portfolioAnalytics.js";
 import { csvString } from "../../../utils/portfolioFiles.js";
 import { downloadText } from "../../../utils/download.js";
 import s from "../ResearchTools.module.css";
+import p from "./PortfolioMetricExplorer.module.css";
+import CompanyResearchTable from "./CompanyResearchTable";
+import MetricEvidenceDialog from "./MetricEvidenceDialog";
+import { SECTOR_NOT_COVERED } from "../../../utils/companyClassification.js";
+
+const FAMILY_LABELS: Record<string, string> = {
+  income: "Income statement",
+  balance: "Balance sheet",
+  cashflow: "Cash flow",
+  ratios: "Financial ratios",
+  checks: "Accounting checks",
+  workingCapitalInputs: "Working capital inputs",
+  drivers: "Financial drivers",
+  profitability: "Profitability",
+  liquidity: "Liquidity",
+  leverage: "Debt & leverage",
+  growth: "Growth",
+  efficiency: "Efficiency",
+  banking: "Banking",
+  insurance: "Insurance",
+  forensic: "Accounting checks",
+  dupont: "DuPont analysis",
+};
+const familyLabel = (key: string) =>
+  FAMILY_LABELS[key] || key.replace(/([A-Z])/g, " $1");
+const companyLanguage = (text: string) =>
+  text
+    .replace(/\bissuer's\b/gi, "company’s")
+    .replace(/\bissuers\b/gi, "companies")
+    .replace(/\bissuer\b/gi, "company");
+const periodLabel = (key: string) => {
+  const [kind, start, end] = key.split("|");
+  return `${kind === "ttm" ? "Trailing 12 months" : "Annual"} · ${start} to ${end}`;
+};
+const PAGE_SIZE = 25;
 
 export default function PortfolioMetricExplorer({
   report,
@@ -33,16 +69,19 @@ export default function PortfolioMetricExplorer({
   refreshing?: boolean;
   onDisclosure?: (query: string, ciks: string[]) => void;
 }) {
-  const [requestedMetricId, setMetricId] = useState("netMargin"),
-    [requestedCategory, setCategory] = useState("all"),
-    [lens, setLens] = useState("all"),
-    [industry, setIndustry] = useState("all"),
-    [period, setPeriod] = useState("all"),
-    [query, setQuery] = useState(""),
-    [direction, setDirection] = useState("desc");
-  const [limit, setLimit] = useState(25),
-    [selected, setSelected] = useState<string[]>([]),
-    [inspector, setInspector] = useState<any>(null);
+  const [requestedMetricId, setMetricId] = useState("netMargin");
+  const [requestedCategory, setCategory] = useState("all");
+  const [measureQuery, setMeasureQuery] = useState("");
+  const [requestedSector, setSector] = useState("all");
+  const [requestedIndustry, setIndustry] = useState("all");
+  const [requestedPeriod, setPeriod] = useState("all");
+  const [query, setQuery] = useState("");
+  const [direction, setDirection] = useState("desc");
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [inspector, setInspector] = useState<any>(null);
+  const [filterNotice, setFilterNotice] = useState("");
+  const comparisonHeading = useRef<HTMLHeadingElement>(null);
   const [requestedCompareKeys, setCompareKeys] = useState<string[] | null>(
     null,
   );
@@ -50,73 +89,105 @@ export default function PortfolioMetricExplorer({
     () => portfolioResearchIssuers(report, companies),
     [report, companies],
   );
-  const cohort = useMemo(
-    () =>
-      issuers.filter(
-        (i) =>
-          (lens === "all" || i.lens === lens) &&
-          (industry === "all" || i.industry === industry) &&
-          `${i.ticker} ${i.name}`
-            .toLowerCase()
-            .includes(query.trim().toLowerCase()),
-      ),
-    [issuers, lens, industry, query],
-  );
+  // Metric choice is independent of peer filters and company search. A search must never change the measure being ranked.
   const availableDefinitions = useMemo(
-    () =>
-      portfolioAvailableMetrics(
-        cohort.map((i) => i.company),
-        { period },
-      ),
-    [cohort, period],
+    () => portfolioAvailableMetrics(issuers.map((i) => i.company)),
+    [issuers],
   );
-  // Resolve stale saved selections during render, before any empty panel appears.
+  const metricId = String(
+    availableDefinitions.find((d) => d.key === requestedMetricId)?.key ||
+      availableDefinitions.find((d) => d.key === "netMargin")?.key ||
+      availableDefinitions[0]?.key ||
+      "",
+  );
   const category = availableDefinitions.some(
     (d) => d.category === requestedCategory,
   )
     ? requestedCategory
     : "all";
   const definitions = availableDefinitions.filter(
-    (d) => category === "all" || d.category === category,
+    (d) =>
+      (category === "all" || d.category === category) &&
+      `${d.label} ${d.key} ${familyLabel(d.category)}`
+        .toLowerCase()
+        .includes(measureQuery.trim().toLowerCase()),
   );
-  const metricId = String(
-    definitions.find((d) => d.key === requestedMetricId)?.key ||
-      definitions.find((d) => d.key === "netMargin")?.key ||
-      definitions[0]?.key ||
-      "",
+  const selectedDefinition = availableDefinitions.find(
+    (d) => d.key === metricId,
+  );
+  const sectorOptions = useMemo(
+    () => portfolioMetricPeerOptions(issuers, { metricId }).sectors,
+    [issuers, metricId],
+  );
+  const sector = sectorOptions.some(
+    (option) => option.value === requestedSector,
+  )
+    ? requestedSector
+    : "all";
+  const industryOptions = useMemo(
+    () => portfolioMetricPeerOptions(issuers, { metricId, sector }).industries,
+    [issuers, metricId, sector],
+  );
+  const industry = industryOptions.some(
+    (option) => option.value === requestedIndustry,
+  )
+    ? requestedIndustry
+    : "all";
+  const cohort = useMemo(
+    () =>
+      issuers.filter(
+        (i) =>
+          (sector === "all" || (i.sector || SECTOR_NOT_COVERED) === sector) &&
+          (industry === "all" || i.industry === industry),
+      ),
+    [issuers, sector, industry],
+  );
+  const periods = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const i of cohort) {
+      if (portfolioMetricState(i.company, selectedDefinition) !== "available")
+        continue;
+      const key = metricPeriodKey(i.company.metrics[metricId]);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return [...counts].sort(
+      ([a], [b]) =>
+        b.split("|")[2].localeCompare(a.split("|")[2]) || b.localeCompare(a),
+    );
+  }, [cohort, selectedDefinition, metricId]);
+  const period = periods.some(([key]) => key === requestedPeriod)
+    ? requestedPeriod
+    : "all";
+  const peerOptions = useMemo(
+    () => portfolioMetricPeerOptions(issuers, { metricId, sector, period }),
+    [issuers, metricId, sector, period],
   );
   const result = useMemo(
     () =>
       rankPortfolioMetric(report, companies, {
         metricId,
-        lens,
+        sector,
         industry,
         period,
-        query,
         direction,
       }),
-    [report, companies, metricId, lens, industry, period, query, direction],
+    [report, companies, metricId, sector, industry, period, direction],
   );
-  const measuredRows = result.rows.filter((r) => r.state === "available");
-  const periods = [
-    ...new Set<string>(
-      cohort
-        .filter(
-          (i) =>
-            portfolioMetricState(i.company, result.definition) === "available",
-        )
-        .map((i) => metricPeriodKey(i.company.metrics[metricId])),
-    ),
-  ]
-    .sort()
-    .reverse();
+  const measuredRows = result.rows.filter((row) => row.state === "available");
+  const matchingRows = filterPortfolioRankingRows(measuredRows, query);
+  const pageCount = Math.max(1, Math.ceil(matchingRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = matchingRows.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
   const chosen = issuers.filter((i) => selected.includes(i.cik));
   const comparisonDefinitions = portfolioAvailableMetrics(
     chosen.map((i) => i.company),
     { requireAll: true },
   );
-  const compareKeys = (
-    requestedCompareKeys ?? [
+  const defaultCompareKeys = [
+    ...new Set([
       metricId,
       "revenueGrowth",
       "netMargin",
@@ -125,42 +196,152 @@ export default function PortfolioMetricExplorer({
       "roe",
       "debtAssets",
       ...comparisonDefinitions.map((d) => d.key),
-    ]
-  )
-    .filter(
-      (key, index, keys) =>
-        keys.indexOf(key) === index &&
-        comparisonDefinitions.some((d) => d.key === key),
-    )
-    .slice(0, requestedCompareKeys ? 10 : 6);
-  const legacyCount = cohort.filter(
+    ]),
+  ]
+    .filter((key) => comparisonDefinitions.some((d) => d.key === key))
+    .slice(0, 6);
+  const compatibleRequestedKeys = requestedCompareKeys?.filter((key) =>
+    comparisonDefinitions.some((d) => d.key === key),
+  );
+  const comparisonReset = Boolean(
+    requestedCompareKeys?.length &&
+      !compatibleRequestedKeys?.length &&
+      comparisonDefinitions.length,
+  );
+  const compareKeys = (
+    requestedCompareKeys === null || comparisonReset
+      ? defaultCompareKeys
+      : compatibleRequestedKeys || []
+  ).slice(0, 10);
+  const legacyCount = issuers.filter(
     (i) =>
       companyAvailable(i.company) &&
       i.company.analysisVersion !== ANALYSIS_VERSION,
   ).length;
   const resetFilters = () => {
-    setLens("all");
+    setSector("all");
     setIndustry("all");
     setPeriod("all");
     setQuery("");
     setCategory("all");
-    setLimit(25);
+    setMeasureQuery("");
+    setPage(1);
+    setFilterNotice("");
   };
-  const guide = inspector
-    ? analysisMetricGuide(
-        portfolioMetricDefinitionFor(inspector.key),
-        inspector.point,
-        inspector.issuer.lens,
+  const chooseMetric = (key: string) => {
+    const nextSectors = portfolioMetricPeerOptions(issuers, {
+      metricId: key,
+    }).sectors;
+    const nextSector = nextSectors.some((option) => option.value === sector)
+      ? sector
+      : "all";
+    const nextIndustries = portfolioMetricPeerOptions(issuers, {
+      metricId: key,
+      sector: nextSector,
+    }).industries;
+    const nextIndustry = nextIndustries.some(
+      (option) => option.value === industry,
+    )
+      ? industry
+      : "all";
+    const definition = portfolioMetricDefinitionFor(key);
+    const nextPeriod =
+      period !== "all" &&
+      issuers.some(
+        (i) =>
+          (nextSector === "all" ||
+            (i.sector || SECTOR_NOT_COVERED) === nextSector) &&
+          (nextIndustry === "all" || i.industry === nextIndustry) &&
+          portfolioMetricState(i.company, definition, period) === "available",
       )
-    : null;
+        ? period
+        : "all";
+    const reset = [
+      sector !== nextSector && "sector",
+      industry !== nextIndustry && "industry",
+      period !== nextPeriod && "reporting period",
+    ].filter(Boolean);
+    setFilterNotice(
+      reset.length
+        ? `Reset ${reset.join(", ")}: no comparable values for the new measure in the previous selection.`
+        : "",
+    );
+    setSector(nextSector);
+    setIndustry(nextIndustry);
+    setPeriod(nextPeriod);
+    setMetricId(key);
+    setPage(1);
+  };
   const value = (n: number | null) =>
     n === null
-      ? "Unavailable"
+      ? "—"
       : metricDisplay({
           value: n,
           unit: metricUnit(result.definition.format),
           classification: "calculated",
         });
+  const filtered =
+    sector !== "all" ||
+    industry !== "all" ||
+    period !== "all" ||
+    query ||
+    measureQuery ||
+    category !== "all";
+  const exportRanking = () =>
+    downloadText(
+      "portfolio-metric-ranking.csv",
+      csvString([
+        [
+          "metric",
+          "definition",
+          "company_search",
+          "sector_filter",
+          "industry_filter",
+          "period_filter",
+          "direction",
+          "peer_company_count",
+          "ranked_company_count",
+          "cik",
+          "ticker",
+          "company",
+          "sector",
+          "SEC_industry",
+          "rank",
+          "value",
+          "unit",
+          "report_basis",
+          "report_start",
+          "report_end",
+          "captured_at",
+          "source",
+        ],
+        ...matchingRows.map((row) => [
+          metricId,
+          result.definition.label,
+          query,
+          sector,
+          industry,
+          period,
+          direction,
+          result.population,
+          result.available,
+          row.cik,
+          row.ticker,
+          row.name,
+          row.sector || SECTOR_NOT_COVERED,
+          row.industry,
+          row.rank,
+          row.point.value,
+          row.point.unit,
+          row.point.period.kind,
+          row.point.period.start,
+          row.point.period.end,
+          row.company?.retrievedAt,
+          portfolioMetricSourceUrl(row.point),
+        ]),
+      ]),
+      "text/csv",
+    );
   const inspect = (issuer: any, key: string) =>
     setInspector({
       issuer,
@@ -173,146 +354,131 @@ export default function PortfolioMetricExplorer({
       },
     });
   return (
-    <section className={s.root} aria-labelledby="portfolio-metrics-title">
+    <section
+      className={`${s.root} ${p.root}`}
+      aria-labelledby="portfolio-metrics-title"
+    >
       <div className={s.heading}>
         <div>
           <h3 id="portfolio-metrics-title">Metrics & rankings</h3>
         </div>
-        <button
-          disabled={!metricId}
-          onClick={() =>
-            downloadText(
-              "portfolio-metric-ranking.csv",
-              csvString([
-                [
-                  "metric",
-                  "definition",
-                  "query",
-                  "lens",
-                  "industry",
-                  "period_filter",
-                  "direction",
-                  "eligible_count",
-                  "cik",
-                  "ticker",
-                  "rank",
-                  "value",
-                  "unit",
-                  "status",
-                  "report_start",
-                  "report_end",
-                  "captured_at",
-                  "source",
-                ],
-                ...measuredRows.map((r) => [
-                  metricId,
-                  result.definition.label,
-                  query,
-                  lens,
-                  industry,
-                  period,
-                  direction,
-                  result.available,
-                  r.cik,
-                  r.ticker,
-                  r.rank,
-                  r.state === "available" ? r.point.value : null,
-                  r.point?.unit,
-                  r.state,
-                  r.point?.period?.start,
-                  r.point?.period?.end,
-                  r.company?.retrievedAt,
-                  portfolioMetricSourceUrl(r.point),
-                ]),
-              ]),
-              "text/csv",
-            )
-          }
-        >
+        <button disabled={!matchingRows.length} onClick={exportRanking}>
           Export this ranking
         </button>
       </div>
       <p>
-        Compare companies using reported financial measures. Only measures with
-        usable values are offered.
+        Choose a financial measure, then compare companies within sectors and
+        SEC industries. Accounting compatibility is checked automatically.
       </p>
       {legacyCount > 0 && onRefresh && (
-        <div className={s.finding} role="status">
-          <strong>Update this financial capture.</strong>
+        <details className={p.refreshNote}>
+          <summary>
+            {legacyCount} companies have an earlier capture · refresh for more
+            measures
+          </summary>
           <p>
-            {legacyCount} companies use an earlier financial capture. Refresh to
-            request additional supported measures and current calculation
-            corrections.
+            Refresh to request additional supported measures and current
+            calculation corrections.
           </p>
           <button disabled={refreshing} onClick={onRefresh}>
             {refreshing
               ? "Refreshing financial measures…"
               : "Refresh financial measures"}
           </button>
-        </div>
+        </details>
       )}
-      <div className={s.controls}>
-        <label hidden={!metricId}>
+      <div className={`${s.controls} ${p.measureControls}`}>
+        <label>
           Metric family
           <select
             value={category}
             onChange={(e) => {
               setCategory(e.target.value);
-              const first = availableDefinitions.find(
-                (d) =>
-                  e.target.value === "all" || d.category === e.target.value,
-              );
-              if (first) setMetricId(first.key);
-              setPeriod("all");
-              setLimit(25);
+              setMeasureQuery("");
+              if (
+                e.target.value !== "all" &&
+                selectedDefinition?.category !== e.target.value
+              ) {
+                const first = availableDefinitions.find(
+                  (d) => d.category === e.target.value,
+                );
+                if (first) chooseMetric(first.key);
+              }
             }}
           >
-            {[
-              "all",
-              ...new Set(availableDefinitions.map((d) => d.category)),
-            ].map((c) => (
-              <option key={c} value={c}>
-                {c === "all"
-                  ? "All financial measures"
-                  : c.replace(/([A-Z])/g, " $1")}
-              </option>
-            ))}
+            <option value="all">All financial measures</option>
+            {[...new Set(availableDefinitions.map((d) => d.category))].map(
+              (key) => (
+                <option key={key} value={key}>
+                  {familyLabel(key)}
+                </option>
+              ),
+            )}
           </select>
         </label>
-        <label hidden={!metricId}>
+        <label>
+          Find a measure
+          <input
+            type="search"
+            value={measureQuery}
+            onChange={(e) => setMeasureQuery(e.target.value)}
+            placeholder="Margin, debt, cash flow…"
+            maxLength={100}
+          />
+        </label>
+        <label>
           Financial measure
           <select
             data-financial-measure
             value={metricId}
-            onChange={(e) => {
-              setMetricId(e.target.value);
-              setLimit(25);
-            }}
+            disabled={!metricId}
+            onChange={(e) => chooseMetric(e.target.value)}
           >
+            {!metricId && <option value="">No measured financials</option>}
+            {selectedDefinition &&
+              !definitions.some((d) => d.key === metricId) && (
+                <optgroup label="Current measure">
+                  <option value={metricId}>{selectedDefinition.label}</option>
+                </optgroup>
+              )}
             {definitions.map((d) => (
               <option key={d.key} value={d.key}>
-                {d.label} · {d.availableCount} companies
+                {d.label} · {d.availableCount} portfolio companies
               </option>
             ))}
           </select>
         </label>
+      </div>
+      {measureQuery && (
+        <p className={p.helper} role="status">
+          {definitions.length} measures match your search.{" "}
+          {definitions.length === 0
+            ? "Try another term or clear the search."
+            : "Choose one to update the ranking."}{" "}
+          <button className={p.textButton} onClick={() => setMeasureQuery("")}>
+            Clear measure search
+          </button>
+        </p>
+      )}
+      <div className={`${s.controls} ${p.peerControls}`}>
         <label>
-          Business model
+          Sector
           <select
-            value={lens}
+            value={sector}
             onChange={(e) => {
-              setLens(e.target.value);
+              setSector(e.target.value);
+              setIndustry("all");
               setPeriod("all");
-              setLimit(25);
+              setPage(1);
+              setFilterNotice("");
             }}
           >
-            {["all", ...new Set<string>(issuers.map((i) => i.lens))].map(
-              (l) => (
-                <option key={l} value={l}>
-                  {l === "all" ? "All business models" : l}
-                </option>
-              ),
-            )}
+            <option value="all">All measured sectors</option>
+            {peerOptions.sectors.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label} · {option.count}
+              </option>
+            ))}
           </select>
         </label>
         <label>
@@ -322,15 +488,16 @@ export default function PortfolioMetricExplorer({
             onChange={(e) => {
               setIndustry(e.target.value);
               setPeriod("all");
-              setLimit(25);
+              setPage(1);
+              setFilterNotice("");
             }}
           >
-            <option value="all">All industries</option>
-            {[...new Set<string>(issuers.map((i) => i.industry))]
-              .sort()
-              .map((i) => (
-                <option key={i}>{i}</option>
-              ))}
+            <option value="all">All measured industries</option>
+            {peerOptions.industries.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label} · {option.count}
+              </option>
+            ))}
           </select>
         </label>
         <label>
@@ -339,16 +506,14 @@ export default function PortfolioMetricExplorer({
             value={period}
             onChange={(e) => {
               setPeriod(e.target.value);
-              setLimit(25);
+              setPage(1);
+              setFilterNotice("");
             }}
           >
             <option value="all">All captured periods</option>
-            {period !== "all" && !periods.includes(period) && (
-              <option value={period}>{period.replaceAll("|", " · ")}</option>
-            )}
-            {periods.map((p) => (
-              <option key={p} value={p}>
-                {p.replaceAll("|", " · ")}
+            {periods.map(([key, count]) => (
+              <option key={key} value={key}>
+                {periodLabel(key)} · {count}
               </option>
             ))}
           </select>
@@ -357,87 +522,34 @@ export default function PortfolioMetricExplorer({
           Value order
           <select
             value={direction}
-            onChange={(e) => setDirection(e.target.value)}
+            onChange={(e) => {
+              setDirection(e.target.value);
+              setPage(1);
+            }}
           >
             <option value="desc">Highest to lowest</option>
             <option value="asc">Lowest to highest</option>
           </select>
         </label>
-        <label>
-          Find a company
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setLimit(25);
-            }}
-            maxLength={120}
-            placeholder="Ticker or company name"
-          />
-        </label>
       </div>
+      <div className={p.filterHelp}>
+        <p className={p.helper}>
+          Peer choices show companies with this measure. Sectors are broad
+          groups; SEC industries give a closer comparison.
+        </p>
+        {filtered && <button onClick={resetFilters}>Reset filters</button>}
+      </div>
+      {filterNotice && (
+        <p className={p.helper} role="status">
+          {filterNotice}
+        </p>
+      )}
       {inspector && (
-        <section
-          className={s.finding}
-          aria-label="Metric explanation and SEC evidence"
-        >
-          <div className={s.heading}>
-            <strong>
-              {inspector.issuer.ticker} ·{" "}
-              {portfolioMetricDefinitionFor(inspector.key)?.label} ·{" "}
-              {metricDisplay(inspector.point)}
-            </strong>
-            <button onClick={() => setInspector(null)}>
-              Close explanation
-            </button>
-          </div>
-          <p>{guide?.meaning}</p>
-          <p>
-            {guide?.movement} {guide?.caution}
-          </p>
-          {guide?.scopeNotes.map((note: string) => (
-            <p key={note}>{note}</p>
-          ))}
-          <p>
-            {inspector.point.formula ||
-              inspector.point.definitionFormula ||
-              inspector.point.reason ||
-              "Reported value; review the source concept below."}
-          </p>
-          <small>
-            {inspector.point.period?.start || "Instant / unknown start"} to{" "}
-            {inspector.point.period?.end || "Unknown end"} ·{" "}
-            {inspector.point.period?.kind || "Unknown basis"} · captured{" "}
-            {inspector.issuer.company?.retrievedAt || "unknown"}
-          </small>
-          <ul>
-            {(inspector.point.sources || []).map(
-              (source: any, index: number) => {
-                const url = portfolioMetricSourceUrl({ sources: [source] });
-                return url ? (
-                  <li key={index}>
-                    <a href={url} target="_blank" rel="noreferrer">
-                      {source.tag || source.label || "SEC evidence"} ·{" "}
-                      {source.form} · {source.filed} ↗
-                    </a>
-                  </li>
-                ) : null;
-              },
-            )}
-          </ul>
-          {onDisclosure && (
-            <button
-              onClick={() =>
-                onDisclosure(guide?.query || "liquidity", [
-                  inspector.issuer.cik,
-                ])
-              }
-            >
-              Search this company’s related disclosures
-            </button>
-          )}
-        </section>
+        <MetricEvidenceDialog
+          inspector={inspector}
+          onClose={() => setInspector(null)}
+          onDisclosure={onDisclosure}
+        />
       )}
       {!metricId ? (
         <div className={s.finding} role="status">
@@ -455,52 +567,146 @@ export default function PortfolioMetricExplorer({
         </div>
       ) : (
         <>
-          <div className={s.finding}>
-            <strong>
-              {result.available} of {result.population} selected companies have
-              a measured {result.definition.label.toLowerCase()}.
-            </strong>
-            <p>
-              Median {value(result.median)} · middle 50% {value(result.p25)} to{" "}
-              {value(result.p75)} · {result.periodCount} reporting periods.{" "}
-              {result.excluded > 0 && `${result.excluded} companies omitted.`}
+          <section className={p.summary} aria-label="Ranking summary">
+            <div className={p.summaryHeading}>
+              <strong>{result.definition.label}</strong>
+              <span>
+                {sector === "all" ? "All portfolio sectors" : sector}
+                {industry !== "all" ? ` · ${industry}` : ""}
+              </span>
+            </div>
+            <dl className={p.statistics}>
+              <div>
+                <dt>Companies ranked</dt>
+                <dd>
+                  {result.available}
+                  <small>of {result.population} in the peer group</small>
+                </dd>
+              </div>
+              <div>
+                <dt>Peer median</dt>
+                <dd>{value(result.median)}</dd>
+              </div>
+              <div>
+                <dt>Middle 50% of values</dt>
+                <dd>
+                  {value(result.p25)} – {value(result.p75)}
+                </dd>
+              </div>
+            </dl>
+            <p className={p.helper}>
+              {result.periodCount} reporting periods
+              {result.excluded > 0
+                ? ` · ${result.excluded} companies omitted without a comparable value`
+                : ""}
+              . Higher values do not necessarily mean better performance.
             </p>
             <details className={s.methodology}>
               <summary>About this measure & ranking</summary>
-              <p>{result.interpretation}</p>
               <p>
-                {result.guide.meaning} {result.guide.caution}
+                {companyLanguage(result.guide.meaning)}{" "}
+                {companyLanguage(result.guide.caution)}
               </p>
               <p>
-                Compare companies with similar business models and reporting
-                periods. The calculations use the same financial engine as
-                Analysis.
+                {result.interpretation} Company search narrows the displayed
+                results while preserving peer ranks and statistics.
               </p>
             </details>
+          </section>
+          <div className={p.resultToolbar}>
+            <label>
+              Find a company in this ranking
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setPage(1);
+                }}
+                maxLength={120}
+                placeholder="Ticker, company name or CIK"
+              />
+            </label>
+            <p className={p.helper} role="status">
+              {matchingRows.length} of {result.available} ranked companies shown
+              {query ? " · peer ranks preserved" : ""}.
+            </p>
+            {query && (
+              <button
+                onClick={() => {
+                  setQuery("");
+                  setPage(1);
+                }}
+              >
+                Clear company search
+              </button>
+            )}
           </div>
-          <p>
-            Select up to six companies for a comparison below. Selection stays
-            fixed while you filter or rank.
-          </p>
-          <div
-            className={s.tableWrap}
-            tabIndex={0}
-            role="region"
-            aria-label="Portfolio metric rankings"
+          <div className={p.selectionBar}>
+            <span>
+              {chosen.length
+                ? `${chosen.length} of 6 companies selected`
+                : "Select up to 6 companies to compare."}
+            </span>
+            {chosen.map((company) => (
+              <button
+                key={company.cik}
+                className={p.chip}
+                aria-label={`Remove ${company.ticker} from comparison`}
+                onClick={() =>
+                  setSelected((current) =>
+                    current.filter((cik) => cik !== company.cik),
+                  )
+                }
+              >
+                {company.ticker} <span aria-hidden="true">×</span>
+              </button>
+            ))}
+            {chosen.length > 0 && (
+              <>
+                <button
+                  onClick={() => {
+                    comparisonHeading.current?.scrollIntoView({
+                      block: "start",
+                    });
+                    comparisonHeading.current?.focus({ preventScroll: true });
+                  }}
+                >
+                  View comparison ↓
+                </button>
+                <button onClick={() => setSelected([])}>Clear selection</button>
+              </>
+            )}
+          </div>
+          <CompanyResearchTable
+            className={p.rankings}
+            label="Portfolio metric rankings"
+            selectionColumn
+            resetKey={[
+              metricId,
+              sector,
+              industry,
+              period,
+              direction,
+              query,
+              currentPage,
+            ].join(":")}
           >
             <table>
               <thead>
                 <tr>
-                  <th>Compare</th>
-                  <th>Rank</th>
-                  <th>Company</th>
-                  <th>{result.definition.label}</th>
-                  <th>Full reporting period</th>
-                  <th>Evidence</th>
+                  <th scope="col">Compare</th>
+                  <th scope="col">Company</th>
+                  <th scope="col" className={p.rankColumn}>
+                    Rank
+                  </th>
+                  <th scope="col">{result.definition.label}</th>
+                  <th scope="col">Reporting period</th>
+                  <th scope="col">Evidence</th>
                 </tr>
               </thead>
               <tbody>
-                {measuredRows.slice(0, limit).map((row) => (
+                {pageRows.map((row) => (
                   <tr key={row.cik}>
                     <td>
                       <input
@@ -508,24 +714,28 @@ export default function PortfolioMetricExplorer({
                         type="checkbox"
                         checked={selected.includes(row.cik)}
                         disabled={
-                          !selected.includes(row.cik) && selected.length >= 6
+                          !selected.includes(row.cik) && chosen.length >= 6
                         }
                         onChange={() =>
                           setSelected((v) =>
                             v.includes(row.cik)
                               ? v.filter((c) => c !== row.cik)
-                              : [...v, row.cik],
+                              : [
+                                  ...v.filter((cik) =>
+                                    issuers.some((i) => i.cik === cik),
+                                  ),
+                                  row.cik,
+                                ],
                           )
                         }
                       />
                     </td>
-                    <td>{row.rank ?? "—"}</td>
-                    <th>
+                    <th scope="row">
                       {row.ticker}
-                      <small>
-                        {row.name} · {row.lens}
-                      </small>
+                      <small>{row.name}</small>
+                      <small>{row.sector || SECTOR_NOT_COVERED}</small>
                     </th>
+                    <td className={p.rankColumn}>{row.rank}</td>
                     <td>
                       <button onClick={() => inspect(row, metricId)}>
                         {metricDisplay(row.point)}
@@ -535,9 +745,14 @@ export default function PortfolioMetricExplorer({
                       )}
                     </td>
                     <td>
-                      {row.point?.period?.start || "Instant / unknown"} to{" "}
-                      {row.point?.period?.end || "unknown"}
-                      <small>{row.point?.period?.kind}</small>
+                      <span>
+                        {row.point.period.start} to {row.point.period.end}
+                      </span>
+                      <small>
+                        {row.point.period.kind === "ttm"
+                          ? "Trailing 12 months"
+                          : "Annual"}
+                      </small>
                     </td>
                     <td>
                       <button onClick={() => onInspect(row.rowIds[0])}>
@@ -548,23 +763,47 @@ export default function PortfolioMetricExplorer({
                 ))}
               </tbody>
             </table>
-          </div>
-          {measuredRows.length > limit && (
-            <button onClick={() => setLimit((n) => n + 25)}>
-              Show 25 more companies
-            </button>
+          </CompanyResearchTable>
+          {matchingRows.length === 0 && (
+            <p role="status">
+              No ranked companies match this search. Clear the company search to
+              return to the peer group.
+            </p>
+          )}
+          {matchingRows.length > PAGE_SIZE && (
+            <nav className={p.pagination} aria-label="Ranking pages">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setPage(currentPage - 1)}
+              >
+                Previous page
+              </button>
+              <span>
+                Page {currentPage} of {pageCount} ·{" "}
+                {(currentPage - 1) * PAGE_SIZE + 1}–
+                {Math.min(currentPage * PAGE_SIZE, matchingRows.length)} of{" "}
+                {matchingRows.length}
+              </span>
+              <button
+                disabled={currentPage === pageCount}
+                onClick={() => setPage(currentPage + 1)}
+              >
+                Next page
+              </button>
+            </nav>
           )}
         </>
       )}
       {chosen.length > 0 && (
-        <section>
+        <section className={p.comparison} aria-label="Company comparison">
           <div className={s.heading}>
-            <h4>Compare {chosen.length} selected companies</h4>
-            <button onClick={() => setSelected([])}>Clear selection</button>
+            <h4 ref={comparisonHeading} tabIndex={-1}>
+              Compare {chosen.length} selected companies
+            </h4>
           </div>
           <p>
             Comparison measures have usable values for every selected company.
-            Reporting dates are shown with each value.
+            Full reporting periods are shown with each value and may differ.
           </p>
           {!comparisonDefinitions.length ? (
             <p>
@@ -575,7 +814,7 @@ export default function PortfolioMetricExplorer({
             <>
               <details>
                 <summary>Choose comparison measures (up to 10)</summary>
-                <div className={s.controls}>
+                <div className={`${s.controls} ${p.compareChoices}`}>
                   {comparisonDefinitions.map((d) => (
                     <label key={d.key}>
                       <span>
@@ -600,46 +839,70 @@ export default function PortfolioMetricExplorer({
                   ))}
                 </div>
               </details>
-              <div
-                className={s.tableWrap}
-                tabIndex={0}
-                role="region"
-                aria-label="Selected company comparison"
-              >
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Measure</th>
-                      {chosen.map((i) => (
-                        <th key={i.cik}>
-                          {i.ticker}
-                          <small>
-                            {i.lens} · {i.company?.period?.end}
-                          </small>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {compareKeys.map((key) => (
-                      <tr key={key}>
-                        <th>{portfolioMetricDefinitionFor(key)?.label}</th>
+              {comparisonReset && (
+                <p className={p.helper} role="status">
+                  Comparison measures updated to those available for every
+                  selected company.
+                </p>
+              )}
+              {!compareKeys.length ? (
+                <p>
+                  Choose a comparison measure above to see values side by side.
+                </p>
+              ) : (
+                <div
+                  className={s.tableWrap}
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Selected company comparison"
+                >
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">Measure</th>
                         {chosen.map((i) => (
-                          <td key={i.cik}>
-                            <button onClick={() => inspect(i, key)}>
-                              {metricDisplay(i.company?.metrics?.[key])}
+                          <th key={i.cik} scope="col">
+                            {i.ticker}
+                            <small>{i.sector || SECTOR_NOT_COVERED}</small>
+                            <button
+                              className={p.textButton}
+                              onClick={() =>
+                                setSelected((current) =>
+                                  current.filter((cik) => cik !== i.cik),
+                                )
+                              }
+                              aria-label={`Remove ${i.ticker} from comparison table`}
+                            >
+                              Remove
                             </button>
-                            <small>
-                              {i.company?.metrics?.[key]?.period?.end ||
-                                "Unknown period"}
-                            </small>
-                          </td>
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {compareKeys.map((key) => (
+                        <tr key={key}>
+                          <th scope="row">
+                            {portfolioMetricDefinitionFor(key)?.label}
+                          </th>
+                          {chosen.map((i) => (
+                            <td key={i.cik}>
+                              <button onClick={() => inspect(i, key)}>
+                                {metricDisplay(i.company?.metrics?.[key])}
+                              </button>
+                              <small>
+                                {periodLabel(
+                                  metricPeriodKey(i.company.metrics[key]),
+                                )}
+                              </small>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
         </section>

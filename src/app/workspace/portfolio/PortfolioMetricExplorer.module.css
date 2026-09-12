@@ -1,0 +1,241 @@
+.root {
+  gap: 18px;
+}
+.root .helper {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.root .refreshNote {
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--hub-border, #344154);
+}
+.root .refreshNote summary {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--hub-muted, #b6c2d4);
+}
+.root .refreshNote p {
+  font-size: 14px;
+  margin: 6px 0 10px;
+}
+.root .measureControls {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) minmax(
+      240px,
+      1.5fr
+    );
+}
+.root .peerControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(
+      0,
+      1.2fr
+    ) minmax(140px, 0.8fr);
+}
+.root .measureControls label,
+.root .peerControls label {
+  min-width: 0;
+}
+.filterHelp {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: -8px;
+}
+.filterHelp > button {
+  flex-shrink: 0;
+}
+.root .textButton {
+  border: 0;
+  padding: 2px 6px;
+  color: var(--hub-accent, #f7c65a);
+  font-size: 12px;
+}
+.summary {
+  display: grid;
+  gap: 10px;
+  border-block: 1px solid var(--hub-border, #344154);
+  padding: 16px 0;
+}
+.summaryHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.summaryHeading strong {
+  font-size: 18px;
+}
+.summaryHeading span {
+  font-size: 12px;
+  color: var(--hub-muted, #b6c2d4);
+}
+.statistics {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr;
+  gap: 20px;
+  margin: 0;
+}
+.statistics dt {
+  font-size: 12px;
+  color: var(--hub-muted, #b6c2d4);
+}
+.statistics dd {
+  margin: 3px 0 0;
+  font-size: 24px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+.statistics dd small {
+  font-weight: 400;
+}
+.resultToolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.resultToolbar label {
+  display: grid;
+  gap: 7px;
+  min-width: 230px;
+  flex: 1;
+  max-width: 430px;
+  font-size: 14px;
+  color: var(--hub-muted, #b6c2d4);
+}
+.root .resultToolbar input {
+  min-height: 42px;
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--hub-border, #344154);
+  border-radius: 6px;
+  background: var(--hub-bg, #111926);
+  color: var(--hub-text, #e8edf5);
+  padding: 10px;
+}
+.resultToolbar > p {
+  padding-bottom: 10px;
+}
+.selectionBar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  min-height: 30px;
+  font-size: 12px;
+  color: var(--hub-muted, #b6c2d4);
+}
+.root .selectionBar button {
+  padding: 6px 9px;
+  font-size: 12px;
+}
+.root .selectionBar .chip {
+  color: var(--hub-text, #e8edf5);
+  border-color: var(--hub-accent, #f7c65a);
+}
+.chip span {
+  margin-left: 6px;
+}
+.root .rankings table {
+  white-space: normal;
+  font-variant-numeric: tabular-nums;
+}
+.root .rankings th.rankColumn,
+.root .rankings td.rankColumn {
+  min-width: 64px;
+  width: 64px;
+  max-width: 64px;
+  text-align: right;
+}
+.root .rankings input[type="checkbox"],
+.root .compareChoices input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  vertical-align: middle;
+  accent-color: var(--hub-accent, #f7c65a);
+}
+.root .rankings td,
+.root .rankings th {
+  vertical-align: top;
+}
+.root .rankings td > button {
+  white-space: nowrap;
+}
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.root .pagination button {
+  font-size: 12px;
+}
+.comparison {
+  display: grid;
+  gap: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hub-border, #344154);
+}
+.comparison h4 {
+  scroll-margin-top: 150px;
+}
+.root .compareChoices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.root .compareChoices label {
+  min-width: 0;
+}
+.root .comparison table th,
+.root .comparison table td {
+  vertical-align: top;
+}
+.root .comparison table small {
+  max-width: 220px;
+  white-space: normal;
+}
+@media (max-width: 850px) {
+  .root .measureControls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .root .measureControls label:last-child {
+    grid-column: 1 / -1;
+  }
+  .root .peerControls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .root {
+    padding: 0;
+  }
+  .statistics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .statistics > div:last-child {
+    grid-column: 1 / -1;
+  }
+  .statistics dd {
+    font-size: 22px;
+  }
+  .filterHelp {
+    align-items: flex-start;
+  }
+  .resultToolbar label {
+    min-width: 0;
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}

@@ -18,6 +18,9 @@ import { buildPortfolioResearchPackage } from "../src/utils/portfolioExports.js"
 import {
   rankPortfolioMetric,
   portfolioAvailableMetrics,
+  portfolioMetricPeerOptions,
+  portfolioResearchIssuers,
+  filterPortfolioRankingRows,
   portfolioConnections,
   metricPeriodKey,
 } from "../src/utils/portfolioDeepResearch.js";
@@ -102,6 +105,243 @@ test("rankings retain zero and ties, exclude missing/incompatible observations, 
     }).rows[0].state,
     "not-applicable",
   );
+});
+test("metric peer choices count usable values and keep other sectors reachable", () => {
+  const oldPeriod = { kind: "annual", start: "2024-01-01", end: "2024-12-31" };
+  const peers = [
+    {
+      sector: "Technology",
+      industry: "Computers",
+      company: company(1, { netMargin: point(0) }),
+    },
+    {
+      sector: "Technology",
+      industry: "Software",
+      company: company(2, { netMargin: point(-5) }),
+    },
+    {
+      sector: "Financials",
+      industry: "Commercial banks",
+      company: company(3, { netMargin: point(30) }, { lens: "banking" }),
+    },
+    {
+      sector: "Energy",
+      industry: "Refining",
+      company: company(4, { netMargin: point(7, "%", { period: oldPeriod }) }),
+    },
+    {
+      sector: null,
+      industry: "Computers",
+      company: company(5, { netMargin: point(2) }),
+    },
+    {
+      sector: "Technology",
+      industry: "Semiconductors",
+      company: company(6, { netMargin: point(null) }),
+    },
+    {
+      sector: "Utilities",
+      industry: "Electricity",
+      company: company(7, { netMargin: point(2, "USD") }),
+    },
+    {
+      sector: "Technology",
+      industry: "Computers",
+      kind: "fund",
+      company: company(8, { netMargin: point(8) }),
+    },
+    {
+      sector: "Utilities",
+      industry: "Electricity",
+      company: company(9, {
+        netMargin: point(2, "%", {
+          period: { ...period, start: "2025-02-30" },
+        }),
+      }),
+    },
+  ];
+  const choices = portfolioMetricPeerOptions(peers, {
+    sector: "Technology",
+    metricId: "netMargin",
+    period: metricPeriodKey(point(0)),
+  });
+  assert.deepEqual(choices.sectors, [
+    { value: "Technology", label: "Technology", count: 2 },
+    { value: "Sector not covered", label: "Sector not covered", count: 1 },
+  ]);
+  assert.deepEqual(choices.industries, [
+    { value: "Computers", label: "Computers", count: 1 },
+    { value: "Software", label: "Software", count: 1 },
+  ]);
+  const everyPeriod = portfolioMetricPeerOptions(peers, {
+    sector: "Technology",
+    metricId: "netMargin",
+  });
+  assert.deepEqual(
+    everyPeriod.sectors.map(({ value, count }) => [value, count]),
+    [
+      ["Energy", 1],
+      ["Technology", 2],
+      ["Sector not covered", 1],
+    ],
+  );
+  assert.deepEqual(everyPeriod.industries, choices.industries);
+  assert.deepEqual(
+    portfolioMetricPeerOptions(peers, { metricId: "not-a-measure" }),
+    { sectors: [], industries: [] },
+  );
+  assert.deepEqual(
+    portfolioMetricPeerOptions(peers, {
+      sector: "Energy",
+      metricId: "netMargin",
+      period: metricPeriodKey(point(0)),
+    }).industries,
+    [],
+  );
+  assert.deepEqual(
+    portfolioMetricPeerOptions(peers, {
+      sector: "Sector not covered",
+      metricId: "netMargin",
+    }).industries,
+    [{ value: "Computers", label: "Computers", count: 1 }],
+  );
+});
+test("sector and SEC-industry filters intersect while financial applicability stays automatic", () => {
+  const companies = [
+    company(1, { netMargin: point(20) }),
+    company(2, { netMargin: point(-5) }),
+    company(3, { netMargin: point(0) }),
+    company(4, { netMargin: point(50) }),
+    company(5, { netMargin: point(80) }, { lens: "banking" }),
+    company(6, { netMargin: point(null) }),
+  ];
+  const { report } = fixture(companies);
+  report.concentration.issuers.forEach((issuer) => {
+    issuer.sector = [cik(4), cik(5)].includes(issuer.cik)
+      ? "Financials"
+      : "Technology";
+    issuer.industry = issuer.cik === cik(2) ? "Software" : "Computers";
+  });
+  const ranked = rankPortfolioMetric(report, companies, {
+    sector: "Technology",
+    metricId: "netMargin",
+  });
+  assert.equal(ranked.population, 4);
+  assert.equal(ranked.available, 3);
+  assert.equal(ranked.median, 0);
+  assert.equal(ranked.excluded, 1);
+  assert.deepEqual(
+    ranked.rows
+      .filter((row) => row.state === "available")
+      .map(({ ticker, rank }) => [ticker, rank]),
+    [
+      ["C1", 1],
+      ["C3", 2],
+      ["C2", 3],
+    ],
+  );
+  const computers = rankPortfolioMetric(report, companies, {
+    sector: "Technology",
+    industry: "Computers",
+    metricId: "netMargin",
+    direction: "asc",
+  });
+  assert.equal(computers.population, 3);
+  assert.deepEqual(
+    computers.rows
+      .filter((row) => row.state === "available")
+      .map(({ ticker, rank }) => [ticker, rank]),
+    [
+      ["C3", 1],
+      ["C1", 2],
+    ],
+  );
+  const financials = rankPortfolioMetric(report, companies, {
+    sector: "Financials",
+    metricId: "netMargin",
+  });
+  assert.equal(financials.population, 2);
+  assert.equal(financials.available, 1);
+  assert.equal(
+    financials.rows.find((row) => row.cik === cik(5)).state,
+    "not-applicable",
+  );
+  assert.equal(
+    rankPortfolioMetric(report, companies, {
+      sector: "Financials",
+      lens: "banking",
+    }).population,
+    1,
+  );
+  assert.equal(
+    rankPortfolioMetric(report, companies, {
+      sector: "Technology",
+      period: "annual|2024-01-01|2024-12-31",
+    }).available,
+    0,
+  );
+  assert.equal(
+    rankPortfolioMetric(report, companies, {
+      sector: "Technology",
+      query: "C3",
+    }).population,
+    1,
+  );
+});
+test("uncovered sectors remain a separate selectable peer group with canonical company evidence", () => {
+  const companies = [
+    company(1, { netMargin: point(0) }),
+    company(2, { netMargin: point(4) }),
+  ];
+  const { report } = fixture(companies);
+  report.concentration.issuers[1].sector = "Technology";
+  const peers = portfolioResearchIssuers(report, companies);
+  assert.equal(peers[0].company, companies[0]);
+  assert.equal(peers[0].industry, "ELECTRONIC COMPUTERS");
+  assert.equal(peers[0].sector, null);
+  const choices = portfolioMetricPeerOptions(peers, { metricId: "netMargin" });
+  assert.deepEqual(
+    choices.sectors.map(({ label, count }) => [label, count]),
+    [
+      ["Technology", 1],
+      ["Sector not covered", 1],
+    ],
+  );
+  const ranked = rankPortfolioMetric(report, companies, {
+    sector: "Sector not covered",
+  });
+  assert.equal(ranked.population, 1);
+  assert.equal(ranked.available, 1);
+  assert.equal(ranked.rows[0].ticker, "C1");
+  assert.equal(ranked.rows[0].point.value, 0);
+  assert.deepEqual(portfolioMetricPeerOptions([], { metricId: "netMargin" }), {
+    sectors: [],
+    industries: [],
+  });
+});
+test("finding companies preserves the existing peer ranking and its statistics", () => {
+  const companies = [
+    company(1, { netMargin: point(20) }),
+    company(2, { netMargin: point(-5) }),
+    company(3, { netMargin: point(0) }),
+  ];
+  const ranking = rankPortfolioMetric(fixture(companies).report, companies);
+  const before = structuredClone(ranking);
+  const found = filterPortfolioRankingRows(ranking.rows, " c2 ");
+  assert.equal(found.length, 1);
+  assert.equal(found[0].rank, 3);
+  assert.equal(found[0].point.value, -5);
+  assert.equal(found[0], ranking.rows[2]);
+  const zero = filterPortfolioRankingRows(ranking.rows, "COMPANY 3");
+  assert.equal(zero[0].rank, 2);
+  assert.equal(zero[0].point.value, 0);
+  assert.equal(
+    filterPortfolioRankingRows(ranking.rows, cik(1))[0].ticker,
+    "C1",
+  );
+  assert.equal(filterPortfolioRankingRows(ranking.rows, "  "), ranking.rows);
+  assert.deepEqual(filterPortfolioRankingRows(ranking.rows, "not present"), []);
+  assert.deepEqual(ranking, before);
 });
 test("connected findings require correct units, valid dates, matched periods, and appropriate businesses", () => {
   const badPeriod = { ...period, start: "2024-01-01", end: "2024-12-31" };
