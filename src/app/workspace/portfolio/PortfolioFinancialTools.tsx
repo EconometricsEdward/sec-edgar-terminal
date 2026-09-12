@@ -41,6 +41,8 @@ const valueLabel = (value: unknown, unit: string) =>
     ? `${["USD", "shares"].includes(unit.trim()) ? value.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 }) : num(value)}${unit === "%" ? "" : " "}${unit.trim()}`
     : "Unavailable or not applicable";
 const dateLabel = (value: string | null) => value || "Date unavailable";
+const companyCountLabel = (value: number, qualifier = "") =>
+  `${value}${qualifier ? ` ${qualifier}` : ""} ${value === 1 ? "company" : "companies"}`;
 
 function EvidenceLink({ point }: { point: any }) {
   return point?.sourceUrl ? (
@@ -124,7 +126,7 @@ function RelationshipChart({
       >
         <title id={`${id}-title`}>
           {relationship.xMetric.label} and {relationship.yMetric.label}:{" "}
-          {relationship.points.length} companies
+          {companyCountLabel(relationship.points.length)}
         </title>
         <desc id={`${id}-description`}>
           Each point represents one company. Select a point for its values and
@@ -736,7 +738,7 @@ export default function PortfolioFinancialTools({
               <div className={s.footer}>
                 <span>
                   Showing {Math.min(peerLimit, cohort.measuredCount)} of{" "}
-                  {cohort.measuredCount} measured companies.
+                  {companyCountLabel(cohort.measuredCount, "measured")}.
                 </span>
                 {peerLimit < cohort.measuredCount ? (
                   <button
@@ -891,9 +893,11 @@ export default function PortfolioFinancialTools({
             </div>
           </div>
           <p className={s.caption}>
-            {relationship.xAvailableCount} companies have{" "}
+            {companyCountLabel(relationship.xAvailableCount)}{" "}
+            {relationship.xAvailableCount === 1 ? "has" : "have"}{" "}
             {relationship.xMetric?.label.toLowerCase()};{" "}
-            {relationship.yAvailableCount} have{" "}
+            {companyCountLabel(relationship.yAvailableCount)}{" "}
+            {relationship.yAvailableCount === 1 ? "has" : "have"}{" "}
             {relationship.yMetric?.label.toLowerCase()}. A shared reporting end
             does not establish equal reporting durations. These are company
             financial measures, not market returns or a forecast.
@@ -1028,7 +1032,7 @@ export default function PortfolioFinancialTools({
               <div className={s.footer}>
                 <span>
                   Showing {Math.min(pairLimit, relationship.points.length)} of{" "}
-                  {relationship.points.length} paired companies.
+                  {companyCountLabel(relationship.points.length, "paired")}.
                 </span>
                 {pairLimit < relationship.points.length ? (
                   <button
@@ -1070,7 +1074,7 @@ export default function PortfolioFinancialTools({
                   {comparison.companies.length >= 4
                     ? "Four companies selected"
                     : choices.length
-                      ? `Select from ${choices.length} companies`
+                      ? `Select from ${companyCountLabel(choices.length)}`
                       : "No matching companies"}
                 </option>
                 {choices.map((issuer) => (

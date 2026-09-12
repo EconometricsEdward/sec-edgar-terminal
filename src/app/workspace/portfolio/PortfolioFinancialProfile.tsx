@@ -70,8 +70,8 @@ const compact = (value: unknown, digits = 1) =>
       })
     : "—";
 const percent = (value: unknown) => (finite(value) ? `${compact(value, 1)}%` : "—");
-const companyCountLabel = (value: number) =>
-  `${value} ${value === 1 ? "company" : "companies"}`;
+const companyCountLabel = (value: number, qualifier = "") =>
+  `${value}${qualifier ? ` ${qualifier}` : ""} ${value === 1 ? "company" : "companies"}`;
 const valueLabel = (value: unknown, unit: string) => {
   if (!finite(value)) return "Unavailable";
   if (unit === "USD")
@@ -231,7 +231,7 @@ function SectorPicker({
   const sourceNote = source?.sectorSourceAsOf
     ? `${sourceProvider}fund-reported classification as of ${dateLabel(source.sectorSourceAsOf)}`
     : source?.sectorSourceLatestAsOf
-      ? `${sourceProvider}fund-reported sources through ${dateLabel(source.sectorSourceLatestAsOf)} · ${source.sectorSourceCompanyCount} of ${source.companyCount} companies`
+      ? `${sourceProvider}fund-reported sources through ${dateLabel(source.sectorSourceLatestAsOf)} · ${source.sectorSourceCompanyCount} of ${companyCountLabel(source.companyCount)}`
       : "";
   return (
     <section className={s.lensPanel} aria-labelledby="financial-lens-title">
@@ -290,7 +290,7 @@ function SectorPicker({
             </strong>
             <small>
               {profile.hasCompatibleCohort
-                ? `${profile.companyCount} of ${profile.sectorCompanyCount} companies in ${profile.sectorDefinition?.label || "the selected sector"}`
+                ? `${profile.companyCount} of ${companyCountLabel(profile.sectorCompanyCount)} in ${profile.sectorDefinition?.label || "the selected sector"}`
                 : `${companyCountLabel(profile.sectorCompanyCount)} remain outside comparable ratio summaries`}
             </small>
           </p>
@@ -377,7 +377,7 @@ function PillarCard({
         {metric?.measuredCompanyCount || 0} measured
         {weighted
           ? ` · ${percent(metric?.coveredWeightPct)} allocation`
-          : ` of ${metric?.eligibleCompanyCount || 0} eligible companies`}
+          : ` of ${companyCountLabel(metric?.eligibleCompanyCount || 0, "eligible")}`}
       </span>
       <span className={s.pillarAction}>Explore measure <ArrowUpRight size={13} aria-hidden="true" /></span>
     </button>
@@ -414,11 +414,16 @@ function AllocationFootprints({ profile }: { profile: any }) {
                 <i style={{ width: `${clamp(share || 0, 0, 100)}%` }} />
               </span>
               <small>
-                {entry.matchedCompanyCount} of {entry.measuredCompanyCount} measured companies
+                {entry.matchedCompanyCount} of{" "}
+                {companyCountLabel(entry.measuredCompanyCount, "measured")}
                 {finite(entry.matchedWeightPct) ? ` · ${percent(entry.matchedWeightPct)} original allocation` : ""}
               </small>
               {entry.missingCompanyCount > 0 && (
-                <em>{entry.missingCompanyCount} eligible companies lack this measure</em>
+                <em>
+                  {companyCountLabel(entry.missingCompanyCount, "eligible")} {" "}
+                  {entry.missingCompanyCount === 1 ? "lacks" : "lack"} this
+                  measure
+                </em>
               )}
             </article>
           );
@@ -486,7 +491,7 @@ function FingerprintChart({
           <h4 id="fingerprint-title">Growth × profitability, holding by holding</h4>
         </div>
         <span>
-          {fingerprint.pairedCompanyCount} aligned companies
+          {companyCountLabel(fingerprint.pairedCompanyCount, "aligned")}
           {profile.weighted
             ? ` · ${percent(fingerprint.knownWeightPct)} allocation`
             : ` · ${percent((fingerprint.pairedCompanyCount / Math.max(1, fingerprint.eligibleCompanyCount)) * 100)} of eligible companies`}
@@ -653,8 +658,8 @@ function AttentionList({
                 <small>
                   {profile.weighted
                     ? `${percent(selected.measuredWeightPct)} allocation measured`
-                    : `${selected.measuredCompanyCount} of ${selected.eligibleCompanyCount} eligible companies measured`}
-                  {` · ${selected.missingCompanyCount} eligible companies unavailable`}
+                    : `${selected.measuredCompanyCount} of ${companyCountLabel(selected.eligibleCompanyCount, "eligible")} measured`}
+                  {` · ${companyCountLabel(selected.missingCompanyCount, "eligible")} unavailable`}
                 </small>
               </div>
               <div className={s.companyChips}>
@@ -705,7 +710,8 @@ function MetricAtlas({
                   <strong>{valueLabel(metric.weightedMedian ?? metric.median, metric.unit)}</strong>
                   <MetricRail metric={metric} />
                   <small>
-                    {metric.measuredCompanyCount}/{metric.eligibleCompanyCount} companies
+                    {metric.measuredCompanyCount}/{metric.eligibleCompanyCount}{" "}
+                    {metric.eligibleCompanyCount === 1 ? "company" : "companies"}
                     {profile.weighted
                       ? ` · ${percent(metric.coveredWeightPct)} allocation`
                       : ` · ${percent((metric.measuredCompanyCount / Math.max(1, metric.eligibleCompanyCount)) * 100)} measured`}
@@ -852,7 +858,11 @@ export function MeasureExplorer({
           <div>
             <span>{profile.weighted ? "Allocation-weighted median" : "Company average"}</span>
             <strong>{valueLabel(profile.weighted ? metric.weightedMedian : metric.unweightedMean, metric.unit)}</strong>
-            <small>{profile.weighted ? `${metric.weightedCompanyCount} companies with positive known weight` : `${metric.measuredCompanyCount} equally weighted company observations`}</small>
+            <small>
+              {profile.weighted
+                ? `${companyCountLabel(metric.weightedCompanyCount)} with positive known weight`
+                : `${companyCountLabel(metric.measuredCompanyCount)} with equal weight`}
+            </small>
           </div>
           <div><span>Company median</span><strong>{valueLabel(metric.median, metric.unit)}</strong><small>Unweighted issuer midpoint</small></div>
           <div><span>Middle 50%</span><strong>{finite(metric.p25) && finite(metric.p75) ? `${valueLabel(metric.p25, metric.unit)} – ${valueLabel(metric.p75, metric.unit)}` : "Unavailable"}</strong><small>25th to 75th percentile</small></div>
@@ -867,7 +877,7 @@ export function MeasureExplorer({
               type="button"
               key={`${bin.index}-${bin.min}-${bin.max}`}
               aria-pressed={selectedBin === index}
-              aria-label={`${bin.count} companies from ${valueLabel(bin.min, metric.unit)} to ${valueLabel(bin.max, metric.unit)}`}
+              aria-label={`${companyCountLabel(bin.count)} from ${valueLabel(bin.min, metric.unit)} to ${valueLabel(bin.max, metric.unit)}`}
               onClick={() => { setSelectedBin(selectedBin === index ? null : index); setLimit(20); }}
             >
               <strong>{bin.count}</strong>
