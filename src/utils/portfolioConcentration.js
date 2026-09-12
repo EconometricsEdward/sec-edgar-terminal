@@ -8,6 +8,233 @@ export const DEFAULT_RESEARCH_LIMITS = Object.freeze({
   industryPct: 25,
 });
 
+export const CONCENTRATION_HEAT_MAP_MODES = Object.freeze([
+  "issuer",
+  "sector",
+  "industry",
+]);
+
+const HEAT_MAP_EPSILON = 1e-8;
+
+function splitHeatMapTiles(items, x, y, width, height) {
+  if (!items.length) return [];
+  if (items.length === 1)
+    return [{ ...items[0], x, y, width, height }];
+
+  const total = sumValues(items.map((item) => item.value));
+  let running = 0;
+  let splitAt = 1;
+  let closest = Infinity;
+  for (let index = 1; index < items.length; index++) {
+    running += items[index - 1].value;
+    const distance = Math.abs(total / 2 - running);
+    if (distance < closest) {
+      closest = distance;
+      splitAt = index;
+    }
+  }
+
+  const first = items.slice(0, splitAt);
+  const second = items.slice(splitAt);
+  const firstTotal = sumValues(first.map((item) => item.value));
+  const ratio = total > 0 ? firstTotal / total : 0.5;
+
+  if (width >= height) {
+    const firstWidth = width * ratio;
+    return [
+      ...splitHeatMapTiles(first, x, y, firstWidth, height),
+      ...splitHeatMapTiles(
+        second,
+        x + firstWidth,
+        y,
+        width - firstWidth,
+        height,
+      ),
+    ];
+  }
+
+  const firstHeight = height * ratio;
+  return [
+    ...splitHeatMapTiles(first, x, y, width, firstHeight),
+    ...splitHeatMapTiles(
+      second,
+      x,
+      y + firstHeight,
+      width,
+      height - firstHeight,
+    ),
+  ];
+}
+
+function sumValues(values) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function heatMapSource(concentration, mode) {
+  if (mode === "sector") return concentration.sectors || [];
+  if (mode === "industry") return concentration.industries || [];
+  return concentration.issuers || [];
+}
+
+/**
+ * A deterministic binary treemap built from the report's original values.
+ * Partial and over-allocated portfolios are never normalized into a 100% result.
+ * @param {any} report
+ * @param {"issuer" | "sector" | "industry"} mode
+ */
+export function buildConcentrationHeatMap(report, mode = "issuer") {
+  const safeMode = CONCENTRATION_HEAT_MAP_MODES.includes(mode)
+    ? mode
+    : "issuer";
+  const concentration = report?.concentration || {};
+  const weighted = report?.weighted === true;
+  const source = [...heatMapSource(concentration, safeMode)];
+
+  if (safeMode === "issuer") {
+    const unresolved = (concentration.industries || []).find(
+      (entry) => entry.label === "Unresolved positions",
+    );
+    if (unresolved) source.push({ ...unresolved, unresolved: true });
+  }
+
+  let unavailableCount = 0;
+  let zeroCount = 0;
+  const items = source.flatMap((entry, index) => {
+    const unresolved =
+      entry.unresolved === true || entry.label === "Unresolved positions";
+    const value = weighted
+      ? entry.weightPct
+      : safeMode === "issuer" && !unresolved
+        ? 1
+        : entry.count ?? entry.rowIds?.length;
+    if (!finite(value)) {
+      unavailableCount++;
+      return [];
+    }
+    if (value <= HEAT_MAP_EPSILON) {
+      zeroCount++;
+      return [];
+    }
+
+    const tickers = entry.tickers || [];
+    const label =
+      safeMode === "issuer"
+        ? unresolved
+          ? "Unresolved positions"
+          : tickers.join(" / ") || entry.name || "Unidentified holding"
+        : entry.label || "Unclassified";
+    const rowIds = unique(entry.rowIds || []);
+    return [
+      {
+        id:
+          safeMode === "issuer"
+            ? unresolved
+              ? "issuer:unresolved"
+              : `issuer:${entry.cik || rowIds[0] || index}`
+            : `${safeMode}:${label}`,
+        label,
+        description:
+          safeMode === "issuer" && !unresolved ? entry.name || label : label,
+        value,
+        count:
+          safeMode === "issuer"
+            ? rowIds.length
+            : finite(entry.count)
+              ? entry.count
+              : rowIds.length,
+        rowIds,
+        ciks: unique(entry.ciks || (entry.cik ? [entry.cik] : [])),
+        unresolved,
+        lowerBound:
+          weighted &&
+          (concentration.complete !== true || entry.weightComplete === false),
+        action: unresolved
+          ? "review"
+          : safeMode === "issuer"
+            ? "inspect"
+            : "filter",
+        placeholder: false,
+      },
+    ];
+  });
+
+  items.sort(
+    (left, right) =>
+      right.value - left.value || left.label.localeCompare(right.label),
+  );
+  const mappedValue = sumValues(items.map((item) => item.value));
+  const denominator = weighted ? Math.max(100, mappedValue) : mappedValue;
+  const layoutItems = [...items];
+  const unmappedValue =
+    weighted && mappedValue > HEAT_MAP_EPSILON && mappedValue < 100 - HEAT_MAP_EPSILON
+      ? 100 - mappedValue
+      : 0;
+  if (unmappedValue > 0)
+    layoutItems.push({
+      id: "allocation:unmapped",
+      label: "Allocation not mapped",
+      description: "Difference between known supplied weights and 100%",
+      value: unmappedValue,
+      count: 0,
+      rowIds: [],
+      ciks: [],
+      unresolved: false,
+      lowerBound: false,
+      action: "none",
+      placeholder: true,
+    });
+  layoutItems.sort(
+    (left, right) =>
+      right.value - left.value || left.label.localeCompare(right.label),
+  );
+
+  const maximum = Math.max(0, ...items.map((item) => item.value));
+  const unresolvedValue = sumValues(
+    items.filter((item) => item.unresolved).map((item) => item.value),
+  );
+  const tiles =
+    denominator > HEAT_MAP_EPSILON
+      ? splitHeatMapTiles(layoutItems, 0, 0, 100, 100).map((tile) => {
+          const relative = maximum > 0 ? tile.value / maximum : 0;
+          const areaPct = (tile.value / denominator) * 100;
+          return {
+            ...tile,
+            areaPct,
+            heatBand: tile.placeholder
+              ? 0
+              : Math.max(1, Math.min(5, Math.ceil(relative * 5))),
+            labelSize:
+              tile.width >= 15 && tile.height >= 18
+                ? "large"
+                : tile.width >= 7 && tile.height >= 9
+                  ? "medium"
+                  : "small",
+          };
+        })
+      : [];
+
+  return {
+    mode: safeMode,
+    weighted,
+    complete: weighted && concentration.complete === true,
+    sourceCount: source.length,
+    mappedCount: items.length,
+    mappedValue,
+    resolvedValue: mappedValue - unresolvedValue,
+    unresolvedValue,
+    denominator,
+    unmappedValue,
+    overAllocated: weighted && mappedValue > 100 + HEAT_MAP_EPSILON,
+    excessPct:
+      weighted && mappedValue > 100 + HEAT_MAP_EPSILON
+        ? mappedValue - 100
+        : 0,
+    unavailableCount,
+    zeroCount,
+    tiles,
+  };
+}
+
 function limitValue(value) {
   if (typeof value !== "string" && typeof value !== "number") return null;
   if (typeof value === "string" && !value.trim()) return null;
