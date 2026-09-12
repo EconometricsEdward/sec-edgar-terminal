@@ -1,0 +1,242 @@
+.dialog {
+  --evidence-text: var(--hub-text, #e8edf5);
+  --evidence-muted: var(--hub-muted, #b6c2d4);
+  --evidence-panel: var(--hub-panel, #101a2b);
+  --evidence-line: var(--hub-border, #344154);
+  --evidence-accent: var(--hub-accent, #f7c65a);
+  width: min(800px, calc(100vw - 32px));
+  max-height: min(85dvh, calc(100dvh - 32px));
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--evidence-line);
+  border-radius: 14px;
+  background: var(--evidence-panel);
+  color: var(--evidence-text);
+  box-shadow: 0 24px 100px #0008;
+}
+
+.dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog::backdrop {
+  background: #040916c9;
+  backdrop-filter: blur(4px);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 24px 28px;
+  border-bottom: 1px solid var(--evidence-line);
+  flex: 0 0 auto;
+}
+
+.header > div {
+  min-width: 0;
+}
+
+.dialog .eyebrow {
+  margin: 0 0 8px;
+  color: var(--evidence-accent);
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dialog h2 {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 28px);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.dialog .company {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--evidence-muted);
+  overflow-wrap: anywhere;
+}
+
+.dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  border: 1px solid var(--evidence-line);
+  border-radius: 7px;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--evidence-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.dialog button:hover {
+  border-color: var(--evidence-accent);
+}
+
+.dialog .close {
+  flex-shrink: 0;
+}
+
+.dialog :is(button, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--evidence-accent);
+  outline-offset: 4px;
+}
+
+.body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 28px 28px;
+  display: grid;
+  gap: 24px;
+}
+
+.observation {
+  display: grid;
+  gap: 5px;
+}
+
+.dialog .value {
+  font-size: clamp(26px, 5vw, 36px);
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.observation > span {
+  font-size: 12px;
+  color: var(--evidence-muted);
+}
+
+.section {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.dialog h3 {
+  margin: 0;
+  color: var(--evidence-text);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.dialog p {
+  margin: 0;
+  color: var(--evidence-muted);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.dialog .formula {
+  color: var(--evidence-text);
+}
+
+.metadata {
+  margin: 4px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--evidence-line);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.metadata > div {
+  min-width: 0;
+}
+
+.metadata dt {
+  color: var(--evidence-muted);
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.metadata dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sources {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+}
+
+.sources li {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--evidence-line);
+}
+
+.dialog a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  color: var(--evidence-accent);
+  font-size: 14px;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  overflow-wrap: anywhere;
+}
+
+.dialog a svg {
+  flex-shrink: 0;
+}
+
+.sources span {
+  color: var(--evidence-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+@media (max-width: 600px) {
+  .dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 10px;
+  }
+
+  .header {
+    padding: 20px 16px;
+    gap: 12px;
+  }
+
+  .body {
+    padding: 20px 16px;
+  }
+
+  .metadata {
+    grid-template-columns: 1fr;
+  }
+
+  .close span {
+    display: none;
+  }
+}

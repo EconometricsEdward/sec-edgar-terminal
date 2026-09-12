@@ -8,6 +8,7 @@ import {
   finiteFinancialMetric,
 } from "./portfolioModel.js";
 import { analysisMetricGuide } from "./analysisMetricGuide.js";
+import { SECTOR_NOT_COVERED } from "./companyClassification.js";
 
 export const metricUnit = (format) =>
   ({
@@ -122,6 +123,48 @@ export function portfolioAvailableMetrics(
   });
 }
 
+/** Peer choices use metric eligibility, independently of a company-name search. */
+export function portfolioMetricPeerOptions(
+  issuers,
+  { sector = "all", metricId = "", period = "all" } = {},
+) {
+  const definition = metricId ? portfolioMetricDefinitionFor(metricId) : null;
+  const peers = issuers.filter(
+    (issuer) =>
+      issuer.kind !== "fund" &&
+      (!metricId ||
+        (definition &&
+          portfolioMetricState(issuer.company, definition, period) ===
+            "available")),
+  );
+  const options = (rows, field, missingLabel) => {
+    const counts = new Map();
+    for (const row of rows) {
+      const label = row[field] || missingLabel;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return [...counts]
+      .map(([label, count]) => ({ value: label, label, count }))
+      .sort(
+        (a, b) =>
+          Number(a.value === missingLabel) - Number(b.value === missingLabel) ||
+          a.label.localeCompare(b.label),
+      );
+  };
+  return {
+    // Keep every eligible sector reachable when switching an existing peer group.
+    sectors: options(peers, "sector", SECTOR_NOT_COVERED),
+    industries: options(
+      peers.filter(
+        (issuer) =>
+          sector === "all" || (issuer.sector || SECTOR_NOT_COVERED) === sector,
+      ),
+      "industry",
+      "Unclassified",
+    ),
+  };
+}
+
 const quantile = (values, p) => {
   if (!values.length) return null;
   const i = (values.length - 1) * p;
@@ -130,12 +173,25 @@ const quantile = (values, p) => {
     (values[Math.ceil(i)] - values[Math.floor(i)]) * (i - Math.floor(i))
   );
 };
+
+/** Find a company within an existing ranking without changing its peer ranks. */
+export function filterPortfolioRankingRows(rows, query = "") {
+  const search = query.trim().toLowerCase();
+  if (!search) return rows;
+  return rows.filter((row) =>
+    `${row.ticker || ""} ${row.name || ""} ${row.cik || ""}`
+      .toLowerCase()
+      .includes(search),
+  );
+}
+
 export function rankPortfolioMetric(
   report,
   companies,
   {
     metricId = "netMargin",
     lens = "all",
+    sector = "all",
     industry = "all",
     period = "all",
     query = "",
@@ -149,6 +205,7 @@ export function rankPortfolioMetric(
     .filter(
       (i) =>
         (lens === "all" || i.lens === lens) &&
+        (sector === "all" || (i.sector || SECTOR_NOT_COVERED) === sector) &&
         (industry === "all" || i.industry === industry) &&
         `${i.ticker} ${i.name}`
           .toLowerCase()

@@ -150,3 +150,70 @@ test("briefing renders all sector links and dated classification coverage", () =
   assert.equal((html.match(/aria-label="Explore /g) || []).length, 11);
   assert.doesNotMatch(html, /Other groups|NaN|Infinity|undefined/);
 });
+
+test("metric rankings expose measured sector peers and a bounded first page", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/PortfolioMetricExplorer.tsx",
+  ).default;
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      report,
+      companies,
+      onInspect: () => {},
+    }),
+  );
+  assert.match(html, /Information Technology/);
+  assert.match(html, /Real Estate/);
+  assert.match(html, /Financial ratios/);
+  assert.doesNotMatch(html, /Business model|All business models/);
+  assert.match(html, /Find a company in this ranking/);
+  assert.match(html, /Page 1 of 4/);
+  assert.equal((html.match(/aria-label="Compare /g) || []).length, 25);
+  assert.match(
+    html,
+    /<th scope="col">Compare<\/th><th scope="col">Company<\/th>/,
+  );
+});
+
+test("metric explanations retain negative values, complete periods and validated SEC evidence", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/MetricEvidenceDialog.tsx",
+  ).default;
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      inspector: {
+        issuer: {
+          ticker: "TEST",
+          name: "Test Company",
+          lens: "corporate",
+          cik: "1234",
+          company: { retrievedAt: "2026-09-11T12:00:00Z" },
+        },
+        key: "netMargin",
+        point: {
+          value: -5,
+          unit: "%",
+          classification: "calculated",
+          formula: "Net income / revenue × 100",
+          period: { kind: "annual", start: "2025-01-01", end: "2025-12-31" },
+          sources: [
+            {
+              documentUrl: "https://www.sec.gov/Archives/edgar/data/1234/annual.htm",
+              tag: "NetIncomeLoss",
+            },
+            { documentUrl: "javascript:alert(1)", tag: "Unsafe source" },
+          ],
+        },
+      },
+      onClose: () => {},
+    }),
+  );
+  assert.match(html, /-5%/);
+  assert.match(html, /2025-01-01 to 2025-12-31/);
+  assert.match(html, /2026-09-11T12:00:00Z/);
+  assert.match(
+    html,
+    /href="https:\/\/www.sec.gov\/Archives\/edgar\/data\/1234\/annual.htm"/,
+  );
+  assert.doesNotMatch(html, /javascript:|Unsafe source|\bissuer\b/i);
+});
