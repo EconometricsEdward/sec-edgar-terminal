@@ -1,6 +1,12 @@
 "use client";
 
 import { resolveCompanyClassification } from "../../../utils/companyClassification.js";
+import {
+  PORTFOLIO_REPORTING_OPTIONS,
+  PORTFOLIO_REPORTING_BASES,
+  portfolioReportingLabel,
+} from "../../../utils/portfolioReporting.js";
+import { augmentPortfolioCompanyMetrics } from "../../../utils/financialSupplementalMetrics.js";
 
 import {
   enrichPortfolioReport,
@@ -498,7 +504,10 @@ export default function PortfolioResearch({
     url.searchParams.delete("portfolioView");
     window.history.pushState(null, "", url.pathname + url.search);
   }
-  const companies = useMemo(() => captured?.companies || [], [captured]);
+  const companies = useMemo(
+    () => (captured?.companies || []).map(augmentPortfolioCompanyMetrics),
+    [captured],
+  );
   const companiesByCik = useMemo(
     () =>
       Object.fromEntries(
@@ -675,14 +684,19 @@ export default function PortfolioResearch({
         ? visibleRows.map((row: any) => row.id)
         : undefined;
 
-  async function run(onlyFailed = false) {
+  async function run(
+    onlyFailed = false,
+    requestedBasis = captured?.basis || document?.research.basis,
+  ) {
     if (!document || busy) return;
+    if (!PORTFOLIO_REPORTING_BASES.includes(requestedBasis)) return;
     controller.current?.abort();
     const next = new AbortController();
     controller.current = next;
     const id = document.id;
-    const basis = document.research.basis;
-    const previousCheck = document.lastCheckedAt;
+    const basis = requestedBasis;
+    const changingBasis = basis !== document.research.basis;
+    const previousCheck = changingBasis ? null : document.lastCheckedAt;
     const revision = document.updatedAt;
     const ownerKey = documentKey(document);
     const token = ++runGeneration.current;
@@ -690,8 +704,22 @@ export default function PortfolioResearch({
     const isCurrent = () =>
       runGeneration.current === token && currentContext.current === ownerKey;
     setBusy(true);
+    setProgress({ completed: 0, total: portfolioIssuerRequests(rows).length });
+    setWorkingSnapshot({
+      ownerKey,
+      snapshot: {
+        schema_version: "edgar.portfolio.v1",
+        generated_at: null,
+        basis,
+        companies: changingBasis ? [] : companies,
+      },
+    });
+    setFocusedRowId(null);
+    setEvidence(null);
     setError("");
-    setMessage("Retrieving public company evidence in batches of five…");
+    setMessage(
+      `Retrieving ${portfolioReportingLabel(basis).toLowerCase()} SEC financials…`,
+    );
     try {
       const result = await researchPortfolioRows(rows, {
         basis,
@@ -711,6 +739,20 @@ export default function PortfolioResearch({
         },
       });
       if (!isCurrent()) return;
+      if (changingBasis && result.cancelled) {
+        setWorkingSnapshot(null);
+        setMessage(
+          "Reporting change cancelled. Your previous capture is retained.",
+        );
+        return;
+      }
+      if (changingBasis && !result.companies.some(companyAvailable)) {
+        setWorkingSnapshot(null);
+        setMessage(
+          `No usable ${portfolioReportingLabel(basis).toLowerCase()} financials were retrieved. Your previous reporting view is retained; retry when ready.`,
+        );
+        return;
+      }
       const snapshot = {
         schema_version: result.schema_version,
         generated_at: result.generated_at,
@@ -719,11 +761,21 @@ export default function PortfolioResearch({
       };
       setWorkingSnapshot({ ownerKey, snapshot });
       const completeCheck = isCompletePortfolioCheck(result, onlyFailed);
-      let comparisonBaseline = document.comparisonBaseline || null;
+      let comparisonBaseline = changingBasis
+        ? null
+        : document.comparisonBaseline || null;
       let comparisonWarning = "";
       try {
         comparisonBaseline = advancePortfolioBaseline(
-          document,
+          changingBasis
+            ? {
+                ...document,
+                research: { basis },
+                snapshot: null,
+                comparisonBaseline: null,
+                lastCheckedAt: null,
+              }
+            : document,
           snapshot,
           completeCheck,
         );
@@ -738,8 +790,12 @@ export default function PortfolioResearch({
           id,
           expectedUpdatedAt: revision,
           patch: {
+            research: { basis },
             snapshot,
             comparisonBaseline,
+            ...(changingBasis
+              ? { previousCheckedAt: null, lastCheckedAt: null }
+              : {}),
             ...(completeCheck
               ? {
                   previousCheckedAt: previousCheck,
@@ -754,6 +810,7 @@ export default function PortfolioResearch({
       );
     } catch (failure) {
       if (!isCurrent()) return;
+      if (changingBasis) setWorkingSnapshot(null);
       setError(
         failure instanceof Error
           ? failure.message
@@ -767,26 +824,8 @@ export default function PortfolioResearch({
     }
   }
   function changeBasis(basis: string) {
-    if (
-      persist(
-        {
-          mode: "update",
-          id: document.id,
-          expectedUpdatedAt: document.updatedAt,
-          patch: {
-            research: { basis },
-            snapshot: null,
-            lastCheckedAt: null,
-            previousCheckedAt: null,
-            comparisonBaseline: null,
-          },
-        },
-        "Reporting basis changed. Run research to capture compatible evidence.",
-      )
-    ) {
-      setWorkingSnapshot(null);
-      setEvidence(null);
-    }
+    if (basis !== (captured?.basis || document?.research.basis))
+      void run(false, basis);
   }
   const captureSourceEvidence = useCallback(
     (value: any) => {
@@ -1170,22 +1209,27 @@ export default function PortfolioResearch({
                   ` · ${summary.coverage.unresolvedPositions} unresolved`}
               </p>
               <span>
-                {captured
+                {captured?.generated_at
                   ? `Evidence captured ${date(captured.generated_at)}`
                   : "Run research to retrieve SEC evidence"}
               </span>
             </div>
-            <label>
-              Reporting basis
-              <select
-                value={document.research.basis}
-                disabled={busy}
-                onChange={(event) => changeBasis(event.target.value)}
-              >
-                <option value="annual">Latest annual</option>
-                <option value="ttm">Supported trailing twelve months</option>
-              </select>
-            </label>
+            {!(tab === "analytics" && analyticsArea === "metrics") && (
+              <label>
+                Reporting basis
+                <select
+                  value={captured?.basis || document.research.basis}
+                  disabled={busy}
+                  onChange={(event) => changeBasis(event.target.value)}
+                >
+                  {PORTFOLIO_REPORTING_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {busy ? (
               <button
                 className={s.secondary}
@@ -1209,7 +1253,7 @@ export default function PortfolioResearch({
               </button>
             )}
           </div>
-          {busy && (
+          {busy && !(tab === "analytics" && analyticsArea === "metrics") && (
             <div className={s.progress}>
               <progress
                 value={progress.completed}
@@ -1263,6 +1307,11 @@ export default function PortfolioResearch({
                 onReviewRows={() => changePortfolioTab("allocation")}
                 onRefresh={() => run(false)}
                 refreshing={busy}
+                reportingBasis={captured?.basis || document.research.basis}
+                onReportingBasisChange={changeBasis}
+                reportingLoading={busy}
+                reportingProgress={progress}
+                onCancelReporting={() => controller.current?.abort()}
               />
             </div>
             {tab === "research" && (

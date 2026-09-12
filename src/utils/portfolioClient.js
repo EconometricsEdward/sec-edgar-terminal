@@ -1,6 +1,19 @@
+import { PORTFOLIO_REPORTING_BASES } from "./portfolioReporting.js";
 /** Browser orchestrator: only public identifiers leave the user's device. */
 export const PORTFOLIO_CLIENT_BATCH_SIZE = 5;
 const keyFor = (row) => row?.resolution?.cik;
+// API classification is derived from the versioned CIK reference and is rebuilt by
+// views/exports. It can cite fund providers, so keep it outside SEC-only captures.
+function capturedCompany(company) {
+  const capture = { ...company };
+  delete capture.companyClassification;
+  return capture;
+}
+const matchesBasis = (company, basis) => {
+  const capturedBasis =
+    company?.basis || company?.reporting_basis || company?.period?.kind;
+  return !capturedBasis || capturedBasis === basis;
+};
 const failedResult = (holding, rows, message) => ({
   ...holding,
   name:
@@ -89,12 +102,16 @@ export async function researchPortfolioRows(
 ) {
   if (!Array.isArray(rows) || rows.length > 100)
     throw new Error("A portfolio supports up to 100 rows.");
+  if (!PORTFOLIO_REPORTING_BASES.includes(basis))
+    throw new Error("Choose annual, quarter, ytd, or ttm research.");
   const all = portfolioIssuerRequests(rows);
   const allowed = new Set(all.map((item) => item.cik));
   const results = new Map(
     previousCompanies
-      .filter((company) => allowed.has(company.cik))
-      .map((company) => [company.cik, company]),
+      .filter(
+        (company) => allowed.has(company.cik) && matchesBasis(company, basis),
+      )
+      .map((company) => [company.cik, capturedCompany(company)]),
   );
   const queue = onlyFailed
     ? all.filter((item) => needsRetry(results.get(item.cik)))
@@ -145,15 +162,25 @@ export async function researchPortfolioRows(
         throw new Error(
           "The research response was incomplete. Retry this batch.",
         );
+      if (body.basis && body.basis !== basis)
+        throw new Error(
+          "The research response used a different reporting basis. Retry this batch.",
+        );
       if (signal?.aborted) break;
       for (const holding of holdings) {
         const company = body.companies.find(
           (entry) => entry.cik === holding.cik,
         );
-        if (!company || refreshStatus(company) === "failed") {
+        if (
+          !company ||
+          refreshStatus(company) === "failed" ||
+          !matchesBasis(company, basis)
+        ) {
           const message =
-            company?.warnings?.[0] ||
-            "The response omitted this company or returned unavailable research. Retry it.";
+            company && !matchesBasis(company, basis)
+              ? "The company response used a different reporting basis. Retry this company."
+              : company?.warnings?.[0] ||
+                "The response omitted this company or returned unavailable research. Retry it.";
           results.set(
             holding.cik,
             retainEarlierEvidence(
@@ -165,7 +192,7 @@ export async function researchPortfolioRows(
           );
         } else {
           results.set(holding.cik, {
-            ...company,
+            ...capturedCompany(company),
             refreshStatus: refreshStatus(company),
           });
         }

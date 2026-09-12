@@ -7,6 +7,7 @@ import { portfolioMetricSourceUrl } from "../../../utils/portfolioAnalytics.js";
 import { metricDisplay } from "../../../utils/portfolioDeepResearch.js";
 import { portfolioMetricDefinitionFor } from "../../../utils/portfolioMetricCatalog.js";
 import s from "./MetricEvidenceDialog.module.css";
+import { portfolioReportingLabel } from "../../../utils/portfolioReporting.js";
 
 type Props = {
   inspector: { issuer: any; key: string; point: any };
@@ -49,6 +50,17 @@ export default function MetricEvidenceDialog({
   const definition = portfolioMetricDefinitionFor(key);
   const guide = analysisMetricGuide(definition || {}, point, issuer.lens);
   const period = point.period || {};
+  const inputs = [
+    ...new Map<string, any>(
+      (point.calculations || [])
+        .filter(
+          (entry: any) =>
+            definition?.inputs?.includes(entry.key) &&
+            Number.isFinite(entry.value),
+        )
+        .map((entry: any) => [entry.key, entry] as [string, any]),
+    ).values(),
+  ];
   const sources = (Array.isArray(point.sources) ? point.sources : [])
     .map((source: any) => ({
       source,
@@ -152,7 +164,11 @@ export default function MetricEvidenceDialog({
             </div>
             <div>
               <dt>Period basis</dt>
-              <dd>{period.kind || "Not included in this capture"}</dd>
+              <dd>
+                {period.kind
+                  ? portfolioReportingLabel(period.kind)
+                  : "Not included in this capture"}
+              </dd>
             </div>
             <div>
               <dt>Evidence captured</dt>
@@ -161,6 +177,50 @@ export default function MetricEvidenceDialog({
               </dd>
             </div>
           </dl>
+          {inputs.length > 0 && (
+            <div
+              className={s.inputTable}
+              tabIndex={0}
+              role="region"
+              aria-label="Calculation inputs"
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Input</th>
+                    <th scope="col">Value</th>
+                    <th scope="col">Reporting dates</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inputs.map((input: any) => (
+                    <tr key={input.key}>
+                      <th scope="row">
+                        {portfolioMetricDefinitionFor(input.key)?.label ||
+                          input.label ||
+                          input.key}
+                      </th>
+                      <td>
+                        {metricDisplay(
+                          {
+                            value: input.value,
+                            unit: input.unit || "USD",
+                            classification: "reported",
+                          },
+                          false,
+                        )}
+                      </td>
+                      <td>
+                        {input.start
+                          ? `${input.start} to ${input.end}`
+                          : `As of ${input.end}`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         <section className={s.section} aria-label="SEC source documents">

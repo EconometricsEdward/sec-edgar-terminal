@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyPortfolioDemoSnapshot,
   createDemoPortfolio,
   saveDemoPortfolio,
   validatePortfolioDemo,
@@ -431,4 +432,185 @@ test("storage failure and corrupt saved data preserve the existing browser value
     /preserved/,
   );
   assert.equal(corrupted.getItem(PORTFOLIOS_KEY), "{broken");
+});
+
+test("new reporting captures preserve verified demo holdings, allocations and original evidence", () => {
+  const original = weightedDemo();
+  const before = structuredClone(original);
+  for (const basis of ["annual", "quarter", "ytd", "ttm"]) {
+    const period = {
+      annual: { kind: basis, start: "2025-01-01", end: "2025-12-31" },
+      quarter: { kind: basis, start: "2026-04-01", end: "2026-06-30" },
+      ytd: { kind: basis, start: "2026-01-01", end: "2026-06-30" },
+      ttm: { kind: basis, start: "2025-07-01", end: "2026-06-30" },
+    }[basis];
+    const snapshot = {
+      schema_version: "edgar.portfolio.v1",
+      basis,
+      checkedAt: "2026-09-09T01:00:00.000Z",
+      generated_at: now,
+      companies: original.snapshot.companies.map((company, index) => ({
+        ...company,
+        basis,
+        period,
+        retrievedAt: now,
+        metrics: {
+          revenue: { ...company.metrics.revenue, value: 500 + index },
+        },
+      })),
+    };
+    const updated = applyPortfolioDemoSnapshot(original, snapshot);
+    assert.equal(updated.input.research.basis, basis);
+    assert.equal(updated.snapshot.basis, basis);
+    assert.equal(updated.captured_at, now);
+    assert.equal(updated.capture_started_at, snapshot.checkedAt);
+    assert.equal(updated.session_capture, true);
+    assert.deepEqual(updated.rows, original.rows);
+    assert.deepEqual(updated.input.holdings, original.input.holdings);
+    assert.deepEqual(updated.input.allocation, original.input.allocation);
+    assert.deepEqual(updated.coverage.reportingEnds, [period.end]);
+    assert.equal(updated.snapshot.companies[0].metrics.revenue.value, 500);
+    const copy = createDemoPortfolio(updated, { id: `basis-${basis}`, now });
+    assert.equal(copy.research.basis, basis);
+    assert.equal(copy.snapshot.basis, basis);
+    const report = buildPortfolioResearchPackage(copy, {
+      includeAllocations: true,
+    });
+    assert.equal(report.reporting_basis, basis);
+  }
+  assert.deepEqual(
+    original,
+    before,
+    "a session perspective never changes the bundled annual capture",
+  );
+});
+
+test("replacement captures recompute coverage and retain partial failures and actual request dates", () => {
+  const original = demo();
+  const companies = original.snapshot.companies.map((company) => ({
+    ...company,
+    basis: "quarter",
+    period: { kind: "quarter", start: "2026-04-01", end: "2026-06-30" },
+  }));
+  companies[0] = {
+    ...companies[0],
+    status: "failed",
+    refreshStatus: "failed",
+    retrievedAt: null,
+    metrics: {},
+    filings: [],
+    period: null,
+    cache: { status: "unavailable", storedAt: null },
+  };
+  companies[1] = {
+    ...companies[1],
+    status: "partial",
+    cache: { status: "stale", storedAt: capturedAt },
+    refreshStatus: "stale",
+  };
+  const requests = [
+    {
+      started_at: capturedAt,
+      completed_at: now,
+      tickers: original.rows.map((row) => row.input.ticker),
+    },
+  ];
+  const updated = applyPortfolioDemoSnapshot(original, {
+    basis: "quarter",
+    generated_at: now,
+    checkedAt: capturedAt,
+    companies,
+    requests,
+  });
+  assert.equal(updated.coverage.ready, 98);
+  assert.equal(updated.coverage.partial, 1);
+  assert.equal(updated.coverage.failed, 1);
+  assert.equal(updated.coverage.staleCached, 1);
+  assert.equal(updated.coverage.financialEvidence, 99);
+  assert.equal(updated.coverage.filingCount, 99);
+  assert.deepEqual(updated.methodology.requests, requests);
+  assert.equal(createDemoPortfolio(updated, { now }).lastCheckedAt, null);
+  assert.equal(
+    updated.snapshot.companies[1].retrievedAt,
+    capturedAt,
+    "older cache dates are not relabeled as fresh retrievals",
+  );
+});
+
+test("replacement captures reject mixed reporting bases, missing companies and unsafe SEC evidence", () => {
+  const original = demo();
+  const replacement = {
+    ...original.snapshot,
+    basis: "ytd",
+    companies: original.snapshot.companies.map((company) => ({
+      ...company,
+      basis: "ytd",
+      period: { kind: "ytd", start: "2026-01-01", end: "2026-06-30" },
+    })),
+  };
+  for (const mutate of [
+    (snapshot) => {
+      snapshot.companies[0].basis = "annual";
+    },
+    (snapshot) => {
+      snapshot.companies[0].reporting_basis = "quarter";
+    },
+    (snapshot) => {
+      snapshot.companies[0].period.kind = "ttm";
+    },
+    (snapshot) => {
+      snapshot.companies.pop();
+    },
+    (snapshot) => {
+      snapshot.companies[0].metrics.revenue.sources[0].documentUrl =
+        "https://example.com/unsupported";
+    },
+    (snapshot) => {
+      snapshot.checkedAt = "2028-01-01T00:00:00.000Z";
+    },
+  ]) {
+    const value = structuredClone(replacement);
+    mutate(value);
+    assert.throws(() => applyPortfolioDemoSnapshot(original, value));
+  }
+});
+
+test("larger session captures remain reportable without weakening downloads or browser storage", () => {
+  const original = demo();
+  const companies = original.snapshot.companies.map((company, index) => ({
+    ...company,
+    warnings: Array.from(
+      { length: 30 },
+      (_, item) => `${index}-${item}: ${"x".repeat(1800)}`,
+    ),
+  }));
+  const session = applyPortfolioDemoSnapshot(original, {
+    ...original.snapshot,
+    companies,
+  });
+  assert.throws(
+    () => validatePortfolioDemo(session),
+    /4 MiB/,
+    "regular downloaded files keep their original budget",
+  );
+  assert.throws(
+    () => createDemoPortfolio(structuredClone(session)),
+    /4 MiB/,
+    "a file cannot bypass download limits by adding session_capture",
+  );
+  const copy = createDemoPortfolio(session, { now });
+  assert.equal(buildPortfolioResearchPackage(copy).reporting_basis, "annual");
+  const browser = storage();
+  saveDemoPortfolio(browser, original, { id: "existing", now });
+  const preserved = browser.getItem(PORTFOLIOS_KEY);
+  assert.throws(
+    () => saveDemoPortfolio(browser, session, { id: "oversized", now }),
+    /4 MiB/,
+  );
+  assert.equal(browser.getItem(PORTFOLIOS_KEY), preserved);
+  assert.equal(
+    session.snapshot.companies.length,
+    100,
+    "a failed save preserves session evidence for reporting",
+  );
 });

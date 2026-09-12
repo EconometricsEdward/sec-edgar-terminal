@@ -15,6 +15,10 @@ import {
   sourceDocumentUrl,
 } from "./xbrlPeriods.js";
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
+import {
+  SUPPLEMENTAL_METRIC_DEFINITIONS,
+  calculateSupplementalMetric,
+} from "./financialSupplementalMetrics.js";
 
 import { ANALYSIS_VERSION } from "./analysisVersion.js";
 export { ANALYSIS_VERSION } from "./analysisVersion.js";
@@ -423,6 +427,27 @@ export function buildAnalysisCompany(company, settings = {}) {
       "Net margin (%) × annualized revenue / average assets × average assets / average equity",
       (a, b, c) => a * b * c,
       "drivers",
+    );
+  }
+  for (const definition of SUPPLEMENTAL_METRIC_DEFINITIONS.filter((def) =>
+    def.lenses.includes(lens),
+  )) {
+    add(
+      {
+        ...definition,
+        values: periods.map((period, index) =>
+          calculateSupplementalMetric(
+            definition,
+            Object.fromEntries(
+              definition.inputs.map((key) => [key, metrics[key]?.[index]]),
+            ),
+            period,
+            lens,
+          ),
+        ),
+      },
+      definition.category,
+      { formula: definition.formula, inputs: definition.inputs },
     );
   }
   const order =

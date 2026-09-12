@@ -345,10 +345,11 @@ test("derived Compare ratios do not calculate from a short income source and ful
       ]),
     },
   });
-  assert.equal(data.metrics.netIncome[0].value, 20);
+  // Reject the short fact at selection, before it can appear as an annual value.
+  assert.equal(data.metrics.netIncome[0].value, null);
   assert.equal(data.metrics.netMargin[0].value, null);
   assert.match(
     data.metrics.netMargin[0].reason,
-    /required input is incompatible/,
+    /required reported inputs are missing/,
   );
 });

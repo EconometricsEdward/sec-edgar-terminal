@@ -494,7 +494,7 @@ export function buildPortfolioAnalytics(
     endGroups.get(label).rowIds.push(...issuer.rowIds);
     const age =
       end && finite(capturedTime) ? capturedTime - Date.parse(end) : null;
-    const threshold = company?.period?.kind === "ttm" ? 200 : 550;
+    const threshold = ["quarter", "ytd", "ttm"].includes(company?.period?.kind) ? 200 : 550;
     if (
       company?.cache?.status === "stale" ||
       company?.status === "stale" ||

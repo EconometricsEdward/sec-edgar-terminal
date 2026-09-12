@@ -46,6 +46,11 @@ const PortfolioCoverageMatrix = dynamic(
 );
 
 type Props = {
+  reportingBasis?: string;
+  onReportingBasisChange?: (basis: string) => void;
+  reportingLoading?: boolean;
+  reportingProgress?: { completed: number; total: number };
+  onCancelReporting?: () => void;
   onDisclosure?: (query: string, ciks: string[]) => void;
   analyticsArea?: string;
   onAreaChange?: (area: string) => void;
@@ -206,6 +211,11 @@ export default function PortfolioAnalytics({
   analyticsArea,
   onAreaChange,
   onDisclosure,
+  reportingBasis,
+  onReportingBasisChange,
+  reportingLoading = false,
+  reportingProgress,
+  onCancelReporting,
 }: Props) {
   const titleId = useId();
   const coverageSelectionId = useId();
@@ -399,7 +409,12 @@ export default function PortfolioAnalytics({
       {(visitedAreas.has("metrics") || area === "metrics") && (
         <div hidden={area !== "metrics"}>
           <PortfolioMetricExplorer
-            onRefresh={preview ? undefined : onRefresh}
+            reportingBasis={reportingBasis}
+            onReportingBasisChange={onReportingBasisChange}
+            reportingLoading={reportingLoading}
+            reportingProgress={reportingProgress}
+            onCancelReporting={onCancelReporting}
+            onRefresh={onRefresh}
             refreshing={refreshing}
             report={report}
             companies={companies}

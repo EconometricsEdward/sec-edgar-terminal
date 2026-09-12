@@ -4,7 +4,7 @@ const DAY = 86400000;
 const REPORT = /^(10-K|10-Q|20-F|40-F)(\/A)?$/;
 const ANNUAL = /^(10-K|20-F|40-F)(\/A)?$/;
 const ANCHORS = ['Assets', 'NetIncomeLoss', 'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'StockholdersEquity', 'Liabilities', 'ProfitLoss', 'Revenue', 'Equity'];
-export const FINANCIAL_DATA_VERSION = 'context-v2';
+export const FINANCIAL_DATA_VERSION = 'context-v3';
 
 export function daysBetween(start, end) {
   return Math.round((Date.parse(end) - Date.parse(start)) / DAY);
@@ -122,7 +122,15 @@ export function selectFinancialFact(facts, tags, period, unit = 'USD', { additiv
 
     const direct = ending.filter((e) => {
       const d = duration(e);
-      if (kind === 'annual' || kind === 'ttm') return d >= 300 && d <= 400;
+      if (kind === 'annual' || kind === 'ttm') {
+        const expectedStart = kind === 'ttm'
+          ? period.ttmStart || period.start
+          : period.start || period.fiscalStart;
+        // A year-like duration is not enough: transition periods and other
+        // contexts can end together while covering different financial flows.
+        // Keep the same small boundary tolerance used for reported quarters.
+        return d >= 300 && d <= 400 && (!expectedStart || Math.abs(daysBetween(expectedStart, e.start)) <= 3);
+      }
       if (kind === 'ytd') {
         return period.fiscalStart ? e.start === period.fiscalStart
           : d >= 60 && d <= (Number(period.fp?.slice(1)) || 4) * 100 + 20;

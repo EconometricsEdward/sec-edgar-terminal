@@ -1,4 +1,5 @@
 import { evidenceSources } from "./researchEvidence.js";
+import { SUPPLEMENTAL_METRIC_GUIDES } from "./financialSupplementalMetrics.js";
 
 const READING = {
   title: "SEC guide to reading a 10-K / 10-Q",
@@ -352,7 +353,9 @@ export function analysisMetricGuide(
 ) {
   const match = Object.hasOwn(GUIDES, definition.key || "")
     ? GUIDES[definition.key]
-    : null;
+    : Object.hasOwn(SUPPLEMENTAL_METRIC_GUIDES, definition.key || "")
+      ? SUPPLEMENTAL_METRIC_GUIDES[definition.key]
+      : null;
   const transformed = ["index", "percentagePoints"].includes(definition.format);
   const selected =
     match && !transformed && (!match.lenses || match.lenses.includes(lens))

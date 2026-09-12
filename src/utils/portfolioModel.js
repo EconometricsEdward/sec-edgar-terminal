@@ -1,3 +1,4 @@
+import { PORTFOLIO_REPORTING_BASES } from "./portfolioReporting.js";
 import { resolveCompanyClassification } from "./companyClassification.js";
 /** Pure identity and allocation rules shared by the local workspace and batch API. */
 export const PORTFOLIO_SCHEMA_VERSION = "edgar.portfolio.v1";
@@ -96,9 +97,10 @@ export function normalizePortfolioInput(input) {
   const research = input.research ?? {};
   if (
     !plain(research) ||
-    (own(research, "basis") && !["annual", "ttm"].includes(research.basis))
+    (own(research, "basis") &&
+      !PORTFOLIO_REPORTING_BASES.includes(research.basis))
   )
-    throw new Error("research.basis must be annual or ttm.");
+    throw new Error("research.basis must be annual, quarter, ytd, or ttm.");
   const rowChoices = input.row_choices ?? [];
   if (!Array.isArray(rowChoices) || rowChoices.length > holdings.length)
     throw new Error(

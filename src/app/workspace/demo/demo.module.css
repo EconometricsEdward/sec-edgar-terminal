@@ -447,3 +447,22 @@
 :global(html[data-theme-mode="light"]) .tableScroll tbody tr:nth-child(even) {
   background: #eef3f880;
 }
+
+.reportingStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  color: var(--demo-muted);
+  font-size: 13px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--demo-line);
+}
+.reportingStatus span {
+  flex: 1 1 300px;
+}
+.reportingStatus progress {
+  max-width: 180px;
+  height: 8px;
+  accent-color: var(--demo-gold);
+}

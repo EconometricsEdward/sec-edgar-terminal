@@ -1,4 +1,5 @@
 import {
+  PORTFOLIO_DECODED_LIMIT,
   packPortfolioSnapshot,
   unpackPortfolioSnapshot,
 } from "./portfolioEvidenceCodec.js";
@@ -6,12 +7,14 @@ import { allocationSummary, PORTFOLIO_COLUMNS } from "./portfolioModel.js";
 import { isCompletePortfolioCheck } from "./portfolioClient.js";
 import { createPortfolio, writePortfolio } from "./portfolioStorage.js";
 import { demoAllocationSettings } from "./portfolioDemoAllocation.js";
+import { PORTFOLIO_REPORTING_BASES } from "./portfolioReporting.js";
 
 export const DEMO_INPUT_URL = "/portfolio/portfolio-demo-100.json";
 export const DEMO_CSV_URL = "/portfolio/portfolio-demo-100.csv";
 export const DEMO_XLSX_URL = "/portfolio/portfolio-demo-100.xlsx";
 export const DEMO_RESULTS_URL = "/portfolio/portfolio-demo-100-results.json";
 export const DEMO_RESULTS_MAX_BYTES = 4 * 1024 * 1024;
+const sessionCaptures = new WeakSet();
 
 const object = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -29,7 +32,7 @@ function requireValue(condition, message) {
 }
 
 /** Reject unsafe or unbounded JSON before any clone or browser-storage write. */
-function inspectDemo(value) {
+function inspectDemo(value, session = false) {
   let nodes = 0;
   function walk(entry, depth = 0) {
     requireValue(
@@ -71,14 +74,14 @@ function inspectDemo(value) {
         ...value,
         snapshot: packPortfolioSnapshot(value.snapshot),
       }),
-    ).length <= DEMO_RESULTS_MAX_BYTES,
-    "The capture exceeds the 4 MiB download limit.",
+    ).length <= (session ? PORTFOLIO_DECODED_LIMIT : DEMO_RESULTS_MAX_BYTES),
+    session
+      ? "The session capture exceeds its safe memory budget."
+      : "The capture exceeds the 4 MiB download limit.",
   );
 }
 
-function checkCoverage(demo) {
-  const { rows, snapshot, coverage } = demo;
-  requireValue(object(coverage), "Coverage information is missing.");
+function measuredCoverage({ rows, snapshot }) {
   const byCik = Object.fromEntries(
     snapshot.companies.map((company) => [company.cik, company]),
   );
@@ -122,6 +125,13 @@ function checkCoverage(demo) {
     ),
     mismatchedPeriods: reportingEnds.length > 1,
   };
+  return { ...counts, reportingEnds };
+}
+
+function checkCoverage(demo) {
+  const { coverage } = demo;
+  requireValue(object(coverage), "Coverage information is missing.");
+  const { reportingEnds, ...counts } = measuredCoverage(demo);
   for (const [key, expected] of Object.entries(counts)) {
     requireValue(
       coverage[key] === expected,
@@ -140,8 +150,8 @@ function checkCoverage(demo) {
 }
 
 /** Validate a public capture without changing identities, values, or retrieval status. */
-export function validatePortfolioDemo(value) {
-  inspectDemo(value);
+export function validatePortfolioDemo(value, { session = false } = {}) {
+  inspectDemo(value, session);
   value = { ...value, snapshot: unpackPortfolioSnapshot(value.snapshot) };
   requireValue(
     object(value) && value.schema_version === "edgar.portfolio.demo.v1",
@@ -168,8 +178,8 @@ export function validatePortfolioDemo(value) {
   requireValue(
     ["none", "weights"].includes(value.input.allocation?.basis) &&
       value.input.allocation.normalize === false &&
-      value.input.research?.basis === "annual",
-    "The example must use annual research with explicit, unnormalized allocation settings.",
+      PORTFOLIO_REPORTING_BASES.includes(value.input.research?.basis),
+    "The example must use a supported reporting basis with explicit, unnormalized allocation settings.",
   );
   if (weighted)
     requireValue(
@@ -226,7 +236,7 @@ export function validatePortfolioDemo(value) {
   requireValue(
     object(value.snapshot) &&
       value.snapshot.generated_at === value.captured_at &&
-      value.snapshot.basis === "annual",
+      value.snapshot.basis === value.input.research.basis,
     "The captured results have an inconsistent date or reporting basis.",
   );
 
@@ -288,7 +298,10 @@ export function validatePortfolioDemo(value) {
       "A captured company ticker does not match its verified company.",
     );
     requireValue(
-      company.basis === undefined || company.basis === "annual",
+      (company.basis === undefined || company.basis === value.snapshot.basis) &&
+        (company.reporting_basis === undefined ||
+          company.reporting_basis === value.snapshot.basis) &&
+        (!company.period?.kind || company.period.kind === value.snapshot.basis),
       "A company uses a different reporting basis.",
     );
     requireValue(
@@ -322,9 +335,63 @@ export function validatePortfolioDemo(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+/** Replace financial evidence in a public demo while preserving its verified inputs and weights. */
+export function applyPortfolioDemoSnapshot(demo, snapshot) {
+  const original = validatePortfolioDemo(demo, {
+    session: sessionCaptures.has(demo),
+  });
+  requireValue(
+    object(snapshot) &&
+      PORTFOLIO_REPORTING_BASES.includes(snapshot.basis) &&
+      timestamp(snapshot.generated_at) &&
+      Array.isArray(snapshot.companies),
+    "The replacement capture has an invalid date or reporting basis.",
+  );
+  const startedAt = snapshot.checkedAt || snapshot.generated_at;
+  const next = {
+    ...original,
+    capture_started_at: startedAt,
+    captured_at: snapshot.generated_at,
+    input: {
+      ...original.input,
+      research: { basis: snapshot.basis },
+    },
+    snapshot: {
+      schema_version: "edgar.portfolio.v1",
+      generated_at: snapshot.generated_at,
+      basis: snapshot.basis,
+      companies: snapshot.companies,
+    },
+    session_capture: true,
+    methodology: {
+      source:
+        "Public SEC company facts and filing records retrieved through EDGAR Terminal portfolio research.",
+      freshness:
+        "Retrieved during this browser session. Individual company retrieval dates and cache status are preserved; company reporting dates can differ.",
+      requests: snapshot.requests || [
+        {
+          started_at: startedAt,
+          completed_at: snapshot.generated_at,
+          tickers: original.rows.map((row) => row.input.ticker),
+        },
+      ],
+    },
+  };
+  next.coverage = {
+    ...measuredCoverage(next),
+    filingScope:
+      "Recent filing references returned with each company capture; not a complete historical filing archive.",
+  };
+  const capture = validatePortfolioDemo(next, { session: true });
+  sessionCaptures.add(capture);
+  return capture;
+}
+
 /** @param {any} demo @param {{id?: string, now?: string, allocationBasis?: string}} options */
 export function createDemoPortfolio(demo, options = {}) {
-  const capture = validatePortfolioDemo(demo);
+  const capture = validatePortfolioDemo(demo, {
+    session: sessionCaptures.has(demo),
+  });
   const allocation = demoAllocationSettings(capture, options.allocationBasis);
   const label =
     allocation.basis === "weights"
@@ -347,7 +414,7 @@ export function createDemoPortfolio(demo, options = {}) {
     name: `${label} · captured ${capture.captured_at.slice(0, 10)}`,
     rows: capture.rows,
     allocation,
-    research: { basis: "annual" },
+    research: { basis: capture.snapshot.basis },
     snapshot: capture.snapshot,
     lastCheckedAt: complete ? capture.captured_at : null,
   });

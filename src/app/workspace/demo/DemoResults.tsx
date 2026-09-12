@@ -9,9 +9,19 @@ import ResearchWorkspace from "../portfolio/ResearchWorkspace";
 import CompanyResearchTable from "../portfolio/CompanyResearchTable";
 import WorkspaceMenu from "../WorkspaceMenu";
 import { allocationSummary } from "../../../utils/portfolioModel.js";
+import { augmentPortfolioCompanyMetrics } from "../../../utils/financialSupplementalMetrics.js";
 import { portfolioMetricState } from "../../../utils/portfolioDeepResearch.js";
 import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
-import { portfolioFilingFeed } from "../../../utils/portfolioClient.js";
+import {
+  portfolioFilingFeed,
+  researchPortfolioRows,
+} from "../../../utils/portfolioClient.js";
+import {
+  PORTFOLIO_REPORTING_BASES,
+  PORTFOLIO_REPORTING_OPTIONS,
+  portfolioPeriodLabel,
+  portfolioReportingLabel,
+} from "../../../utils/portfolioReporting.js";
 import { portfolioReviewPriorities } from "../../../utils/portfolioInsights.js";
 import {
   PORTFOLIO_VIEW_PRESETS,
@@ -20,6 +30,7 @@ import {
 } from "../../../utils/portfolioViews.js";
 import {
   validatePortfolioDemo,
+  applyPortfolioDemoSnapshot,
   saveDemoPortfolio,
   createDemoPortfolio,
 } from "../../../utils/portfolioDemo.js";
@@ -85,6 +96,20 @@ export default function DemoResults() {
     setArea("disclosures");
   }
   const [demo, setDemo] = useState<any>(null);
+  const [reportingDemo, setReportingDemo] = useState<any>(null);
+  const [reportingBasis, setReportingBasis] = useState("annual");
+  const [reportingLoading, setReportingLoading] = useState(false);
+  const [reportingProgress, setReportingProgress] = useState({
+    completed: 0,
+    total: 100,
+  });
+  const [reportingNotice, setReportingNotice] = useState("");
+  const [reportingRetryBasis, setReportingRetryBasis] = useState<string | null>(
+    null,
+  );
+  const reportingCache = useRef(new Map<string, any>());
+  const reportingController = useRef<AbortController | null>(null);
+  const lastReportingDemo = useRef<any>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -115,7 +140,13 @@ export default function DemoResults() {
         if (raw.length > 8 * 1024 * 1024)
           throw new Error("The example is too large to open safely.");
         const next = validatePortfolioDemo(JSON.parse(raw));
-        if (!controller.signal.aborted) setDemo(next);
+        if (!controller.signal.aborted) {
+          setDemo(next);
+          setReportingDemo(next);
+          setReportingBasis(next.snapshot.basis);
+          reportingCache.current.set(next.snapshot.basis, next);
+          lastReportingDemo.current = next;
+        }
       })
       .catch((failure) => {
         if (!controller.signal.aborted)
@@ -131,7 +162,135 @@ export default function DemoResults() {
     if (evidence) evidenceRef.current?.focus();
   }, [evidence]);
 
-  const companies = useMemo(() => demo?.snapshot.companies || [], [demo]);
+  useEffect(() => () => reportingController.current?.abort(), []);
+
+  async function changeReportingBasis(basis: string, retry = false) {
+    if (!demo || !PORTFOLIO_REPORTING_BASES.includes(basis)) return;
+    reportingController.current?.abort();
+    const cached = !retry && reportingCache.current.get(basis);
+    setReportingBasis(basis);
+    setReportingNotice("");
+    setReportingRetryBasis(null);
+    setEvidence(null);
+    setFocusedRowId(null);
+    setDisclosureRequest(null);
+    setLimit(20);
+    if (cached) {
+      reportingController.current = null;
+      setReportingDemo(cached);
+      lastReportingDemo.current = cached;
+      setReportingLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    reportingController.current = controller;
+    setReportingDemo(null);
+    setReportingLoading(true);
+    setReportingProgress({ completed: 0, total: 100 });
+    const requests: any[] = [];
+    const previousCapture = lastReportingDemo.current;
+    const previous =
+      retry &&
+      reportingRetryBasis === basis &&
+      previousCapture?.snapshot.basis === basis &&
+      previousCapture.snapshot.companies.some(
+        (company: any) =>
+          company.status === "failed" ||
+          ["failed", "stale", "not_checked"].includes(company.refreshStatus) ||
+          ["stale", "unavailable"].includes(company.cache?.status),
+      )
+        ? previousCapture.snapshot.companies
+        : [];
+    if (retry) reportingCache.current.delete(basis);
+    try {
+      const result = await researchPortfolioRows(demo.rows, {
+        basis,
+        previousCompanies: previous,
+        onlyFailed: previous.length > 0,
+        signal: controller.signal,
+        onProgress: ({ completed, total }: any) => {
+          if (reportingController.current === controller)
+            setReportingProgress({ completed, total });
+        },
+        fetcher: async (url: any, options: any) => {
+          const request = {
+            started_at: new Date().toISOString(),
+            completed_at: "",
+            tickers: JSON.parse(options.body).holdings.map(
+              (holding: any) => holding.ticker,
+            ),
+          };
+          requests.push(request);
+          try {
+            return await fetch(url, options);
+          } finally {
+            request.completed_at = new Date().toISOString();
+          }
+        },
+      });
+      if (reportingController.current !== controller) return;
+      const usable = result.companies.some(
+        (company: any) =>
+          ["ready", "partial"].includes(company.status) &&
+          company.cache?.status !== "unavailable",
+      );
+      if (result.cancelled || !usable) {
+        const restored = lastReportingDemo.current;
+        setReportingDemo(restored);
+        setReportingBasis(restored.snapshot.basis);
+        setReportingRetryBasis(basis);
+        setReportingNotice(
+          `${portfolioReportingLabel(basis)} retrieval ${result.cancelled ? "was cancelled" : "could not return usable evidence"}. ${portfolioReportingLabel(restored.snapshot.basis)} results remain available.`,
+        );
+        return;
+      }
+      const next = applyPortfolioDemoSnapshot(demo, {
+        ...result,
+        requests,
+      });
+      setReportingDemo(next);
+      lastReportingDemo.current = next;
+      const incomplete = next.snapshot.companies.filter(
+        (company: any) =>
+          company.status === "failed" ||
+          ["failed", "stale", "not_checked"].includes(company.refreshStatus) ||
+          ["stale", "unavailable"].includes(company.cache?.status),
+      ).length;
+      if (!incomplete) {
+        reportingCache.current.set(basis, next);
+        setReportingNotice(
+          `${portfolioReportingLabel(basis)} evidence is ready. This capture is available for the rest of this visit.`,
+        );
+      } else {
+        setReportingRetryBasis(basis);
+        setReportingNotice(
+          `${portfolioReportingLabel(basis)} results are ready; ${incomplete} ${incomplete === 1 ? "company needs" : "companies need"} another retrieval attempt. Coverage reflects the evidence returned.`,
+        );
+      }
+    } catch (failure) {
+      if (reportingController.current !== controller) return;
+      const restored = lastReportingDemo.current;
+      setReportingDemo(restored);
+      setReportingBasis(restored.snapshot.basis);
+      setReportingRetryBasis(basis);
+      setReportingNotice(
+        `${failure instanceof Error ? failure.message : "The requested financial evidence could not be opened."} ${portfolioReportingLabel(restored.snapshot.basis)} results remain available.`,
+      );
+    } finally {
+      if (reportingController.current === controller) {
+        reportingController.current = null;
+        setReportingLoading(false);
+      }
+    }
+  }
+
+  const companies = useMemo(
+    () =>
+      (reportingDemo?.snapshot.companies || []).map(
+        augmentPortfolioCompanyMetrics,
+      ),
+    [reportingDemo],
+  );
   const rows = useMemo(() => demo?.rows || [], [demo]);
   const byCik = useMemo(
     () =>
@@ -177,9 +336,9 @@ export default function DemoResults() {
         rows,
         companies,
         allocation,
-        demo ? Date.parse(demo.captured_at) : 0,
+        reportingDemo ? Date.parse(reportingDemo.captured_at) : 0,
       ),
-    [rows, companies, allocation, demo],
+    [rows, companies, allocation, reportingDemo],
   );
   const availableViews = useMemo(
     () => availablePortfolioViewPresets(rows, companies),
@@ -238,23 +397,23 @@ export default function DemoResults() {
   );
 
   function downloadReport() {
-    if (!demo) return;
+    if (!reportingDemo || reportingLoading) return;
     const bundle = buildPortfolioResearchPackage(
-      createDemoPortfolio(demo, { allocationBasis }),
+      createDemoPortfolio(reportingDemo, { allocationBasis }),
       { includeAllocations: true },
     );
     downloadText(
-      `edgar-demo-${settings.basis}-research.html`,
+      `edgar-demo-${settings.basis}-${reportingBasis}-research.html`,
       portfolioReportHtml(bundle, sourceEvidence),
       "text/html;charset=utf-8",
     );
   }
   function openInHub() {
-    if (!demo || saving) return;
+    if (!reportingDemo || reportingLoading || saving) return;
     setSaving(true);
     setSaveError("");
     try {
-      const { portfolio } = saveDemoPortfolio(localStorage, demo, {
+      const { portfolio } = saveDemoPortfolio(localStorage, reportingDemo, {
         allocationBasis,
       });
       // Re-enter the workspace with its saved portfolio route initialized.
@@ -307,12 +466,23 @@ export default function DemoResults() {
                 After CSV or Excel import, choose supplied weight percentages in
                 Allocation settings. JSON keeps that setting.
               </small>
-              <button onClick={downloadReport}>Research report ↓</button>
+              <button
+                onClick={downloadReport}
+                disabled={reportingLoading || !reportingDemo}
+              >
+                Research report ↓
+              </button>
               <small>
-                The report uses your currently selected allocation basis.
+                The report uses your selected allocation and reporting
+                perspective. Spreadsheet templates keep the original annual
+                research setting.
               </small>
             </WorkspaceMenu>
-            <button className={s.primary} onClick={openInHub} disabled={saving}>
+            <button
+              className={s.primary}
+              onClick={openInHub}
+              disabled={saving || reportingLoading || !reportingDemo}
+            >
               {saving ? "Opening…" : "Make a copy →"}
             </button>
           </div>
@@ -351,8 +521,27 @@ export default function DemoResults() {
                 : settings.basis === "equal"
                   ? "1% per company · equal-weight assumption"
                   : "Company list · no weights assumed"}
-              <span>SEC evidence captured {day(demo.captured_at)}</span>
+              <span>
+                {reportingLoading
+                  ? `Retrieving ${portfolioReportingLabel(reportingBasis).toLowerCase()} evidence…`
+                  : `${portfolioReportingLabel(reportingBasis)} · SEC evidence captured ${day(reportingDemo?.captured_at)}`}
+              </span>
             </p>
+            {(area !== "analytics" || analyticsArea !== "metrics") && (
+              <label className={s.allocationSelect}>
+                Reporting perspective
+                <select
+                  value={reportingBasis}
+                  onChange={(event) => changeReportingBasis(event.target.value)}
+                >
+                  {PORTFOLIO_REPORTING_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <WorkspaceMenu label="About this demo">
               <strong>A starting point for your research</strong>
               <p>
@@ -369,9 +558,10 @@ export default function DemoResults() {
                 ratios describe individual companies.
               </p>
               <p>
-                Make a copy to edit holdings and weights or refresh the
-                evidence. {feed.length.toLocaleString("en-US")} filing
-                references are included.
+                Choose a reporting perspective to retrieve compatible SEC
+                evidence. Make a copy to keep that capture and edit holdings or
+                weights. {feed.length.toLocaleString("en-US")} filing references
+                are included.
               </p>
               <small>
                 Allocations are illustrative, not actual holdings or investment
@@ -382,6 +572,40 @@ export default function DemoResults() {
               </Link>
             </WorkspaceMenu>
           </div>
+          {reportingLoading &&
+            (area !== "analytics" || analyticsArea !== "metrics") && (
+              <div className={s.reportingStatus} role="status">
+                <span>
+                  Retrieving{" "}
+                  {portfolioReportingLabel(reportingBasis).toLowerCase()}{" "}
+                  evidence · {reportingProgress.completed} of{" "}
+                  {reportingProgress.total} companies
+                </span>
+                <progress
+                  value={reportingProgress.completed}
+                  max={reportingProgress.total}
+                  aria-label="Reporting evidence retrieval progress"
+                />
+                <button onClick={() => reportingController.current?.abort()}>
+                  Cancel retrieval
+                </button>
+              </div>
+            )}
+          {reportingNotice && (
+            <div className={s.reportingStatus} role="status">
+              <span>{reportingNotice}</span>
+              {reportingRetryBasis && (
+                <button
+                  onClick={() =>
+                    changeReportingBasis(reportingRetryBasis, true)
+                  }
+                >
+                  Retry{" "}
+                  {portfolioReportingLabel(reportingRetryBasis).toLowerCase()}
+                </button>
+              )}
+            </div>
+          )}
           {saveError && (
             <p role="alert" className={s.notice}>
               {saveError}
@@ -402,7 +626,12 @@ export default function DemoResults() {
               setEvidence(null);
             }}
           >
-            <div hidden={area !== "analytics"}>
+            <div
+              hidden={
+                area !== "analytics" ||
+                (reportingLoading && analyticsArea !== "metrics")
+              }
+            >
               <PortfolioAnalytics
                 embedded
                 rows={rows}
@@ -410,16 +639,21 @@ export default function DemoResults() {
                 analyticsArea={analyticsArea}
                 onAreaChange={setAnalyticsArea}
                 companies={companies}
-                capturedAt={demo.captured_at}
+                capturedAt={reportingDemo?.captured_at || null}
+                reportingBasis={reportingBasis}
+                onReportingBasisChange={changeReportingBasis}
+                reportingLoading={reportingLoading}
+                reportingProgress={reportingProgress}
+                onCancelReporting={() => reportingController.current?.abort()}
                 onDisclosure={openDisclosures}
                 onInspectCompany={setFocusedRowId}
                 onReviewRows={openInHub}
-                onRefresh={openInHub}
-                refreshing={saving}
+                onRefresh={() => changeReportingBasis(reportingBasis, true)}
+                refreshing={reportingLoading}
                 preview
               />
             </div>
-            {area === "companies" && (
+            {area === "companies" && !reportingLoading && (
               <div className={s.filters}>
                 <label>
                   Search{" "}
@@ -440,7 +674,7 @@ export default function DemoResults() {
                     }
                   />
                 </label>
-                {area === "companies" && (
+                {area === "companies" && !reportingLoading && (
                   <label>
                     Research lens
                     <select
@@ -468,7 +702,7 @@ export default function DemoResults() {
                 </p>
               </div>
             )}
-            {area === "companies" && (
+            {area === "companies" && !reportingLoading && (
               <>
                 <p className={s.tableHelp}>
                   {view.description}{" "}
@@ -484,14 +718,14 @@ export default function DemoResults() {
                 <CompanyResearchTable
                   className={s.tableScroll}
                   label="100-company example results table"
-                  resetKey={`${view.id}:${query}`}
+                  resetKey={`${view.id}:${query}:${reportingBasis}`}
                 >
                   <table>
                     <thead>
                       <tr>
                         <th scope="col">Company</th>
                         {weighted && <th scope="col">Hypothetical weight</th>}
-                        <th scope="col">Coverage & annual period</th>
+                        <th scope="col">Coverage & reporting period</th>
                         {shownColumns.map((key: string) => (
                           <th key={key} scope="col">
                             {METRICS[key] || key}
@@ -531,7 +765,9 @@ export default function DemoResults() {
                                     ? "Partial evidence"
                                     : company?.status || "Not retrieved"}
                               </span>
-                              <small>Ending {day(company?.period?.end)}</small>
+                              <small>
+                                {portfolioPeriodLabel(company?.period)}
+                              </small>
                             </td>
                             {shownColumns.map((key: string) => {
                               const point = company?.metrics?.[key];
@@ -705,19 +941,20 @@ export default function DemoResults() {
             <PortfolioResearchDesk
               rows={rows}
               companies={companies}
-              activeTab={area}
+              activeTab={reportingLoading ? "" : area}
               request={disclosureRequest}
               onEvidence={captureSources}
             />
-            {area === "followups" && (
+            {area === "followups" && !reportingLoading && (
               <>
                 <div className={s.explanation}>
                   <h3>The next questions are part of the result.</h3>
                   <p>
                     These checks were generated from the captured evidence on{" "}
-                    {day(demo.captured_at)}. They point to missing coverage,
-                    reporting freshness, recent filings, or negative reported
-                    measures. They are research prompts, not investment ratings.
+                    {day(reportingDemo?.captured_at)}. They point to missing
+                    coverage, reporting freshness, recent filings, or negative
+                    reported measures. They are research prompts, not investment
+                    ratings.
                   </p>
                   <p>
                     {weighted

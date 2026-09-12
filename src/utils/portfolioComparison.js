@@ -1,3 +1,4 @@
+import { samePortfolioPeriod } from "./portfolioReporting.js";
 import { buildPortfolioAnalytics } from "./portfolioAnalytics.js";
 import { summarizeHubPortfolio } from "./researchHubOverview.js";
 import { portfolioMetricDefinition } from "./portfolioChanges.js";
@@ -10,11 +11,6 @@ const median = (values) => {
     ? (a[Math.floor((a.length - 1) / 2)] + a[Math.ceil((a.length - 1) / 2)]) / 2
     : null;
 };
-const validDate = (d) =>
-  typeof d === "string" &&
-  /^\d{4}-\d{2}-\d{2}$/.test(d) &&
-  Number.isFinite(Date.parse(d)) &&
-  new Date(d).toISOString().slice(0, 10) === d;
 const knownDefinition = (p) =>
   Boolean(
     p?.classification &&
@@ -23,17 +19,6 @@ const knownDefinition = (p) =>
         p.calculations?.some((c) => c.formula)),
   );
 const period = (point, company) => point?.period || company?.period;
-const samePeriod = (a, b) =>
-  a &&
-  b &&
-  validDate(a.start) &&
-  validDate(a.end) &&
-  a.start <= a.end &&
-  a.start === b.start &&
-  a.end === b.end &&
-  a.kind === b.kind &&
-  ["annual", "ttm"].includes(a.kind);
-
 export function portfolioComparisonProfile(document) {
   const snapshot =
     document?.snapshot?.basis === document?.research?.basis
@@ -107,7 +92,7 @@ export function comparePortfolioProfiles(a, b, metricId = "netMargin") {
       ? "Different basis or missing snapshot"
       : !l || !r
         ? "Missing or inapplicable metric"
-        : !samePeriod(
+        : !samePortfolioPeriod(
               period(lc.metrics[metricId], lc),
               period(rc.metrics[metricId], rc),
             ) || period(lc.metrics[metricId], lc)?.kind !== a.snapshot.basis

@@ -1,3 +1,4 @@
+import { PORTFOLIO_REPORTING_BASES } from "./portfolioReporting.js";
 import {
   packPortfolioStore,
   unpackPortfolioStore,
@@ -268,7 +269,7 @@ function snapshotRecord(snapshot) {
   );
   requireValue(
     timestamp(snapshot.generated_at) &&
-      ["annual", "ttm"].includes(snapshot.basis),
+      PORTFOLIO_REPORTING_BASES.includes(snapshot.basis),
     "The portfolio snapshot date or reporting basis is invalid.",
   );
   requireValue(
@@ -537,7 +538,7 @@ export function validatePortfolio(portfolio) {
   );
   requireValue(
     object(portfolio.research) &&
-      ["annual", "ttm"].includes(portfolio.research.basis),
+      PORTFOLIO_REPORTING_BASES.includes(portfolio.research.basis),
     "Saved portfolio reporting settings are invalid.",
   );
   for (const field of ["lastCheckedAt", "previousCheckedAt"])

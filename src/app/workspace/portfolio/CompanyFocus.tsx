@@ -1,6 +1,7 @@
 "use client";
 
 import { resolveCompanyClassification } from "../../../utils/companyClassification.js";
+import { portfolioReportingLabel } from "../../../utils/portfolioReporting.js";
 
 import Link from "next/link";
 import { portfolioAvailableMetrics } from "../../../utils/portfolioDeepResearch.js";
@@ -289,11 +290,9 @@ export default function CompanyFocus({
             <span>Selected reporting period</span>
             <strong>{company?.period?.end || "Unavailable"}</strong>
             <small>
-              {company?.period?.kind === "ttm"
-                ? "Trailing twelve months"
-                : company?.period?.kind === "annual"
-                  ? "Annual reporting"
-                  : "No supported period"}
+              {company?.period
+                ? portfolioReportingLabel(company.period.kind)
+                : "No supported period"}
               {company?.period?.start ? ` · from ${company.period.start}` : ""}
             </small>
           </div>

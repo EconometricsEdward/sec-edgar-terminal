@@ -178,6 +178,27 @@
   margin: 0;
   display: grid;
 }
+.inputTable {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.dialog .inputTable table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.dialog .inputTable th,
+.dialog .inputTable td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--evidence-line);
+  min-width: 130px;
+  white-space: normal;
+}
+.dialog .inputTable thead th {
+  color: var(--evidence-muted);
+  font-weight: 500;
+}
 
 .sources li {
   min-width: 0;

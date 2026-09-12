@@ -1,13 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Download,
-  FileUp,
-  ListPlus,
-  Loader2,
-  ShieldCheck,
-} from "lucide-react";
+import { Download, FileUp, ListPlus, Loader2, ShieldCheck } from "lucide-react";
 import {
   applyDuplicateDecision,
   createPortfolioRows,
@@ -26,6 +20,7 @@ import {
   parseTickerList,
 } from "../../../utils/portfolioFiles.js";
 import s from "./PortfolioImport.module.css";
+import { portfolioReportingLabel } from "../../../utils/portfolioReporting.js";
 
 type Props = {
   initialRows?: any[];
@@ -584,8 +579,8 @@ export default function PortfolioImport({
       </div>
       {!!rows.length && (
         <p className={s.hint}>
-          A new upload or ticker list replaces this draft. Your
-          saved research changes only when you save below.
+          A new upload or ticker list replaces this draft. Your saved research
+          changes only when you save below.
         </p>
       )}
 
@@ -1257,9 +1252,9 @@ export default function PortfolioImport({
                   ? "requested; original inputs will be retained"
                   : "off"}
                 . Reporting basis:{" "}
-                {importSettings.research?.basis === "ttm"
-                  ? "supported trailing twelve months"
-                  : "latest annual"}
+                {portfolioReportingLabel(
+                  importSettings.research?.basis || "annual",
+                )}
                 .
               </p>
               <label className={s.includeToggle}>

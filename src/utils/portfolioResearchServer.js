@@ -1,4 +1,8 @@
 import { resolveCompanyClassification } from "./companyClassification.js";
+import {
+  PORTFOLIO_REPORTING_BASES,
+  portfolioReportingLabel,
+} from "./portfolioReporting.js";
 import { buildAnalysisCompany, ANALYSIS_VERSION } from "./analysisResearch.js";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { getOperatingDirectory, getFundDirectory } from "./tickerMap.js";
@@ -48,10 +52,10 @@ export function validatePortfolioRequest(input) {
     throw failure("action must be resolve or research.");
   if (
     input.research?.basis &&
-    !["annual", "ttm"].includes(input.research.basis)
+    !PORTFOLIO_REPORTING_BASES.includes(input.research.basis)
   )
     throw failure(
-      "Choose annual or ttm research; reporting bases are never silently substituted.",
+      "Choose annual, quarter, ytd or ttm research; reporting bases are never silently substituted.",
     );
   try {
     const normalized = normalizePortfolioInput(input);
@@ -398,18 +402,19 @@ export function buildPortfolioCompany(
     );
   if (!period)
     warnings.push(
-      `No supported ${basis === "ttm" ? "trailing twelve-month" : "annual"} reporting period was found. Filings remain available.`,
+      `No supported ${portfolioReportingLabel(basis).toLowerCase()} reporting period was found. Filings remain available.`,
     );
   else if (basis === "ttm" && !period.start)
     warnings.push(
       "Four compatible consecutive quarters are unavailable; TTM metrics remain unavailable.",
     );
+  const staleDays = basis === "annual" ? 550 : 200;
   if (
     period &&
-    Date.parse(retrievedAt) - Date.parse(period.end) > 550 * 86400000
+    Date.parse(retrievedAt) - Date.parse(period.end) > staleDays * 86400000
   )
     warnings.push(
-      "Reporting is stale: the latest supported period ended more than 550 days before retrieval.",
+      `Reporting is stale: the latest supported period ended more than ${staleDays} days before retrieval.`,
     );
   if (available.length < relevant.length)
     warnings.push(
@@ -428,6 +433,7 @@ export function buildPortfolioCompany(
     sicDescription: company.sicDescription || null,
     industry: company.sic ? industryLabel(group) : "Unclassified",
     industrySystem: "SEC SIC analytical groups",
+    basis,
     period,
     analysisVersion: ANALYSIS_VERSION,
     metrics,
