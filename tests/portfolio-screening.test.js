@@ -84,6 +84,29 @@ function fixture() {
   };
 }
 
+test("quick-screen presets are distinct, factual rule sets with no repeated measures", () => {
+  assert.ok(PORTFOLIO_SCREEN_PRESETS.length >= 8);
+  assert.equal(
+    new Set(PORTFOLIO_SCREEN_PRESETS.map((preset) => preset.id)).size,
+    PORTFOLIO_SCREEN_PRESETS.length,
+  );
+  const signatures = PORTFOLIO_SCREEN_PRESETS.map((preset) => {
+    assert.ok(preset.rules.length >= 1 && preset.rules.length <= 4);
+    assert.equal(
+      new Set(preset.rules.map((rule) => rule.metricId)).size,
+      preset.rules.length,
+    );
+    return preset.rules
+      .map(
+        (rule) =>
+          `${rule.metricId}:${String(rule.min ?? "")}:${String(rule.max ?? "")}`,
+      )
+      .sort()
+      .join("|");
+  });
+  assert.equal(new Set(signatures).size, signatures.length);
+});
+
 test("AND screens use inclusive bounds with separate measured, missing and not-applicable denominators", () => {
   const { report, companies } = fixture();
   const result = buildPortfolioScreen(
@@ -108,6 +131,79 @@ test("AND screens use inclusive bounds with separate measured, missing and not-a
   ]);
   assert.equal(zero.matchCount, 1);
   assert.equal(zero.matches[0].cik, cik(2));
+});
+
+test("display measures preserve rule cells, analytical counts and CSV semantics", () => {
+  const { report, companies } = fixture();
+  const rules = [{ metricId: "revenueGrowth", min: "0", max: "" }];
+  const baseline = buildPortfolioScreen(report, companies, rules);
+  const displayed = buildPortfolioScreen(report, companies, rules, {
+    displayMetricIds: [
+      "currentRatio",
+      "operatingMargin",
+      "currentRatio",
+      "not-a-measure",
+    ],
+  });
+  assert.deepEqual(
+    displayed.displayMetrics.map((metric) => metric.id),
+    ["currentRatio", "operatingMargin"],
+  );
+  assert.deepEqual(
+    displayed.matches[0].cells.map((cell) => cell.metricId),
+    ["revenueGrowth"],
+  );
+  assert.deepEqual(
+    displayed.matches[0].displayCells.map((cell) => cell.metricId),
+    ["currentRatio", "operatingMargin"],
+  );
+  for (const key of [
+    "scopeCount",
+    "eligibleCount",
+    "measuredCount",
+    "missingCount",
+    "notApplicableCount",
+    "matchCount",
+  ])
+    assert.equal(displayed[key], baseline[key]);
+  assert.deepEqual(
+    displayed.matches.map((row) => row.cik),
+    baseline.matches.map((row) => row.cik),
+  );
+  assert.equal(portfolioScreenCsv(displayed), portfolioScreenCsv(baseline));
+});
+
+test("display measures can sort matches while unavailable values remain last", () => {
+  const { report, companies } = fixture();
+  const rules = [{ metricId: "revenueGrowth", min: "0", max: "" }];
+  const ascending = buildPortfolioScreen(report, companies, rules, {
+    displayMetricIds: ["currentRatio"],
+    sortBy: "currentRatio",
+    direction: "asc",
+  });
+  assert.deepEqual(
+    ascending.matches.map((row) => row.name),
+    [
+      "Beta Company",
+      "Alpha Company",
+      "Foreign Corporation",
+      "Gamma Company",
+    ],
+  );
+  const descending = buildPortfolioScreen(report, companies, rules, {
+    displayMetricIds: ["currentRatio"],
+    sortBy: "currentRatio",
+    direction: "desc",
+  });
+  assert.deepEqual(
+    descending.matches.map((row) => row.name),
+    [
+      "Alpha Company",
+      "Beta Company",
+      "Foreign Corporation",
+      "Gamma Company",
+    ],
+  );
 });
 
 test("blank, nonfinite, malformed, reversed and excessive rules block matches and CSV export", () => {

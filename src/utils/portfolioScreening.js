@@ -7,6 +7,8 @@ export const PORTFOLIO_SECTOR_UNCOVERED = "Sector not covered";
 const sectorLabel = (row) => row.sector || PORTFOLIO_SECTOR_UNCOVERED;
 const matchesSector = (row, sector) =>
   !sector || (row.kind === "company" && sectorLabel(row) === sector);
+const compareIssuerNames = (a, b) =>
+  a.name.localeCompare(b.name) || a.cik.localeCompare(b.cik);
 const LEGACY_LENSES = {
   revenueGrowth: ["corporate"],
   netMargin: ["corporate"],
@@ -16,8 +18,34 @@ const LEGACY_LENSES = {
   loanDeposits: ["banking"],
 };
 
+const presetSignatures = new Set();
+function defineScreenPreset(definition) {
+  const metricIds = definition.rules.map((rule) => rule.metricId);
+  if (
+    metricIds.length < 1 ||
+    metricIds.length > 4 ||
+    new Set(metricIds).size !== metricIds.length
+  )
+    throw new Error(
+      `Portfolio screen preset "${definition.id}" must contain one to four distinct measures.`,
+    );
+  const signature = definition.rules
+    .map(
+      (rule) =>
+        `${rule.metricId}:${String(rule.min ?? "")}:${String(rule.max ?? "")}`,
+    )
+    .sort()
+    .join("|");
+  if (presetSignatures.has(signature))
+    throw new Error(
+      `Portfolio screen preset "${definition.id}" duplicates another rule set.`,
+    );
+  presetSignatures.add(signature);
+  return definition;
+}
+
 export const PORTFOLIO_SCREEN_PRESETS = [
-  {
+  defineScreenPreset({
     id: "growth-margin",
     label: "Growth & margin ≥ 0",
     description:
@@ -26,21 +54,68 @@ export const PORTFOLIO_SCREEN_PRESETS = [
       { metricId: "revenueGrowth", min: "0", max: "" },
       { metricId: "operatingMargin", min: "0", max: "" },
     ],
-  },
-  {
+  }),
+  defineScreenPreset({
     id: "debt-assets",
     label: "Debt / assets ≥ 50%",
     description:
       "Reported debt is at least 50% of assets, where this measure applies.",
     rules: [{ metricId: "debtAssets", min: "50", max: "" }],
-  },
-  {
+  }),
+  defineScreenPreset({
     id: "current-ratio",
     label: "Current ratio ≤ 1×",
     description:
       "Reported current assets are no more than current liabilities.",
     rules: [{ metricId: "currentRatio", min: "", max: "1" }],
-  },
+  }),
+  defineScreenPreset({
+    id: "cash-earnings",
+    label: "Net income & operating cash flow ≥ 0",
+    description:
+      "Reported net income and operating cash flow are both nonnegative.",
+    rules: [
+      { metricId: "netIncome", min: "0", max: "" },
+      { metricId: "operatingCashFlow", min: "0", max: "" },
+    ],
+  }),
+  defineScreenPreset({
+    id: "positive-returns",
+    label: "ROA & ROE ≥ 0",
+    description:
+      "Returns on average reported assets and equity are both nonnegative.",
+    rules: [
+      { metricId: "roa", min: "0", max: "" },
+      { metricId: "roe", min: "0", max: "" },
+    ],
+  }),
+  defineScreenPreset({
+    id: "cash-flow-margins",
+    label: "Cash-flow margins ≥ 0",
+    description:
+      "Operating cash flow margin and the defined free cash flow margin are both nonnegative.",
+    rules: [
+      { metricId: "operatingCashFlowMargin", min: "0", max: "" },
+      { metricId: "freeCashFlowMargin", min: "0", max: "" },
+    ],
+  }),
+  defineScreenPreset({
+    id: "liquidity-ratios",
+    label: "Current ratio ≥ 1× & cash ratio ≥ 0.1×",
+    description:
+      "Reported current assets equal or exceed current liabilities, and cash equals at least 10% of current liabilities.",
+    rules: [
+      { metricId: "currentRatio", min: "1", max: "" },
+      { metricId: "cashRatio", min: "0.1", max: "" },
+    ],
+  }),
+  defineScreenPreset({
+    id: "bank-funding",
+    label: "Net loans / deposits ≤ 100%",
+    description:
+      "Reported net loans do not exceed reported deposits where the banking measure applies.",
+    rules: [{ metricId: "loanDeposits", min: "", max: "100" }],
+  }),
 ];
 
 function validDate(value) {
@@ -193,7 +268,7 @@ export function buildPortfolioCoverageMatrix(
     .sort(
       (a, b) =>
         (filters.gapsOnly ? b.missingCount - a.missingCount : 0) ||
-        a.name.localeCompare(b.name),
+        compareIssuerNames(a, b),
     );
   return {
     capturedAt: report?.capturedAt || null,
@@ -286,6 +361,20 @@ export function buildPortfolioScreen(
   const metricById = new Map(
     matrix.metrics.map((metric) => [metric.id, metric]),
   );
+  const displayMetricIds = [
+    ...new Set(
+      (Array.isArray(options.displayMetricIds)
+        ? options.displayMetricIds
+        : []
+      ).filter(
+        (metricId) =>
+          typeof metricId === "string" && metricById.has(metricId),
+      ),
+    ),
+  ];
+  const displayMetrics = displayMetricIds.map((metricId) =>
+    metricById.get(metricId),
+  );
   const errors = [];
   if (!Array.isArray(rules) || rules.length < 1 || rules.length > 4)
     errors.push("Choose between one and four rules.");
@@ -325,6 +414,9 @@ export function buildPortfolioScreen(
         const cells = validatedRules.map((rule) =>
           row.cells.find((cell) => cell.metricId === rule.metricId),
         );
+        const displayCells = displayMetricIds.map((metricId) =>
+          row.cells.find((cell) => cell.metricId === metricId),
+        );
         const hasNotApplicable = cells.some(
           (cell) => cell.status === "not-applicable",
         );
@@ -356,7 +448,7 @@ export function buildPortfolioScreen(
             ? [rule.label]
             : [],
         );
-        return { ...row, cells, status, failures };
+        return { ...row, cells, displayCells, status, failures };
       })
     : [];
   const matches = resultRows.filter((row) => row.status === "match");
@@ -376,23 +468,28 @@ export function buildPortfolioScreen(
   const sortBy = options.sortBy || "name";
   const direction = options.direction === "desc" ? -1 : 1;
   matches.sort((a, b) => {
-    if (sortBy === "name") return direction * a.name.localeCompare(b.name);
+    if (sortBy === "name") return direction * compareIssuerNames(a, b);
     const av =
       sortBy === "weight"
         ? a.weightPct
-        : a.cells.find((cell) => cell.metricId === sortBy)?.value;
+        : [...a.cells, ...a.displayCells].find(
+            (cell) => cell.metricId === sortBy,
+          )?.value;
     const bv =
       sortBy === "weight"
         ? b.weightPct
-        : b.cells.find((cell) => cell.metricId === sortBy)?.value;
+        : [...b.cells, ...b.displayCells].find(
+            (cell) => cell.metricId === sortBy,
+          )?.value;
     if (!finite(av) || !finite(bv))
-      return finite(av) ? -1 : finite(bv) ? 1 : a.name.localeCompare(b.name);
-    return direction * (av - bv) || a.name.localeCompare(b.name);
+      return finite(av) ? -1 : finite(bv) ? 1 : compareIssuerNames(a, b);
+    return direction * (av - bv) || compareIssuerNames(a, b);
   });
   return {
     valid,
     errors,
     rules: validatedRules,
+    displayMetrics,
     capturedAt: report?.capturedAt || null,
     weighted: Boolean(report?.weighted),
     unresolvedCount: report?.unresolvedCount || 0,
