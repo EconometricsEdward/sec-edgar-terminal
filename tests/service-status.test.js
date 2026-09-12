@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { describeServiceHealth } from "../src/utils/serviceStatus.js";
+import { describeCftcHealth, describeServiceHealth } from "../src/utils/serviceStatus.js";
 
 const healthy = {
   service: "sec-edgar-terminal",
@@ -64,4 +64,14 @@ test("unrelated, malformed and error responses cannot appear healthy", () => {
   }
   for (const status of [301, 401, 404, 500, 502])
     assert.throws(() => describeServiceHealth(healthy, status), /unexpected/);
+});
+
+test("CFTC prepared-cache status is interpreted independently from SEC configuration", () => {
+  const payload = { schema_version: 'edgar.cftc-positioning.v1', status: 'degraded', families: [
+    { family: 'tff', status: 'ready', report_date: '2026-09-08' },
+    { family: 'disaggregated', status: 'stale', report_date: '2026-09-02' },
+  ] };
+  assert.equal(describeCftcHealth(payload, 200), 'TFF: ready · 2026-09-08 | Disaggregated: stale · 2026-09-02');
+  assert.equal(describeCftcHealth({ schema_version: 'edgar.cftc-positioning.v1', status: 'disabled', families: [] }, 503), 'Shared cache disabled');
+  assert.equal(describeCftcHealth(null, 503), 'Check unavailable');
 });

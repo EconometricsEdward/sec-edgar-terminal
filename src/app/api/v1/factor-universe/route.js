@@ -1,19 +1,5 @@
-import { readUniverseSnapshot } from '../../../../utils/marketUniverseServer.js';
-import { UNIVERSE_VERSION, UNIVERSE_METHOD } from '../../../../utils/marketUniverse.js';
-import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../../utils/rateLimit.js';
-export const runtime='nodejs';
-export const dynamic='force-dynamic';
-export const maxDuration=30;
-const cors={'Access-Control-Allow-Origin':'*','Access-Control-Expose-Headers':'X-Schema-Version, X-Methodology-Version, X-Data-Through, X-Cache-Source, X-Data-Stale, Retry-After'};
-export async function GET(request){
-  const limit=await checkRateLimit({key:`rl:factor-universe:${getClientIp(request)}`,windowMs:600000,max:120,cost:1});
-  if(!limit.allowed)return rateLimitedResponse(limit,cors);
-  try{
-    const params=new URL(request.url).searchParams;
-    if([...params.keys()].some(k=>k!=='basis')||params.getAll('basis').length>1||params.has('basis')&&!['ttm','annual'].includes(params.get('basis')))throw Object.assign(new Error('Use only basis=ttm or basis=annual, once.'),{status:400,code:'INVALID_QUERY'});
-    const result=await readUniverseSnapshot(params.get('basis')||'ttm');
-    const stale=result.status==='stale';
-    return Response.json(result,{headers:{...cors,'Cache-Control':stale?'public, max-age=0, s-maxage=60':result.status==='ready'?'public, max-age=60, s-maxage=900, stale-while-revalidate=300':'public, max-age=0, s-maxage=60','X-Schema-Version':UNIVERSE_VERSION,'X-Methodology-Version':UNIVERSE_METHOD,'X-Data-Through':result.price_through||result.sec_snapshot_at.slice(0,10),'X-Cache-Source':result.cache_status,'X-Data-Stale':stale?'1':'0',Link:'</schemas/factor-universe-v1.schema.json>; rel="describedby"; type="application/schema+json"'}});
-  }catch(error){return Response.json({schema_version:UNIVERSE_VERSION,error:error.message,code:error.code||'UNIVERSE_UNAVAILABLE',retryable:error.status!==400},{status:error.status||503,headers:{...cors,'Cache-Control':'private, no-store',...(error.status!==400?{'Retry-After':'300'}:{})}});}
+const headers = { 'Cache-Control': 'private, no-store', 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Link', Link: '</api/v2/factor-universe>; rel="successor-version"' };
+export async function GET() {
+  return Response.json({ schema_version: 'edgar.api-retirement.v1', error: 'Factor Universe v1 was retired with third-party price-derived analytics.', code: 'API_VERSION_RETIRED', retired: true, replacement: '/api/v2/factor-universe', documentation: '/market/factors' }, { status: 410, headers });
 }
-export function OPTIONS(){return new Response(null,{status:204,headers:{...cors,'Access-Control-Allow-Methods':'GET, OPTIONS','Access-Control-Allow-Headers':'Accept','Access-Control-Max-Age':'86400'}});}
+export function OPTIONS() { return new Response(null, { status: 204, headers: { ...headers, 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'Accept', 'Access-Control-Max-Age': '86400' } }); }

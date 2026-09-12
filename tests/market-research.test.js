@@ -225,18 +225,23 @@ test('Screener filters do not treat unavailable values as losses; missing values
   assert.deepEqual(selectMarketCompanies(rows, { ...view, screen: 'watchlist' }, ['POS'], '').map((c) => c.ticker), ['POS']);
 });
 test('Shareable views round-trip filters, sanitize invalid options, and cap peer selection', () => {
-  const view = { ...DEFAULT_MARKET_VIEW, tab: 'factors', cohort: 'credit', basis: 'annual', query: 'JPM & bank', selected: ['JPM', 'BAC'], screen: 'losses', factorTicker: 'JPM', factorWindow: '5y', factorSector: 'XLF' };
+  const view = { ...DEFAULT_MARKET_VIEW, tab: 'fundamentals', cohort: 'credit', basis: 'annual', query: 'JPM & bank', selected: ['JPM', 'BAC'], screen: 'losses' };
   assert.deepEqual(parseMarketView(marketViewQuery(view), ['credit']), view);
-  const defaultFactorQuery = new URLSearchParams(marketViewQuery({ ...DEFAULT_MARKET_VIEW, tab: 'factors' }));
-  assert.equal(defaultFactorQuery.get('asset'), DEFAULT_MARKET_VIEW.factorTicker);
-  assert.equal(defaultFactorQuery.get('window'), DEFAULT_MARKET_VIEW.factorWindow);
-  assert.equal(defaultFactorQuery.get('proxy'), DEFAULT_MARKET_VIEW.factorSector);
-  assert.deepEqual(parseMarketView(defaultFactorQuery, ['credit']), { ...DEFAULT_MARKET_VIEW, tab: 'factors' });
+  const defaultFundamentalQuery = new URLSearchParams(marketViewQuery({ ...DEFAULT_MARKET_VIEW, tab: 'fundamentals' }));
+  assert.equal(defaultFundamentalQuery.get('tab'), 'fundamentals');
+  assert.equal(defaultFundamentalQuery.has('asset'), false);
+  assert.equal(defaultFundamentalQuery.has('window'), false);
+  assert.equal(defaultFundamentalQuery.has('proxy'), false);
+  assert.deepEqual(parseMarketView('tab=factors&asset=JPM&window=5y&proxy=XLF', ['credit']), { ...DEFAULT_MARKET_VIEW, tab: 'fundamentals' });
   const malformed = parseMarketView('basis=invalid&cohort=unknown&peers=A,A,B,C,D,E,F,%3Cscript%3E&asset=%2FBAD&window=10y&proxy=QQQ', ['credit']);
   assert.equal(malformed.basis, 'ttm'); assert.equal(malformed.cohort, 'all'); assert.deepEqual(malformed.selected, ['A', 'B', 'C', 'D', 'E']);
-  assert.equal(malformed.factorTicker, DEFAULT_MARKET_VIEW.factorTicker);
-  assert.equal(malformed.factorWindow, '3y');
-  assert.equal(malformed.factorSector, 'auto');
+  assert.equal('factorTicker' in malformed, false);assert.equal('factorWindow' in malformed, false);assert.equal('factorSector' in malformed, false);
+});
+test('CFTC positioning views round-trip family-specific controls without altering SEC selections',()=>{
+  const view={...DEFAULT_MARKET_VIEW,tab:'positioning',basis:'annual',cohort:'credit',cftcFamily:'disaggregated',cftcContract:'067651',cftcGroup:'managed-money',cftcDate:'2026-09-08',cftcHistory:'3y',cftcDisplay:'percentile'};
+  assert.deepEqual(parseMarketView(marketViewQuery(view),['credit']),view);
+  const wrong=parseMarketView('tab=positioning&family=disaggregated&contract=%2FBAD&group=leveraged-funds&date=2026-02-30&history=9y&display=other');
+  assert.equal(wrong.cftcContract,'067651');assert.equal(wrong.cftcGroup,'managed-money');assert.equal(wrong.cftcHistory,'5y');assert.equal(wrong.cftcDisplay,'net-oi');
 });
 test('Saved research refuses incompatible versions and keeps unavailable-company baselines', () => {
   assert.throws(() => parseMarketSaved('{"version":2,"watchlist":[],"views":[]}'));

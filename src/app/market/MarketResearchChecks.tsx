@@ -24,12 +24,3 @@ export function FundamentalResearchChecks({checks,onScreen,onThreshold}:{
     <p className={s.caption}>These three groups partition the selected scope. Inspect missing issuers in the table for their supplied reason codes; no missing financial values are filled in.</p>
   </details>;
 }
-
-export function BetaResearchChecks({checks,onScreen}:Props) {
-  return <details className={s.panel}><summary>How much uncertainty is behind the beta estimates?</summary>
-    <p>Classify each company using its 95% HAC interval, not just the fitted slope. An interval including 1 does not distinguish the slope from 1 at this interval level; an interval including 0 leaves its direction uncertain.</p>
-    <div className={s.tableWrap}><table><caption>{checks.population} issuers in scope · mutually exclusive interval groups</caption><thead><tr><th>Interval reading</th><th>Companies</th><th>Share of scope</th></tr></thead><tbody>{checks.beta.map(item=><tr key={item.id}><th>{item.label}</th><td><button className={s.textButton} disabled={!item.tickers.length} onClick={()=>onScreen(`beta:${item.id}`)}>{item.tickers.length}</button></td><td>{checks.population?`${(100*item.tickers.length/checks.population).toFixed(1)}%`:'Unavailable'}</td></tr>)}</tbody></table></div>
-    <p>HAC intervals allow for heteroskedasticity and serial correlation in model errors. They are uncertainty intervals for historical slopes, not ranges for tomorrow’s returns. These are individual intervals without adjustment for comparing many companies. Negative beta is an inverse fitted relationship, not a low-risk label.</p>
-    <p className={s.caption}>Intervals touching 0 enter “includes 0”; otherwise those touching 1 enter “includes 1.” Unavailable includes missing price models and invalid or missing intervals. Select a count to inspect individual estimates and bounds.</p>
-  </details>;
-}

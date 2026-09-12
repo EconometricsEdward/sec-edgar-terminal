@@ -33,7 +33,6 @@ export async function GET() {
         secUserAgent: secUserAgentConfigured ? 'configured' : 'invalid',
         warmCache: warmCacheConfigured ? 'configured' : 'disabled',
         secRateGate: gate.sharedGate,
-        priceProviderGate: warmCacheConfigured ? 'configured' : 'disabled',
         secStartsPerSecond: gate.startsPerSecond,
         marketAtlas,
         marketAtlasGeneratedAt: atlasReady ? candidate.generatedAt : null,

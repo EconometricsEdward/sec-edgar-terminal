@@ -9,6 +9,14 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/cron/provider-retirement",
+      "schedule": "30 9 * * *"
+    },
+    {
+      "path": "/api/cron/cftc",
+      "schedule": "30 22 * * *"
+    },
+    {
       "path": "/api/cron/quant-coverage?membership=1",
       "schedule": "0 23 * * *"
     },

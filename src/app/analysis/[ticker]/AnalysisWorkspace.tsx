@@ -1861,7 +1861,7 @@ function Workspace(props: any) {
                   <p className={styles.muted}>
                     Open the existing research panels for filing-language
                     comparisons, disclosure radar, deeper quality diagnostics,
-                    price history, insiders, and institutional holders. These
+                    insider transactions and institutional holders. These
                     tools use their own latest-data controls; the financial
                     filing cutoff above applies to this new workspace.
                   </p>

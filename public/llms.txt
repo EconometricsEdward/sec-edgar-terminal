@@ -1,74 +1,63 @@
 # EDGAR Terminal
 
-> Public, source-aware research tools for SEC filings, company fundamentals, market diagnostics, and portfolio analysis.
+EDGAR Terminal is a free, source-linked research application for SEC filings, company fundamentals, reported fund holdings and official CFTC Commitments of Traders positioning. It is an educational research tool, not investment advice.
 
-## Primary research surfaces
+## Main research surfaces
 
-- [Market overview](https://secedgarterminal.com/market): SEC fundamental briefing, sector heatmap, company screener, and interactive EDGAR Quant Lab.
-- The Market briefing, sector heatmap, Companies and Quant Lab share the prepared expanded SEC issuer universe. Primary sectors are mutually exclusive; optional research themes cover overlapping subsets. Preserve each metric's eligible count, since not every issuer has every measure.
-- [EDGAR Quant Lab methodology](https://secedgarterminal.com/market/factors): Definitions, equations, eligibility rules, limitations, and interpretation guidance for regression beta, filing-event response, and the EDGAR Evidence Gap.
-- [Research guide](https://secedgarterminal.com/help): Product scope and data-source guidance.
-- [About and data sources](https://secedgarterminal.com/about): Provenance, methodology, and project information.
+- [Market](https://secedgarterminal.com/market): SEC filing breadth, sector heatmap, company screener, Fundamental Lab and saved research.
+- [CFTC Positioning](https://secedgarterminal.com/market?tab=positioning): separate futures-market context from official futures-only COT reports.
+- [Fundamental Lab methodology](https://secedgarterminal.com/market/factors): definitions, eligibility rules, formulas and limitations for the SEC-only universe diagnostics.
+- [Research Hub](https://secedgarterminal.com/workspace): portfolio-level company, concentration, financial-profile, screener, scenario and SEC evidence tools.
+- [Filings](https://secedgarterminal.com/filings), [Analysis](https://secedgarterminal.com/analysis), [Risk](https://secedgarterminal.com/risk), [Compare](https://secedgarterminal.com/compare), [Funds](https://secedgarterminal.com/fund), and [Disclosures](https://secedgarterminal.com/disclosures).
 
-## Machine-readable interfaces
+## Active public data APIs
 
-- [Market fundamentals](https://secedgarterminal.com/api/market-research): Compact current TTM and annual financial metrics, source clocks, primary sectors, research themes and dated coverage metadata for the same universe as Quant Lab. Company evidence is available with ?ticker=AAPL. Aggregate requests read prepared caches and never launch a bulk SEC refresh.
+- `GET /api/v2/factor-universe?basis=ttm|annual` — prepared, SEC-only Fundamental Lab universe. Schema: `/schemas/factor-universe-v2.schema.json`.
+- `GET /api/v1/cftc/markets?family=tff|disaggregated&date=latest|YYYY-MM-DD` — validated family catalog plus the curated launch-market snapshot. Schema: `/schemas/cftc-markets-v1.schema.json`.
+- `GET /api/v1/cftc/history?family=...&contract=...&group=...&date=...&window=1y|3y|5y` — bounded single-contract history. Schema: `/schemas/cftc-history-v1.schema.json`.
+- `GET /api/v1/cftc/status` — cache-only family-level readiness for prepared CFTC snapshots. It recomputes cache age and report currency without contacting the upstream CFTC service.
+- [OpenAPI document](https://secedgarterminal.com/openapi.json).
 
-- [Quant Lab universe API](https://secedgarterminal.com/api/v1/factor-universe?basis=ttm): Default market-wide snapshot with SEC breadth, paired dispersion, exposure distributions, fixed-sample pairwise correlations and source-linked constituents. Supports only basis=ttm or basis=annual.
-- [Universe JSON Schema](https://secedgarterminal.com/schemas/factor-universe-v1.schema.json): Contract for edgar.factor-universe.v1.
+All active data endpoints are read-only. The factor-universe and CFTC markets/history endpoints are rate limited; the CFTC status endpoint is cache-only and never contacts the upstream service. Preserve response nulls, coverage counts, report dates, retrieval times, schema/calculation versions, stale or partial status, source URLs and formulas.
 
+## SEC Fundamental Lab
 
-- [OpenAPI](https://secedgarterminal.com/openapi.json): Public endpoint description.
-- [Market signals JSON Schema](https://secedgarterminal.com/schemas/market-signals-v1.schema.json): Versioned response contract for `GET /api/v1/market-signals`.
-- Example: `https://secedgarterminal.com/api/v1/market-signals?ticker=MSFT&window=3y&basis=ttm`
+- Schema version: `edgar.factor-universe.v2`.
+- Methodology version: `fundamental-universe-2.0.0`.
+- Supported measures are revenue-growth acceleration, operating margin, free-cash-flow margin, book equity/assets, net margin and cash/assets.
+- Each unique CIK counts once and receives equal weight. Expanded coverage is based on published IVV, IJH and IJR equity holdings mapped to SEC issuers. It is a dated coverage proxy, not certified index membership or the whole market.
+- Each metric requires current and compatible prior-year filing observations for the same issuer. Missing inputs remain null and stay outside that metric's denominator.
+- Ratio changes use percentage points. Direction thresholds are sensitivity bands, not significance tests; neutral observations remain in the paired denominator.
+- Breadth, median change, paired IQR change, cash confirmation and within/between-sector population variance are descriptive accounting statistics.
+- Financial issuers are excluded from operating-margin, free-cash-flow-margin and cash/assets diagnostics where the measure is not comparable.
+- No security-price, return, beta, volatility, correlation or post-filing market-response data enters v2.
 
-## Interpretation rules
+## CFTC Positioning
 
-- Preserve dates, units, sample counts, model versions, confidence intervals, provider provenance, SEC accessions, warnings, and null values.
-- Do not turn missing values into zero.
-- The market model uses raw log returns, not excess returns; its constant is a regression intercept, not Jensen alpha.
-- The current SEC filing score is a descriptive peer-normalized snapshot, not a historical factor-return series.
-- Filing-event timing is explicit: only timestamped pre-open filings may use that session; intraday, post-close, non-trading-day, and date-only filings use the next benchmark session. Missing expected intervals withhold the affected horizon.
-- Benchmark sessions are inferred from observed SPY dates rather than a separately licensed official exchange calendar.
-- Peer filing changes use the latest point-in-time company snapshots available at calculation time, not an event-time historical cross-section. Preserve the peer filing-clock fields and non-coeval warning.
-- The EDGAR Evidence Gap is a diagnostic comparison, not a valuation, forecast, recommendation, or trade signal.
-- Bulk vendor price histories are not distributed through the market-signals API; it returns derived statistics and compact chart points.
+- Schema version: `edgar.cftc-positioning.v1`.
+- Calculation version: `cftc-positioning-1.0.0`.
+- The only active upstream market-data source is the U.S. Commodity Futures Trading Commission Public Reporting API.
+- TFF uses official futures-only dataset `gpe5-46if`; Disaggregated uses official futures-only dataset `72hh-3qpy`.
+- Report families and participant taxonomies stay separate. Canonical observations use family, report basis, exact contract code and report date; history comparisons additionally require a matching venue and unit regime. Standard, micro, consolidated, discontinued and replacement contracts are not silently combined.
+- Net contracts = reported long contracts − reported short contracts. Net percentage of open interest = 100 × net contracts / open interest.
+- Weekly and four-week changes require observations exactly 7 and 28 calendar days earlier. Prior-available comparisons are labeled separately; values are never forward-filled.
+- Percentiles compare the selected observation only with compatible prior observations for that same contract and group. Ties receive half weight; later reports are excluded.
+- COT values are aggregated outstanding futures positions reported for a Tuesday, generally released later in the week. They are not individual trader records, traded volume, dollar flows, issuer exposure, equity prices or automatic buy/sell signals.
+- Official guidance: https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm
+- Official TFF resource: https://publicreporting.cftc.gov/resource/gpe5-46if.json
+- Official Disaggregated resource: https://publicreporting.cftc.gov/resource/72hh-3qpy.json
 
-## Interpreting the market-wide Quant Lab
-- Start with scopes.all.brief and breadth. Values use percentage points; percentages are 0–100. Exposure R², annualized residual volatility and event returns use decimals.
-- Growth acceleration is a change in growth rates; it does not mean revenue increased. Cash-flow and book-equity ratios are not standalone health scores.
-- Expanded Quant Lab coverage targets the SEC issuers represented in published IVV, IJH and IJR equity holdings. Read universe.coverage for the source dates, target/loaded/missing counts and membership_id. These are fund holdings, not certified current index membership. Expanded groups use the fund-reported sectors; legacy snapshots use curated primary groups. Each CIK counts once.
-- Dispersion compares the same paired issuers at their current and comparable prior periods. Observed snapshot history is not a point-in-time backtest.
-- The universe filing map uses absolute selected metric change, not peer-normalized z. scopes.all.map describes revenue-growth acceleration; other selected metrics require their own eligibility filter.
-- Preserve the co-movement issuer/pair set, coverage and dates. It is actual company-pair correlation, not the median correlation with SPY.
-- Characteristic Spearman associations are descriptive, unadjusted and not predictive, causal, significance tests or factor premiums.
-- Status partial can still contain useful SEC breadth. Inspect section coverage and retain unavailable values.
-- The default universe exposure model uses 252 SPY intervals with at least 240 exact matches. Company drilldown calendar-year windows can differ.
+## Retired contracts
 
-## Interpreting individual company drilldowns
-- `reading_guide` includes a version, three summary findings, coverage checks, and per-metric `meaning`, `reading`, and `caution`. Preserve these limitations when summarizing.
-- Beta measures historical market sensitivity; R² measures in-sample variation captured, not forecasting accuracy. The 95% beta interval is coefficient uncertainty, not a return prediction interval.
-- Above-peer filing change may still be an absolute decline. Read current, prior, and raw change before saying fundamentals improved. The Evidence Gap is a difference of scaled diagnostics, not a statistical z score or expected alpha.
-- Input completeness grades measure available evidence, not business quality. Conditional, market and sector models can use different samples.
+- `GET /api/prices` returns HTTP 410.
+- `GET /api/v1/market-signals` returns HTTP 410.
+- `GET /api/v1/factor-universe` returns HTTP 410 and points to `/api/v2/factor-universe`.
 
-## Absolute quantitative diagnostics (method factor-universe-1.2.0)
-- Quant Lab is the new display name for Factor Lab. Existing /market?tab=factors, /market/factors and API URLs remain valid.
-- Keep breadth, magnitude and dispersion separate. Net direction balance = 100 × (higher − lower) / eligible; it is measured in percentage points, not expected return. Zero can mean offsetting increases and decreases.
-- Compare growth and cash-margin higher shares only on cash_confirmation's matched operating-issuer sample. Its nine cells include neutral outcomes; each supplies the actual tickers. A lower FCF margin can reflect investment and does not imply declining FCF dollars.
-- Default API direction threshold is zero. In the UI, cutoff=0.5 or cutoff=1 changes higher/lower classification only; neutral observations stay in the denominator, and raw magnitudes and paired IQR remain unchanged. These are sensitivity settings, not significance tests.
-- The revenue-growth IQR measures dispersion of growth-rate levels; their changes measure acceleration.
-- Group variance uses the identical issuer/group sample at both dates with population denominators: total = within + between. Units are squared percentage points; IQRs are not additive. Variance is sensitive to extremes. Shares are null at zero total variance.
-- Preserve original SEC, price and calculation dates on an upgraded cached snapshot. New diagnostics do not mean fresh underlying observations.
-- JSON downloads include analysis_settings, selected_diagnostics and selected_brief when a user chooses a scope or direction band.
+These endpoints depended on retired third-party security-price acquisition and derived return analytics. CFTC positioning is not a replacement price feed, and retired v1 fields are not reinterpreted in v2.
 
-- Membership changes start a new history segment. Do not interpret a larger issuer count as improving fundamentals.
-- sec_checked_at is the last issuer filing-history check; facts_retrieved_at is the underlying financial-facts retrieval clock. Reusing unchanged facts does not restamp them.
-- SEC eligibility and adjusted-price-model eligibility are separate. Missing financial inputs and unverified price bases remain excluded.
+## Interpretation and provenance
 
-## Portfolio-specific research
-- [Research Hub](https://secedgarterminal.com/workspace) supports 1–100 user-selected company rows, full Analysis metrics, financial rankings, up to six-company comparisons, connected statement diagnostics, a filing library, portfolio disclosure searches and fund ownership discovery.
-- [Portfolio guide](https://secedgarterminal.com/workspace/portfolio-guide) documents basis, applicability, source limits and the bounded research API. [The 100-company example](https://secedgarterminal.com/workspace/demo) uses the same engine.
-- Portfolio report JSON includes deep_research.metricSummaries, connections, filingHistory, disclosures and fundOwnership when captured. HTML reports contain the same findings and source appendices. Preserve each measured denominator and full period; ranks are numerical order, not investment quality.
-- Core captures contain at most 30 recent relevant filing references per issuer; additional all-form submissions and historical archives load only on request. Unloaded history is not searched. No-match disclosure results apply only to the reviewed forms, dates, sections and documents.
-- Fund ownership discovery describes funds reporting holdings in selected companies, not the investor’s fund exposure or complete market ownership. Percentages use each fund’s net assets and retain separate report dates.
-- Public demo and browser stores may use portfolio-metric-templates-v1 snapshot templates and portfolio-evidence-pool-v1 company source/calculation/period catalogs. Resolve templateId, sourceIds, calculationIds and periodId before interpreting metrics. User-exported research JSON is expanded with explicit values and sources.
+- A reporting period, filing date, CFTC report date, source retrieval time and application calculation time are different clocks.
+- Aggregates describe the covered sample and expose their own eligible counts. A missing result is not evidence that an event, exposure or filing does not exist.
+- Verify consequential figures and passages against the linked SEC or CFTC source.
+- SEC filing facts, SEC filing text, N-PORT holdings and CFTC COT reports answer different questions and should not be blended without an explicit, documented research design.

@@ -8,22 +8,22 @@ import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary } from 
 import { isMarketAtlas } from './marketResearchValidation.js';
 import { secFetch } from './secClient.js';
 import { getOperatingTickers } from './tickerMap.js';
-import { loadPriceSeries, warmYahooSeries } from './priceDataServer.js';
-import { warmGet, warmSet, warmGetMany, warmDeleteMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
+import { warmGet, warmSet, warmGetMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
 import { publishMarketOverview } from './marketOverviewServer.js';
 
 export const QUANT_COMPANY_CACHE = 'quant-company-v1';
-export const QUANT_PRICE_CACHE = 'quant-adjusted-prices-v1';
 export const QUANT_ATLAS_CACHE = 'quant-atlas-v1';
+const LEGACY_MEMBERSHIP_CACHE = 'quant-coverage-v1';
 const DAY = 86400000;
 const RETENTION = 8 * 86400;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24);
 export const membershipId = membership => hash(membership.rows.map(r => [r.cik, r.ticker, r.sector, r.fund]));
 
 export async function readQuantMembership() {
-  const cached = await warmGet(QUANT_COVERAGE_VERSION, 'membership');
-  return cached?.version === seed.version && cached.rows?.length >= 1450 && cached.rows?.length <= 1600 ? cached : seed;
+  const [current, preservedLegacy] = await Promise.all([warmGet(QUANT_COVERAGE_VERSION, 'membership'), warmGet(LEGACY_MEMBERSHIP_CACHE, 'membership')]);
+  const cached = [current, preservedLegacy].find(value => value?.version === seed.version && value.rows?.length >= 1450 && value.rows?.length <= 1600);
+  return cached || seed;
 }
 
 /** Three small holdings downloads weekly, outside all page request paths. */
@@ -86,22 +86,6 @@ async function refreshCompany(entry, cached, signal) {
   return result;
 }
 
-async function refreshPrice(ticker, signal) {
-  const now = new Date(), fromIso = new Date(now.getTime() - 3 * 365 * DAY).toISOString().slice(0, 10);
-  const compact = await warmGet(QUANT_PRICE_CACHE, ticker);
-  if (compact && now.getTime() - Date.parse(compact.retrievedAt) < 20 * 3600000) return compact;
-  const envelope = await warmGet('stock-raw-yahoo', ticker);
-  let result;
-  if (envelope && now.getTime() - Date.parse(envelope.retrievedAt) < 20 * 3600000) {
-    try { result = warmYahooSeries(envelope, fromIso); } catch { /* insufficient historical coverage */ }
-  }
-  if (!result) result = await loadPriceSeries({ ticker, fromIso, now, signal, forceRefresh: true, allowUnverifiedFallback: false, cacheRaw: false });
-  if (result.provider !== 'yahoo_finance' || result.priceBasis !== 'adjusted_close') throw new Error('Verified adjusted prices unavailable.');
-  const value = { provider: result.provider, priceBasis: result.priceBasis, retrievedAt: result.retrievedAt, prices: result.prices.filter(p => p.date >= fromIso && p.date < now.toISOString().slice(0, 10)).map(p => ({ date: p.date, adjustedClose: p.adjustedClose })) };
-  if (!await warmSet(QUANT_PRICE_CACHE, ticker, value, RETENTION)) throw new Error('Adjusted-price checkpoint could not be persisted.');
-  return value;
-}
-
 /** Each daily shard is small and resumable; successful issuers never lose their checkpoint. */
 export async function refreshQuantBatch(batch, { signal, deadline = Date.now() + 270000 } = {}) {
   if (!Number.isSafeInteger(batch) || batch < 0 || batch >= QUANT_BATCHES) throw Object.assign(new Error('Invalid coverage batch.'), { status: 400 });
@@ -113,7 +97,7 @@ export async function refreshQuantBatch(batch, { signal, deadline = Date.now() +
     const cached = await warmGetMany(QUANT_COMPANY_CACHE, entries.map(r => r.cik), {signal,deadline});
     const attempts = await warmGetMany(`${QUANT_COMPANY_CACHE}:attempts`, entries.map(r=>r.cik), {signal,deadline});
     const queue = entries.map((entry, i) => ({ entry, cached: cached[i], attemptedAt: new Date(Math.max(Date.parse(attempts[i]?.at)||0,Date.parse(cached[i]?.attemptedAt)||0)).toISOString() })).sort((a, b) => (Date.parse(a.attemptedAt) || 0) - (Date.parse(b.attemptedAt) || 0));
-    const result = { batch, membership_id: membershipId(membership), requested: entries.length, checked: 0, prices: 0, failed: 0, skipped: 0, errors: [] };
+    const result = { batch, membership_id: membershipId(membership), requested: entries.length, checked: 0, failed: 0, skipped: 0, errors: [] };
     await Promise.all(Array.from({ length: 2 }, async () => {
       while (queue.length && Date.now() < deadline - 22000 && !signal?.aborted) {
         const { entry, cached: prior } = queue.shift();
@@ -123,9 +107,6 @@ export async function refreshQuantBatch(batch, { signal, deadline = Date.now() +
           if (result.errors.length < 8) result.errors.push({ ticker: entry.ticker, source: 'SEC', reason: error.message });
           await warmSet(`${QUANT_COMPANY_CACHE}:attempts`, entry.cik, { at: new Date().toISOString(), lastError: error.message }, 30 * 86400);
         }
-        if (signal?.aborted || Date.now() > deadline - 15000) continue;
-        try { await refreshPrice(entry.ticker, signal); result.prices++; }
-        catch (error) { if (result.errors.length < 8) result.errors.push({ ticker: entry.ticker, source: 'prices', reason: error.message }); }
       }
     }));
     result.skipped = queue.length;
@@ -170,38 +151,4 @@ export async function publishQuantAtlas(atlas, options={}) {
   if (!await writeSnapshot(QUANT_ATLAS_CACHE, 'atlas', atlas, 7*86400, options)) throw new Error('Expanded SEC snapshot could not be published.');
   const membership = await readQuantMembership();
   await publishMarketOverview(atlas, membershipId(membership) === atlas.coverage.membership_id ? membership : null, options);
-}
-
-export async function readQuantPrices(atlas, { signal, deadline = Date.now()+240000 } = {}) {
-  // Benchmarks are shared across every issuer and refreshed only once here.
-  const proxies = ['SPY', ...new Set(QUANT_GROUPS.map(g => g.proxy))];
-  for (const ticker of proxies) { if (signal?.aborted || Date.now()>deadline-20000) break; try { await refreshPrice(ticker, signal); } catch { /* coverage rules withhold affected outputs */ } }
-  const tickers = [...new Set([...proxies, ...atlas.companies.map(c => c.ticker)])];
-  const records = await warmGetMany(QUANT_PRICE_CACHE, tickers, {signal,deadline});
-  return Object.fromEntries(tickers.flatMap((ticker, index) => records[index] ? [[ticker, records[index]]] : []));
-}
-
-/** One-time removal of duplicate raw histories created by the initial migration.
- * Preserve the original research universe and only remove reproducible price
- * cache entries for newly checkpointed coverage names. No source facts are removed.
- */
-export async function compactQuantMigration() {
-  const marker=await warmGet(QUANT_COVERAGE_VERSION,'compact-price-storage');
-  if(marker)return {already_compact:true};
-  const membership=await readQuantMembership();
-  const records=await warmGetMany(QUANT_COMPANY_CACHE,membership.rows.map(r=>r.cik));
-  const original=new Set(MARKET_LENSES.flatMap(c=>c.tickers));
-  const redundant=membership.rows.filter((entry,i)=>records[i]?.company&&!original.has(entry.ticker)).map(r=>r.ticker);
-  const removed=await warmDeleteMany('stock-raw-yahoo',redundant);
-  if(removed===null)throw new Error('Duplicate price-cache cleanup could not complete.');
-  console.log('[Quant Lab] Duplicate cache cleanup:',JSON.stringify({candidates:redundant.length,removed}));
-  // Capacity accounting may lag acknowledged deletions briefly. Bound recovery
-  // rather than treating that interval as a completed storage migration.
-  let stored=false;
-  for(let attempt=0;attempt<3&&!stored;attempt++){
-    if(attempt)await new Promise(resolve=>setTimeout(resolve,2000));
-    stored=await warmSet(QUANT_COVERAGE_VERSION,'compact-price-storage',{at:new Date().toISOString(),removed},90*86400);
-  }
-  if(!stored)throw new Error('Storage migration marker could not be saved.');
-  return {duplicate_price_histories_removed:removed};
 }

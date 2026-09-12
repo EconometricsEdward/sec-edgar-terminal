@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ArrowUpRight,
+  Activity,
   BarChart3,
   FileSearch,
   FileText,
@@ -47,20 +48,27 @@ const tools = [
     icon: Globe2,
     href: "/market",
     number: "05",
-    text: "Explore covered companies by sector, screen fundamentals, and build a company watchlist.",
+    text: "Explore covered companies by sector, screen SEC fundamentals, and build a company watchlist.",
+  },
+  {
+    title: "CFTC Positioning",
+    icon: Activity,
+    href: "/market?tab=positioning",
+    number: "06",
+    text: "Compare official futures-only COT positioning by contract, participant group, and report date.",
   },
   {
     title: "Funds",
     icon: Wallet,
     href: "/fund",
-    number: "06",
+    number: "07",
     text: "Inspect reported fund holdings, portfolio concentration, overlap, and N-PORT source documents.",
   },
   {
     title: "Disclosures",
     icon: FileSearch,
     href: "/disclosures",
-    number: "07",
+    number: "08",
     text: "Search filing language, compare passages, and collect quotations for a research brief.",
   },
 ];
@@ -135,7 +143,7 @@ export default function HomePage() {
             Reported financials and filing text come from SEC records.
             Calculations, missing data, reporting dates, and limited search
             windows need context. Fund holdings are historical reports;
-            supplementary market data is labeled separately.
+            official CFTC positioning is labeled and sourced separately.
           </p>
         </div>
         <Link href="/help#coverage">

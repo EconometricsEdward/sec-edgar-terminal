@@ -1,0 +1,191 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://secedgarterminal.com/schemas/cftc-history-v1.schema.json",
+  "title": "EDGAR Terminal CFTC COT Contract History v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "calculation_version",
+    "report_family",
+    "report_basis",
+    "retrieved_at",
+    "status",
+    "freshness",
+    "source",
+    "selection",
+    "selected",
+    "participants",
+    "history",
+    "percentile",
+    "shorter_percentiles",
+    "coverage",
+    "quarantine",
+    "formula"
+  ],
+  "properties": {
+    "schema_version": { "const": "edgar.cftc-positioning.v1" },
+    "calculation_version": { "const": "cftc-positioning-1.0.0" },
+    "report_family": { "enum": ["tff", "disaggregated"] },
+    "report_basis": { "const": "futures_only" },
+    "retrieved_at": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["ready", "partial", "stale"] },
+    "refresh_warning": { "type": "string" },
+    "cache_publication": {
+      "$ref": "cftc-markets-v1.schema.json#/definitions/cachePublication"
+    },
+    "freshness": {
+      "$ref": "cftc-markets-v1.schema.json#/definitions/freshness"
+    },
+    "source": { "$ref": "cftc-markets-v1.schema.json#/definitions/source" },
+    "retrieval": {
+      "type": ["object", "null"],
+      "required": ["rows", "pages", "cap_reached", "bounded_max_rows"],
+      "properties": {
+        "rows": { "type": "integer", "minimum": 0 },
+        "pages": { "type": "integer", "minimum": 0 },
+        "cap_reached": { "type": "boolean" },
+        "bounded_max_rows": { "type": "integer", "minimum": 1, "maximum": 600 }
+      },
+      "additionalProperties": false
+    },
+    "selection": {
+      "type": "object",
+      "required": [
+        "contract",
+        "group",
+        "report_date",
+        "history_window",
+        "required_prior_reports"
+      ],
+      "properties": {
+        "contract": { "type": "string" },
+        "group": {
+          "$ref": "cftc-markets-v1.schema.json#/definitions/traderGroupId"
+        },
+        "report_date": { "type": "string", "format": "date" },
+        "history_window": { "enum": ["1y", "3y", "5y"] },
+        "required_prior_reports": { "enum": [52, 156, 260] }
+      },
+      "additionalProperties": false
+    },
+    "selected": {
+      "$ref": "cftc-markets-v1.schema.json#/definitions/observation"
+    },
+    "participants": {
+      "type": "array",
+      "items": { "$ref": "cftc-markets-v1.schema.json#/definitions/groupValue" }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "reportDate",
+          "openInterest",
+          "long",
+          "short",
+          "spreading",
+          "net",
+          "netPctOi"
+        ],
+        "properties": {
+          "reportDate": { "type": "string", "format": "date" },
+          "openInterest": { "type": ["number", "null"] },
+          "long": { "type": ["number", "null"] },
+          "short": { "type": ["number", "null"] },
+          "spreading": { "type": ["number", "null"] },
+          "net": { "type": ["number", "null"] },
+          "netPctOi": { "type": ["number", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "percentile": {
+      "$ref": "cftc-markets-v1.schema.json#/definitions/percentile"
+    },
+    "shorter_percentiles": {
+      "type": "array",
+      "items": { "$ref": "cftc-markets-v1.schema.json#/definitions/percentile" }
+    },
+    "coverage": {
+      "allOf": [
+        {
+          "$ref": "cftc-markets-v1.schema.json#/definitions/historyRange"
+        },
+        { "required": ["required_values_unavailable"] }
+      ]
+    },
+    "quarantine": {
+      "type": "array",
+      "items": {
+        "$ref": "cftc-markets-v1.schema.json#/definitions/quarantineItem"
+      }
+    },
+    "formula": {
+      "type": "object",
+      "required": [
+        "net_contracts",
+        "net_percent_open_interest",
+        "percentile",
+        "one_week_change",
+        "four_week_change",
+        "previous_available_change",
+        "calculation_version"
+      ],
+      "properties": {
+        "net_contracts": { "type": "string" },
+        "net_percent_open_interest": { "type": "string" },
+        "percentile": { "type": "string" },
+        "one_week_change": { "type": "string" },
+        "four_week_change": { "type": "string" },
+        "previous_available_change": { "type": "string" },
+        "calculation_version": { "const": "cftc-positioning-1.0.0" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "report_family": { "const": "tff" } } },
+      "then": { "properties": {
+        "source": { "properties": { "dataset_id": { "const": "gpe5-46if" }, "report_family": { "const": "Traders in Financial Futures" } } },
+        "selection": { "properties": { "group": { "enum": ["dealer", "asset-manager", "leveraged-funds", "other-reportables", "non-reportables"] } } },
+        "selected": { "properties": { "family": { "const": "tff" }, "groups": { "propertyNames": { "enum": ["dealer", "asset-manager", "leveraged-funds", "other-reportables", "non-reportables"] } } } },
+        "participants": { "items": { "properties": { "id": { "enum": ["dealer", "asset-manager", "leveraged-funds", "other-reportables", "non-reportables"] } } } }
+      } },
+      "else": { "properties": {
+        "source": { "properties": { "dataset_id": { "const": "72hh-3qpy" }, "report_family": { "const": "Disaggregated" } } },
+        "selection": { "properties": { "group": { "enum": ["producer-merchant", "swap-dealers", "managed-money", "other-reportables", "non-reportables"] } } },
+        "selected": { "properties": { "family": { "const": "disaggregated" }, "groups": { "propertyNames": { "enum": ["producer-merchant", "swap-dealers", "managed-money", "other-reportables", "non-reportables"] } } } },
+        "participants": { "items": { "properties": { "id": { "enum": ["producer-merchant", "swap-dealers", "managed-money", "other-reportables", "non-reportables"] } } } }
+      } }
+    },
+    { "if": { "properties": { "selection": { "properties": { "history_window": { "const": "1y" } } } } }, "then": { "properties": { "selection": { "properties": { "required_prior_reports": { "const": 52 } } }, "percentile": { "properties": { "required": { "const": 52 } } } } } },
+    { "if": { "properties": { "selection": { "properties": { "history_window": { "const": "3y" } } } } }, "then": { "properties": { "selection": { "properties": { "required_prior_reports": { "const": 156 } } }, "percentile": { "properties": { "required": { "const": 156 } } } } } },
+    { "if": { "properties": { "selection": { "properties": { "history_window": { "const": "5y" } } } } }, "then": { "properties": { "selection": { "properties": { "required_prior_reports": { "const": 260 } } }, "percentile": { "properties": { "required": { "const": 260 } } } } } },
+    {
+      "if": {
+        "properties": {
+          "freshness": {
+            "properties": { "source_report_age_days": { "minimum": 15 } }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "freshness": {
+            "properties": { "source_currency": { "const": "aged" } }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "freshness": {
+            "properties": { "source_currency": { "const": "current" } }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

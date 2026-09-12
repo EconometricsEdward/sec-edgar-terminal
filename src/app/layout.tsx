@@ -18,11 +18,11 @@ import "./reading-preferences.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://secedgarterminal.com"),
   title: {
-    default: "EDGAR Terminal - SEC Filings & Financial Data Explorer",
+    default: "EDGAR Terminal - SEC Research & CFTC Positioning",
     template: "%s | EDGAR Terminal",
   },
   description:
-    "Explore SEC filings, source-linked financials, company risks, peers, and fund holdings. Keep evidence and notes in a connected research workspace. No account required.",
+    "Explore SEC filings, source-linked financials, official CFTC futures positioning, company risks, peers, and fund holdings. No account required.",
   keywords: [
     "SEC filings",
     "10-K",
@@ -35,6 +35,7 @@ export const metadata: Metadata = {
     "peer comparison",
     "stock analysis",
     "public company data",
+    "CFTC Commitments of Traders",
   ],
   authors: [{ name: "EDGAR Terminal" }],
   manifest: "/manifest.webmanifest",
@@ -48,26 +49,26 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: "https://secedgarterminal.com/",
-    title: "EDGAR Terminal - SEC Filings & Financial Data Explorer",
+    title: "EDGAR Terminal - SEC Research & CFTC Positioning",
     description:
-      "Explore SEC filings and source-linked financial data, compare companies, and keep your research evidence connected.",
+      "Explore SEC filings, source-linked financial data, and official CFTC futures positioning while keeping research evidence connected.",
     siteName: "EDGAR Terminal",
     locale: "en_US",
     images: [
       {
-        url: "https://secedgarterminal.com/og-image.png",
+        url: "https://secedgarterminal.com/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "EDGAR Terminal - professional SEC filings research terminal interface",
+        alt: "EDGAR Terminal - source-linked SEC research and separate official CFTC positioning",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "EDGAR Terminal - SEC Filings & Financial Data Explorer",
+    title: "EDGAR Terminal - SEC Research & CFTC Positioning",
     description:
-      "Free, source-linked explorer for SEC filings, XBRL financials, insider trading, and peer comparisons.",
-    images: ["https://secedgarterminal.com/og-image.png"],
+      "Free, source-linked SEC research with separate official CFTC Commitments of Traders positioning.",
+    images: ["https://secedgarterminal.com/opengraph-image"],
   },
   icons: {
     icon: [
@@ -92,7 +93,7 @@ const jsonLd = {
   alternateName: "SEC EDGAR Terminal",
   url: "https://secedgarterminal.com/",
   description:
-    "Free, source-linked explorer for SEC filings, XBRL financial data, insider trading, and peer comparisons.",
+    "Free, source-linked explorer for SEC filings, XBRL financial data, official CFTC futures positioning, and peer comparisons.",
   applicationCategory: "FinanceApplication",
   operatingSystem: "Any (web-based)",
   offers: {
@@ -108,6 +109,7 @@ const jsonLd = {
     "Disclosure queries, passage comparisons, and evidence collections",
     "Historical reported fund holdings and portfolio comparisons",
     "Portfolio research, company comparisons, SEC evidence, and research exports",
+    "Official futures-only CFTC Commitments of Traders positioning with report-family, contract, date, and formula provenance",
   ],
 };
 
@@ -179,7 +181,7 @@ export default function RootLayout({
             <footer className={styles.footer} data-site-footer>
               <div className={styles.footerContent}>
                 <div>
-                  SEC.gov sources · Public EDGAR APIs · XBRL financial facts
+                  SEC.gov sources · Public EDGAR APIs · Official CFTC COT data
                   <br />
                   Free access · No account required · Research use only
                 </div>
@@ -199,6 +201,13 @@ export default function RootLayout({
                     rel="noopener noreferrer"
                   >
                     SEC EDGAR ↗
+                  </a>
+                  <a
+                    href="https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    CFTC COT ↗
                   </a>
                 </nav>
               </div>

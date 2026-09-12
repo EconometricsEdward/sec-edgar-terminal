@@ -1,0 +1,492 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://secedgarterminal.com/schemas/factor-universe-v2.schema.json",
+  "title": "EDGAR Terminal SEC Fundamental Universe v2",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "methodology_version",
+    "diagnostics_version",
+    "fundamental_definitions",
+    "generated_at",
+    "sec_snapshot_at",
+    "sec_stale",
+    "basis",
+    "status",
+    "universe",
+    "scopes",
+    "rows",
+    "history",
+    "limitations",
+    "links"
+  ],
+  "properties": {
+    "schema_version": { "const": "edgar.factor-universe.v2" },
+    "methodology_version": { "const": "fundamental-universe-2.0.0" },
+    "diagnostics_version": { "const": "fundamental-diagnostics-2.0.0" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "sec_snapshot_at": { "type": "string", "format": "date-time" },
+    "sec_stale": { "type": "boolean" },
+    "basis": { "enum": ["ttm", "annual"] },
+    "status": { "enum": ["ready", "partial", "stale"] },
+    "cache_status": { "type": "string" },
+    "refresh_warning": { "type": "string" },
+    "fundamental_definitions": {
+      "type": "object",
+      "required": [
+        "direction",
+        "thresholds",
+        "default_threshold",
+        "breadth",
+        "balance",
+        "magnitude",
+        "dispersion",
+        "cash_confirmation",
+        "variance",
+        "limitations"
+      ],
+      "properties": {
+        "direction": { "type": "string" },
+        "thresholds": { "type": "array", "items": { "type": "number" } },
+        "default_threshold": { "type": "number" },
+        "breadth": { "type": "string" },
+        "balance": { "type": "string" },
+        "magnitude": { "type": "string" },
+        "dispersion": { "type": "string" },
+        "cash_confirmation": { "type": "string" },
+        "variance": { "type": "string" },
+        "limitations": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "universe": {
+      "type": "object",
+      "required": [
+        "requested",
+        "issuers",
+        "issuer_coverage",
+        "share_classes_excluded",
+        "grouping"
+      ],
+      "properties": {
+        "requested": { "type": "integer", "minimum": 0 },
+        "issuers": { "type": "integer", "minimum": 0 },
+        "issuer_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "share_classes_excluded": { "type": "integer", "minimum": 0 },
+        "grouping": { "type": "string" },
+        "coverage": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "propertyNames": { "$ref": "#/definitions/providerFreeProperty" },
+              "additionalProperties": { "$ref": "#/definitions/providerFreeValue" }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "scopes": {
+      "type": "object",
+      "required": ["all"],
+      "additionalProperties": { "$ref": "#/definitions/scope" }
+    },
+    "rows": { "type": "array", "items": { "$ref": "#/definitions/row" } },
+    "history": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/historyPoint" }
+    },
+    "history_note": { "type": "string" },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "links": {
+      "type": "object",
+      "required": ["methodology", "schema", "api"],
+      "properties": {
+        "methodology": { "type": "string", "format": "uri" },
+        "schema": { "type": "string", "format": "uri" },
+        "api": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "providerFreeProperty": {
+      "not": {
+        "enum": [
+          "price_through",
+          "price_sample",
+          "price_status",
+          "price_source",
+          "exposure",
+          "event",
+          "co_movement",
+          "associations",
+          "sector_proxy"
+        ]
+      }
+    },
+    "providerFreeValue": {
+      "anyOf": [
+        { "type": ["string", "number", "boolean", "null"] },
+        {
+          "type": "array",
+          "items": { "$ref": "#/definitions/providerFreeValue" }
+        },
+        {
+          "type": "object",
+          "propertyNames": { "$ref": "#/definitions/providerFreeProperty" },
+          "additionalProperties": { "$ref": "#/definitions/providerFreeValue" }
+        }
+      ]
+    },
+    "nullableNumber": { "type": ["number", "null"] },
+    "metric": {
+      "type": "object",
+      "required": ["current", "prior", "change", "unavailable_reason"],
+      "properties": {
+        "current": { "$ref": "#/definitions/nullableNumber" },
+        "prior": { "$ref": "#/definitions/nullableNumber" },
+        "change": { "$ref": "#/definitions/nullableNumber" },
+        "unavailable_reason": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "dateRange": {
+      "type": "object",
+      "required": ["earliest", "latest"],
+      "properties": {
+        "earliest": { "type": ["string", "null"], "format": "date" },
+        "latest": { "type": ["string", "null"], "format": "date" }
+      },
+      "additionalProperties": false
+    },
+    "distribution": {
+      "type": "object",
+      "required": [
+        "count",
+        "median",
+        "q25",
+        "q75",
+        "iqr",
+        "minimum",
+        "maximum"
+      ],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "median": { "$ref": "#/definitions/nullableNumber" },
+        "q25": { "$ref": "#/definitions/nullableNumber" },
+        "q75": { "$ref": "#/definitions/nullableNumber" },
+        "iqr": { "$ref": "#/definitions/nullableNumber" },
+        "minimum": { "$ref": "#/definitions/nullableNumber" },
+        "maximum": { "$ref": "#/definitions/nullableNumber" }
+      },
+      "additionalProperties": false
+    },
+    "variancePeriod": {
+      "type": "object",
+      "required": ["total", "within", "between"],
+      "properties": {
+        "total": { "$ref": "#/definitions/nullableNumber" },
+        "within": { "$ref": "#/definitions/nullableNumber" },
+        "between": { "$ref": "#/definitions/nullableNumber" },
+        "within_share": { "$ref": "#/definitions/nullableNumber" },
+        "between_share": { "$ref": "#/definitions/nullableNumber" }
+      },
+      "additionalProperties": false
+    },
+    "variance": {
+      "type": "object",
+      "required": [
+        "eligible",
+        "groups",
+        "singleton_groups",
+        "units",
+        "current",
+        "prior",
+        "change"
+      ],
+      "properties": {
+        "eligible": { "type": "integer", "minimum": 0 },
+        "groups": { "type": "integer", "minimum": 0 },
+        "singleton_groups": { "type": "integer", "minimum": 0 },
+        "units": { "const": "squared_percentage_points" },
+        "current": { "$ref": "#/definitions/variancePeriod" },
+        "prior": { "$ref": "#/definitions/variancePeriod" },
+        "change": { "$ref": "#/definitions/variancePeriod" }
+      },
+      "additionalProperties": false
+    },
+    "breadthMetric": {
+      "type": "object",
+      "required": [
+        "key",
+        "label",
+        "short",
+        "population",
+        "meaning",
+        "threshold",
+        "population_count",
+        "eligible",
+        "missing",
+        "higher",
+        "lower",
+        "unchanged",
+        "higher_pct",
+        "lower_pct",
+        "balance_pct",
+        "change",
+        "current",
+        "prior",
+        "paired_iqr_change",
+        "filing_dates",
+        "fiscal_ends",
+        "prior_fiscal_ends",
+        "eligible_tickers",
+        "variance"
+      ],
+      "properties": {
+        "key": {
+          "enum": [
+            "revenueGrowth",
+            "operatingMargin",
+            "freeCashFlowMargin",
+            "equityToAssets",
+            "netMargin",
+            "cashToAssets"
+          ]
+        },
+        "label": { "type": "string" },
+        "short": { "type": "string" },
+        "population": { "enum": ["all", "operating"] },
+        "meaning": { "type": "string" },
+        "threshold": { "type": "number" },
+        "population_count": { "type": "integer", "minimum": 0 },
+        "eligible": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 },
+        "higher": { "type": "integer", "minimum": 0 },
+        "lower": { "type": "integer", "minimum": 0 },
+        "unchanged": { "type": "integer", "minimum": 0 },
+        "higher_pct": { "$ref": "#/definitions/nullableNumber" },
+        "lower_pct": { "$ref": "#/definitions/nullableNumber" },
+        "balance_pct": { "$ref": "#/definitions/nullableNumber" },
+        "change": { "$ref": "#/definitions/distribution" },
+        "current": { "$ref": "#/definitions/distribution" },
+        "prior": { "$ref": "#/definitions/distribution" },
+        "paired_iqr_change": { "$ref": "#/definitions/nullableNumber" },
+        "filing_dates": { "$ref": "#/definitions/dateRange" },
+        "fiscal_ends": { "$ref": "#/definitions/dateRange" },
+        "prior_fiscal_ends": { "$ref": "#/definitions/dateRange" },
+        "eligible_tickers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "variance": { "$ref": "#/definitions/variance" }
+      },
+      "additionalProperties": false
+    },
+    "cashCell": {
+      "type": "object",
+      "required": ["growth", "cash", "count", "pct", "tickers"],
+      "properties": {
+        "growth": { "enum": ["higher", "neutral", "lower"] },
+        "cash": { "enum": ["higher", "neutral", "lower"] },
+        "count": { "type": "integer", "minimum": 0 },
+        "pct": { "$ref": "#/definitions/nullableNumber" },
+        "tickers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "cashConfirmation": {
+      "type": "object",
+      "required": [
+        "threshold",
+        "population",
+        "eligible",
+        "missing",
+        "coverage",
+        "growth_higher",
+        "cash_higher",
+        "both_higher",
+        "growth_higher_pct",
+        "cash_higher_pct",
+        "higher_share_gap",
+        "confirmation_pct",
+        "cells",
+        "filing_dates",
+        "fiscal_ends",
+        "prior_fiscal_ends"
+      ],
+      "properties": {
+        "threshold": { "type": "number" },
+        "population": { "type": "integer", "minimum": 0 },
+        "eligible": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 },
+        "coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "growth_higher": { "type": "integer", "minimum": 0 },
+        "cash_higher": { "type": "integer", "minimum": 0 },
+        "both_higher": { "type": "integer", "minimum": 0 },
+        "growth_higher_pct": { "$ref": "#/definitions/nullableNumber" },
+        "cash_higher_pct": { "$ref": "#/definitions/nullableNumber" },
+        "higher_share_gap": { "$ref": "#/definitions/nullableNumber" },
+        "confirmation_pct": { "$ref": "#/definitions/nullableNumber" },
+        "cells": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/cashCell" },
+          "minItems": 9,
+          "maxItems": 9
+        },
+        "filing_dates": { "$ref": "#/definitions/dateRange" },
+        "fiscal_ends": { "$ref": "#/definitions/dateRange" },
+        "prior_fiscal_ends": { "$ref": "#/definitions/dateRange" }
+      },
+      "additionalProperties": false
+    },
+    "weakening": {
+      "type": "object",
+      "required": ["eligible", "missing", "count", "pct", "tickers"],
+      "properties": {
+        "eligible": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 },
+        "count": { "type": "integer", "minimum": 0 },
+        "pct": { "$ref": "#/definitions/nullableNumber" },
+        "tickers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "historyPoint": {
+      "type": "object",
+      "required": ["observed_at", "sec_snapshot_at", "issuers", "breadth"],
+      "properties": {
+        "observed_at": { "type": "string", "format": "date-time" },
+        "sec_snapshot_at": { "type": "string", "format": "date-time" },
+        "issuers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "breadth": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "metric",
+              "higher",
+              "lower",
+              "eligible",
+              "median_change"
+            ],
+            "properties": {
+              "metric": { "type": "string" },
+              "higher": { "type": "integer" },
+              "lower": { "type": "integer" },
+              "eligible": { "type": "integer" },
+              "median_change": { "$ref": "#/definitions/nullableNumber" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "row": {
+      "type": "object",
+      "required": [
+        "ticker",
+        "cik",
+        "name",
+        "group",
+        "financial",
+        "metrics",
+        "source_accessions",
+        "filed",
+        "fiscal_end",
+        "prior_fiscal_end",
+        "accession",
+        "source"
+      ],
+      "properties": {
+        "ticker": { "type": "string" },
+        "cik": { "type": "string" },
+        "name": { "type": "string" },
+        "group": { "type": "string" },
+        "cohorts": { "type": "array", "items": { "type": "string" } },
+        "coverage_fund": { "type": ["string", "null"] },
+        "sec_checked_at": { "type": ["string", "null"] },
+        "facts_retrieved_at": { "type": ["string", "null"] },
+        "financial": { "type": "boolean" },
+        "metrics": {
+          "type": "object",
+          "required": [
+            "revenueGrowth",
+            "operatingMargin",
+            "freeCashFlowMargin",
+            "equityToAssets",
+            "netMargin",
+            "cashToAssets"
+          ],
+          "properties": {
+            "revenueGrowth": { "$ref": "#/definitions/metric" },
+            "operatingMargin": { "$ref": "#/definitions/metric" },
+            "freeCashFlowMargin": { "$ref": "#/definitions/metric" },
+            "equityToAssets": { "$ref": "#/definitions/metric" },
+            "netMargin": { "$ref": "#/definitions/metric" },
+            "cashToAssets": { "$ref": "#/definitions/metric" }
+          },
+          "additionalProperties": false
+        },
+        "source_accessions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "filed": { "type": ["string", "null"], "format": "date" },
+        "fiscal_end": { "type": ["string", "null"], "format": "date" },
+        "prior_fiscal_end": { "type": ["string", "null"], "format": "date" },
+        "accession": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"], "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "companies",
+        "comparable_companies",
+        "comparable_coverage",
+        "breadth",
+        "cash_confirmation",
+        "simultaneous_weakening",
+        "brief"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "companies": { "type": "integer", "minimum": 0 },
+        "comparable_companies": { "type": "integer", "minimum": 0 },
+        "comparable_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "threshold": { "type": "number" },
+        "breadth": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/breadthMetric" }
+        },
+        "cash_confirmation": { "$ref": "#/definitions/cashConfirmation" },
+        "simultaneous_weakening": { "$ref": "#/definitions/weakening" },
+        "brief": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

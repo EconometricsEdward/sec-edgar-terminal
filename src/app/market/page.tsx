@@ -10,13 +10,17 @@ export const revalidate = 900;
 async function readCachedMarket() { try { return await readMarketOverview(); } catch { return null; } }
 
 export const metadata: Metadata = buildPageMetadata({
-  title: 'Market Overview — SEC Breadth, Sector Heatmap & Quant Lab',
-  description: 'Screen the same broad SEC research universe across the Market briefing, sector heatmap, company screener and Quant Lab. Explore fundamentals, coverage and source filings.',
+  title: 'Market Research — SEC Fundamentals & CFTC Positioning',
+  description: 'Explore SEC filing breadth, sectors, companies and Fundamental Lab alongside separate official CFTC futures positioning.',
   path: '/market',
 });
 
-export default async function MarketOverviewPage() {
+export default async function MarketOverviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   // The page and API share a compact projection of the scheduled Quant atlas.
-  // No page request initiates a SEC or price-provider universe refresh.
-  return <MarketOverviewClient initialData={await readCachedMarket() as MarketData | null} />;
+  // Independent CFTC/Fundamental views do not need the overview projection.
+  const raw = await searchParams;
+  const query = new URLSearchParams(Object.entries(raw).flatMap(([key, value]) => Array.isArray(value) ? value.map(item => [key, item]) : value == null ? [] : [[key, value]])).toString();
+  const requestedTab = new URLSearchParams(query).get('tab');
+  const independent = ['positioning', 'fundamentals', 'factors'].includes(requestedTab || '');
+  return <MarketOverviewClient initialData={independent ? null : await readCachedMarket() as MarketData | null} initialQuery={query} />;
 }

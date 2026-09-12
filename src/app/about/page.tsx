@@ -6,7 +6,7 @@ import styles from "../help/help.module.css";
 export const metadata = buildPageMetadata({
   title: "About EDGAR Terminal — Purpose & Methodology",
   description:
-    "Source-linked SEC filing research, financial calculations, market data distinctions, and browser-local research tools. Understand how EDGAR Terminal presents evidence.",
+    "Source-linked SEC filing research, financial calculations, and separately presented official CFTC positioning. Understand how EDGAR Terminal presents evidence.",
   path: "/about",
 });
 
@@ -21,9 +21,10 @@ export default function AboutPage() {
           <span>back to the filing.</span>
         </h1>
         <p>
-          EDGAR Terminal is a free tool for exploring public SEC filings and
-          financial data. It helps analysts, students, journalists, and curious
-          investors connect a question to the evidence behind it.
+          EDGAR Terminal is a free tool for exploring public SEC filings,
+          financial data, and separately presented official CFTC positioning. It
+          helps analysts, students, journalists, and curious investors connect a
+          question to the evidence behind it.
         </p>
         <nav className={styles.sectionLinks} aria-label="About navigation">
           <Link href="/help">Read the research guide</Link>
@@ -54,15 +55,14 @@ export default function AboutPage() {
             </p>
           </article>
           <article>
-            <h3>Separate market price sources</h3>
+            <h3>Official CFTC positioning, kept separate</h3>
             <p>
-              Historical price views, where present, use Yahoo Finance with a
-              Stooq fallback. Prices do not come from the SEC. Provider
-              availability, adjustment conventions, and date coverage can differ
-              from the financial reporting data. Shared pacing, cooldowns,
-              bounded responses, and cached last-good results protect upstream
-              availability; econometric headline outputs require verified,
-              complete adjusted-close inputs.
+              Futures positioning comes from the U.S. Commodity Futures Trading
+              Commission&apos;s futures-only Commitments of Traders datasets. TFF
+              and Disaggregated categories remain separate, and every observation
+              retains its contract, venue, units, report date, retrieval time,
+              formula, and source. Positioning is not an equity-price feed, a
+              measure of investor flows, or a trade signal.
             </p>
           </article>
           <article>
@@ -100,8 +100,9 @@ export default function AboutPage() {
           <div>
             <h3>Discover and investigate</h3>
             <p>
-              <Link href="/market">Market</Link> provides a company screener and
-              sector fundamentals across the available sample.{" "}
+              <Link href="/market">Market</Link> provides a company screener,
+              sector fundamentals, an SEC-only Fundamental Lab, and separate{" "}
+              <Link href="/market?tab=positioning">CFTC positioning</Link>.{" "}
               <Link href="/analysis">Analysis</Link>,{" "}
               <Link href="/risk">Risk</Link>, and{" "}
               <Link href="/compare">Compare</Link> connect financial questions
@@ -126,8 +127,9 @@ export default function AboutPage() {
             </p>
             <p>
               Verify consequential figures and excerpts against the original SEC
-              document. Extracted text can lose table structure, and
-              company-specific tagging or restatements can affect comparisons.
+              document or CFTC source, as applicable. Extracted text can lose
+              table structure, and company-specific tagging or restatements can
+              affect comparisons.
             </p>
           </div>
         </div>
@@ -176,6 +178,16 @@ export default function AboutPage() {
               SEC structured data <ArrowUpRight size={15} aria-hidden="true" />
             </h3>
             <p>Reporting formats and structured data resources.</p>
+          </a>
+          <a
+            href="https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <h3>
+              CFTC Commitments of Traders <ArrowUpRight size={15} aria-hidden="true" />
+            </h3>
+            <p>Official report definitions, explanatory notes, and release context.</p>
           </a>
         </div>
         <p>

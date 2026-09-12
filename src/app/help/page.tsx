@@ -13,7 +13,7 @@ import styles from "./help.module.css";
 export const metadata = buildPageMetadata({
   title: "Research Guide — Sources, Coverage & Your Workspace",
   description:
-    "Understand EDGAR Terminal data sources, reporting dates, document coverage, saved research, portfolio exports, and keyboard navigation.",
+    "Understand EDGAR Terminal SEC and CFTC sources, reporting dates, coverage, saved research, portfolio exports, and keyboard navigation.",
   path: "/help",
 });
 
@@ -36,7 +36,7 @@ const TOOLS = [
   [
     "Market",
     "/market",
-    "Explore the available company sample, sector fundamentals, and screener.",
+    "Explore sector fundamentals, the company screener, Fundamental Lab, and separate CFTC positioning.",
   ],
   [
     "Compare",
@@ -91,9 +91,9 @@ export default function HelpPage() {
           <h2>Different sources answer different questions</h2>
         </div>
         <p className={styles.lead}>
-          A reporting period, a filing date, and a retrieval time are different
-          dates. A successful service check does not make the underlying data
-          current.
+          A financial reporting period, an SEC filing date, a CFTC report date,
+          and a retrieval time are different clocks. A successful service check
+          does not make the underlying data current.
         </p>
         <div
           className={styles.tableWrap}
@@ -145,18 +145,18 @@ export default function HelpPage() {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Market prices</th>
+                <th scope="row">CFTC COT positioning</th>
                 <td>
-                  Historical third-party price data, where displayed, from Yahoo
-                  Finance or a Stooq fallback.
+                  Aggregated outstanding futures positions from the official
+                  futures-only TFF and Disaggregated reports. The taxonomies are
+                  displayed separately.
                 </td>
                 <td>
-                  Provider, date range, adjustment basis, and missing history.
-                  SEC financial facts and market prices have different sources.
-                  Quant Lab excludes the still-forming current daily candle
-                  and withholds headline estimates unless all required series
-                  are complete Yahoo adjusted-close histories; fallback data
-                  remains explicitly identified.
+                  Exact contract and venue code, report family, participant
+                  group, contract units, Tuesday report date, retrieval time,
+                  completeness status, formula, and official source URL.
+                  Positioning is not a security price, flow, issuer exposure, or
+                  buy/sell signal.
                 </td>
               </tr>
               <tr>
