@@ -81,7 +81,7 @@ test("all five evidence-backed analysis views render actual demo results without
     assert.match(html, /Export this analysis/);
   }
 });
-test("expanded screener disclosure controls remain outside native select elements", () => {
+test("portfolio screener renders a compact, filing-backed filter rail and financial table views", () => {
   const Component = component(
     "../src/app/workspace/portfolio/PortfolioScreener.tsx",
   ).default;
@@ -93,9 +93,106 @@ test("expanded screener disclosure controls remain outside native select element
       onDisclosure: () => {},
     }),
   );
-  assert.match(html, /Search matching companies/);
+
+  assert.match(html, /aria-label="Screener filters"/);
+  assert.match(html, />Quick screens</);
+  assert.match(html, /Financial rule/);
+  assert.match(html, />Sector</);
+  assert.match(html, />SEC industry</);
+  assert.match(html, />Financial set</);
+  assert.match(html, /Same full period/);
+  assert.match(html, /Match all · 2 active/);
+  assert.match(html, /role="tablist" aria-label="Financial table views"/);
+  for (const tab of [
+    "Overview",
+    "Growth",
+    "Profitability",
+    "Cash flow",
+    "Liquidity &amp; leverage",
+    "Income statement",
+    "Balance sheet",
+    "Per share",
+    "Banking",
+    "Insurance",
+  ])
+    assert.match(html, new RegExp(`role="tab"[^>]*>${tab}</button>`));
+  assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>Overview/);
+  assert.match(html, /All financial sets/);
+  for (const label of [
+    "Operating companies",
+    "Banks",
+    "Common financials",
+    "Insurers",
+  ])
+    assert.match(html, new RegExp(`${label} \\(\\d+\\)`));
+  assert.doesNotMatch(html, /Business model/i);
+});
+
+test("portfolio screener results use the sticky research table and accessible sortable columns", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/PortfolioScreener.tsx",
+  ).default;
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      report: buildCatalogReport(report, companies),
+      companies,
+      onInspectCompany: () => {},
+      onDisclosure: () => {},
+    }),
+  );
+
+  assert.match(html, /aria-label="Scroll company table horizontally"/);
+  assert.match(
+    html,
+    /role="region" aria-label="Overview: matching company financial measures"/,
+  );
+  assert.match(html, /<caption[^>]*>Matching portfolio companies/);
+  assert.match(
+    html,
+    /<th scope="col" aria-sort="ascending"><button[^>]*>Company/,
+  );
+  assert.match(
+    html,
+    /<th scope="col" aria-sort="none"[^>]*><button[^>]*><span>Revenue growth<\/span>/,
+  );
+  assert.match(html, /role="tabpanel"/);
+  assert.doesNotMatch(html, /NaN|Infinity/);
+});
+
+test("portfolio screener groups rule measures without invalid native-select descendants", () => {
+  const path = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../src/app/workspace/portfolio/PortfolioScreener.tsx",
+  );
+  const source = readFileSync(path, "utf8");
+  assert.match(source, /metricGroups\.map\(\(\[group, metrics\]\)/);
+  assert.match(source, /<optgroup key=\{group\} label=\{group\}>/);
+  for (const group of [
+    "Income statement",
+    "Balance sheet",
+    "Cash flow",
+    "Ratios & returns",
+    "Returns & efficiency",
+    "Working-capital inputs",
+    "Evidence checks",
+  ])
+    assert.match(source, new RegExp(`: "${group}"`));
+
+  const Component = component(
+    "../src/app/workspace/portfolio/PortfolioScreener.tsx",
+  ).default;
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      report: buildCatalogReport(report, companies),
+      companies,
+      onInspectCompany: () => {},
+      onDisclosure: () => {},
+    }),
+  );
   for (const select of html.matchAll(/<select\b[^>]*>([\s\S]*?)<\/select>/g))
     assert.doesNotMatch(select[1], /<(?:p|div|details|button|input)\b/);
+  for (const button of html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g))
+    assert.doesNotMatch(button[1], /<select\b/);
 });
 test("multiple-shock and rebalancing workbenches render usable initial allocations", () => {
   const Component = component(
