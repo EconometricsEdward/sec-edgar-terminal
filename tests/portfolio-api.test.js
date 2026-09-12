@@ -61,6 +61,196 @@ const facts = {
     ]),
   ),
 };
+
+const XOM_CURRENT_CIK = pad(2115436);
+const XOM_PREDECESSOR_CIK = pad(34088);
+const xomObservation = ({
+  value,
+  start,
+  end,
+  form,
+  filed,
+  accession,
+  fy,
+  fp,
+}) => ({ val: value, start, end, form, filed, accn: accession, fy, fp });
+const xomConcept = (observations) => ({ units: { USD: observations } });
+const xomAnnualFacts = {
+  "us-gaap": {
+    RevenueFromContractWithCustomerExcludingAssessedTax: xomConcept([
+      xomObservation({
+        value: 100,
+        start: "2024-01-01",
+        end: "2024-12-31",
+        form: "10-K",
+        filed: "2025-02-28",
+        accession: "0000034088-25-000010",
+        fy: 2024,
+        fp: "FY",
+      }),
+      xomObservation({
+        value: 120,
+        start: "2025-01-01",
+        end: "2025-12-31",
+        form: "10-K",
+        filed: "2026-02-27",
+        accession: "0000034088-26-000010",
+        fy: 2025,
+        fp: "FY",
+      }),
+    ]),
+    Assets: xomConcept([
+      xomObservation({
+        value: 1000,
+        end: "2024-12-31",
+        form: "10-K",
+        filed: "2025-02-28",
+        accession: "0000034088-25-000010",
+        fy: 2024,
+        fp: "FY",
+      }),
+      xomObservation({
+        value: 1100,
+        end: "2025-12-31",
+        form: "10-K",
+        filed: "2026-02-27",
+        accession: "0000034088-26-000010",
+        fy: 2025,
+        fp: "FY",
+      }),
+      xomObservation({
+        value: 1110,
+        end: "2026-03-31",
+        form: "10-Q",
+        filed: "2026-05-04",
+        accession: "0000034088-26-000050",
+        fy: 2026,
+        fp: "Q1",
+      }),
+    ]),
+    NetIncomeLoss: xomConcept([
+      xomObservation({
+        value: 20,
+        start: "2025-01-01",
+        end: "2025-12-31",
+        form: "10-K",
+        filed: "2026-02-27",
+        accession: "0000034088-26-000010",
+        fy: 2025,
+        fp: "FY",
+      }),
+    ]),
+  },
+};
+const xomCurrentFacts = {
+  "us-gaap": {
+    RevenueFromContractWithCustomerExcludingAssessedTax: xomConcept([
+      xomObservation({
+        value: 130,
+        start: "2026-01-01",
+        end: "2026-06-30",
+        form: "10-Q",
+        filed: "2026-08-03",
+        accession: "0000034088-26-000093",
+        fy: 2026,
+        fp: "Q2",
+      }),
+      xomObservation({
+        value: 70,
+        start: "2026-04-01",
+        end: "2026-06-30",
+        form: "10-Q",
+        filed: "2026-08-03",
+        accession: "0000034088-26-000093",
+        fy: 2026,
+        fp: "Q2",
+      }),
+    ]),
+    Assets: xomConcept([
+      xomObservation({
+        value: 1150,
+        end: "2026-06-30",
+        form: "10-Q",
+        filed: "2026-08-03",
+        accession: "0000034088-26-000093",
+        fy: 2026,
+        fp: "Q2",
+      }),
+    ]),
+  },
+};
+const xomRecent = (rows) => ({
+  accessionNumber: rows.map((row) => row.accession),
+  form: rows.map((row) => row.form),
+  filingDate: rows.map((row) => row.filingDate),
+  reportDate: rows.map((row) => row.reportDate),
+  primaryDocument: rows.map((row) => row.primaryDocument),
+  primaryDocDescription: rows.map((row) => row.description),
+});
+const xomSubmissions = ({ current = true } = {}) => ({
+  cik: Number(current ? XOM_CURRENT_CIK : XOM_PREDECESSOR_CIK),
+  name: current ? "ExxonMobil Holdings Corp" : "Exxon Mobil Corporation",
+  tickers: current ? ["XOM"] : [],
+  sic: "2911",
+  sicDescription: "Petroleum Refining",
+  filings: {
+    recent: xomRecent(
+      current
+        ? [
+            {
+              accession: "0002115436-26-000001",
+              form: "8-K",
+              filingDate: "2026-07-01",
+              reportDate: "2026-07-01",
+              primaryDocument: "xom-current.htm",
+              description: "Current registrant report",
+            },
+            {
+              accession: "0000034088-26-000093",
+              form: "10-Q",
+              filingDate: "2026-08-03",
+              reportDate: "2026-06-30",
+              primaryDocument: "xom-20260630.htm",
+              description: "Joint quarterly report",
+            },
+          ]
+        : [
+            {
+              accession: "0000034088-26-000093",
+              form: "10-Q",
+              filingDate: "2026-08-03",
+              reportDate: "2026-06-30",
+              primaryDocument: "xom-20260630.htm",
+              description: "Joint quarterly report",
+            },
+            {
+              accession: "0000034088-26-000050",
+              form: "10-Q",
+              filingDate: "2026-05-04",
+              reportDate: "2026-03-31",
+              primaryDocument: "xom-20260331.htm",
+              description: "Quarterly report",
+            },
+            {
+              accession: "0000034088-26-000010",
+              form: "10-K",
+              filingDate: "2026-02-27",
+              reportDate: "2025-12-31",
+              primaryDocument: "xom-20251231.htm",
+              description: "Annual report",
+            },
+            {
+              accession: "0000034088-25-000010",
+              form: "10-K",
+              filingDate: "2025-02-28",
+              reportDate: "2024-12-31",
+              primaryDocument: "xom-20241231.htm",
+              description: "Annual report",
+            },
+          ],
+    ),
+  },
+});
 const company = (overrides = {}) => ({
   cik: pad(1),
   ticker: "TEST",
@@ -601,4 +791,240 @@ test("a company-facts failure retains verified filings as partial evidence with 
       warning.includes("facts could not be retrieved"),
     ),
   );
+});
+
+test("verified XOM continuity retains the current identity and joins annual and quarter evidence with predecessor URLs", async () => {
+  const calls = [];
+  const secJson = async (path) => {
+    calls.push(path);
+    if (path === "/submissions/CIK" + XOM_CURRENT_CIK + ".json")
+      return xomSubmissions();
+    if (path === "/submissions/CIK" + XOM_PREDECESSOR_CIK + ".json")
+      return xomSubmissions({ current: false });
+    if (
+      path ===
+      "/api/xbrl/companyfacts/CIK" + XOM_CURRENT_CIK + ".json"
+    )
+      return { cik: Number(XOM_CURRENT_CIK), facts: xomCurrentFacts };
+    if (
+      path ===
+      "/api/xbrl/companyfacts/CIK" + XOM_PREDECESSOR_CIK + ".json"
+    )
+      return { cik: Number(XOM_PREDECESSOR_CIK), facts: xomAnnualFacts };
+    throw new Error("Unexpected SEC fixture path: " + path);
+  };
+
+  const annual = await loadFreshPortfolioCompany(
+    { cik: XOM_CURRENT_CIK, ticker: "XOM" },
+    "annual",
+    { secJson },
+  );
+  assert.equal(annual.cik, XOM_CURRENT_CIK);
+  assert.equal(annual.name, "ExxonMobil Holdings Corp");
+  assert.equal(annual.ticker, "XOM");
+  assert.equal(annual.period.end, "2025-12-31");
+  assert.equal(annual.metrics.revenue.value, 120);
+  assert.match(
+    annual.metrics.revenue.sources[0].documentUrl,
+    /\/Archives\/edgar\/data\/34088\/000003408826000010\/xom-20251231\.htm$/,
+  );
+  assert.equal(
+    annual.metrics.revenue.sources[0].sourceCik,
+    XOM_PREDECESSOR_CIK,
+  );
+  assert.ok(Number.isFinite(annual.metrics.revenueGrowth.value));
+  assert.ok(
+    annual.metrics.revenueGrowth.sources.every(
+      (source) => source.sourceCik === XOM_PREDECESSOR_CIK,
+    ),
+  );
+  assert.deepEqual(
+    annual.filings.map((filing) => filing.accession),
+    [
+      "0000034088-26-000093",
+      "0002115436-26-000001",
+      "0000034088-26-000050",
+      "0000034088-26-000010",
+      "0000034088-25-000010",
+    ],
+  );
+  assert.equal(
+    annual.filings.find(
+      (filing) => filing.accession === "0000034088-26-000093",
+    ).sourceCik,
+    XOM_PREDECESSOR_CIK,
+  );
+  assert.equal(annual.evidenceContinuity.status, "applied");
+  assert.deepEqual(annual.evidenceContinuity.factSourceCiks, [
+    XOM_CURRENT_CIK,
+    XOM_PREDECESSOR_CIK,
+  ]);
+  assert.deepEqual(annual.evidenceContinuity.failures, []);
+  assert.match(annual.evidenceContinuity.identityPolicy, /current SEC registrant/);
+  assert.ok(
+    annual.warnings.some((warning) =>
+      warning.includes("SEC evidence continuity applied"),
+    ),
+  );
+
+  const quarter = await loadFreshPortfolioCompany(
+    { cik: XOM_CURRENT_CIK, ticker: "XOM" },
+    "quarter",
+    { secJson },
+  );
+  assert.equal(quarter.period.end, "2026-06-30");
+  assert.equal(quarter.metrics.revenue.value, 70);
+  assert.match(
+    quarter.metrics.revenue.sources[0].documentUrl,
+    /\/Archives\/edgar\/data\/34088\/000003408826000093\/xom-20260630\.htm$/,
+  );
+  assert.equal(
+    quarter.metrics.revenue.sources[0].sourceCik,
+    XOM_PREDECESSOR_CIK,
+  );
+  assert.deepEqual(
+    [...new Set(calls)].sort(),
+    [
+      "/api/xbrl/companyfacts/CIK" + XOM_CURRENT_CIK + ".json",
+      "/api/xbrl/companyfacts/CIK" + XOM_PREDECESSOR_CIK + ".json",
+      "/submissions/CIK" + XOM_CURRENT_CIK + ".json",
+      "/submissions/CIK" + XOM_PREDECESSOR_CIK + ".json",
+    ].sort(),
+  );
+});
+
+test("XOM submissions failure still fetches predecessor facts and discloses the partial continuity chain", async () => {
+  const paths = [];
+  const result = await loadFreshPortfolioCompany(
+    { cik: XOM_CURRENT_CIK, ticker: "XOM" },
+    "annual",
+    {
+      secJson: async (path) => {
+        paths.push(path);
+        if (path === "/submissions/CIK" + XOM_CURRENT_CIK + ".json")
+          return xomSubmissions();
+        if (path === "/submissions/CIK" + XOM_PREDECESSOR_CIK + ".json")
+          throw new Error("Fixture predecessor outage");
+        if (
+          path ===
+          "/api/xbrl/companyfacts/CIK" + XOM_CURRENT_CIK + ".json"
+        )
+          return { cik: Number(XOM_CURRENT_CIK), facts: xomAnnualFacts };
+        if (
+          path ===
+          "/api/xbrl/companyfacts/CIK" + XOM_PREDECESSOR_CIK + ".json"
+        )
+          return { cik: Number(XOM_PREDECESSOR_CIK), facts: xomAnnualFacts };
+        throw new Error("Unexpected SEC fixture path: " + path);
+      },
+    },
+  );
+
+  assert.equal(result.cik, XOM_CURRENT_CIK);
+  assert.equal(result.name, "ExxonMobil Holdings Corp");
+  assert.equal(result.metrics.revenue.value, 120);
+  assert.equal(
+    result.metrics.revenue.sources[0].sourceCik,
+    XOM_PREDECESSOR_CIK,
+  );
+  assert.equal(result.factsUnavailable, undefined);
+  assert.equal(result.evidenceContinuity.status, "partial");
+  assert.deepEqual(result.evidenceContinuity.factSourceCiks, [
+    XOM_CURRENT_CIK,
+    XOM_PREDECESSOR_CIK,
+  ]);
+  assert.deepEqual(result.evidenceContinuity.filingSourceCiks, [
+    XOM_CURRENT_CIK,
+  ]);
+  assert.equal(result.evidenceContinuity.failures[0].resource, "submissions");
+  assert.match(result.evidenceContinuity.failures[0].message, /outage/);
+  assert.ok(
+    result.warnings.some((warning) =>
+      warning.includes("SEC evidence continuity is partial"),
+    ),
+  );
+  assert.ok(
+    paths.includes(
+      "/api/xbrl/companyfacts/CIK" + XOM_PREDECESSOR_CIK + ".json",
+    ),
+  );
+});
+
+test("a partial XOM continuity refresh cannot replace a previously complete cached evidence chain", async () => {
+  const originalNow = Date.now;
+  let clock = originalNow();
+  let predecessorFactsAvailable = true;
+  const paths = [];
+  const secJson = async (path) => {
+    paths.push(path);
+    if (path === "/submissions/CIK" + XOM_CURRENT_CIK + ".json")
+      return xomSubmissions();
+    if (path === "/submissions/CIK" + XOM_PREDECESSOR_CIK + ".json")
+      return xomSubmissions({ current: false });
+    if (
+      path ===
+      "/api/xbrl/companyfacts/CIK" + XOM_CURRENT_CIK + ".json"
+    )
+      return { cik: Number(XOM_CURRENT_CIK), facts: xomCurrentFacts };
+    if (
+      path ===
+      "/api/xbrl/companyfacts/CIK" + XOM_PREDECESSOR_CIK + ".json"
+    ) {
+      if (!predecessorFactsAvailable)
+        throw new Error("Fixture predecessor facts outage");
+      return { cik: Number(XOM_PREDECESSOR_CIK), facts: xomAnnualFacts };
+    }
+    throw new Error("Unexpected SEC fixture path: " + path);
+  };
+
+  Date.now = () => clock;
+  try {
+    const complete = await loadCachedPortfolioCompany(
+      { cik: XOM_CURRENT_CIK, ticker: "XOM" },
+      "annual",
+      { secJson },
+    );
+    assert.equal(complete.cache.status, "fresh");
+    assert.equal(complete.evidenceContinuity.status, "applied");
+    assert.equal(complete.metrics.revenue.value, 120);
+
+    predecessorFactsAvailable = false;
+    clock = Date.parse(complete.retrievedAt) + 6 * 60 * 1000;
+    const retained = await loadCachedPortfolioCompany(
+      { cik: XOM_CURRENT_CIK, ticker: "XOM" },
+      "annual",
+      { secJson },
+    );
+    assert.equal(retained.cache.status, "stale");
+    assert.equal(retained.retrievedAt, complete.retrievedAt);
+    assert.equal(retained.evidenceContinuity.status, "applied");
+    assert.equal(retained.metrics.revenue.value, 120);
+    assert.ok(
+      retained.warnings.some((warning) =>
+        warning.includes("could not be refreshed completely"),
+      ),
+    );
+    assert.equal(
+      paths.filter(
+        (path) =>
+          path ===
+          "/api/xbrl/companyfacts/CIK" + XOM_PREDECESSOR_CIK + ".json",
+      ).length,
+      2,
+    );
+
+    const callsAfterPartialRefresh = paths.length;
+    clock = Date.parse(complete.retrievedAt) + 1000;
+    const cached = await loadCachedPortfolioCompany(
+      { cik: XOM_CURRENT_CIK, ticker: "XOM" },
+      "annual",
+      { secJson },
+    );
+    assert.equal(cached.cache.status, "cached");
+    assert.equal(cached.evidenceContinuity.status, "applied");
+    assert.equal(cached.metrics.revenue.value, 120);
+    assert.equal(paths.length, callsAfterPartialRefresh);
+  } finally {
+    Date.now = originalNow;
+  }
 });

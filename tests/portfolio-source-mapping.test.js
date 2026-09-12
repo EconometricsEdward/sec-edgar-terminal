@@ -41,7 +41,23 @@ test("every demo financial source URL identifies its company and exact source ac
         /^\/Archives\/edgar\/data\/(\d+)\/(\d{18})\//,
       );
       assert.ok(path, `${message} links to an SEC filing accession`);
-      assert.equal(Number(path[1]), Number(company.cik), message);
+      const filingCik = String(path[1]).padStart(10, "0");
+      if (source.sourceCik) {
+        assert.match(
+          source.sourceCik,
+          /^\d{10}$/,
+          `${message} has a canonical source CIK`,
+        );
+        assert.equal(Number(path[1]), Number(source.sourceCik), message);
+      }
+      if (filingCik !== company.cik) {
+        assert.ok(
+          company.evidenceContinuity?.predecessorCiks?.includes(filingCik),
+          `${message} discloses its verified predecessor source`,
+        );
+      } else {
+        assert.equal(Number(path[1]), Number(company.cik), message);
+      }
       assert.match(source.accession, /^\d{10}-\d{2}-\d{6}$/, message);
       assert.equal(path[2], source.accession.replaceAll("-", ""), message);
       checked++;

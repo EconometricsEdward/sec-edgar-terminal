@@ -9,6 +9,7 @@ import {
   financialToolIssuers,
   peerBenchmarksCsv,
 } from "../../../utils/portfolioFinancialTools.js";
+import { canonicalPortfolioCik } from "../../../utils/portfolioModel.js";
 import { downloadText } from "../../../utils/download.js";
 import s from "./PortfolioFinancialTools.module.css";
 import insightStyles from "./PortfolioInsightTools.module.css";
@@ -18,6 +19,8 @@ type Props = {
   report: any;
   onInspectCompany: (rowId: string) => void;
   view?: View;
+  lens?: string;
+  onLensChange?: (lens: string) => void;
 };
 const VIEWS: { id: View; label: string }[] = [
   { id: "peers", label: "Peer benchmarks" },
@@ -230,30 +233,72 @@ export default function PortfolioFinancialTools({
   report: rawReport,
   onInspectCompany,
   view,
+  lens: controlledLens,
+  onLensChange,
 }: Props) {
-  const [lens, setLens] = useState("");
+  const lensOptions = useMemo(
+    () =>
+      [
+        ...new Set<string>(
+          rawReport.concentration.issuers
+            .map((row: any) => row.lens)
+            .filter(Boolean),
+        ),
+      ],
+    [rawReport],
+  );
+  const controlled = controlledLens !== undefined;
+  const [localLens, setLocalLens] = useState("");
+  const lens = controlled
+    ? lensOptions.includes(controlledLens || "")
+      ? controlledLens!
+      : lensOptions[0] || "corporate"
+    : localLens;
+  const setLens = (next: string) => {
+    if (controlled) {
+      if (next) onLensChange?.(next);
+      return;
+    }
+    setLocalLens(next);
+  };
   const [exactPeriod, setExactPeriod] = useState("");
   const [comparePeriods, setComparePeriods] = useState(true);
-  const report = useMemo(
-    () => ({
+  const report = useMemo(() => {
+    const issuers = rawReport.concentration.issuers.filter(
+      (row: any) => row.kind === "company" && (!lens || row.lens === lens),
+    );
+    const cohortCiks = new Set(
+      issuers.map((row: any) => canonicalPortfolioCik(row.cik)).filter(Boolean),
+    );
+    const inCohort = (value: string) => cohortCiks.has(canonicalPortfolioCik(value));
+    return {
       ...rawReport,
-      concentration: {
-        ...rawReport.concentration,
-        issuers: rawReport.concentration.issuers.filter(
-          (row: any) => !lens || row.lens === lens,
-        ),
-      },
-      metrics: rawReport.metrics.map((metric: any) => ({
-        ...metric,
-        observations: metric.observations.filter(
-          (point: any) =>
-            (!lens || point.lens === lens) &&
-            (!exactPeriod || point.periodKey === exactPeriod),
-        ),
-      })),
-    }),
-    [rawReport, lens, exactPeriod],
-  );
+      concentration: { ...rawReport.concentration, issuers },
+      exactPeriodFilter: exactPeriod || null,
+      metrics: rawReport.metrics.map((metric: any) => {
+        const lensObservations = metric.observations.filter(
+          (point: any) => (!lens || point.lens === lens) && inCohort(point.cik),
+        );
+        const outsidePeriodCiks = exactPeriod
+          ? lensObservations
+              .filter((point: any) => point.periodKey !== exactPeriod)
+              .map((point: any) => point.cik)
+          : [];
+        return {
+          ...metric,
+          observations: exactPeriod
+            ? lensObservations.filter(
+                (point: any) => point.periodKey === exactPeriod,
+              )
+            : lensObservations,
+          eligibleCiks: (metric.eligibleCiks || []).filter(inCohort),
+          missingCiks: (metric.missingCiks || []).filter(inCohort),
+          notApplicableCiks: (metric.notApplicableCiks || []).filter(inCohort),
+          outsidePeriodCiks,
+        };
+      }),
+    };
+  }, [rawReport, lens, exactPeriod]);
   const periodChoices = [
     ...new Set<string>(
       rawReport.metrics.flatMap((metric: any) =>
@@ -413,29 +458,25 @@ export default function PortfolioFinancialTools({
       </div>
       {rawReport.fullPeriodEvidence && (
         <div className={insightStyles.controls}>
-          <label className={insightStyles.selector}>
-            Business model
-            <select
-              value={lens}
-              onChange={(event) => {
-                setLens(event.target.value);
-                setExactPeriod("");
-              }}
-            >
-              <option value="">All business models</option>
-              {[
-                ...new Set<string>(
-                  rawReport.concentration.issuers.map((row: any) => row.lens),
-                ),
-              ]
-                .filter(Boolean)
-                .map((item) => (
+          {!controlled ? (
+            <label className={insightStyles.selector}>
+              Business model
+              <select
+                value={lens}
+                onChange={(event) => {
+                  setLens(event.target.value);
+                  setExactPeriod("");
+                }}
+              >
+                <option value="">All business models</option>
+                {lensOptions.map((item) => (
                   <option key={item} value={item}>
                     {item}
                   </option>
                 ))}
-            </select>
-          </label>
+              </select>
+            </label>
+          ) : null}
           <label className={insightStyles.selector}>
             Full reporting period
             <select
@@ -586,6 +627,12 @@ export default function PortfolioFinancialTools({
                 applicable
               </span>
             )}
+            {exactPeriod && cohort.outsideExactPeriodCount !== null ? (
+              <span>
+                {cohort.outsideExactPeriodCount} reported in another exact
+                period
+              </span>
+            ) : null}
             {periodFrom || periodTo ? (
               <span>
                 {cohort.outsidePeriodCount} outside date range ·{" "}
@@ -600,7 +647,9 @@ export default function PortfolioFinancialTools({
             </p>
           )}
           <p className={s.caption}>
-            {metric?.description} Reporting ends may differ, and the same ending
+            {metric?.description || metric?.formula ||
+              "Reported or evidence-backed calculated company measure."} {" "}
+            Reporting ends may differ, and the same ending
             date can cover different durations. Higher values are not always
             preferable.
           </p>
@@ -1116,7 +1165,10 @@ export default function PortfolioFinancialTools({
                       <tr key={item.id}>
                         <th scope="row">
                           <strong>{item.label}</strong>
-                          <small>{item.description}</small>
+                          <small>
+                            {item.description ||
+                              "Reported or evidence-backed calculated company measure."}
+                          </small>
                         </th>
                         {item.values.map((point, index) => (
                           <td key={comparison.companies[index].cik}>

@@ -23,7 +23,9 @@ import {
   filterPortfolioRankingRows,
   portfolioConnections,
   metricPeriodKey,
+  portfolioMetricState,
 } from "../src/utils/portfolioDeepResearch.js";
+import { portfolioMetricDefinitionFor } from "../src/utils/portfolioMetricCatalog.js";
 import {
   packPortfolioSnapshot,
   unpackPortfolioSnapshot,
@@ -104,6 +106,40 @@ test("rankings retain zero and ties, exclude missing/incompatible observations, 
       metricId: "currentRatio",
     }).rows[0].state,
     "not-applicable",
+  );
+});
+test("business-model applicability is classified before company data availability", () => {
+  const unavailableCorporate = company(
+    91,
+    {},
+    { status: "failed", period: null, metrics: {} },
+  );
+  const unavailableBank = company(
+    92,
+    {},
+    { lens: "banking", status: "failed", period: null, metrics: {} },
+  );
+
+  assert.equal(
+    portfolioMetricState(
+      unavailableCorporate,
+      portfolioMetricDefinitionFor("bankRevenue"),
+    ),
+    "not-applicable",
+  );
+  assert.equal(
+    portfolioMetricState(
+      unavailableBank,
+      portfolioMetricDefinitionFor("netMargin"),
+    ),
+    "not-applicable",
+  );
+  assert.equal(
+    portfolioMetricState(
+      unavailableCorporate,
+      portfolioMetricDefinitionFor("netMargin"),
+    ),
+    "unavailable",
   );
 });
 test("metric peer choices count usable values and keep other sectors reachable", () => {
@@ -528,7 +564,7 @@ test("checkpoint encoding preserves comparisons and rejects malformed references
     comparePortfolioResearch(baseline, input, fixture(input.companies).rows),
   );
   const invalid = structuredClone(encoded);
-  invalid.companies[0].metrics.netIncome[1] = 999999;
+  invalid.companies[0][7] = "10,zzzz";
   assert.throws(() => validatePortfolioBaseline(invalid), /reference/);
 });
 

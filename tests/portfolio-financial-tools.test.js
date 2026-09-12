@@ -158,6 +158,21 @@ test("reporting-end filters are inclusive and disclose outside-range and undated
   assert.ok(peer.observations.every((item) => item.periodEnd === "2025-12-31"));
 });
 
+test("exact-period preprocessing keeps outside-period companies separate from missing data", () => {
+  const report = fixture();
+  const metric = report.metrics.find((entry) => entry.id === "netMargin");
+  metric.outsidePeriodCiks = [cik(1), cik(4)];
+  metric.observations = metric.observations.filter(
+    (entry) => !metric.outsidePeriodCiks.includes(entry.cik),
+  );
+  const peer = buildPeerBenchmarks(report, { metricId: "netMargin" });
+
+  assert.equal(peer.outsideExactPeriodCount, 2);
+  assert.equal(peer.missingCount, 1);
+  assert.equal(peer.notApplicableCount, 1);
+  assert.equal(peer.measuredCount, 3);
+});
+
 test("invalid or reversed reporting-end ranges never produce a misleading benchmark", () => {
   for (const options of [
     { periodFrom: "2025-02-30" },

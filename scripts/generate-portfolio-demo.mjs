@@ -31,7 +31,9 @@ const checkpointPath = path.join(
   os.tmpdir(),
   "edgar-portfolio-demo-100-capture.json",
 );
-const endpoint = "https://secedgarterminal.com/api/v1/portfolio-research";
+const endpoint =
+  process.env.PORTFOLIO_DEMO_ENDPOINT ||
+  "https://secedgarterminal.com/api/v1/portfolio-research";
 const tickers = [
   "AAPL",
   "MSFT",
@@ -209,6 +211,14 @@ function failedCompany(row, message) {
   };
 }
 
+function capturedCompany(company) {
+  const capture = { ...company };
+  // Classification is rebuilt from the versioned public CIK reference. It can
+  // cite fund-provider sources, while saved financial captures remain SEC-only.
+  delete capture.companyClassification;
+  return capture;
+}
+
 async function capture() {
   let checkpoint;
   if (process.argv.includes("--resume")) {
@@ -274,7 +284,7 @@ async function capture() {
       );
       const result = company
         ? {
-            ...company,
+            ...capturedCompany(company),
             refreshStatus:
               company.status === "failed" ||
               company.cache?.status === "unavailable"
@@ -306,7 +316,11 @@ async function capture() {
     );
   }
   const companies = checkpoint.rows.map((row) =>
-    checkpoint.companies.find((company) => company.cik === row.resolution.cik),
+    capturedCompany(
+      checkpoint.companies.find(
+        (company) => company.cik === row.resolution.cik,
+      ),
+    ),
   );
   const capturedAt = new Date().toISOString();
   const snapshot = {

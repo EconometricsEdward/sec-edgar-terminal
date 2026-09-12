@@ -142,6 +142,7 @@ export function buildPeerBenchmarks(report, options = {}) {
     eligibleCount: countMetadata("eligibleCiks"),
     missingCount: countMetadata("missingCiks"),
     notApplicableCount: countMetadata("notApplicableCiks"),
+    outsideExactPeriodCount: countMetadata("outsidePeriodCiks"),
     availableBeforeDateCount: measured.length,
     unavailableOrNotApplicableCount: issuers.length - measured.length,
     undatedExcludedCount,
@@ -255,7 +256,7 @@ export function buildFinancialComparison(report, selectedCiks = []) {
         id: metric.id,
         label: metric.label,
         unit: metric.unit,
-        description: metric.description,
+        description: metric.description || metric.formula || null,
         values: selected.map((issuer) => observations.get(issuer.cik) || null),
         statuses: selected.map((issuer) =>
           observations.has(issuer.cik)

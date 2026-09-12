@@ -1,0 +1,1121 @@
+.root {
+  --f-gold: var(--p-gold, #f7c65a);
+  --f-line: var(--p-line, #29364c);
+  --f-muted: var(--p-muted, #a7b4c7);
+  --f-text: var(--p-text, #e8edf5);
+  --f-panel: var(--p-panel, #101a2b);
+  --f-deep: #0b1321;
+  --f-teal: #65c6b4;
+  --f-coral: #ec8b78;
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  color: var(--f-text);
+}
+.root :is(h2, h3, h4, p) {
+  margin: 0;
+}
+.root h3 {
+  font-size: clamp(24px, 2.6vw, 34px);
+  font-weight: 760;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+}
+.root h4 {
+  font-size: 17px;
+  line-height: 1.35;
+}
+.root button,
+.root select {
+  min-height: 44px;
+  border: 1px solid var(--f-line);
+  border-radius: 9px;
+  color: inherit;
+  font: inherit;
+}
+.root button {
+  padding: 10px 14px;
+  background: var(--f-panel);
+  cursor: pointer;
+}
+.root button:hover:not(:disabled) {
+  border-color: var(--f-gold);
+}
+.root button:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+.root :is(button, select, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--f-gold);
+  outline-offset: 3px;
+}
+.root strong,
+.root dd,
+.root td {
+  font-variant-numeric: tabular-nums;
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.eyebrow {
+  margin-bottom: 7px !important;
+  color: var(--f-gold);
+  font-size: 11px;
+  font-weight: 780;
+  letter-spacing: 0.12em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+.muted {
+  color: var(--f-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.nav,
+.subnav {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  overflow-x: auto;
+  border: 1px solid var(--f-line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--f-panel) 88%, var(--f-deep));
+  scrollbar-width: thin;
+}
+.nav button,
+.subnav button {
+  display: inline-flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--f-muted);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.nav button[aria-pressed="true"],
+.subnav button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--f-gold) 35%, transparent);
+  background: color-mix(in srgb, var(--f-gold) 12%, var(--f-panel));
+  color: var(--f-gold);
+}
+.subnav {
+  margin-top: 2px;
+}
+.subnav button {
+  flex-grow: 0;
+}
+.lensPanel,
+.card,
+.measureCard,
+.observations {
+  min-width: 0;
+  padding: 21px;
+  border: 1px solid var(--f-line);
+  border-radius: 14px;
+  background: var(--f-panel);
+}
+.lensPanel {
+  padding-block: 17px;
+  background: color-mix(in srgb, var(--f-panel) 84%, transparent);
+}
+.lensPanel h3 {
+  font-size: 17px;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+.sectionHeading,
+.measureTitle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.sectionHeading > span,
+.measureTitle > span {
+  flex-shrink: 0;
+  color: var(--f-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: right;
+}
+.lensGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 15px;
+}
+.lensGrid button {
+  display: grid;
+  gap: 3px;
+  min-height: 82px;
+  padding: 12px 13px;
+  text-align: left;
+}
+.lensGrid button > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--f-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.lensGrid button strong {
+  font-size: 20px;
+  line-height: 1.2;
+}
+.lensGrid button small {
+  overflow: hidden;
+  color: var(--f-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lensGrid button[aria-pressed="true"] {
+  border-color: var(--f-gold);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--f-gold) 15%, var(--f-panel)), var(--f-panel));
+}
+.lensGrid button[aria-pressed="true"] > span {
+  color: var(--f-gold);
+}
+.overview {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 30px;
+  border: 1px solid color-mix(in srgb, var(--f-gold) 28%, var(--f-line));
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--f-gold) 17%, transparent), transparent 35%),
+    linear-gradient(125deg, color-mix(in srgb, var(--f-gold) 7%, var(--f-panel)), var(--f-panel) 58%, var(--f-deep));
+}
+.hero::after {
+  position: absolute;
+  right: -70px;
+  bottom: -90px;
+  width: 300px;
+  height: 300px;
+  border: 1px solid color-mix(in srgb, var(--f-gold) 14%, transparent);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+.heroTop {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+}
+.heroTop > div {
+  max-width: 760px;
+}
+.heroTop p:last-child {
+  max-width: 720px;
+  margin-top: 13px;
+  color: var(--f-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.liveBadge,
+.coverageBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--f-gold) 34%, transparent);
+  border-radius: 999px;
+  color: var(--f-gold);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.heroStats,
+.measureStats {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 27px;
+  padding-top: 23px;
+  border-top: 1px solid var(--f-line);
+}
+.heroStats > div,
+.measureStats > div {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  padding: 0 19px;
+}
+.heroStats > div:first-child,
+.measureStats > div:first-child {
+  padding-left: 0;
+}
+.heroStats > div + div,
+.measureStats > div + div {
+  border-left: 1px solid var(--f-line);
+}
+.heroStats span,
+.measureStats span {
+  color: var(--f-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.heroStats strong,
+.measureStats strong {
+  font-size: clamp(23px, 2.4vw, 32px);
+  font-weight: 720;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+}
+.heroStats em,
+.measureStats em {
+  color: var(--f-muted);
+  font-size: 0.55em;
+  font-style: normal;
+  font-weight: 550;
+  letter-spacing: 0;
+}
+.heroStats small,
+.measureStats small {
+  color: var(--f-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.heroStats .dateStat {
+  font-size: clamp(15px, 1.5vw, 19px);
+  line-height: 1.4;
+}
+.scopeNotice,
+.healthScope {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--f-gold) 28%, var(--f-line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--f-gold) 6%, var(--f-panel));
+  color: var(--f-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.scopeNotice svg,
+.healthScope svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--f-gold);
+}
+.scopeNotice strong,
+.healthScope strong {
+  color: var(--f-text);
+}
+.pillarGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.root .pillar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 208px;
+  padding: 18px;
+  text-align: left;
+  background: linear-gradient(155deg, color-mix(in srgb, var(--f-line) 25%, var(--f-panel)), var(--f-panel));
+}
+.pillarLabel {
+  color: var(--f-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.pillar strong {
+  margin-top: 12px;
+  font-size: 27px;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+.pillar > small {
+  margin-top: 5px;
+  color: var(--f-muted);
+  font-size: 11px;
+}
+.metricRail,
+.emptyRail {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 7px;
+  margin-top: 18px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--f-line) 75%, var(--f-panel));
+}
+.metricRail .iqr {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--f-gold) 63%, var(--f-panel));
+}
+.metricRail .median {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--f-gold);
+}
+.pillarMeta {
+  margin-top: 10px;
+  color: var(--f-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.pillarAction {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 13px;
+  color: var(--f-gold);
+  font-size: 11px;
+  font-weight: 700;
+}
+.card {
+  display: grid;
+  gap: 15px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 460px;
+}
+.footprintGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.footprintGrid article {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--f-line) 80%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--f-deep) 45%, var(--f-panel));
+}
+.footprintGrid article > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.footprintGrid article span {
+  font-size: 12px;
+  font-weight: 700;
+}
+.footprintGrid article strong {
+  font-size: 19px;
+}
+.footprintGrid article small,
+.footprintGrid article em {
+  color: var(--f-muted);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.45;
+}
+.footprintGrid article em {
+  color: color-mix(in srgb, var(--f-coral) 76%, var(--f-muted));
+}
+.progress {
+  display: block !important;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--f-line);
+}
+.progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--f-gold) 60%, var(--f-panel)), var(--f-gold));
+}
+.fingerprint {
+  min-height: 520px;
+}
+.chartShell {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--f-line);
+  border-radius: 12px;
+  background: var(--f-deep);
+}
+.chart {
+  display: block;
+  width: 100%;
+  min-width: 620px;
+  height: auto;
+}
+.quadrantSoft,
+.quadrantStrong,
+.quadrantWeak,
+.quadrantMixed {
+  fill: color-mix(in srgb, var(--f-panel) 86%, transparent);
+}
+.quadrantStrong {
+  fill: color-mix(in srgb, var(--f-teal) 8%, var(--f-deep));
+}
+.quadrantWeak {
+  fill: color-mix(in srgb, var(--f-coral) 7%, var(--f-deep));
+}
+.quadrantMixed {
+  fill: color-mix(in srgb, var(--f-gold) 5%, var(--f-deep));
+}
+.gridLine {
+  stroke: color-mix(in srgb, var(--f-line) 65%, transparent);
+  stroke-width: 1;
+}
+.zeroLine {
+  stroke: color-mix(in srgb, var(--f-muted) 55%, transparent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+}
+.quadrantLabel,
+.axisTitle,
+.tick {
+  fill: var(--f-muted);
+  font-family: inherit;
+}
+.quadrantLabel {
+  font-size: 11px;
+  font-weight: 700;
+}
+.axisTitle {
+  fill: var(--f-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tick {
+  font-size: 10px;
+}
+.bubble {
+  stroke: var(--f-deep);
+  stroke-width: 2;
+  cursor: pointer;
+  transition: r 120ms ease, stroke 120ms ease;
+}
+.bubble[data-tone="positive"] {
+  fill: var(--f-teal);
+}
+.bubble[data-tone="negative"] {
+  fill: var(--f-coral);
+}
+.bubble[data-tone="neutral"] {
+  fill: #7f8ba0;
+}
+.bubble:hover,
+.bubble[data-selected="true"] {
+  stroke: var(--f-gold);
+  stroke-width: 3;
+}
+.bubble:focus-visible {
+  outline: none;
+  stroke: #fff;
+  stroke-width: 4;
+}
+.chartFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--f-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.companySelector {
+  display: grid;
+  grid-template-columns: minmax(150px, auto) minmax(260px, 1fr);
+  align-items: center;
+  gap: 12px;
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.companySelector select {
+  width: 100%;
+  min-width: 0;
+  padding: 0 36px 0 12px;
+  background: var(--f-deep);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7f8ba0;
+}
+.legend i[data-tone="positive"] {
+  background: var(--f-teal);
+}
+.legend i[data-tone="negative"] {
+  background: var(--f-coral);
+}
+.selectedCompany {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 15px;
+  border: 1px solid color-mix(in srgb, var(--f-gold) 30%, var(--f-line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--f-gold) 7%, var(--f-deep));
+}
+.selectedCompany > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+.selectedCompany > div:first-child span {
+  color: var(--f-muted);
+  font-size: 11px;
+}
+.selectedCompany dl {
+  display: flex;
+  gap: 18px;
+  margin: 0;
+}
+.selectedCompany dl div {
+  display: grid;
+  gap: 3px;
+}
+.selectedCompany dt {
+  color: var(--f-muted);
+  font-size: 10px;
+}
+.selectedCompany dd {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+.selectedCompany button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--f-gold);
+  font-size: 11px;
+  font-weight: 700;
+}
+.atlasGroups {
+  display: grid;
+  gap: 19px;
+}
+.atlasGroups > section {
+  display: grid;
+  gap: 11px;
+}
+.atlasGroups > section + section {
+  padding-top: 18px;
+  border-top: 1px solid var(--f-line);
+}
+.atlasHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+.atlasHeading > div {
+  display: grid;
+  gap: 3px;
+}
+.atlasHeading span,
+.atlasHeading small {
+  color: var(--f-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.atlasMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.atlasMetrics button {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  min-height: 130px;
+  padding: 13px;
+  text-align: left;
+  background: color-mix(in srgb, var(--f-deep) 52%, var(--f-panel));
+}
+.atlasMetrics button > span:first-child {
+  overflow: hidden;
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.atlasMetrics button strong {
+  font-size: 19px;
+}
+.atlasMetrics button small {
+  color: var(--f-muted);
+  font-size: 10px;
+}
+.attentionGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.attentionGrid button {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  min-height: 116px;
+  padding: 13px;
+  text-align: left;
+  background: color-mix(in srgb, var(--f-deep) 45%, var(--f-panel));
+}
+.attentionGrid button > span {
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.attentionGrid button strong {
+  font-size: 22px;
+}
+.attentionGrid button small,
+.attentionGrid button em {
+  color: var(--f-muted);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.4;
+}
+.attentionGrid button em {
+  color: var(--f-coral);
+  font-weight: 700;
+}
+.attentionGrid button[aria-pressed="true"] {
+  border-color: var(--f-gold);
+  background: color-mix(in srgb, var(--f-gold) 9%, var(--f-panel));
+}
+.attentionDetail {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.72fr) 1.4fr;
+  gap: 20px;
+  padding: 17px;
+  border: 1px solid var(--f-line);
+  border-radius: 11px;
+  background: var(--f-deep);
+}
+.attentionDetail > div:first-child {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+.attentionDetail p,
+.attentionDetail small {
+  color: var(--f-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.companyChips {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.companyChips button {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  min-height: 54px;
+  padding: 7px 9px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+.companyChips button span {
+  color: var(--f-muted);
+  font-size: 10px;
+}
+.measureExplorer {
+  display: grid;
+  gap: 16px;
+}
+.measureHeading,
+.toolIntro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 15px 2px 5px;
+}
+.measureHeading > div,
+.toolIntro > div {
+  max-width: 720px;
+}
+.measureHeading > div > p:last-child,
+.toolIntro > p {
+  max-width: 720px;
+  margin-top: 10px;
+  color: var(--f-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.measureHeading label {
+  display: grid;
+  flex: 0 0 min(380px, 42%);
+  gap: 7px;
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.measureHeading select {
+  width: 100%;
+  padding: 0 36px 0 12px;
+  background: var(--f-panel);
+}
+.measureCard {
+  display: grid;
+  gap: 19px;
+  padding: 23px;
+}
+.measureTitle > div {
+  display: grid;
+  gap: 5px;
+  max-width: 750px;
+}
+.measureTitle > div > span {
+  color: var(--f-gold);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.measureTitle p {
+  color: var(--f-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.measureStats {
+  margin-top: 0;
+  padding-block: 19px;
+  border-bottom: 1px solid var(--f-line);
+}
+.measureStats strong {
+  font-size: clamp(19px, 2vw, 25px);
+}
+.outlierNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--f-gold) 24%, var(--f-line));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--f-gold) 6%, transparent);
+  color: var(--f-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.outlierNote svg {
+  flex-shrink: 0;
+  color: var(--f-gold);
+}
+.histogram {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+  min-height: 205px;
+  padding-top: 7px;
+}
+.root .histogram button {
+  display: grid;
+  grid-template-rows: 23px minmax(100px, 1fr) 46px;
+  flex: 1 1 0;
+  gap: 5px;
+  min-width: 0;
+  min-height: 190px;
+  padding: 7px 3px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--f-muted);
+  font-size: 10px;
+}
+.histogram button strong {
+  color: var(--f-text);
+  font-size: 12px;
+}
+.histogram button > span {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-bottom: 1px solid var(--f-line);
+}
+.histogram button i {
+  display: block;
+  width: min(46px, 74%);
+  min-height: 3px;
+  border-radius: 5px 5px 2px 2px;
+  background: color-mix(in srgb, var(--f-gold) 66%, var(--f-panel));
+}
+.histogram button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--f-gold) 42%, transparent);
+  background: color-mix(in srgb, var(--f-gold) 7%, transparent);
+  color: var(--f-text);
+}
+.observations {
+  display: grid;
+  gap: 13px;
+}
+.observations .sectionHeading > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.observations .sectionHeading span {
+  color: var(--f-muted);
+  font-size: 10px;
+}
+.observations .sectionHeading button {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 11px;
+}
+.tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.tableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.tableWrap th,
+.tableWrap td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--f-line);
+  text-align: left;
+  white-space: nowrap;
+}
+.tableWrap thead th {
+  color: var(--f-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.tableWrap tbody th {
+  min-width: 180px;
+}
+.tableWrap tbody th button {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--f-text);
+  font-weight: 750;
+}
+.tableWrap tbody th span {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--f-muted);
+  font-size: 10px;
+  font-weight: 450;
+  text-overflow: ellipsis;
+}
+.tableWrap a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--f-gold);
+  font-weight: 700;
+  text-decoration: none;
+}
+.tableWrap td button {
+  min-height: 34px;
+  padding: 6px 9px;
+  font-size: 10px;
+}
+.tableFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: var(--f-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.tableFooter button {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 10px;
+}
+.toolIntro > p {
+  max-width: 470px;
+  margin: 0;
+}
+.connectedTools {
+  display: grid;
+  gap: 22px;
+}
+.health {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.healthScope p {
+  display: grid;
+  gap: 2px;
+}
+.healthScope strong,
+.healthScope span {
+  display: block;
+}
+.healthAvailability {
+  color: var(--f-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.empty {
+  padding: 28px;
+  border: 1px dashed var(--f-line);
+  border-radius: 12px;
+  color: var(--f-muted);
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .heroStats,
+  .measureStats,
+  .pillarGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .heroStats > div,
+  .measureStats > div {
+    padding: 16px 0;
+    border-left: 0 !important;
+  }
+  .heroStats > div:nth-child(even),
+  .measureStats > div:nth-child(even) {
+    padding-left: 18px;
+    border-left: 1px solid var(--f-line) !important;
+  }
+  .heroStats > div:nth-child(n + 3),
+  .measureStats > div:nth-child(n + 3) {
+    border-top: 1px solid var(--f-line);
+  }
+  .lensGrid,
+  .attentionGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .companyChips {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 800px) {
+  .lensPanel,
+  .card,
+  .measureCard,
+  .observations,
+  .hero {
+    padding: 17px;
+  }
+  .sectionHeading,
+  .heroTop,
+  .measureHeading,
+  .toolIntro,
+  .measureTitle,
+  .chartFooter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .companySelector {
+    grid-template-columns: 1fr;
+  }
+  .sectionHeading > span,
+  .measureTitle > span {
+    text-align: left;
+  }
+  .measureHeading label {
+    flex-basis: auto;
+    width: 100%;
+  }
+  .footprintGrid,
+  .atlasMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .attentionDetail,
+  .selectedCompany {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .lensGrid,
+  .pillarGrid,
+  .footprintGrid,
+  .atlasMetrics,
+  .attentionGrid,
+  .heroStats,
+  .measureStats {
+    grid-template-columns: 1fr;
+  }
+  .heroStats > div,
+  .measureStats > div,
+  .heroStats > div:nth-child(even),
+  .measureStats > div:nth-child(even) {
+    padding: 14px 0;
+    border-left: 0 !important;
+    border-top: 1px solid var(--f-line);
+  }
+  .heroStats > div:first-child,
+  .measureStats > div:first-child {
+    border-top: 0;
+  }
+  .companyChips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .selectedCompany dl {
+    flex-wrap: wrap;
+  }
+  .histogram {
+    min-width: 520px;
+  }
+  .measureCard {
+    overflow-x: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble {
+    transition: none;
+  }
+}
