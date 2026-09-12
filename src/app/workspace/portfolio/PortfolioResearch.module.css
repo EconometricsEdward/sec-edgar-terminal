@@ -371,6 +371,9 @@
   border: 1px solid var(--p-line);
   border-radius: 12px;
 }
+.tableWrap.companyTable {
+  overflow: visible;
+}
 .tableWrap table {
   width: 100%;
   border-collapse: collapse;

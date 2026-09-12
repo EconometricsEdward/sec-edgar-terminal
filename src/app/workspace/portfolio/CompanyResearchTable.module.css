@@ -1,0 +1,170 @@
+.root {
+  --table-line: var(--p-line, var(--demo-line, #29364c));
+  --table-bg: var(--p-bg, var(--demo-bg, #0b1018));
+  --table-header: var(--p-panel, #101a2b);
+  --company-width: 230px;
+  --selection-width: 52px;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--table-line);
+  border-radius: 10px;
+  isolation: isolate;
+}
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  color: var(--p-muted, var(--demo-muted, #a7b4c7));
+  font-size: 12px;
+}
+.controls[hidden],
+.rail[hidden] {
+  display: none;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.root .actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  min-height: 36px;
+  border: 1px solid var(--table-line);
+  border-radius: 6px;
+  background: var(--table-header);
+  color: var(--p-text, var(--demo-text, #e8edf5));
+  font-size: 12px;
+  cursor: pointer;
+}
+.root .actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.rail,
+.viewport {
+  scrollbar-width: auto;
+  scrollbar-color: #7f91ac var(--table-header);
+}
+.rail {
+  max-width: 100%;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  min-height: 17px;
+  background: var(--table-header);
+}
+.viewport {
+  max-height: clamp(280px, 62vh, 680px);
+  overflow: auto;
+  border-radius: 0 0 10px 10px;
+  scroll-padding-top: 80px;
+  scroll-padding-left: var(--company-width);
+}
+.rail::-webkit-scrollbar,
+.viewport::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+.rail::-webkit-scrollbar-track,
+.viewport::-webkit-scrollbar-track {
+  background: var(--table-header);
+}
+.rail::-webkit-scrollbar-thumb,
+.viewport::-webkit-scrollbar-thumb {
+  background: #7f91ac;
+  border: 3px solid var(--table-header);
+  border-radius: 8px;
+}
+.root .viewport table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.root .viewport thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--table-header);
+  white-space: normal;
+  min-width: 140px;
+  max-width: 230px;
+  box-shadow: 0 1px 0 var(--table-line);
+}
+.root .viewport th[scope="row"],
+.root .viewport thead th:first-child {
+  position: sticky;
+  left: 0;
+  min-width: var(--company-width);
+  width: var(--company-width);
+  max-width: var(--company-width);
+  box-sizing: border-box;
+  background: var(--table-bg);
+  z-index: 2;
+  box-shadow: 1px 0 0 var(--table-line);
+  overflow-wrap: anywhere;
+}
+.root .viewport th[scope="row"] > span {
+  min-width: 0;
+}
+.root .viewport thead th:first-child {
+  z-index: 4;
+  background: var(--table-header);
+}
+.root[data-selection-column] .viewport tr > :first-child {
+  position: sticky;
+  left: 0;
+  min-width: var(--selection-width);
+  width: var(--selection-width);
+  max-width: var(--selection-width);
+  padding-inline: 12px;
+  box-sizing: border-box;
+  background: var(--table-bg);
+  z-index: 2;
+}
+.root[data-selection-column] .viewport th[scope="row"],
+.root[data-selection-column] .viewport thead th:nth-child(2) {
+  position: sticky;
+  left: var(--selection-width);
+  min-width: var(--company-width);
+  width: var(--company-width);
+  max-width: var(--company-width);
+  box-sizing: border-box;
+  box-shadow: 1px 0 0 var(--table-line);
+}
+.root[data-selection-column]
+  .viewport
+  thead
+  th:is(:first-child, :nth-child(2)) {
+  z-index: 4;
+  background: var(--table-header);
+}
+.root :is(button, .rail, .viewport):focus-visible {
+  outline: 2px solid var(--p-gold, var(--demo-gold, #f7c65a));
+  outline-offset: -2px;
+}
+:global(html[data-theme-mode="light"]) .root {
+  --table-bg: #fff;
+  --table-header: #f1f4f8;
+}
+@media (max-width: 600px) {
+  .root {
+    --company-width: 170px;
+    --selection-width: 42px;
+  }
+  .controls {
+    align-items: flex-start;
+  }
+  .controls > span {
+    max-width: 170px;
+  }
+  .root .viewport th[scope="row"] {
+    padding-inline: 10px;
+  }
+}
+
+.root[data-selection-column] .viewport {
+  scroll-padding-left: calc(var(--company-width) + var(--selection-width));
+}

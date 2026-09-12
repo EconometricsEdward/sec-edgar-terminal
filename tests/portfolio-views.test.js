@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
+  availablePortfolioViewPresets,
   DEFAULT_PORTFOLIO_VIEW,
+  PORTFOLIO_VIEW_PRESETS,
   PORTFOLIO_VIEWS_KEY,
   PORTFOLIO_VIEWS_BYTES,
   readPortfolioViews,
@@ -9,6 +12,9 @@ import {
   validatePortfolioView,
   writePortfolioView,
 } from "../src/utils/portfolioViews.js";
+import { unpackPortfolioSnapshot } from "../src/utils/portfolioEvidenceCodec.js";
+import { portfolioMetricDefinitionFor } from "../src/utils/portfolioMetricCatalog.js";
+import { portfolioMetricState } from "../src/utils/portfolioDeepResearch.js";
 
 const now = "2026-09-08T10:00:00.000Z";
 const value = (patch = {}) => ({
@@ -223,7 +229,7 @@ test("cash-flow and banking views use business-model classification, not issuer 
     rowMatchesPortfolioView(row(), company({ lens: "common" }), "cash-flow"),
     false,
   );
-  assert.equal(rowMatchesPortfolioView(row(), undefined, "cash-flow"), true);
+  assert.equal(rowMatchesPortfolioView(row(), undefined, "cash-flow"), false);
   assert.equal(
     rowMatchesPortfolioView(
       row(),
@@ -248,6 +254,260 @@ test("cash-flow and banking views use business-model classification, not issuer 
       "banking",
     ),
     false,
+  );
+});
+
+const datedMetric = (value, unit = "USD", patch = {}) => ({
+  value,
+  unit,
+  classification: "reported",
+  period: { kind: "annual", start: "2025-01-01", end: "2025-12-31" },
+  ...patch,
+});
+const identifiedRow = (cik, patch = {}) =>
+  row({
+    id: `row-${cik}`,
+    resolution: { status: "resolved", kind: "company", cik },
+    ...patch,
+  });
+
+test("research lenses separate business models and do not classify funds or unknown companies by name", () => {
+  const corporate = company({
+    cik: "0000000001",
+    metrics: {
+      revenueGrowth: datedMetric(-5, "%"),
+      netMargin: datedMetric(0, "%"),
+      operatingCashFlow: datedMetric(30),
+      currentRatio: datedMetric(1.4, "x"),
+      debtAssets: datedMetric(15, "%"),
+      dividendsPaid: datedMetric(0),
+      cashConversion: datedMetric(80, "%"),
+    },
+  });
+  const bank = company({
+    cik: "0000000002",
+    lens: "banking",
+    metrics: {
+      netInterestIncome: datedMetric(20),
+      netMargin: datedMetric(5, "%"),
+      currentRatio: datedMetric(2, "x"),
+    },
+  });
+  const insurer = company({
+    cik: "0000000003",
+    lens: "insurance",
+    metrics: {
+      premiumsEarned: datedMetric(10),
+      debtAssets: datedMetric(5, "%"),
+    },
+  });
+  const unknown = company({
+    cik: "0000000004",
+    lens: "unknown",
+    name: "Bank Insurance Corp",
+  });
+  const fund = company({
+    cik: "0000000005",
+    kind: "fund",
+    lens: "banking",
+    metrics: {
+      deposits: datedMetric(999),
+    },
+  });
+  const companies = [corporate, bank, insurer, unknown, fund];
+  const rows = companies.map((item) => identifiedRow(item.cik));
+  const presets = availablePortfolioViewPresets(rows, companies);
+  assert.deepEqual(presets.find((view) => view.id === "banking").columns, [
+    "netInterestIncome",
+  ]);
+  assert.equal(presets.find((view) => view.id === "banking").rowCount, 1);
+  assert.equal(presets.find((view) => view.id === "insurance").rowCount, 1);
+  assert.equal(presets.find((view) => view.id === "leverage").rowCount, 2);
+  for (const id of [
+    "profitability",
+    "growth",
+    "cash-flow",
+    "liquidity",
+    "efficiency",
+  ])
+    assert.equal(presets.find((view) => view.id === id).rowCount, 1, id);
+  assert.equal(presets.find((view) => view.id === "overview").rowCount, 5);
+  assert.equal(rowMatchesPortfolioView(rows[3], unknown, "cash-flow"), false);
+  assert.equal(rowMatchesPortfolioView(rows[4], fund, "banking"), false);
+});
+
+test("lens choices keep valid zero and negative values while rejecting unavailable, wrong-unit and undated measures", () => {
+  const captured = company({
+    cik: "0000000001",
+    metrics: {
+      netMargin: datedMetric(-10, "%"),
+      operatingMargin: datedMetric(0, "%"),
+      grossMargin: datedMetric(12, "%", { classification: "unavailable" }),
+      roe: datedMetric(1, "USD"),
+      roa: datedMetric(4, "%", { period: undefined }),
+      netIncome: datedMetric(8, "USD", { classification: "not_applicable" }),
+      dividendsPaid: datedMetric(0),
+    },
+  });
+  const presets = availablePortfolioViewPresets(
+    [identifiedRow("1")],
+    [captured],
+  );
+  const profitability = presets.find((view) => view.id === "profitability");
+  assert.deepEqual(profitability.columns, ["netMargin", "operatingMargin"]);
+  assert.equal(profitability.sort, "netMargin");
+  assert.equal(profitability.direction, "desc");
+  assert.deepEqual(
+    presets.find((view) => view.id === "capital-returns").columns,
+    ["dividendsPaid"],
+  );
+  assert.equal(
+    presets.find((view) => view.id === "capital-returns").sort,
+    "dividendsPaid",
+  );
+  assert.equal(
+    presets.some((view) => view.id === "growth"),
+    false,
+  );
+  assert.equal(
+    presets.some((view) => view.id === "banking"),
+    false,
+  );
+  assert.equal(
+    presets.some((view) => view.id === "insurance"),
+    false,
+  );
+});
+
+test("growth and shareholder payout lenses need their defining evidence rather than unrelated supporting numbers", () => {
+  const captured = company({
+    cik: "1",
+    metrics: {
+      revenue: datedMetric(100),
+      netIncome: datedMetric(20),
+      operatingCashFlow: datedMetric(30),
+      dividendsPaid: datedMetric(0, "USD", { classification: "unavailable" }),
+    },
+  });
+  const presets = availablePortfolioViewPresets(
+    [identifiedRow("0000000001")],
+    [captured],
+  );
+  assert.ok(presets.some((view) => view.id === "overview"));
+  assert.ok(presets.some((view) => view.id === "cash-flow"));
+  assert.equal(
+    presets.some((view) => view.id === "growth"),
+    false,
+  );
+  assert.equal(
+    presets.some((view) => view.id === "capital-returns"),
+    false,
+  );
+});
+
+test("review-only portfolios still offer coverage while excluded rows cannot make financial lenses available", () => {
+  const captured = company({
+    cik: "0000000001",
+    metrics: { operatingCashFlow: datedMetric(10) },
+  });
+  const rows = [identifiedRow("1", { excluded: true }), identifiedRow("2")];
+  const presets = availablePortfolioViewPresets(rows, [captured]);
+  assert.deepEqual(
+    presets.map((view) => view.id),
+    ["overview", "coverage"],
+  );
+  assert.deepEqual(presets[0].columns, []);
+  assert.equal(presets[0].rowCount, 2);
+  assert.equal(presets[1].rowCount, 1);
+  assert.equal(presets[0].sort, "name");
+  assert.deepEqual(availablePortfolioViewPresets([], []), []);
+  const removed = availablePortfolioViewPresets(
+    [identifiedRow("1", { duplicateChoice: "remove" })],
+    [captured],
+  );
+  assert.deepEqual(
+    removed.map((view) => view.id),
+    ["overview"],
+  );
+  assert.deepEqual(removed[0].columns, []);
+});
+
+test("overview keeps fund-only and unidentified portfolios reachable without offering missing financial columns", () => {
+  const fixtures = [
+    { rows: [identifiedRow("1")], companies: [] },
+    {
+      rows: [row({ resolution: { status: "review", kind: "unknown" } })],
+      companies: [],
+    },
+    { rows: [identifiedRow("1", { excluded: true })], companies: [] },
+    {
+      rows: [
+        row({ resolution: { status: "unsupported", kind: "fund", cik: "1" } }),
+      ],
+      companies: [
+        company({
+          cik: "1",
+          kind: "fund",
+          lens: "banking",
+          metrics: { deposits: datedMetric(100) },
+        }),
+      ],
+    },
+    {
+      rows: [identifiedRow("1")],
+      companies: [company({ cik: "1", lens: undefined })],
+    },
+  ];
+  for (const fixture of fixtures) {
+    const presets = availablePortfolioViewPresets(
+      fixture.rows,
+      fixture.companies,
+    );
+    const overview = presets.find((view) => view.id === "overview");
+    assert.ok(overview);
+    assert.deepEqual(overview.columns, []);
+    assert.equal(overview.rowCount, 1);
+    assert.equal(overview.sort, "name");
+    assert.ok(
+      presets.every((view) => ["overview", "coverage"].includes(view.id)),
+    );
+  }
+});
+
+test("the captured demo supports all eleven lenses with only traceable available columns", () => {
+  const demo = JSON.parse(
+    readFileSync(
+      new URL(
+        "../public/portfolio/portfolio-demo-100-results.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const companies = unpackPortfolioSnapshot(demo.snapshot).companies;
+  const presets = availablePortfolioViewPresets(demo.rows, companies);
+  assert.equal(presets.length, 11);
+  for (const preset of presets) {
+    assert.ok(preset.rowCount > 0, preset.name);
+    for (const key of preset.columns) {
+      const definition = portfolioMetricDefinitionFor(key);
+      assert.ok(
+        companies.some(
+          (captured) =>
+            demo.rows.some(
+              (item) =>
+                item.resolution?.cik === captured.cik &&
+                rowMatchesPortfolioView(item, captured, preset.id),
+            ) && portfolioMetricState(captured, definition) === "available",
+        ),
+        `${preset.name}: ${key}`,
+      );
+    }
+  }
+  assert.equal(
+    PORTFOLIO_VIEW_PRESETS.find((view) => view.id === "cash-flow").columns
+      .length,
+    6,
   );
 });
 
