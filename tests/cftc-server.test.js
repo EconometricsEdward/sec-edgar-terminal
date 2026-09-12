@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CFTC_FRESH_MS, CFTC_PUBLIC_RESPONSE_MAX_BYTES, CFTC_RAW_HISTORY_SCHEMA_VERSION, CFTC_REFRESH_CHECKPOINT_VERSION, CFTC_REFRESH_RESUME_MS, assertCftcPublicResponseSize, buildCftcHistoryResponse, buildCftcMarketsSnapshot, cftcPublicDateBounds, cftcPublicationStatus, cftcResourceUrl, fetchCftcContractHistory, fetchCftcLatestRows, fetchCftcResource, isCftcPublicReportDate, loadCftcMarkets, parseCftcRetryAfter, presentCftcResponse, readCftcCacheStatus, validCftcRefreshCheckpoint, validHistoryResponse, validMarketsResponse, validateRawHistoryEnvelope } from '../src/utils/cftcServer.js';
+import { CFTC_FRESH_MS, CFTC_PUBLIC_RESPONSE_MAX_BYTES, CFTC_RAW_HISTORY_SCHEMA_VERSION, CFTC_REFRESH_CHECKPOINT_VERSION, CFTC_REFRESH_RESUME_MS, assertCftcPublicResponseSize, buildCftcHistoryResponse, buildCftcMarketsSnapshot, cftcHistoryResponseCacheStatus, cftcPublicDateBounds, cftcPublicationStatus, cftcResourceUrl, fetchCftcContractHistory, fetchCftcLatestRows, fetchCftcResource, hasCftcPublicationFailure, isCftcPublicReportDate, isDurableCftcTwin, isPublishedCftcPrimary, loadCftcMarkets, parseCftcRetryAfter, presentCftcResponse, publishPreparedResponse, readCftcCacheStatus, validCftcRefreshCheckpoint, validHistoryResponse, validMarketsResponse, validateRawHistoryEnvelope } from '../src/utils/cftcServer.js';
 import { CFTC_FAMILIES, CFTC_LAUNCH_CATALOG } from '../src/utils/cftc.js';
 import { createCftcOutboundGate } from '../src/utils/cftcTransport.js';
 
@@ -70,7 +70,67 @@ test('cache publication failures remain distinct from successful official-source
   const provisional=cftcPublicationStatus({status:'ready',report_date:'2026-09-08',retrieved_at:'2026-09-09T12:00:00Z'},{cacheRequired:true,primaryPersisted:true,lastGoodPersisted:null});
   assert.equal(provisional.cache_publication.durable,false);
   const reread=presentCftcResponse(provisional,{savedAt:'2026-09-09T12:00:00Z',now:new Date('2026-09-09T13:00:00Z'),cacheStatus:'prepared'});
-  assert.equal(reread.status,'partial');assert.equal(reread.cache_publication.last_good_persisted,false);assert.equal(reread.cache_publication.durable,false);
+  assert.equal(reread.status,'ready');assert.equal(reread.cache_publication.last_good_persisted,null);assert.equal(reread.cache_publication.durable,false);assert.equal(isPublishedCftcPrimary({savedAt:'2026-09-09T12:00:00Z',response:reread}),false);
+});
+
+for(const {family,fixtureName,code,group} of [
+  {family:'tff',fixtureName:'cftc-tff-gpe5-46if-v1.json',code:'13874A',group:'leveraged-funds'},
+  {family:'disaggregated',fixtureName:'cftc-disaggregated-72hh-3qpy-v1.json',code:'067651',group:'managed-money'},
+])test(`fresh prepared ${family} raw history publishes a durable ready response`,async()=>{
+  const reportDate='2026-09-08',retrievedAt='2026-09-09T12:00:00Z',savedAt='2026-09-09T12:00:01Z',now=new Date('2026-09-10T12:00:00Z');
+  const raw=fixture(fixtureName),rawRows=Array.from({length:53},(_,index)=>({...raw,id:`${family}-${index}`,report_date_as_yyyy_mm_dd:`${priorDay(reportDate,index*7)}T00:00:00.000`}));
+  const responseCacheStatus=cftcHistoryResponseCacheStatus('prepared');
+  assert.equal(responseCacheStatus,'computed-from-prepared-raw');
+  const built=buildCftcHistoryResponse({family,code,group,throughDate:reportDate,window:'1y',rawRows,retrievedAt,sourceUrl:launchSourceUrl(family,reportDate),cacheStatus:responseCacheStatus,retrieval:{origin_scope:'launch_selection',scope_rows:rawRows.length,source_rows:rawRows.length,source_pages:1,source_page_size:1000,cap_reached:false,bounded_scope_rows:600,bounded_source_rows:5000}});
+  const candidate=presentCftcResponse(cftcPublicationStatus(built,{cacheRequired:true,rawHistoryExpected:1,rawHistoryPersisted:1}),{savedAt,now,cacheStatus:responseCacheStatus,requireCurrent:true});
+  assert.equal(candidate.status,'ready');assert.equal(candidate.freshness.source_currency,'current');assert.equal(candidate.cache_publication.last_good_persisted,null);
+  const cacheId=`history:${family}:${code}:${group}:${reportDate}:1y`,lastGoodId=`history-last-good:${family}:${code}:${group}:${reportDate}:1y`,writes=[];
+  const published=await publishPreparedResponse({cacheId,lastGoodId,response:candidate,savedAt,allowLastGood:true,cacheRequired:true,cacheWrite:async(_namespace,id,value,ttl)=>{writes.push({id,value,ttl});return true;}});
+  assert.equal(published.status,'ready');assert.equal(published.cache_publication.durable,true);assert.equal(published.cache_publication.last_good_persisted,true);
+  assert.equal(writes.filter(write=>write.id===lastGoodId).length,1,'last-good receives only the complete candidate');
+  assert.equal(published.status!=='ready'||published.freshness.source_currency==='aged'||published.freshness.cache_status.startsWith('stale'),false,'the route will emit X-Data-Stale: 0');
+  assert.equal(validHistoryResponse(published,family,code,group,reportDate,'1y',now.getTime()),true);
+  const oldLastGood={savedAt:'2026-09-01T12:00:00Z',response:{sentinel:'older complete snapshot'}},failedStore=new Map([[lastGoodId,oldLastGood]]);
+  const failed=await publishPreparedResponse({cacheId,lastGoodId,response:candidate,savedAt,allowLastGood:true,cacheRequired:true,cacheWrite:async(_namespace,id,value)=>{if(id===lastGoodId)return false;failedStore.set(id,value);return true;}});
+  assert.equal(failed.status,'partial');assert.equal(failed.cache_publication.durable,false);assert.equal(failed.cache_publication.last_good_persisted,false);assert.match(failed.refresh_warning,/last-good snapshot/);
+  assert.deepEqual(failedStore.get(lastGoodId),oldLastGood,'a rejected last-good write cannot replace the prior fallback');
+  assert.equal(failed.status!=='ready'||failed.freshness.source_currency==='aged'||failed.freshness.cache_status.startsWith('stale'),true,'genuine publication failure remains degraded');
+});
+
+test('publication ordering protects last-good and final-primary recovery',async()=>{
+  const savedAt='2026-09-09T12:00:01Z',cacheId='history:tff:13874A:leveraged-funds:2026-09-08:1y',lastGoodId='history-last-good:tff:13874A:leveraged-funds:2026-09-08:1y';
+  const response=cftcPublicationStatus({status:'ready',report_date:'2026-09-08',retrieved_at:'2026-09-09T12:00:00Z',freshness:{source_currency:'current',cache_status:'computed-from-prepared-raw'}},{cacheRequired:true,rawHistoryExpected:1,rawHistoryPersisted:1});
+  const oldLastGood={savedAt:'2026-09-01T12:00:00Z',response:{sentinel:'older complete snapshot'}};
+  const primaryFailureStore=new Map([[lastGoodId,oldLastGood]]),primaryFailureCalls=[];
+  const primaryFailure=await publishPreparedResponse({cacheId,lastGoodId,response,savedAt,allowLastGood:true,cacheRequired:true,cacheWrite:async(_namespace,id,value)=>{primaryFailureCalls.push(id);if(id===cacheId)return false;primaryFailureStore.set(id,value);return true;}});
+  assert.equal(primaryFailure.status,'partial');assert.equal(primaryFailure.cache_publication.primary_persisted,false);assert.deepEqual(primaryFailureCalls,[cacheId]);assert.deepEqual(primaryFailureStore.get(lastGoodId),oldLastGood);
+
+  const finalFailureStore=new Map([[lastGoodId,oldLastGood]]),writeCounts=new Map();
+  const finalPrimaryFailure=await publishPreparedResponse({cacheId,lastGoodId,response,savedAt,allowLastGood:true,cacheRequired:true,cacheWrite:async(_namespace,id,value)=>{const count=(writeCounts.get(id)||0)+1;writeCounts.set(id,count);if(id===cacheId&&count===2)return false;finalFailureStore.set(id,value);return true;}});
+  const provisionalPrimary=finalFailureStore.get(cacheId),completeLastGood=finalFailureStore.get(lastGoodId);
+  assert.equal(finalPrimaryFailure.status,'ready');assert.equal(finalPrimaryFailure.cache_publication.durable,true);
+  assert.equal(isPublishedCftcPrimary(provisionalPrimary),false,'a provisional primary is never a fast-path hit');
+  assert.equal(isDurableCftcTwin(provisionalPrimary,completeLastGood),true,'the complete same-snapshot last-good wins after final-primary failure');
+
+  const intrinsic={savedAt,response:cftcPublicationStatus({status:'partial'},{cacheRequired:true,primaryPersisted:true,lastGoodPersisted:null,rawHistoryExpected:1,rawHistoryPersisted:1})};
+  const attempted={savedAt,response:cftcPublicationStatus({status:'ready'},{cacheRequired:true,primaryPersisted:true,lastGoodPersisted:false,rawHistoryExpected:1,rawHistoryPersisted:1})};
+  const shortfall={savedAt,response:cftcPublicationStatus({status:'partial'},{cacheRequired:true,primaryPersisted:true,lastGoodPersisted:null,rawHistoryExpected:2,rawHistoryPersisted:1})};
+  assert.equal(hasCftcPublicationFailure(intrinsic),false);assert.equal(isPublishedCftcPrimary(intrinsic),true,'intrinsic partials remain cacheable');
+  assert.equal(hasCftcPublicationFailure(attempted),true);assert.equal(isPublishedCftcPrimary(attempted),false,'attempted last-good failures are retried');
+  assert.equal(hasCftcPublicationFailure(shortfall),true);assert.equal(isPublishedCftcPrimary(shortfall),false,'raw-history shortfalls are retried');
+
+  const intrinsicStore=new Map([[lastGoodId,oldLastGood]]),intrinsicWrites=[];
+  const intrinsicPublished=await publishPreparedResponse({cacheId,lastGoodId,response:intrinsic.response,savedAt,allowLastGood:false,cacheRequired:true,cacheWrite:async(_namespace,id,value)=>{intrinsicWrites.push(id);intrinsicStore.set(id,value);return true;}});
+  assert.deepEqual(intrinsicWrites,[cacheId]);assert.equal(intrinsicPublished.status,'partial');assert.equal(intrinsicPublished.cache_publication.primary_persisted,true);assert.equal(intrinsicPublished.cache_publication.last_good_persisted,null);
+  assert.equal(isPublishedCftcPrimary(intrinsicStore.get(cacheId)),true,'an intrinsic partial is finalized as a cacheable primary');assert.deepEqual(intrinsicStore.get(lastGoodId),oldLastGood);
+
+  const throwingStore=new Map([[lastGoodId,oldLastGood]]);
+  const throwingLastGood=await publishPreparedResponse({cacheId,lastGoodId,response,savedAt,allowLastGood:true,cacheRequired:true,cacheWrite:async(_namespace,id,value)=>{if(id===lastGoodId)throw new Error('last-good unavailable');throwingStore.set(id,value);return true;}});
+  assert.equal(throwingLastGood.status,'partial');assert.equal(throwingLastGood.cache_publication.last_good_persisted,false);assert.deepEqual(throwingStore.get(lastGoodId),oldLastGood,'a thrown last-good write also preserves the fallback');
+
+  let disabledWrites=0;
+  const cacheDisabled=await publishPreparedResponse({cacheId,lastGoodId,response,savedAt,allowLastGood:true,cacheRequired:false,cacheWrite:async()=>{disabledWrites++;throw new Error('must not write');}});
+  assert.equal(disabledWrites,0);assert.equal(cacheDisabled.status,'ready');assert.equal(cacheDisabled.cache_publication.cache_required,false);assert.equal(cacheDisabled.cache_publication.durable,false);
 });
 
 test('refresh checkpoints are versioned, bounded to known families, and cannot forge completion',()=>{
@@ -124,6 +184,21 @@ test('cache-only CFTC status validates each family independently and recomputes 
   const result=await readCftcCacheStatus({now,enabled:()=>true,get:async(_type,id)=>values.get(id)||null});
   assert.equal(result.status,'degraded');assert.deepEqual(result.families.map(item=>item.status),['partial','partial']);assert.ok(result.families.every(item=>item.source_report_age_days===4));
   assert.equal(result.families[0].cache_age_seconds,7200);
+});
+
+test('cache-only CFTC status prefers a complete last-good twin over provisional primary metadata',async()=>{
+  const family='tff',reportDate='2026-09-08',retrievedAt='2026-09-09T12:00:00Z',savedAt='2026-09-09T12:00:01Z',now=new Date('2026-09-10T12:00:00Z');
+  const raw=fixture('cftc-tff-gpe5-46if-v1.json'),codes=CFTC_LAUNCH_CATALOG.filter(item=>item.family===family).map(item=>item.code);
+  const latestRaw=codes.map((code,index)=>({...raw,id:`latest-${index}`,cftc_contract_market_code:code}));
+  const historyRaw=codes.flatMap((code,codeIndex)=>Array.from({length:261},(_,index)=>({...raw,id:`history-${codeIndex}-${index}`,cftc_contract_market_code:code,report_date_as_yyyy_mm_dd:`${priorDay(reportDate,index*7)}T00:00:00.000`})));
+  const response=buildCftcMarketsSnapshot({family,reportDate,latestRaw,historyRaw,retrievedAt,sourceUrl:latestSourceUrl(family,reportDate),historySourceUrl:launchSourceUrl(family,reportDate)});
+  const publication={cacheRequired:true,rawHistoryExpected:codes.length,rawHistoryPersisted:codes.length};
+  const complete=cftcPublicationStatus(response,{...publication,primaryPersisted:true,lastGoodPersisted:true});
+  const provisional=cftcPublicationStatus(response,{...publication,primaryPersisted:false,lastGoodPersisted:null});
+  assert.equal(validMarketsResponse(complete,family,now.getTime(),'latest'),true);assert.equal(validMarketsResponse(provisional,family,now.getTime(),'latest'),true);
+  const values=new Map([['markets:tff:latest',{savedAt,response:provisional}],['markets-last-good:tff:latest',{savedAt,response:complete}]]);
+  const result=await readCftcCacheStatus({now,enabled:()=>true,get:async(_type,id)=>values.get(id)||null});
+  assert.deepEqual(result.families[0],{family:'tff',status:'ready',report_date:reportDate,retrieved_at:retrievedAt,cache_age_seconds:86399,source_report_age_days:2,source_currency:'current',cache_source:'last-good'});
 });
 
 test('empty or truncated launch history cannot publish a ready market snapshot',()=>{
@@ -202,6 +277,25 @@ test('prepared-only historical market reads cannot amplify into source history c
   let upstreamCalls=0;
   await assert.rejects(loadCftcMarkets({family:'tff',reportDate:'2026-09-08',preparedOnly:true,fetchImpl:async()=>{upstreamCalls++;return Response.json([]);}}),error=>error.code==='CFTC_REPORT_NOT_PREPARED'&&error.status===404);
   assert.equal(upstreamCalls,0);
+});
+
+test('prepared-only explicit-date reads reject a provisional latest primary and use its durable twin',async()=>{
+  const family='tff',nowMs=Date.now(),reportDate=new Date(nowMs-86400_000).toISOString().slice(0,10);
+  const retrievedAt=new Date(nowMs-2000).toISOString(),savedAt=new Date(nowMs-1000).toISOString();
+  const raw=fixture('cftc-tff-gpe5-46if-v1.json'),codes=CFTC_LAUNCH_CATALOG.filter(item=>item.family===family).map(item=>item.code);
+  const latestRaw=codes.map((code,index)=>({...raw,id:`latest-${index}`,cftc_contract_market_code:code,report_date_as_yyyy_mm_dd:`${reportDate}T00:00:00.000`}));
+  const historyRaw=codes.flatMap((code,codeIndex)=>Array.from({length:261},(_,index)=>({...raw,id:`history-${codeIndex}-${index}`,cftc_contract_market_code:code,report_date_as_yyyy_mm_dd:`${priorDay(reportDate,index*7)}T00:00:00.000`})));
+  const response=buildCftcMarketsSnapshot({family,reportDate,latestRaw,historyRaw,retrievedAt,sourceUrl:latestSourceUrl(family,reportDate),historySourceUrl:launchSourceUrl(family,reportDate)});
+  const publication={cacheRequired:true,rawHistoryExpected:codes.length,rawHistoryPersisted:codes.length};
+  const provisional={savedAt,response:cftcPublicationStatus(response,{...publication,primaryPersisted:false,lastGoodPersisted:null})};
+  const complete={savedAt,response:cftcPublicationStatus(response,{...publication,primaryPersisted:true,lastGoodPersisted:true})};
+  assert.equal(validMarketsResponse(provisional.response,family,nowMs,reportDate),true);
+  assert.equal(validMarketsResponse(complete.response,family,nowMs,reportDate),true);
+  const values=new Map([[`markets:${family}:latest`,provisional],[`markets-last-good:${family}:latest`,complete]]),reads=[];
+  let upstreamCalls=0;
+  const result=await loadCftcMarkets({family,reportDate,preparedOnly:true,cacheGet:async(_namespace,id)=>{reads.push(id);return values.get(id)||null;},fetchImpl:async()=>{upstreamCalls++;return Response.json([]);}});
+  assert.equal(result.status,'ready');assert.equal(result.cache_publication.durable,true);assert.equal(result.cache_publication.last_good_persisted,true);
+  assert.ok(reads.includes(`markets:${family}:latest`));assert.ok(reads.includes(`markets-last-good:${family}:latest`));assert.equal(upstreamCalls,0);
 });
 
 test('source currency is independent of retrieval age and old latest reports cannot appear ready',async()=>{
