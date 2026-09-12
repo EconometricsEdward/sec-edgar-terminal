@@ -152,15 +152,16 @@
 }
 .lensGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   margin-top: 15px;
 }
 .lensGrid button {
   display: grid;
   gap: 3px;
-  min-height: 82px;
-  padding: 12px 13px;
+  min-width: 0;
+  min-height: 78px;
+  padding: 11px 12px;
   text-align: left;
 }
 .lensGrid button > span {
@@ -188,6 +189,65 @@
 }
 .lensGrid button[aria-pressed="true"] > span {
   color: var(--f-gold);
+}
+.cohortBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--f-line) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--f-deep) 62%, transparent);
+}
+.cohortBar > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cohortBar > div > svg {
+  flex: 0 0 auto;
+  color: var(--f-gold);
+}
+.cohortBar p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 10px;
+  min-width: 0;
+}
+.cohortBar p span,
+.cohortBar p small,
+.cohortBar > span {
+  color: var(--f-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.cohortBar p strong {
+  font-size: 14px;
+}
+.cohortBar label {
+  display: grid;
+  flex: 0 0 245px;
+  gap: 5px;
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.cohortBar select {
+  min-height: 39px;
+  width: 100%;
+  padding: 7px 32px 7px 10px;
+  background: var(--f-deep);
+  color: var(--f-text);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
 }
 .overview {
   display: grid;
@@ -1033,7 +1093,7 @@
   }
   .lensGrid,
   .attentionGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .companyChips {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1072,6 +1132,17 @@
   .atlasMetrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .lensGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cohortBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cohortBar label {
+    flex-basis: auto;
+    width: 100%;
+  }
   .attentionDetail,
   .selectedCompany {
     grid-template-columns: 1fr;
@@ -1079,7 +1150,6 @@
 }
 
 @media (max-width: 560px) {
-  .lensGrid,
   .pillarGrid,
   .footprintGrid,
   .atlasMetrics,
@@ -1087,6 +1157,18 @@
   .heroStats,
   .measureStats {
     grid-template-columns: 1fr;
+  }
+  .lensGrid {
+    grid-auto-columns: minmax(190px, 78vw);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding: 2px 2px 9px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+  .lensGrid button {
+    scroll-snap-align: start;
   }
   .heroStats > div,
   .measureStats > div,

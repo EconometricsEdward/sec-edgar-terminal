@@ -512,7 +512,7 @@ export default function PortfolioFinancialTools({
             onChange={(event) => changeIndustry(event.target.value)}
           >
             <option value="">
-              All included operating companies ({issuers.length})
+              All included companies ({issuers.length})
             </option>
             {industries.map((item) => (
               <option key={item} value={item}>

@@ -12,6 +12,7 @@ import { buildPortfolioAnalytics } from "../src/utils/portfolioAnalytics.js";
 import { buildCatalogReport } from "../src/utils/portfolioEnrichment.js";
 import { augmentPortfolioCompanyMetrics } from "../src/utils/financialSupplementalMetrics.js";
 import {
+  FINANCIAL_PROFILE_ALL_SECTORS,
   buildPortfolioFinancialProfile,
   resolveFinancialProfileMetricLens,
 } from "../src/utils/portfolioFinancialProfile.js";
@@ -156,7 +157,7 @@ test("controlled financial tools keep analysis inside a concrete business model"
   assert.doesNotMatch(html, /Business model|All business models/);
   assert.match(
     html,
-    new RegExp(`All included operating companies \\(${corporateCount}\\)`),
+    new RegExp(`All included companies \\(${corporateCount}\\)`),
   );
   assert.match(html, /Full reporting period/);
 });
@@ -203,7 +204,7 @@ test("concentration heat map renders the complete demo with accessible grouping 
   assert.doesNotMatch(html, /NaN|Infinity|undefined/);
 });
 
-test("financial profile overview renders the expanded demo measures, model lenses and evidence gaps", () => {
+test("financial profile overview renders every represented sector and compatible measure sets", () => {
   const Component = component(
     "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
   ).default;
@@ -220,9 +221,28 @@ test("financial profile overview renders the expanded demo measures, model lense
   );
 
   assert.match(html, /See the financial shape behind the holdings/);
-  assert.match(html, /Operating companies/);
-  assert.match(html, /Banks/);
-  assert.match(html, /Insurers/);
+  assert.match(html, /Choose a sector/);
+  for (const sector of [
+    "All sectors",
+    "Information Technology",
+    "Energy",
+    "Financials",
+    "Health Care",
+    "Consumer Staples",
+    "Communication",
+    "Industrials",
+    "Utilities",
+    "Consumer Discretionary",
+    "Materials",
+    "Real Estate",
+  ])
+    assert.match(html, new RegExp(sector));
+  assert.match(html, /11 sectors available/);
+  assert.match(html, /fund-reported classification as of Sep 8, 2026/);
+  assert.match(html, /Accounting-compatible measure set/);
+  assert.match(html, /Operating companies \(89\)/);
+  assert.match(html, /Banks \(7\)/);
+  assert.match(html, /Insurers \(1\)/);
   assert.match(html, /24 supported ratio measures/);
   assert.match(html, /Growth × profitability, holding by holding/);
   assert.match(html, /86 aligned companies/);
@@ -300,7 +320,7 @@ test("unweighted financial profile uses company breadth throughout overview and 
   assert.doesNotMatch(measures, /Allocation-weighted median|original allocation/);
 });
 
-test("financial profile consumes request nonces once and remounts tools by lens", () => {
+test("financial profile consumes request nonces once and remounts tools by sector and measure set", () => {
   const source = readFileSync(
     new URL(
       "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
@@ -317,21 +337,22 @@ test("financial profile consumes request nonces once and remounts tools by lens"
     source,
     /handledFinancialRequestNonce\.current = financialRequest\.nonce/,
   );
-  assert.match(source, /key=\{`overview:\$\{lens\}:\$\{profileRevision\}`\}/);
-  assert.match(source, /key=\{`peers:\$\{lens\}:\$\{profileRevision\}`\}/);
-  assert.match(source, /key=\{`health:\$\{lens\}:\$\{profileRevision\}`\}/);
-  assert.match(source, /key=\{`relationships:\$\{lens\}:\$\{profileRevision\}`\}/);
-  assert.match(source, /key=\{`compare:\$\{lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /key=\{`overview:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /key=\{`peers:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /key=\{`health:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /key=\{`relationships:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /key=\{`compare:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
   assert.match(source, /<dt>Free cash flow direction<\/dt>/);
 });
 
-test("financial health scopes every reused tool to the selected business model", () => {
+test("financial health scopes every reused tool to the selected sector and accounting-compatible set", () => {
   const profileModule = component(
     "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
   );
   const augmentedCompanies = companies.map(augmentPortfolioCompanyMetrics);
   const catalog = buildCatalogReport(report, augmentedCompanies);
   const bankingProfile = buildPortfolioFinancialProfile(catalog, {
+    sector: "Financials",
     lens: "banking",
   });
   const scope = profileModule.buildFinancialHealthScope(
@@ -339,10 +360,16 @@ test("financial health scopes every reused tool to the selected business model",
     catalog,
     augmentedCompanies,
     "banking",
+    "Financials",
   );
   const bankingCiks = new Set(
     catalog.concentration.issuers
-      .filter((issuer) => issuer.kind === "company" && issuer.lens === "banking")
+      .filter(
+        (issuer) =>
+          issuer.kind === "company" &&
+          issuer.lens === "banking" &&
+          issuer.sector === "Financials",
+      )
       .map((issuer) => String(issuer.cik).padStart(10, "0")),
   );
   const html = renderToStaticMarkup(
@@ -366,10 +393,64 @@ test("financial health scopes every reused tool to the selected business model",
       bankingCiks.has(String(company.cik).padStart(10, "0")),
     ),
   );
-  assert.match(html, /Banks only/);
-  assert.match(html, /Other business models are excluded, not blended/);
+  assert.ok(
+    scope.catalogReport.metrics.every((metric) =>
+      metric.observations.every((row) =>
+        bankingCiks.has(String(row.cik).padStart(10, "0")),
+      ),
+    ),
+  );
+  assert.match(html, /Financials · Banks only/);
+  assert.match(html, /Other sectors and incompatible accounting models are excluded, not blended/);
   assert.match(html, /Ratio summaries/);
   assert.match(html, /Cash-and-debt and condition diagnostics remain disabled/);
+
+  const spacedCatalog = {
+    ...catalog,
+    concentration: {
+      ...catalog.concentration,
+      issuers: catalog.concentration.issuers.map((issuer) =>
+        issuer.kind === "company" && issuer.lens === "banking"
+          ? { ...issuer, sector: "  Financials  " }
+          : issuer,
+      ),
+    },
+  };
+  const normalizedScope = profileModule.buildFinancialHealthScope(
+    report,
+    spacedCatalog,
+    augmentedCompanies,
+    "banking",
+    "Financials",
+  );
+  assert.equal(normalizedScope.companyCount, bankingCiks.size);
+
+  const corporateProfile = buildPortfolioFinancialProfile(catalog, {
+    sector: FINANCIAL_PROFILE_ALL_SECTORS,
+    lens: "corporate",
+  });
+  const corporateScope = profileModule.buildFinancialHealthScope(
+    report,
+    catalog,
+    augmentedCompanies,
+    corporateProfile.lens,
+    corporateProfile.sector,
+    corporateProfile.companyCiks,
+  );
+  const allSectorsHtml = renderToStaticMarkup(
+    createElement(profileModule.FinancialHealth, {
+      profile: corporateProfile,
+      report: corporateScope.report,
+      companies: corporateScope.companies,
+      capturedAt: demo.captured_at,
+      onInspectCompany: () => {},
+    }),
+  );
+  assert.match(
+    allSectorsHtml,
+    /Incompatible accounting models are excluded, not blended/,
+  );
+  assert.doesNotMatch(allSectorsHtml, /Other sectors and incompatible/);
 });
 
 test("unknown business models remain visibly disclosed outside model summaries", () => {
@@ -387,7 +468,7 @@ test("unknown business models remain visibly disclosed outside model summaries",
       ...catalog.concentration,
       issuers: catalog.concentration.issuers.map((issuer) =>
         issuer.cik === firstCorporate.cik
-          ? { ...issuer, lens: "unknown" }
+          ? { ...issuer, lens: "unknown", sector: null, sectorSource: null }
           : issuer,
       ),
     },
@@ -404,6 +485,11 @@ test("unknown business models remain visibly disclosed outside model summaries",
 
   assert.match(html, /1 company needs a confirmed business model/);
   assert.match(html, /unlike accounting models are never blended/);
+  assert.match(html, /11 sectors available · 1 without sector coverage/);
+  assert.match(
+    html,
+    /iShares fund-reported sources through Sep 8, 2026 · 99 of 100 companies/,
+  );
 });
 
 test("an external demo bank measure request switches to its observed banking lens", () => {

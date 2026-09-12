@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  FINANCIAL_PROFILE_ALL_SECTORS,
+  FINANCIAL_PROFILE_UNCOVERED_SECTOR,
   FINANCIAL_PROFILE_LENSES,
   FINANCIAL_PROFILE_CATEGORY_DEFINITIONS,
   buildPortfolioFinancialProfile,
+  normalizeFinancialProfileSector,
 } from "../src/utils/portfolioFinancialProfile.js";
 
 const cik = (value) => String(value).padStart(10, "0");
@@ -149,6 +152,154 @@ test("banking categories expose available cash conversion with a bank-specific c
   );
   assert.equal(category.metrics[0].measuredCompanyCount, 1);
   assert.equal(category.metrics[0].category, "cash-conversion");
+});
+
+test("sector groups expose the full portfolio and keep mixed sectors in separate accounting cohorts", () => {
+  const issuers = [
+    issuer(1, "corporate", 40, { sector: "Information Technology" }),
+    issuer(2, "corporate", 20, { sector: "Energy" }),
+    issuer(3, "banking", 15, { sector: "Financials" }),
+    issuer(4, "banking", 10, { sector: "Financials" }),
+    issuer(5, "common", 5, { sector: "Financials" }),
+    issuer(6, "insurance", 10, { sector: "Health Care" }),
+  ];
+  const netMargin = metric(
+    "netMargin",
+    "percent",
+    [observation(1, 20), observation(2, 8)],
+    { lenses: ["corporate"], eligibleCiks: [cik(1), cik(2)] },
+  );
+  const loanDeposits = metric(
+    "loanDeposits",
+    "percent",
+    [
+      observation(3, 82, { lens: "banking" }),
+      observation(4, 91, { lens: "banking" }),
+    ],
+    { lenses: ["banking"], eligibleCiks: [cik(3), cik(4)] },
+  );
+  const roe = metric(
+    "roe",
+    "percent",
+    [
+      observation(5, 11, { lens: "common" }),
+      observation(6, 14, { lens: "insurance" }),
+    ],
+    {
+      lenses: ["common", "insurance"],
+      eligibleCiks: [cik(5), cik(6)],
+    },
+  );
+  const source = report(issuers, [netMargin, loanDeposits, roe]);
+  const all = buildPortfolioFinancialProfile(source);
+  const financials = buildPortfolioFinancialProfile(source, {
+    sector: "Financials",
+  });
+  const otherFinancials = buildPortfolioFinancialProfile(source, {
+    sector: "Financials",
+    lens: "common",
+  });
+
+  assert.equal(all.sector, FINANCIAL_PROFILE_ALL_SECTORS);
+  assert.equal(all.sectorGroups.length, 5);
+  assert.deepEqual(
+    new Set(all.sectorGroups.map((group) => group.label)),
+    new Set([
+      "All sectors",
+      "Information Technology",
+      "Energy",
+      "Financials",
+      "Health Care",
+    ]),
+  );
+  assert.equal(all.sectorGroups[0].companyCount, 6);
+  assert.equal(all.sectorGroups[0].knownWeightPct, 100);
+  assert.equal(financials.sectorCompanyCount, 3);
+  assert.equal(financials.sectorKnownWeightPct, 30);
+  assert.equal(financials.lens, "banking");
+  assert.equal(financials.companyCount, 2);
+  assert.deepEqual(
+    financials.lensGroups
+      .filter((group) => group.companyCount)
+      .map((group) => [group.id, group.companyCount]),
+    [
+      ["banking", 2],
+      ["common", 1],
+    ],
+  );
+  assert.deepEqual(
+    financials.metricSummaries
+      .find((entry) => entry.id === "loanDeposits")
+      .observations.map((row) => row.cik),
+    [cik(3), cik(4)],
+  );
+  assert.equal(
+    financials.metricSummaries.find((entry) => entry.id === "netMargin")
+      .measuredCompanyCount,
+    0,
+  );
+  assert.equal(otherFinancials.companyCount, 1);
+  assert.deepEqual(
+    otherFinancials.metricSummaries
+      .find((entry) => entry.id === "roe")
+      .observations.map((row) => row.cik),
+    [cik(5)],
+  );
+});
+
+test("sector metadata stays reviewable and uncovered sectors remain distinct from unknown accounting models", () => {
+  const issuers = [
+    issuer(1, "corporate", 55, {
+      sector: "Industrials",
+      sectorSource: {
+        provider: "Example fund",
+        asOf: "2026-09-08",
+        url: "https://example.com/holdings.csv",
+      },
+    }),
+    issuer(2, "corporate", 25, { sector: "" }),
+    issuer(3, "unknown", 20, { sector: "" }),
+  ];
+  const source = report(
+    issuers,
+    [metric("netMargin", "percent", [observation(1, 12), observation(2, 4)])],
+  );
+  const all = buildPortfolioFinancialProfile(source);
+  const industrials = all.sectorGroups.find(
+    (group) => group.id === "Industrials",
+  );
+  const uncovered = buildPortfolioFinancialProfile(source, {
+    sector: FINANCIAL_PROFILE_UNCOVERED_SECTOR,
+    lens: "corporate",
+  });
+
+  assert.equal(industrials.sectorSourceAsOf, "2026-09-08");
+  assert.deepEqual(industrials.sectorSourceProviders, ["Example fund"]);
+  assert.equal(uncovered.sectorCompanyCount, 2);
+  assert.equal(uncovered.companyCount, 1);
+  assert.equal(uncovered.coverage.unknownLensCompanyCount, 1);
+  assert.equal(uncovered.exclusions.unknownLensCompanyCount, 1);
+  assert.equal(uncovered.sectorDefinition.label, FINANCIAL_PROFILE_UNCOVERED_SECTOR);
+});
+
+test("sector labels normalize once and an unknown-only sector never claims a comparable cohort", () => {
+  const source = report(
+    [
+      issuer(1, "unknown", 60, { sector: "  Financials  " }),
+      issuer(2, "unknown", 40, { sector: "Financials" }),
+    ],
+    [],
+  );
+  const profile = buildPortfolioFinancialProfile(source, {
+    sector: "Financials",
+  });
+
+  assert.equal(normalizeFinancialProfileSector("  Financials  "), "Financials");
+  assert.equal(normalizeFinancialProfileSector(" "), FINANCIAL_PROFILE_UNCOVERED_SECTOR);
+  assert.equal(profile.sectorCompanyCount, 2);
+  assert.equal(profile.hasCompatibleCohort, false);
+  assert.equal(profile.companyCount, 0);
+  assert.deepEqual(profile.companyCiks, []);
 });
 
 test("canonical CIKs combine share-class allocation and duplicate observations once", () => {
