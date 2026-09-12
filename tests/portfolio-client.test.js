@@ -6,6 +6,12 @@ import {
   portfolioFilingFeed,
   isCompletePortfolioCheck,
 } from "../src/utils/portfolioClient.js";
+import { resolveCompanyClassification } from "../src/utils/companyClassification.js";
+import { createPortfolio } from "../src/utils/portfolioStorage.js";
+import {
+  createPortfolioRows,
+  resolvePortfolioRows,
+} from "../src/utils/portfolioModel.js";
 const row = (n, patch = {}) => ({
   id: `r${n}`,
   input: { ticker: `T${n}`, weight_pct: 55, notes: "private note" },
@@ -408,17 +414,141 @@ test("incoming cache and failure states cannot advance a complete filing-check b
   );
 });
 
-test('full refresh upgrades successful legacy captures and retains them honestly after a failed refresh', async () => {
-  const previous={cik:row(1).resolution.cik,ticker:'T1',status:'ready',refreshStatus:'checked',metrics:{netIncome:{value:50,unit:'USD',classification:'reported'}}};
-  let calls=0;
-  const upgraded=await researchPortfolioRows([row(1)],{previousCompanies:[previous],onlyFailed:false,fetcher:async()=>{
-    calls++;
-    return {ok:true,json:async()=>({companies:[{...previous,analysisVersion:'updated',metrics:{...previous.metrics,accountsPayable:{value:20,unit:'USD',classification:'reported'}}}]})};
-  }});
-  assert.equal(calls,1);
-  assert.equal(upgraded.companies[0].metrics.accountsPayable.value,20);
-  const failed=await researchPortfolioRows([row(1)],{previousCompanies:[previous],onlyFailed:false,fetcher:async()=>{throw new Error('Temporary outage');}});
-  assert.equal(failed.companies[0].metrics.netIncome.value,50);
-  assert.equal(failed.companies[0].analysisVersion,undefined);
-  assert.equal(failed.companies[0].refreshStatus,'failed');
+test("full refresh upgrades successful legacy captures and retains them honestly after a failed refresh", async () => {
+  const previous = {
+    cik: row(1).resolution.cik,
+    ticker: "T1",
+    status: "ready",
+    refreshStatus: "checked",
+    metrics: {
+      netIncome: { value: 50, unit: "USD", classification: "reported" },
+    },
+  };
+  let calls = 0;
+  const upgraded = await researchPortfolioRows([row(1)], {
+    previousCompanies: [previous],
+    onlyFailed: false,
+    fetcher: async () => {
+      calls++;
+      return {
+        ok: true,
+        json: async () => ({
+          companies: [
+            {
+              ...previous,
+              analysisVersion: "updated",
+              metrics: {
+                ...previous.metrics,
+                accountsPayable: {
+                  value: 20,
+                  unit: "USD",
+                  classification: "reported",
+                },
+              },
+            },
+          ],
+        }),
+      };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(upgraded.companies[0].metrics.accountsPayable.value, 20);
+  const failed = await researchPortfolioRows([row(1)], {
+    previousCompanies: [previous],
+    onlyFailed: false,
+    fetcher: async () => {
+      throw new Error("Temporary outage");
+    },
+  });
+  assert.equal(failed.companies[0].metrics.netIncome.value, 50);
+  assert.equal(failed.companies[0].analysisVersion, undefined);
+  assert.equal(failed.companies[0].refreshStatus, "failed");
+});
+
+test("browser captures separate derived fund classifications from SEC financial evidence", async () => {
+  const cik = "0000320193";
+  const rows = resolvePortfolioRows(createPortfolioRows([{ ticker: "AAPL" }]), {
+    AAPL: { cik, name: "Apple Inc." },
+  });
+  const date = "2026-09-12T12:00:00.000Z";
+  const period = { kind: "quarter", start: "2026-04-01", end: "2026-06-30" };
+  const source = {
+    documentUrl:
+      "https://www.sec.gov/Archives/edgar/data/320193/000032019326000073/aapl-20260627.htm",
+    tag: "RevenueFromContractWithCustomerExcludingAssessedTax",
+    value: 100,
+    unit: "USD",
+    start: period.start,
+    end: period.end,
+  };
+  const company = {
+    cik,
+    ticker: "AAPL",
+    name: "Apple Inc.",
+    sic: "3571",
+    kind: "company",
+    status: "ready",
+    basis: "quarter",
+    period,
+    retrievedAt: date,
+    cache: { status: "fresh", storedAt: date },
+    metrics: {
+      revenue: {
+        value: 100,
+        unit: "USD",
+        period,
+        classification: "reported",
+        sources: [source],
+      },
+    },
+    filings: [],
+    companyClassification: resolveCompanyClassification({ cik, sic: "3571" }),
+  };
+  assert.match(company.companyClassification.sectorSource.url, /ishares/);
+  const result = await researchPortfolioRows(rows, {
+    basis: "quarter",
+    previousCompanies: [{ ...company, refreshStatus: "checked" }],
+    fetcher: async () => ({
+      ok: true,
+      json: async () => ({ basis: "quarter", companies: [company] }),
+    }),
+  });
+  const capture = result.companies[0];
+  assert.equal(capture.companyClassification, undefined);
+  assert.deepEqual(capture.metrics.revenue.sources, [source]);
+  assert.deepEqual(
+    resolveCompanyClassification(capture),
+    company.companyClassification,
+  );
+  assert.ok(company.companyClassification, "the API response is not mutated");
+  const portfolio = createPortfolio({
+    rows,
+    research: { basis: "quarter" },
+    snapshot: result,
+  });
+  assert.equal(portfolio.snapshot.companies[0].metrics.revenue.value, 100);
+
+  const retained = await researchPortfolioRows(rows, {
+    basis: "quarter",
+    onlyFailed: true,
+    previousCompanies: [{ ...company, refreshStatus: "checked" }],
+    fetcher: async () => {
+      throw new Error("A checked retained company must not be fetched");
+    },
+  });
+  assert.equal(retained.companies[0].companyClassification, undefined);
+  createPortfolio({ rows, research: { basis: "quarter" }, snapshot: retained });
+
+  const unsafe = structuredClone(result);
+  unsafe.companies[0].metrics.revenue.sources[0].documentUrl =
+    "https://example.com/not-sec-evidence";
+  assert.throws(
+    () =>
+      createPortfolio({
+        rows,
+        research: { basis: "quarter" },
+        snapshot: unsafe,
+      }),
+    /SEC.gov/,
+  );
 });

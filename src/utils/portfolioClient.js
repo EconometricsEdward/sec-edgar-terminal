@@ -2,6 +2,13 @@ import { PORTFOLIO_REPORTING_BASES } from "./portfolioReporting.js";
 /** Browser orchestrator: only public identifiers leave the user's device. */
 export const PORTFOLIO_CLIENT_BATCH_SIZE = 5;
 const keyFor = (row) => row?.resolution?.cik;
+// API classification is derived from the versioned CIK reference and is rebuilt by
+// views/exports. It can cite fund providers, so keep it outside SEC-only captures.
+function capturedCompany(company) {
+  const capture = { ...company };
+  delete capture.companyClassification;
+  return capture;
+}
 const matchesBasis = (company, basis) => {
   const capturedBasis =
     company?.basis || company?.reporting_basis || company?.period?.kind;
@@ -104,7 +111,7 @@ export async function researchPortfolioRows(
       .filter(
         (company) => allowed.has(company.cik) && matchesBasis(company, basis),
       )
-      .map((company) => [company.cik, company]),
+      .map((company) => [company.cik, capturedCompany(company)]),
   );
   const queue = onlyFailed
     ? all.filter((item) => needsRetry(results.get(item.cik)))
@@ -185,7 +192,7 @@ export async function researchPortfolioRows(
           );
         } else {
           results.set(holding.cik, {
-            ...company,
+            ...capturedCompany(company),
             refreshStatus: refreshStatus(company),
           });
         }
