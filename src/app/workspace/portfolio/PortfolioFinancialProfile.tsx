@@ -70,6 +70,8 @@ const compact = (value: unknown, digits = 1) =>
       })
     : "—";
 const percent = (value: unknown) => (finite(value) ? `${compact(value, 1)}%` : "—");
+const companyCountLabel = (value: number) =>
+  `${value} ${value === 1 ? "company" : "companies"}`;
 const valueLabel = (value: unknown, unit: string) => {
   if (!finite(value)) return "Unavailable";
   if (unit === "USD")
@@ -266,7 +268,7 @@ function SectorPicker({
             </strong>
             <small>
               {profile.weighted
-                ? `${group.companyCount} companies${group.lensCount > 1 ? ` · ${group.lensCount} measure sets` : ""}`
+                ? `${companyCountLabel(group.companyCount)}${group.lensCount > 1 ? ` · ${group.lensCount} measure sets` : ""}`
                 : `${group.companyCount === 1 ? "company" : "companies"}${group.lensCount > 1 ? ` · ${group.lensCount} measure sets` : ""}`}
             </small>
           </button>
@@ -289,7 +291,7 @@ function SectorPicker({
             <small>
               {profile.hasCompatibleCohort
                 ? `${profile.companyCount} of ${profile.sectorCompanyCount} companies in ${profile.sectorDefinition?.label || "the selected sector"}`
-                : `${profile.sectorCompanyCount} companies remain outside comparable ratio summaries`}
+                : `${companyCountLabel(profile.sectorCompanyCount)} remain outside comparable ratio summaries`}
             </small>
           </p>
         </div>
@@ -320,7 +322,7 @@ function CompatibleCohortUnavailable({ profile }: { profile: any }) {
       <p className={s.eyebrow}>Financial measures unavailable</p>
       <h3>No comparable accounting cohort is classified for this sector.</h3>
       <p className={s.muted}>
-        {profile.sectorCompanyCount} companies remain visible in sector
+        {companyCountLabel(profile.sectorCompanyCount)} remain visible in sector
         coverage, but ratio summaries and comparisons stay unavailable until
         their financial statement model is confirmed.
       </p>
@@ -948,8 +950,8 @@ export function FinancialHealth({
           </strong>
           <span>
             {profile.hasCompatibleCohort
-              ? `${profile.companyCount} companies in this financial-health cohort. ${profile.sector === FINANCIAL_PROFILE_ALL_SECTORS ? "Incompatible accounting models" : "Other sectors and incompatible accounting models"} are excluded, not blended.`
-              : `${profile.sectorCompanyCount} companies are not assigned to a comparable accounting model, so ratio-based financial health remains unavailable.`}
+              ? `${companyCountLabel(profile.companyCount)} in this financial-health cohort. ${profile.sector === FINANCIAL_PROFILE_ALL_SECTORS ? "Incompatible accounting models" : "Other sectors and incompatible accounting models"} are excluded, not blended.`
+              : `${companyCountLabel(profile.sectorCompanyCount)} are not assigned to a comparable accounting model, so ratio-based financial health remains unavailable.`}
           </span>
         </p>
       </div>
