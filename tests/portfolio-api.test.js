@@ -83,6 +83,61 @@ const loader = async (identity, basis) =>
     retrievedAt: "2026-09-07T12:00:00.000Z",
   });
 
+function interimFacts({ omitPriorRevenue = false } = {}) {
+  const duration = (value, fiscalYear, quarter, cumulative = true) => {
+    const end =
+      quarter === 1 ? `${fiscalYear - 1}-12-31` : `${fiscalYear}-03-31`;
+    return {
+      val: value,
+      start: cumulative ? `${fiscalYear - 1}-10-01` : `${fiscalYear}-01-01`,
+      end,
+      fy: fiscalYear,
+      fp: `Q${quarter}`,
+      form: "10-Q",
+      filed: `${fiscalYear}-${quarter === 1 ? "02" : "05"}-01`,
+      accn: `0000320193-${String(fiscalYear).slice(-2)}-00000${quarter}`,
+    };
+  };
+  const income = (prior, current) => [
+    duration(prior[0], 2025, 1),
+    duration(prior[1], 2025, 2),
+    duration(prior[2], 2025, 2, false),
+    duration(current[0], 2026, 1),
+    duration(current[1], 2026, 2),
+    duration(current[2], 2026, 2, false),
+  ];
+  const revenue = income([100, 250, 150], [210, 450, 240]);
+  const tags = {
+    RevenueFromContractWithCustomerExcludingAssessedTax: omitPriorRevenue
+      ? revenue.filter((entry) => entry.fy === 2026)
+      : revenue,
+    NetIncomeLoss: income([10, 25, 15], [21, 45, 24]),
+    OperatingIncomeLoss: income([20, 50, 30], [42, 90, 48]),
+    // Cash-flow statements provide cumulative YTD values. Quarter values
+    // must be reconstructed using compatible cumulative contexts.
+    NetCashProvidedByUsedInOperatingActivities: [
+      duration(40, 2025, 1),
+      duration(90, 2025, 2),
+      duration(70, 2026, 1),
+      duration(190, 2026, 2),
+    ],
+    PaymentsToAcquirePropertyPlantAndEquipment: [
+      duration(10, 2025, 1),
+      duration(20, 2025, 2),
+      duration(20, 2026, 1),
+      duration(50, 2026, 2),
+    ],
+  };
+  return {
+    "us-gaap": Object.fromEntries(
+      Object.entries(tags).map(([tag, entries]) => [
+        tag,
+        { units: { USD: entries } },
+      ]),
+    ),
+  };
+}
+
 test("portfolio API admission enforces version, size, rows, cells, action and coherent reporting basis", async () => {
   assert.throws(
     () => validatePortfolioRequest({ holdings: [] }),
@@ -105,8 +160,8 @@ test("portfolio API admission enforces version, size, rows, cells, action and co
   );
   assert.throws(
     () =>
-      validatePortfolioRequest(request([], { research: { basis: "quarter" } })),
-    /annual or ttm/,
+      validatePortfolioRequest(request([], { research: { basis: "monthly" } })),
+    /annual, quarter, ytd or ttm/,
   );
   const badType = new Request("https://example.test", {
     method: "POST",
@@ -315,6 +370,104 @@ test("portfolio financials use the existing Compare engine, coherent periods, fo
   const trailing = buildPortfolioCompany(input, { basis: "ttm" });
   assert.equal(trailing.metrics.revenue.value, null);
   assert.notEqual(trailing.period?.kind, "annual");
+});
+
+test("quarterly and fiscal YTD API requests retain their basis, correct flow windows and same-quarter prior-year growth", async () => {
+  const captured = {};
+  for (const basis of ["quarter", "ytd"]) {
+    const received = [];
+    const result = await runPortfolioResearch(
+      request([{ ticker: "AAPL" }], { research: { basis } }),
+      {
+        directory,
+        loadCompany: async (identity, requestedBasis) => {
+          received.push(requestedBasis);
+          return buildPortfolioCompany(
+            company({ ...identity, facts: interimFacts() }),
+            {
+              basis: requestedBasis,
+              retrievedAt: "2026-09-07T12:00:00.000Z",
+            },
+          );
+        },
+      },
+    );
+    assert.deepEqual(received, [basis]);
+    assert.equal(result.basis, basis);
+    const c = result.companies[0];
+    captured[basis] = c;
+    assert.equal(c.basis, basis);
+    assert.equal(c.period.kind, basis);
+    assert.equal(c.period.fp, "Q2");
+    assert.equal(
+      c.period.start,
+      basis === "quarter" ? "2026-01-01" : "2025-10-01",
+    );
+    assert.equal(c.period.end, "2026-03-31");
+    for (const key of [
+      "revenue",
+      "netIncome",
+      "operatingCashFlow",
+      "capex",
+      "freeCashFlow",
+      "revenueGrowth",
+    ])
+      assert.deepEqual(
+        c.metrics[key].period,
+        c.period,
+        `${key} retains the requested ${basis} window`,
+      );
+    assert.ok(
+      c.metrics.revenueGrowth.sources.some(
+        (source) => source.end === "2025-03-31",
+      ),
+    );
+    assert.ok(
+      c.metrics.revenueGrowth.sources.some(
+        (source) => source.end === "2026-03-31",
+      ),
+    );
+    assert.ok(
+      !c.metrics.revenueGrowth.sources.some(
+        (source) => source.end === "2025-12-31",
+      ),
+      "Prior quarter must not replace the comparable prior-year quarter",
+    );
+  }
+  const quarterly = captured.quarter.metrics,
+    cumulative = captured.ytd.metrics;
+  assert.equal(quarterly.revenue.value, 240);
+  assert.equal(cumulative.revenue.value, 450);
+  assert.equal(quarterly.netIncome.value, 24);
+  assert.equal(cumulative.netIncome.value, 45);
+  assert.equal(quarterly.operatingCashFlow.value, 120);
+  assert.equal(cumulative.operatingCashFlow.value, 190);
+  assert.equal(quarterly.operatingCashFlow.classification, "calculated");
+  assert.equal(cumulative.operatingCashFlow.classification, "reported");
+  assert.deepEqual(
+    quarterly.operatingCashFlow.sources.map((source) => source.end).sort(),
+    ["2025-12-31", "2026-03-31"],
+  );
+  assert.equal(quarterly.capex.value, 30);
+  assert.equal(cumulative.capex.value, 50);
+  assert.equal(quarterly.freeCashFlow.value, 90);
+  assert.equal(cumulative.freeCashFlow.value, 140);
+  assert.ok(Math.abs(quarterly.revenueGrowth.value - 60) < 1e-9);
+  assert.ok(Math.abs(cumulative.revenueGrowth.value - 80) < 1e-9);
+});
+
+test("interim portfolio growth stays unavailable without comparable prior-year revenue even when the previous quarter exists", () => {
+  for (const basis of ["quarter", "ytd"]) {
+    const result = buildPortfolioCompany(
+      company({ facts: interimFacts({ omitPriorRevenue: true }) }),
+      { basis },
+    );
+    assert.equal(result.period.kind, basis);
+    assert.ok(result.metrics.revenue.value > 0);
+    assert.equal(result.metrics.revenueGrowth.value, null);
+    assert.equal(result.metrics.revenueGrowth.classification, "unavailable");
+    assert.deepEqual(result.metrics.revenueGrowth.sources, []);
+  }
 });
 
 test("bank and broker lenses reject ordinary corporate ratios and foreign currencies remain missing", () => {

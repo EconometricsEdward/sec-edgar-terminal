@@ -1,3 +1,4 @@
+import { samePortfolioPeriod } from "./portfolioReporting.js";
 import {
   canonicalPortfolioCik,
   companyAvailable,
@@ -19,11 +20,6 @@ const evidence = (point) =>
         ]
       : [];
   });
-const validDate = (d) =>
-  typeof d === "string" &&
-  /^\d{4}-\d{2}-\d{2}$/.test(d) &&
-  Number.isFinite(Date.parse(d)) &&
-  new Date(d).toISOString().slice(0, 10) === d;
 export function buildCashEarnings(report, companies) {
   const byCik = new Map(
     companies.map((c) => [canonicalPortfolioCik(c.cik), c]),
@@ -66,16 +62,7 @@ export function buildCashEarnings(report, companies) {
     }
     const ip = income.period || c.period,
       cp = cash.period || c.period;
-    if (
-      !ip ||
-      !cp ||
-      ![ip.start, ip.end, cp.start, cp.end].every(validDate) ||
-      ip.start > ip.end ||
-      ip.start !== cp.start ||
-      ip.end !== cp.end ||
-      ip.kind !== cp.kind ||
-      !["annual", "ttm"].includes(ip.kind)
-    ) {
+    if (!samePortfolioPeriod(ip, cp)) {
       excluded.period++;
       continue;
     }
@@ -124,6 +111,6 @@ export function buildCashEarnings(report, companies) {
     cells,
     excluded,
     interpretation:
-      "Positive net income and positive operating cash flow are compared on identical annual or TTM periods within each corporate company. Non-positive includes zero. Working capital and noncash items can explain disagreement. This measures cash accompaniment, not improving earnings, investment returns or an earnings-quality verdict.",
+      "Positive net income and positive operating cash flow are compared on identical annual, quarterly, fiscal year-to-date or trailing twelve-month periods within each corporate company. Non-positive includes zero. Working capital and noncash items can explain disagreement. This measures cash accompaniment, not improving earnings, investment returns or an earnings-quality verdict.",
   };
 }

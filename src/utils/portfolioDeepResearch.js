@@ -1,4 +1,8 @@
 import {
+  portfolioPeriodKey,
+  portfolioPeriodLengthGroup,
+} from "./portfolioReporting.js";
+import {
   PORTFOLIO_METRIC_CATALOG,
   portfolioMetricDefinitionFor,
 } from "./portfolioMetricCatalog.js";
@@ -24,7 +28,7 @@ export function metricDisplay(point, compact = true) {
       ? "Not applicable"
       : "Unavailable";
   const value = point.value.toLocaleString("en-US", {
-    maximumFractionDigits: point.unit === "USD" ? 0 : 2,
+    maximumFractionDigits: point.unit === "USD" && !compact ? 0 : 2,
     ...(compact && ["USD", "shares"].includes(point.unit)
       ? { notation: "compact" }
       : {}),
@@ -46,21 +50,7 @@ export function portfolioResearchIssuers(report, companies) {
       lens: byCik.get(i.cik)?.lens || "unknown",
     }));
 }
-const validDate = (value) =>
-  typeof value === "string" &&
-  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-  Number.isFinite(Date.parse(value)) &&
-  new Date(value).toISOString().slice(0, 10) === value;
-export const metricPeriodKey = (point) => {
-  const p = point?.period;
-  return p &&
-    ["annual", "ttm"].includes(p.kind) &&
-    validDate(p.start) &&
-    validDate(p.end) &&
-    p.start <= p.end
-    ? [p.kind, p.start, p.end].join("|")
-    : "";
-};
+export const metricPeriodKey = (point) => portfolioPeriodKey(point?.period);
 const metricApplies = (definition, lens) =>
   lens === "common"
     ? ["income", "balance", "cashflow"].includes(definition?.category) ||
@@ -126,12 +116,16 @@ export function portfolioAvailableMetrics(
 /** Peer choices use metric eligibility, independently of a company-name search. */
 export function portfolioMetricPeerOptions(
   issuers,
-  { sector = "all", metricId = "", period = "all" } = {},
+  { sector = "all", metricId = "", period = "all", durationGroup = "all" } = {},
 ) {
   const definition = metricId ? portfolioMetricDefinitionFor(metricId) : null;
   const peers = issuers.filter(
     (issuer) =>
       issuer.kind !== "fund" &&
+      (durationGroup === "all" ||
+        portfolioPeriodLengthGroup(
+          issuer.company?.metrics?.[metricId]?.period || issuer.company?.period,
+        ) === durationGroup) &&
       (!metricId ||
         (definition &&
           portfolioMetricState(issuer.company, definition, period) ===
@@ -194,6 +188,7 @@ export function rankPortfolioMetric(
     sector = "all",
     industry = "all",
     period = "all",
+    durationGroup = "all",
     query = "",
     direction = "desc",
   } = {},
@@ -207,6 +202,10 @@ export function rankPortfolioMetric(
         (lens === "all" || i.lens === lens) &&
         (sector === "all" || (i.sector || SECTOR_NOT_COVERED) === sector) &&
         (industry === "all" || i.industry === industry) &&
+        (durationGroup === "all" ||
+          portfolioPeriodLengthGroup(
+            i.company?.metrics?.[definition.key]?.period || i.company?.period,
+          ) === durationGroup) &&
         `${i.ticker} ${i.name}`
           .toLowerCase()
           .includes(query.trim().toLowerCase()),

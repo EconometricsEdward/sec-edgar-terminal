@@ -1,3 +1,5 @@
+import { portfolioPeriodLabel } from "./portfolioReporting.js";
+import { augmentPortfolioCompanyMetrics } from "./financialSupplementalMetrics.js";
 import { resolveCompanyClassification } from "./companyClassification.js";
 import { portfolioMetricScopeValid } from "./portfolioDeepResearch.js";
 import {
@@ -49,10 +51,7 @@ const md = (value) =>
     .replaceAll(">", "&gt;")
     .replace(/[\\`*_{}[\]|]/g, "\\$&")
     .replace(/\r?\n/g, " ");
-const period = (value) =>
-  typeof value === "object" && value
-    ? value.end || value.label || JSON.stringify(value)
-    : value || "Unavailable";
+const period = portfolioPeriodLabel;
 
 function secUrl(value) {
   try {
@@ -219,7 +218,7 @@ export function buildPortfolioResearchPackage(document, options = {}) {
       .map(String),
   );
   const allCompanies = Array.isArray(snapshot.companies)
-    ? snapshot.companies
+    ? snapshot.companies.map(augmentPortfolioCompanyMetrics)
     : [];
   const companies = clean(
     allCompanies
@@ -419,7 +418,7 @@ export function buildPortfolioResearchPackage(document, options = {}) {
     methodology: [
       "Positions and optional allocations are user-entered information; they are not independently verified holdings.",
       "Company metrics retain SEC reported sources or explicit application calculations and their underlying inputs. Missing values remain null.",
-      "Annual or supported trailing-twelve-month data use company reporting periods; companies may have different period ends. Inspect every metric's period and classification.",
+      "Annual, quarterly, fiscal year-to-date and supported trailing-twelve-month data use company reporting periods. Companies may have different fiscal calendars and elapsed YTD lengths. Inspect each metric's full period and classification; a balance-sheet date is not a flow window.",
       "Allocation calculations use one explicit basis. Shares alone do not imply market value or weight. No covered subset is silently reweighted, and an unspecified balance is not assumed to be cash.",
       "Industry distributions use the supplied SEC SIC classification, not GICS. Company counts are not economic exposure.",
       "Company revenues, assets and debts are not summed as financially owned portfolio assets or earnings. No portfolio performance, risk score or investment recommendation is calculated.",

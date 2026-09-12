@@ -1,4 +1,5 @@
 /** Compact checkpoint observations; the public comparison model remains expanded. */
+export const PORTFOLIO_BASELINE_METRIC_LIMIT = 128;
 export function packPortfolioBaseline(value) {
   if (!value || value.metricEncoding) return value;
   const descriptors = [],
@@ -56,7 +57,7 @@ export function unpackPortfolioBaseline(value) {
       if (
         !c.metrics ||
         typeof c.metrics !== "object" ||
-        Object.keys(c.metrics).length > 80
+        Object.keys(c.metrics).length > PORTFOLIO_BASELINE_METRIC_LIMIT
       )
         throw new Error("Invalid comparison checkpoint metrics.");
       return {

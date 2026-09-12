@@ -1,3 +1,4 @@
+import { PORTFOLIO_REPORTING_BASES } from "./portfolioReporting.js";
 import { Inflate, zipSync, strToU8 } from "fflate";
 import {
   PORTFOLIO_COLUMNS,
@@ -382,9 +383,9 @@ export function parsePortfolioJson(text) {
     throw new Error("allocation.normalize must be true or false.");
   if (
     input.research?.basis != null &&
-    !["annual", "ttm"].includes(input.research.basis)
+    !PORTFOLIO_REPORTING_BASES.includes(input.research.basis)
   )
-    throw new Error("Research basis must be annual or ttm.");
+    throw new Error("Research basis must be annual, quarter, ytd, or ttm.");
   const rows = input.holdings.map((holding, index) => {
     if (
       !holding ||

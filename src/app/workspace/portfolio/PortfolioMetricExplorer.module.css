@@ -1,6 +1,74 @@
 .root {
   gap: 18px;
 }
+.perspective {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--hub-border, #344154);
+}
+.perspectiveHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.perspectiveHeading strong {
+  font-size: 14px;
+}
+.perspectiveHeading span {
+  font-size: 12px;
+  color: var(--hub-muted, #b6c2d4);
+}
+.perspectiveButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.root .perspectiveButtons button {
+  min-height: 40px;
+  padding: 9px 16px;
+  font-size: 13px;
+}
+.root .perspectiveButtons button[aria-pressed="true"] {
+  background: var(--hub-accent, #f7c65a);
+  color: #101722;
+  border-color: transparent;
+}
+.loading {
+  display: grid;
+  gap: 12px;
+  padding: 24px 0;
+}
+.loading progress {
+  width: 100%;
+  height: 12px;
+  accent-color: var(--hub-accent, #f7c65a);
+}
+.loading button {
+  justify-self: start;
+}
+.durationControls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.durationControls label {
+  display: grid;
+  gap: 7px;
+  min-width: 245px;
+  color: var(--hub-muted, #b6c2d4);
+  font-size: 13px;
+}
+.durationControls select {
+  min-height: 42px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--hub-bg, #111926);
+  border: 1px solid var(--hub-border, #344154);
+  color: var(--hub-text, #e8edf5);
+}
 .root .helper {
   font-size: 12px;
   line-height: 1.6;
@@ -27,10 +95,9 @@
 }
 .root .peerControls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(
-      0,
-      1.2fr
-    ) minmax(140px, 0.8fr);
+  grid-template-columns:
+    minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1.2fr)
+    minmax(140px, 0.8fr);
 }
 .root .measureControls label,
 .root .peerControls label {
@@ -167,6 +234,11 @@
 .root .rankings td > button {
   white-space: nowrap;
 }
+.root .rankings thead th:first-child {
+  white-space: nowrap;
+  font-size: 11px;
+  padding-inline: 4px;
+}
 .pagination {
   display: flex;
   justify-content: space-between;
@@ -213,6 +285,11 @@
   }
 }
 @media (max-width: 600px) {
+  .durationControls {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
   .root {
     padding: 0;
   }

@@ -1,3 +1,5 @@
+import { SUPPLEMENTAL_METRIC_DEFINITIONS } from "./financialSupplementalMetrics.js";
+
 /** Shared Analysis metric definitions. Values and evidence always come from each captured issuer. */
 export const PORTFOLIO_METRIC_CATALOG = [
   {
@@ -692,6 +694,7 @@ export const PORTFOLIO_METRIC_CATALOG = [
     category: "balance",
     lenses: ["corporate", "insurance"],
   },
+  ...SUPPLEMENTAL_METRIC_DEFINITIONS,
 ];
 export const portfolioMetricDefinitionFor = (key) =>
   PORTFOLIO_METRIC_CATALOG.find((d) => d.key === key);

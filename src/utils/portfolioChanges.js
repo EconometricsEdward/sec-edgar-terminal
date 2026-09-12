@@ -1,6 +1,8 @@
+import { PORTFOLIO_REPORTING_BASES } from "./portfolioReporting.js";
 import {
   packPortfolioBaseline,
   unpackPortfolioBaseline,
+  PORTFOLIO_BASELINE_METRIC_LIMIT,
 } from "./portfolioBaselineCodec.js";
 /** Compact, public-evidence-only checkpoints for comparisons between research runs. */
 export const PORTFOLIO_BASELINE_VERSION = "edgar.portfolio.baseline.v1";
@@ -116,10 +118,12 @@ const sourceLinks = (company) =>
 /** Validate a small, explicit schema; no uploaded notes or allocation fields are accepted. */
 export function validatePortfolioBaseline(value) {
   if (value === null || value === undefined) return value;
+  // Accommodate the shared metric catalog for 100 companies while retaining
+  // the encoded 1 MiB limit and bounded company, metric and depth checks.
   let nodes = 0;
   function inspect(entry, depth = 0) {
     requireValue(
-      ++nodes <= 65000 && depth <= 8,
+      ++nodes <= 200000 && depth <= 8,
       "The comparison checkpoint is too large or deeply nested.",
     );
     if (Array.isArray(entry)) {
@@ -165,7 +169,7 @@ export function validatePortfolioBaseline(value) {
   requireValue(
     value.schema_version === PORTFOLIO_BASELINE_VERSION &&
       timestamp(value.capturedAt) &&
-      ["annual", "ttm"].includes(value.basis),
+      PORTFOLIO_REPORTING_BASES.includes(value.basis),
     "The comparison checkpoint version, date, or reporting basis is invalid.",
   );
   requireValue(
@@ -219,7 +223,8 @@ export function validatePortfolioBaseline(value) {
     );
     ciks.add(company.cik);
     requireValue(
-      plain(company.metrics) && Object.keys(company.metrics).length <= 80,
+      plain(company.metrics) &&
+        Object.keys(company.metrics).length <= PORTFOLIO_BASELINE_METRIC_LIMIT,
       "A comparison company contains too many metrics.",
     );
     for (const [key, point] of Object.entries(company.metrics)) {
