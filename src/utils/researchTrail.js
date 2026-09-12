@@ -4,6 +4,7 @@ import {
   safeInternalPath,
   SITE_TOOLS,
 } from "./siteRoutes.js";
+import { migrateMarketPath } from "./marketResearch.js";
 
 export const RESEARCH_TRAIL_KEY = "edgar:research-trail:v1";
 export function readResearchTrail(storage) {
@@ -21,11 +22,10 @@ export function readResearchTrail(storage) {
         Number.isFinite(Date.parse(item.at)),
     )
     .slice(0, 20)
-    .map((item) => ({
-      ...item,
-      href: safeInternalPath(item.href),
-      title: visitTitle(item.href),
-    }));
+    .map((item) => {
+      const href = migrateMarketPath(safeInternalPath(item.href)).path;
+      return { ...item, href, title: visitTitle(href) };
+    });
 }
 function visitTitle(path) {
   const url = new URL(path, "https://secedgarterminal.com");
@@ -79,8 +79,9 @@ export function recordResearchVisit(
   href,
   at = new Date().toISOString(),
 ) {
-  const path = safeInternalPath(href);
-  if (!path) return [];
+  const safePath = safeInternalPath(href);
+  if (!safePath) return [];
+  const path = migrateMarketPath(safePath).path;
   const url = new URL(path, "https://secedgarterminal.com");
   const tool = activeTool(url.pathname);
   if (!tool || ["home", "workspace", "help"].includes(tool))

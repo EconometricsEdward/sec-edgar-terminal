@@ -40,6 +40,9 @@ test('codes retain leading zeroes, letters and plus signs while invalid basis/da
   for(const code of ['001602','13874A','20974+']) assert.equal(normalizeCftcRow({...base,cftc_contract_market_code:code},'disaggregated').value.code,code);
   assert.equal(normalizeCftcRow({...base,futonly_or_combined:'Combined'},'disaggregated').reason,'not_futures_only');
   assert.equal(normalizeCftcRow({...base,report_date_as_yyyy_mm_dd:'2026-02-30'},'disaggregated').reason,'invalid_report_date');
+  assert.equal(normalizeCftcRow({...base,report_date_as_yyyy_mm_dd:'2026-09-08junk'},'disaggregated').reason,'invalid_report_date');
+  assert.equal(normalizeCftcRow({...base,report_date_as_yyyy_mm_dd:'2026-09-08T12:00:00.000'},'disaggregated').reason,'invalid_report_date');
+  assert.equal(normalizeCftcRow({...base,report_date_as_yyyy_mm_dd:'2026-09-08'},'disaggregated').value.reportDate,'2026-09-08');
   assert.equal(cftcDate('2024-02-29'),'2024-02-29');assert.equal(cftcDate('2026-02-29'),null);
 });
 
@@ -56,4 +59,11 @@ test('negative positions are rejected and unavailable required values retain fie
   assert.equal(normalizeCftcRow({...raw,dealer_positions_long_all:'-1'},'tff').reason,'negative_position');
   const missing=normalizeCftcRow({...raw,lev_money_positions_long:''},'tff').value;
   assert.equal(missing.groups['leveraged-funds'].long,null);assert.equal(missing.unavailable.lev_money_positions_long,'blank');assert.equal(missing.reconciliation.status,'unavailable');
+});
+
+test('verified TFF index and dollar-index codes retain conservative categories when source classifications are blank',()=>{
+  const base=fixture('cftc-tff-gpe5-46if-v1.json'), blank={commodity_subgroup_name:'',commodity_group_name:'',commodity_name:'',commodity:''};
+  for(const code of ['124603','124608','13874U','209747']) assert.equal(normalizeCftcRow({...base,...blank,cftc_contract_market_code:code},'tff').value.category,'equity-indices',code);
+  assert.equal(normalizeCftcRow({...base,...blank,cftc_contract_market_code:'098662'},'tff').value.category,'currencies');
+  assert.equal(normalizeCftcRow({...base,...blank,cftc_contract_market_code:'999999'},'tff').value.category,'other','unknown blank classifications remain conservative');
 });

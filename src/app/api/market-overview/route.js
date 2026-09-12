@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server.js';
 import {
   extractAnnualPeriods,
   extractQuarterlyPeriods,
@@ -2488,6 +2488,12 @@ export async function GET(request) {
       return NextResponse.json(
         { error: 'A forced market refresh requires cron authorization.' },
         { status: 401, headers: { 'Cache-Control': 'private, no-store' } },
+      );
+    }
+    if (process.env.VERCEL_ENV !== 'production') {
+      return NextResponse.json(
+        { error: 'Legacy Market refreshes run only in production.' },
+        { status: 403, headers: { 'Cache-Control': 'private, no-store' } },
       );
     }
   }

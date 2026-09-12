@@ -75,3 +75,24 @@ test("resume links name the saved view so repeated companies stay distinguishabl
     "Analysis · JPM · Notebook",
   );
 });
+
+test("legacy Market visits cannot reopen retired price settings", () => {
+  const storage = {
+    getItem: () =>
+      JSON.stringify({
+        version: 1,
+        items: [
+          {
+            href: "/market?tab=factors&asset=SPY&window=1y&cohort=credit-banks",
+            title: "Old factor screen",
+            at: "2026-09-01T00:00:00Z",
+          },
+        ],
+      }),
+  };
+  const [item] = readResearchTrail(storage);
+  assert.match(item.href, /^\/market\?/);
+  assert.match(item.href, /tab=fundamentals/);
+  assert.doesNotMatch(item.href, /(?:asset|window|proxy)=/);
+  assert.match(item.title, /Fundamental Lab/);
+});

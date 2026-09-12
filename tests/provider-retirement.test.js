@@ -1,17 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PROVIDER_RETIREMENT_PLAN_ID, PROVIDER_RETIREMENT_VERSION, RETIRED_CACHE_PREFIXES, runProviderRetirementStep } from '../src/utils/providerRetirement.js';
+import { PROVIDER_RETIREMENT_PLAN_ID, PROVIDER_RETIREMENT_VERSION, RETIRED_CACHE_PREFIXES, RETIRED_RAW_KEYS, runProviderRetirementStep } from '../src/utils/providerRetirement.js';
+import { buildUniverseSnapshot, UNIVERSE_METRICS } from '../src/utils/marketUniverse.js';
+import { GET as retirementRoute } from '../src/app/api/cron/provider-retirement/route.js';
 
 const START = Date.parse('2026-09-12T12:00:00.000Z');
 
 function replacement(basis) {
-  return {
-    schema_version: 'edgar.factor-universe.v2', methodology_version: 'fundamental-universe-2.0.0', basis,
-    generated_at: '2026-09-12T09:00:00.000Z', sec_snapshot_at: '2026-09-12T08:00:00.000Z',
-    status: 'ready', sec_stale: false,
-    rows: Array.from({ length: 8 }, (_, index) => ({ ticker: `T${index}` })), scopes: { all: { companies: 8 } },
-    universe: { issuers: 8, issuer_coverage: 1 },
-  };
+  const companies=Array.from({length:8},(_,index)=>{
+    const cik=String(index+1),accession=`${cik.padStart(10,'0')}-26-000001`;
+    const current=Object.fromEntries(UNIVERSE_METRICS.map(({key},metricIndex)=>[key,index+metricIndex+2]));
+    const prior=Object.fromEntries(UNIVERSE_METRICS.map(({key},metricIndex)=>[key,index+metricIndex+1]));
+    const comparison={pointInTime:true,gapDays:365,current:{metrics:current,filed:'2026-08-01',end:'2026-06-30',accession,factorSourceAccessions:[accession]},prior:{metrics:prior,filed:'2025-08-01',end:'2025-06-30',factorSourceAccessions:[`${cik.padStart(10,'0')}-25-000001`]}};
+    return {ticker:`T${index}`,cik,name:`Issuer ${index}`,sic:'1000',cohorts:['test-group'],checkedAt:'2026-09-12T08:00:00.000Z',factsRetrievedAt:'2026-09-12T08:00:00.000Z',filingComparisons:{ttm:comparison,annual:comparison}};
+  });
+  return buildUniverseSnapshot({generatedAt:'2026-09-12T08:00:00.000Z',requested:8,companies,groups:[{id:'test-group',label:'Test group'}],coverage:{membership_id:'test',duplicate_share_classes:0,grouping:'Test groups.'}}, {}, {basis,now:new Date('2026-09-12T09:00:00.000Z')});
 }
 
 function harness({ checkpoint = null, snapshots = true, lease = 'owned', failTarget = null, failSet = false } = {}) {
@@ -60,14 +63,18 @@ test('bounded deletion, delayed clean verification and repeated completion are i
   await runProviderRetirementStep({ operations, now: START });
   const deleted = await runProviderRetirementStep({ operations, now: START + 360_000 });
   assert.equal(deleted.phase, 'verify'); assert.equal(deleted.complete, false); assert.equal(deleted.exact_cleaned, true);
-  assert.deepEqual(calls.prefixes.map(([, prefix]) => prefix), [...RETIRED_CACHE_PREFIXES, 'views:']);
+  assert.deepEqual(calls.prefixes.map(([, prefix]) => prefix), [...RETIRED_CACHE_PREFIXES, 'views:', 'rl:stock:', 'rl:market-signals-v1:', 'rl:factor-universe:']);
   assert.ok(!calls.exact.flat(3).includes('membership'));
+  assert.deepEqual(calls.exact.filter(([kind]) => kind === 'raw').map(([, keys]) => keys), [RETIRED_RAW_KEYS]);
+  assert.ok(!calls.exact.flat(3).includes('popular_tickers'), 'operator SEC ticker identifiers are preserved');
   const waiting = await runProviderRetirementStep({ operations, now: START + 374_999 });
-  assert.equal(waiting.complete, false); assert.equal(calls.prefixes.length, RETIRED_CACHE_PREFIXES.length + 1);
+  assert.equal(waiting.complete, false); assert.equal(calls.prefixes.length, RETIRED_CACHE_PREFIXES.length + 4);
   const verified = await runProviderRetirementStep({ operations, now: START + 375_000 });
-  assert.equal(verified.complete, true); assert.equal(calls.prefixes.length, 2 * (RETIRED_CACHE_PREFIXES.length + 1));
+  assert.equal(verified.complete, true); assert.equal(calls.prefixes.length, 2 * (RETIRED_CACHE_PREFIXES.length + 4));
+  const acquiredBeforeDoneCheck = calls.acquires.length;
   const afterComplete = await runProviderRetirementStep({ operations, now: START + 400_000 });
-  assert.equal(afterComplete.complete, true); assert.equal(calls.prefixes.length, 2 * (RETIRED_CACHE_PREFIXES.length + 1));
+  assert.equal(afterComplete.complete, true); assert.equal(calls.prefixes.length, 2 * (RETIRED_CACHE_PREFIXES.length + 4));
+  assert.equal(calls.acquires.length, acquiredBeforeDoneCheck, 'a completed migration exits after one checkpoint read');
 });
 
 test('malformed and impossible current-plan checkpoints cannot suppress cleanup', async () => {
@@ -99,4 +106,24 @@ test('preview cleanup is forbidden before cache operations begin', async () => {
   try { await assert.rejects(runProviderRetirementStep({ operations, now: START }), error => error.status === 403); }
   finally { if (prior == null) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = prior; }
   assert.deepEqual(calls.acquires, []); assert.deepEqual(calls.prefixes, []);
+});
+
+test('operator cleanup route authenticates before its production guard and bounds work', async () => {
+  const priorSecret = process.env.CRON_SECRET, priorEnvironment = process.env.VERCEL_ENV;
+  process.env.CRON_SECRET = 'test'; process.env.VERCEL_ENV = 'preview';
+  try {
+    let response = await retirementRoute(new Request('https://example.test/api/cron/provider-retirement'));
+    assert.equal(response.status, 401);
+    response = await retirementRoute(new Request('https://example.test/api/cron/provider-retirement', { headers: { authorization: 'Bearer test' } }));
+    assert.equal(response.status, 403);
+    process.env.VERCEL_ENV = 'production';
+    for (const query of ['max_keys=0', 'max_keys=2501', 'max_keys=1.5', 'max_keys=1&max_keys=2', 'cursor=0']) {
+      response = await retirementRoute(new Request(`https://example.test/api/cron/provider-retirement?${query}`, { headers: { authorization: 'Bearer test' } }));
+      assert.equal(response.status, 400);
+      assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    }
+  } finally {
+    if (priorSecret === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = priorSecret;
+    if (priorEnvironment === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = priorEnvironment;
+  }
 });

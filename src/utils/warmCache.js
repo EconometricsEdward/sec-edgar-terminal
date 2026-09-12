@@ -260,6 +260,38 @@ export function warmCacheEnabled() {
   return ENABLED;
 }
 
+/**
+ * Read a bounded page of members from an audited raw Redis set. This is kept
+ * separate from the `warm:*` helpers because a small number of operational
+ * sets predate the namespaced cache. Callers must provide a fixed internal key;
+ * request input must never reach this helper.
+ */
+export async function warmReadRawSetMembers(rawKey, maxMembers = 100) {
+  if (!ENABLED) return [];
+  if (typeof rawKey !== 'string' || !/^[a-z0-9:_-]{3,120}$/i.test(rawKey) || !Number.isSafeInteger(maxMembers) || maxMembers < 1 || maxMembers > 250) return null;
+  try {
+    let cursor = '0';
+    const members = new Set();
+    for (let page = 0; page < 8 && members.size < maxMembers; page += 1) {
+      const response = await fetch(REST_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(['SSCAN', rawKey, cursor, 'COUNT', String(Math.min(100, maxMembers))]),
+        signal: AbortSignal.timeout(3000),
+      });
+      const data = await response.json();
+      const nextCursor = String(data?.result?.[0] ?? ''), values = data?.result?.[1];
+      if (!response.ok || !/^\d+$/.test(nextCursor) || !Array.isArray(values) || values.some(value => typeof value !== 'string')) return null;
+      values.slice(0, maxMembers - members.size).forEach(value => members.add(value));
+      cursor = nextCursor;
+      if (cursor === '0') break;
+    }
+    return [...members];
+  } catch {
+    return null;
+  }
+}
+
 /** Remove only explicitly named reproducible cache values, in bounded batches. */
 export async function warmDeleteMany(type, ids) {
   if (!ENABLED) return null;

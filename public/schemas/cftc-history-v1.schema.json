@@ -39,12 +39,16 @@
     "source": { "$ref": "cftc-markets-v1.schema.json#/definitions/source" },
     "retrieval": {
       "type": ["object", "null"],
-      "required": ["rows", "pages", "cap_reached", "bounded_max_rows"],
+      "required": ["origin_scope", "scope_rows", "source_rows", "source_pages", "source_page_size", "cap_reached", "bounded_scope_rows", "bounded_source_rows"],
       "properties": {
-        "rows": { "type": "integer", "minimum": 0 },
-        "pages": { "type": "integer", "minimum": 0 },
+        "origin_scope": { "enum": ["contract_history", "launch_selection"] },
+        "scope_rows": { "type": "integer", "minimum": 1, "maximum": 600 },
+        "source_rows": { "type": "integer", "minimum": 1, "maximum": 5000 },
+        "source_pages": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "source_page_size": { "enum": [200, 1000] },
         "cap_reached": { "type": "boolean" },
-        "bounded_max_rows": { "type": "integer", "minimum": 1, "maximum": 600 }
+        "bounded_scope_rows": { "const": 600 },
+        "bounded_source_rows": { "enum": [600, 5000] }
       },
       "additionalProperties": false
     },
@@ -77,25 +81,68 @@
     },
     "history": {
       "type": "array",
+      "minItems": 1,
+      "maxItems": 600,
       "items": {
         "type": "object",
         "required": [
           "reportDate",
+          "sourceRowId",
+          "marketName",
+          "contractName",
+          "exchange",
           "openInterest",
           "long",
           "short",
           "spreading",
+          "spreadingStatus",
           "net",
-          "netPctOi"
+          "netPctOi",
+          "unavailable",
+          "derivedUnavailable",
+          "raw"
         ],
         "properties": {
           "reportDate": { "type": "string", "format": "date" },
+          "sourceRowId": { "type": ["string", "null"], "maxLength": 512 },
+          "marketName": { "type": "string" },
+          "contractName": { "type": "string" },
+          "exchange": { "type": "string" },
           "openInterest": { "type": ["number", "null"] },
           "long": { "type": ["number", "null"] },
           "short": { "type": ["number", "null"] },
           "spreading": { "type": ["number", "null"] },
+          "spreadingStatus": { "enum": ["reported", "unavailable", "not_applicable"] },
           "net": { "type": ["number", "null"] },
-          "netPctOi": { "type": ["number", "null"] }
+          "netPctOi": { "type": ["number", "null"] },
+          "unavailable": {
+            "type": "object",
+            "maxProperties": 4,
+            "propertyNames": {
+              "enum": [
+                "open_interest_all",
+                "dealer_positions_long_all", "dealer_positions_short_all", "dealer_positions_spread_all",
+                "asset_mgr_positions_long", "asset_mgr_positions_short", "asset_mgr_positions_spread",
+                "lev_money_positions_long", "lev_money_positions_short", "lev_money_positions_spread",
+                "other_rept_positions_long", "other_rept_positions_short", "other_rept_positions_spread",
+                "nonrept_positions_long_all", "nonrept_positions_short_all",
+                "prod_merc_positions_long", "prod_merc_positions_short",
+                "swap_positions_long_all", "swap__positions_short_all", "swap__positions_spread_all",
+                "m_money_positions_long_all", "m_money_positions_short_all", "m_money_positions_spread"
+              ]
+            },
+            "additionalProperties": { "$ref": "#/definitions/unavailableReason" }
+          },
+          "derivedUnavailable": {
+            "type": "object",
+            "maxProperties": 2,
+            "properties": {
+              "net": { "const": "long_or_short_unavailable" },
+              "netPctOi": { "enum": ["net_unavailable", "open_interest_unavailable", "open_interest_not_positive", "calculation_unavailable"] }
+            },
+            "additionalProperties": false
+          },
+          "raw": { "$ref": "#/definitions/historyRaw" }
         },
         "additionalProperties": false
       }
@@ -128,7 +175,9 @@
         "net_percent_open_interest",
         "percentile",
         "one_week_change",
+        "one_week_net_percent_open_interest_change",
         "four_week_change",
+        "four_week_net_percent_open_interest_change",
         "previous_available_change",
         "calculation_version"
       ],
@@ -137,9 +186,55 @@
         "net_percent_open_interest": { "type": "string" },
         "percentile": { "type": "string" },
         "one_week_change": { "type": "string" },
+        "one_week_net_percent_open_interest_change": { "type": "string" },
         "four_week_change": { "type": "string" },
+        "four_week_net_percent_open_interest_change": { "type": "string" },
         "previous_available_change": { "type": "string" },
         "calculation_version": { "const": "cftc-positioning-1.0.0" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "unavailableReason": { "enum": ["absent", "blank", "suppressed", "nonnumeric", "nonfinite"] },
+    "historyRawScalar": { "type": ["string", "number", "null"], "maxLength": 4096 },
+    "historyRaw": {
+      "type": "object",
+      "minProperties": 11,
+      "maxProperties": 12,
+      "required": ["id", "market_and_exchange_names", "contract_market_name", "report_date_as_yyyy_mm_dd", "cftc_contract_market_code", "cftc_market_code", "contract_units", "futonly_or_combined", "open_interest_all"],
+      "properties": {
+        "id": { "$ref": "#/definitions/historyRawScalar" },
+        "market_and_exchange_names": { "$ref": "#/definitions/historyRawScalar" },
+        "contract_market_name": { "$ref": "#/definitions/historyRawScalar" },
+        "report_date_as_yyyy_mm_dd": { "$ref": "#/definitions/historyRawScalar" },
+        "cftc_contract_market_code": { "$ref": "#/definitions/historyRawScalar" },
+        "cftc_market_code": { "$ref": "#/definitions/historyRawScalar" },
+        "contract_units": { "$ref": "#/definitions/historyRawScalar" },
+        "futonly_or_combined": { "$ref": "#/definitions/historyRawScalar" },
+        "open_interest_all": { "$ref": "#/definitions/historyRawScalar" },
+        "dealer_positions_long_all": { "$ref": "#/definitions/historyRawScalar" },
+        "dealer_positions_short_all": { "$ref": "#/definitions/historyRawScalar" },
+        "dealer_positions_spread_all": { "$ref": "#/definitions/historyRawScalar" },
+        "asset_mgr_positions_long": { "$ref": "#/definitions/historyRawScalar" },
+        "asset_mgr_positions_short": { "$ref": "#/definitions/historyRawScalar" },
+        "asset_mgr_positions_spread": { "$ref": "#/definitions/historyRawScalar" },
+        "lev_money_positions_long": { "$ref": "#/definitions/historyRawScalar" },
+        "lev_money_positions_short": { "$ref": "#/definitions/historyRawScalar" },
+        "lev_money_positions_spread": { "$ref": "#/definitions/historyRawScalar" },
+        "other_rept_positions_long": { "$ref": "#/definitions/historyRawScalar" },
+        "other_rept_positions_short": { "$ref": "#/definitions/historyRawScalar" },
+        "other_rept_positions_spread": { "$ref": "#/definitions/historyRawScalar" },
+        "nonrept_positions_long_all": { "$ref": "#/definitions/historyRawScalar" },
+        "nonrept_positions_short_all": { "$ref": "#/definitions/historyRawScalar" },
+        "prod_merc_positions_long": { "$ref": "#/definitions/historyRawScalar" },
+        "prod_merc_positions_short": { "$ref": "#/definitions/historyRawScalar" },
+        "swap_positions_long_all": { "$ref": "#/definitions/historyRawScalar" },
+        "swap__positions_short_all": { "$ref": "#/definitions/historyRawScalar" },
+        "swap__positions_spread_all": { "$ref": "#/definitions/historyRawScalar" },
+        "m_money_positions_long_all": { "$ref": "#/definitions/historyRawScalar" },
+        "m_money_positions_short_all": { "$ref": "#/definitions/historyRawScalar" },
+        "m_money_positions_spread": { "$ref": "#/definitions/historyRawScalar" }
       },
       "additionalProperties": false
     }
@@ -160,6 +255,14 @@
         "participants": { "items": { "properties": { "id": { "enum": ["producer-merchant", "swap-dealers", "managed-money", "other-reportables", "non-reportables"] } } } }
       } }
     },
+    { "if": { "properties": { "selection": { "properties": { "group": { "const": "dealer" } } } } }, "then": { "properties": { "history": { "items": { "properties": { "raw": { "required": ["dealer_positions_long_all", "dealer_positions_short_all", "dealer_positions_spread_all"] } } } } } } },
+    { "if": { "properties": { "selection": { "properties": { "group": { "const": "asset-manager" } } } } }, "then": { "properties": { "history": { "items": { "properties": { "raw": { "required": ["asset_mgr_positions_long", "asset_mgr_positions_short", "asset_mgr_positions_spread"] } } } } } } },
+    { "if": { "properties": { "selection": { "properties": { "group": { "const": "leveraged-funds" } } } } }, "then": { "properties": { "history": { "items": { "properties": { "raw": { "required": ["lev_money_positions_long", "lev_money_positions_short", "lev_money_positions_spread"] } } } } } } },
+    { "if": { "properties": { "selection": { "properties": { "group": { "const": "other-reportables" } } } } }, "then": { "properties": { "history": { "items": { "properties": { "raw": { "required": ["other_rept_positions_long", "other_rept_positions_short", "other_rept_positions_spread"] } } } } } } },
+    { "if": { "properties": { "selection": { "properties": { "group": { "const": "non-reportables" } } } } }, "then": { "properties": { "history": { "items": { "properties": { "raw": { "required": ["nonrept_positions_long_all", "nonrept_positions_short_all"], "maxProperties": 11 } } } } } } },
+    { "if": { "properties": { "selection": { "properties": { "group": { "const": "producer-merchant" } } } } }, "then": { "properties": { "history": { "items": { "properties": { "raw": { "required": ["prod_merc_positions_long", "prod_merc_positions_short"], "maxProperties": 11 } } } } } } },
+    { "if": { "properties": { "selection": { "properties": { "group": { "const": "swap-dealers" } } } } }, "then": { "properties": { "history": { "items": { "properties": { "raw": { "required": ["swap_positions_long_all", "swap__positions_short_all", "swap__positions_spread_all"] } } } } } } },
+    { "if": { "properties": { "selection": { "properties": { "group": { "const": "managed-money" } } } } }, "then": { "properties": { "history": { "items": { "properties": { "raw": { "required": ["m_money_positions_long_all", "m_money_positions_short_all", "m_money_positions_spread"] } } } } } } },
     { "if": { "properties": { "selection": { "properties": { "history_window": { "const": "1y" } } } } }, "then": { "properties": { "selection": { "properties": { "required_prior_reports": { "const": 52 } } }, "percentile": { "properties": { "required": { "const": 52 } } } } } },
     { "if": { "properties": { "selection": { "properties": { "history_window": { "const": "3y" } } } } }, "then": { "properties": { "selection": { "properties": { "required_prior_reports": { "const": 156 } } }, "percentile": { "properties": { "required": { "const": 156 } } } } } },
     { "if": { "properties": { "selection": { "properties": { "history_window": { "const": "5y" } } } } }, "then": { "properties": { "selection": { "properties": { "required_prior_reports": { "const": 260 } } }, "percentile": { "properties": { "required": { "const": 260 } } } } } },

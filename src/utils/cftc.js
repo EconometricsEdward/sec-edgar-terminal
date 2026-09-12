@@ -87,6 +87,14 @@ export const CFTC_CATEGORY_LABELS = {
   energy: 'Energy', metals: 'Metals', agriculture: 'Agriculture', other: 'Other',
 };
 
+const CFTC_VERIFIED_CATEGORY_CODES = Object.freeze({
+  'tff|124603': 'equity-indices',
+  'tff|124608': 'equity-indices',
+  'tff|13874U': 'equity-indices',
+  'tff|209747': 'equity-indices',
+  'tff|098662': 'currencies',
+});
+
 export function isCftcFamily(value) { return Object.hasOwn(CFTC_FAMILIES, value); }
 export function cftcGroup(family, id) { return CFTC_FAMILIES[family]?.groups.find(group => group.id === id) || null; }
 export function isCftcContractCode(value) { return typeof value === 'string' && /^[A-Z0-9+]{3,12}$/.test(value); }
@@ -110,6 +118,9 @@ export function cftcDate(value) {
 }
 
 export function cftcCategory(row, family) {
+  const code = String(row.cftc_contract_market_code || '').trim().toUpperCase();
+  const verified = CFTC_VERIFIED_CATEGORY_CODES[`${family}|${code}`];
+  if (verified) return verified;
   const subgroup = `${row.commodity_subgroup_name || ''} ${row.commodity_group_name || ''}`.toUpperCase();
   if (/STOCK INDIC/.test(subgroup)) return 'equity-indices';
   if (/INTEREST RATE|TREASURY|SOFR/.test(subgroup)) return 'rates';
@@ -117,7 +128,8 @@ export function cftcCategory(row, family) {
   if (/PETROLEUM|NATURAL GAS|ELECTRIC/.test(subgroup)) return 'energy';
   if (/METAL/.test(subgroup)) return 'metals';
   if (/AGRICULTURE/.test(subgroup)) return 'agriculture';
-  return CFTC_LAUNCH_CATALOG.find(item => item.family === family && item.code === row.cftc_contract_market_code)?.category || 'other';
+  return CFTC_LAUNCH_CATALOG.find(item => item.family === family && item.code === code)?.category
+    || 'other';
 }
 
 function exchangeName(marketName) {
@@ -131,10 +143,16 @@ function parsedField(raw, field, unavailable) {
   return result.value;
 }
 
+function sourceReportDate(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4}-\d{2}-\d{2})(?:T00:00:00\.000)?$/.exec(value);
+  return match && cftcDate(match[1]) === match[1] ? match[1] : null;
+}
+
 export function normalizeCftcRow(raw, familyId) {
   const family = CFTC_FAMILIES[familyId];
   if (!family) return { ok: false, reason: 'unsupported_report_family', raw };
-  const reportDate = cftcDate(raw?.report_date_as_yyyy_mm_dd);
+  const reportDate = sourceReportDate(raw?.report_date_as_yyyy_mm_dd);
   const code = typeof raw?.cftc_contract_market_code === 'string' ? raw.cftc_contract_market_code.trim().toUpperCase() : '';
   if (!reportDate) return { ok: false, reason: 'invalid_report_date', raw };
   if (!isCftcContractCode(code)) return { ok: false, reason: 'invalid_contract_code', raw };
@@ -219,8 +237,8 @@ export function dayDifference(later, earlier) {
 }
 
 export function cftcPercentile(current, priorValues, required) {
-  if (!Number.isFinite(current)) return { value: null, reason: 'current_unavailable', observations: 0, required };
   const values = priorValues.filter(Number.isFinite);
+  if (!Number.isFinite(current)) return { value: null, reason: 'current_unavailable', observations: Math.min(values.length, required), required };
   if (values.length < required) return { value: null, reason: 'insufficient_history', observations: values.length, required };
   const sample = values.slice(0, required);
   const below = sample.filter(value => value < current).length;
@@ -228,10 +246,40 @@ export function cftcPercentile(current, priorValues, required) {
   return { value: 100 * (below + 0.5 * equal) / required, reason: null, observations: required, required };
 }
 
+function seriesPercentile(current, priorRows, required, metric) {
+  const validPriorRows = priorRows.filter(row => Number.isFinite(metric(row)));
+  const comparison = validPriorRows.slice(0, required);
+  return {
+    ...cftcPercentile(current, validPriorRows.map(metric), required),
+    comparisonRange: {
+      observations: comparison.length,
+      earliest: comparison.at(-1)?.reportDate ?? null,
+      latest: comparison[0]?.reportDate ?? null,
+    },
+  };
+}
+
 function findExactDate(rows, selectedDate, days) {
   const target = new Date(`${selectedDate}T00:00:00.000Z`);
   target.setUTCDate(target.getUTCDate() - days);
   return rows.find(row => row.reportDate === target.toISOString().slice(0, 10)) || null;
+}
+
+function historyPointProvenance(row, groupId) {
+  if (!row?.raw) return { sourceRowId: row?.sourceRowId ?? null, unavailable: row?.unavailable ?? {}, raw: null };
+  const rawFields = row.groups?.[groupId]?.rawFields || {};
+  const fields = ['id', 'market_and_exchange_names', 'contract_market_name', 'report_date_as_yyyy_mm_dd', 'cftc_contract_market_code', 'cftc_market_code', 'contract_units', 'futonly_or_combined', 'open_interest_all', rawFields.long, rawFields.short, rawFields.spreading].filter(Boolean);
+  const raw = Object.fromEntries(fields.map(field => [field, row.raw[field] ?? null]));
+  const numericFields = ['open_interest_all', rawFields.long, rawFields.short, rawFields.spreading].filter(Boolean);
+  const unavailable = Object.fromEntries(numericFields.filter(field => row.unavailable?.[field]).map(field => [field, row.unavailable[field]]));
+  return { sourceRowId: row.sourceRowId ?? null, unavailable, raw };
+}
+
+function historyPointDerivedUnavailable(row, groupId) {
+  const group = row?.groups?.[groupId], unavailable = {};
+  if (group?.net == null) unavailable.net = 'long_or_short_unavailable';
+  if (group?.netPctOi == null) unavailable.netPctOi = group?.net == null ? 'net_unavailable' : row?.openInterest == null ? 'open_interest_unavailable' : row.openInterest <= 0 ? 'open_interest_not_positive' : 'calculation_unavailable';
+  return unavailable;
 }
 
 export function cftcSeries(rows, groupId, selectedDate = null, requestedLookback = 260) {
@@ -244,17 +292,31 @@ export function cftcSeries(rows, groupId, selectedDate = null, requestedLookback
   const prior = atOrBefore.filter(row => row.reportDate < selected.reportDate);
   const week = findExactDate(atOrBefore, selected.reportDate, 7);
   const fourWeeks = findExactDate(atOrBefore, selected.reportDate, 28);
-  const previous = prior[0] || null;
   const metric = row => row?.groups[groupId]?.netPctOi;
   const net = row => row?.groups[groupId]?.net;
-  const percentile = cftcPercentile(group.netPctOi, prior.map(metric), requestedLookback);
-  const shorterPercentiles = [52, 156, 260].filter(count => count < requestedLookback || percentile.value == null).map(count => cftcPercentile(group.netPctOi, prior.map(metric), count)).filter(item => item.value != null);
+  const previous = prior.find(row => Number.isFinite(net(row))) || null;
+  const percentile = seriesPercentile(group.netPctOi, prior, requestedLookback, metric);
+  const shorterPercentiles = [52, 156, 260].filter(count => count < requestedLookback || percentile.value == null).map(count => seriesPercentile(group.netPctOi, prior, count, metric)).filter(item => item.value != null);
   let validPriors = 0, historyEnd = atOrBefore.length;
   for (let index = 1; index < atOrBefore.length; index += 1) {
     if (Number.isFinite(metric(atOrBefore[index]))) validPriors += 1;
     if (validPriors === requestedLookback) { historyEnd = index + 1; break; }
   }
-  const points = atOrBefore.slice(0, historyEnd).reverse().map(row => ({ reportDate: row.reportDate, openInterest: row.openInterest, long: row.groups[groupId]?.long ?? null, short: row.groups[groupId]?.short ?? null, spreading: row.groups[groupId]?.spreading ?? null, net: net(row), netPctOi: metric(row) }));
+  const points = atOrBefore.slice(0, historyEnd).reverse().map(row => ({
+    reportDate: row.reportDate,
+    ...historyPointProvenance(row, groupId),
+    marketName: row.marketName,
+    contractName: row.contractName,
+    exchange: row.exchange,
+    openInterest: row.openInterest,
+    long: row.groups[groupId]?.long ?? null,
+    short: row.groups[groupId]?.short ?? null,
+    spreading: row.groups[groupId]?.spreading ?? null,
+    spreadingStatus: row.groups[groupId]?.spreadingStatus ?? 'unavailable',
+    net: net(row),
+    netPctOi: metric(row),
+    derivedUnavailable: historyPointDerivedUnavailable(row, groupId),
+  }));
   return { selected: {
     ...selected, selectedGroup: group,
     oneWeekChange: week && net(selected) != null && net(week) != null ? net(selected) - net(week) : null,
@@ -283,20 +345,34 @@ function safeCsv(value) {
   if (value == null) return '"Unavailable"';
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   const text = String(value);
-  const protectedText = /^[\s]*[=+@-]/.test(text) ? `'${text}` : text;
+  const protectedText = /^[\u0000-\u0020\u007f-\u009f\ufeff]*[=+@-]/u.test(text) ? `'${text}` : text;
   return `"${protectedText.replaceAll('"', '""')}"`;
 }
 
 export function cftcCsv(response) {
   const group = response?.selection?.group || response?.group || '';
   const rows = Array.isArray(response?.history) ? response.history : Array.isArray(response?.latest) ? response.latest : [];
-  const header = ['schema_version', 'calculation_version', 'report_family', 'report_basis', 'contract_code', 'market', 'exchange', 'contract_units', 'trader_group', 'report_date', 'open_interest_contracts', 'long_contracts', 'short_contracts', 'spreading_contracts', 'net_contracts', 'net_percent_open_interest', 'one_week_change_contracts', 'one_week_change_percentage_points', 'four_week_change_contracts', 'four_week_change_percentage_points', 'previous_available_change_contracts', 'previous_available_report_date', 'previous_available_elapsed_days', 'positioning_percentile', 'percentile_observations', 'history_start', 'history_end', 'history_observations', 'net_formula', 'percent_open_interest_formula', 'percentile_formula', 'one_week_change_formula', 'four_week_change_formula', 'previous_available_change_formula', 'source_url', 'history_source_url', 'retrieved_at'];
+  const header = ['schema_version', 'calculation_version', 'report_family', 'report_basis', 'contract_code', 'market', 'contract_name', 'exchange', 'contract_units', 'trader_group', 'report_date', 'source_row_id', 'open_interest_contracts', 'long_contracts', 'short_contracts', 'spreading_contracts', 'spreading_status', 'net_contracts', 'net_unavailable_reason', 'net_percent_open_interest', 'net_percent_open_interest_unavailable_reason', 'raw_open_interest_field', 'raw_open_interest_value', 'open_interest_unavailable_reason', 'raw_long_field', 'raw_long_value', 'long_unavailable_reason', 'raw_short_field', 'raw_short_value', 'short_unavailable_reason', 'raw_spreading_field', 'raw_spreading_value', 'spreading_unavailable_reason', 'one_week_change_contracts', 'one_week_change_percentage_points', 'four_week_change_contracts', 'four_week_change_percentage_points', 'previous_available_change_contracts', 'previous_available_report_date', 'previous_available_elapsed_days', 'positioning_percentile', 'percentile_reason', 'percentile_observations', 'percentile_comparison_start', 'percentile_comparison_end', 'history_window', 'required_prior_reports', 'history_start', 'history_end', 'history_observations', 'response_status', 'refresh_warning', 'retrieval_origin_scope', 'retrieval_scope_rows', 'retrieval_source_rows', 'retrieval_source_pages', 'retrieval_source_page_size', 'retrieval_cap_reached', 'retrieval_bounded_scope_rows', 'retrieval_bounded_source_rows', 'required_values_unavailable', 'quarantined_row_count', 'quarantine', 'net_formula', 'percent_open_interest_formula', 'percentile_formula', 'one_week_change_formula', 'one_week_percentage_point_change_formula', 'four_week_change_formula', 'four_week_percentage_point_change_formula', 'previous_available_change_formula', 'source_url', 'history_source_url', 'retrieved_at'];
   const lines = rows.map(row => {
     const selected = row.selected || row;
     const contract = response?.selected || selected;
     const selectedGroup = selected.selectedGroup || selected.groups?.[group] || {};
+    const rawFields = selectedGroup.rawFields || response?.selected?.selectedGroup?.rawFields || response?.selected?.groups?.[group]?.rawFields || {};
+    const raw = row.raw || selected.raw || {};
+    const unavailable = row.unavailable || selected.unavailable || {};
+    const rawValue = field => field && Object.hasOwn(raw, field) ? raw[field] : null;
+    const unavailableReason = field => field ? unavailable[field] || 'Available' : 'Not applicable';
     const isSelectedDate = selected.reportDate === response?.selected?.reportDate;
-    return [CFTC_SCHEMA_VERSION, CFTC_CALCULATION_VERSION, response.report_family, CFTC_REPORT_BASIS, selected.code || contract.code || response.selection?.contract, selected.marketName || contract.marketName, selected.exchange || contract.exchange, selected.units || contract.units, group, selected.reportDate, selected.openInterest, selectedGroup.long ?? row.long, selectedGroup.short ?? row.short, selectedGroup.spreading ?? row.spreading, selectedGroup.net ?? row.net, selectedGroup.netPctOi ?? row.netPctOi, isSelectedDate ? response.selected?.oneWeekChange ?? selected.oneWeekChange ?? row.oneWeekChange : null, isSelectedDate ? response.selected?.oneWeekNetPctChange ?? selected.oneWeekNetPctChange ?? row.oneWeekNetPctChange : null, isSelectedDate ? response.selected?.fourWeekChange ?? selected.fourWeekChange ?? row.fourWeekChange : null, isSelectedDate ? response.selected?.fourWeekNetPctChange ?? selected.fourWeekNetPctChange ?? row.fourWeekNetPctChange : null, isSelectedDate ? response.selected?.previousAvailableChange : null, isSelectedDate ? response.selected?.previousAvailableDate : null, isSelectedDate ? response.selected?.previousAvailableElapsedDays : null, isSelectedDate ? response.percentile?.value : null, isSelectedDate ? response.percentile?.observations : null, response.coverage?.earliest, response.coverage?.latest, response.coverage?.observations, response.formula?.net_contracts || response.methodology?.net_contracts, response.formula?.net_percent_open_interest || response.methodology?.net_percent_open_interest, response.formula?.percentile || response.methodology?.percentile, response.formula?.one_week_change || response.methodology?.weekly_change, response.formula?.four_week_change || response.methodology?.four_week_change, response.formula?.previous_available_change || response.methodology?.previous_available_change, response.source?.url, response.source?.history_url, response.retrieved_at].map(safeCsv).join(',');
+    const spreadingStatus = selectedGroup.spreadingStatus ?? row.spreadingStatus ?? 'unavailable';
+    const spreading = selectedGroup.spreading ?? row.spreading;
+    const spreadingValue = spreading == null && spreadingStatus === 'not_applicable' ? 'Not applicable' : spreading;
+    const netValue = selectedGroup.net ?? row.net, netPctValue = selectedGroup.netPctOi ?? row.netPctOi;
+    const derivedUnavailable = row.derivedUnavailable || {
+      ...(netValue == null ? { net: 'long_or_short_unavailable' } : {}),
+      ...(netPctValue == null ? { netPctOi: netValue == null ? 'net_unavailable' : selected.openInterest == null ? 'open_interest_unavailable' : selected.openInterest <= 0 ? 'open_interest_not_positive' : 'calculation_unavailable' } : {}),
+    };
+    const spreadField = rawFields.spreading || null;
+    return [CFTC_SCHEMA_VERSION, CFTC_CALCULATION_VERSION, response.report_family, CFTC_REPORT_BASIS, selected.code || contract.code || response.selection?.contract, selected.marketName ?? contract.marketName, selected.contractName ?? contract.contractName, selected.exchange ?? contract.exchange, selected.units || contract.units, group, selected.reportDate, row.sourceRowId ?? selected.sourceRowId, selected.openInterest, selectedGroup.long ?? row.long, selectedGroup.short ?? row.short, spreadingValue, spreadingStatus, netValue, derivedUnavailable.net || 'Available', netPctValue, derivedUnavailable.netPctOi || 'Available', 'open_interest_all', rawValue('open_interest_all'), unavailableReason('open_interest_all'), rawFields.long, rawValue(rawFields.long), unavailableReason(rawFields.long), rawFields.short, rawValue(rawFields.short), unavailableReason(rawFields.short), spreadField || 'Not applicable', spreadField ? rawValue(spreadField) : 'Not applicable', unavailableReason(spreadField), isSelectedDate ? response.selected?.oneWeekChange ?? selected.oneWeekChange ?? row.oneWeekChange : null, isSelectedDate ? response.selected?.oneWeekNetPctChange ?? selected.oneWeekNetPctChange ?? row.oneWeekNetPctChange : null, isSelectedDate ? response.selected?.fourWeekChange ?? selected.fourWeekChange ?? row.fourWeekChange : null, isSelectedDate ? response.selected?.fourWeekNetPctChange ?? selected.fourWeekNetPctChange ?? row.fourWeekNetPctChange : null, isSelectedDate ? response.selected?.previousAvailableChange : null, isSelectedDate ? response.selected?.previousAvailableDate : null, isSelectedDate ? response.selected?.previousAvailableElapsedDays : null, isSelectedDate ? response.percentile?.value : null, isSelectedDate ? response.percentile?.reason || 'Available' : null, isSelectedDate ? response.percentile?.comparisonRange?.observations ?? response.percentile?.observations : null, isSelectedDate ? response.percentile?.comparisonRange?.earliest : null, isSelectedDate ? response.percentile?.comparisonRange?.latest : null, response.selection?.history_window, response.selection?.required_prior_reports, response.coverage?.earliest, response.coverage?.latest, response.coverage?.observations, response.status, response.refresh_warning, response.retrieval?.origin_scope, response.retrieval?.scope_rows, response.retrieval?.source_rows, response.retrieval?.source_pages, response.retrieval?.source_page_size, response.retrieval?.cap_reached, response.retrieval?.bounded_scope_rows, response.retrieval?.bounded_source_rows, JSON.stringify(response.coverage?.required_values_unavailable || []), Array.isArray(response.quarantine) ? response.quarantine.length : null, JSON.stringify(response.quarantine || []), response.formula?.net_contracts || response.methodology?.net_contracts, response.formula?.net_percent_open_interest || response.methodology?.net_percent_open_interest, response.formula?.percentile || response.methodology?.percentile, response.formula?.one_week_change || response.methodology?.weekly_change, response.formula?.one_week_net_percent_open_interest_change || response.methodology?.weekly_net_percent_open_interest_change, response.formula?.four_week_change || response.methodology?.four_week_change, response.formula?.four_week_net_percent_open_interest_change || response.methodology?.four_week_net_percent_open_interest_change, response.formula?.previous_available_change || response.methodology?.previous_available_change, response.source?.url, response.source?.history_url, response.retrieved_at].map(safeCsv).join(',');
   });
   return [header.map(safeCsv).join(','), ...lines].join('\r\n');
 }

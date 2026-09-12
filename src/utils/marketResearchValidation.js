@@ -87,6 +87,16 @@ function validCompany(company, comparisons = true) {
     && validFilingComparison(company.filingComparisons.ttm)));
 }
 
+/** Validate a full per-company SEC research record before trusting shared cache data. */
+export function isMarketCompany(value, expectedVersion, expectedTicker) {
+  return validCompany(value, false)
+    && (expectedVersion === undefined || value.version === expectedVersion)
+    && (expectedTicker === undefined || value.ticker === expectedTicker)
+    && record(value.evidence)
+    && Array.isArray(value.evidence.annual)
+    && Array.isArray(value.evidence.ttm);
+}
+
 function validCohort(cohort) {
   return record(cohort)
     && ['id', 'label', 'title', 'description', 'disclosureTerms']

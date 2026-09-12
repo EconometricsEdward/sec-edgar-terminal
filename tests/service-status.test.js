@@ -73,5 +73,6 @@ test("CFTC prepared-cache status is interpreted independently from SEC configura
   ] };
   assert.equal(describeCftcHealth(payload, 200), 'TFF: ready · 2026-09-08 | Disaggregated: stale · 2026-09-02');
   assert.equal(describeCftcHealth({ schema_version: 'edgar.cftc-positioning.v1', status: 'disabled', families: [] }, 503), 'Shared cache disabled');
+  assert.equal(describeCftcHealth({ schema_version: 'edgar.cftc-positioning.v1', status: 'disabled', families: [], code: 'CFTC_DISABLED' }, 503), 'Paused by provider-free rollback switch');
   assert.equal(describeCftcHealth(null, 503), 'Check unavailable');
 });

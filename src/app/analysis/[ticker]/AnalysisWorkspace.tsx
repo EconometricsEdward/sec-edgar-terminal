@@ -1857,7 +1857,7 @@ function Workspace(props: any) {
               {settings.view === "extended" && (
                 <section className={styles.panel}>
                   <p className={styles.eyebrow}>Extended company research</p>
-                  <h2>Filings, quality, market & ownership tools</h2>
+                  <h2>Filings, quality & ownership tools</h2>
                   <p className={styles.muted}>
                     Open the existing research panels for filing-language
                     comparisons, disclosure radar, deeper quality diagnostics,

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMarketCompany, marketAcceptanceTimes, marketPeriodMetrics, marketCompanySummary, marketRevenuePoint } from '../src/utils/marketResearchData.js';
-import { MARKET_VERSION, MARKET_METRICS, DEFAULT_MARKET_VIEW, metricStats, selectMarketCompanies, parseMarketView, marketViewQuery, parseMarketSaved, baselineChanges, marketTrendPoints, marketCsv, formatMarket, isOlderReport } from '../src/utils/marketResearch.js';
+import { MARKET_VERSION, MARKET_METRICS, DEFAULT_MARKET_VIEW, metricStats, selectMarketCompanies, parseMarketView, marketViewQuery, marketViewHistoryMode, marketViewPath, canonicalMarketViewQuery, marketSavedViewSummary, cftcPercentileForHistory, cftcHeatCellDescription, parseMarketSaved, baselineChanges, marketTrendPoints, marketCsv, formatMarket, isOlderReport } from '../src/utils/marketResearch.js';
 
 const inputs = (values) => Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { value }]));
 function company(ticker, values, end = '2026-06-30') {
@@ -242,6 +242,50 @@ test('CFTC positioning views round-trip family-specific controls without alterin
   assert.deepEqual(parseMarketView(marketViewQuery(view),['credit']),view);
   const wrong=parseMarketView('tab=positioning&family=disaggregated&contract=%2FBAD&group=leveraged-funds&date=2026-02-30&history=9y&display=other');
   assert.equal(wrong.cftcContract,'067651');assert.equal(wrong.cftcGroup,'managed-money');assert.equal(wrong.cftcHistory,'5y');assert.equal(wrong.cftcDisplay,'net-oi');
+  assert.equal(parseMarketView('tab=positioning&date=2026-09-08junk').cftcDate,'latest');
+});
+test('Market history pushes real tab transitions, replaces filter changes, and skips no-op entries',()=>{
+  const companies={...DEFAULT_MARKET_VIEW,tab:'companies'};
+  assert.equal(marketViewHistoryMode(DEFAULT_MARKET_VIEW,companies),'pushState');
+  assert.equal(marketViewHistoryMode(companies,{...companies,screen:'losses'}),'replaceState');
+  assert.equal(marketViewHistoryMode(companies,{...companies}),null);
+  assert.equal(marketViewHistoryMode(companies,{...companies,screen:'losses'},true),'pushState');
+  assert.equal(marketViewPath(companies),'/market?tab=companies');
+});
+test('Saved views canonicalize supported state and reject unknown or malformed rules without substitution',()=>{
+  const positioning=canonicalMarketViewQuery('tab=positioning&family=tff&contract=abc123&group=dealer&history=1y&display=percentile');
+  assert.equal(new URLSearchParams(positioning.query).get('contract'),'ABC123','structurally valid unsupported codes remain explicit for catalog validation');
+  const raw=JSON.stringify({version:1,watchlist:[],baselines:{},views:[
+    {name:' Legacy price view ',query:'tab=overview&basis=annual&asset=SPY&window=5y&proxy=QQQ'},
+    {name:'Unknown rule',query:'tab=companies&futureMetric=alpha'},
+    {name:'Invalid screen',query:'tab=companies&screen=marketBeta'},
+    {name:'Duplicate state',query:'tab=companies&tab=overview'},
+  ]});
+  const saved=parseMarketSaved(raw,['credit']);
+  assert.equal(saved.views.length,1);
+  assert.equal(saved.views[0].name,'Legacy price view');
+  assert.equal(new URLSearchParams(saved.views[0].query).get('tab'),'fundamentals');
+  assert.match(saved.migrationNotice,/moved to Fundamental Lab/);
+  assert.match(saved.migrationNotice,/3 saved views were not restored/);
+  assert.match(saved.migrationNotice,/no replacement screening rule was applied/);
+});
+test('CFTC presentation selects the requested prior-report percentile and discloses its exact comparison range',()=>{
+  const group={netPctOi:4.5,oneWeekNetPctChange:-1.25,percentile:{value:80,observations:260,required:260,comparisonRange:{observations:260,earliest:'2021-09-14',latest:'2026-09-01'}},shorterPercentiles:[
+    {value:60,observations:52,required:52,comparisonRange:{observations:52,earliest:'2025-09-09',latest:'2026-09-01'}},
+    {value:70,observations:156,required:156,comparisonRange:{observations:156,earliest:'2023-09-12',latest:'2026-09-01'}},
+  ]};
+  assert.equal(cftcPercentileForHistory(group,'1y').value,60);
+  assert.equal(cftcPercentileForHistory(group,'3y').value,70);
+  assert.equal(cftcPercentileForHistory(group,'5y').value,80);
+  const description=cftcHeatCellDescription({family:'TFF',row:{launchLabel:'E-mini S&P 500',code:'13874A',exchange:'CME',reportDate:'2026-09-08'},group,groupLabel:'Leveraged Funds',display:'percentile',historyWindow:'1y'});
+  assert.match(description,/52-prior-report within-series percentile: 60\.0%/);
+  assert.match(description,/exact-week change in net\/open interest: -1\.3 percentage points/);
+  assert.match(description,/2025-09-09 to 2026-09-01/);
+  assert.doesNotMatch(description,/2026-09-08 to/,'the selected observation is not part of its comparison range');
+});
+test('Saved-view summaries distinguish CFTC scope from SEC fundamental views',()=>{
+  assert.match(marketSavedViewSummary('tab=positioning&family=disaggregated&contract=067651&group=managed-money&history=3y'),/Disaggregated futures only · CFTC 067651 · Managed Money · 156 prior reports/);
+  assert.match(marketSavedViewSummary('tab=fundamentals&basis=annual'),/Fundamental Lab · Annual SEC fundamentals/);
 });
 test('Saved research refuses incompatible versions and keeps unavailable-company baselines', () => {
   assert.throws(() => parseMarketSaved('{"version":2,"watchlist":[],"views":[]}'));

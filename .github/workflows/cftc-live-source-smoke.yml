@@ -1,0 +1,41 @@
+name: CFTC Live Source Smoke (Advisory)
+
+on:
+  workflow_dispatch:
+  # CFTC reports are normally released Friday afternoon in New York. Running
+  # early Saturday UTC keeps this check modest and safely after either EDT or
+  # EST release time. The test discovers the latest official report date, so
+  # holiday-delayed releases are not treated as if they followed a fixed date.
+  schedule:
+    - cron: '17 2 * * 6'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cftc-live-source-smoke
+  cancel-in-progress: true
+
+jobs:
+  official-tokenless-source-check:
+    name: Official tokenless resources (non-gating)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify bounded official CFTC resources
+        # No CFTC token is supplied: this intentionally verifies the public,
+        # read-only gpe5-46if and 72hh-3qpy resource interfaces.
+        run: npm run test:cftc-live

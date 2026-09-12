@@ -1,11 +1,12 @@
 import { CFTC_HISTORY_WINDOWS, CFTC_SCHEMA_VERSION, cftcDate, cftcGroup, isCftcContractCode, isCftcFamily } from '../../../../../utils/cftc.js';
-import { loadCftcHistory } from '../../../../../utils/cftcServer.js';
+import { isCftcEnabled } from '../../../../../utils/cftcFeature.js';
+import { CFTC_CACHE_NAMESPACE, isCftcPublicReportDate, loadCftcHistory } from '../../../../../utils/cftcServer.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse, rateLimitHeaders } from '../../../../../utils/rateLimit.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-Schema-Version, X-Report-Date, X-Cache-Source, X-Data-Stale, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Remaining, Retry-After, Link' };
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-Schema-Version, X-Report-Date, X-Cache-Source, X-Data-Stale, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Remaining, Retry-After, Link', 'X-Schema-Version': CFTC_SCHEMA_VERSION };
 
 function readRequest(url) {
   const params = new URL(url).searchParams;
@@ -17,13 +18,14 @@ function readRequest(url) {
   if (!isCftcFamily(family)) throw Object.assign(new Error('Use family=tff or family=disaggregated.'), { status: 400, code: 'INVALID_REPORT_FAMILY' });
   if (!isCftcContractCode(code)) throw Object.assign(new Error('Use a verified CFTC contract code.'), { status: 400, code: 'INVALID_CONTRACT' });
   if (!cftcGroup(family, group)) throw Object.assign(new Error('Use a trader group from the selected report family.'), { status: 400, code: 'INVALID_TRADER_GROUP' });
-  if (reportDate !== 'latest' && (!cftcDate(reportDate) || reportDate > new Date().toISOString().slice(0, 10))) throw Object.assign(new Error('Use date=latest or a valid, non-future YYYY-MM-DD date.'), { status: 400, code: 'INVALID_REPORT_DATE' });
+  if (reportDate !== 'latest' && (cftcDate(reportDate) !== reportDate || !isCftcPublicReportDate(reportDate))) throw Object.assign(new Error('Use date=latest or a YYYY-MM-DD date within the retained six-year CFTC range.'), { status: 400, code: 'INVALID_REPORT_DATE' });
   if (!Object.hasOwn(CFTC_HISTORY_WINDOWS, window)) throw Object.assign(new Error('Use window=1y, 3y, or 5y.'), { status: 400, code: 'INVALID_HISTORY_WINDOW' });
   return { family, code, group, reportDate, window };
 }
 
 export async function GET(request) {
-  const limit = await checkRateLimit({ key: `rl:cftc-history:${getClientIp(request)}`, windowMs: 10 * 60_000, max: 40, cost: 2 });
+  if (!isCftcEnabled()) return Response.json({ schema_version: CFTC_SCHEMA_VERSION, status: 'disabled', error: 'CFTC positioning is disabled for provider-free rollback.', code: 'CFTC_DISABLED', retryable: false }, { status: 503, headers: { ...CORS, 'Cache-Control': 'private, no-store' } });
+  const limit = await checkRateLimit({ key: `rl:cftc-history:${CFTC_CACHE_NAMESPACE}:${getClientIp(request)}`, windowMs: 10 * 60_000, max: 40, cost: 2 });
   if (!limit.allowed) return rateLimitedResponse(limit, CORS);
   try {
     const result = await loadCftcHistory({ ...readRequest(request.url), signal: request.signal });

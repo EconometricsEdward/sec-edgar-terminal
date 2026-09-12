@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import HomeResearch from "../components/site/HomeResearch";
 import ResearchWorkflow from "../components/site/ResearchWorkflow";
+import { isCftcEnabled } from "../utils/cftcFeature.js";
 import styles from "./home.module.css";
 
 const tools = [
@@ -73,6 +74,10 @@ const tools = [
   },
 ];
 export default function HomePage() {
+  const cftcEnabled = isCftcEnabled();
+  const availableTools = tools.filter(
+    (tool) => cftcEnabled || tool.href !== "/market?tab=positioning",
+  );
   return (
     <div className={styles.page}>
       <section className={styles.hero}>
@@ -103,7 +108,7 @@ export default function HomePage() {
         </div>
         <ResearchWorkflow />
       </section>
-      <HomeResearch />
+      <HomeResearch cftcEnabled={cftcEnabled} />
       <section aria-labelledby="tools-title">
         <div className={styles.sectionHeading}>
           <div>
@@ -115,7 +120,7 @@ export default function HomePage() {
           </Link>
         </div>
         <div className={styles.tools}>
-          {tools.map((tool) => (
+          {availableTools.map((tool) => (
             <Link
               href={tool.href}
               key={tool.title}
@@ -142,8 +147,8 @@ export default function HomePage() {
           <p>
             Reported financials and filing text come from SEC records.
             Calculations, missing data, reporting dates, and limited search
-            windows need context. Fund holdings are historical reports;
-            official CFTC positioning is labeled and sourced separately.
+            windows need context. Fund holdings are historical reports
+            {cftcEnabled && "; official CFTC positioning is labeled and sourced separately"}.
           </p>
         </div>
         <Link href="/help#coverage">

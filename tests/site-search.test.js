@@ -156,6 +156,19 @@ test("recent searches reject executable, external and malformed paths and retain
   );
 });
 
+test("recent searches migrate retired Market routes without inventing a replacement rule", () => {
+  const [entry] = normalizeRecentSearches([
+    {
+      query: "Old price screen",
+      path: "/market?tab=factors&asset=SPY&window=3y&cohort=credit-banks",
+      ts: 1,
+    },
+  ]);
+  assert.match(entry.path, /tab=fundamentals/);
+  assert.match(entry.path, /cohort=credit-banks/);
+  assert.doesNotMatch(entry.path, /(?:asset|window|proxy)=/);
+});
+
 const companies = {
   0: { ticker: "AAPL", cik_str: 320193, title: "Apple Inc." },
   1: { ticker: "SPY", cik_str: 884394, title: "SPDR S&P 500 ETF Trust" },

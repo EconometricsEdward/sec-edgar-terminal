@@ -4,7 +4,7 @@ import { UNIVERSE_FRESH_MS } from './marketUniverse.js';
 import { readSnapshot } from './snapshotCache.js';
 
 export const PROVIDER_RETIREMENT_VERSION = 'edgar.provider-retirement.v1';
-export const PROVIDER_RETIREMENT_PLAN_ID = 'security-price-retirement-2026-09-r3';
+export const PROVIDER_RETIREMENT_PLAN_ID = 'security-price-retirement-2026-09-r4';
 const WRITER_QUIESCENCE_MS = 360_000;
 const VERIFY_DELAY_MS = 15_000;
 
@@ -23,8 +23,12 @@ export const RETIRED_CACHE_PREFIXES = [
 const TARGETS = [
   ...RETIRED_CACHE_PREFIXES.map(prefix => ({ kind: 'warm', prefix })),
   { kind: 'raw', prefix: 'views:' },
+  { kind: 'raw', prefix: 'rl:stock:' },
+  { kind: 'raw', prefix: 'rl:market-signals-v1:' },
+  { kind: 'raw', prefix: 'rl:factor-universe:' },
 ];
 const RETIRED_QUANT_IDS = [...Array.from({ length: 16 }, (_, index) => `batch-${index}`), 'compact-price-storage'];
+export const RETIRED_RAW_KEYS = ['hot_tickers'];
 
 function validCheckpoint(value) {
   const common = value?.version === PROVIDER_RETIREMENT_VERSION
@@ -79,6 +83,12 @@ export async function runProviderRetirementStep({ maxKeys = 1000, now = Date.now
   const deleteRawMany = operations.deleteRawMany || warmDeleteRawMany;
   if (!enabled()) throw Object.assign(new Error('Shared cache storage is unavailable.'), { status: 503 });
 
+  // The scheduled route remains installed so a deployment cannot strand an
+  // armed migration. Once verification completes, each later run is one
+  // read-only checkpoint lookup and performs no lease or deletion work.
+  const completed = await get(PROVIDER_RETIREMENT_VERSION, 'checkpoint');
+  if (validCheckpoint(completed) && completed.complete) return completed;
+
   const token = await acquire(PROVIDER_RETIREMENT_VERSION, 'run', 360_000);
   if (!token) return { version: PROVIDER_RETIREMENT_VERSION, plan_id: PROVIDER_RETIREMENT_PLAN_ID, skipped: 'Retirement cleanup is already running or coordination is unavailable.', complete: false };
   try {
@@ -99,6 +109,7 @@ export async function runProviderRetirementStep({ maxKeys = 1000, now = Date.now
     const state = { ...prior };
     if (now < Date.parse(state.deletion_not_before)) return state;
     if (state.phase === 'verify' && Number.isFinite(Date.parse(state.verification_not_before)) && now < Date.parse(state.verification_not_before)) return state;
+    if (state.phase === 'delete') state.ready_proof = await assertReplacementReady(operations.readSnapshot || readSnapshot, now);
 
     let remaining = maxKeys, pages = 0;
     while (state.target_index < TARGETS.length && remaining > 0 && pages < 32) {
@@ -120,8 +131,8 @@ export async function runProviderRetirementStep({ maxKeys = 1000, now = Date.now
 
     if (state.target_index >= TARGETS.length && state.phase === 'delete') {
       const quantRemoved = await deleteWarmMany('quant-coverage-v1', RETIRED_QUANT_IDS);
-      const rawRemoved = await deleteRawMany(['hot_tickers', 'popular_tickers']);
-      if (!Number.isSafeInteger(quantRemoved) || quantRemoved < 0 || quantRemoved > RETIRED_QUANT_IDS.length || !Number.isSafeInteger(rawRemoved) || rawRemoved < 0 || rawRemoved > 2) throw new Error('Retirement cleanup could not remove exact legacy keys.');
+      const rawRemoved = await deleteRawMany(RETIRED_RAW_KEYS);
+      if (!Number.isSafeInteger(quantRemoved) || quantRemoved < 0 || quantRemoved > RETIRED_QUANT_IDS.length || !Number.isSafeInteger(rawRemoved) || rawRemoved < 0 || rawRemoved > RETIRED_RAW_KEYS.length) throw new Error('Retirement cleanup could not remove exact legacy keys.');
       state.removed += quantRemoved + rawRemoved;
       state.exact_cleaned = true;
       state.phase = 'verify';
@@ -131,8 +142,8 @@ export async function runProviderRetirementStep({ maxKeys = 1000, now = Date.now
       state.verification_not_before = new Date(now + VERIFY_DELAY_MS).toISOString();
     } else if (state.target_index >= TARGETS.length && state.phase === 'verify') {
       const quantRemoved = await deleteWarmMany('quant-coverage-v1', RETIRED_QUANT_IDS);
-      const rawRemoved = await deleteRawMany(['hot_tickers', 'popular_tickers']);
-      if (!Number.isSafeInteger(quantRemoved) || quantRemoved < 0 || quantRemoved > RETIRED_QUANT_IDS.length || !Number.isSafeInteger(rawRemoved) || rawRemoved < 0 || rawRemoved > 2) throw new Error('Retirement verification could not recheck exact legacy keys.');
+      const rawRemoved = await deleteRawMany(RETIRED_RAW_KEYS);
+      if (!Number.isSafeInteger(quantRemoved) || quantRemoved < 0 || quantRemoved > RETIRED_QUANT_IDS.length || !Number.isSafeInteger(rawRemoved) || rawRemoved < 0 || rawRemoved > RETIRED_RAW_KEYS.length) throw new Error('Retirement verification could not recheck exact legacy keys.');
       state.removed += quantRemoved + rawRemoved;
       state.verification_removed += quantRemoved + rawRemoved;
       if (state.verification_removed > 0) {

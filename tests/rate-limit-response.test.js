@@ -15,6 +15,10 @@ test('rate-limit responses are non-cacheable and expose standard quota headers',
   assert.equal(response.headers.get('ratelimit-limit'), '20');
   assert.ok(Number(response.headers.get('retry-after')) >= 1);
   assert.match((await response.json()).error, /Rate limit exceeded/);
+
+  const versioned = rateLimitedResponse(info, { 'X-Schema-Version': 'example.v1' });
+  assert.equal(versioned.headers.get('x-schema-version'), 'example.v1');
+  assert.equal((await versioned.json()).schema_version, 'example.v1');
 });
 
 test('weighted limits reject fractional costs before touching storage', async () => {

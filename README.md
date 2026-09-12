@@ -51,17 +51,19 @@ npm run test:cftc-live
 
 - `GET /api/health` returns a briefly edge-cached JSON health summary for deployment checks. It reports whether the required SEC user agent, warm cache, and shared SEC request gate are configured, plus the Vercel environment/commit serving the request. Degraded responses are never cached.
 - `GET /api/v1/cftc/status` reads prepared TFF and Disaggregated cache state independently. It recomputes cache age and report currency without contacting the upstream CFTC service.
-- `GET /api/cron/cftc` prepares both CFTC report families with a durable per-family checkpoint, so a successful family is not repeated when the other family needs a bounded retry. Prepared snapshots are fresh for six hours and may fall back to a disclosed last-good snapshot for no more than 15 days.
+- `GET /api/cron/cftc` prepares both CFTC report families with a durable per-family checkpoint, so a successful family is not repeated when the other family needs a bounded retry. Prepared snapshots are fresh for 26 hours and may fall back to a disclosed last-good snapshot for no more than 15 days.
 - `/.well-known/security.txt` publishes the public issue tracker as the security contact channel.
 
 The live source smoke test is intentionally opt-in: `CFTC_LIVE_SMOKE=1 npm run test:cftc-live`. It performs bounded, read-only checks against both official datasets.
 
 ### Migration maintenance
 
+The coordinated dependency checklist, cache procedure, verification record, and provider-free rollback guide are in [`docs/provider-retirement-migration.md`](docs/provider-retirement-migration.md).
+
 - Treat schema or methodology changes as explicit versions. Publish and validate a new contract before retiring an old one; never reinterpret retired price-derived fields inside Fundamental Lab v2 or CFTC v1.
 - The two CFTC report families refresh independently. A one-family failure remains visible as partial/degraded status; a validated last-good family snapshot may be served with its original clocks for at most 15 days.
-- A provider-free rollback may disable the CFTC tab or cron while preserving SEC research, but must not restore third-party security-price acquisition or the retired return APIs.
-- The authenticated production route `GET /api/cron/provider-retirement` runs the bounded, checkpointed cleanup. Verify that both Fundamental Lab bases are valid first, then repeat the route until `complete: true`; only audited legacy cache prefixes are removed.
+- A provider-free rollback sets `CFTC_ENABLED=0` (or `false`) and redeploys. This hides CFTC discovery/UI, returns a structured non-cacheable disabled response from its APIs, and skips its authenticated cron while preserving SEC research and all retired-provider `410` routes.
+- The authenticated production route `GET /api/cron/provider-retirement` uses a durable done marker. It first proves both Fundamental Lab bases, observes a six-minute writer-quiescence barrier, performs bounded deletion, and completes only after a delayed clean verification scan. Use the authenticated post-deploy sequence in the migration guide for prompt completion; the daily Hobby-compatible cron is a safety net. Completed invocations are a single read-only checkpoint lookup.
 
 ## Environment Variables
 
@@ -71,7 +73,7 @@ See `.env.example` for the current set of expected variables. `SEC_USER_AGENT`, 
 
 - SEC submissions and XBRL company facts from `data.sec.gov`.
 - SEC filing documents from `www.sec.gov`.
-- Official futures-only CFTC TFF (`gpe5-46if`) and Disaggregated (`72hh-3qpy`) Public Reporting datasets. These provide positioning context, not a security-price feed.
+- Official futures-only CFTC TFF (`gpe5-46if`) and Disaggregated (`72hh-3qpy`) Public Reporting datasets. See the [COT Help guide](https://publicreporting.cftc.gov/stories/s/COT-Help/p2fg-u73y/), [CFTC COT overview](https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm), and [official release schedule](https://www.cftc.gov/MarketReports/CommitmentsofTraders/ReleaseSchedule/index.htm). These provide positioning context, not a security-price feed.
 
 ## Limitations
 

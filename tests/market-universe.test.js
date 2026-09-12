@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { buildUniverseSnapshot, distribution, summarizeScope, UNIVERSE_METRICS, UNIVERSE_VERSION } from '../src/utils/marketUniverse.js';
 import { chooseUniversePublication, hasRetiredUniverseFields, isUniverseSnapshot } from '../src/utils/marketUniverseServer.js';
 import { GET as v1 } from '../src/app/api/v1/factor-universe/route.js';
-import { GET as v2 } from '../src/app/api/v2/factor-universe/route.js';
+import { factorUniverseRateLimitKey, GET as v2 } from '../src/app/api/v2/factor-universe/route.js';
 import { GET as cron } from '../src/app/api/cron/factor-universe/route.js';
 
 const now=new Date('2026-09-10T08:00:00Z');
@@ -58,7 +58,40 @@ test('incompatible filing periods remain unavailable and retain source clocks',(
 test('v2 snapshots reject every retired market-data field recursively',()=>{
   const snapshot=buildUniverseSnapshot(atlas(),{}, {now});
   assert.equal(isUniverseSnapshot(snapshot),true);assert.equal(hasRetiredUniverseFields(snapshot),false);
-  for(const field of ['price_through','price_sample','price_status','price_source','exposure','event','co_movement','associations','sector_proxy']) assert.equal(hasRetiredUniverseFields({...snapshot,nested:{[field]:1}}),true,field);
+  for(const field of ['price_through','price_sample','price_status','price_source','price_basis','price_model_observations','exposure','event','co_movement','associations','sector_proxy','market_beta','downside_beta','sector_beta','residual_volatility','response_z','price_response_z','post_filing_response','evidence_gap','beta','r_squared']) assert.equal(hasRetiredUniverseFields({...snapshot,nested:{[field]:1}}),true,field);
+});
+
+test('v2 cache validation enforces the exact metric contract and internally consistent values',()=>{
+  const snapshot=buildUniverseSnapshot(atlas(),{}, {now});
+  const missingMetric=structuredClone(snapshot);delete missingMetric.rows[0].metrics.cashToAssets;
+  const extraMetric=structuredClone(snapshot);extraMetric.rows[0].metrics.legacySignal={current:1,prior:0,change:1,unavailable_reason:null};
+  const extraMetricField=structuredClone(snapshot);extraMetricField.rows[0].metrics.revenueGrowth.rank=99;
+  const inconsistentChange=structuredClone(snapshot);inconsistentChange.rows[0].metrics.revenueGrowth.change+=1;
+  const nonfinite=structuredClone(snapshot);nonfinite.rows[0].metrics.revenueGrowth.current=Infinity;
+  const missingReason=structuredClone(snapshot);missingReason.rows[0].metrics.revenueGrowth={current:null,prior:1,change:null,unavailable_reason:null};
+  for(const [label,value] of Object.entries({missingMetric,extraMetric,extraMetricField,inconsistentChange,nonfinite,missingReason})) assert.equal(isUniverseSnapshot(value),false,label);
+});
+
+test('v2 cache validation binds filing provenance, identities, scope keys, links, and cache basis',()=>{
+  const snapshot=buildUniverseSnapshot(atlas(),{}, {now});
+  assert.equal(isUniverseSnapshot(snapshot,'ttm'),true);
+  assert.equal(isUniverseSnapshot(snapshot,'annual'),false);
+  const cases={
+    nonSecSource:structuredClone(snapshot),
+    mismatchedAccession:structuredClone(snapshot),
+    duplicateIssuer:structuredClone(snapshot),
+    wrongScopeCount:structuredClone(snapshot),
+    unknownRootField:structuredClone(snapshot),
+    wrongApiBasis:structuredClone(snapshot),
+  };
+  cases.nonSecSource.rows[0].source='https://example.test/filing';
+  cases.mismatchedAccession.rows[0].accession='0000000100-26-999999';
+  cases.duplicateIssuer.rows[1].cik=cases.duplicateIssuer.rows[0].cik;
+  cases.duplicateIssuer.rows[1].source=cases.duplicateIssuer.rows[1].source.replace('/101/','/100/');
+  cases.wrongScopeCount.scopes.all.companies--;
+  cases.unknownRootField.return_model={};
+  cases.wrongApiBasis.links.api='https://secedgarterminal.com/api/v2/factor-universe?basis=annual';
+  for(const [label,value] of Object.entries(cases)) assert.equal(isUniverseSnapshot(value),false,label);
 });
 
 test('publication retention depends on SEC coverage and never revives an incompatible v1 snapshot',()=>{
@@ -68,6 +101,11 @@ test('publication retention depends on SEC coverage and never revives an incompa
   assert.equal(retained.generated_at,previous.generated_at);assert.equal(retained.status,'stale');assert.match(retained.refresh_warning,/SEC filing coverage/);
   const legacy={...previous,schema_version:'edgar.factor-universe.v1',price_through:'2026-09-08'};
   assert.equal(isUniverseSnapshot(legacy),false);
+  const wrongBasis=buildUniverseSnapshot(atlas(),{}, {basis:'annual',now});wrongBasis.generated_at=previous.generated_at;
+  const selected=chooseUniversePublication(wrongBasis,partial,now.getTime());
+  assert.equal(selected.generated_at,partial.generated_at);assert.equal(selected.basis,'ttm');assert.equal(selected.rows.length,8);
+  const malformed=structuredClone(partial);delete malformed.rows[0].metrics.netMargin;
+  assert.throws(()=>chooseUniversePublication(previous,malformed,now.getTime()),/valid SEC-only v2/);
 });
 
 test('SEC-only snapshots conform to the published v2 schema',()=>{
@@ -90,6 +128,10 @@ test('v1 is 410 with a successor while v2 rejects ambiguous or unsupported queri
     const response=await v2(new Request(`https://example.test/api/v2/factor-universe?${query}`,{headers:{'x-forwarded-for':`192.0.2.${query.length}`}}));
     assert.equal(response.status,400);assert.equal(response.headers.get('cache-control'),'private, no-store');
   }
+});
+
+test('v2 public quota uses the deployment-scoped SEC cache namespace',()=>{
+  assert.match(factorUniverseRateLimitKey('192.0.2.1'), /^rl:fundamental-universe-v2:edgar\.fundamental-universe\.v2:(?:local|production|preview-[a-z0-9]+):192\.0\.2\.1$/);
 });
 
 test('fundamental publication cron remains authenticated and non-cacheable',async()=>{

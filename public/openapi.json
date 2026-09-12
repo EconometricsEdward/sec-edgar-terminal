@@ -212,13 +212,20 @@
         "responses": {
           "200": {
             "description": "At least one prepared family snapshot is usable",
-            "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },
+            "headers": {
+              "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" },
+              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimit" },
+              "RateLimit-Remaining": { "$ref": "#/components/headers/RateRemaining" },
+              "RateLimit-Reset": { "$ref": "#/components/headers/RateReset" }
+            },
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/CftcStatus" }
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "503": {
             "description": "Shared cache is disabled or no prepared family snapshot is usable",
             "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },
@@ -290,6 +297,8 @@
           },
           "checked_at": { "type": "string", "format": "date-time" },
           "error": { "type": "string" },
+          "code": { "type": "string" },
+          "retryable": { "type": "boolean" },
           "families": {
             "type": "array",
             "items": {
@@ -348,6 +357,7 @@
     "responses": {
       "BadRequest": {
         "description": "Invalid or ambiguous query",
+        "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/ApiError" }
@@ -356,6 +366,7 @@
       },
       "NotFound": {
         "description": "No validated observation for the requested selection",
+        "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/ApiError" }
@@ -365,6 +376,7 @@
       "RateLimited": {
         "description": "Bounded public rate limit reached",
         "headers": {
+          "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" },
           "Retry-After": { "schema": { "type": "integer" } },
           "RateLimit-Limit": { "$ref": "#/components/headers/RateLimit" },
           "RateLimit-Remaining": { "$ref": "#/components/headers/RateRemaining" },
@@ -378,6 +390,7 @@
       },
       "Unavailable": {
         "description": "Prepared data or upstream source is temporarily unavailable",
+        "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/ApiError" }

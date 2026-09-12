@@ -15,6 +15,7 @@ test('the retired price route is an unconditional non-cacheable 410 with no repl
       assert.equal(body.schema_version, 'edgar.api-retirement.v1');
       assert.equal(body.retired, true);
       assert.equal(body.replacement, null);
+      assert.equal(body.documentation, '/help#sources');
       assert.match(body.note, /not a replacement price feed/);
     }
     assert.equal(calls, 0);

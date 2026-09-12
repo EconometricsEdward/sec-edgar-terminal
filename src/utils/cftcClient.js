@@ -1,6 +1,14 @@
 const values = new Map();
 const pending = new Map();
 const CLIENT_TTL = 5 * 60_000;
+export const CFTC_CLIENT_CACHE_MAX = 64;
+
+function pruneValues(now = Date.now(), reserve = 0) {
+  for (const [path, cached] of values) {
+    if (now - cached.at >= CLIENT_TTL) values.delete(path);
+  }
+  while (values.size > CFTC_CLIENT_CACHE_MAX - reserve) values.delete(values.keys().next().value);
+}
 
 function waitForCaller(task, signal, timeoutMs) {
   const timeout = AbortSignal.timeout(timeoutMs), callerSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
@@ -18,8 +26,13 @@ function waitForCaller(task, signal, timeoutMs) {
  * @param {{ signal?: AbortSignal, timeoutMs?: number }} [options]
  */
 export async function fetchPreparedCftc(path, { signal, timeoutMs = 45_000 } = {}) {
+  pruneValues();
   const cached = values.get(path);
-  if (cached && Date.now() - cached.at < CLIENT_TTL) return cached.value;
+  if (cached) {
+    values.delete(path);
+    values.set(path, cached);
+    return cached.value;
+  }
   let task = pending.get(path);
   if (!task) {
     task = (async () => {
@@ -37,6 +50,7 @@ export async function fetchPreparedCftc(path, { signal, timeoutMs = 45_000 } = {
       error.status = response.status;
       throw error;
     }
+    pruneValues(Date.now(), 1);
     values.set(path, { at: Date.now(), value: result });
     return result;
     })();
@@ -46,6 +60,7 @@ export async function fetchPreparedCftc(path, { signal, timeoutMs = 45_000 } = {
   return waitForCaller(task, signal, timeoutMs);
 }
 
+/** @param {string | null} [path] */
 export function clearPreparedCftc(path = null) {
   if (path) values.delete(path); else values.clear();
 }

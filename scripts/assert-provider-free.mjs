@@ -1,29 +1,22 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { providerBoundaryViolations } from './provider-boundary-rules.mjs';
 
 const buildRoot = new URL('../.next/', import.meta.url).pathname;
 if (!existsSync(buildRoot)) throw new Error('Production build output is unavailable for the provider-removal gate.');
 
-const forbidden = [
-  ['query1', 'finance', ['ya', 'hoo'].join(''), 'com'].join('.'),
-  ['query2', 'finance', ['ya', 'hoo'].join(''), 'com'].join('.'),
-  ['finance', ['ya', 'hoo'].join(''), 'com'].join('.'),
-  [['st', 'ooq'].join(''), 'com'].join('.'),
-  [['ya', 'hoo'].join(''), 'finance'].join('_'),
-  ...[
-    ['price', 'Data', 'Server'], ['market', 'Signals', 'Server'], ['market', 'Regression'],
-    ['market', 'Factor', 'Insights'], ['Stock', 'Price', 'Chart'], ['popular', 'Tickers'], ['view', 'Tracker'],
-  ].map(parts => parts.join('')),
-];
-const textExtensions = /\.(?:js|json|map|html|txt|rsc|body)$/i;
+const textExtensions = /\.(?:js|mjs|cjs|json|map|html|txt|rsc|body|css|xml|svg|webmanifest|ndjson|csv)$/i;
 const hits = [];
 function scan(directory) {
   for (const name of readdirSync(directory)) {
     const path = join(directory, name), info = statSync(path);
     if (info.isDirectory()) scan(path);
-    else if (info.size <= 25_000_000 && (textExtensions.test(name) || !name.includes('.'))) {
+    else if (textExtensions.test(name) || !name.includes('.')) {
+      if (info.size > 100_000_000) throw new Error(`Provider-removal gate cannot safely inspect oversized text artifact: ${path.slice(buildRoot.length)}`);
       const value = readFileSync(path, 'utf8');
-      if (forbidden.some(term => value.toLowerCase().includes(term.toLowerCase()))) hits.push(path.slice(buildRoot.length));
+      const name = path.slice(buildRoot.length);
+      const violations = providerBoundaryViolations(name, value, { built: true });
+      if (violations.length) hits.push(`${name} (${violations.join(', ')})`);
     }
   }
 }

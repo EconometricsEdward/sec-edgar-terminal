@@ -14,6 +14,7 @@
 
 import { safeInternalPath } from "./siteRoutes.js";
 import { MAX_COMPARE_COMPANIES } from "./compareLimits.js";
+import { migrateMarketPath } from "./marketResearch.js";
 
 export const DISCLOSURE_TOPIC_LABELS = {
   AI: "artificial intelligence",
@@ -416,7 +417,8 @@ export function normalizeRecentSearches(value) {
         !Number.isFinite(entry.ts)
       )
         return [];
-      const path = safeInternalPath(entry.path);
+      const safePath = safeInternalPath(entry.path);
+      const path = safePath ? migrateMarketPath(safePath).path : null;
       if (!path || seen.has(path)) return [];
       seen.add(path);
       return [{ query: entry.query, path, ts: entry.ts }];

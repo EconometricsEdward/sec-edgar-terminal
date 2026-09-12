@@ -11,17 +11,22 @@ import { getOperatingTickers } from './tickerMap.js';
 import { warmGet, warmSet, warmGetMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
 import { publishMarketOverview } from './marketOverviewServer.js';
+import { cacheDeploymentScope, isProductionDeployment } from './cacheScope.js';
 
-export const QUANT_COMPANY_CACHE = 'quant-company-v1';
-export const QUANT_ATLAS_CACHE = 'quant-atlas-v1';
+const scope = cacheDeploymentScope();
+export const QUANT_COVERAGE_CACHE = `${QUANT_COVERAGE_VERSION}:${scope}`;
+export const QUANT_COMPANY_CACHE = `quant-company-v2:${scope}`;
+export const QUANT_ATLAS_CACHE = `quant-atlas-v2:${scope}`;
 const LEGACY_MEMBERSHIP_CACHE = 'quant-coverage-v1';
+const LEGACY_COMPANY_CACHE = 'quant-company-v1';
+const LEGACY_ATLAS_CACHE = 'quant-atlas-v1';
 const DAY = 86400000;
 const RETENTION = 8 * 86400;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24);
 export const membershipId = membership => hash(membership.rows.map(r => [r.cik, r.ticker, r.sector, r.fund]));
 
 export async function readQuantMembership() {
-  const [current, preservedLegacy] = await Promise.all([warmGet(QUANT_COVERAGE_VERSION, 'membership'), warmGet(LEGACY_MEMBERSHIP_CACHE, 'membership')]);
+  const [current, preservedLegacy] = await Promise.all([warmGet(QUANT_COVERAGE_CACHE, 'membership'), isProductionDeployment() ? warmGet(LEGACY_MEMBERSHIP_CACHE, 'membership') : null]);
   const cached = [current, preservedLegacy].find(value => value?.version === seed.version && value.rows?.length >= 1450 && value.rows?.length <= 1600);
   return cached || seed;
 }
@@ -31,7 +36,7 @@ export async function refreshQuantMembership({ signal } = {}) {
   if (!warmCacheEnabled()) throw new Error('Shared coverage storage is unavailable.');
   const previous = await readQuantMembership();
   if (Date.now() - Date.parse(previous.checked_at) < 7 * DAY) return { retained: true, issuers: previous.issuers };
-  const lease = await warmAcquireLease(QUANT_COVERAGE_VERSION, 'membership', 90000);
+  const lease = await warmAcquireLease(QUANT_COVERAGE_CACHE, 'membership', 90000);
   if (!lease) return { skipped: 'Membership refresh is already running.' };
   try {
     const holdings = [];
@@ -45,9 +50,9 @@ export async function refreshQuantMembership({ signal } = {}) {
     }
     const directory = await getOperatingTickers(holdings.flatMap(s => s.rows.map(r => r.ticker)));
     const next = buildMembership(holdings, directory, previous.rows.map(r => r.ticker));
-    if (!await warmSet(QUANT_COVERAGE_VERSION, 'membership', next, 90 * 86400)) throw new Error('Membership could not be stored.');
+    if (!await warmSet(QUANT_COVERAGE_CACHE, 'membership', next, 90 * 86400)) throw new Error('Membership could not be stored.');
     return { issuers: next.issuers, securities: next.securities, membership_id: membershipId(next), sources: next.sources };
-  } finally { await warmReleaseLease(QUANT_COVERAGE_VERSION, 'membership', lease); }
+  } finally { await warmReleaseLease(QUANT_COVERAGE_CACHE, 'membership', lease); }
 }
 
 export function filingFingerprint(submissions) {
@@ -90,11 +95,16 @@ async function refreshCompany(entry, cached, signal) {
 export async function refreshQuantBatch(batch, { signal, deadline = Date.now() + 270000 } = {}) {
   if (!Number.isSafeInteger(batch) || batch < 0 || batch >= QUANT_BATCHES) throw Object.assign(new Error('Invalid coverage batch.'), { status: 400 });
   if (!warmCacheEnabled()) throw new Error('Shared coverage storage is unavailable.');
-  const lease = await warmAcquireLease(QUANT_COVERAGE_VERSION, `batch-${batch}`, 295000);
+  const lease = await warmAcquireLease(QUANT_COVERAGE_CACHE, `batch-${batch}`, 295000);
   if (!lease) return { skipped: 'Batch coordination is unavailable or another refresh is running.', batch };
   try {
     const membership = await readQuantMembership(), entries = membership.rows.filter(r => quantBatch(r.cik) === batch);
-    const cached = await warmGetMany(QUANT_COMPANY_CACHE, entries.map(r => r.cik), {signal,deadline});
+    const ids = entries.map(r => r.cik);
+    const [current, legacy] = await Promise.all([
+      warmGetMany(QUANT_COMPANY_CACHE, ids, {signal,deadline}),
+      isProductionDeployment() ? warmGetMany(LEGACY_COMPANY_CACHE, ids, {signal,deadline}) : ids.map(() => null),
+    ]);
+    const cached = current.map((value, index) => value || legacy[index]);
     const attempts = await warmGetMany(`${QUANT_COMPANY_CACHE}:attempts`, entries.map(r=>r.cik), {signal,deadline});
     const queue = entries.map((entry, i) => ({ entry, cached: cached[i], attemptedAt: new Date(Math.max(Date.parse(attempts[i]?.at)||0,Date.parse(cached[i]?.attemptedAt)||0)).toISOString() })).sort((a, b) => (Date.parse(a.attemptedAt) || 0) - (Date.parse(b.attemptedAt) || 0));
     const result = { batch, membership_id: membershipId(membership), requested: entries.length, checked: 0, failed: 0, skipped: 0, errors: [] };
@@ -110,23 +120,31 @@ export async function refreshQuantBatch(batch, { signal, deadline = Date.now() +
       }
     }));
     result.skipped = queue.length;
-    await warmSet(QUANT_COVERAGE_VERSION, `batch-${batch}`, { ...result, completed_at: new Date().toISOString() }, RETENTION);
+    await warmSet(QUANT_COVERAGE_CACHE, `batch-${batch}`, { ...result, completed_at: new Date().toISOString() }, RETENTION);
     return result;
-  } finally { await warmReleaseLease(QUANT_COVERAGE_VERSION, `batch-${batch}`, lease); }
+  } finally { await warmReleaseLease(QUANT_COVERAGE_CACHE, `batch-${batch}`, lease); }
 }
 
 export async function readQuantAtlas() {
-  for (const id of ['atlas', 'atlas-last-good']) {
-    const atlas = await readSnapshot(QUANT_ATLAS_CACHE, id);
-    const age = Date.now() - Date.parse(atlas?.generatedAt);
-    if (isMarketAtlas(atlas, MARKET_VERSION) && age >= 0 && age < 7 * DAY) return atlas;
+  const caches = [QUANT_ATLAS_CACHE, ...(isProductionDeployment() ? [LEGACY_ATLAS_CACHE] : [])];
+  for (const cache of caches) {
+    for (const id of ['atlas', 'atlas-last-good']) {
+      const atlas = await readSnapshot(cache, id);
+      const age = Date.now() - Date.parse(atlas?.generatedAt);
+      if (isMarketAtlas(atlas, MARKET_VERSION) && age >= 0 && age < 7 * DAY) return atlas;
+    }
   }
   return null;
 }
 
 export async function prepareQuantAtlas({signal,deadline}={}) {
   const membership = await readQuantMembership();
-  const records = await warmGetMany(QUANT_COMPANY_CACHE, membership.rows.map(r => r.cik), {signal,deadline});
+  const ids = membership.rows.map(r => r.cik);
+  const [current, legacy] = await Promise.all([
+    warmGetMany(QUANT_COMPANY_CACHE, ids, {signal,deadline}),
+    isProductionDeployment() ? warmGetMany(LEGACY_COMPANY_CACHE, ids, {signal,deadline}) : ids.map(() => null),
+  ]);
+  const records = current.map((value, index) => value || legacy[index]);
   return assembleQuantAtlas(membership, records);
 }
 export function assembleQuantAtlas(membership, records, now = Date.now()) {

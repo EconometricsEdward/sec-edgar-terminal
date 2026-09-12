@@ -1,4 +1,4 @@
-import { readUniverseSnapshot } from '../../../../utils/marketUniverseServer.js';
+import { FUNDAMENTAL_UNIVERSE_CACHE, readUniverseSnapshot } from '../../../../utils/marketUniverseServer.js';
 import { UNIVERSE_VERSION, UNIVERSE_METHOD } from '../../../../utils/marketUniverse.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse, rateLimitHeaders } from '../../../../utils/rateLimit.js';
 
@@ -6,9 +6,10 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-Schema-Version, X-Methodology-Version, X-SEC-Snapshot-At, X-Cache-Source, X-Data-Stale, Retry-After, Link' };
+export const factorUniverseRateLimitKey = ip => `rl:fundamental-universe-v2:${FUNDAMENTAL_UNIVERSE_CACHE}:${ip}`;
 
 export async function GET(request) {
-  const limit = await checkRateLimit({ key: `rl:fundamental-universe-v2:${getClientIp(request)}`, windowMs: 600000, max: 120, cost: 1 });
+  const limit = await checkRateLimit({ key: factorUniverseRateLimitKey(getClientIp(request)), windowMs: 600000, max: 120, cost: 1 });
   if (!limit.allowed) return rateLimitedResponse(limit, cors);
   try {
     const params = new URL(request.url).searchParams;

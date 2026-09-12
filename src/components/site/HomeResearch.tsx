@@ -5,6 +5,7 @@ import { ArrowUpRight, Clock3 } from "lucide-react";
 import { useWorkspace } from "../research/WorkspaceProvider";
 import { readResearchTrail } from "../../utils/researchTrail.js";
 import {
+  isCftcPositioningPath,
   MARKET_SAVED_KEY,
   parseMarketSaved,
 } from "../../utils/marketResearch.js";
@@ -14,7 +15,7 @@ import {
   parseFundShelf,
 } from "../../utils/workspaceReview.js";
 import styles from "../../app/home.module.css";
-export default function HomeResearch() {
+export default function HomeResearch({ cftcEnabled = true }: { cftcEnabled?: boolean }) {
   const { data, ready } = useWorkspace();
   const [recent, setRecent] = useState<any[]>([]);
   const [market, setMarket] = useState<any>({ watchlist: [] });
@@ -24,7 +25,7 @@ export default function HomeResearch() {
     const read = () => {
       let failure = false;
       try {
-        setRecent(readResearchTrail(localStorage).slice(0, 4));
+        setRecent(readResearchTrail(localStorage).filter((item) => cftcEnabled || !isCftcPositioningPath(item.href)).slice(0, 4));
       } catch {
         failure = true;
       }
@@ -53,7 +54,7 @@ export default function HomeResearch() {
       window.removeEventListener("focus", read);
       window.removeEventListener("research-storage", read);
     };
-  }, []);
+  }, [cftcEnabled]);
   const saved = useMemo(
     () => consolidatedWatchlist(data, market, funds),
     [data, market, funds],

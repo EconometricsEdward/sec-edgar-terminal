@@ -34,11 +34,12 @@ import {
   disclosureSearchPath,
 } from "../utils/searchRouter.js";
 import { safeInternalPath } from "../utils/siteRoutes.js";
+import { isCftcPositioningPath } from "../utils/marketResearch.js";
 import { MAX_COMPARE_COMPANIES } from "../utils/compareLimits.js";
 import { tickerDirectoryCoverage } from "../utils/tickerMapLoader.js";
 import styles from "./site/GlobalSearch.module.css";
 
-export default function GlobalSearchBar() {
+export default function GlobalSearchBar({ cftcEnabled = true }) {
   const router = useRouter();
   const pathname = usePathname() || "/";
   const context = useContext(TickerContext);
@@ -71,6 +72,10 @@ export default function GlobalSearchBar() {
     : input.trim()
       ? suggestions
       : recent;
+  const visibleRecentSearches = useCallback(
+    () => loadRecentSearches().filter((item) => cftcEnabled || !isCftcPositioningPath(item.path)),
+    [cftcEnabled],
+  );
 
   const ensureDirectory = useCallback(() => {
     if (directoryStatus === "idle" || directoryStatus === "error")
@@ -91,8 +96,8 @@ export default function GlobalSearchBar() {
     }
   };
   useEffect(() => {
-    setRecent(loadRecentSearches());
-  }, []);
+    setRecent(visibleRecentSearches());
+  }, [visibleRecentSearches]);
   useEffect(() => {
     setInput("");
     close();
@@ -127,7 +132,7 @@ export default function GlobalSearchBar() {
       return;
     }
     pushRecentSearch({ query, path: target });
-    setRecent(loadRecentSearches());
+    setRecent(visibleRecentSearches());
     close();
     setInput("");
     router.push(target);
@@ -290,7 +295,7 @@ export default function GlobalSearchBar() {
               return;
             }
             setOpen(true);
-            setRecent(loadRecentSearches());
+            setRecent(visibleRecentSearches());
           }}
         />
         {!input && (

@@ -44,6 +44,8 @@ All active data endpoints are read-only. The factor-universe and CFTC markets/hi
 - Percentiles compare the selected observation only with compatible prior observations for that same contract and group. Ties receive half weight; later reports are excluded.
 - COT values are aggregated outstanding futures positions reported for a Tuesday, generally released later in the week. They are not individual trader records, traded volume, dollar flows, issuer exposure, equity prices or automatic buy/sell signals.
 - Official guidance: https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm
+- Official COT Help: https://publicreporting.cftc.gov/stories/s/COT-Help/p2fg-u73y/
+- Official release schedule: https://www.cftc.gov/MarketReports/CommitmentsofTraders/ReleaseSchedule/index.htm
 - Official TFF resource: https://publicreporting.cftc.gov/resource/gpe5-46if.json
 - Official Disaggregated resource: https://publicreporting.cftc.gov/resource/72hh-3qpy.json
 

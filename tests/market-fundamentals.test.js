@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { computeFundamentalDiagnostics, pairedGroupVariance, UNIVERSE_METRICS } from '../src/utils/marketFundamentals.js';
-import { upgradeUniverseSnapshot, UNIVERSE_METHOD, universeMarkdown } from '../src/utils/marketUniverse.js';
+import { buildUniverseSnapshot, upgradeUniverseSnapshot, UNIVERSE_METHOD, universeMarkdown } from '../src/utils/marketUniverse.js';
 import { isUniverseSnapshot } from '../src/utils/marketUniverseServer.js';
 import { DEFAULT_MARKET_VIEW, parseMarketView, marketViewQuery } from '../src/utils/marketResearch.js';
 
@@ -48,8 +48,14 @@ test('population variance partitions exactly with fixed groups and excludes unpa
   const zero=pairedGroupVariance(flat,'netMargin');assert.equal(zero.current.within_share,null);assert.equal(zero.current.between_share,null);
 });
 test('v2 additive upgrades preserve SEC source clocks and rows while refusing legacy mixed snapshots',()=>{
-  const rows=Array.from({length:10},(_,i)=>row(i));
-  const prior={schema_version:'edgar.factor-universe.v2',methodology_version:UNIVERSE_METHOD,diagnostics_version:'fundamental-diagnostics-2.0.0',basis:'ttm',generated_at:'2026-09-09T05:00:00Z',sec_snapshot_at:'2026-09-09T04:00:00Z',status:'ready',rows,scopes:{all:{id:'all',label:'All',companies:10}},history:[{sec_snapshot_at:'2026-09-08T04:00:00Z'}],limitations:[],links:{methodology:'/market/factors',api:'/api/v2/factor-universe'}};
+  const companies=Array.from({length:10},(_,i)=>{
+    const source=row(i),accession=`${String(i+1).padStart(10,'0')}-26-000001`;
+    const current=Object.fromEntries(UNIVERSE_METRICS.map(metric=>[metric.key,source.metrics[metric.key].current]));
+    const previous=Object.fromEntries(UNIVERSE_METRICS.map(metric=>[metric.key,source.metrics[metric.key].prior]));
+    return {ticker:source.ticker,cik:source.cik,name:`Issuer ${i}`,sic:'1000',cohorts:['a'],checkedAt:'2026-09-09T04:00:00Z',factsRetrievedAt:'2026-09-09T03:00:00Z',filingComparisons:{ttm:{pointInTime:true,gapDays:365,current:{metrics:current,filed:'2026-08-01',end:'2026-06-30',accession,factorSourceAccessions:[accession]},prior:{metrics:previous,filed:'2025-08-01',end:'2025-06-30',factorSourceAccessions:[`${String(i+1).padStart(10,'0')}-25-000001`]}}}};
+  });
+  const prior=buildUniverseSnapshot({generatedAt:'2026-09-09T04:00:00Z',requested:10,companies,groups:[{id:'a',label:'A'}],coverage:{membership_id:'test',duplicate_share_classes:0,grouping:'Test groups.'}}, {}, {basis:'ttm',now:new Date('2026-09-09T05:00:00Z')});
+  prior.history=[{sec_snapshot_at:'2026-09-08T04:00:00Z'}];
   assert.equal(isUniverseSnapshot(prior),true);
   const original=JSON.stringify(prior),next=upgradeUniverseSnapshot(prior);
   assert.equal(next.methodology_version,UNIVERSE_METHOD);assert.equal(JSON.stringify(prior),original);

@@ -193,7 +193,12 @@ function fixtures() {
     [marketKey]: {
       version: 1,
       watchlist: ["JPM"],
-      views: [{ name: "Banks in review", query: "cohort=banks&basis=ttm" }],
+      views: [
+        {
+          name: "Banks in review",
+          query: "cohort=credit-banks&basis=ttm",
+        },
+      ],
       baselines: {
         JPM: { name: "JPMorgan", metrics: {}, reports: {}, observedAt: now },
       },
@@ -299,6 +304,71 @@ test("backup preserves exact store strings and unknown compatible fields without
       .additionalCompatibleField,
     "retained",
   );
+});
+
+test("Market backups and restores remove retired provider fields without changing SEC research", () => {
+  const values = fixtures();
+  values[marketKey] = {
+    ...values[marketKey],
+    views: [
+      {
+        name: "Legacy price screen",
+        query:
+          "tab=factors&asset=SPY&window=1y&cohort=credit-banks&basis=annual",
+      },
+      {
+        name: "SEC losses",
+        query: "tab=companies&screen=losses&cohort=credit-banks",
+      },
+    ],
+    baselines: {
+      JPM: {
+        ...values[marketKey].baselines.JPM,
+        notes: "Keep this independent SEC review note.",
+        price_source: "retired-provider",
+        metrics: {
+          annual: {
+            revenueGrowth: 4.2,
+            market_beta: 1.1,
+            nested: { price_response_z: 2.4, secTag: "Revenues" },
+          },
+        },
+      },
+    },
+  };
+  const original = storage(values);
+  const backup = parseResearchBackup(exportResearchBackup(original, now));
+  const market = JSON.parse(backup.stores[marketKey]);
+  assert.equal(market.watchlist[0], "JPM");
+  assert.equal(
+    market.baselines.JPM.notes,
+    "Keep this independent SEC review note.",
+  );
+  assert.equal(market.baselines.JPM.metrics.annual.revenueGrowth, 4.2);
+  assert.equal(market.baselines.JPM.metrics.annual.nested.secTag, "Revenues");
+  assert.equal(Object.hasOwn(market.baselines.JPM, "price_source"), false);
+  assert.equal(
+    Object.hasOwn(market.baselines.JPM.metrics.annual, "market_beta"),
+    false,
+  );
+  assert.equal(
+    Object.hasOwn(
+      market.baselines.JPM.metrics.annual.nested,
+      "price_response_z",
+    ),
+    false,
+  );
+  assert.match(market.views[0].query, /tab=fundamentals/);
+  assert.doesNotMatch(market.views[0].query, /(?:asset|window|proxy)=/);
+  assert.match(market.migrationNotice, /Fundamental Lab/);
+
+  const target = storage();
+  const before = exportResearchBackup(target, now);
+  assert.equal(
+    restoreResearchVault(target, backup, [marketKey], before).restored,
+    1,
+  );
+  assert.deepEqual(JSON.parse(target.getItem(marketKey)), market);
 });
 
 test("corrupt store remains exportable but cannot be imported over existing saved research", () => {
