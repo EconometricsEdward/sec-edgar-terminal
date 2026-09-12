@@ -10,6 +10,10 @@ import {
 import { createXlsxWorkbook, csvString } from "./portfolioFiles.js";
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
 import { buildPortfolioAnalytics } from "./portfolioAnalytics.js";
+import {
+  financialObservationContext,
+  financialSourcePeriodLabel,
+} from "./financialObservationContext.js";
 
 export const PORTFOLIO_PACKAGE_SCHEMA = "edgar.portfolio.research.v1";
 const INPUT_FIELDS = ["ticker", "company_name", "cik", "exchange"];
@@ -52,6 +56,28 @@ const md = (value) =>
     .replace(/[\\`*_{}[\]|]/g, "\\$&")
     .replace(/\r?\n/g, " ");
 const period = portfolioPeriodLabel;
+const OBSERVATION_COLUMNS = [
+  "observation_role",
+  "observation_start",
+  "observation_end",
+  "observation_period",
+  "observation_issue",
+];
+
+function observationFields(point, metricKey, reportingPeriod) {
+  const context = financialObservationContext(
+    point,
+    metricKey,
+    reportingPeriod,
+  );
+  return {
+    observation_role: context.role,
+    observation_start: context.observationPeriod?.start || "",
+    observation_end: context.observationPeriod?.end || "",
+    observation_period: context.periodLabel,
+    observation_issue: context.issue || "",
+  };
+}
 
 function secUrl(value) {
   try {
@@ -226,6 +252,26 @@ export function buildPortfolioResearchPackage(document, options = {}) {
       .map((company) => ({
         ...company,
         companyClassification: resolveCompanyClassification(company),
+        metrics: Object.fromEntries(
+          Object.entries(company.metrics || {}).map(([key, point]) => {
+            const context = financialObservationContext(
+              point,
+              key,
+              point.period || company.period,
+            );
+            return [
+              key,
+              {
+                ...point,
+                observation: {
+                  role: context.role,
+                  ...context.observationPeriod,
+                  ...(context.issue ? { issue: context.issue } : {}),
+                },
+              },
+            ];
+          }),
+        ),
       })),
     false,
   );
@@ -419,6 +465,7 @@ export function buildPortfolioResearchPackage(document, options = {}) {
       "Positions and optional allocations are user-entered information; they are not independently verified holdings.",
       "Company metrics retain SEC reported sources or explicit application calculations and their underlying inputs. Missing values remain null.",
       "Annual, quarterly, fiscal year-to-date and supported trailing-twelve-month data use company reporting periods. Companies may have different fiscal calendars and elapsed YTD lengths. Inspect each metric's full period and classification; a balance-sheet date is not a flow window.",
+      "Metric period fields retain the analysis window. Observation fields identify the actual balance date or measured flow window. Opening balances precede the analysis window and may be reported in a later filing's comparative column; filing dates are not observation dates.",
       "Allocation calculations use one explicit basis. Shares alone do not imply market value or weight. No covered subset is silently reweighted, and an unspecified balance is not assumed to be cash.",
       "Industry distributions use the supplied SEC SIC classification, not GICS. Company counts are not economic exposure.",
       "Company revenues, assets and debts are not summed as financially owned portfolio assets or earnings. No portfolio performance, risk score or investment recommendation is calculated.",
@@ -482,6 +529,7 @@ function companyTable(bundle, columns) {
       key,
       `${key}_unit`,
       `${key}_period`,
+      ...OBSERVATION_COLUMNS.map((field) => `${key}_${field}`),
       `${key}_classification`,
       `${key}_reason`,
       `${key}_source_urls`,
@@ -522,10 +570,16 @@ function companyTable(bundle, columns) {
       ...metrics.flatMap((key) => {
         const point = company.metrics?.[key] || {};
         const sources = evidenceSources(point);
+        const observation = observationFields(
+          point,
+          key,
+          point.period || company.period,
+        );
         return [
           finiteFinancialMetric(point) ? point.value : "",
           point.unit,
           period(point.period || company.period),
+          ...OBSERVATION_COLUMNS.map((field) => observation[field]),
           point.classification || "unavailable",
           point.reason || "",
           [
@@ -569,6 +623,12 @@ function metricObservationRows(bundle) {
     return [];
   const includeWeights =
     bundle.export_options?.include_allocations !== false && analytics.weighted;
+  const companiesByCik = new Map(
+    bundle.companies.map((company) => [
+      String(company.cik).padStart(10, "0"),
+      company,
+    ]),
+  );
   return analytics.metrics.flatMap((metric) => {
     const observations = new Map(
       metric.observations.map((observation) => [observation.cik, observation]),
@@ -576,6 +636,8 @@ function metricObservationRows(bundle) {
     const notApplicable = new Set(metric.notApplicableCiks || []);
     return analytics.concentration.issuers.map((issuer) => {
       const observation = observations.get(issuer.cik);
+      const company = companiesByCik.get(String(issuer.cik).padStart(10, "0"));
+      const point = company?.metrics?.[metric.id];
       const status =
         issuer.kind === "fund" || notApplicable.has(issuer.cik)
           ? "not_applicable"
@@ -593,6 +655,11 @@ function metricObservationRows(bundle) {
         value: available ? observation.value : null,
         unit: metric.unit,
         period: available ? observation.periodEnd : null,
+        ...observationFields(
+          available ? point : null,
+          metric.id,
+          available ? point?.period || company?.period : null,
+        ),
         source_url: available ? secUrl(observation.sourceUrl) : null,
         known_weight_pct:
           includeWeights && finite(issuer.weightPct) ? issuer.weightPct : null,
@@ -623,6 +690,7 @@ function metricObservationsTable(bundle) {
     "value",
     "unit",
     "period",
+    ...OBSERVATION_COLUMNS,
     "source_url",
     "known_weight_pct",
     "research_captured_at",
@@ -676,6 +744,7 @@ function analyticsTable(bundle) {
     "ticker",
     "company",
     "observation_status",
+    ...OBSERVATION_COLUMNS,
     "source_url",
   ];
   const rows = [headers];
@@ -978,6 +1047,7 @@ export function portfolioXlsx(bundle) {
       "value",
       "unit",
       "period",
+      ...OBSERVATION_COLUMNS,
       "classification",
       "reason",
       "formula",
@@ -990,7 +1060,12 @@ export function portfolioXlsx(bundle) {
   ];
   for (const company of bundle.companies) {
     const metrics = Object.entries(company.metrics || {});
-    for (const [key, point] of metrics.length ? metrics : [["", {}]])
+    for (const [key, point] of metrics.length ? metrics : [["", {}]]) {
+      const observation = observationFields(
+        point,
+        key,
+        point.period || company.period,
+      );
       research.push([
         company.cik,
         company.ticker,
@@ -1008,6 +1083,7 @@ export function portfolioXlsx(bundle) {
         finiteFinancialMetric(point) ? point.value : "",
         point.unit,
         period(point.period || company.period),
+        ...OBSERVATION_COLUMNS.map((field) => observation[field]),
         point.classification || "unavailable",
         point.reason,
         point.formula || scalar(evidenceCalculations(point)),
@@ -1023,6 +1099,7 @@ export function portfolioXlsx(bundle) {
         ].join(" | "),
         scalar(company.warnings || []),
       ]);
+    }
   }
   const sourceKeys = [
     "cik",
@@ -1246,21 +1323,34 @@ export function portfolioMarkdown(bundle) {
         : []),
       `Status: ${md(company.status)}; type: ${md(company.kind)}; SEC industry: ${md(resolveCompanyClassification(company).industry)}; period: ${md(period(company.period))}; retrieved: ${md(company.retrievedAt || "Unavailable")}; cache: ${md(company.cache?.status || "Unavailable")}.`,
       "",
-      "| Metric | Value and unit | Period | Evidence type |",
-      "| --- | --- | --- | --- |",
+      "| Metric | Value and unit | Value observation | Analysis period | Evidence type |",
+      "| --- | --- | --- | --- | --- |",
       ...Object.entries(company.metrics || {})
         .filter(
           ([key, point]) =>
             finiteFinancialMetric(point) &&
             portfolioMetricScopeValid(key, point),
         )
-        .map(
-          ([key, point]) =>
-            `| ${md(key)} | ${finiteFinancialMetric(point) ? md(point.value) : "Unavailable"} ${md(point.unit)} | ${md(period(point.period || company.period))} | ${md(point.classification || "unavailable")} |`,
-        ),
+        .map(([key, point]) => {
+          const context = financialObservationContext(
+            point,
+            key,
+            point.period || company.period,
+          );
+          return `| ${md(key)} | ${finiteFinancialMetric(point) ? md(point.value) : "Unavailable"} ${md(point.unit)} | ${md(context.label)}: ${md(context.periodLabel)} | ${md(period(point.period || company.period))} | ${md(point.classification || "unavailable")} |`;
+        }),
     );
     for (const [key, point] of Object.entries(company.metrics || {})) {
       const sources = evidenceSources(point);
+      const context = financialObservationContext(
+        point,
+        key,
+        point.period || company.period,
+      );
+      if (context.explanation && ["opening", "closing"].includes(context.role))
+        lines.push("", `${md(key)}: ${md(context.explanation)}`);
+      if (context.issue)
+        lines.push("", `${md(key)} observation check: ${md(context.issue)}`);
       const formulas =
         point.formula ||
         evidenceCalculations(point)
@@ -1273,7 +1363,7 @@ export function portfolioMarkdown(bundle) {
       for (const source of sources) {
         const url = secUrl(source.documentUrl || source.sourceUrl);
         lines.push(
-          `- ${md(key)} input: ${md(source.label || source.tag || "Reported fact")}, ${md(source.value)} ${md(source.unit)}; ${md(source.start || "instant")} to ${md(source.end || "unknown")}; ${md(source.form)} filed ${md(source.filed)}; ${url ? `[SEC ${md(source.accession || "source")}](${url})` : `source link unavailable (${md(source.accession)})`}.`,
+          `- ${md(key)} input: ${md(source.label || source.tag || "Reported fact")}, ${md(source.value)} ${md(source.unit)}; observation: ${md(financialSourcePeriodLabel(source))}; ${md(source.form)} filed ${md(source.filed)}; ${url ? `[SEC ${md(source.accession || "source")}](${url})` : `source link unavailable (${md(source.accession)})`}.`,
         );
       }
     }

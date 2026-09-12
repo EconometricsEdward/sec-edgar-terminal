@@ -54,6 +54,52 @@ test("insurance and EPS guidance preserve accounting distinctions", () => {
   );
 });
 
+test("opening-balance guides distinguish the observation date from the filing year", () => {
+  for (const key of [
+    "openingReceivables",
+    "openingInventory",
+    "openingAccountsPayable",
+  ]) {
+    const item = analysisMetricGuide({ key }, { value: 94_363_000_000 });
+    assert.equal(item.known, true, key);
+    assert.match(
+      item.meaning,
+      /day before the selected reporting period starts/,
+      key,
+    );
+    assert.match(item.caution, /later filing.*comparative column/, key);
+    assert.match(item.caution, /balance date, not the filing year/, key);
+    assert.equal(
+      analysisMetricGuide({ key }, { value: 1 }, "banking").known,
+      false,
+      `${key} is only generated for operating companies`,
+    );
+  }
+});
+
+test("average-balance guides explain both endpoints rather than a daily or closing-only average", () => {
+  for (const [key, balance] of [
+    ["averageAssets", "assets"],
+    ["averageEquity", "equity"],
+  ]) {
+    for (const lens of ["corporate", "banking"]) {
+      const item = analysisMetricGuide({ key }, { value: 100 }, lens);
+      assert.equal(item.known, true, `${key}/${lens}`);
+      assert.ok(
+        item.meaning.includes(`(opening ${balance} + closing ${balance}) / 2`),
+        key,
+      );
+      assert.match(item.movement, /day before.*closing balance.*end/, key);
+      assert.match(item.caution, /Both reported balances are required/, key);
+      assert.match(
+        item.caution,
+        /not a daily average or a single closing balance/,
+        key,
+      );
+    }
+  }
+});
+
 test("synthetic, unknown, and inherited-object keys receive honest generic methodology", () => {
   for (const key of [
     "revenue:index",
@@ -206,6 +252,11 @@ test("every educational topic tested produces a supported disclosure expression"
     "currentRatio",
     "stockholdersEquity",
     "totalAssets",
+    "openingReceivables",
+    "openingInventory",
+    "openingAccountsPayable",
+    "averageAssets",
+    "averageEquity",
     "equityAssets",
     "roe",
     "roa",

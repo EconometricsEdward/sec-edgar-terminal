@@ -11,6 +11,11 @@ import {
 import { displayValue, type CompareEvidence } from "../compareTypes";
 import styles from "../compare.module.css";
 import extra from "./CompareInspector.module.css";
+import {
+  financialObservationContext,
+  financialSourcePeriodLabel,
+} from "../../../utils/financialObservationContext.js";
+import { portfolioPeriodLabel } from "../../../utils/portfolioReporting.js";
 
 const definitions: Record<string, string> = {
   totalAssets:
@@ -60,6 +65,7 @@ export default function CompareInspector({
   const point = cell.point,
     period = point?.period || cell.period,
     sources = point?.sources || [];
+  const observation = financialObservationContext(point, metric.key, period);
   const ref = useRef<HTMLElement>(null);
   const [feedback, setFeedback] = useState({
     key: "",
@@ -141,13 +147,17 @@ export default function CompareInspector({
           before display rounding.
         </small>
       </div>
+      <div className={extra.observationContext}>
+        <strong>{observation.label}</strong>
+        <span>{observation.periodLabel}</span>
+        {observation.explanation && <p>{observation.explanation}</p>}
+        {observation.issue && (
+          <p className={extra.notice}>{observation.issue}</p>
+        )}
+      </div>
       <dl className={styles.metadata}>
-        <dt>Reporting period</dt>
-        <dd>
-          {period
-            ? `${period.start || "Balance at"} → ${period.end}`
-            : "Unavailable"}
-        </dd>
+        <dt>Analytical period</dt>
+        <dd>{portfolioPeriodLabel(observation.reportingPeriod)}</dd>
         <dt>Basis</dt>
         <dd>{period?.kind || "No selected period"}</dd>
         <dt>Classification</dt>
@@ -298,7 +308,7 @@ export default function CompareInspector({
               {exact(source.value)} {source.unit}
             </p>
             <small>
-              {source.start || "Balance at"} → {source.end}
+              {financialSourcePeriodLabel(source)}
               <br />
               {source.form || "Form unavailable"} · Filed{" "}
               {source.filed || "Date unavailable"}
@@ -313,7 +323,7 @@ export default function CompareInspector({
               {source.fp && (
                 <>
                   <br />
-                  Fiscal period {source.fy ? `${source.fy} ` : ""}
+                  Filing fiscal label {source.fy ? `${source.fy} ` : ""}
                   {source.fp}
                 </>
               )}

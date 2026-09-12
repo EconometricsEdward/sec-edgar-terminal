@@ -2,6 +2,7 @@
 
 import { resolveCompanyClassification } from "../../../utils/companyClassification.js";
 import { portfolioReportingLabel } from "../../../utils/portfolioReporting.js";
+import { financialObservationContext } from "../../../utils/financialObservationContext.js";
 
 import Link from "next/link";
 import { portfolioAvailableMetrics } from "../../../utils/portfolioDeepResearch.js";
@@ -404,6 +405,7 @@ export default function CompanyFocus({
             <div className={s.metrics}>
               {summaryMetrics.map(([key, label]) => {
                 const point = company?.metrics?.[key];
+                const context = financialObservationContext(point, key);
                 const sources = (point?.sources || []).filter((source: any) =>
                   secUrl(source.documentUrl),
                 );
@@ -418,10 +420,7 @@ export default function CompanyFocus({
                       </small>
                     )}
                     <p>
-                      {point?.period?.end
-                        ? `Period ending ${point.period.end}`
-                        : "Period unavailable"}{" "}
-                      ·{" "}
+                      {context.periodLabel} ·{" "}
                       {point?.classification === "calculated"
                         ? "Calculated"
                         : point?.classification === "reported"

@@ -8,11 +8,25 @@ import { metricDisplay } from "../../../utils/portfolioDeepResearch.js";
 import { portfolioMetricDefinitionFor } from "../../../utils/portfolioMetricCatalog.js";
 import s from "./MetricEvidenceDialog.module.css";
 import { portfolioReportingLabel } from "../../../utils/portfolioReporting.js";
+import {
+  financialObservationContext,
+  financialSourcePeriodLabel,
+} from "../../../utils/financialObservationContext.js";
 
 type Props = {
   inspector: { issuer: any; key: string; point: any };
   onClose: () => void;
   onDisclosure?: (query: string, ciks: string[]) => void;
+  onSelectMetric?: (key: string) => void;
+};
+
+const BALANCE_PAIRS: Record<string, string> = {
+  openingAccountsPayable: "accountsPayable",
+  accountsPayable: "openingAccountsPayable",
+  openingReceivables: "receivables",
+  receivables: "openingReceivables",
+  openingInventory: "inventory",
+  inventory: "openingInventory",
 };
 
 const companyLanguage = (text: string) =>
@@ -25,6 +39,7 @@ export default function MetricEvidenceDialog({
   inspector,
   onClose,
   onDisclosure,
+  onSelectMetric,
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
@@ -50,6 +65,18 @@ export default function MetricEvidenceDialog({
   const definition = portfolioMetricDefinitionFor(key);
   const guide = analysisMetricGuide(definition || {}, point, issuer.lens);
   const period = point.period || {};
+  const context = financialObservationContext(point, key);
+  const pairedKey = BALANCE_PAIRS[key];
+  const pairedPoint = issuer.company?.metrics?.[pairedKey];
+  const pairedContext = pairedPoint
+    ? financialObservationContext(pairedPoint, pairedKey)
+    : null;
+  const showPair =
+    context.valid &&
+    pairedContext?.valid &&
+    pairedPoint.unit === point.unit &&
+    pairedPoint.period?.start === period.start &&
+    pairedPoint.period?.end === period.end;
   const inputs = [
     ...new Map<string, any>(
       (point.calculations || [])
@@ -61,7 +88,7 @@ export default function MetricEvidenceDialog({
         .map((entry: any) => [entry.key, entry] as [string, any]),
     ).values(),
   ];
-  const sources = (Array.isArray(point.sources) ? point.sources : [])
+  const sources = context.sources
     .map((source: any) => ({
       source,
       url: portfolioMetricSourceUrl({ sources: [source] }),
@@ -119,6 +146,9 @@ export default function MetricEvidenceDialog({
       <div className={s.body}>
         <div className={s.observation}>
           <strong className={s.value}>{metricDisplay(point, false)}</strong>
+          <span className={s.observationDate}>
+            {context.label} · {context.periodLabel}
+          </span>
           <span>
             {point.classification === "calculated"
               ? "Calculated from reported inputs"
@@ -126,6 +156,27 @@ export default function MetricEvidenceDialog({
                 ? "Reported in SEC evidence"
                 : "Captured financial measure"}
           </span>
+          <p>{context.explanation}</p>
+          {context.issue && <p>{context.issue}</p>}
+          {showPair && (
+            <div className={s.relatedBalance}>
+              <span>
+                <strong>
+                  {portfolioMetricDefinitionFor(pairedKey)?.label}
+                </strong>
+                {" · "}
+                {metricDisplay(pairedPoint, false)}
+                <small>{pairedContext.periodLabel}</small>
+              </span>
+              {onSelectMetric && (
+                <button type="button" onClick={() => onSelectMetric(pairedKey)}>
+                  Inspect {context.role === "opening" ? "closing" : "opening"}{" "}
+                  balance
+                  <ArrowUpRight size={16} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <section className={s.section} aria-label="Understanding this measure">
@@ -153,21 +204,18 @@ export default function MetricEvidenceDialog({
           </p>
           <dl className={s.metadata}>
             <div>
-              <dt>Reporting period</dt>
+              <dt>{context.label}</dt>
+              <dd>{context.periodLabel}</dd>
+            </div>
+            <div>
+              <dt>Analysis period</dt>
               <dd>
+                {period.kind && `${portfolioReportingLabel(period.kind)} · `}
                 {period.kind === "instant" && period.end
                   ? `As of ${period.end}`
                   : period.start || period.end
                     ? `${period.start || "Unknown start"} to ${period.end || "unknown end"}`
                     : "Period not included in this capture"}
-              </dd>
-            </div>
-            <div>
-              <dt>Period basis</dt>
-              <dd>
-                {period.kind
-                  ? portfolioReportingLabel(period.kind)
-                  : "Not included in this capture"}
               </dd>
             </div>
             <div>
@@ -177,6 +225,7 @@ export default function MetricEvidenceDialog({
               </dd>
             </div>
           </dl>
+          {point.note && <p>{companyLanguage(point.note)}</p>}
           {inputs.length > 0 && (
             <div
               className={s.inputTable}
@@ -224,7 +273,12 @@ export default function MetricEvidenceDialog({
         </section>
 
         <section className={s.section} aria-label="SEC source documents">
-          <h3>SEC sources</h3>
+          <h3>SEC sources & reported inputs</h3>
+          <p>
+            Match the amount to the dated column below. A filing can contain
+            current and prior-year columns; its filing date is separate from the
+            date of the reported value.
+          </p>
           {sources.length ? (
             <ul className={s.sources}>
               {sources.map(({ source, url }: any, index: number) => (
@@ -235,12 +289,24 @@ export default function MetricEvidenceDialog({
                     {source.tag || source.label || "SEC evidence"}
                     <ArrowUpRight size={16} aria-hidden="true" />
                   </a>
+                  <strong className={s.sourceValue}>
+                    {Number.isFinite(source.value)
+                      ? source.value.toLocaleString("en-US", {
+                          maximumSignificantDigits: 21,
+                        })
+                      : "Source amount not included"}
+                    {source.unit ? ` ${source.unit}` : ""}
+                  </strong>
+                  <span>{financialSourcePeriodLabel(source)}</span>
                   {(source.form || source.filed) && (
                     <span>
                       {[source.form, source.filed && `Filed ${source.filed}`]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
+                  )}
+                  {(source.accession || source.accn) && (
+                    <span>Accession {source.accession || source.accn}</span>
                   )}
                 </li>
               ))}

@@ -13,11 +13,15 @@ import {
 import styles from "./analysis.module.css";
 import sourceStyles from "./AnalysisSources.module.css";
 import AnalysisMetricGuide from "./AnalysisMetricGuide";
+import {
+  financialObservationContext,
+  financialSourcePeriodLabel,
+} from "../../utils/financialObservationContext.js";
+import { portfolioPeriodLabel } from "../../utils/portfolioReporting.js";
 
-function ComparisonFigure({ title, point, format, settings }: any) {
+function ComparisonFigure({ title, point, metricKey, format, settings }: any) {
   const sources = uniqueAnalysisSources(point);
-  const instant =
-    sources.length > 0 && sources.every((source) => !source.start);
+  const observation = financialObservationContext(point, metricKey);
   const coherence = analysisSourceCoherence(point, settings?.asOf);
   return (
     <article className={sourceStyles.comparisonCard}>
@@ -25,11 +29,14 @@ function ComparisonFigure({ title, point, format, settings }: any) {
       <strong>{analysisValue(point?.value, format, settings?.units)}</strong>
       <small>{point?.classification || "Unavailable"}</small>
       <p className={sourceStyles.dates}>
-        {instant
-          ? "As of"
-          : `${point?.period?.kind || "Period"} · ${point?.period?.start || "Start unavailable"} →`}{" "}
-        {point?.period?.end}
+        {observation.label}: {observation.periodLabel}
       </p>
+      <small>
+        Analytical period: {portfolioPeriodLabel(observation.reportingPeriod)}
+      </small>
+      {observation.explanation && (
+        <p className={sourceStyles.comparisonNote}>{observation.explanation}</p>
+      )}
       <small>{coherence.status}</small>
       <small>
         Filed {coherence.earliestFiled || "date unavailable"}
@@ -52,13 +59,11 @@ function ComparisonFigure({ title, point, format, settings }: any) {
                 </code>
                 <span>
                   {source.value?.toLocaleString("en-US", {
-                    maximumFractionDigits: 6,
+                    maximumSignificantDigits: 21,
                   })}{" "}
                   {source.unit}
                 </span>
-                <small>
-                  {source.start || "Instant"} → {source.end}
-                </small>
+                <small>{financialSourcePeriodLabel(source)}</small>
                 <small>
                   Filed {source.filed || "date unavailable"} · {source.form}
                 </small>
@@ -101,8 +106,7 @@ export default function AnalysisInspector({
   status,
 }: any) {
   const { definition, point, label } = selection;
-  const instant =
-    point?.sources?.length > 0 && point.sources.every((s) => !s.start);
+  const observation = financialObservationContext(point, definition.key);
   const [notes, setNotes] = useState(() =>
     typeof selection.notes === "string" ? selection.notes : "",
   );
@@ -155,12 +159,17 @@ export default function AnalysisInspector({
       <strong className={styles.bigValue}>
         {analysisValue(point?.value, definition.format, settings.units)}
       </strong>
-      <p className={styles.muted}>
-        {instant
-          ? "As of"
-          : `${point?.period?.kind} · ${point?.period?.start || "Start unavailable"} →`}{" "}
-        {point?.period?.end}
-      </p>
+      <div className={sourceStyles.observationContext}>
+        <strong>{observation.label}</strong>
+        <span>{observation.periodLabel}</span>
+        {observation.explanation && <p>{observation.explanation}</p>}
+        {observation.issue && (
+          <p className={styles.notice}>{observation.issue}</p>
+        )}
+        <small>
+          Analytical period: {portfolioPeriodLabel(observation.reportingPeriod)}
+        </small>
+      </div>
       <span className={styles.badge}>
         {point?.classification || "Unavailable"}
       </span>
@@ -200,6 +209,7 @@ export default function AnalysisInspector({
                     <ComparisonFigure
                       title="Selected figure"
                       point={point}
+                      metricKey={definition.key}
                       format={definition.format}
                       settings={{
                         ...settings,
@@ -209,6 +219,7 @@ export default function AnalysisInspector({
                     <ComparisonFigure
                       title="Comparison figure"
                       point={comparison.before}
+                      metricKey={definition.key}
                       format={definition.format}
                       settings={{
                         ...settings,
@@ -301,7 +312,10 @@ export default function AnalysisInspector({
           {point.calculations.map((c, i) => (
             <p key={i} className={styles.small}>
               {c.start || "Instant"} → {c.end}:{" "}
-              {c.value?.toLocaleString("en-US")} {c.unit || ""} = {c.formula}
+              {c.value?.toLocaleString("en-US", {
+                maximumSignificantDigits: 21,
+              })}{" "}
+              {c.unit || ""} = {c.formula}
             </p>
           ))}
         </details>
@@ -314,14 +328,12 @@ export default function AnalysisInspector({
             {s.taxonomy}:{s.tag}
           </code>
           <p>
-            {s.value?.toLocaleString("en-US", { maximumFractionDigits: 6 })}{" "}
+            {s.value?.toLocaleString("en-US", { maximumSignificantDigits: 21 })}{" "}
             {s.unit}
           </p>
           <dl>
-            <dt>Period</dt>
-            <dd>
-              {s.start || "Instant"} → {s.end}
-            </dd>
+            <dt>{s.start ? "Reported duration" : "Balance date"}</dt>
+            <dd>{financialSourcePeriodLabel(s)}</dd>
             <dt>Filed</dt>
             <dd>
               {s.filed} · {s.form}
@@ -350,7 +362,11 @@ export default function AnalysisInspector({
               <ol>
                 {(s.revisions || []).map((r, j) => (
                   <li key={j}>
-                    {r.filed}: {r.value?.toLocaleString("en-US")} {s.unit} ·{" "}
+                    {r.filed}:{" "}
+                    {r.value?.toLocaleString("en-US", {
+                      maximumSignificantDigits: 21,
+                    })}{" "}
+                    {s.unit} ·{" "}
                     {analysisSecUrl(r.documentUrl) ? (
                       <a
                         href={analysisSecUrl(r.documentUrl)!}

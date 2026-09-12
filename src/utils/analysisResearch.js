@@ -214,6 +214,7 @@ export function buildAnalysisCompany(company, settings = {}) {
             return {
               ...opening,
               period: p,
+              observationRole: "opening",
               note: `Balance as of ${previousDay(p.start)}, immediately before the selected reporting duration.`,
             };
           }),

@@ -22,6 +22,7 @@ import p from "./PortfolioMetricExplorer.module.css";
 import CompanyResearchTable from "./CompanyResearchTable";
 import MetricEvidenceDialog from "./MetricEvidenceDialog";
 import { SECTOR_NOT_COVERED } from "../../../utils/companyClassification.js";
+import { financialObservationContext } from "../../../utils/financialObservationContext.js";
 import {
   PORTFOLIO_REPORTING_OPTIONS,
   portfolioReportingLabel,
@@ -419,35 +420,46 @@ export default function PortfolioMetricExplorer({
           "report_basis",
           "report_start",
           "report_end",
+          "observation_role",
+          "observation_kind",
+          "observation_start",
+          "observation_end",
           "captured_at",
           "source",
         ],
-        ...matchingRows.map((row) => [
-          metricId,
-          result.definition.label,
-          query,
-          sector,
-          industry,
-          period,
-          basis,
-          durationGroup,
-          direction,
-          result.population,
-          result.available,
-          row.cik,
-          row.ticker,
-          row.name,
-          row.sector || SECTOR_NOT_COVERED,
-          row.industry,
-          row.rank,
-          row.point.value,
-          row.point.unit,
-          row.point.period.kind,
-          row.point.period.start,
-          row.point.period.end,
-          row.company?.retrievedAt,
-          portfolioMetricSourceUrl(row.point),
-        ]),
+        ...matchingRows.map((row) => {
+          const context = financialObservationContext(row.point, metricId);
+          return [
+            metricId,
+            result.definition.label,
+            query,
+            sector,
+            industry,
+            period,
+            basis,
+            durationGroup,
+            direction,
+            result.population,
+            result.available,
+            row.cik,
+            row.ticker,
+            row.name,
+            row.sector || SECTOR_NOT_COVERED,
+            row.industry,
+            row.rank,
+            row.point.value,
+            row.point.unit,
+            row.point.period.kind,
+            row.point.period.start,
+            row.point.period.end,
+            context.role,
+            context.observationPeriod?.kind,
+            context.observationPeriod?.start,
+            context.observationPeriod?.end,
+            row.company?.retrievedAt,
+            portfolioMetricSourceUrl(row.point),
+          ];
+        }),
       ]),
       "text/csv",
     );
@@ -520,8 +532,8 @@ export default function PortfolioMetricExplorer({
           <span>{portfolioReportingLabel(basis)}</span>
         )}
         <p className={p.helper}>
-          {perspective?.description} Balance-sheet figures are measured at the
-          period end.
+          {perspective?.description} Each value shows its actual observation
+          dates. Opening balances precede the selected reporting period.
         </p>
       </div>
       {reportingLoading ? (
@@ -754,6 +766,7 @@ export default function PortfolioMetricExplorer({
           {inspector && (
             <MetricEvidenceDialog
               inspector={inspector}
+              onSelectMetric={(key) => inspect(inspector.issuer, key)}
               onClose={() => setInspector(null)}
               onDisclosure={onDisclosure}
             />
@@ -917,64 +930,70 @@ export default function PortfolioMetricExplorer({
                         Rank
                       </th>
                       <th scope="col">{result.definition.label}</th>
-                      <th scope="col">Reporting period</th>
+                      <th scope="col">Value date / period</th>
                       <th scope="col">Evidence</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pageRows.map((row) => (
-                      <tr key={row.cik}>
-                        <td>
-                          <input
-                            aria-label={`Compare ${row.ticker}`}
-                            type="checkbox"
-                            checked={selected.includes(row.cik)}
-                            disabled={
-                              !selected.includes(row.cik) && chosen.length >= 6
-                            }
-                            onChange={() =>
-                              setSelected((v) =>
-                                v.includes(row.cik)
-                                  ? v.filter((c) => c !== row.cik)
-                                  : [
-                                      ...v.filter((cik) =>
-                                        issuers.some((i) => i.cik === cik),
-                                      ),
-                                      row.cik,
-                                    ],
-                              )
-                            }
-                          />
-                        </td>
-                        <th scope="row">
-                          {row.ticker}
-                          <small>{row.name}</small>
-                          <small>{row.sector || SECTOR_NOT_COVERED}</small>
-                        </th>
-                        <td className={p.rankColumn}>{row.rank}</td>
-                        <td>
-                          <button onClick={() => inspect(row, metricId)}>
-                            {metricDisplay(row.point)}
-                          </button>
-                          {row.state !== "available" && (
-                            <small>{row.state.replaceAll("-", " ")}</small>
-                          )}
-                        </td>
-                        <td>
-                          <span>
-                            {row.point.period.start} to {row.point.period.end}
-                          </span>
-                          <small>
-                            {portfolioReportingLabel(row.point.period.kind)}
-                          </small>
-                        </td>
-                        <td>
-                          <button onClick={() => onInspect(row.rowIds[0])}>
-                            Company details
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {pageRows.map((row) => {
+                      const context = financialObservationContext(
+                        row.point,
+                        metricId,
+                      );
+                      return (
+                        <tr key={row.cik}>
+                          <td>
+                            <input
+                              aria-label={`Compare ${row.ticker}`}
+                              type="checkbox"
+                              checked={selected.includes(row.cik)}
+                              disabled={
+                                !selected.includes(row.cik) &&
+                                chosen.length >= 6
+                              }
+                              onChange={() =>
+                                setSelected((v) =>
+                                  v.includes(row.cik)
+                                    ? v.filter((c) => c !== row.cik)
+                                    : [
+                                        ...v.filter((cik) =>
+                                          issuers.some((i) => i.cik === cik),
+                                        ),
+                                        row.cik,
+                                      ],
+                                )
+                              }
+                            />
+                          </td>
+                          <th scope="row">
+                            {row.ticker}
+                            <small>{row.name}</small>
+                            <small>{row.sector || SECTOR_NOT_COVERED}</small>
+                          </th>
+                          <td className={p.rankColumn}>{row.rank}</td>
+                          <td>
+                            <button onClick={() => inspect(row, metricId)}>
+                              {metricDisplay(row.point)}
+                            </button>
+                            {row.state !== "available" && (
+                              <small>{row.state.replaceAll("-", " ")}</small>
+                            )}
+                          </td>
+                          <td>
+                            <span>{context.periodLabel}</span>
+                            <small>
+                              {context.label} ·{" "}
+                              {portfolioReportingLabel(row.point.period.kind)}
+                            </small>
+                          </td>
+                          <td>
+                            <button onClick={() => onInspect(row.rowIds[0])}>
+                              Company details
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </CompanyResearchTable>
@@ -1107,9 +1126,12 @@ export default function PortfolioMetricExplorer({
                                     {metricDisplay(i.company?.metrics?.[key])}
                                   </button>
                                   <small>
-                                    {periodLabel(
-                                      metricPeriodKey(i.company.metrics[key]),
-                                    )}
+                                    {
+                                      financialObservationContext(
+                                        i.company.metrics[key],
+                                        key,
+                                      ).periodLabel
+                                    }
                                   </small>
                                 </td>
                               ))}
