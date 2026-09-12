@@ -1,5 +1,9 @@
 import { createPortfolioBaseline } from "../src/utils/portfolioChanges.js";
 import {
+  packPortfolioBaseline,
+  unpackPortfolioBaseline,
+} from "../src/utils/portfolioBaselineCodec.js";
+import {
   unpackPortfolioSnapshot,
   packPortfolioStore,
 } from "../src/utils/portfolioEvidenceCodec.js";
@@ -208,8 +212,8 @@ test("demo coverage is recomputed over all companies and the full capture fits e
   assert.equal(summary.mode, "weighted");
   assert.ok(Math.abs(summary.allocatedWeight - 100) < 1e-8);
   assert.equal(summary.topFiveIssuerWeightPct, 25);
-  assert.ok(Math.abs(summary.coverage.percentOfSuppliedWeight - 95) < 1e-8);
-  assert.equal(summary.coverage.companyPct, 99);
+  assert.ok(Math.abs(summary.coverage.percentOfSuppliedWeight - 100) < 1e-8);
+  assert.equal(summary.coverage.companyPct, 100);
   const document = createPortfolio({
     id: "demo-validation",
     name: input.name,
@@ -222,6 +226,16 @@ test("demo coverage is recomputed over all companies and the full capture fits e
   document.comparisonBaseline = createPortfolioBaseline(document.snapshot);
   const store = { version: 1, portfolios: [document], activeId: document.id };
   assert.doesNotThrow(() => validatePortfolios(store));
+  const packedBaseline = packPortfolioBaseline(document.comparisonBaseline);
+  assert.equal(
+    packedBaseline.metricEncoding,
+    "portfolio-checkpoint-tuples-v2",
+  );
+  assert.deepEqual(
+    unpackPortfolioBaseline(packedBaseline),
+    document.comparisonBaseline,
+  );
+  assert.ok(Buffer.byteLength(JSON.stringify(packedBaseline)) < 250 * 1024);
   assert.ok(
     Buffer.byteLength(JSON.stringify(packPortfolioStore(store))) <
       PORTFOLIO_STORAGE_LIMIT,
@@ -232,8 +246,17 @@ test("the expanded demo exposes measured debt and never offers empty investment 
   const available = portfolioAvailableMetrics(demo.snapshot.companies);
   assert.equal(
     available.find((metric) => metric.key === "shortTermDebt").availableCount,
-    84,
+    85,
   );
   assert.ok(!available.some((metric) => metric.key === "investmentIncome"));
   assert.ok(available.every((metric) => metric.availableCount > 0));
+
+  const xom = demo.snapshot.companies.find((company) => company.ticker === "XOM");
+  assert.equal(xom.cik, "0002115436");
+  assert.equal(xom.evidenceContinuity?.status, "applied");
+  assert.ok(Number.isFinite(xom.metrics.revenue.value));
+  assert.match(
+    xom.metrics.revenue.sources[0].documentUrl,
+    /\/Archives\/edgar\/data\/34088\//,
+  );
 });

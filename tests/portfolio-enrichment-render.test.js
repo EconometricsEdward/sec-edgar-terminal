@@ -11,6 +11,10 @@ import { unpackPortfolioSnapshot } from "../src/utils/portfolioEvidenceCodec.js"
 import { buildPortfolioAnalytics } from "../src/utils/portfolioAnalytics.js";
 import { buildCatalogReport } from "../src/utils/portfolioEnrichment.js";
 import { augmentPortfolioCompanyMetrics } from "../src/utils/financialSupplementalMetrics.js";
+import {
+  buildPortfolioFinancialProfile,
+  resolveFinancialProfileMetricLens,
+} from "../src/utils/portfolioFinancialProfile.js";
 const require = createRequire(import.meta.url),
   ts = require("typescript");
 function component(file) {
@@ -131,6 +135,32 @@ test("full-catalog peer currency differences retain currency units and compact d
   assert.doesNotMatch(html, /[0-9,] x|percentage points/);
 });
 
+test("controlled financial tools keep analysis inside a concrete business model", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/PortfolioFinancialTools.tsx",
+  ).default;
+  const catalog = buildCatalogReport(report, companies);
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      report: catalog,
+      view: "peers",
+      lens: "",
+      onLensChange: () => {},
+      onInspectCompany: () => {},
+    }),
+  );
+
+  const corporateCount = catalog.concentration.issuers.filter(
+    (issuer) => issuer.kind === "company" && issuer.lens === "corporate",
+  ).length;
+  assert.doesNotMatch(html, /Business model|All business models/);
+  assert.match(
+    html,
+    new RegExp(`All included operating companies \\(${corporateCount}\\)`),
+  );
+  assert.match(html, /Full reporting period/);
+});
+
 test("briefing renders all sector links and dated classification coverage", () => {
   const Component = component(
     "../src/app/workspace/portfolio/PortfolioBriefing.tsx",
@@ -171,6 +201,229 @@ test("concentration heat map renders the complete demo with accessible grouping 
   assert.match(html, /aria-label="Inspect AAPL, 5% allocation"/);
   assert.equal((html.match(/aria-label="Inspect /g) || []).length, 100);
   assert.doesNotMatch(html, /NaN|Infinity|undefined/);
+});
+
+test("financial profile overview renders the expanded demo measures, model lenses and evidence gaps", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
+  ).default;
+  const augmentedCompanies = companies.map(augmentPortfolioCompanyMetrics);
+  const catalog = buildCatalogReport(report, augmentedCompanies);
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      report,
+      catalogReport: catalog,
+      companies: augmentedCompanies,
+      capturedAt: demo.captured_at,
+      onInspectCompany: () => {},
+    }),
+  );
+
+  assert.match(html, /See the financial shape behind the holdings/);
+  assert.match(html, /Operating companies/);
+  assert.match(html, /Banks/);
+  assert.match(html, /Insurers/);
+  assert.match(html, /24 supported ratio measures/);
+  assert.match(html, /Growth × profitability, holding by holding/);
+  assert.match(html, /86 aligned companies/);
+  assert.match(html, /Inspect a company in the map/);
+  assert.match(html, /(?:Positive|Negative|Zero) FCF|FCF unavailable/);
+  assert.equal(
+    (html.match(/<circle\b[^>]*aria-hidden="true"/g) || []).length,
+    86,
+  );
+  assert.doesNotMatch(html, /<circle\b[^>]*tabindex=/);
+  assert.match(html, /Factual tests, not a composite score/);
+  assert.match(html, /Operating interest coverage below 2x/);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined/);
+});
+
+test("unweighted financial profile uses company breadth throughout overview and measures", () => {
+  const profileModule = component(
+    "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
+  );
+  const augmentedCompanies = companies.map(augmentPortfolioCompanyMetrics);
+  const weightedCatalog = buildCatalogReport(report, augmentedCompanies);
+  const catalog = {
+    ...weightedCatalog,
+    weighted: false,
+    concentration: {
+      ...weightedCatalog.concentration,
+      issuers: weightedCatalog.concentration.issuers.map((issuer) => ({
+        ...issuer,
+        weightPct: null,
+        weightComplete: false,
+      })),
+    },
+    metrics: weightedCatalog.metrics.map((entry) => ({
+      ...entry,
+      observations: entry.observations.map((row) => ({
+        ...row,
+        weightPct: null,
+        weightComplete: false,
+      })),
+    })),
+  };
+  const profile = buildPortfolioFinancialProfile(catalog, {
+    lens: "corporate",
+  });
+  const overview = renderToStaticMarkup(
+    createElement(profileModule.default, {
+      report: { ...report, weighted: false },
+      catalogReport: catalog,
+      companies: augmentedCompanies,
+      capturedAt: demo.captured_at,
+      onInspectCompany: () => {},
+    }),
+  );
+  const measures = renderToStaticMarkup(
+    createElement(profileModule.MeasureExplorer, {
+      profile,
+      requestedMetric: "netMargin",
+      onRequestedMetric: () => {},
+      onInspectCompany: () => {},
+    }),
+  );
+
+  assert.match(overview, /Companies represented/);
+  assert.match(overview, /Company footprints/);
+  assert.match(overview, /Ranked by share of measured companies/);
+  assert.match(overview, /Each company has equal bubble area/);
+  assert.doesNotMatch(
+    overview,
+    /Known allocation represented|matched original allocation|Bubble area reflects known holding weight/,
+  );
+  assert.match(measures, /Company average/);
+  assert.match(measures, /Share of measured companies/);
+  assert.match(measures, /<th scope="col">Company<\/th>/);
+  assert.match(measures, /<th scope="row">/);
+  assert.doesNotMatch(measures, /Allocation-weighted median|original allocation/);
+});
+
+test("financial profile consumes request nonces once and remounts tools by lens", () => {
+  const source = readFileSync(
+    new URL(
+      "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /handledFinancialRequestNonce\.current === financialRequest\.nonce/,
+  );
+  assert.match(
+    source,
+    /handledFinancialRequestNonce\.current = financialRequest\.nonce/,
+  );
+  assert.match(source, /key=\{`overview:\$\{lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /key=\{`peers:\$\{lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /key=\{`health:\$\{lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /key=\{`relationships:\$\{lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /key=\{`compare:\$\{lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /<dt>Free cash flow direction<\/dt>/);
+});
+
+test("financial health scopes every reused tool to the selected business model", () => {
+  const profileModule = component(
+    "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
+  );
+  const augmentedCompanies = companies.map(augmentPortfolioCompanyMetrics);
+  const catalog = buildCatalogReport(report, augmentedCompanies);
+  const bankingProfile = buildPortfolioFinancialProfile(catalog, {
+    lens: "banking",
+  });
+  const scope = profileModule.buildFinancialHealthScope(
+    report,
+    catalog,
+    augmentedCompanies,
+    "banking",
+  );
+  const bankingCiks = new Set(
+    catalog.concentration.issuers
+      .filter((issuer) => issuer.kind === "company" && issuer.lens === "banking")
+      .map((issuer) => String(issuer.cik).padStart(10, "0")),
+  );
+  const html = renderToStaticMarkup(
+    createElement(profileModule.FinancialHealth, {
+      profile: bankingProfile,
+      report: scope.report,
+      companies: scope.companies,
+      capturedAt: demo.captured_at,
+      onInspectCompany: () => {},
+    }),
+  );
+
+  assert.equal(scope.companyCount, bankingCiks.size);
+  assert.ok(
+    scope.report.concentration.issuers.every((issuer) =>
+      bankingCiks.has(String(issuer.cik).padStart(10, "0")),
+    ),
+  );
+  assert.ok(
+    scope.companies.every((company) =>
+      bankingCiks.has(String(company.cik).padStart(10, "0")),
+    ),
+  );
+  assert.match(html, /Banks only/);
+  assert.match(html, /Other business models are excluded, not blended/);
+  assert.match(html, /Ratio summaries/);
+  assert.match(html, /Cash-and-debt and condition diagnostics remain disabled/);
+});
+
+test("unknown business models remain visibly disclosed outside model summaries", () => {
+  const Profile = component(
+    "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
+  ).default;
+  const augmentedCompanies = companies.map(augmentPortfolioCompanyMetrics);
+  const catalog = buildCatalogReport(report, augmentedCompanies);
+  const firstCorporate = catalog.concentration.issuers.find(
+    (issuer) => issuer.kind === "company" && issuer.lens === "corporate",
+  );
+  const withUnknown = {
+    ...catalog,
+    concentration: {
+      ...catalog.concentration,
+      issuers: catalog.concentration.issuers.map((issuer) =>
+        issuer.cik === firstCorporate.cik
+          ? { ...issuer, lens: "unknown" }
+          : issuer,
+      ),
+    },
+  };
+  const html = renderToStaticMarkup(
+    createElement(Profile, {
+      report,
+      catalogReport: withUnknown,
+      companies: augmentedCompanies,
+      capturedAt: demo.captured_at,
+      onInspectCompany: () => {},
+    }),
+  );
+
+  assert.match(html, /1 company needs a confirmed business model/);
+  assert.match(html, /unlike accounting models are never blended/);
+});
+
+test("an external demo bank measure request switches to its observed banking lens", () => {
+  const augmentedCompanies = companies.map(augmentPortfolioCompanyMetrics);
+  const catalog = buildCatalogReport(report, augmentedCompanies);
+  const requestedLens = resolveFinancialProfileMetricLens(
+    catalog,
+    "loanDeposits",
+    "corporate",
+  );
+  const profile = buildPortfolioFinancialProfile(catalog, {
+    lens: requestedLens,
+  });
+  const measure = profile.metricSummaries.find(
+    (entry) => entry.id === "loanDeposits",
+  );
+
+  assert.equal(requestedLens, "banking");
+  assert.equal(profile.lens, "banking");
+  assert.ok(measure.measuredCompanyCount > 0);
 });
 
 test("metric rankings expose measured sector peers and a bounded first page", () => {

@@ -30,17 +30,98 @@ export const PORTFOLIO_API_VERSION = "edgar.portfolio.v1";
 export const PORTFOLIO_RESEARCH_BATCH = 5;
 export const PORTFOLIO_BODY_BYTES = 256 * 1024;
 export const PORTFOLIO_FEED_LIMIT = 30;
-const CACHE_NAMESPACE = "portfolio-company-v2-analysis";
+const CACHE_SCHEMA_VERSION = "portfolio-company-v3-evidence-continuity";
+const CACHE_NAMESPACE = CACHE_SCHEMA_VERSION;
 const CACHE_FRESH_MS = 5 * 60 * 1000;
 const CACHE_MAX_MS = 24 * 60 * 60 * 1000;
 const localCache = new Map();
 const inFlight = new Map();
 let nextSecRequest = 0;
 
+/**
+ * SEC registrant transitions that have been individually verified. The current
+ * registrant remains the legal identity shown to users; these entries only
+ * extend its evidence chain across an identified predecessor/joint filer.
+ */
+const SEC_EVIDENCE_CONTINUITY = Object.freeze({
+  "0002115436": Object.freeze({
+    predecessorCiks: Object.freeze(["0000034088"]),
+    relationship: "predecessor-and-joint-filer",
+    effectiveDate: "2026-07-01",
+    description:
+      "ExxonMobil registrant succession and joint-filer transition",
+  }),
+});
+
 const nowIso = () => new Date().toISOString();
 const cikString = (value) => String(value || "").padStart(10, "0");
 const failure = (message, status = 400) =>
   Object.assign(new Error(message), { status });
+
+function factObservationKey(observation) {
+  return JSON.stringify([
+    observation?.start || null,
+    observation?.end || null,
+    observation?.val ?? null,
+    observation?.accn || null,
+    observation?.filed || null,
+    observation?.form || null,
+    observation?.fy || null,
+    observation?.fp || null,
+    observation?.frame || null,
+  ]);
+}
+
+/** Merge exact SEC fact observations without adding or rebasing values. */
+function mergeCompanyFacts(factSets) {
+  const merged = {};
+  for (const facts of factSets) {
+    if (!facts || typeof facts !== "object") continue;
+    for (const [taxonomy, concepts] of Object.entries(facts)) {
+      if (!concepts || typeof concepts !== "object") continue;
+      const targetTaxonomy = (merged[taxonomy] ||= {});
+      for (const [tag, concept] of Object.entries(concepts)) {
+        if (!concept || typeof concept !== "object") continue;
+        const prior = targetTaxonomy[tag] || {};
+        const units = { ...(prior.units || {}) };
+        for (const [unit, observations] of Object.entries(
+          concept.units || {},
+        )) {
+          const byObservation = new Map(
+            (units[unit] || []).map((observation) => [
+              factObservationKey(observation),
+              observation,
+            ]),
+          );
+          for (const observation of Array.isArray(observations)
+            ? observations
+            : [])
+            if (!byObservation.has(factObservationKey(observation)))
+              byObservation.set(factObservationKey(observation), observation);
+          units[unit] = [...byObservation.values()];
+        }
+        // The current registrant is passed first and remains authoritative for
+        // concept metadata and exact duplicates. New predecessor observations
+        // are appended without altering any reported values.
+        targetTaxonomy[tag] = { ...concept, ...prior, units };
+      }
+    }
+  }
+  return merged;
+}
+
+function factSourceCiksByAccession(factSources) {
+  const provenance = {};
+  for (const { cik, facts } of factSources)
+    for (const concepts of Object.values(facts || {}))
+      for (const concept of Object.values(concepts || {}))
+        for (const observations of Object.values(concept?.units || {}))
+          for (const observation of Array.isArray(observations)
+            ? observations
+            : [])
+            if (observation?.accn) provenance[observation.accn] = cik;
+  return provenance;
+}
 
 export function validatePortfolioRequest(input) {
   if (!input || typeof input !== "object" || Array.isArray(input))
@@ -191,14 +272,25 @@ function pointWithSources(point, company, unit, period) {
         ? "not_applicable"
         : point.classification ||
           (point.value == null ? "unavailable" : "reported"),
-    sources: evidenceSources(point).map((source) => ({
-      ...source,
-      documentUrl:
-        company.filings?.find((filing) => filing.accession === source.accession)
-          ?.documentUrl ||
-        source.documentUrl ||
-        sourceDocumentUrl(company.cik, source),
-    })),
+    sources: evidenceSources(point).map((source) => {
+      const filing = company.filings?.find(
+        (candidate) => candidate.accession === source.accession,
+      );
+      const sourceCik =
+        filing?.sourceCik ||
+        company.factSourceCiksByAccession?.[source.accession] ||
+        company.cik;
+      const provenanceUrl = sourceDocumentUrl(sourceCik, source);
+      return {
+        ...source,
+        ...(company.factSourceCiksByAccession ? { sourceCik } : {}),
+        documentUrl:
+          filing?.documentUrl ||
+          (sourceCik !== company.cik
+            ? provenanceUrl
+            : source.documentUrl || provenanceUrl),
+      };
+    }),
     calculations: evidenceCalculations(point),
     source: undefined,
   };
@@ -307,22 +399,25 @@ export function buildPortfolioCompany(
           "%",
         )
       : Number.isFinite(growth.yoy.value)
-        ? {
-            value: growth.yoy.value,
-            unit: "%",
+        ? pointWithSources(
+            {
+              value: growth.yoy.value,
+              classification: "calculated",
+              formula:
+                "(Current revenue / comparable prior-year revenue − 1) × 100; positive prior revenue required.",
+              sources: [
+                ...evidenceSources(compared.metrics.revenue[0]),
+                ...evidenceSources(growth.prior),
+              ],
+              calculations: [
+                ...evidenceCalculations(compared.metrics.revenue[0]),
+                ...evidenceCalculations(growth.prior),
+              ],
+            },
+            company,
+            "%",
             period,
-            classification: "calculated",
-            formula:
-              "(Current revenue / comparable prior-year revenue − 1) × 100; positive prior revenue required.",
-            sources: [
-              ...evidenceSources(compared.metrics.revenue[0]),
-              ...evidenceSources(growth.prior),
-            ],
-            calculations: [
-              ...evidenceCalculations(compared.metrics.revenue[0]),
-              ...evidenceCalculations(growth.prior),
-            ],
-          }
+          )
         : unavailablePoint(
             period,
             growth.yoy.reason ||
@@ -447,7 +542,7 @@ export function buildPortfolioCompany(
   };
 }
 
-function feedFor(submissions, cik, retrievedAt) {
+function filingRowsFor(submissions, cik, discloseSourceCik = false) {
   const recent = submissions.filings?.recent || {};
   const descriptions = new Map(
     (recent.accessionNumber || []).map((accession, index) => [
@@ -455,24 +550,51 @@ function feedFor(submissions, cik, retrievedAt) {
       recent.primaryDocDescription?.[index] || null,
     ]),
   );
+  return submissionRows(recent, cik).map((filing) => ({
+    ...filing,
+    description: descriptions.get(filing.accession),
+    ...(discloseSourceCik ? { sourceCik: cik } : {}),
+  }));
+}
+
+function feedForSources(sources, retrievedAt, continuity = null) {
   const filings = [
     ...new Map(
-      submissionRows(recent, cik).map((filing) => [
-        filing.accession,
-        { ...filing, description: descriptions.get(filing.accession) },
-      ]),
+      sources
+        .flatMap(({ submissions, cik }) =>
+          filingRowsFor(submissions, cik, Boolean(continuity)),
+        )
+        .map((filing) => [filing.accession, filing]),
     ).values(),
-  ].sort((a, b) => (b.filingDate || "").localeCompare(a.filingDate || ""));
+  ].sort(
+    (a, b) =>
+      (b.filingDate || "").localeCompare(a.filingDate || "") ||
+      (b.accession || "").localeCompare(a.accession || ""),
+  );
+  const sourceCoverage = sources.map(({ submissions, cik }) => {
+    const recent = submissions.filings?.recent || {};
+    return {
+      cik,
+      source: `https://data.sec.gov/submissions/CIK${cik}.json`,
+      recentSubmissionCount: recent.accessionNumber?.length || 0,
+      matchingRecentCount: filingRowsFor(submissions, cik).length,
+    };
+  });
+  const currentCik = sources[0].cik;
   return {
     filings: filings.slice(0, PORTFOLIO_FEED_LIMIT),
+    sourceFilings: filings,
     latestAnnualFiling:
       filings.find((filing) => /^(10-K|20-F|40-F)(\/A)?$/.test(filing.form)) ||
       null,
     latestInterimFiling:
       filings.find((filing) => /^10-Q(\/A)?$/.test(filing.form)) || null,
     filingCoverage: {
-      source: `https://data.sec.gov/submissions/CIK${cik}.json`,
-      scope: "recent SEC submissions only",
+      source: `https://data.sec.gov/submissions/CIK${currentCik}.json`,
+      sources: sourceCoverage,
+      scope: continuity
+        ? "recent SEC submissions for the current registrant and its verified predecessor/joint filer"
+        : "recent SEC submissions only",
       archivedSubmissionFilesChecked: 0,
       relevantForms: [
         "10-K",
@@ -483,15 +605,72 @@ function feedFor(submissions, cik, retrievedAt) {
         "6-K",
         "amendments",
       ],
-      recentSubmissionCount: recent.accessionNumber?.length || 0,
+      recentSubmissionCount: sourceCoverage.reduce(
+        (sum, source) => sum + source.recentSubmissionCount,
+        0,
+      ),
       matchingRecentCount: filings.length,
       returnedCount: Math.min(filings.length, PORTFOLIO_FEED_LIMIT),
       limit: PORTFOLIO_FEED_LIMIT,
       truncated: filings.length > PORTFOLIO_FEED_LIMIT,
       checkedAt: retrievedAt,
-      note: "Up to 30 relevant filings per company from the recent submissions block. Older archive files are not scanned; this is not a complete filing history.",
+      note: continuity
+        ? "Up to 30 unique relevant filings across the current registrant and verified predecessor/joint filer are returned. Older archive files are not scanned; this is not a complete filing history."
+        : "Up to 30 relevant filings per company from the recent submissions block. Older archive files are not scanned; this is not a complete filing history.",
     },
   };
+}
+
+function feedFor(submissions, cik, retrievedAt) {
+  return feedForSources([{ submissions, cik }], retrievedAt);
+}
+
+function continuityMetadata(
+  currentCik,
+  continuity,
+  submissionCiks,
+  factCiks,
+  failures,
+) {
+  const predecessorCiks = [...continuity.predecessorCiks];
+  const complete = predecessorCiks.every(
+    (predecessorCik) =>
+      submissionCiks.includes(predecessorCik) &&
+      factCiks.includes(predecessorCik),
+  );
+  return {
+    version: "sec-evidence-continuity-v1",
+    status: complete && failures.length === 0 ? "applied" : "partial",
+    currentCik,
+    predecessorCiks,
+    relationship: continuity.relationship,
+    effectiveDate: continuity.effectiveDate,
+    description: continuity.description,
+    identityPolicy:
+      "Company identity, ticker and classification come from the current SEC registrant. Verified predecessor data extends the evidence history only.",
+    filingSourceCiks: [...submissionCiks],
+    factSourceCiks: [...factCiks],
+    sources: [...new Set([...submissionCiks, ...factCiks])].map((sourceCik) => ({
+      cik: sourceCik,
+      submissions: `https://data.sec.gov/submissions/CIK${sourceCik}.json`,
+      companyFacts: `https://data.sec.gov/api/xbrl/companyfacts/CIK${sourceCik}.json`,
+    })),
+    failures,
+  };
+}
+
+function addContinuityDisclosure(result, continuity) {
+  result.evidenceContinuity = continuity;
+  const predecessorLabel = continuity.predecessorCiks.join(", ");
+  if (continuity.status === "applied")
+    result.warnings.push(
+      `SEC evidence continuity applied: compatible company facts and recent filings from verified predecessor/joint filer CIK ${predecessorLabel} are included. Legal identity remains current CIK ${continuity.currentCik}; metric sources retain the filing registrant's SEC URL.`,
+    );
+  else
+    result.warnings.push(
+      `SEC evidence continuity is partial: one or more resources in the verified current/predecessor chain for CIK ${predecessorLabel} could not be retrieved. Available SEC evidence retains each source registrant's provenance; no values are estimated or substituted.`,
+    );
+  return result;
 }
 
 async function freshCompany(
@@ -507,7 +686,43 @@ async function freshCompany(
       "The SEC company identity could not be verified for this CIK.",
     );
   const kind = portfolioCompanyKind(submissions, identity);
-  const feed = feedFor(submissions, cik, retrievedAt);
+  const continuity = SEC_EVIDENCE_CONTINUITY[cik] || null;
+  const submissionSources = [{ cik, submissions }];
+  const continuityFailures = [];
+  if (continuity && kind !== "fund")
+    for (const predecessorCik of continuity.predecessorCiks) {
+      try {
+        const predecessorSubmissions = await secJson(
+          `/submissions/CIK${predecessorCik}.json`,
+          signal,
+        );
+        if (
+          cikString(predecessorSubmissions?.cik) !== predecessorCik ||
+          !predecessorSubmissions.name
+        )
+          throw new Error(
+            "SEC submissions did not match the registered predecessor CIK.",
+          );
+        submissionSources.push({
+          cik: predecessorCik,
+          submissions: predecessorSubmissions,
+        });
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        continuityFailures.push({
+          cik: predecessorCik,
+          resource: "submissions",
+          message:
+            error instanceof Error
+              ? error.message
+              : "The SEC submissions resource was unavailable.",
+        });
+      }
+    }
+  const feedBundle = continuity
+    ? feedForSources(submissionSources, retrievedAt, continuity)
+    : feedFor(submissions, cik, retrievedAt);
+  const { sourceFilings, ...feed } = feedBundle;
   const tickers = (submissions.tickers || []).filter(
     (ticker) => typeof ticker === "string",
   );
@@ -520,6 +735,9 @@ async function freshCompany(
     sicDescription: submissions.sicDescription,
     kind,
     ...feed,
+    // Retain every recent source internally while metrics are enriched so an
+    // evidence URL is not lost merely because the public feed is capped at 30.
+    filings: sourceFilings,
   };
   if (kind === "fund")
     return {
@@ -544,29 +762,67 @@ async function freshCompany(
         "Funds are retained as positions but are not analyzed with operating-company financial metrics. Use the Funds workspace for portfolio holdings research.",
       ],
     };
-  try {
-    const facts = await secJson(
-      `/api/xbrl/companyfacts/CIK${cik}.json`,
-      signal,
-    );
-    if (cikString(facts?.cik) !== cik || !facts.facts)
-      throw new Error("SEC company facts did not match the requested company.");
-    return buildPortfolioCompany(
-      { ...company, facts: facts.facts },
-      { basis, retrievedAt },
-    );
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    const result = buildPortfolioCompany(
-      { ...company, facts: {} },
-      { basis, retrievedAt },
-    );
+  const factSources = [];
+  const intendedFactCiks = continuity
+    ? [cik, ...continuity.predecessorCiks]
+    : [cik];
+  for (const sourceCik of intendedFactCiks) {
+    try {
+      const companyFacts = await secJson(
+        `/api/xbrl/companyfacts/CIK${sourceCik}.json`,
+        signal,
+      );
+      if (cikString(companyFacts?.cik) !== sourceCik || !companyFacts.facts)
+        throw new Error("SEC company facts did not match the requested company.");
+      factSources.push({ cik: sourceCik, facts: companyFacts.facts });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      if (continuity)
+        continuityFailures.push({
+          cik: sourceCik,
+          resource: "companyfacts",
+          message:
+            error instanceof Error
+              ? error.message
+              : "The SEC company-facts resource was unavailable.",
+        });
+    }
+  }
+  const mergedFacts = mergeCompanyFacts(factSources.map(({ facts }) => facts));
+  const result = buildPortfolioCompany(
+    {
+      ...company,
+      facts: mergedFacts,
+      ...(continuity
+        ? {
+            factSourceCiksByAccession:
+              factSourceCiksByAccession(factSources),
+          }
+        : {}),
+    },
+    { basis, retrievedAt },
+  );
+  // Source URLs were enriched against the uncapped feed above. Only the
+  // documented public feed limit is returned to API consumers.
+  result.filings = feed.filings;
+  if (factSources.length === 0) {
     result.warnings.push(
       "Company facts could not be retrieved; the verified identity and available filings are retained. Retry this company.",
     );
     result.factsUnavailable = true;
-    return result;
   }
+  return continuity
+    ? addContinuityDisclosure(
+        result,
+        continuityMetadata(
+          cik,
+          continuity,
+          submissionSources.map(({ cik: sourceCik }) => sourceCik),
+          factSources.map(({ cik: sourceCik }) => sourceCik),
+          continuityFailures,
+        ),
+      )
+    : result;
 }
 
 function decodeCache(value) {
@@ -588,7 +844,7 @@ function decodeCache(value) {
 }
 
 async function cachedCompany(identity, basis, options) {
-  const key = `${COMPARE_VERSION}:${ANALYSIS_VERSION}:${identity.cik}:${basis}`;
+  const key = `${CACHE_SCHEMA_VERSION}:${COMPARE_VERSION}:${ANALYSIS_VERSION}:${identity.cik}:${basis}`;
   const candidate =
     localCache.get(key) || decodeCache(await warmGet(CACHE_NAMESPACE, key));
   const cached =
@@ -604,6 +860,20 @@ async function cachedCompany(identity, basis, options) {
   const promise = (async () => {
     try {
       const company = await freshCompany(identity, basis, options);
+      const partialContinuity =
+        company.evidenceContinuity &&
+        company.evidenceContinuity.status !== "applied";
+      const cachedContinuityComplete =
+        cached?.evidenceContinuity?.status === "applied";
+      if (partialContinuity && cachedContinuityComplete)
+        return {
+          ...cached,
+          cache: { status: "stale", storedAt: cached.retrievedAt },
+          warnings: [
+            ...cached.warnings,
+            "SEC evidence continuity could not be refreshed completely. Financial metrics and filing provenance use the timestamped previous complete public snapshot.",
+          ],
+        };
       if (company.factsUnavailable && cached)
         return {
           ...cached,
@@ -617,7 +887,7 @@ async function cachedCompany(identity, basis, options) {
             "Company facts could not be refreshed. Financial metrics use the timestamped previous public snapshot; the filing feed was refreshed separately.",
           ],
         };
-      if (!company.factsUnavailable) {
+      if (!company.factsUnavailable && !partialContinuity) {
         localCache.set(key, company);
         if (localCache.size > 150)
           localCache.delete(localCache.keys().next().value);

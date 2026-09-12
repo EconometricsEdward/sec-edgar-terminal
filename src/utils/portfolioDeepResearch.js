@@ -77,13 +77,14 @@ export const portfolioMetricScopeValid = (key, point) =>
 /** The same eligibility contract powers choices, ranks and comparisons. */
 export function portfolioMetricState(company, definition, period = "all") {
   const point = company?.metrics?.[definition?.key];
-  if (!companyAvailable(company) || !company.lens || company.lens === "unknown")
+  if (!company?.lens || company.lens === "unknown")
     return "unavailable";
   if (
     !metricApplies(definition, company.lens) ||
     point?.classification === "not_applicable"
   )
     return "not-applicable";
+  if (!companyAvailable(company)) return "unavailable";
   if (
     !portfolioMetricScopeValid(definition?.key, point) ||
     !finiteFinancialMetric(point) ||
