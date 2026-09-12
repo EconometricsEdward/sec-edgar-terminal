@@ -84,7 +84,9 @@ export function portfolioReviewPriorities(
       continue;
     seen.add(company.cik);
     const end = company.period?.end;
-    const threshold = company.period?.kind === "ttm" ? 200 : 550;
+    const threshold = ["quarter", "ytd", "ttm"].includes(company.period?.kind)
+      ? 200
+      : 550;
     if (end && now - Date.parse(end) > threshold * DAY)
       priorities.push({
         key: `stale:${company.cik}`,
