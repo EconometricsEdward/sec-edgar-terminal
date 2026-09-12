@@ -17,7 +17,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import {
+  FINANCIAL_PROFILE_ALL_SECTORS,
+  FINANCIAL_PROFILE_UNCOVERED_SECTOR,
   buildPortfolioFinancialProfile,
+  normalizeFinancialProfileSector,
   resolveFinancialProfileMetricLens,
 } from "../../../utils/portfolioFinancialProfile.js";
 import { canonicalPortfolioCik } from "../../../utils/portfolioModel.js";
@@ -67,6 +70,8 @@ const compact = (value: unknown, digits = 1) =>
       })
     : "—";
 const percent = (value: unknown) => (finite(value) ? `${compact(value, 1)}%` : "—");
+const companyCountLabel = (value: number, qualifier = "") =>
+  `${value}${qualifier ? ` ${qualifier}` : ""} ${value === 1 ? "company" : "companies"}`;
 const valueLabel = (value: unknown, unit: string) => {
   if (!finite(value)) return "Unavailable";
   if (unit === "USD")
@@ -117,6 +122,7 @@ function financialProfileRevision(catalogReport: any, capturedAt?: string | null
   for (const issuer of catalogReport?.concentration?.issuers || []) {
     mix(issuer.cik);
     mix(issuer.lens);
+    mix(issuer.sector);
     mix(issuer.weightPct);
     mix(issuer.weightComplete);
   }
@@ -137,70 +143,189 @@ export function buildFinancialHealthScope(
   catalogReport: any,
   companies: any[],
   lens: string,
+  sector = FINANCIAL_PROFILE_ALL_SECTORS,
+  selectedCiks?: string[],
 ) {
-  const ciks = new Set(
-    (catalogReport?.concentration?.issuers || [])
-      .filter((row: any) => row.kind === "company" && row.lens === lens)
-      .map((row: any) => canonicalPortfolioCik(row.cik))
-      .filter(Boolean),
-  );
+  const normalizedCiks = (
+    Array.isArray(selectedCiks)
+      ? selectedCiks
+      : (catalogReport?.concentration?.issuers || [])
+          .filter(
+            (row: any) =>
+              row.kind === "company" &&
+              row.lens === lens &&
+              (sector === FINANCIAL_PROFILE_ALL_SECTORS ||
+                normalizeFinancialProfileSector(row.sector) === sector),
+          )
+          .map((row: any) => row.cik)
+  )
+    .map((value: any) => canonicalPortfolioCik(value))
+    .filter((value: string | null): value is string => Boolean(value));
+  const ciks = new Set<string>(normalizedCiks);
+  const inScope = (value: unknown) => {
+    const cik = canonicalPortfolioCik(value as string);
+    return Boolean(cik && ciks.has(cik));
+  };
   return {
     report: {
       ...report,
       concentration: {
         ...report.concentration,
         issuers: (report?.concentration?.issuers || []).filter((row: any) =>
-          ciks.has(canonicalPortfolioCik(row.cik)),
+          inScope(row.cik),
         ),
       },
     },
-    companies: companies.filter((company: any) =>
-      ciks.has(canonicalPortfolioCik(company.cik)),
-    ),
+    companies: companies.filter((company: any) => inScope(company.cik)),
+    catalogReport: {
+      ...catalogReport,
+      concentration: {
+        ...catalogReport?.concentration,
+        issuers: (catalogReport?.concentration?.issuers || []).filter(
+          (row: any) => inScope(row.cik),
+        ),
+      },
+      metrics: (catalogReport?.metrics || []).map((metric: any) => ({
+        ...metric,
+        observations: (metric.observations || []).filter((row: any) =>
+          inScope(row.cik),
+        ),
+        eligibleCiks: (metric.eligibleCiks || []).filter(inScope),
+        missingCiks: (metric.missingCiks || []).filter(inScope),
+        notApplicableCiks: (metric.notApplicableCiks || []).filter(inScope),
+      })),
+    },
     companyCount: ciks.size,
   };
 }
 
-function LensPicker({
+function SectorPicker({
   profile,
+  sector,
   lens,
-  onChange,
+  onSectorChange,
+  onLensChange,
 }: {
   profile: any;
+  sector: string;
   lens: string;
-  onChange: (lens: string) => void;
+  onSectorChange: (sector: string) => void;
+  onLensChange: (lens: string) => void;
 }) {
+  const activeCohorts = profile.lensGroups.filter(
+    (group: any) => group.companyCount > 0,
+  );
+  const sectorCount = profile.sectorGroups.filter(
+    (group: any) =>
+      group.id !== FINANCIAL_PROFILE_ALL_SECTORS &&
+      group.id !== FINANCIAL_PROFILE_UNCOVERED_SECTOR,
+  ).length;
+  const uncovered = profile.sectorGroups.find(
+    (group: any) => group.id === FINANCIAL_PROFILE_UNCOVERED_SECTOR,
+  );
+  const source = profile.sectorDefinition;
+  const sourceProvider =
+    source?.sectorSourceProviders?.length === 1
+      ? `${source.sectorSourceProviders[0]} `
+      : "";
+  const sourceNote = source?.sectorSourceAsOf
+    ? `${sourceProvider}fund-reported classification as of ${dateLabel(source.sectorSourceAsOf)}`
+    : source?.sectorSourceLatestAsOf
+      ? `${sourceProvider}fund-reported sources through ${dateLabel(source.sectorSourceLatestAsOf)} · ${source.sectorSourceCompanyCount} of ${companyCountLabel(source.companyCount)}`
+      : "";
   return (
     <section className={s.lensPanel} aria-labelledby="financial-lens-title">
       <div className={s.sectionHeading}>
         <div>
-          <p className={s.eyebrow}>Compare like with like</p>
-          <h3 id="financial-lens-title">Choose a business model</h3>
+          <p className={s.eyebrow}>Portfolio sectors</p>
+          <h3 id="financial-lens-title">Choose a sector</h3>
         </div>
-        <span>Ratios are never blended across accounting models.</span>
+        <span>
+          {sectorCount} sectors available
+          {uncovered?.companyCount
+            ? ` · ${uncovered.companyCount} without sector coverage`
+            : ""}
+          {sourceNote ? ` · ${sourceNote}` : ""}
+        </span>
       </div>
       <div className={s.lensGrid}>
-        {profile.lensGroups.map((group: any) => (
+        {profile.sectorGroups.map((group: any) => (
           <button
             type="button"
             key={group.id}
-            aria-pressed={lens === group.id}
+            aria-pressed={sector === group.id}
             disabled={group.companyCount === 0}
-            onClick={() => onChange(group.id)}
+            onClick={() => onSectorChange(group.id)}
           >
             <span>
-              <Building2 size={17} aria-hidden="true" />
+              <Layers3 size={16} aria-hidden="true" />
               {group.label}
             </span>
-            <strong>{group.companyCount}</strong>
+            <strong>
+              {profile.weighted
+                ? percent(group.knownWeightPct)
+                : group.companyCount}
+            </strong>
             <small>
               {profile.weighted
-                ? `companies · ${percent(group.knownWeightPct)} known allocation`
-                : `companies · ${group.availableRatioMeasureCount} supported measures`}
+                ? `${companyCountLabel(group.companyCount)}${group.lensCount > 1 ? ` · ${group.lensCount} sets` : ""}`
+                : `${group.companyCount === 1 ? "company" : "companies"}${group.lensCount > 1 ? ` · ${group.lensCount} sets` : ""}`}
             </small>
           </button>
         ))}
       </div>
+      <div className={s.cohortBar}>
+        <div>
+          <Building2 size={17} aria-hidden="true" />
+          <p>
+            <span>
+              {profile.hasCompatibleCohort
+                ? "Accounting-compatible measure set"
+                : "Financial evidence status"}
+            </span>
+            <strong>
+              {profile.hasCompatibleCohort
+                ? profile.lensDefinition?.label || lens
+                : "Accounting model not classified"}
+            </strong>
+            <small>
+              {profile.hasCompatibleCohort
+                ? `${profile.companyCount} of ${companyCountLabel(profile.sectorCompanyCount)} in ${profile.sectorDefinition?.label || "the selected sector"}`
+                : `${companyCountLabel(profile.sectorCompanyCount)} remain outside comparable ratio summaries`}
+            </small>
+          </p>
+        </div>
+        {!profile.hasCompatibleCohort ? (
+          <span>A compatible financial measure set is not available yet.</span>
+        ) : activeCohorts.length > 1 ? (
+          <label>
+            Financial measure set
+            <select value={lens} onChange={(event) => onLensChange(event.target.value)}>
+              {activeCohorts.map((group: any) => (
+                <option value={group.id} key={group.id}>
+                  {group.label} ({group.companyCount})
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span>Financial ratios stay comparable within this sector.</span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CompatibleCohortUnavailable({ profile }: { profile: any }) {
+  return (
+    <section className={s.card} role="status">
+      <p className={s.eyebrow}>Financial measures unavailable</p>
+      <h3>No comparable accounting cohort is classified for this sector.</h3>
+      <p className={s.muted}>
+        {companyCountLabel(profile.sectorCompanyCount)} remain visible in sector
+        coverage, but ratio summaries and comparisons stay unavailable until
+        their financial statement model is confirmed.
+      </p>
     </section>
   );
 }
@@ -252,7 +377,7 @@ function PillarCard({
         {metric?.measuredCompanyCount || 0} measured
         {weighted
           ? ` · ${percent(metric?.coveredWeightPct)} allocation`
-          : ` of ${metric?.eligibleCompanyCount || 0} eligible companies`}
+          : ` of ${companyCountLabel(metric?.eligibleCompanyCount || 0, "eligible")}`}
       </span>
       <span className={s.pillarAction}>Explore measure <ArrowUpRight size={13} aria-hidden="true" /></span>
     </button>
@@ -289,11 +414,16 @@ function AllocationFootprints({ profile }: { profile: any }) {
                 <i style={{ width: `${clamp(share || 0, 0, 100)}%` }} />
               </span>
               <small>
-                {entry.matchedCompanyCount} of {entry.measuredCompanyCount} measured companies
+                {entry.matchedCompanyCount} of{" "}
+                {companyCountLabel(entry.measuredCompanyCount, "measured")}
                 {finite(entry.matchedWeightPct) ? ` · ${percent(entry.matchedWeightPct)} original allocation` : ""}
               </small>
               {entry.missingCompanyCount > 0 && (
-                <em>{entry.missingCompanyCount} eligible companies lack this measure</em>
+                <em>
+                  {companyCountLabel(entry.missingCompanyCount, "eligible")} {" "}
+                  {entry.missingCompanyCount === 1 ? "lacks" : "lack"} this
+                  measure
+                </em>
               )}
             </article>
           );
@@ -318,7 +448,7 @@ function FingerprintChart({
       <section className={s.card}>
         <p className={s.eyebrow}>Financial fingerprint</p>
         <h4>Growth and margin map</h4>
-        <p className={s.muted}>This paired view is designed for operating companies. Choose that business model to explore it.</p>
+        <p className={s.muted}>This paired view is designed for operating-company statements. Choose a sector and measure set that contains operating companies to explore it.</p>
       </section>
     );
   if (!fingerprint.points.length)
@@ -361,7 +491,7 @@ function FingerprintChart({
           <h4 id="fingerprint-title">Growth × profitability, holding by holding</h4>
         </div>
         <span>
-          {fingerprint.pairedCompanyCount} aligned companies
+          {companyCountLabel(fingerprint.pairedCompanyCount, "aligned")}
           {profile.weighted
             ? ` · ${percent(fingerprint.knownWeightPct)} allocation`
             : ` · ${percent((fingerprint.pairedCompanyCount / Math.max(1, fingerprint.eligibleCompanyCount)) * 100)} of eligible companies`}
@@ -528,8 +658,8 @@ function AttentionList({
                 <small>
                   {profile.weighted
                     ? `${percent(selected.measuredWeightPct)} allocation measured`
-                    : `${selected.measuredCompanyCount} of ${selected.eligibleCompanyCount} eligible companies measured`}
-                  {` · ${selected.missingCompanyCount} eligible companies unavailable`}
+                    : `${selected.measuredCompanyCount} of ${companyCountLabel(selected.eligibleCompanyCount, "eligible")} measured`}
+                  {` · ${companyCountLabel(selected.missingCompanyCount, "eligible")} unavailable`}
                 </small>
               </div>
               <div className={s.companyChips}>
@@ -544,7 +674,7 @@ function AttentionList({
           )}
         </>
       ) : (
-        <p className={s.empty}>No attention conditions can be assessed for this business model with the current evidence.</p>
+        <p className={s.empty}>No attention conditions can be assessed for this sector and financial measure set with the current evidence.</p>
       )}
     </section>
   );
@@ -580,7 +710,8 @@ function MetricAtlas({
                   <strong>{valueLabel(metric.weightedMedian ?? metric.median, metric.unit)}</strong>
                   <MetricRail metric={metric} />
                   <small>
-                    {metric.measuredCompanyCount}/{metric.eligibleCompanyCount} companies
+                    {metric.measuredCompanyCount}/{metric.eligibleCompanyCount}{" "}
+                    {metric.eligibleCompanyCount === 1 ? "company" : "companies"}
                     {profile.weighted
                       ? ` · ${percent(metric.coveredWeightPct)} allocation`
                       : ` · ${percent((metric.measuredCompanyCount / Math.max(1, metric.eligibleCompanyCount)) * 100)} measured`}
@@ -621,7 +752,7 @@ function Overview({
           <span className={s.liveBadge}><Activity size={14} aria-hidden="true" /> SEC-backed snapshot</span>
         </div>
         <div className={s.heroStats}>
-          <div><span>Companies with financial evidence</span><strong>{profile.measuredCompanyCount}<em> / {profile.companyCount}</em></strong><small>{profile.lensDefinition?.label}</small></div>
+          <div><span>Companies with financial evidence</span><strong>{profile.measuredCompanyCount}<em> / {profile.companyCount}</em></strong><small>{profile.sectorDefinition?.label} · {profile.hasCompatibleCohort ? profile.lensDefinition?.label : "no compatible measure set"}</small></div>
           <div>
             <span>{profile.weighted ? "Known allocation represented" : "Companies represented"}</span>
             <strong>
@@ -632,7 +763,7 @@ function Overview({
             <small>
               {profile.weighted
                 ? "Original portfolio denominator"
-                : `${percent((profile.measuredCompanyCount / Math.max(1, profile.companyCount)) * 100)} of companies in this model`}
+                : `${percent((profile.measuredCompanyCount / Math.max(1, profile.companyCount)) * 100)} of companies in this measure set`}
             </small>
           </div>
           <div><span>Supported measures</span><strong>{profile.metricCount}</strong><small>{catalogReport.metrics.length} catalog measures across all models</small></div>
@@ -691,7 +822,7 @@ export function MeasureExplorer({
       ?.label || metric?.category;
   const [selectedBin, setSelectedBin] = useState<number | null>(null);
   const [limit, setLimit] = useState(20);
-  if (!metric) return <p className={s.empty}>No ratio measures have supported evidence for this business model.</p>;
+  if (!metric) return <p className={s.empty}>No ratio measures have supported evidence for this sector and financial measure set.</p>;
   const histogram = metric.histogram?.bins || [];
   const maxCount = Math.max(1, ...histogram.map((bin: any) => bin.count));
   const rows = selectedBin === null ? metric.observations : histogram[selectedBin]?.rows || [];
@@ -727,7 +858,11 @@ export function MeasureExplorer({
           <div>
             <span>{profile.weighted ? "Allocation-weighted median" : "Company average"}</span>
             <strong>{valueLabel(profile.weighted ? metric.weightedMedian : metric.unweightedMean, metric.unit)}</strong>
-            <small>{profile.weighted ? `${metric.weightedCompanyCount} companies with positive known weight` : `${metric.measuredCompanyCount} equally weighted company observations`}</small>
+            <small>
+              {profile.weighted
+                ? `${companyCountLabel(metric.weightedCompanyCount)} with positive known weight`
+                : `${companyCountLabel(metric.measuredCompanyCount)} with equal weight`}
+            </small>
           </div>
           <div><span>Company median</span><strong>{valueLabel(metric.median, metric.unit)}</strong><small>Unweighted issuer midpoint</small></div>
           <div><span>Middle 50%</span><strong>{finite(metric.p25) && finite(metric.p75) ? `${valueLabel(metric.p25, metric.unit)} – ${valueLabel(metric.p75, metric.unit)}` : "Unavailable"}</strong><small>25th to 75th percentile</small></div>
@@ -742,7 +877,7 @@ export function MeasureExplorer({
               type="button"
               key={`${bin.index}-${bin.min}-${bin.max}`}
               aria-pressed={selectedBin === index}
-              aria-label={`${bin.count} companies from ${valueLabel(bin.min, metric.unit)} to ${valueLabel(bin.max, metric.unit)}`}
+              aria-label={`${companyCountLabel(bin.count)} from ${valueLabel(bin.min, metric.unit)} to ${valueLabel(bin.max, metric.unit)}`}
               onClick={() => { setSelectedBin(selectedBin === index ? null : index); setLimit(20); }}
             >
               <strong>{bin.count}</strong>
@@ -798,8 +933,11 @@ export function FinancialHealth({
   onDisclosure?: Props["onDisclosure"];
 }) {
   const [healthView, setHealthView] = useState<HealthView>("weighted");
-  const corporate = profile.lens === "corporate";
-  const statementCompatible = ["corporate", "banking"].includes(profile.lens);
+  const corporate =
+    profile.hasCompatibleCohort && profile.lens === "corporate";
+  const statementCompatible =
+    profile.hasCompatibleCohort &&
+    ["corporate", "banking"].includes(profile.lens);
   return (
     <div className={s.health}>
       <div className={s.toolIntro}>
@@ -815,10 +953,15 @@ export function FinancialHealth({
       <div className={s.healthScope} role="status">
         <Building2 size={17} aria-hidden="true" />
         <p>
-          <strong>{profile.lensDefinition?.label || profile.lens} only</strong>
+          <strong>
+            {profile.sectorDefinition?.label} · {profile.hasCompatibleCohort
+              ? `${profile.lensDefinition?.label || profile.lens} only`
+              : "no compatible financial measure set"}
+          </strong>
           <span>
-            {profile.companyCount} companies in this financial-health cohort.
-            Other business models are excluded, not blended.
+            {profile.hasCompatibleCohort
+              ? `${companyCountLabel(profile.companyCount)} in this financial-health cohort. ${profile.sector === FINANCIAL_PROFILE_ALL_SECTORS ? "Incompatible accounting models" : "Other sectors and incompatible accounting models"} are excluded, not blended.`
+              : `${companyCountLabel(profile.sectorCompanyCount)} are not assigned to a comparable accounting model, so ratio-based financial health remains unavailable.`}
           </span>
         </p>
       </div>
@@ -909,27 +1052,44 @@ export default function PortfolioFinancialProfile({
   const titleId = useId();
   const handledFinancialRequestNonce = useRef<number | null>(null);
   const [view, setView] = useState<View>("overview");
+  const [sector, setSector] = useState<string>(FINANCIAL_PROFILE_ALL_SECTORS);
   const [lens, setLens] = useState<string>(
     () => buildPortfolioFinancialProfile(catalogReport).lens,
   );
   const [metricId, setMetricId] = useState("netMargin");
   const [measureView, setMeasureView] = useState<"explore" | "peers">("explore");
   const profile = useMemo(
-    () => buildPortfolioFinancialProfile(catalogReport, { lens }),
-    [catalogReport, lens],
+    () => buildPortfolioFinancialProfile(catalogReport, { sector, lens }),
+    [catalogReport, sector, lens],
   );
   const profileRevision = useMemo(
     () => financialProfileRevision(catalogReport, capturedAt),
     [catalogReport, capturedAt],
   );
   const healthScope = useMemo(
-    () => buildFinancialHealthScope(report, catalogReport, companies, lens),
-    [report, catalogReport, companies, lens],
+    () =>
+      buildFinancialHealthScope(
+        report,
+        catalogReport,
+        companies,
+        profile.lens,
+        profile.sector,
+        profile.companyCiks,
+      ),
+    [
+      report,
+      catalogReport,
+      companies,
+      profile.lens,
+      profile.sector,
+      profile.companyCiks,
+    ],
   );
   useEffect(() => {
     if (!financialRequest?.metricId) return;
     if (handledFinancialRequestNonce.current === financialRequest.nonce) return;
     handledFinancialRequestNonce.current = financialRequest.nonce;
+    setSector(FINANCIAL_PROFILE_ALL_SECTORS);
     setLens((current) =>
       resolveFinancialProfileMetricLens(
         catalogReport,
@@ -943,7 +1103,13 @@ export default function PortfolioFinancialProfile({
   }, [catalogReport, financialRequest]);
   const changeLens = (next: string) => {
     setLens(next);
-    const nextProfile = buildPortfolioFinancialProfile(catalogReport, { lens: next });
+    const nextProfile = buildPortfolioFinancialProfile(catalogReport, { sector: profile.sector, lens: next });
+    setMetricId(nextProfile.featuredPillars.find((pillar: any) => pillar.metric?.measuredCompanyCount)?.metricId || nextProfile.metricSummaries.find((metric: any) => metric.measuredCompanyCount)?.id || "");
+  };
+  const changeSector = (next: string) => {
+    const nextProfile = buildPortfolioFinancialProfile(catalogReport, { sector: next });
+    setSector(nextProfile.sector);
+    setLens(nextProfile.lens);
     setMetricId(nextProfile.featuredPillars.find((pillar: any) => pillar.metric?.measuredCompanyCount)?.metricId || nextProfile.metricSummaries.find((metric: any) => metric.measuredCompanyCount)?.id || "");
   };
   const openMetric = (id: string) => {
@@ -961,20 +1127,23 @@ export default function PortfolioFinancialProfile({
           </button>
         ))}
       </nav>
-      <LensPicker profile={profile} lens={lens} onChange={changeLens} />
-      {view === "overview" && <Overview key={`overview:${lens}:${profileRevision}`} profile={profile} catalogReport={catalogReport} capturedAt={capturedAt} onOpenMetric={openMetric} onInspectCompany={onInspectCompany} />}
-      {view === "measures" && (
+      <SectorPicker profile={profile} sector={profile.sector} lens={profile.lens} onSectorChange={changeSector} onLensChange={changeLens} />
+      {view === "overview" && <Overview key={`overview:${profile.sector}:${profile.lens}:${profileRevision}`} profile={profile} catalogReport={catalogReport} capturedAt={capturedAt} onOpenMetric={openMetric} onInspectCompany={onInspectCompany} />}
+      {view !== "overview" && !profile.hasCompatibleCohort ? (
+        <CompatibleCohortUnavailable profile={profile} />
+      ) : null}
+      {view === "measures" && profile.hasCompatibleCohort && (
         <>
           <nav className={s.subnav} aria-label="Financial measure tools">
             <button type="button" aria-pressed={measureView === "explore"} onClick={() => setMeasureView("explore")}><BarChart3 size={16} aria-hidden="true" /> Measure explorer</button>
             <button type="button" aria-pressed={measureView === "peers"} onClick={() => setMeasureView("peers")}><Layers3 size={16} aria-hidden="true" /> Peer benchmarks</button>
           </nav>
-          {measureView === "explore" ? <MeasureExplorer key={`${profile.lens}:${metricId}:${profileRevision}`} profile={profile} requestedMetric={metricId} onRequestedMetric={setMetricId} onInspectCompany={onInspectCompany} /> : <PortfolioFinancialTools key={`peers:${lens}:${profileRevision}`} report={catalogReport} onInspectCompany={onInspectCompany} view="peers" lens={lens} onLensChange={changeLens} />}
+          {measureView === "explore" ? <MeasureExplorer key={`${profile.sector}:${profile.lens}:${metricId}:${profileRevision}`} profile={profile} requestedMetric={metricId} onRequestedMetric={setMetricId} onInspectCompany={onInspectCompany} /> : <PortfolioFinancialTools key={`peers:${profile.sector}:${profile.lens}:${profileRevision}`} report={healthScope.catalogReport} onInspectCompany={onInspectCompany} view="peers" lens={profile.lens} onLensChange={changeLens} />}
         </>
       )}
-      {view === "health" && (
+      {view === "health" && profile.hasCompatibleCohort && (
         <FinancialHealth
-          key={`health:${lens}:${profileRevision}`}
+          key={`health:${profile.sector}:${profile.lens}:${profileRevision}`}
           profile={profile}
           report={healthScope.report}
           companies={healthScope.companies}
@@ -983,8 +1152,8 @@ export default function PortfolioFinancialProfile({
           onDisclosure={onDisclosure}
         />
       )}
-      {view === "relationships" && <PortfolioFinancialTools key={`relationships:${lens}:${profileRevision}`} report={catalogReport} onInspectCompany={onInspectCompany} view="relationships" lens={lens} onLensChange={changeLens} />}
-      {view === "compare" && <PortfolioFinancialTools key={`compare:${lens}:${profileRevision}`} report={catalogReport} onInspectCompany={onInspectCompany} view="compare" lens={lens} onLensChange={changeLens} />}
+      {view === "relationships" && profile.hasCompatibleCohort && <PortfolioFinancialTools key={`relationships:${profile.sector}:${profile.lens}:${profileRevision}`} report={healthScope.catalogReport} onInspectCompany={onInspectCompany} view="relationships" lens={profile.lens} onLensChange={changeLens} />}
+      {view === "compare" && profile.hasCompatibleCohort && <PortfolioFinancialTools key={`compare:${profile.sector}:${profile.lens}:${profileRevision}`} report={healthScope.catalogReport} onInspectCompany={onInspectCompany} view="compare" lens={profile.lens} onLensChange={changeLens} />}
     </section>
   );
 }

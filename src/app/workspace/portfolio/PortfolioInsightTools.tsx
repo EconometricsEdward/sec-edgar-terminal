@@ -17,6 +17,10 @@ export const number = (value: any, unit = "") =>
   typeof value === "number" && Number.isFinite(value)
     ? `${value.toLocaleString("en-US", { maximumFractionDigits: 2, ...(unit === "USD" ? { notation: "compact" as const } : {}) })}${unit ? ` ${unit}` : ""}`
     : "—";
+const companyCountLabel = (value: number | null | undefined, qualifier = "") => {
+  const count = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return `${count}${qualifier ? ` ${qualifier}` : ""} ${count === 1 ? "company" : "companies"}`;
+};
 export function Stats({ values }: { values: [string, any][] }) {
   return (
     <div className={s.stats}>
@@ -297,7 +301,7 @@ export default function PortfolioInsightTools({
                     {profile.cohorts?.map((item: any) => (
                       <option key={item.id} value={item.id}>
                         {item.lens} · {item.period.replaceAll("|", " · ")} ·{" "}
-                        {item.count} companies
+                        {companyCountLabel(item.count)}
                       </option>
                     ))}
                   </select>
@@ -330,8 +334,9 @@ export default function PortfolioInsightTools({
                 ]}
               />
               <p className={s.note}>
-                {profile.excludedCount} companies fall outside this measured
-                cohort.{" "}
+                {companyCountLabel(profile.excludedCount)}{" "}
+                {profile.excludedCount === 1 ? "falls" : "fall"} outside this
+                measured cohort.{" "}
                 {profile.partial
                   ? "Some weights are partial known subtotals. "
                   : ""}
@@ -395,15 +400,17 @@ export default function PortfolioInsightTools({
                 >
                   {buffers.map((item: any) => (
                     <option key={item.id} value={item.id}>
-                      {item.label} · {item.rows.length} companies
+                      {item.label} · {companyCountLabel(item.rows.length)}
                     </option>
                   ))}
                 </select>
               </label>
               <p>{buffer.formula}</p>
               <p>
-                {buffer.rows.length} of {buffer.eligibleCount} corporate
-                companies support this calculation.
+                {buffer.rows.length} of{" "}
+                {companyCountLabel(buffer.eligibleCount, "corporate")} {" "}
+                {buffer.rows.length === 1 ? "supports" : "support"} this
+                calculation.
               </p>
               <AnalysisTable
                 rows={buffer.rows}
@@ -480,7 +487,8 @@ export default function PortfolioInsightTools({
             ]}
           />
           <p>
-            {overlap.excludedCount} corporate companies lack a compatible
+            {companyCountLabel(overlap.excludedCount, "corporate")} {" "}
+            {overlap.excludedCount === 1 ? "lacks" : "lack"} a compatible
             complete set of selected inputs. Missing results never count as a
             condition being absent.{" "}
             {overlap.partial

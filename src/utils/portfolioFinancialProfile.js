@@ -3,6 +3,8 @@ import { canonicalPortfolioCik } from "./portfolioModel.js";
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const VALID_LENSES = ["corporate", "banking", "insurance", "common"];
 const RATIO_FORMATS = new Set(["percent", "decimal"]);
+export const FINANCIAL_PROFILE_ALL_SECTORS = "all";
+export const FINANCIAL_PROFILE_UNCOVERED_SECTOR = "Sector not covered";
 
 export const FINANCIAL_PROFILE_LENSES = Object.freeze([
   Object.freeze({
@@ -493,6 +495,10 @@ export function resolveFinancialProfileMetricLens(
 const weightValue = (value) => finite(value) && value >= 0;
 const stringValue = (value) => (typeof value === "string" ? value : "");
 const unique = (values) => [...new Set(values)];
+export const normalizeFinancialProfileSector = (value) =>
+  typeof value === "string" && value.trim()
+    ? value.trim()
+    : FINANCIAL_PROFILE_UNCOVERED_SECTOR;
 
 function buildCompanyUniverse(report) {
   const rows = [...(report?.concentration?.issuers || [])]
@@ -533,7 +539,11 @@ function buildCompanyUniverse(report) {
         rowIds: unique(row.rowIds || []).sort(),
         lens: VALID_LENSES.includes(row.lens) ? row.lens : "unknown",
         industry: row.industry || "",
-        sector: row.sector || "",
+        sector: normalizeFinancialProfileSector(row.sector),
+        sectorSource:
+          row.sectorSource && typeof row.sectorSource === "object"
+            ? { ...row.sectorSource }
+            : null,
         weightPct: hasWeight ? row.weightPct : null,
         weightComplete:
           Boolean(report?.weighted) &&
@@ -556,6 +566,13 @@ function buildCompanyUniverse(report) {
       VALID_LENSES.includes(row.lens)
     )
       current.lens = row.lens;
+    if (
+      current.sector === FINANCIAL_PROFILE_UNCOVERED_SECTOR &&
+      row.sector
+    )
+      current.sector = normalizeFinancialProfileSector(row.sector);
+    if (!current.sectorSource && row.sectorSource)
+      current.sectorSource = { ...row.sectorSource };
     if (hasWeight)
       current.weightPct = (weightValue(current.weightPct)
         ? current.weightPct
@@ -1197,8 +1214,79 @@ export function buildPortfolioFinancialProfile(catalogReport, options = {}) {
   const report = catalogReport || {};
   const weighted = report.weighted === true;
   const universe = buildCompanyUniverse(report);
+  const sectorRows = [...universe.values()];
+  const sectorGroup = (id, label, companies) => {
+    const sourceDates = unique(
+      companies
+        .map((company) => company.sectorSource?.asOf)
+        .filter(Boolean),
+    ).sort();
+    const sourceProviders = unique(
+      companies
+        .map((company) => company.sectorSource?.provider)
+        .filter(Boolean),
+    ).sort();
+    const sourceCompanyCount = companies.filter(
+      (company) => company.sectorSource,
+    ).length;
+    return {
+      id,
+      label,
+      companyCount: companies.length,
+      companySharePct: sectorRows.length
+        ? (companies.length / sectorRows.length) * 100
+        : null,
+      knownWeightPct: weightSubtotal(
+        companies.map((company) => company.cik),
+        universe,
+        weighted,
+      ),
+      lensCount: new Set(
+        companies
+          .map((company) => company.lens)
+          .filter((lens) => VALID_LENSES.includes(lens)),
+      ).size,
+      sectorSourceAsOf:
+        sourceCompanyCount === companies.length && sourceDates.length === 1
+          ? sourceDates[0]
+          : null,
+      sectorSourceEarliestAsOf: sourceDates[0] || null,
+      sectorSourceLatestAsOf: sourceDates.at(-1) || null,
+      sectorSourceCompanyCount: sourceCompanyCount,
+      sectorSourceProviders: sourceProviders,
+    };
+  };
+  const sectorGroups = [
+    sectorGroup(FINANCIAL_PROFILE_ALL_SECTORS, "All sectors", sectorRows),
+    ...[...new Set(sectorRows.map((company) => company.sector))]
+      .map((sector) => {
+        const companies = sectorRows.filter(
+          (company) => company.sector === sector,
+        );
+        return sectorGroup(sector, sector, companies);
+      })
+      .sort((a, b) => {
+        if (a.id === FINANCIAL_PROFILE_UNCOVERED_SECTOR) return 1;
+        if (b.id === FINANCIAL_PROFILE_UNCOVERED_SECTOR) return -1;
+        const primary = weighted
+          ? Math.round((b.knownWeightPct ?? -1) * 1_000_000) -
+            Math.round((a.knownWeightPct ?? -1) * 1_000_000)
+          : b.companyCount - a.companyCount;
+        return primary || b.companyCount - a.companyCount || a.label.localeCompare(b.label);
+      }),
+  ];
+  const requestedSector = stringValue(options?.sector);
+  const sector = sectorGroups.some((group) => group.id === requestedSector)
+    ? requestedSector
+    : FINANCIAL_PROFILE_ALL_SECTORS;
+  const sectorUniverse = new Map(
+    [...universe].filter(
+      ([, company]) =>
+        sector === FINANCIAL_PROFILE_ALL_SECTORS || company.sector === sector,
+    ),
+  );
   const lensGroups = FINANCIAL_PROFILE_LENSES.map((definition) => {
-    const companies = [...universe.values()].filter(
+    const companies = [...sectorUniverse.values()].filter(
       (company) => company.lens === definition.id,
     );
     const selectedCiks = new Set(companies.map((company) => company.cik));
@@ -1213,19 +1301,25 @@ export function buildPortfolioFinancialProfile(catalogReport, options = {}) {
     return {
       ...definition,
       companyCount: companies.length,
-      companySharePct: universe.size
-        ? (companies.length / universe.size) * 100
+      companySharePct: sectorUniverse.size
+        ? (companies.length / sectorUniverse.size) * 100
         : null,
       knownWeightPct: weightSubtotal(
         companies.map((company) => company.cik),
-        universe,
+        sectorUniverse,
         weighted,
       ),
       availableRatioMeasureCount,
     };
   });
   const requestedLens = options?.lens;
-  const lens = lensDefinitionFor(requestedLens)
+  const hasCompatibleCohort = lensGroups.some(
+    (group) => group.companyCount > 0,
+  );
+  const lens = lensDefinitionFor(requestedLens) &&
+    lensGroups.some(
+      (group) => group.id === requestedLens && group.companyCount > 0,
+    )
     ? requestedLens
     : [...lensGroups].sort(
         (a, b) =>
@@ -1233,15 +1327,18 @@ export function buildPortfolioFinancialProfile(catalogReport, options = {}) {
           VALID_LENSES.indexOf(a.id) - VALID_LENSES.indexOf(b.id),
       )[0]?.id || "corporate";
   const lensDefinition = lensDefinitionFor(lens);
-  const selectedCompanies = [...universe.values()].filter(
+  const selectedCompanies = [...sectorUniverse.values()].filter(
     (company) => company.lens === lens,
+  );
+  const selectedUniverse = new Map(
+    selectedCompanies.map((company) => [company.cik, company]),
   );
   const metricById = new Map(
     (report.metrics || []).map((metric) => [metric.id || metric.key, metric]),
   );
   const metricSummaries = (report.metrics || [])
     .filter((metric) => RATIO_FORMATS.has(metric.format))
-    .map((metric) => summarizeMetric(metric, lens, universe, weighted))
+    .map((metric) => summarizeMetric(metric, lens, selectedUniverse, weighted))
     .sort(
       (a, b) =>
         a.category.localeCompare(b.category) ||
@@ -1284,12 +1381,12 @@ export function buildPortfolioFinancialProfile(catalogReport, options = {}) {
   const breadthScreens = BREADTH_DEFINITIONS.filter((definition) =>
     definition.lenses.includes(lens),
   ).map((definition) =>
-    buildScreen(definition, lens, metricById, universe, weighted),
+    buildScreen(definition, lens, metricById, selectedUniverse, weighted),
   );
   const attentionConditions = ATTENTION_DEFINITIONS.filter((definition) =>
     definition.lenses.includes(lens),
   ).map((definition) =>
-    buildScreen(definition, lens, metricById, universe, weighted),
+    buildScreen(definition, lens, metricById, selectedUniverse, weighted),
   ).sort((a, b) => {
     const aRank = weighted
       ? a.matchedWeightPct ?? -1
@@ -1300,12 +1397,23 @@ export function buildPortfolioFinancialProfile(catalogReport, options = {}) {
     return bRank - aRank || a.id.localeCompare(b.id);
   });
   return {
+    sector,
+    sectorDefinition: sectorGroups.find((group) => group.id === sector),
+    sectorGroups,
     lens,
     lensDefinition,
     lensGroups,
+    hasCompatibleCohort,
     weighted,
-    coverage: profileCoverage(universe, weighted),
+    coverage: profileCoverage(sectorUniverse, weighted),
+    sectorCompanyCount: sectorUniverse.size,
+    sectorKnownWeightPct: weightSubtotal(
+      [...sectorUniverse.keys()],
+      sectorUniverse,
+      weighted,
+    ),
     companyCount: selectedCompanies.length,
+    companyCiks: [...selectedUniverse.keys()].sort(),
     measuredCompanyCount: measuredCiks.length,
     measuredCompanySharePct: selectedCompanies.length
       ? (measuredCiks.length / selectedCompanies.length) * 100
@@ -1323,9 +1431,9 @@ export function buildPortfolioFinancialProfile(catalogReport, options = {}) {
     corporateFingerprint: buildCorporateFingerprint(
       lens,
       metricById,
-      universe,
+      selectedUniverse,
       weighted,
     ),
-    exclusions: excludedIssuerSummary(report, weighted, universe),
+    exclusions: excludedIssuerSummary(report, weighted, sectorUniverse),
   };
 }
