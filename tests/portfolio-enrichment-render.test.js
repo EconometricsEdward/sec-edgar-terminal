@@ -315,3 +315,86 @@ test("new cash-flow margin explanation exposes the exact inputs used in the save
   assert.ok(html.includes(point.period.end));
   assert.doesNotMatch(html, /As of undefined|Unknown reporting basis/);
 });
+
+test("Amazon's opening and closing payable inspectors distinguish value dates from analysis and filing dates", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/MetricEvidenceDialog.tsx",
+  ).default;
+  const company = companies.find((entry) => entry.ticker === "AMZN");
+  assert.ok(company);
+  const render = (key) =>
+    renderToStaticMarkup(
+      createElement(Component, {
+        inspector: {
+          issuer: {
+            ticker: company.ticker,
+            name: company.name,
+            lens: company.lens,
+            company,
+          },
+          key,
+          point: company.metrics[key],
+        },
+        onClose: () => {},
+        onSelectMetric: () => {},
+      }),
+    );
+  const opening = render("openingAccountsPayable");
+  assert.match(opening, /\$94,363,000,000/);
+  assert.match(opening, /Opening balance date · As of 2024-12-31/);
+  assert.match(
+    opening,
+    /<dt>Analysis period<\/dt><dd>Annual · 2025-01-01 to 2025-12-31/,
+  );
+  assert.match(opening, /Filed 2026-02-06/);
+  assert.match(opening, /000101872426000004\/amzn-20251231.htm/);
+  assert.match(opening, /\$121,909,000,000/);
+  assert.match(opening, /Inspect closing balance/);
+  assert.match(opening, /As of 2025-12-31/);
+  assert.match(opening, /SEC sources &amp; reported inputs/);
+  const closing = render("accountsPayable");
+  assert.match(closing, /Balance-sheet date · As of 2025-12-31/);
+  assert.match(closing, /Filed 2026-07-31/);
+  assert.match(closing, /Inspect opening balance/);
+  for (const html of [opening, closing])
+    assert.doesNotMatch(
+      html,
+      /Unknown|NaN|undefined|does not match|is unavailable/,
+    );
+});
+
+test("a mismatched analysis period does not offer an unrelated paired balance", () => {
+  const Component = component(
+    "../src/app/workspace/portfolio/MetricEvidenceDialog.tsx",
+  ).default;
+  const company = companies.find((entry) => entry.ticker === "AMZN");
+  const html = renderToStaticMarkup(
+    createElement(Component, {
+      inspector: {
+        issuer: {
+          ticker: "AMZN",
+          company: {
+            ...company,
+            metrics: {
+              ...company.metrics,
+              accountsPayable: {
+                ...company.metrics.accountsPayable,
+                period: {
+                  kind: "annual",
+                  start: "2026-01-01",
+                  end: "2026-12-31",
+                },
+              },
+            },
+          },
+        },
+        key: "openingAccountsPayable",
+        point: company.metrics.openingAccountsPayable,
+      },
+      onClose: () => {},
+      onSelectMetric: () => {},
+    }),
+  );
+  assert.doesNotMatch(html, /Inspect closing balance/);
+  assert.match(html, /As of 2024-12-31/);
+});

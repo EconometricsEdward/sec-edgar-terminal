@@ -84,13 +84,17 @@ function reported(entry, peers) {
     durationDays: duration(entry), classification: 'reported', revised,
     revisionNote: revised ? 'Different values were filed for this exact context. Inspect the filings to determine the reason.' : null,
   };
-  return { value: entry.val, source, sources: [source], classification: 'reported' };
+  return {
+    value: entry.val, source, sources: [source], classification: 'reported',
+    observationPeriod: { kind: entry.start ? 'duration' : 'instant', start: entry.start || null, end: entry.end },
+  };
 }
 
 function calculated(value, inputs, formula, note, period) {
   const sources = inputs.flatMap((p) => p.sources || [p.source]);
   return {
     value, sources, calculations: inputs.flatMap((p) => [...(p.calculations || []), ...(p.formula ? [{ value: p.value, formula: p.formula, start: p.source.start, end: p.source.end, unit: p.source.unit }] : [])]), classification: 'calculated', formula, note,
+    observationPeriod: { kind: period.start ? 'duration' : 'instant', start: period.start || null, end: period.end },
     source: { ...sources[0], value, start: period.start, end: period.end, classification: 'calculated', formula, inputSources: sources, note },
   };
 }

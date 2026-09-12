@@ -9,6 +9,11 @@ import {
   normalizeCompareSettings,
   normalizeCompareTickers,
 } from "./compareNotebook.js";
+import {
+  financialObservationContext,
+  financialSourcePeriodLabel,
+} from "./financialObservationContext.js";
+import { portfolioPeriodLabel } from "./portfolioReporting.js";
 
 // Stable observation identity includes input values and contexts, not just accessions.
 const ordered = (value) => {
@@ -257,6 +262,7 @@ export function compareEvidenceCitation(evidence) {
   const { cell, metric } = evidence;
   const point = cell.point,
     period = point?.period || cell.period || {};
+  const observation = financialObservationContext(point, metric.key, period);
   const unit =
     metric.format === "percent"
       ? "%"
@@ -265,14 +271,17 @@ export function compareEvidenceCitation(evidence) {
         : metric.format === "currency"
           ? "USD"
           : metric.format;
-  const sources = (point?.sources || []).map(
+  const sources = observation.sources.map(
     (source, index) =>
-      `${index + 1}. ${source.taxonomy ? `${source.taxonomy}:` : ""}${source.tag || source.label || "Reported input"}: ${source.value ?? "Unavailable"} ${source.unit || ""}; ${source.start || "Balance at"} to ${source.end || "unknown"}; ${source.form || "filing"}, filed ${source.filed || "unknown"}; accession ${source.accession || "unknown"}${safeCompareSourceUrl(source.documentUrl) ? `; ${safeCompareSourceUrl(source.documentUrl)}` : ""}`,
+      `${index + 1}. ${source.taxonomy ? `${source.taxonomy}:` : ""}${source.tag || source.label || "Reported input"}: ${source.value ?? "Unavailable"} ${source.unit || ""}; ${financialSourcePeriodLabel(source)}; ${source.form || "filing"}, filed ${source.filed || "unknown"}; accession ${source.accession || "unknown"}${safeCompareSourceUrl(source.documentUrl) ? `; ${safeCompareSourceUrl(source.documentUrl)}` : ""}`,
   );
   return [
     `${cell.ticker} — ${cell.name || ""} (CIK ${cell.cik || "unknown"})`,
     `${metric.label}: ${point?.value ?? "Unavailable"} ${unit || ""}`,
-    `Period: ${period.start || "Balance at"} to ${period.end || "unknown"}; ${period.kind || "unknown basis"}. Filing cutoff: ${evidence.settings?.asOf || period.asOf || "latest available filings"}.`,
+    `${observation.label}: ${observation.periodLabel}.`,
+    observation.explanation,
+    `Analytical period: ${portfolioPeriodLabel(observation.reportingPeriod)}. Filing cutoff: ${evidence.settings?.asOf || period.asOf || "latest available filings"}.`,
+    ...(observation.issue ? [`Observation check: ${observation.issue}`] : []),
     `Definition: ${point?.formula || metric.formula || metric.definition || `Reported ${metric.label.toLowerCase()} from the SEC XBRL context below.`}`,
     ...(evidence.capturedAt
       ? [

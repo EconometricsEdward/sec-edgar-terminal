@@ -14,6 +14,12 @@ import {
 } from "./portfolioMetricCatalog.js";
 import { analysisMetricGuide } from "./analysisMetricGuide.js";
 import { mergePortfolioFilingRows } from "./portfolioSourceResearch.js";
+import { portfolioPeriodLabel } from "./portfolioReporting.js";
+import { evidenceSources } from "./researchEvidence.js";
+import {
+  financialObservationContext,
+  financialSourcePeriodLabel,
+} from "./financialObservationContext.js";
 
 const e = (value) =>
   String(value ?? "").replace(
@@ -41,10 +47,10 @@ function sourceLink(url, label = "SEC source") {
 }
 const table = (headers, rows) =>
   `<div class="scroll"><table><thead><tr>${headers.map((h) => `<th>${e(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
-const date = (point) =>
-  point?.period
-    ? `${point.period.kind || "Unknown basis"}: ${point.period.start || "instant / unknown start"} to ${point.period.end || "unknown end"}`
-    : "Reporting period unavailable";
+const sourceAmount = (source) =>
+  Number.isFinite(source.value)
+    ? `${source.value.toLocaleString("en-US", { maximumSignificantDigits: 21 })} ${source.unit || "unit not supplied"}`
+    : "Reported amount not supplied";
 
 /** Exclude stale session research for removed issuers and unselected export rows. */
 export function portfolioScopedSources(companies, extras = {}) {
@@ -208,7 +214,7 @@ export function portfolioReportHtml(input, extras = {}) {
         e(m.reportingPeriods),
       ]),
   )}</section>
-  <section id="companies"><h2>Company metrics and SEC evidence</h2><p>Available captured financial measures are included below. Each value retains its formula or reported concept, unit, full period, and source. Open a company to inspect the detailed evidence. Print / save PDF expands every company.</p>${b.companies
+  <section id="companies"><h2>Company metrics and SEC evidence</h2><p>Available captured financial measures are included below. Each value retains its formula or reported concept, unit, observation dates, and source. An opening balance comes from before the analysis period; a later filing may report it in a comparative column. Filing dates identify the document, not the date of the value. Open a company to inspect the detailed evidence. Print / save PDF expands every company.</p>${b.companies
     .map(
       (c) =>
         `<details><summary>${e(c.ticker || c.cik)} · ${e(c.name)} · ${e(c.lens)} · ${e(c.status)}</summary><p>CIK ${e(c.cik)} · ${e(resolveCompanyClassification(c).industry)}${resolveCompanyClassification(c).sectorSource ? ` · ${e(resolveCompanyClassification(c).sector)} (iShares ${e(resolveCompanyClassification(c).sectorSource.fund)}, sector reference ${e(resolveCompanyClassification(c).sectorSource.asOf)})` : ""} · Retrieved ${e(c.retrievedAt || c.retrieved_at || "unknown")}</p>${Object.entries(
@@ -227,7 +233,20 @@ export function portfolioReportHtml(input, extras = {}) {
               format: p.format,
             };
             const guide = analysisMetricGuide(def, p, c.lens);
-            return `<article class="metric"><h4>${e(def.label)}: ${e(metricDisplay(p, false))}</h4><small>${e(date(p))} · ${e(p.classification)}</small><p>${e(guide.meaning)} ${e(guide.caution)}</p><p>${e(p.formula || p.definitionFormula || p.reason || "Reported value; inspect the SEC concept below.")}</p>${(p.calculations || []).length ? `<p>Calculation steps: ${e(p.calculations.map((x) => `${x.label || ""}: ${x.formula || ""}`).join("; "))}</p>` : ""}<ul>${(p.sources || []).map((source) => `<li>${sourceLink(source.documentUrl || source.sourceUrl, `${source.tag || source.label || "SEC evidence"} · ${source.accession || ""}`)} · ${e(source.start || "Instant")} to ${e(source.end)} · filed ${e(source.filed)} · ${e(source.value)} ${e(source.unit)}</li>`).join("")}</ul></article>`;
+            const reportingPeriod = p.period || c.period;
+            const context = financialObservationContext(
+              p,
+              key,
+              reportingPeriod,
+            );
+            return `<article class="metric"><h4>${e(def.label)}: ${e(metricDisplay(p, false))}</h4><small>${e(context.label)}: ${e(context.periodLabel)} · ${e(p.classification)}</small><p>Analysis period: ${e(portfolioPeriodLabel(reportingPeriod))}</p>${context.explanation && ["opening", "closing"].includes(context.role) ? `<p>${e(context.explanation)}</p>` : ""}${context.issue ? `<p>Observation check: ${e(context.issue)}</p>` : ""}<p>${e(guide.meaning)} ${e(guide.caution)}</p><p>${e(p.formula || p.definitionFormula || p.reason || "Reported value; inspect the SEC concept below.")}</p>${(p.calculations || []).length ? `<p>Calculation steps: ${e(p.calculations.map((x) => `${x.label || ""}: ${x.formula || ""}`).join("; "))}</p>` : ""}<ul>${evidenceSources(
+              p,
+            )
+              .map(
+                (source) =>
+                  `<li>${sourceLink(source.documentUrl || source.sourceUrl, `${source.tag || source.label || "SEC evidence"} · ${source.accession || ""}`)} · Reported input: ${e(sourceAmount(source))} · ${e(financialSourcePeriodLabel(source))} · ${e(source.form || "SEC filing")} filed ${e(source.filed || "unknown")}</li>`,
+              )
+              .join("")}</ul></article>`;
           })
           .join("")}</details>`,
     )

@@ -121,6 +121,35 @@
   color: var(--evidence-muted);
 }
 
+.observation > .observationDate {
+  color: var(--evidence-text);
+  font-size: 15px;
+  margin: 5px 0;
+}
+
+.relatedBalance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 16px 0;
+  border-block: 1px solid var(--evidence-line);
+  font-size: 14px;
+}
+
+.relatedBalance small {
+  display: block;
+  margin-top: 5px;
+  color: var(--evidence-muted);
+}
+
+.sourceValue {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
 .section {
   min-width: 0;
   display: grid;

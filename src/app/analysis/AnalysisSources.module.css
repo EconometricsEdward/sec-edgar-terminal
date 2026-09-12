@@ -314,6 +314,29 @@
   padding: 12px;
   margin: 18px 0;
 }
+.observationContext {
+  display: grid;
+  gap: 5px;
+  margin: 14px 0;
+  padding: 12px 0;
+  border-block: 1px solid var(--analysis-border);
+  font-size: 12px;
+}
+.observationContext > strong {
+  font-size: 11px;
+  color: var(--analysis-muted);
+}
+.observationContext > span {
+  font-variant-numeric: tabular-nums;
+}
+.observationContext > p {
+  margin: 3px 0;
+  font-size: 11px;
+}
+.observationContext > small {
+  color: var(--analysis-muted);
+  font-size: 10px;
+}
 .comparison h3 {
   margin: 0 0 10px !important;
   font-size: 13px !important;
