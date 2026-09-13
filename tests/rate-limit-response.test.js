@@ -4,6 +4,7 @@ import { checkRateLimit, rateLimitHeaders, rateLimitedResponse, rateLimitRejecti
 
 test('provider rejection diagnostics distinguish capacity failures without returning provider text', () => {
   assert.equal(rateLimitRejectionCode([{ error: 'ERR max data size exceeded' }, { result: 0 }, { result: -2 }]), 'redis_storage_limit');
+  assert.equal(rateLimitRejectionCode([{ error: 'ERR DB capacity quota exceeded' }, { result: 0 }, { result: -2 }]), 'redis_storage_limit');
   assert.equal(rateLimitRejectionCode([{ error: 'OOM command not allowed when used memory > maxmemory' }]), 'redis_memory_limit');
   assert.equal(rateLimitRejectionCode({ error: 'ERR daily request limit reached' }), 'redis_quota');
   assert.equal(rateLimitRejectionCode([{ error: 'WRONGPASS secret-token' }]), 'redis_auth');

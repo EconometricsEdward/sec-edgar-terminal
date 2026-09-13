@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import { gzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
 import { getDataStoreIdentityToken } from './dataStoreIdentity.js';
-import { DISPOSABLE_CACHE_LIMITS as LIMITS, disposableCachePolicy } from '../../supabase/functions/edgar-data-gateway/cachePolicy.js';
-export { disposableCachePolicy } from '../../supabase/functions/edgar-data-gateway/cachePolicy.js';
+import { DISPOSABLE_CACHE_LIMITS as LIMITS, disposableCachePolicy, disposableCacheFencePolicy } from '../../supabase/functions/edgar-data-gateway/cachePolicy.js';
+export { disposableCachePolicy, disposableCacheFencePolicy } from '../../supabase/functions/edgar-data-gateway/cachePolicy.js';
 
 const BASE = 'https://vvkihuduqqnxqahhbphs.supabase.co/functions/v1/edgar-data-gateway/rest/v1/rpc/';
 const zip = promisify(gzip), unzip = promisify(gunzip);
@@ -65,7 +65,7 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
     const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
     try {
       const body = JSON.stringify({ p_namespace: 'production', ...params });
-      const limit = ['edgar_cache_get', 'edgar_cache_put'].includes(operation) ? LIMITS.rpcBytes : 512 * 1024;
+      const limit = ['edgar_cache_get', 'edgar_cache_put', 'edgar_cache_put_fenced'].includes(operation) ? LIMITS.rpcBytes : 512 * 1024;
       if (Buffer.byteLength(body) > limit) throw new DisposableCacheError('request_too_large', 413);
       let identityAbort;
       const interruptedIdentity = new Promise((_, reject) => {
@@ -84,7 +84,8 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
       const bytes = await boundedBytes(response, limit, requestSignal);
       let value; try { value = JSON.parse(bytes.toString('utf8')); } catch { throw new DisposableCacheError('invalid_response', 502); }
       if (!response.ok) {
-        const code = ['cache_response_too_large', 'body_too_large'].includes(value?.code) ? 'response_too_large' : `http_${response.status}`;
+        const code = value?.code === '40001' ? 'stale_generation'
+          : ['cache_response_too_large', 'body_too_large'].includes(value?.code) ? 'response_too_large' : `http_${response.status}`;
         throw new DisposableCacheError(code, response.status);
       }
       return value;
@@ -147,7 +148,7 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
     return results;
   }
   async function cacheGet(type, id, options = {}) { return (await cacheGetMany(type, [id], options))[0]; }
-  async function cachePut(type, id, payload, ttlSeconds, { ifHash = null, expiresAt = null, ...options } = {}) {
+  async function put(type, id, payload, ttlSeconds, { ifHash = null, expiresAt = null, ...options } = {}, fence = null) {
     const p = policy(type, id);
     if (!enabled() || !p) return { stored: false, reason: 'disabled' };
     if (!Number.isFinite(ttlSeconds) || ttlSeconds < 1 || ![null, 'absent'].includes(ifHash) && !HASH.test(ifHash || '')
@@ -160,13 +161,36 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
     const compressed = await zip(raw, { level: 6 });
     if (compressed.length > LIMITS.gzipBytes) throw new DisposableCacheError('compressed_too_large', 413);
     const rawSha256 = hash(raw);
-    const ack = await request('edgar_cache_put', { p_family: p.family, p_type: p.type, p_id: p.id,
+    const ack = await request(fence ? 'edgar_cache_put_fenced' : 'edgar_cache_put', { ...fence, p_family: p.family, p_type: p.type, p_id: p.id,
       p_gzip_base64: compressed.toString('base64'), p_raw_sha256: rawSha256, p_gzip_sha256: hash(compressed),
       p_raw_bytes: raw.length, p_ttl_seconds: Math.min(Math.floor(ttlSeconds), p.maxTtlSeconds), p_if_hash: ifHash, p_expires_at: expiresAt }, options);
     if (!object(ack) || typeof ack.stored !== 'boolean' || ack.stored && (ack.rawSha256 !== rawSha256 || !validDate(ack.expiresAt) || Date.parse(ack.expiresAt) <= now())
       || ack.stored && expiresAt !== null && Date.parse(ack.expiresAt) > Date.parse(expiresAt)
       || !ack.stored && (typeof ack.reason !== 'string' || !/^[a-z_]{1,64}$/.test(ack.reason))) throw new DisposableCacheError('invalid_acknowledgement', 502);
     return ack;
+  }
+  function fenceArguments(type, fenceId, claim, id = null) {
+    const binding = disposableCacheFencePolicy(type, fenceId, id);
+    const generation = claim?.generation;
+    if (!binding || !object(claim) || claim.dataset !== binding.dataset || claim.key !== binding.key
+      || claim.fenceId !== undefined && claim.fenceId !== binding.key || !UUID.test(claim.owner || '')
+      || !validDate(claim.expiresAt) || Date.parse(claim.expiresAt) <= now() || Date.parse(claim.expiresAt) > now() + 960000
+      || !(typeof generation === 'string' && /^[1-9]\d{0,18}$/.test(generation) || integer(generation, 1, Number.MAX_SAFE_INTEGER))
+      || BigInt(generation) > 9223372036854775807n) throw new DisposableCacheError('invalid_generation_claim', 422);
+    return { p_dataset: binding.dataset, p_key: binding.key, p_claim: { generation: String(generation), owner: claim.owner.toLowerCase() } };
+  }
+  async function cachePut(type, id, payload, ttlSeconds, options = {}) { return put(type, id, payload, ttlSeconds, options); }
+  async function cacheReserveGeneration(type, fenceId, claim, options = {}) {
+    if (!enabled()) return false;
+    const parameters = fenceArguments(type, fenceId, claim);
+    const result = await request('edgar_reserve_cache_generation', parameters, options);
+    if (typeof result !== 'boolean') throw new DisposableCacheError('invalid_acknowledgement', 502);
+    return result;
+  }
+  async function cachePutFenced(type, id, payload, ttlSeconds, claim, options = {}) {
+    if (!enabled()) return { stored: false, reason: 'disabled' };
+    const parameters = fenceArguments(type, claim?.fenceId || claim?.key, claim, id);
+    return put(type, id, payload, ttlSeconds, options, parameters);
   }
   async function cacheStatus(options = {}) { return request('edgar_cache_status', {}, options); }
   async function readCacheMaintenanceState(options = {}) { return request('edgar_cache_maintenance', { p_action: 'read' }, options); }
@@ -178,8 +202,8 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
     if (!UUID.test(owner || '') || !object(state) || Buffer.byteLength(JSON.stringify(state)) > LIMITS.stateBytes) throw new DisposableCacheError('invalid_state', 422);
     return request('edgar_cache_maintenance', { p_action: 'save', p_owner: owner, p_state: state }, options);
   }
-  return { disposableCacheEnabled: enabled, disposableCachePolicy: policy, cacheGet, cacheGetMany, cachePut, cacheStatus,
+  return { disposableCacheEnabled: enabled, disposableCachePolicy: policy, disposableCacheFencePolicy, cacheGet, cacheGetMany, cachePut, cachePutFenced, cacheReserveGeneration, cacheStatus,
     readCacheMaintenanceState, claimCacheMaintenanceState, saveCacheMaintenanceState };
 }
 const productionCache = createDisposableCache();
-export const { cacheGet, cacheGetMany, cachePut, cacheStatus, readCacheMaintenanceState, claimCacheMaintenanceState, saveCacheMaintenanceState } = productionCache;
+export const { cacheGet, cacheGetMany, cachePut, cachePutFenced, cacheReserveGeneration, cacheStatus, readCacheMaintenanceState, claimCacheMaintenanceState, saveCacheMaintenanceState } = productionCache;

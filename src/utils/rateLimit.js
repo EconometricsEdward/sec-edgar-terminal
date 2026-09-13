@@ -67,7 +67,7 @@ export function rateLimitRejectionCode(value) {
     .flatMap(item => typeof item?.error === 'string' ? [item.error.slice(0, 2048)] : []).join(' ');
   if (/WRONGPASS|NOAUTH|NOPERM/i.test(errors)) return 'redis_auth';
   if (/\bOOM\b|maxmemory|memory.*limit/i.test(errors)) return 'redis_memory_limit';
-  if (/max.*(?:data|size)|storage.*limit|data.*size.*limit/i.test(errors)) return 'redis_storage_limit';
+  if (/DB capacity quota exceeded|max.*(?:data|size)|storage.*limit|data.*size.*limit/i.test(errors)) return 'redis_storage_limit';
   if (/quota|request.*limit|command.*limit/i.test(errors)) return 'redis_quota';
   if (/unknown command|unsupported|syntax error/i.test(errors)) return 'redis_command';
   return 'redis_invalid_response';

@@ -4,6 +4,7 @@ import { authorizeSecCoverageSchedule } from '../../../../utils/secCoverageSched
 import { runSecCoverageJob } from '../../../../utils/secCoverageJobs.js';
 import { maintainSecCoverageMembership } from '../../../../utils/secCoverageMaintenance.js';
 import { maintainRedisCache } from '../../../../utils/redisMaintenance.js';
+import { maintainProviderRetirement } from '../../../../utils/providerRetirementMaintenance.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -45,8 +46,26 @@ export async function GET(request) {
         cacheMaintenance = { status: 'unavailable', code: 'CACHE_MAINTENANCE_UNAVAILABLE' };
       }
     }
+    // The retired-provider checkpoint needs a little free Redis capacity to
+    // acquire its lease. Start only after acknowledged migration has freed
+    // space; the helper independently rechecks operator mode and writer drain.
+    let providerRetirement = { status: 'deferred', reason: 'cache-migration' };
+    if (cacheMaintenance?.version === 1 && cacheMaintenance.mode === 'migrate'
+      && cacheMaintenance.phase === 'migration'
+      && ['progress', 'partial', 'waiting', 'migration_pass_complete'].includes(cacheMaintenance.status)
+      && Number.isSafeInteger(cacheMaintenance.counters?.removed) && cacheMaintenance.counters.removed > 0) {
+      const remaining = startedAt + 225_000 - Date.now();
+      if (!controller.signal.aborted && remaining >= 20_000) {
+        try {
+          providerRetirement = await maintainProviderRetirement({ signal: controller.signal,
+            deadline: Math.min(startedAt + 225_000, Date.now() + 20_000) });
+        } catch {
+          providerRetirement = { status: 'unavailable', code: 'PROVIDER_RETIREMENT_UNAVAILABLE' };
+        }
+      } else providerRetirement = { status: 'deferred', reason: 'research-budget' };
+    }
     return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', ...result,
-      membership, cacheMaintenance,
+      membership, cacheMaintenance, providerRetirement,
       started_at: new Date(startedAt).toISOString(), duration_ms: Date.now() - startedAt }, { headers });
   } catch {
     return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', status: 'failed', code: 'SEC_COVERAGE_JOB_FAILED' }, { status: 503, headers });
