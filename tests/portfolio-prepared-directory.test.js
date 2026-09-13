@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPortfolioDirectory, runPortfolioResearch } from '../src/utils/portfolioResearchServer.js';
 import { createPortfolioRows, resolvePortfolioRows } from '../src/utils/portfolioModel.js';
+import { createTickerDirectoryCache } from '../src/utils/tickerMap.js';
 
 const active = { issuers: [
   { cik: '0000320193', ticker: 'AAPL', aliases: ['AAPL'], name: 'Apple Inc.' },
@@ -59,4 +60,24 @@ test('portfolio entry point passes the validated request to its directory loader
     loadDirectory: async value => { received = value; return { AAPL: { cik: '0000320193', name: 'Apple Inc.' } }; },
   });
   assert.equal(received.holdings[0].ticker, 'AAPL'); assert.equal(result.coverage.resolvedRows, 1);
+});
+
+test('outside-500 portfolio resolution uses frozen shared identities and a fund feed containing a symbol-less class', async () => {
+  const now = Date.now();
+  const operating = Object.freeze({ schema: 1, kind: 'operating', fetchedAt: new Date(now).toISOString(), expiresAt: new Date(now + 86400000).toISOString(),
+    data: Object.freeze({ CROX: Object.freeze({ cik: '0001334036', name: 'Crocs Inc.' }) }) });
+  const cache = createTickerDirectoryCache({ read: async (_type, id) => id === 'operating' ? operating : null,
+    fetchSec: async url => {
+      assert.ok(url.endsWith('company_tickers_mf.json'));
+      return Response.json({ fields: ['cik', 'seriesId', 'classId', 'symbol'], data: [
+        [1388485, 'S000099871', 'C000269656', ''], [1234567, 'S000000001', 'C000000002', 'ABCFX'],
+      ] });
+    }, write: async () => true });
+  const request = { schema_version: 'edgar.portfolio.v1', action: 'resolve', holdings: [{ ticker: 'CROX' }, { ticker: 'ABCFX' }] };
+  const result = await runPortfolioResearch(request, {
+    loadDirectory: value => loadPortfolioDirectory(value, options({ loadOperating: () => cache.get('operating'), loadFunds: () => cache.get('funds') })),
+  });
+  assert.deepEqual(result.rows.map(row => [row.resolution.ticker, row.resolution.cik, row.resolution.kind]),
+    [['CROX', '0001334036', 'company'], ['ABCFX', '0001234567', 'fund']]);
+  assert.equal(Object.isFrozen(operating.data.CROX), true);
 });

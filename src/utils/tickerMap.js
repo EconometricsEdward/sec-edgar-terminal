@@ -53,10 +53,14 @@ function buildFundIndex(raw) {
     || raw.fields.join(',') !== 'cik,seriesId,classId,symbol') throw new Error('SEC fund directory schema is malformed.');
   const index = Object.create(null);
   for (const row of raw.data) {
-    const ticker = Array.isArray(row) && typeof row[3] === 'string' ? row[3].toUpperCase() : '';
     const cik = normalizedCik(row?.[0]);
-    if (!TICKER.test(ticker) || !cik || !/^S\d{9}$/.test(row[1]) || !/^C\d{9}$/.test(row[2]))
+    if (!Array.isArray(row) || row.length !== 4 || !cik || !/^S\d{9}$/.test(row[1]) || !/^C\d{9}$/.test(row[2]) || typeof row[3] !== 'string')
       throw new Error('SEC fund directory identity is malformed.');
+    // Some valid SEC fund classes have no trading symbol. They cannot enter a
+    // ticker index; keep validating their identity without inventing an alias.
+    if (row[3] === '') continue;
+    const ticker = row[3].toUpperCase();
+    if (!TICKER.test(ticker)) throw new Error('SEC fund directory identity is malformed.');
     const value = { cik, seriesId: row[1], classId: row[2] };
     if (index[ticker] && JSON.stringify(index[ticker]) !== JSON.stringify(value)) throw new Error('SEC fund directory has an ambiguous ticker.');
     index[ticker] = value;
