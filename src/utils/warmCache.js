@@ -1,10 +1,13 @@
 /**
- * Warm cache — shared key/value storage in Vercel KV (Upstash under the hood).
+ * Shared public-data cache. Reviewed data families use the bounded disposable
+ * Supabase cache; Redis remains a read-only transition fallback for those data.
+ * Coordination and generation-fenced rollback mirrors retain their separate
+ * Redis paths below. A cache read never renews an old value's freshness.
  *
  * This is what the pre-warmer writes to, and what the API routes read from
  * when the CDN cache misses. The layering is:
  *
- *   Request -> Vercel edge CDN (60s-24h) -> API route -> warm cache (Vercel KV)
+ *   Request -> Vercel edge CDN -> API route -> reviewed shared data cache
  *                                                    -> allowlisted public sources
  *
  * The CDN is the fastest layer and handles the bulk of repeated traffic. The
@@ -19,9 +22,11 @@
  *   - Use Vercel KV (which injects KV_REST_API_URL / KV_REST_API_TOKEN)
  *   - Use direct Upstash (which uses UPSTASH_REDIS_REST_URL / _TOKEN)
  *
- * If neither is set, reads return null and writes are swallowed — API routes
- * keep working, we just lose the warm layer.
+ * Those variables configure only the Redis transition/coordination paths.
+ * Supabase cache requests use the existing production workload identity.
  */
+
+import { disposableCacheEnabled, disposableCachePolicy, cacheGet, cacheGetMany, cachePut } from './disposableCache.js';
 
 const REST_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const REST_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -34,7 +39,7 @@ function key(type, id) {
 /**
  * Read a value from the warm cache. Returns parsed JSON or null on miss/error.
  */
-export async function warmGet(type, id) {
+export async function warmLegacyGet(type, id) {
   if (!ENABLED) return null;
   try {
     const res = await fetch(`${REST_URL}/get/${encodeURIComponent(key(type, id))}`, {
@@ -42,9 +47,10 @@ export async function warmGet(type, id) {
       signal: AbortSignal.timeout(2000),
     });
     if (!res.ok) return null;
-    const data = await res.json();
+    const data = await boundedLegacyJson(res);
     const raw = data?.result;
     if (raw == null) return null;
+    if (typeof raw !== 'string' || new TextEncoder().encode(raw).byteLength > 1024 * 1024) return null;
     try {
       return JSON.parse(raw);
     } catch {
@@ -59,7 +65,7 @@ export async function warmGet(type, id) {
 }
 
 /** Bounded multi-key reads for scheduled coverage work; order matches ids. */
-export async function warmGetMany(type, ids, { signal, deadline = Date.now() + 30000 } = {}) {
+async function legacyGetMany(type, ids, { signal, deadline = Date.now() + 30000 } = {}) {
   if (!ENABLED) return ids.map(() => null);
   const output = new Array(ids.length), batches = [];
   for (let offset = 0; offset < ids.length; offset += 25) batches.push({ offset, ids: ids.slice(offset, offset + 25) });
@@ -74,9 +80,14 @@ export async function warmGetMany(type, ids, { signal, deadline = Date.now() + 3
         body: JSON.stringify(['MGET', ...batch.ids.map(id => key(type, id))]),
         signal: AbortSignal.any([requestSignal, AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now())))]),
       });
-      const data = response.ok ? await response.json() : null;
+      const data = response.ok ? await boundedLegacyJson(response, 50 * 1024 * 1024) : null;
       if (!Array.isArray(data?.result) || data.result.length !== batch.ids.length) throw new Error(`Incomplete cache batch: ${String(data?.error||response.status).slice(0,200)}`);
-      data.result.forEach((value, index) => { try { output[batch.offset + index] = value === null ? null : JSON.parse(value); } catch { throw new Error('Corrupt cache checkpoint.'); } });
+      data.result.forEach((value, index) => {
+        try {
+          if (value !== null && (typeof value !== 'string' || new TextEncoder().encode(value).byteLength > 1024 * 1024)) throw new Error('Oversized legacy cache value.');
+          output[batch.offset + index] = value === null ? null : JSON.parse(value);
+        } catch { throw new Error('Corrupt cache checkpoint.'); }
+      });
     }
   });
   try { await Promise.all(workers); return output; }
@@ -94,7 +105,7 @@ export async function warmGetMany(type, ids, { signal, deadline = Date.now() + 3
  * this to a shorter TTL if desired, but 25h still works fine — the values
  * just get refreshed more often than they expire.
  */
-export async function warmSet(type, id, value, ttlSeconds = 25 * 3600) {
+async function legacySet(type, id, value, ttlSeconds = 25 * 3600) {
   if (!ENABLED) return false;
   try {
     const body = JSON.stringify(value);
@@ -129,6 +140,140 @@ export async function warmSet(type, id, value, ttlSeconds = 25 * 3600) {
     return false;
   }
 }
+
+async function boundedLegacyJson(response, maxBytes = 2 * 1024 * 1024) {
+  if (Number(response.headers.get('content-length') || 0) > maxBytes) throw new Error('Legacy cache response exceeds its bound.');
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  let length = 0; const chunks = [];
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > maxBytes) { await reader.cancel(); throw new Error('Legacy cache response exceeds its bound.'); }
+      chunks.push(Buffer.from(value));
+    }
+    return JSON.parse(Buffer.concat(chunks, length).toString('utf8'));
+  } finally { reader.releaseLock(); }
+}
+
+/** Exact Redis reads for the bounded migration; never change a key or its TTL. */
+export async function warmLegacyTtl(type, id) {
+  if (!ENABLED) return null;
+  try {
+    const response = await fetch(REST_URL, { method: 'POST',
+      headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['PTTL', key(type, id)]), signal: AbortSignal.timeout(2000) });
+    const data = response.ok ? await boundedLegacyJson(response, 4096) : null;
+    return Number.isSafeInteger(data?.result) ? data.result : null;
+  } catch { return null; }
+}
+
+export async function warmLegacyGetEnvelope(type, id) {
+  if (!ENABLED) return null;
+  const observedAt = Date.now();
+  try {
+    const script = "local value = redis.call('GET', KEYS[1]); if not value then return nil end; return {value, redis.call('PTTL', KEYS[1])}";
+    const response = await fetch(REST_URL, { method: 'POST',
+      headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['EVAL', script, 1, key(type, id)]), signal: AbortSignal.timeout(2000) });
+    const data = response.ok ? await boundedLegacyJson(response) : null;
+    const [raw, ttlMs] = Array.isArray(data?.result) ? data.result : [];
+    if (typeof raw !== 'string' || new TextEncoder().encode(raw).byteLength > 1024 * 1024
+      || !Number.isSafeInteger(ttlMs) || ttlMs <= 0) return null;
+    return { payload: JSON.parse(raw), ttlMs, observedAt, expiresAt: new Date(observedAt + ttlMs).toISOString() };
+  } catch { return null; }
+}
+
+/** Injectable routing keeps the transition, outages and batch bounds testable. */
+export function createWarmDataCache({
+  enabled = disposableCacheEnabled, policy = disposableCachePolicy,
+  read = cacheGet, readMany = cacheGetMany, put = cachePut,
+  legacyRead = warmLegacyGet, legacyReadMany = legacyGetMany, legacyWrite = legacySet,
+} = {}) {
+  const selected = (type, id) => enabled() && Boolean(policy(type, id));
+  return Object.freeze({
+    async get(type, id) {
+      if (!selected(type, id)) return legacyRead(type, id);
+      // One deadline covers both Supabase reads. Migration can copy and delete
+      // Redis after the first miss but before the legacy read finishes.
+      const deadline = Date.now() + 12000;
+      try {
+        const envelope = await read(type, id, { deadline });
+        if (envelope) return envelope.payload;
+      } catch { /* A disposable cache outage can still use an existing legacy value. */ }
+      try {
+        const previous = await legacyRead(type, id);
+        if (previous != null) return previous;
+      } catch { /* The final cache read can recover a concurrently migrated value. */ }
+      if (Date.now() < deadline) {
+        try { return (await read(type, id, { deadline }))?.payload ?? null; }
+        catch { /* A genuine miss/outage retains the existing upstream fallback. */ }
+      }
+      return null;
+    },
+    async set(type, id, value, ttlSeconds = 25 * 3600) {
+      if (!selected(type, id)) return legacyWrite(type, id, value, ttlSeconds);
+      try { return (await put(type, id, value, ttlSeconds))?.stored === true; }
+      catch { return false; } // Never refill Redis when the disposable cache is unavailable.
+    },
+    async getMany(type, ids, { signal, deadline = Date.now() + 30000 } = {}) {
+      if (!enabled() || !ids.some(id => policy(type, id))) return legacyReadMany(type, ids, { signal, deadline });
+      const output = new Array(ids.length), batches = [];
+      for (let offset = 0; offset < ids.length; offset += 25) batches.push({ offset, ids: ids.slice(offset, offset + 25) });
+      const controller = new AbortController();
+      const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+      const assertLive = () => {
+        if (requestSignal.aborted || Date.now() >= deadline) throw new Error('Cache batch deadline reached.');
+      };
+      const workers = Array.from({ length: Math.min(3, batches.length) }, async () => {
+        while (batches.length) {
+          assertLive();
+          const batch = batches.shift();
+          const selectedRows = batch.ids.flatMap((id, index) => policy(type, id) ? [{ id, index }] : []);
+          let envelopes = [];
+          if (selectedRows.length) {
+            try { envelopes = await readMany(type, selectedRows.map(row => row.id), { signal: requestSignal, deadline }); }
+            catch { assertLive(); }
+            if (!Array.isArray(envelopes) || envelopes.length !== selectedRows.length) envelopes = [];
+          }
+          assertLive();
+          const hits = new Map(selectedRows.flatMap((row, index) => envelopes[index] ? [[row.index, envelopes[index].payload]] : []));
+          const missing = batch.ids.flatMap((id, index) => hits.has(index) ? [] : [{ id, index }]);
+          let fallback = [], fallbackError = null;
+          if (missing.length) {
+            try {
+              fallback = await legacyReadMany(type, missing.map(row => row.id), { signal: requestSignal, deadline });
+              if (!Array.isArray(fallback) || fallback.length !== missing.length) throw new Error('Incomplete cache fallback batch.');
+            } catch (error) { assertLive(); fallbackError = error; fallback = []; }
+          }
+          assertLive();
+          missing.forEach((row, index) => { if (fallback[index] != null) hits.set(row.index, fallback[index]); });
+          const retry = missing.filter(row => !hits.has(row.index) && policy(type, row.id));
+          if (retry.length) {
+            try {
+              const recovered = await readMany(type, retry.map(row => row.id), { signal: requestSignal, deadline });
+              if (Array.isArray(recovered) && recovered.length === retry.length)
+                retry.forEach((row, index) => { if (recovered[index]) hits.set(row.index, recovered[index].payload); });
+            } catch { assertLive(); }
+          }
+          assertLive();
+          if (fallbackError && missing.some(row => !hits.has(row.index))) throw fallbackError;
+          for (const [index, value] of hits) output[batch.offset + index] = value;
+          missing.forEach(row => { if (!hits.has(row.index)) output[batch.offset + row.index] = null; });
+        }
+      });
+      try { await Promise.all(workers); return output; }
+      catch (error) { controller.abort(); await Promise.allSettled(workers); throw error; }
+    },
+  });
+}
+
+const warmData = createWarmDataCache();
+export const warmGet = (...args) => warmData.get(...args);
+export const warmSet = (...args) => warmData.set(...args);
+export const warmGetMany = (...args) => warmData.getMany(...args);
 
 /** Return the remaining TTL for a coordination marker, or null on miss/error. */
 export async function warmCooldownRemaining(type, id) {

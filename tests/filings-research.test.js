@@ -120,7 +120,10 @@ test('Filings loaders preserve exact issuer, verify archived ownership, distingu
       if (directoryFails) return new Response('unavailable', { status: 503 });
       return Response.json({ 0: { ticker: 'JPM', cik_str: 1, title: 'JPM exact issuer' }, 1: { ticker: 'AMJB', cik_str: 1, title: 'Associated security' }, 2: { ticker: 'BAD', cik_str: 2, title: 'Bad response' } });
     }
-    if (String(url).endsWith('company_tickers_mf.json')) return Response.json({ data: [[3, 'S1', 'C1', 'TESTETF']] });
+    if (String(url).endsWith('company_tickers_mf.json')) return Response.json({
+      fields: ['cik', 'seriesId', 'classId', 'symbol'],
+      data: [[3, 'S000000001', 'C000000001', 'TESTETF']],
+    });
     if (String(url).endsWith('CIK0000000001.json')) return Response.json({ cik: '1', name: 'JPMORGAN CHASE', sic: '6021', exchanges: ['NYSE'], filings: { recent: rows([filing(2)]), files: [archive] } });
     if (String(url).endsWith(archive.name)) return Response.json(rows([filing(1, '4', '2025-12-31', '', { primaryDoc: 'xslF345X05/ownership.xml' })]));
     if (String(url).endsWith('CIK0000000002.json')) return Response.json({ cik: malformedResponse ? '99' : '2', name: 'Retried issuer', filings: { recent: rows([]), ...(incompleteManifest ? {} : { files: [] }) } });
@@ -142,7 +145,11 @@ test('Filings loaders preserve exact issuer, verify archived ownership, distingu
     await assert.rejects(loadFilingsArchive('JPM', 'CIK0000000002-submissions-001.json'), (error) => error.code === 'INVALID_ARCHIVE');
     assert.ok(!requested.some((url) => url.endsWith('CIK0000000002-submissions-001.json')));
     await assert.rejects(loadFilingsCompany('MISSING'), (error) => error.status === 404 && error.code === 'UNKNOWN_TICKER');
-    assert.equal((await loadFilingsCompany('TESTETF')).redirect, '/fund/TESTETF');
+    const fund = await loadFilingsCompany('TESTETF');
+    assert.equal(fund.redirect, '/fund/TESTETF');
+    assert.equal(fund.cik, '0000000003');
+    assert.equal(fund.seriesId, 'S000000001');
+    assert.equal(fund.classId, 'C000000001');
     await assert.rejects(loadFilingsCompany('BAD'), /did not match/);
     malformedResponse = false;
     incompleteManifest = true;

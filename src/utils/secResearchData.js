@@ -5,25 +5,87 @@ import { RESEARCH_FORMS } from './researchWorkspace.js';
 import { secFetch } from './secClient.js';
 import { readPreparedSecDocument, sampleSecShadow } from './secDocumentStore.js';
 
-export async function secResearchJson(path, signal) {
-  if (!/^\/(submissions\/CIK[\d-]+\.json|api\/xbrl\/companyfacts\/CIK\d{10}\.json)$/.test(path)) throw new Error('Invalid SEC data path.');
-  // Research callers return only raw JSON and cannot label last-good metadata.
-  // Require a validated-fresh source instead of silently restamping stale data.
-  const prepared = await readPreparedSecDocument(path, { allowStale: false });
-  if (prepared) return prepared.payload;
-  const cached = await warmGet('research-sec-v1', path);
-  if (cached) { await sampleSecShadow(path, cached); return cached; }
-  const response = await secFetch(`https://data.sec.gov${path}`, {
-    headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com', Accept: 'application/json' },
-    signal,
-    timeoutMs: 15000,
-  });
-  if (!response.ok) throw new Error(`SEC data request returned HTTP ${response.status}.`);
-  const data = await response.json();
-  await warmSet('research-sec-v1', path, data, 300);
-  await sampleSecShadow(path, data);
+const MAX_RESEARCH_SOURCE_BYTES = 32 * 1024 * 1024;
+const MAX_PENDING_SOURCES = 8;
+function researchIdentity(path) {
+  const current = /^\/submissions\/CIK(\d{10})(-submissions-\d+)?\.json$/.exec(path);
+  const facts = /^\/api\/xbrl\/companyfacts\/CIK(\d{10})\.json$/.exec(path);
+  const cik = current?.[1] || facts?.[1];
+  if (!cik || Number(cik) === 0) throw new Error('Invalid SEC data path.');
+  return { cik, facts: Boolean(facts), archive: Boolean(current?.[2]) };
+}
+function validateResearchSource(data, identity) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)
+    || (!identity.archive && String(data.cik || '').replace(/^0+/, '') !== identity.cik.replace(/^0+/, ''))
+    || (identity.facts ? !data.facts || typeof data.facts !== 'object' || Array.isArray(data.facts)
+      : !Array.isArray((identity.archive ? data : data.filings?.recent)?.accessionNumber)))
+    throw new Error('SEC research source failed company identity or contents validation.');
   return data;
 }
+
+/** Requests share a bounded source fetch; canceling one reader does not cancel
+ * other readers. This disposable cache covers every valid CIK and does not
+ * enroll user searches into the separately maintained immutable archive.
+ */
+export function createSecResearchJson({
+  readPrepared = readPreparedSecDocument, read = warmGet, write = warmSet,
+  fetchSec = secFetch, sample = sampleSecShadow,
+} = {}) {
+  const pending = new Map();
+  return async (path, signal) => {
+    const identity = researchIdentity(path);
+    signal?.throwIfAborted();
+    let entry = pending.get(path);
+    if (!entry) {
+      if (pending.size >= MAX_PENDING_SOURCES) throw Object.assign(new Error('SEC research retrieval is busy. Retry shortly.'), { status: 503 });
+      const controller = new AbortController();
+      entry = { controller, readers: 0, settled: false, task: null };
+      const requestSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(25000)]);
+      entry.task = (async () => {
+        // Raw JSON callers cannot label last-good input. Never extend the five
+        // minute cache freshness or restamp stale sources as new calculations.
+        const prepared = await readPrepared(path, { allowStale: false });
+        if (prepared) return validateResearchSource(prepared.payload, identity);
+        let cached;
+        try { cached = await read('research-sec-v1', path); } catch { /* A cache outage keeps the bounded SEC retrieval path available. */ }
+        if (cached) {
+          try { validateResearchSource(cached, identity); }
+          catch { cached = null; }
+          if (cached) { await sample(path, cached); return cached; }
+        }
+        requestSignal.throwIfAborted();
+        const response = await fetchSec(`https://data.sec.gov${path}`, {
+          headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com', Accept: 'application/json' },
+          signal: requestSignal, timeoutMs: 15000, maxBytes: MAX_RESEARCH_SOURCE_BYTES,
+        });
+        if (!response.ok) throw new Error(`SEC data request returned HTTP ${response.status}.`);
+        const data = validateResearchSource(await response.json(), identity);
+        requestSignal.throwIfAborted();
+        try { await write('research-sec-v1', path, data, 300); } catch { /* A valid source result survives optional cache persistence failure. */ }
+        await sample(path, data);
+        return data;
+      })().finally(() => {
+        entry.settled = true;
+        if (pending.get(path) === entry) pending.delete(path);
+      });
+      pending.set(path, entry);
+    }
+    entry.readers++;
+    try {
+      return await new Promise((resolve, reject) => {
+        const abort = () => reject(signal.reason || new Error('SEC research reader aborted.'));
+        signal?.addEventListener('abort', abort, { once: true });
+        entry.task.then(resolve, reject).finally(() => signal?.removeEventListener('abort', abort));
+        if (signal?.aborted) abort();
+      });
+    } finally {
+      entry.readers--;
+      if (!entry.readers && !entry.settled) entry.controller.abort(new Error('No SEC research readers remain.'));
+    }
+  };
+}
+
+export const secResearchJson = createSecResearchJson();
 
 export function submissionRows(recent, cik) {
   return (recent?.accessionNumber || []).flatMap((accession, i) => {

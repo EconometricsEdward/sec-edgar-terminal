@@ -56,9 +56,9 @@ export async function GET(request) {
     });
     const id = `${COMPARE_VERSION}:${ticker}:${basis}:${asOf}`;
     const cached = await warmGet("compare-research", id);
-    if (cached?.gzip) {
+    if (typeof cached?.gzip === 'string' && cached.gzip.length <= 8 * 1024 * 1024) {
       try {
-        const payload = JSON.parse(gunzipSync(Buffer.from(cached.gzip, "base64")).toString("utf8"));
+        const payload = JSON.parse(gunzipSync(Buffer.from(cached.gzip, "base64"), { maxOutputLength: 32 * 1024 * 1024 }).toString("utf8"));
         return NextResponse.json(
           format === "packed" ? packAnalysisCompany(payload) : payload,
           { headers: { "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": "warm" } },

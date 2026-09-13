@@ -90,7 +90,7 @@ async function refreshCompany(entry, cached, signal) {
   const represented=[company.reports?.annual?.accession,company.reports?.ttm?.accession,company.filingComparisons?.annual?.current?.accession,company.filingComparisons?.ttm?.current?.accession];
   const needsReconciliation=Boolean(expected)&&!represented.includes(expected);
   const result = { company, fingerprint, checkedAt, factsRetrievedAt, attemptedAt: checkedAt, needsReconciliation };
-  if (!await warmSet(QUANT_COMPANY_CACHE, entry.cik, result, 30 * 86400)) throw new Error('Company checkpoint could not be persisted.');
+  if (!await warmSet(QUANT_COMPANY_CACHE, entry.cik, result, 14 * 86400)) throw new Error('Company checkpoint could not be persisted.');
   return result;
 }
 
@@ -118,7 +118,7 @@ export async function refreshQuantBatch(batch, { signal, deadline = Date.now() +
         catch (error) {
           result.failed++;
           if (result.errors.length < 8) result.errors.push({ ticker: entry.ticker, source: 'SEC', reason: error.message });
-          await warmSet(`${QUANT_COMPANY_CACHE}:attempts`, entry.cik, { at: new Date().toISOString(), lastError: error.message }, 30 * 86400);
+          await warmSet(`${QUANT_COMPANY_CACHE}:attempts`, entry.cik, { at: new Date().toISOString(), lastError: error.message }, 7 * 86400);
         }
       }
     }));

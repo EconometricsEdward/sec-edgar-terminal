@@ -1,37 +1,20 @@
-/**
- * Shared ticker → CIK lookup cache.
- *
- * The SEC publishes company_tickers.json (~1.5MB) and company_tickers_mf.json
- * for the full ticker/CIK mapping. These files update roughly weekly.
- *
- * Previously we fetched these on every API invocation, which meant:
- *   - ~1.5MB transferred from SEC on every disclosure search / fund request
- *   - Counted against SEC's 10 req/sec global limit
- *   - Added 200-500ms of latency to every request
- *
- * Now we cache in memory per serverless instance with a 6-hour TTL. On a cold
- * instance, concurrent requests share a single in-flight fetch via the
- * promise-memoization pattern (no thundering herd).
- *
- * Per-instance memory cache is fine for this data because:
- *   (1) It's public and identical for every user
- *   (2) A stale hit for up to 6h is harmless — ticker mappings rarely change
- *   (3) Upstash would work too but adds a network hop for data we're happy
- *       to keep per-instance
- *
- * If you later want cross-instance coherence (e.g. for immediate ticker
- * additions), swap the in-memory Map for Upstash Redis.
+/** Full SEC directories are shared across instances, independently of the 500
+ * maintained issuers. Entries remain fresh for 24h and may be used for at most
+ * seven days after retrieval during an upstream outage. Reads do not extend age.
  */
 
 import { secFetch } from "./secClient.js";
+import { warmGet, warmSet } from "./warmCache.js";
 
 const TTL_MS = 24 * 60 * 60 * 1000; // directory files change infrequently
-
-// Per-instance caches
-let operatingCache = null; // { data, expiresAt }
-let fundCache = null;
-let operatingInFlight = null; // Promise<{ data, expiresAt }> — prevents thundering herd
-let fundInFlight = null;
+const RETAIN_MS = 7 * TTL_MS;
+const DIRECTORY_NAMESPACE = 'sec-directory-v1';
+const MAX_DIRECTORY_BYTES = 32 * 1024 * 1024;
+// SEC includes a few parenthesized fund symbols. Preserve those exact aliases;
+// stripping punctuation could silently identify another security.
+const TICKER = /^(?:[A-Z0-9][A-Z0-9.^/$-]{0,31}|\([A-Z0-9][A-Z0-9.^/$-]{0,29}\))$/;
+const record = value => value && typeof value === 'object' && !Array.isArray(value);
+const normalizedCik = value => /^(?:\d{1,10})$/.test(String(value)) && Number(value) > 0 ? String(value).padStart(10, '0') : null;
 
 const OPERATING_URL = "https://www.sec.gov/files/company_tickers.json";
 const FUND_URL = "https://www.sec.gov/files/company_tickers_mf.json";
@@ -43,31 +26,20 @@ function getUserAgent() {
   );
 }
 
-async function fetchAndIndex(url, buildIndex) {
-  const res = await secFetch(url, {
-    headers: { "User-Agent": getUserAgent() },
-    timeoutMs: 15_000,
-  });
-  if (!res.ok) {
-    throw new Error(`SEC ticker file fetch failed: HTTP ${res.status}`);
-  }
-  const raw = await res.json();
-  const indexed = buildIndex(raw);
-  return { data: indexed, expiresAt: Date.now() + TTL_MS };
-}
-
 /**
  * Index the operating-companies ticker file into a plain object:
  *   { AAPL: { cik: "0000320193", name: "Apple Inc." }, ... }
  */
 function buildOperatingIndex(raw) {
-  const index = {};
+  if (!record(raw)) throw new Error('SEC operating directory is malformed.');
+  const index = Object.create(null);
   for (const entry of Object.values(raw)) {
-    if (!entry?.ticker) continue;
-    index[entry.ticker.toUpperCase()] = {
-      cik: String(entry.cik_str).padStart(10, "0"),
-      name: entry.title,
-    };
+    const ticker = typeof entry?.ticker === 'string' ? entry.ticker.toUpperCase() : '';
+    const cik = normalizedCik(entry?.cik_str);
+    if (!TICKER.test(ticker) || !cik || typeof entry.title !== 'string' || !entry.title.trim() || entry.title.length > 1000)
+      throw new Error('SEC operating directory identity is malformed.');
+    if (index[ticker] && index[ticker].cik !== cik) throw new Error('SEC operating directory has an ambiguous ticker.');
+    index[ticker] = { cik, name: entry.title };
   }
   return index;
 }
@@ -77,58 +49,78 @@ function buildOperatingIndex(raw) {
  *   { fields: ["cik","seriesId","classId","symbol"], data: [[...], ...] }
  */
 function buildFundIndex(raw) {
-  const index = {};
-  if (!raw?.data) return index;
+  if (!Array.isArray(raw?.data) || !Array.isArray(raw.fields)
+    || raw.fields.join(',') !== 'cik,seriesId,classId,symbol') throw new Error('SEC fund directory schema is malformed.');
+  const index = Object.create(null);
   for (const row of raw.data) {
-    const symbol = row[3];
-    if (!symbol) continue;
-    index[String(symbol).toUpperCase()] = {
-      cik: String(row[0]).padStart(10, "0"),
-      seriesId: row[1],
-      classId: row[2],
-    };
+    const ticker = Array.isArray(row) && typeof row[3] === 'string' ? row[3].toUpperCase() : '';
+    const cik = normalizedCik(row?.[0]);
+    if (!TICKER.test(ticker) || !cik || !/^S\d{9}$/.test(row[1]) || !/^C\d{9}$/.test(row[2]))
+      throw new Error('SEC fund directory identity is malformed.');
+    const value = { cik, seriesId: row[1], classId: row[2] };
+    if (index[ticker] && JSON.stringify(index[ticker]) !== JSON.stringify(value)) throw new Error('SEC fund directory has an ambiguous ticker.');
+    index[ticker] = value;
   }
   return index;
 }
 
-async function getCached(which) {
-  const isOp = which === "operating";
-  const cache = isOp ? operatingCache : fundCache;
-  const now = Date.now();
-
-  if (cache && cache.expiresAt > now) {
-    return cache.data;
-  }
-
-  // If a fetch is already in flight, join it rather than starting a second one
-  if (isOp && operatingInFlight) return (await operatingInFlight).data;
-  if (!isOp && fundInFlight) return (await fundInFlight).data;
-
-  const url = isOp ? OPERATING_URL : FUND_URL;
-  const builder = isOp ? buildOperatingIndex : buildFundIndex;
-  const promise = fetchAndIndex(url, builder);
-
-  if (isOp) operatingInFlight = promise;
-  else fundInFlight = promise;
-
-  try {
-    const fresh = await promise;
-    if (isOp) operatingCache = fresh;
-    else fundCache = fresh;
-    return fresh.data;
-  } catch (err) {
-    // On failure, serve stale if we have it — better than nothing for a
-    // file that only changes weekly
-    if (cache) {
-      console.warn(`[tickerMap] Refresh failed, serving stale: ${err.message}`);
-      return cache.data;
-    }
-    throw err;
-  } finally {
-    if (isOp) operatingInFlight = null;
-    else fundInFlight = null;
-  }
+function validDirectory(value, kind, now) {
+  const fetchedAt = Date.parse(value?.fetchedAt), expiresAt = Date.parse(value?.expiresAt);
+  if (value?.schema !== 1 || value.kind !== kind || !record(value.data)
+    || !Number.isFinite(fetchedAt) || !Number.isFinite(expiresAt)
+    || fetchedAt > now + 60000 || expiresAt !== fetchedAt + TTL_MS || now >= fetchedAt + RETAIN_MS) return false;
+  const entries = Object.entries(value.data);
+  if (!entries.length || entries.length > 100000) return false;
+  return entries.every(([ticker, entry]) => TICKER.test(ticker) && record(entry) && /^\d{10}$/.test(entry.cik) && Number(entry.cik) > 0
+    && (kind === 'operating' ? typeof entry.name === 'string' && entry.name.trim() && entry.name.length <= 1000
+      : /^S\d{9}$/.test(entry.seriesId) && /^C\d{9}$/.test(entry.classId)));
 }
+
+export function createTickerDirectoryCache({ fetchSec = secFetch, read = warmGet, write = warmSet, now = Date.now } = {}) {
+  const memory = new Map(), pending = new Map(), retryAfter = new Map();
+  return Object.freeze({
+    async get(kind) {
+      if (!['operating', 'funds'].includes(kind)) throw new Error('Unknown SEC directory.');
+      let previous = memory.get(kind);
+      if (previous && !validDirectory(previous, kind, now())) { memory.delete(kind); previous = null; }
+      if (previous && (Date.parse(previous.expiresAt) > now() || now() < (retryAfter.get(kind) || 0))) return previous.data;
+      if (pending.has(kind)) return pending.get(kind);
+      const task = (async () => {
+        let shared;
+        try { shared = await read(DIRECTORY_NAMESPACE, kind); } catch { /* Existing local data and upstream remain available. */ }
+        if (validDirectory(shared, kind, now()) && (!previous || shared.fetchedAt > previous.fetchedAt)) {
+          previous = shared; memory.set(kind, shared);
+        }
+        if (previous && Date.parse(previous.expiresAt) > now()) return previous.data;
+        try {
+          const response = await fetchSec(kind === 'operating' ? OPERATING_URL : FUND_URL, {
+            headers: { 'User-Agent': getUserAgent(), Accept: 'application/json' }, timeoutMs: 15000, maxBytes: MAX_DIRECTORY_BYTES,
+          });
+          if (!response.ok) throw new Error(`SEC ticker file fetch failed: HTTP ${response.status}`);
+          const raw = await response.json();
+          const data = kind === 'operating' ? buildOperatingIndex(raw) : buildFundIndex(raw);
+          const fetched = now();
+          const fresh = { schema: 1, kind, fetchedAt: new Date(fetched).toISOString(), expiresAt: new Date(fetched + TTL_MS).toISOString(), data };
+          if (!validDirectory(fresh, kind, fetched)) throw new Error('SEC directory failed validation.');
+          memory.set(kind, fresh); retryAfter.delete(kind);
+          try { await write(DIRECTORY_NAMESPACE, kind, fresh, RETAIN_MS / 1000); } catch { /* Optional persistence cannot invalidate a verified SEC response. */ }
+          return data;
+        } catch (error) {
+          if (previous && validDirectory(previous, kind, now())) {
+            retryAfter.set(kind, now() + 60000);
+            return previous.data;
+          }
+          throw error;
+        }
+      })();
+      pending.set(kind, task);
+      try { return await task; } finally { pending.delete(kind); }
+    },
+  });
+}
+
+const directories = createTickerDirectoryCache();
+const getCached = kind => directories.get(kind === 'operating' ? kind : 'funds');
 
 /**
  * Look up a single operating-company ticker.

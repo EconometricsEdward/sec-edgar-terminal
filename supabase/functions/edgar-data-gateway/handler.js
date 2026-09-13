@@ -1,5 +1,6 @@
 /** Narrow workload gateway. Supabase credentials never leave this function. */
 import { APPROVED_SEC_CIKS, SUPPORTING_SOURCE_CIKS } from './coverage.js';
+import { DISPOSABLE_CACHE_LIMITS as CACHE_LIMITS, disposableCachePolicy } from './cachePolicy.js';
 export const TRUST = Object.freeze({
   issuer: 'https://oidc.vercel.com/econometricsedwards-projects',
   audience: 'https://vercel.com/econometricsedwards-projects',
@@ -66,6 +67,10 @@ export const RPC_PARAMETERS = Object.freeze({
   edgar_acquire_sec_dispatch: ['p_owner'],
   edgar_release_sec_dispatch: ['p_owner', 'p_cooldown_ms'],
   edgar_publish_sec_cooldown: ['p_cooldown_ms'],
+  edgar_cache_get: ['p_family', 'p_type', 'p_ids'],
+  edgar_cache_put: ['p_family', 'p_type', 'p_id', 'p_gzip_base64', 'p_raw_sha256', 'p_gzip_sha256', 'p_raw_bytes', 'p_ttl_seconds', 'p_if_hash', 'p_expires_at'],
+  edgar_cache_status: [],
+  edgar_cache_maintenance: ['p_action', 'p_owner', 'p_state'],
   edgar_authorize_coverage_schedule: ['p_timestamp', 'p_nonce', 'p_signature'],
   edgar_claim_job: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_job_key'],
   edgar_claim_job_prefix: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_prefix'],
@@ -257,7 +262,7 @@ function validateRpc(name, params, nowMs) {
       if (!Array.isArray(params.p_keys) || params.p_keys.length > bound || params.p_keys.some(key => !validKey(params.p_dataset, key))) reject('invalid_batch_keys', 403);
     }
   }
-  if (RPC_PARAMETERS[name].includes('p_owner') && !UUID.test(params.p_owner || '')) reject('invalid_owner');
+  if (RPC_PARAMETERS[name].includes('p_owner') && name !== 'edgar_cache_maintenance' && !UUID.test(params.p_owner || '')) reject('invalid_owner');
   if (RPC_PARAMETERS[name].includes('p_claim')) claim(params.p_claim, ['edgar_finish_job', 'edgar_checkpoint_job', 'edgar_yield_job'].includes(name));
   if (has(params, 'p_lease_seconds') && !integer(params.p_lease_seconds, 10, 900)) reject('invalid_lease');
   if (has(params, 'p_identity') && params.p_identity !== null && !HASH.test(params.p_identity)) reject('invalid_identity');
@@ -286,6 +291,31 @@ function validateRpc(name, params, nowMs) {
   if (name === 'edgar_coverage_operations' && has(params, 'p_hours') && !integer(params.p_hours, 1, 168)) reject('invalid_hours');
   if (name === 'edgar_release_sec_dispatch' && has(params, 'p_cooldown_ms') && !integer(params.p_cooldown_ms, 0, 300000)) reject('invalid_sec_cooldown');
   if (name === 'edgar_publish_sec_cooldown' && !integer(params.p_cooldown_ms, 1, 300000)) reject('invalid_sec_cooldown');
+  if (name === 'edgar_cache_get' || name === 'edgar_cache_put') {
+    const ids = name === 'edgar_cache_get' ? params.p_ids : [params.p_id];
+    if (!Array.isArray(ids) || !integer(ids.length, 1, CACHE_LIMITS.batch)) reject('invalid_cache_batch');
+    let policy;
+    for (const id of ids) {
+      policy = disposableCachePolicy(params.p_type, id);
+      if (!policy || policy.id !== id || policy.family !== params.p_family) reject('cache_resource_denied', 403);
+    }
+    if (name === 'edgar_cache_put') {
+      if (has(params, 'p_expires_at')) timestamp(params.p_expires_at, true);
+      if (!HASH.test(params.p_raw_sha256 || '') || !HASH.test(params.p_gzip_sha256 || '')
+        || !integer(params.p_raw_bytes, 1, CACHE_LIMITS.rawBytes) || !integer(params.p_ttl_seconds, 1, policy.maxTtlSeconds)
+        || typeof params.p_gzip_base64 !== 'string' || !params.p_gzip_base64.length
+        || params.p_gzip_base64.length > Math.ceil(CACHE_LIMITS.gzipBytes / 3) * 4
+        || params.p_gzip_base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(params.p_gzip_base64)
+        || params.p_if_hash != null && params.p_if_hash !== 'absent' && !HASH.test(params.p_if_hash)) reject('invalid_cache_record');
+    }
+  }
+  if (name === 'edgar_cache_maintenance') {
+    if (!['read', 'claim', 'save'].includes(params.p_action)) reject('invalid_cache_action');
+    if (params.p_action === 'read' && (params.p_owner != null || params.p_state != null)
+      || params.p_action === 'claim' && (params.p_state != null || !UUID.test(params.p_owner || ''))
+      || params.p_action === 'save' && (!UUID.test(params.p_owner || '') || !object(params.p_state))) reject('invalid_cache_state');
+    if (params.p_state != null && encoder.encode(JSON.stringify(params.p_state)).byteLength > CACHE_LIMITS.stateBytes) reject('cache_state_too_large', 413);
+  }
   if (name === 'edgar_authorize_coverage_schedule') {
     if (!integer(params.p_timestamp,1000000000,9999999999)
       || typeof params.p_nonce !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(params.p_nonce)
@@ -388,6 +418,21 @@ async function verifyMembershipEvidence(params, signal) {
     .sort((a, b) => a[0].localeCompare(b[0]));
   if (await sha256(encoder.encode(JSON.stringify(issuerIdentity))) !== params.p_snapshot.membershipFingerprint) reject('invalid_membership');
 }
+async function verifyCachePayload(params, signal) {
+  let compressed;
+  try { compressed = Uint8Array.from(atob(params.p_gzip_base64), value => value.charCodeAt(0)); }
+  catch { reject('invalid_cache_record'); }
+  if (compressed.byteLength < 3 || compressed.byteLength > CACHE_LIMITS.gzipBytes
+    || compressed[0] !== 0x1f || compressed[1] !== 0x8b || compressed[2] !== 8
+    || await sha256(compressed) !== params.p_gzip_sha256) reject('invalid_cache_record');
+  let raw;
+  try { raw = await boundedBytes(new Response(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'))), CACHE_LIMITS.rawBytes, signal); }
+  catch (error) { if (error instanceof GatewayError) throw error; reject('invalid_cache_record'); }
+  if (raw.byteLength !== params.p_raw_bytes || await sha256(raw) !== params.p_raw_sha256) reject('invalid_cache_record');
+  let payload; try { payload = JSON.parse(decoder.decode(raw)); } catch { reject('invalid_cache_json'); }
+  const policy = disposableCachePolicy(params.p_type, params.p_id);
+  if (policy.sourceCik && String(payload?.cik || '').padStart(10, '0') !== policy.sourceCik) reject('cache_source_identity_mismatch');
+}
 function serviceHeaders(secret) {
   const headers = { apikey: secret, 'Accept-Encoding': 'identity' };
   if (!secret.startsWith('sb_secret_')) headers.Authorization = `Bearer ${secret}`;
@@ -444,16 +489,19 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       // Evidence verification is the only larger operation. Ordinary reads keep
       // their original timeout, and injected shorter test/operator limits win.
       const secDispatchOperation = ['edgar_acquire_sec_dispatch', 'edgar_release_sec_dispatch', 'edgar_publish_sec_cooldown'].includes(rpcMatch?.[1]);
+      const cacheDataOperation = ['edgar_cache_get', 'edgar_cache_put'].includes(rpcMatch?.[1]);
       const operationTimeout = secDispatchOperation ? Math.min(timeoutMs, 1500)
-        : rpcMatch?.[1] === 'edgar_stage_membership' && timeoutMs === 5500 ? 15000 : timeoutMs;
+        : rpcMatch?.[1] === 'edgar_stage_membership' && timeoutMs === 5500 ? 15000
+          : cacheDataOperation && timeoutMs === 5500 ? 9000 : timeoutMs;
       timer = setTimeout(() => controller.abort(), operationTimeout);
       if (rpcMatch && has(RPC_PARAMETERS, rpcMatch[1])) {
         if (request.method !== 'POST') reject('method_denied', 405);
         if (request.headers.get('content-type')?.split(';', 1)[0].trim() !== 'application/json') reject('content_type_denied', 415);
-        const bytes = await boundedBytes(request, RPC_BYTES, controller.signal);
+        const bytes = await boundedBytes(request, cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
         let parsed; try { parsed = JSON.parse(decoder.decode(bytes)); } catch { reject('invalid_json', 400); }
         const params = validateRpc(rpcMatch[1], parsed, now());
         if (rpcMatch[1] === 'edgar_stage_membership') await verifyMembershipEvidence(params, controller.signal);
+        if (rpcMatch[1] === 'edgar_cache_put') await verifyCachePayload(params, controller.signal);
         await admitMembership(params, { fetchImpl, secret, signal: controller.signal });
         body = JSON.stringify(params);
         targetPath = `/rest/v1/rpc/${rpcMatch[1]}`;
@@ -479,12 +527,16 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       if (!upstream.ok) {
         // Preserve the SQL fencing marker used by the adapter; all other
         // upstream messages are discarded so credentials cannot reach callers.
-        let code;
-        try { code = JSON.parse(decoder.decode(await boundedBytes(upstream, RPC_BYTES, controller.signal))).code; } catch { /* sanitized below */ }
+        let code, cacheOverflow = false;
+        try {
+          const error = JSON.parse(decoder.decode(await boundedBytes(upstream, RPC_BYTES, controller.signal)));
+          code = error.code;
+          cacheOverflow = rpcMatch?.[1] === 'edgar_cache_get' && error.code === '22023' && error.message === 'cache_response_too_large';
+        } catch { /* sanitized below */ }
         const status = integer(upstream.status, 400, 599) ? upstream.status : 502;
-        return json({ code: code === '40001' ? '40001' : 'upstream_failure' }, status);
+        return json({ code: cacheOverflow ? 'cache_response_too_large' : code === '40001' ? '40001' : 'upstream_failure' }, status);
       }
-      const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : RPC_BYTES, controller.signal);
+      const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
       return result(bytes, upstream.status, raw ? 'application/gzip' : 'application/json');
     } catch (error) {
       if (error instanceof GatewayError) return json({ code: error.code }, error.status);

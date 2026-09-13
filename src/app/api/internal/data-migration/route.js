@@ -3,6 +3,9 @@ import { DataStoreError, getDataStoreMode, readDataStoreStatus, readDataStoreCov
   dataStoreRetentionDryRun, dataStoreOrphanDryRun, readDataset, readFinancialMetrics, readCoverageOperations } from '../../../../utils/dataStore.js';
 import { loadSecCoverageRegistry } from '../../../../utils/secCoverageRegistry.js';
 import { summarizeCoverageOperations } from '../../../../utils/coverageOperations.js';
+import { cacheStatus } from '../../../../utils/disposableCache.js';
+import { summarizeDisposableCache } from '../../../../utils/cacheHealth.js';
+import { summarizeRedisMaintenanceState } from '../../../../utils/redisMaintenance.js';
 import { financialPreparedKey } from '../../../../utils/preparedFinancialData.js';
 import { runSecMigrationJob } from '../../../../utils/dataMigrationJob.js';
 import { cftcPersistence } from '../../../../utils/cftcPersistence.js';
@@ -41,13 +44,15 @@ export async function GET(request) {
       if (!record) return Response.json({ status: 'not-prepared' }, { status: 404, headers });
       return Response.json({ key, metadata: record.metadata, observations: await readFinancialMetrics(record.metadata.versionId) }, { headers });
     }
-    const [status, coverage, retention, orphans, registry, operations] = await Promise.all([
+    const [status, coverage, retention, orphans, registry, operations, cache] = await Promise.all([
       readDataStoreStatus(), readDataStoreCoverageStatus(),
       dataStoreRetentionDryRun({ limit: 25, before: new Date(Date.now() - 30 * 86400000).toISOString() }),
       dataStoreOrphanDryRun({ limit: 25 }), loadSecCoverageRegistry({ force: true, required: true }), readCoverageOperations(),
+      cacheStatus({ timeoutMs: 4000 }).catch(() => null),
     ]);
     return Response.json({ flags: Object.fromEntries(['cftc', 'sec', 'financial'].map(dataset => [dataset, getDataStoreMode(dataset)])),
       status, coverage, membership: membershipSummary(registry), operations, operationsSummary: summarizeCoverageOperations(operations),
+      cacheStorage: summarizeDisposableCache(cache, summarizeRedisMaintenanceState(cache?.maintenance?.state)),
       retention, orphans, cftc: cftcPersistence.status(), alerts: { health: 'stored', notifications: 'unconfigured' } }, { headers });
   } catch (error) {
     const code = error instanceof DataStoreError && /^[a-z0-9_]{1,64}$/.test(error.code)
