@@ -288,6 +288,10 @@ function migrationFenceTarget(type, fenceId, id = null) {
       ? `/submissions/CIK${sec[1]}.json` : `/api/xbrl/companyfacts/CIK${sec[1]}.json`);
   }
   const financial = /^financial-analysis-v1:(analysis-[A-Za-z0-9:._-]{1,200}):CIK(\d{10}):(annual|quarter|ytd|ttm):latest$/.exec(fenceId);
+  const research = /^research-(compare|portfolio)-v1:((?:analysis|compare)-[A-Za-z0-9:._-]{1,200}):CIK(\d{10}):(annual|quarter|ytd|ttm):latest$/.exec(fenceId);
+  if (type === 'research-serving-v1' && research && Object.hasOwn(MIGRATION_COHORT_TICKERS, research[3])) {
+    return (research[1] !== 'compare' || research[4] !== 'ytd') && (id === null || id === fenceId);
+  }
   return Boolean(type === 'analysis-research' && financial && Object.hasOwn(MIGRATION_COHORT_TICKERS, financial[2])
     && (id === null || id === `${financial[1]}:${MIGRATION_COHORT_TICKERS[financial[2]]}:${financial[3]}:`));
 }

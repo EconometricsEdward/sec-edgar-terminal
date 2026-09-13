@@ -137,6 +137,12 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
       if (!bytes.length) return null;
       try { return JSON.parse(bytes.toString('utf8')); } catch { throw new DataStoreError('invalid_response', 502); }
     } catch (error) {
+      if (env.VERCEL_ENV === 'production') {
+        const operation = /^\/rest\/v1\/rpc\/(edgar_[a-z_]+)$/.exec(path)?.[1]
+          || (method === 'GET' ? 'object_read' : 'object_write');
+        console.warn('[Durable store] request failed', { operation,
+          code: error instanceof DataStoreError ? error.code : error?.name === 'AbortError' ? 'timeout' : 'transport_failure' });
+      }
       if (error instanceof DataStoreError) throw error;
       throw new DataStoreError(error?.name === 'AbortError' ? 'timeout' : 'transport_failure');
     } finally { clearTimeout(timeout); }
@@ -235,6 +241,49 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     checkDataset(dataset, key); if (!enabled(dataset)) return null;
     return rpc('edgar_begin_write', { p_dataset: dataset, p_key: key, p_owner: randomUUID(), p_lease_seconds: Math.max(10, Math.min(900, Math.floor(leaseSeconds))) });
   }
+  function batchKeys(dataset, keys) {
+    checkDataset(dataset);
+    if (!Array.isArray(keys) || keys.length > 100) throw new DataStoreError('invalid_batch_keys', 422);
+    for (const key of keys) {
+      if (key == null) throw new DataStoreError('invalid_resource_key', 422);
+      checkDataset(dataset, key);
+    }
+  }
+  /** Current pointers and selected provenance, without loading any source object. */
+  async function readDatasetManifests(dataset, keys) {
+    batchKeys(dataset, keys);
+    if (!keys.length || !enabled(dataset)) return keys.map(() => null);
+    const rows = await rpc('edgar_get_manifests', { p_dataset: dataset, p_keys: keys });
+    if (!Array.isArray(rows) || rows.length !== keys.length || rows.some((row, i) => row !== null && (!row || typeof row !== 'object' || row.key !== keys[i]))) {
+      throw new DataStoreError('invalid_manifest_batch', 502);
+    }
+    return rows.map(row => row === null ? null : { ...row, stale: !!row.expiresAt && Date.parse(row.expiresAt) <= Date.now() });
+  }
+  /** Compact serving rows only. Object-backed detail uses an explicit readDataset. */
+  async function readDatasetBatch(dataset, keys, { allowStale = true } = {}) {
+    batchKeys(dataset, keys);
+    if (!keys.length || !enabled(dataset)) return keys.map(() => null);
+    const output = new Array(keys.length);
+    const batches = [];
+    for (let offset = 0; offset < keys.length; offset += 5) batches.push({ offset, keys: keys.slice(offset, offset + 5) });
+    const workers = Array.from({ length: Math.min(3, batches.length) }, async () => {
+      while (batches.length) {
+        const batch = batches.shift();
+        const rows = await rpc('edgar_get_compact_batch', { p_dataset: dataset, p_keys: batch.keys });
+        if (!Array.isArray(rows) || rows.length !== batch.keys.length || rows.some(row => row !== null && (!row || typeof row !== 'object' || row.objectPath != null || row.payload == null))) {
+          throw new DataStoreError('invalid_compact_batch', 502);
+        }
+        for (let i = 0; i < rows.length; i += 1) {
+          const row = rows[i];
+          output[batch.offset + i] = !row || (!allowStale && row.expiresAt && Date.parse(row.expiresAt) <= Date.now()) ? null : await envelope(row);
+        }
+      }
+    });
+    const completed = await Promise.allSettled(workers);
+    const failure = completed.find(result => result.status === 'rejected');
+    if (failure) throw failure.reason;
+    return output;
+  }
   async function publishDataset({ dataset, key, claim, payload, metadata = {}, source, kind = 'snapshot', promoteLastGood = true, observations = [], identityInputs }) {
     checkDataset(dataset, key); if (!enabled(dataset)) return null;
     const token = claimArguments(claim);
@@ -299,9 +348,36 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     if (Buffer.byteLength(stableDataStoreJson(checkpoint)) > 16384) throw new DataStoreError('checkpoint_too_large', 413);
     return rpc('edgar_enqueue_job', { p_dataset: dataset, p_key: key, p_job_key: jobKey, p_checkpoint: checkpoint, p_max_attempts: maxAttempts });
   }
-  async function claimDataStoreJob({ dataset, leaseSeconds = 120, jobKey = null }) {
+  async function enqueueCoverageJobs({ cycle, version, shards = null }) {
+    if (!enabled('sec')) return null;
+    if (typeof cycle !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(cycle) || !Number.isFinite(Date.parse(cycle)) || new Date(cycle).toISOString().slice(0,10) !== cycle
+      || typeof version !== 'string' || !/^[a-f0-9]{16}$/.test(version)
+      || shards !== null && (!Array.isArray(shards) || shards.length < 1 || shards.length > 32 || new Set(shards).size !== shards.length || shards.some(shard => !Number.isInteger(shard) || shard < 0 || shard > 31))) {
+      throw new DataStoreError('invalid_coverage_jobs', 422);
+    }
+    return rpc('edgar_enqueue_coverage_jobs', { p_cycle: cycle, p_version: version, p_shards: shards });
+  }
+  async function verifyCoverageScheduleSignature({ timestamp, nonce, signature }) {
+    if (!Number.isSafeInteger(timestamp) || timestamp < 1000000000 || timestamp > 9999999999
+      || typeof nonce !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(nonce)
+      || typeof signature !== 'string' || !/^[a-f0-9]{64}$/.test(signature)) throw new DataStoreError('invalid_schedule_signature',422);
+    // This verifies only the fixed scheduler message and consumes its nonce.
+    // The Vault signing key never crosses the RPC or gateway response boundary.
+    return await rpc('edgar_authorize_coverage_schedule', { p_timestamp: timestamp, p_nonce: nonce, p_signature: signature }) === true;
+  }
+  async function claimDataStoreJob({ dataset, leaseSeconds = 120, jobKey = null, prefix = null }) {
     if (!enabled(dataset)) return null;
+    if (prefix !== null) {
+      if (jobKey !== null || dataset !== 'sec' || !['sec-financial-cohort-v1:', 'sec-coverage-v1:'].includes(prefix)) throw new DataStoreError('invalid_job_prefix', 422);
+      return rpc('edgar_claim_job_prefix', { p_dataset: dataset, p_owner: randomUUID(), p_prefix: prefix, p_lease_seconds: leaseSeconds });
+    }
     return rpc('edgar_claim_job', { p_dataset: dataset, p_owner: randomUUID(), p_lease_seconds: leaseSeconds, p_job_key: jobKey });
+  }
+  async function yieldDataStoreJob(claim, { checkpoint = {}, retryAfterSeconds = 1 } = {}) {
+    claimArguments(claim);
+    if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint) || Buffer.byteLength(stableDataStoreJson(checkpoint)) > 16384
+      || !Number.isSafeInteger(retryAfterSeconds) || retryAfterSeconds < 1 || retryAfterSeconds > 86400) throw new DataStoreError('invalid_job_yield', 422);
+    return rpc('edgar_yield_job', { p_claim: { ...claimArguments(claim), id: claim.id }, p_checkpoint: checkpoint, p_delay_seconds: retryAfterSeconds });
   }
   async function finishDataStoreJob(claim, { checkpoint = {}, status = 'done', errorCode = null, retryAfterSeconds = 0 } = {}) {
     claimArguments(claim);
@@ -312,14 +388,14 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     return rpc('edgar_finish_job', { p_claim: { ...claimArguments(claim), id: claim.id }, p_status: delay > 2147483647 ? 'dead' : status, p_checkpoint: checkpoint, p_error: delay > 2147483647 ? 'retry_after_requires_manual_review' : safeError, p_delay_seconds: Math.min(2147483647, delay) });
   }
   return {
-    readDataset, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite,
+    readDataset, readDatasetManifests, readDatasetBatch, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite,
     readDatasetVersion: async (dataset, key, identityHash) => {
       checkDataset(dataset, key); if (!enabled(dataset)) return null;
       if (!/^[a-f0-9]{64}$/.test(identityHash || '')) throw new DataStoreError('invalid_version_identity', 422);
       return envelope(await rpc('edgar_get_version', { p_dataset: dataset, p_key: key, p_identity: identityHash }));
     },
     readDatasetSource: (record) => record?._source ? readObject(record._source) : Promise.resolve(null),
-    enqueueDataStoreJob, claimDataStoreJob, finishDataStoreJob,
+    enqueueDataStoreJob, enqueueCoverageJobs, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob,
     checkpointDataStoreJob: async (claim, { checkpoint, leaseSeconds = 120 }) => {
       if (Buffer.byteLength(stableDataStoreJson(checkpoint)) > 16384) throw new DataStoreError('checkpoint_too_large', 413);
       const ok = await rpc('edgar_checkpoint_job', { p_claim: { ...claimArguments(claim), id: claim.id }, p_checkpoint: checkpoint, p_lease_seconds: leaseSeconds });
@@ -327,6 +403,7 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
       return true;
     },
     readDataStoreStatus: () => rpc('edgar_store_status'),
+    readDataStoreCoverageStatus: () => rpc('edgar_coverage_status'),
     readFinancialMetrics: (versionId) => rpc('edgar_read_financial_metrics', { p_version: versionId }),
     exportDataStoreManifests: ({ after = null, limit = 100 } = {}) => rpc('edgar_export_manifests', { p_after: after, p_limit: Math.max(1, Math.min(100, limit)) }),
     dataStoreRetentionDryRun: ({ before = new Date(Date.now() - 30 * 86400000).toISOString(), limit = 100 } = {}) => rpc('edgar_retention_dry_run', { p_before: validTimestamp(before, true), p_limit: Math.max(1, Math.min(100, limit)) }),
@@ -334,4 +411,4 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   };
 }
 const defaultStore = createDataStore();
-export const { readDataset, readDatasetVersion, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, readDatasetSource, enqueueDataStoreJob, claimDataStoreJob, finishDataStoreJob, checkpointDataStoreJob, readDataStoreStatus, readFinancialMetrics, exportDataStoreManifests, dataStoreRetentionDryRun, dataStoreOrphanDryRun } = defaultStore;
+export const { readDataset, readDatasetManifests, readDatasetBatch, readDatasetVersion, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, readDatasetSource, enqueueDataStoreJob, enqueueCoverageJobs, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob, checkpointDataStoreJob, readDataStoreStatus, readDataStoreCoverageStatus, readFinancialMetrics, exportDataStoreManifests, dataStoreRetentionDryRun, dataStoreOrphanDryRun } = defaultStore;

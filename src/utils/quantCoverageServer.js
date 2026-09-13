@@ -7,6 +7,7 @@ import { MARKET_VERSION } from './marketResearch.js';
 import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary } from './marketResearchData.js';
 import { isMarketAtlas } from './marketResearchValidation.js';
 import { secFetch } from './secClient.js';
+import { readPreparedSecDocument } from './secDocumentStore.js';
 import { getOperatingTickers } from './tickerMap.js';
 import { warmGet, warmSet, warmGetMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
@@ -64,6 +65,8 @@ export function needsFactsRefresh(cached, fingerprint, now = Date.now()) {
   return cached?.needsReconciliation || !cached?.company || fingerprint !== cached.fingerprint || !Number.isFinite(Date.parse(cached.factsRetrievedAt)) || now - Date.parse(cached.factsRetrievedAt) >= 7 * DAY;
 }
 async function secJson(path, signal) {
+  const prepared = await readPreparedSecDocument(path, { allowStale: false });
+  if (prepared) return prepared.payload;
   const response = await secFetch(`https://data.sec.gov${path}`, { headers: { Accept: 'application/json' }, signal, timeoutMs: 15000, retries: 0, cache: 'no-store' });
   if (!response.ok) throw new Error(`SEC returned HTTP ${response.status}.`);
   return response.json();

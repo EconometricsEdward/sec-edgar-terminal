@@ -31,6 +31,8 @@ export async function GET(request) {
           : 'public, max-age=60, s-maxage=900, stale-while-revalidate=300, stale-if-error=604800',
         'X-Market-Coverage': String(overview.companies.length),
         'X-SEC-Snapshot-At': overview.generatedAt,
+        ...(!ticker ? { 'X-Cache-Source': data.cache?.source || 'prepared',
+          ...(data.cache?.checkedAt ? { 'X-Data-Revalidated-At': data.cache.checkedAt } : {}) } : {}),
         ...(stale ? { Warning: '110 - "Response is stale"', 'X-Data-Stale': '1' } : {}),
       },
     });

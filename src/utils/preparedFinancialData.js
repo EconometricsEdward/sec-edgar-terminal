@@ -1,18 +1,19 @@
 import { createHash } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { getDataStoreMode, readDataset, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, stableDataStoreJson } from './dataStore.js';
+import { getDataStoreMode, readDataset, readDatasetManifests, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, stableDataStoreJson } from './dataStore.js';
 import { buildAnalysisCompany, packAnalysisCompany, ANALYSIS_VERSION } from './analysisResearch.js';
 import { buildFilingUrl } from './filingTextParser.js';
 import { RESEARCH_FORMS } from './researchWorkspace.js';
 import { warmGet, warmReserveGeneration, warmSetGeneration } from './warmCache.js';
-import { SEC_MIGRATION_COHORT, secDocumentIdentity, refreshSecDocument, preparedEnvelopeUsable, PreparedSecUnavailableError } from './secDocumentStore.js';
+import { SEC_MIGRATION_COHORT, getSecPreparedCompany, isSecPreparedReadEnabled, secDocumentIdentity, refreshSecDocument, preparedEnvelopeUsable, PreparedSecUnavailableError } from './secDocumentStore.js';
 
 export const FINANCIAL_PREPARED_VERSION = 'financial-analysis-v1';
 export const FINANCIAL_PREPARED_BASES = Object.freeze(['annual', 'quarter', 'ytd', 'ttm']);
 const hotNamespace = 'analysis-research';
 const legacyKey = (ticker, basis) => `${ANALYSIS_VERSION}:${ticker}:${basis}:`;
 const hash = (value) => createHash('sha256').update(stableDataStoreJson(value)).digest('hex');
-const companyForTicker = (ticker) => SEC_MIGRATION_COHORT.find((company) => company.ticker === ticker);
+const companyForTicker = getSecPreparedCompany;
+const pilotTickers = new Set(SEC_MIGRATION_COHORT.map(company => company.ticker));
 
 const MAX_FINANCIAL_DECODE_BYTES = 24 * 1024 * 1024;
 const MAX_FINANCIAL_GZIP_BYTES = 6 * 1024 * 1024;
@@ -94,21 +95,29 @@ function validatePrepared(envelope, ticker, basis) {
 export async function readPreparedAnalysis({ ticker, basis = 'annual', asOf = '' }, {
   mode = getDataStoreMode('financial'), read = readDataset, hotRead = warmGet,
   payloadCache = financialPayloadCache,
+  readEnabled = isSecPreparedReadEnabled,
 } = {}) {
+  const company = companyForTicker(ticker);
   const key = financialPreparedKey(ticker, basis, asOf);
-  if (mode !== 'supabase' || !key) return null;
+  if (mode !== 'supabase' || !key || !readEnabled(company.cik)) return null;
+  const canonicalTicker = company.ticker;
+  const forSecurity = (record) => {
+    if (ticker === canonicalTicker) return record;
+    const payload = { ...record.payload, ticker };
+    return { ...record, payload, serializedPayload: JSON.stringify(payload) };
+  };
   let cached = null;
   try {
-    cached = await hotRead(hotNamespace, legacyKey(ticker, basis));
+    cached = await hotRead(hotNamespace, legacyKey(canonicalTicker, basis));
     if (cached?.gzip) cached = { metadata: structuredClone(cached.metadata), stale: cached.stale,
       ...payloadCache.decode(cached.gzip) };
   } catch { cached = null; /* Durable read is bounded and contains no provider fetch. */ }
-  if (validatePrepared(cached, ticker, basis)) return { ...cached, cacheSource: 'warm-prepared' };
+  if (validatePrepared(cached, canonicalTicker, basis)) return forSecurity({ ...cached, cacheSource: 'warm-prepared' });
   let envelope;
   try { envelope = await read('financial', key, { allowStale: true }); }
   catch { throw new PreparedSecUnavailableError('Prepared financial storage is temporarily unavailable.'); }
-  if (!validatePrepared(envelope, ticker, basis)) throw new PreparedSecUnavailableError('Prepared financial data is not ready for this reporting basis.');
-  return { ...envelope, serializedPayload: envelope.serializedPayload || JSON.stringify(envelope.payload), cacheSource: 'supabase-prepared' };
+  if (!validatePrepared(envelope, canonicalTicker, basis)) throw new PreparedSecUnavailableError('Prepared financial data is not ready for this reporting basis.');
+  return forSecurity({ ...envelope, serializedPayload: envelope.serializedPayload || JSON.stringify(envelope.payload), cacheSource: 'supabase-prepared' });
 }
 
 export function financialInputIdentity(company) {
@@ -134,7 +143,7 @@ export async function sampleFinancialShadow(company, result, {
   } catch { report({ dataset: 'financial', key, status: 'storage-unavailable' }); return 'storage-unavailable'; }
 }
 
-function researchCompanyFromDocuments(ticker, submissions, companyfacts) {
+export function researchCompanyFromDocuments(ticker, submissions, companyfacts) {
   const cik = String(submissions.cik).padStart(10, '0');
   const recent = submissions.filings.recent;
   const filings = (recent.accessionNumber || []).flatMap((accession, index) => {
@@ -150,7 +159,9 @@ function researchCompanyFromDocuments(ticker, submissions, companyfacts) {
 // A small, queried serving projection is version-linked; the full packed result
 // remains the response contract and carries every period and source context.
 export function financialServingObservations(data) {
-  const selected = ['revenue', 'netIncome', 'totalAssets', 'stockholdersEquity', 'operatingCashFlow', 'freeCashFlow', 'roe', 'roa', 'currentRatio'];
+  // Store each supported latest metric once per basis, with immutable evidence
+  // references. The full history stays in its compressed version snapshot.
+  const selected = data.definitions.map(definition => definition.key);
   return selected.flatMap((metric) => {
     const point = data.metrics[metric]?.[0], period = data.periods[0];
     if (!point || !period) return [];
@@ -159,7 +170,7 @@ export function financialServingObservations(data) {
     const definition = data.definitions.find((item) => item.key === metric);
     return [{ metric, periodEnd: period.end, periodStart: source ? source.start : period.start || null,
       value: Number.isFinite(point.value) ? point.value : null,
-      unit: source?.unit || (definition?.format === 'currency' ? 'USD' : definition?.format === 'percent' ? '%' : 'ratio'),
+      unit: source?.unit || ({ currency: 'USD', percent: '%', eps: 'USD/shares', shares: 'shares', days: 'days', number: 'count' }[definition?.format] || 'ratio'),
       accession: source?.accession || null, form: source?.form || null, filed: source?.filed || null,
       taxonomy: source?.taxonomy || null, concept: source?.tag || null,
       fiscalYear: period.fy ?? null, fiscalPeriod: period.fp || null, calculationVersion: ANALYSIS_VERSION,
@@ -177,25 +188,38 @@ export async function prepareFinancialCompany(ticker, {
   publish = publishDataset, revalidate = revalidateDataset, release = releaseDatasetWrite,
   legacyWrite = warmSetGeneration, reserveLegacy = warmReserveGeneration,
   bases = FINANCIAL_PREPARED_BASES,
+  signal, deadline = Infinity,
 } = {}) {
   const cohort = companyForTicker(ticker);
   if (!cohort) throw new Error('Financial preparation is limited to the documented SEC cohort.');
+  ticker = cohort.ticker;
+  const mirrorLegacy = pilotTickers.has(ticker);
   if (mode === 'off') return { status: 'off', ticker, bases: [] };
   if (!Array.isArray(bases) || bases.length > 4 || bases.some((basis) => !FINANCIAL_PREPARED_BASES.includes(basis))) throw new Error('Invalid financial preparation bases.');
   // Claim each output BEFORE capturing its inputs. A paused worker must not
   // capture old sources, acquire a newer fence later, and replace newer output.
   const claims = [], results = [];
+  // Publication can involve several bounded gateway requests. Reserve one
+  // minute before starting another basis, plus the caller's cleanup margin.
+  const stopped = () => signal?.aborted || Date.now() >= deadline - 60000;
+  const defer = async (pending) => {
+    await Promise.allSettled(pending.map(({ key, claim }) => release('financial', key, claim)));
+    results.push(...pending.map(({ basis }) => ({ basis, status: 'busy', reason: 'The scheduled preparation deadline was reached.' })));
+    return { ticker, status: 'busy', bases: results };
+  };
+  try {
   for (const basis of [...new Set(bases)]) {
+    if (stopped()) { results.push({ basis, status: 'busy', reason: 'The scheduled preparation deadline was reached.' }); continue; }
     const key = financialPreparedKey(ticker, basis);
-    const claim = await begin('financial', key, { leaseSeconds: 120 });
+    const claim = await begin('financial', key, { leaseSeconds: 270 });
     if (!claim) results.push({ basis, status: 'busy' });
     else {
-      await reserveLegacy(hotNamespace, key, claim.generation, claim);
       claims.push({ basis, key, claim });
+      if (mirrorLegacy) await reserveLegacy(hotNamespace, key, claim.generation, claim);
     }
   }
-  if (!claims.length) return { ticker, status: 'prepared', bases: results };
-  try {
+  if (!claims.length) return { ticker, status: results.some(result => result.status === 'busy') ? 'busy' : 'prepared', bases: results };
+  if (stopped()) return defer(claims);
   const sourcePaths = [`/submissions/CIK${cohort.cik}.json`, `/api/xbrl/companyfacts/CIK${cohort.cik}.json`];
   const sources = await Promise.all(sourcePaths.map((path) => read('sec', secDocumentIdentity(path).key, { allowStale: true })));
   if (sources.some((source) => !preparedEnvelopeUsable(source))) throw new PreparedSecUnavailableError('Both canonical SEC documents are required before preparing financial data.');
@@ -204,36 +228,87 @@ export async function prepareFinancialCompany(ticker, {
   const fetchedAt = sources.map((source) => source.metadata.fetchedAt).sort()[0];
   const revalidatedAt = sources.map((source) => source.metadata.revalidatedAt || source.metadata.fetchedAt).sort()[0];
   const expiresAt = sources.map((source) => source.metadata.expiresAt).sort()[0];
-  for (const { basis, key, claim } of claims) {
-    const previous = await read('financial', key, { allowStale: true });
-    if (previous?.metadata?.financialInputHash === financialInputHash && previous?.payload?.version === ANALYSIS_VERSION) {
+  if (stopped()) return defer(claims);
+  const manifests = !mirrorLegacy && read === readDataset
+    ? await readDatasetManifests('financial', claims.map(({ key }) => key)) : null;
+  for (const [index, { basis, key, claim }] of claims.entries()) {
+    if (stopped()) return defer(claims.slice(index));
+    const manifest = manifests?.[index];
+    const previous = manifests ? manifest && {
+      metadata: manifest.metadata, payload: { version: manifest.metadata.calculationVersion },
+    } : await read('financial', key, { allowStale: true });
+    if (stopped()) return defer(claims.slice(index));
+    if (previous?.metadata?.financialInputHash === financialInputHash && previous?.payload?.version === ANALYSIS_VERSION
+      && previous?.metadata?.metricProjectionVersion === 'latest-all-v1') {
       if (await revalidate('financial', key, { claim, revalidatedAt, expiresAt }) !== true) throw new Error('Financial revalidation lost its publication claim.');
-      const rollbackStored = await legacyWrite(hotNamespace, legacyKey(ticker, basis),
+      const rollbackStored = mirrorLegacy && await legacyWrite(hotNamespace, legacyKey(ticker, basis),
         { gzip: gzipSync(JSON.stringify(previous.payload)).toString('base64'), metadata: { ...previous.metadata, revalidatedAt, expiresAt }, stale: false },
         25 * 3600, { ...claim, fenceId: key });
       results.push({ basis, status: 'unchanged', rollbackStored }); continue;
     }
     const payload = packAnalysisCompany(buildAnalysisCompany(company, { basis, asOf: '' }));
+    if (stopped()) return defer(claims.slice(index));
     const metadata = { sourceId: 'sec-edgar', sourceUrl: sourcePaths.map((path) => `https://data.sec.gov${path}`)[1],
       entityId: cohort.cik, fetchedAt, revalidatedAt, expiresAt, publishedAt: null,
       reportPeriod: payload.periods[0]?.end || null, parserVersion: FINANCIAL_PREPARED_VERSION,
-      calculationVersion: ANALYSIS_VERSION, financialInputHash,
+      calculationVersion: ANALYSIS_VERSION, financialInputHash, metricProjectionVersion: 'latest-all-v1',
       inputDocuments: sources.map((source, index) => ({ key: secDocumentIdentity(sourcePaths[index]).key,
         contentHash: source.metadata.documentContentHash, generation: source.metadata.generation ?? null,
         fetchedAt: source.metadata.fetchedAt })), basis };
     const published = await publish({ dataset: 'financial', key, claim, payload, metadata,
-      identityInputs: { financialInputHash, calculationVersion: ANALYSIS_VERSION, basis, asOf: '' }, observations: financialServingObservations(payload) });
+      identityInputs: { financialInputHash, calculationVersion: ANALYSIS_VERSION, metricProjectionVersion: 'latest-all-v1', basis, asOf: '' }, observations: financialServingObservations(payload) });
     // Keep actual rollback responses populated without copying unverified legacy input.
-    const rollbackStored = await legacyWrite(hotNamespace, legacyKey(ticker, basis),
+    const rollbackStored = mirrorLegacy && await legacyWrite(hotNamespace, legacyKey(ticker, basis),
       { gzip: gzipSync(JSON.stringify(payload)).toString('base64'), metadata: published?.metadata || metadata, stale: false },
       25 * 3600, { ...claim, fenceId: key });
     results.push({ basis, status: 'updated', bytes: Buffer.byteLength(JSON.stringify(payload)), rollbackStored });
   }
-  return { ticker, status: 'prepared', bases: results };
+  return { ticker, status: results.some(result => result.status === 'busy') ? 'busy' : 'prepared', bases: results };
   } catch (error) {
     await Promise.allSettled(claims.map(({ key, claim }) => release('financial', key, claim)));
     throw error;
   }
+}
+
+/** One scheduled issuer reuses canonical source documents for every user view. */
+export async function refreshSecCoverageCompany(ticker, {
+  signal, deadline = Date.now() + 230000,
+  refresh = refreshSecDocument, prepare = prepareFinancialCompany, read = readDataset,
+  prepareViews,
+} = {}) {
+  const company = companyForTicker(ticker);
+  if (!company) throw new Error('Unknown prepared coverage issuer.');
+  if (signal?.aborted || Date.now() >= deadline - 60000) return { ticker: company.ticker, status: 'busy', code: 'coverage_deadline' };
+  const sourcePaths = [`/submissions/CIK${company.cik}.json`, `/api/xbrl/companyfacts/CIK${company.cik}.json`];
+  const sources = [];
+  for (const path of sourcePaths) {
+    if (signal?.aborted || Date.now() >= deadline - 60000) return { ticker: company.ticker, status: 'busy', code: 'coverage_deadline' };
+    const result = await refresh(path, { signal, minRecheckAgeMs: 20 * 3600000 });
+    if (['busy', 'off'].includes(result.status)) return { ticker: company.ticker, status: result.status };
+    sources.push(result.envelope || await read('sec', secDocumentIdentity(path).key, { allowStale: false }));
+  }
+  if (signal?.aborted || Date.now() >= deadline - 60000) return { ticker: company.ticker, status: 'busy', code: 'coverage_deadline' };
+  const financial = await prepare(company.ticker, { signal, deadline });
+  if (financial.status === 'off') return { ticker: company.ticker, status: 'off' };
+  if (financial.status === 'busy' || financial.bases?.some(value => value.status === 'busy')) return { ticker: company.ticker, status: 'busy' };
+  if (signal?.aborted || Date.now() >= deadline - 30000) return { ticker: company.ticker, status: 'busy', code: 'coverage_deadline' };
+  const buildViews = prepareViews || (await import('./preparedResearchViews.js')).prepareResearchViews;
+  const researchCompany = researchCompanyFromDocuments(company.ticker, sources[0].payload, sources[1].payload);
+  const supportingSources = [];
+  if (company.cik === '0002115436') {
+    for (const path of ['/submissions/CIK0000034088.json', '/api/xbrl/companyfacts/CIK0000034088.json']) {
+      if (signal?.aborted || Date.now() >= deadline - 30000) return { ticker: company.ticker, status: 'busy', code: 'coverage_deadline' };
+      const result = await refresh(path, { signal, minRecheckAgeMs: 20 * 3600000 });
+      if (['busy', 'off'].includes(result.status)) return { ticker: company.ticker, status: result.status };
+      supportingSources.push({ path, envelope: result.envelope || await read('sec', secDocumentIdentity(path).key, { allowStale: false }) });
+    }
+  }
+  const research = await buildViews(researchCompany, sources, { signal, deadline, supportingSources });
+  if (research?.status === 'off') return { ticker: company.ticker, status: 'off' };
+  if (research?.status === 'busy' || research?.views?.some(value => value.status === 'busy') || research?.bases?.some(value => value.status === 'busy')) {
+    return { ticker: company.ticker, status: 'busy' };
+  }
+  return { ticker: company.ticker, cik: company.cik, status: 'prepared', financial, research };
 }
 
 /** One invocation processes at most two companies. Persist nextCursor in its job. */
@@ -250,8 +325,8 @@ export async function refreshSecFinancialCohort({
       const submissions = await refresh(`/submissions/CIK${company.cik}.json`, { signal });
       const facts = await refresh(`/api/xbrl/companyfacts/CIK${company.cik}.json`, { signal });
       if ([submissions, facts].some((result) => result.status === 'busy')) break;
-      const financial = await prepare(company.ticker);
-      if (financial.bases.some((result) => result.status === 'busy')) break;
+      const financial = await prepare(company.ticker, { signal, deadline });
+      if (financial.status === 'busy' || financial.bases.some((result) => result.status === 'busy')) break;
       results.push({ ticker: company.ticker, submissions: submissions.status, companyfacts: facts.status, financial });
       nextCursor += 1;
     } catch (error) {

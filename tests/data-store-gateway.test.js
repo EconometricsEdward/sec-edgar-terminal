@@ -4,6 +4,8 @@ import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { createLocalJWKSet, exportJWK, generateKeyPair, jwtVerify, SignJWT } from 'jose';
 import { assertProductionClaims, createGateway, createJwtVerifier, RPC_PARAMETERS, TRUST } from '../supabase/functions/edgar-data-gateway/handler.js';
+import { APPROVED_SEC_CIKS, COVERAGE_MEMBERSHIP_ID, SUPPORTING_SOURCE_CIKS } from '../supabase/functions/edgar-data-gateway/coverage.js';
+import { SEC_COVERAGE_COHORT, SEC_COVERAGE_MEMBERSHIP_ID } from '../src/utils/secCoverageUniverse.js';
 
 const BASE = 'https://vvkihuduqqnxqahhbphs.supabase.co/functions/v1/edgar-data-gateway';
 const URL = 'https://vvkihuduqqnxqahhbphs.supabase.co';
@@ -74,8 +76,8 @@ test('cryptographic verifier accepts valid RS256 and rejects forged, wrong audie
   await assert.rejects(verifier(hs));
 });
 
-test('only the frozen 14 RPC names are supported and namespace is forced', async () => {
-  assert.equal(Object.keys(RPC_PARAMETERS).length, 14);
+test('only the explicitly reviewed RPC names are supported and namespace is forced', async () => {
+  assert.equal(Object.keys(RPC_PARAMETERS).length, 21);
   const { handler, calls } = setup();
   assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: key }))).status, 200);
   assert.equal(calls[0][0], `${URL}/rest/v1/rpc/edgar_get_version`);
@@ -124,6 +126,10 @@ test('gateway permits only approved dataset/resource/cohort formats', async () =
   const valid = [
     ['sec', key], ['sec', 'sec-documents-v1:CIK0000002098:submissions'],
     ['financial', 'financial-analysis-v1:analysis-v1.4:context-v3:CIK0000019617:ytd:latest'],
+    ['financial', 'research-compare-v1:compare-v2:context-v3:CIK0000320193:ttm:latest'],
+    ['financial', 'research-portfolio-v1:analysis-v1.4:context-v3:CIK0000320193:ytd:latest'],
+    ['financial', 'research-market-overview-v1:latest'],
+    ['financial', 'research-company-v1:CIK0000320193'],
     ['cftc', 'markets:disaggregated:latest'], ['cftc', 'markets:tff:2026-09-08'],
     ['cftc', 'history:tff:098662:asset-manager:2026-09-08:5y'],
   ];
@@ -131,6 +137,83 @@ test('gateway permits only approved dataset/resource/cohort formats', async () =
   const invalid = [ ['other', key], ['sec', 'sec-documents-v1:CIK9999999999:companyfacts'], ['sec', 'financial-cohort-v1'], ['cftc', 'markets:legacy:latest'], ['cftc', 'markets:tff:2026-02-31'], ['cftc', 'history:tff:098662:managed-money:2026-09-08:5y'], ['cftc', 'history:tff:098662:asset-manager:2026-09-08:all'] ];
   for (const [dataset, resource] of invalid) assert.equal((await handler(rpc('edgar_get_version', { p_dataset: dataset, p_key: resource }))).status, 403, resource);
   assert.equal(calls.length, valid.length);
+});
+
+test('gateway eligibility exactly matches the dated 500 issuer universe plus retained ACU', async () => {
+  const expected = [...new Set([...SEC_COVERAGE_COHORT.map(row => row.cik), '0000002098'])].sort();
+  assert.deepEqual(APPROVED_SEC_CIKS, expected);
+  assert.equal(APPROVED_SEC_CIKS.length, 501);
+  assert.equal(COVERAGE_MEMBERSHIP_ID, SEC_COVERAGE_MEMBERSHIP_ID);
+  const { handler, calls } = setup();
+  for (const cik of APPROVED_SEC_CIKS) {
+    assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: `sec-documents-v1:CIK${cik}:submissions` }))).status, 200);
+  }
+  assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'financial', p_key: 'research-compare-v1:compare-v2:context-v3:CIK9999999999:annual:latest' }))).status, 403);
+  assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'financial', p_key: 'research-portfolio-v1:analysis-v1.4:context-v3:CIK0000320193:annual:2020-01-01' }))).status, 403);
+  assert.equal(calls.length, 501);
+});
+
+test('historical XOM continuity access is confined to its two SEC source documents', async () => {
+  assert.deepEqual(SUPPORTING_SOURCE_CIKS,['0000034088']);
+  const { handler, calls } = setup();
+  for (const resource of ['submissions','companyfacts']) {
+    assert.equal((await handler(rpc('edgar_get_version',{p_dataset:'sec',p_key:`sec-documents-v1:CIK0000034088:${resource}`}))).status,200);
+  }
+  for (const key of ['financial-analysis-v1:analysis-v1.4:context-v3:CIK0000034088:annual:latest', 'research-portfolio-v1:analysis-v1.4:context-v3:CIK0000034088:annual:latest', 'research-company-v1:CIK0000034088']) {
+    assert.equal((await handler(rpc('edgar_get_version',{p_dataset:'financial',p_key:key}))).status,403);
+  }
+  assert.equal(calls.length,2);
+});
+
+test('coverage enqueue batches one cycle with bounded unique shards and immutable version format', async () => {
+  const { handler, calls } = setup();
+  const params = { p_cycle:'2026-09-13', p_version:'a'.repeat(16), p_shards:[0,31] };
+  assert.equal((await handler(rpc('edgar_enqueue_coverage_jobs',params))).status,200);
+  assert.equal((await handler(rpc('edgar_enqueue_coverage_jobs',{...params,p_shards:null}))).status,200);
+  for (const patch of [{p_cycle:'2026-02-31'},{p_version:'a'.repeat(64)},{p_shards:[1,1]},{p_shards:[32]},{p_shards:[]}]) {
+    assert.equal((await handler(rpc('edgar_enqueue_coverage_jobs',{...params,...patch}))).status,422);
+  }
+  assert.equal(calls.length,2);
+});
+
+test('schedule verification RPC accepts only narrow signature fields and the forced namespace', async()=>{
+  const {handler,calls}=setup();
+  const params={p_timestamp:1789300800,p_nonce:'38621c4e-3538-4fbb-83c4-c6fb10799020',p_signature:HASH};
+  assert.equal((await handler(rpc('edgar_authorize_coverage_schedule',params))).status,200);
+  for(const patch of [{p_timestamp:'1789300800'},{p_nonce:'invalid'},{p_signature:'f'.repeat(65)},
+    {secret_name:'another-secret'},{p_namespace:'rehearsal'},{url:'https://attacker.example'}]) {
+    assert.ok((await handler(rpc('edgar_authorize_coverage_schedule',{...params,...patch}))).status>=400);
+  }
+  assert.equal(calls.length,1); assert.equal(JSON.parse(calls[0][1].body).p_namespace,'production');
+});
+
+test('manifest and compact batch gates enforce every key, exact parameters, and independent caps', async () => {
+  const { handler, calls } = setup();
+  assert.equal((await handler(rpc('edgar_get_manifests', { p_dataset: 'sec', p_keys: Array(100).fill(key) }))).status, 200);
+  assert.equal((await handler(rpc('edgar_get_compact_batch', { p_dataset: 'sec', p_keys: Array(5).fill(key) }))).status, 200);
+  for (const [name, keys] of [['edgar_get_manifests', Array(101).fill(key)], ['edgar_get_compact_batch', Array(6).fill(key)],
+    ['edgar_get_manifests', [key, 'sec-documents-v1:CIK9999999999:companyfacts']], ['edgar_get_manifests', null]]) {
+    assert.equal((await handler(rpc(name, { p_dataset: 'sec', p_keys: keys }))).status, 403);
+  }
+  assert.equal((await handler(rpc('edgar_get_manifests', { p_dataset: 'sec', p_keys: [key], include_payload: true }))).status, 422);
+  assert.equal(calls.length, 2);
+});
+
+test('coverage jobs are limited to reviewed prefixes, shard bounds and fenced yields', async () => {
+  const { handler, calls } = setup();
+  const body = { p_dataset: 'sec', p_key: 'sec-coverage-v1:shard:31', p_job_key: `sec-coverage-v1:2026-09-13:31:${HASH}`, p_checkpoint: { cursor: 0 }, p_max_attempts: 3 };
+  assert.equal((await handler(rpc('edgar_enqueue_job', body))).status, 200);
+  for (const patch of [{ p_key: 'sec-coverage-v1:shard:32' }, { p_job_key: `sec-coverage-v1:2026-02-31:31:${HASH}` }, { p_job_key: `sec-coverage-v1:2026-09-13:99:${HASH}` }]) {
+    assert.equal((await handler(rpc('edgar_enqueue_job', { ...body, ...patch }))).status, patch.p_key ? 403 : 422);
+  }
+  assert.equal((await handler(rpc('edgar_claim_job_prefix', { p_dataset: 'sec', p_owner: UUID, p_prefix: 'sec-coverage-v1:', p_lease_seconds: 270 }))).status, 200);
+  assert.equal((await handler(rpc('edgar_claim_job_prefix', { p_dataset: 'sec', p_owner: UUID, p_prefix: 'sec-', p_lease_seconds: 270 }))).status, 403);
+  assert.equal((await handler(rpc('edgar_claim_job_prefix', { p_dataset: 'cftc', p_owner: UUID, p_prefix: 'sec-coverage-v1:' }))).status, 403);
+  const claim = { id: UUID, owner: UUID, generation: 1 };
+  assert.equal((await handler(rpc('edgar_yield_job', { p_claim: claim, p_checkpoint: { cursor: 4 }, p_delay_seconds: 1 }))).status, 200);
+  assert.equal((await handler(rpc('edgar_yield_job', { p_claim: claim, p_checkpoint: {}, p_delay_seconds: 0 }))).status, 422);
+  assert.equal((await handler(rpc('edgar_yield_job', { p_claim: claim, p_checkpoint: { payload: 'x'.repeat(16384) }, p_delay_seconds: 1 }))).status, 413);
+  assert.equal(calls.length, 3);
 });
 
 test('private object uploads remain immutable and downloads forward only bounded bytes', async () => {

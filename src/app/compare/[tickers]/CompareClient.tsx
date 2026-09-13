@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { TickerContext } from "../../../contexts/TickerContext";
 import { PEER_GROUPS } from "../../../utils/peerGroups.js";
+import { unpackAnalysisCompany } from "../../../utils/analysisResearch.js";
 import {
   COMPARE_METRICS,
   METRIC_BY_KEY,
@@ -276,14 +277,15 @@ export default function CompareClient({
         const ticker = queue.shift()!;
         try {
           const response = await fetch(
-            `/api/compare-research?${new URLSearchParams({ ticker, basis, asOf })}`,
+            `/api/compare-research?${new URLSearchParams({ ticker, basis, asOf, format: "packed" })}`,
             { signal: controller.signal },
           );
-          const result = await response.json();
+          const body = await response.json();
           if (!response.ok)
             throw new Error(
-              result.error || `SEC request failed (${response.status}).`,
+              body.error || `SEC request failed (${response.status}).`,
             );
+          const result = unpackAnalysisCompany(body);
           if (result.version !== COMPARE_VERSION || result.ticker !== ticker)
             throw new Error(
               "An incompatible company response was returned. Retry this issuer.",

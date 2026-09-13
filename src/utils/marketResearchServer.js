@@ -7,6 +7,7 @@ import { appendSnapshot } from './marketEvidence.js';
 import { secFetch } from './secClient.js';
 import { isMarketAtlas, isMarketCompany } from './marketResearchValidation.js';
 import { cacheDeploymentScope } from './cacheScope.js';
+import { readPreparedSecDocument } from './secDocumentStore.js';
 
 const COMPANY_FRESH_MS = MARKET_ATLAS_FRESH_MS;
 const MINIMUM_ATLAS_COVERAGE = 0.95;
@@ -37,6 +38,8 @@ let atlasPending = null;
 export const marketTickers = [...new Set(MARKET_LENSES.flatMap((c) => c.tickers))];
 
 async function secJson(path, signal) {
+  const prepared = await readPreparedSecDocument(path, { allowStale: false });
+  if (prepared) return prepared.payload;
   const response = await secFetch(`https://data.sec.gov${path}`, {
     headers: { Accept: 'application/json' },
     timeoutMs: 15000,
