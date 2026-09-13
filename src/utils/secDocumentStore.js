@@ -4,6 +4,9 @@ import { secFetch } from './secClient.js';
 import { warmReserveGeneration, warmSetGeneration } from './warmCache.js';
 import { SEC_COVERAGE_COHORT, getSecCoverageCompany } from './secCoverageUniverse.js';
 import { isBroadSecCoverageEnabled } from './dataStoreDeployment.js';
+import { loadSecCoverageRegistry, getActiveSecCoverageCompany, getAdmittedSecCoverageCompany,
+  isActiveSecCoverageCik, isAdmittedSecCoverageCik } from './secCoverageRegistry.js';
+import { normalizeSecCoverageCik, normalizeSecCoverageTicker } from './secCoverageMembership.js';
 
 export const SEC_DOCUMENT_VERSION = 'sec-documents-v1';
 export const SEC_DOCUMENT_MAX_BYTES = 24 * 1024 * 1024;
@@ -26,12 +29,23 @@ export const SEC_SUPPORTING_SOURCE_CIKS = Object.freeze(['0000034088']);
 export const SEC_PREPARED_COHORT = Object.freeze([...SEC_COVERAGE_COHORT,
   ...SEC_MIGRATION_COHORT.filter(company => !getSecCoverageCompany(company.cik)),
 ]);
-const cohortCiks = new Set([...SEC_PREPARED_COHORT.map(({ cik }) => cik), ...SEC_SUPPORTING_SOURCE_CIKS]);
+function pilotCompany(value) {
+  const cik = normalizeSecCoverageCik(value), ticker = normalizeSecCoverageTicker(value);
+  return SEC_MIGRATION_COHORT.find(company => company.cik === cik || company.ticker === ticker) || null;
+}
 export function getSecPreparedCompany(value) {
-  return getSecCoverageCompany(value) || SEC_MIGRATION_COHORT.find(company => company.ticker === value || company.cik === value) || null;
+  return getAdmittedSecCoverageCompany(value) || pilotCompany(value);
+}
+export function getActiveSecPreparedCompany(value) {
+  const active = getActiveSecCoverageCompany(value);
+  if (active) return active;
+  const pilot = pilotCompany(value);
+  return !isBroadSecCoverageEnabled() || pilot?.ticker === 'ACU' ? pilot : null;
 }
 export function isSecPreparedReadEnabled(cik, env = process.env) {
-  return pilotCiks.has(cik) || (cohortCiks.has(cik) && isBroadSecCoverageEnabled(env));
+  if (!isBroadSecCoverageEnabled(env)) return pilotCiks.has(cik);
+  return cik === '0000002098' || isActiveSecCoverageCik(cik)
+    || (SEC_SUPPORTING_SOURCE_CIKS.includes(cik) && isActiveSecCoverageCik('0002115436'));
 }
 
 export function secDocumentIdentity(path) {
@@ -40,7 +54,8 @@ export function secDocumentIdentity(path) {
   const cik = submission?.[1] || facts?.[1];
   if (!cik || Number(cik) === 0) return null;
   const resource = submission ? 'submissions' : 'companyfacts';
-  return { cik, resource, path, sourceUrl: `https://data.sec.gov${path}`, key: `${SEC_DOCUMENT_VERSION}:CIK${cik}:${resource}`, covered: cohortCiks.has(cik) };
+  return { cik, resource, path, sourceUrl: `https://data.sec.gov${path}`, key: `${SEC_DOCUMENT_VERSION}:CIK${cik}:${resource}`,
+    covered: pilotCiks.has(cik) || isAdmittedSecCoverageCik(cik) || SEC_SUPPORTING_SOURCE_CIKS.includes(cik) };
 }
 
 export class PreparedSecUnavailableError extends Error {
@@ -96,10 +111,12 @@ export function preparedCacheControl(envelope, { maxAge = 60, sharedMaxAge = 300
 /** A cohort miss/outage never calls SEC from an ordinary prepared-data read. */
 export async function readPreparedSecDocument(path, {
   mode = getDataStoreMode('sec'), read = readDataset, now = Date.now(), allowStale = true,
-  readEnabled = isSecPreparedReadEnabled,
+  readEnabled = isSecPreparedReadEnabled, loadRegistry = loadSecCoverageRegistry,
 } = {}) {
+  if (mode !== 'supabase') return null;
+  await loadRegistry();
   const identity = secDocumentIdentity(path);
-  if (mode !== 'supabase' || !identity?.covered || !readEnabled(identity.cik)) return null;
+  if (!identity?.covered || !readEnabled(identity.cik)) return null;
   let envelope;
   try { envelope = await read('sec', identity.key, { allowStale: true }); }
   catch { throw new PreparedSecUnavailableError('Prepared SEC storage is temporarily unavailable.'); }
@@ -153,7 +170,9 @@ export async function refreshSecDocument(path, {
   begin = beginDatasetWrite, publish = publishDataset, revalidate = revalidateDataset,
   release = releaseDatasetWrite, reserveLegacy = warmReserveGeneration, legacyWrite = warmSetGeneration,
   fetchSec = secFetch, now = () => Date.now(), minRecheckAgeMs = 0,
+  loadRegistry = loadSecCoverageRegistry,
 } = {}) {
+  if (mode !== 'off') await loadRegistry({ required: true });
   const identity = secDocumentIdentity(path);
   if (!identity?.covered) throw new Error('SEC migration refresh is limited to the documented cohort and primary JSON resources.');
   if (mode === 'off') return { status: 'off', identity };

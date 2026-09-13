@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash, randomUUID } from 'node:crypto';
 import { runSecCoverageJob, secCoverageShard, SEC_COVERAGE_JOB_PREFIX, SEC_COVERAGE_SHARDS } from '../src/utils/secCoverageJobs.js';
 import { authorizeSecCoverageSchedule } from '../src/utils/secCoverageScheduleAuth.js';
 import { GET } from '../src/app/api/cron/sec-coverage/route.js';
@@ -16,6 +17,7 @@ function storeFixture(companies = fixtureCompanies(3)) {
   let timestamp = Date.parse('2026-09-13T12:00:00Z');
   let checkpointRejected = false;
   const jobs = new Map(), calls = [], claimOptions = [], enqueueCalls = [];
+  const claimedJob = claim => jobs.get(claim.id) || [...jobs.values()].find(job => job.id === claim.id);
   const deps = {
     companies, now: () => timestamp,
     enqueue: async ({ cycle, version, shards }) => {
@@ -38,20 +40,20 @@ function storeFixture(companies = fixtureCompanies(3)) {
     },
     checkpointJob: async (claim, { checkpoint }) => {
       if (checkpointRejected) return false;
-      const job = jobs.get(claim.id);
+      const job = claimedJob(claim);
       assert.equal(job.state, 'running');
       job.checkpoint = structuredClone(checkpoint);
       return true;
     },
     finish: async (claim, { checkpoint, status, retryAfterSeconds = 0, errorCode }) => {
-      const job = jobs.get(claim.id);
+      const job = claimedJob(claim);
       if (job.state !== 'running') return false;
       Object.assign(job, { checkpoint: structuredClone(checkpoint), state: status === 'retry' ? 'queued' : status,
         nextAt: timestamp + retryAfterSeconds * 1000, errorCode });
       return true;
     },
     yieldJob: async (claim, { checkpoint, retryAfterSeconds }) => {
-      const job = jobs.get(claim.id);
+      const job = claimedJob(claim);
       assert.equal(job.state, 'running');
       Object.assign(job, { checkpoint: structuredClone(checkpoint), state: 'queued', attempts: job.attempts - 1, nextAt: timestamp + retryAfterSeconds * 1000 });
       return true;
@@ -59,6 +61,32 @@ function storeFixture(companies = fixtureCompanies(3)) {
     refresh: async (ticker) => { calls.push(ticker); return { ticker, status: 'prepared' }; },
   };
   return { deps, jobs, calls, claimOptions, enqueueCalls, advance: milliseconds => { timestamp += milliseconds; }, rejectCheckpoint: () => { checkpointRejected = true; } };
+}
+
+function dynamicStoreFixture(companies = fixtureCompanies(3)) {
+  const fixture = storeFixture(companies), cycles = new Map(), dynamicCalls = [];
+  let active = companies;
+  fixture.deps.enqueueCurrent = async ({ cycle, shards }) => {
+    dynamicCalls.push({ cycle, shards });
+    if (!cycles.has(cycle)) {
+      const frozen = structuredClone(active).sort((a, b) => a.cik.localeCompare(b.cik));
+      cycles.set(cycle, { companies: frozen,
+        version: createHash('sha256').update(JSON.stringify(frozen)).digest('hex').slice(0, 16),
+        membershipId: `sec-coverage-v1:ivv:${cycle}:${'a'.repeat(16)}`, universeCompanies: 501 });
+    }
+    const frozen = cycles.get(cycle);
+    return shards.map(shard => {
+      const jobKey = `sec-coverage-v1:${cycle}:${String(shard).padStart(2, '0')}:${frozen.version}`;
+      if (!fixture.jobs.has(jobKey)) fixture.jobs.set(jobKey, { id: randomUUID(), jobKey,
+        key: `sec-coverage-v1:shard:${String(shard).padStart(2, '0')}`, state: 'queued', attempts: 0,
+        checkpoint: { schema: 2, universeVersion: frozen.version, membershipId: frozen.membershipId,
+          universeCompanies: frozen.universeCompanies, companies: frozen.companies.filter(company => secCoverageShard(company.cik) === shard),
+          shard, cycle, cursor: 0, succeeded: 0, workCount: 0, retries: [], failures: [] } });
+      return { shard, id: fixture.jobs.get(jobKey).id, jobKey, universeVersion: frozen.version };
+    });
+  };
+  fixture.deps.refresh = async cik => { fixture.calls.push(cik); return { cik, status: 'prepared' }; };
+  return { ...fixture, cycles, dynamicCalls, setActive: companies => { active = companies; } };
 }
 
 test('CIK sharding is stable across zero padding, ticker changes, and input order', async () => {
@@ -174,6 +202,114 @@ test('a changed membership retires the old cursor instead of applying it to diff
   assert.equal(result.status, 'superseded');
   assert.equal(result.processed, 0);
   assert.equal(fixture.calls.length, 1);
+});
+
+test('a dynamic daily cycle resumes its frozen CIK cohort after active membership and tickers change', async () => {
+  const initial = fixtureCompanies(3), fixture = dynamicStoreFixture(initial);
+  const first = await runSecCoverageJob({ dynamicMembership: true, shard: 0, maxCompanies: 1 }, fixture.deps);
+  assert.equal(first.coverage.visited, 1);
+  assert.equal(fixture.enqueueCalls.length, 0);
+  assert.equal(fixture.claimOptions[0].jobKey, [...fixture.jobs.keys()][0]);
+  fixture.advance(2_000);
+  fixture.setActive(fixtureCompanies(4).map(company => ({ ...company, ticker: `${company.ticker}NEW` })));
+  fixture.deps.companies = fixtureCompanies(5);
+  const second = await runSecCoverageJob({ dynamicMembership: true, shard: 0, maxCompanies: 2 }, fixture.deps);
+  assert.equal(second.done, true);
+  assert.equal(second.universeVersion, first.universeVersion);
+  assert.equal(second.membershipId, first.membershipId);
+  assert.equal(second.universeCompanies, 501);
+  assert.deepEqual(fixture.calls, initial.map(company => company.cik));
+  assert.deepEqual(second.results.map(company => company.ticker), initial.slice(1).map(company => company.ticker));
+  assert.equal(fixture.jobs.size, 1);
+});
+
+test('new-day dynamic enqueue continues yesterday\'s frozen shard before the next cycle', async () => {
+  const initial = fixtureCompanies(2), fixture = dynamicStoreFixture(initial);
+  const first = await runSecCoverageJob({ dynamicMembership: true, shard: 0, maxCompanies: 1 }, fixture.deps);
+  fixture.advance(86_400_000);
+  fixture.setActive(fixtureCompanies(4));
+  const second = await runSecCoverageJob({ dynamicMembership: true, maxCompanies: 1 }, fixture.deps);
+  assert.equal(second.cycle, first.cycle);
+  assert.equal(second.universeVersion, first.universeVersion);
+  assert.equal(second.done, true);
+  assert.equal(fixture.claimOptions.at(-1).prefix, SEC_COVERAGE_JOB_PREFIX);
+  assert.equal(fixture.cycles.size, 2);
+  assert.equal(fixture.jobs.size, SEC_COVERAGE_SHARDS + 1);
+  assert.deepEqual(fixture.calls, initial.map(company => company.cik));
+});
+
+test('frozen jobs retain retry indices and require a matching result CIK before recording success', async () => {
+  const initial = fixtureCompanies(2), fixture = dynamicStoreFixture(initial);
+  let mismatched = true;
+  fixture.deps.refresh = async cik => {
+    fixture.calls.push(cik);
+    return { status: 'prepared', cik: mismatched && cik === initial[0].cik ? initial[1].cik : cik };
+  };
+  const first = await runSecCoverageJob({ dynamicMembership: true, shard: 0 }, fixture.deps);
+  assert.equal(first.coverage.succeeded, 1);
+  assert.equal(first.coverage.pendingRetries, 1);
+  assert.equal(first.results[0].code, 'SEC_COVERAGE_IDENTITY_MISMATCH');
+  fixture.setActive(fixtureCompanies(3));
+  fixture.advance(3_600_000); mismatched = false;
+  const second = await runSecCoverageJob({ dynamicMembership: true, shard: 0 }, fixture.deps);
+  assert.equal(second.done, true);
+  assert.equal(second.coverage.succeeded, 2);
+  assert.deepEqual(fixture.calls, [initial[0].cik, initial[1].cik, initial[0].cik]);
+});
+
+test('malformed frozen cohort, progress, dates, resource keys and versions cannot refresh an issuer', async () => {
+  const wrongShard = fixtureCompanies(1, 1)[0];
+  for (const mutate of [
+    job => { job.checkpoint.schema = 3; },
+    job => { job.checkpoint.companies = 'unexpected'; },
+    job => { job.checkpoint.companies.reverse(); },
+    job => { job.checkpoint.companies[1] = job.checkpoint.companies[0]; },
+    job => { job.checkpoint.companies[0] = wrongShard; },
+    job => { job.checkpoint.companies[0].cik = '0000000000'; },
+    job => { job.checkpoint.companies[0].ticker = 'invalid ticker'; },
+    job => { job.checkpoint.companies[0].sourceUrl = 'https://example.com'; },
+    job => { job.checkpoint.companies = Array(65).fill(job.checkpoint.companies[0]); },
+    job => { job.checkpoint.universeCompanies = 527; },
+    job => { job.checkpoint.membershipId = 'not-a-membership'; },
+    job => { job.checkpoint.membershipId = `sec-coverage-v1:ivv:2026-09-14:${'a'.repeat(16)}`; },
+    job => { job.checkpoint.cycle = '2026-02-30'; },
+    job => { job.checkpoint.shard = 1; },
+    job => { job.checkpoint.universeVersion = 'b'.repeat(16); },
+    job => { job.key = 'sec-coverage-v1:shard:01'; },
+    job => { job.jobKey = job.jobKey.replace('2026-09-13', '2026-09-12'); },
+    job => { job.checkpoint.cursor = 1; job.checkpoint.succeeded = 1; },
+    job => { job.checkpoint.retries = [{ index: 0, attempts: 2, nextAt: 0, code: 'RETRY' }]; },
+  ]) {
+    const fixture = dynamicStoreFixture();
+    const originalClaim = fixture.deps.claimJob;
+    fixture.deps.claimJob = async options => {
+      const claim = await originalClaim(options);
+      mutate(claim);
+      return claim;
+    };
+    await assert.rejects(runSecCoverageJob({ dynamicMembership: true, shard: 0 }, fixture.deps), /Invalid SEC coverage checkpoint/);
+    assert.equal(fixture.calls.length, 0);
+    assert.equal([...fixture.jobs.values()][0].state, 'dead');
+    assert.equal([...fixture.jobs.values()][0].errorCode, 'SEC_COVERAGE_INVALID_CHECKPOINT');
+  }
+});
+
+test('dynamic enqueue validates the returned shard version and job key before claiming', async () => {
+  for (const mutate of [
+    () => [],
+    rows => [...rows, rows[0]],
+    rows => rows.map(row => ({ ...row, shard: 1 })),
+    rows => rows.map(row => ({ ...row, id: 'not-a-uuid' })),
+    rows => rows.map(row => ({ ...row, universeVersion: 'f'.repeat(16) })),
+    rows => rows.map(row => ({ ...row, jobKey: row.jobKey.replace('2026-09-13', '2026-09-12') })),
+  ]) {
+    const fixture = dynamicStoreFixture();
+    const originalEnqueue = fixture.deps.enqueueCurrent;
+    fixture.deps.enqueueCurrent = async options => mutate(await originalEnqueue(options));
+    await assert.rejects(runSecCoverageJob({ dynamicMembership: true, shard: 0 }, fixture.deps), /Invalid current SEC coverage enqueue/);
+    assert.equal(fixture.claimOptions.length, 0);
+    assert.equal(fixture.calls.length, 0);
+  }
 });
 
 test('bounds and deadline checks prevent oversized or unfinishable invocations', async () => {

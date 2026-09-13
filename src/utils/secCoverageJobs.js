@@ -25,7 +25,7 @@ function universeFor(companies) {
   const seen = new Set();
   const sorted = companies.map(company => {
     const cik = String(company.cik).padStart(10, '0');
-    if (!/^\d{10}$/.test(cik) || seen.has(cik) || !/^[A-Z0-9][A-Z0-9.-]{0,15}$/.test(company.ticker || '')) throw new Error('Invalid SEC coverage company.');
+    if (!/^\d{10}$/.test(cik) || Number(cik) === 0 || seen.has(cik) || !/^[A-Z0-9][A-Z0-9.-]{0,15}$/.test(company.ticker || '')) throw new Error('Invalid SEC coverage company.');
     seen.add(cik);
     return { ...company, cik };
   }).sort((a, b) => a.cik.localeCompare(b.cik));
@@ -40,10 +40,15 @@ function safeCode(value, fallback = 'SEC_COVERAGE_COMPANY_FAILED') {
   return typeof value === 'string' && value.length ? value.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 100) : fallback;
 }
 
-function validCheckpoint(checkpoint, shardSize) {
+function validCycle(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+}
+
+function validCheckpoint(checkpoint, shardSize, schema = 1) {
   const integer = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
-  if (!checkpoint || checkpoint.schema !== 1 || !integer(checkpoint.shard, 0, SEC_COVERAGE_SHARDS - 1)
-    || !/^\d{4}-\d{2}-\d{2}$/.test(checkpoint.cycle || '') || !/^[a-f0-9]{16}$/.test(checkpoint.universeVersion || '')
+  if (!checkpoint || Array.isArray(checkpoint) || checkpoint.schema !== schema || !integer(checkpoint.shard, 0, SEC_COVERAGE_SHARDS - 1)
+    || !validCycle(checkpoint.cycle) || !/^[a-f0-9]{16}$/.test(checkpoint.universeVersion || '')
     || !integer(checkpoint.cursor, 0, shardSize) || !integer(checkpoint.succeeded, 0, shardSize)
     || !integer(checkpoint.workCount, 0, shardSize * MAX_ISSUER_ATTEMPTS)
     || !Array.isArray(checkpoint.retries) || !Array.isArray(checkpoint.failures)
@@ -56,7 +61,52 @@ function validCheckpoint(checkpoint, shardSize) {
   }
   if (checkpoint.retries.some(entry => !integer(entry.attempts, 1, MAX_ISSUER_ATTEMPTS - 1)
     || !Number.isSafeInteger(entry.nextAt) || entry.nextAt < 0)) return false;
+  if (schema === 2 && (checkpoint.workCount > checkpoint.cursor * MAX_ISSUER_ATTEMPTS
+    || checkpoint.workCount < checkpoint.cursor + checkpoint.retries.reduce((sum, entry) => sum + entry.attempts - 1, 0))) return false;
   return checkpoint.succeeded + checkpoint.retries.length + checkpoint.failures.length === checkpoint.cursor;
+}
+
+/** Schema 2 carries its own immutable shard, independent of today's membership. */
+function frozenShard(checkpoint) {
+  const membership = /^sec-coverage-v1:ivv:(\d{4}-\d{2}-\d{2}):[a-f0-9]{16}$/.exec(checkpoint?.membershipId || '');
+  if (!membership || !validCycle(membership[1]) || membership[1] > checkpoint.cycle
+    || !Number.isInteger(checkpoint.universeCompanies) || checkpoint.universeCompanies < 475 || checkpoint.universeCompanies > 526
+    || !Array.isArray(checkpoint.companies) || checkpoint.companies.length > MAX_SHARD_COMPANIES
+    || !validCheckpoint(checkpoint, checkpoint.companies.length, 2)) return null;
+  let previousCik = '';
+  for (const company of checkpoint.companies) {
+    if (!company || typeof company !== 'object' || Array.isArray(company)
+      || Object.keys(company).some(key => !['cik', 'ticker'].includes(key))
+      || typeof company.cik !== 'string' || !/^\d{10}$/.test(company.cik) || Number(company.cik) === 0
+      || company.cik <= previousCik || secCoverageShard(company.cik) !== checkpoint.shard
+      || typeof company.ticker !== 'string' || !/^[A-Z0-9][A-Z0-9.-]{0,15}$/.test(company.ticker)) return null;
+    previousCik = company.cik;
+  }
+  return checkpoint.companies;
+}
+
+function claimMatchesCheckpoint(claim, checkpoint, currentCycle) {
+  return validCycle(checkpoint?.cycle) && checkpoint.cycle <= currentCycle
+    && Number.isInteger(checkpoint.shard) && checkpoint.shard >= 0 && checkpoint.shard < SEC_COVERAGE_SHARDS
+    && /^[a-f0-9]{16}$/.test(checkpoint.universeVersion || '')
+    && claim.key === `${SEC_COVERAGE_JOB_PREFIX}shard:${String(checkpoint.shard).padStart(2, '0')}`
+    && claim.jobKey === `${SEC_COVERAGE_JOB_PREFIX}${checkpoint.cycle}:${String(checkpoint.shard).padStart(2, '0')}:${checkpoint.universeVersion}`;
+}
+
+function validateEnqueuedCurrent(rows, cycle, requestedShards) {
+  if (!Array.isArray(rows) || rows.length !== requestedShards.length) throw new Error('Invalid current SEC coverage enqueue response.');
+  const byShard = new Map();
+  for (const row of rows) {
+    if (!row || !requestedShards.includes(row.shard) || byShard.has(row.shard)
+      || typeof row.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(row.id)
+      || !/^[a-f0-9]{16}$/.test(row.universeVersion || '')
+      || row.jobKey !== `${SEC_COVERAGE_JOB_PREFIX}${cycle}:${String(row.shard).padStart(2, '0')}:${row.universeVersion}`) {
+      throw new Error('Invalid current SEC coverage enqueue response.');
+    }
+    byShard.set(row.shard, row);
+  }
+  if (new Set(rows.map(row => row.universeVersion)).size !== 1) throw new Error('Inconsistent current SEC coverage cycle.');
+  return byShard;
 }
 
 function hasBusyWork(result) {
@@ -65,13 +115,16 @@ function hasBusyWork(result) {
 }
 
 /**
- * A daily, versioned universe becomes 32 small durable jobs. Every invocation
+ * A daily, versioned universe becomes 32 small durable jobs. Schema 2 freezes
+ * the cohort in the database once per UTC cycle; in-flight membership changes
+ * cannot reinterpret a saved issuer cursor. Every invocation
  * awaits and checkpoints each issuer separately; an individual issuer failure
  * moves to a bounded retry list while other issuers continue. Normal yields do
  * not consume the durable job's crash/failure retry allowance.
  */
-export async function runSecCoverageJob({ shard, maxCompanies = MAX_COMPANIES, signal, deadline } = {}, {
+export async function runSecCoverageJob({ shard, maxCompanies = MAX_COMPANIES, signal, deadline, dynamicMembership = false } = {}, {
   enqueue = dataStore.enqueueCoverageJobs,
+  enqueueCurrent = dataStore.enqueueCurrentCoverageJobs,
   claimJob = dataStore.claimDataStoreJob,
   finish = dataStore.finishDataStoreJob,
   checkpointJob = dataStore.checkpointDataStoreJob,
@@ -80,7 +133,7 @@ export async function runSecCoverageJob({ shard, maxCompanies = MAX_COMPANIES, s
   companies = SEC_PREPARED_COHORT,
   now = Date.now,
 } = {}) {
-  if (!Number.isInteger(maxCompanies) || maxCompanies < 1 || maxCompanies > MAX_COMPANIES
+  if (typeof dynamicMembership !== 'boolean' || !Number.isInteger(maxCompanies) || maxCompanies < 1 || maxCompanies > MAX_COMPANIES
     || shard !== undefined && (!Number.isInteger(shard) || shard < 0 || shard >= SEC_COVERAGE_SHARDS)) throw new Error('Unbounded SEC coverage invocation.');
   const startedAt = now();
   const stopAt = deadline ?? startedAt + 230_000;
@@ -89,25 +142,30 @@ export async function runSecCoverageJob({ shard, maxCompanies = MAX_COMPANIES, s
   const cycle = new Date(startedAt).toISOString().slice(0, 10);
   const shardIndices = shard === undefined ? Array.from({ length: SEC_COVERAGE_SHARDS }, (_, index) => index) : [shard];
   const jobKey = index => `${SEC_COVERAGE_JOB_PREFIX}${cycle}:${String(index).padStart(2, '0')}:${universe.version}`;
-  // One small RPC idempotently creates the 32 fixed shards. Enqueue before
+  // One small RPC idempotently creates the 32 bounded shards. Enqueue before
   // claim also repairs an interrupted setup without per-issuer API calls.
   if (signal?.aborted || now() >= stopAt - MIN_COMPANY_BUDGET_MS) return { status: 'budget-exhausted', done: false, processed: 0 };
-  await enqueue({ cycle, version: universe.version, shards: shardIndices });
+  let currentJobs;
+  if (dynamicMembership) {
+    currentJobs = validateEnqueuedCurrent(await enqueueCurrent({ cycle, shards: shardIndices }), cycle, shardIndices);
+  } else await enqueue({ cycle, version: universe.version, shards: shardIndices });
   const claim = await claimJob({ dataset: 'sec', leaseSeconds: LEASE_SECONDS,
-    ...(shard === undefined ? { prefix: SEC_COVERAGE_JOB_PREFIX } : { jobKey: jobKey(shard) }) });
+    ...(shard === undefined ? { prefix: SEC_COVERAGE_JOB_PREFIX } : { jobKey: dynamicMembership ? currentJobs.get(shard).jobKey : jobKey(shard) }) });
   if (!claim) return { status: 'busy-or-finished', done: false, processed: 0, retryAfterSeconds: 30 };
   let checkpoint = structuredClone(claim.checkpoint || {});
-  if (checkpoint.universeVersion !== universe.version) {
+  const frozen = checkpoint.schema === 2;
+  const shardCompanies = frozen ? frozenShard(checkpoint) : universe.shards[checkpoint.shard];
+  const legacySuperseded = checkpoint.schema === 1 && checkpoint.universeVersion !== universe.version;
+  if (!claimMatchesCheckpoint(claim, checkpoint, cycle)
+    || ![1, 2].includes(checkpoint.schema)
+    || (frozen ? !shardCompanies : !validCheckpoint(checkpoint, legacySuperseded ? MAX_SHARD_COMPANIES : (shardCompanies?.length ?? -1)))) {
+    await finish(claim, { status: 'dead', checkpoint: {}, errorCode: 'SEC_COVERAGE_INVALID_CHECKPOINT' });
+    throw new Error('Invalid SEC coverage checkpoint.');
+  }
+  if (legacySuperseded) {
     const saved = await finish(claim, { status: 'done', checkpoint, errorCode: 'SEC_COVERAGE_SUPERSEDED' });
     if (!saved) throw new Error('SEC coverage job ownership expired.');
     return { status: 'superseded', done: true, processed: 0, jobId: claim.id };
-  }
-  const shardCompanies = universe.shards[checkpoint.shard];
-  if (!shardCompanies || !validCheckpoint(checkpoint, shardCompanies.length)
-    || claim.key !== `${SEC_COVERAGE_JOB_PREFIX}shard:${String(checkpoint.shard).padStart(2, '0')}`
-    || claim.jobKey !== `${SEC_COVERAGE_JOB_PREFIX}${checkpoint.cycle}:${String(checkpoint.shard).padStart(2, '0')}:${universe.version}`) {
-    await finish(claim, { status: 'dead', checkpoint: {}, errorCode: 'SEC_COVERAGE_INVALID_CHECKPOINT' });
-    throw new Error('Invalid SEC coverage checkpoint.');
   }
   const results = [];
   try {
@@ -121,9 +179,11 @@ export async function runSecCoverageJob({ shard, maxCompanies = MAX_COMPANIES, s
       const attempts = (previous?.attempts || 0) + 1;
       let result, failure;
       try {
-        result = await refresh(company.ticker, { signal, deadline: stopAt });
+        // A frozen CIK remains the issuer identity if its ticker later changes.
+        result = await refresh(frozen ? company.cik : company.ticker, { signal, deadline: stopAt });
         if (hasBusyWork(result)) failure = { code: 'SEC_COVERAGE_COMPANY_BUSY', retryAfter: result?.retryAfter || 30 };
         else if (!successfulStatuses.has(result?.status)) failure = { code: safeCode(result?.code), retryAfter: result?.retryAfter };
+        else if (frozen && result.cik !== company.cik) failure = { code: 'SEC_COVERAGE_IDENTITY_MISMATCH' };
       } catch (error) {
         failure = { code: safeCode(error?.code, error?.name === 'AbortError' ? 'SEC_COVERAGE_COMPANY_DEADLINE' : undefined), retryAfter: error?.retryAfter };
       }
@@ -156,7 +216,8 @@ export async function runSecCoverageJob({ shard, maxCompanies = MAX_COMPANIES, s
       : await yieldJob(claim, { checkpoint, retryAfterSeconds });
     if (!acknowledged) throw new Error('SEC coverage job ownership expired before release.');
     return { status: done ? 'done' : 'resume-required', done, jobId: claim.id, cycle: checkpoint.cycle,
-      shard: checkpoint.shard, universeCompanies: universe.count, universeVersion: universe.version, processed: results.length,
+      shard: checkpoint.shard, universeCompanies: frozen ? checkpoint.universeCompanies : universe.count,
+      universeVersion: checkpoint.universeVersion, ...(frozen ? { membershipId: checkpoint.membershipId } : {}), processed: results.length,
       coverage: { companies: shardCompanies.length, visited: checkpoint.cursor, succeeded: checkpoint.succeeded,
         pendingRetries: checkpoint.retries.length, failed: checkpoint.failures.length },
       ...(done ? {} : { retryAfterSeconds }), results };

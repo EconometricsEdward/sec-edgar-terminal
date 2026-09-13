@@ -126,7 +126,7 @@ test('one broad company refresh supplies two canonical documents to all financia
       return { status: 'current', envelope: documents[paths.indexOf(path)] };
     },
     read: rejectNetwork,
-    prepare: ticker => { assert.equal(ticker, 'GOOGL'); return prepareFinancialCompany(ticker, preparation.options); },
+    prepare: identity => { assert.equal(identity, cik); return prepareFinancialCompany(identity, preparation.options); },
     prepareViews: async (researchCompany, sources) => {
       researchCalls++; assert.deepEqual(researchCompany, company);
       assert.equal(sources[0], documents[0]); assert.equal(sources[1], documents[1]);

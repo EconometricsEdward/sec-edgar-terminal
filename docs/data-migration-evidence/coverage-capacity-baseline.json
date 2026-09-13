@@ -1,0 +1,133 @@
+{
+  "kind": "bounded-public-prepared-capacity-v1",
+  "startedAt": "2026-09-13T15:29:47.591Z",
+  "finishedAt": "2026-09-13T15:29:47.607Z",
+  "origin": "https://secedgarterminal.com",
+  "limits": {
+    "origin": "https://secedgarterminal.com",
+    "requests": 108,
+    "milliseconds": 300000,
+    "requestsPerSecond": 5,
+    "routeRequestsPerMinute": 40,
+    "requestTimeoutMs": 20000,
+    "wireBytes": 104857600,
+    "decodedBytes": 104857600,
+    "responseWireBytes": 1048576,
+    "responseDecodedBytes": 4194304
+  },
+  "stages": [
+    {
+      "concurrencyLimit": 1,
+      "peakInFlight": 1,
+      "plannedRequests": 18,
+      "elapsedMs": 14,
+      "requests": 1,
+      "successful": 0,
+      "errors": 1,
+      "latencyMs": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "wireBytes": 0,
+      "decodedBytes": 0,
+      "httpStatuses": {
+        "0": 1
+      },
+      "vercelCache": {
+        "absent": 1
+      },
+      "preparedSources": {},
+      "byRoute": {
+        "analysis": {
+          "requests": 1,
+          "successful": 0,
+          "errors": 1,
+          "latencyMs": {
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "wireBytes": 0,
+          "decodedBytes": 0,
+          "httpStatuses": {
+            "0": 1
+          },
+          "vercelCache": {
+            "absent": 1
+          },
+          "preparedSources": {}
+        },
+        "compare": {
+          "requests": 0,
+          "successful": 0,
+          "errors": 0,
+          "latencyMs": {
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "wireBytes": 0,
+          "decodedBytes": 0,
+          "httpStatuses": {},
+          "vercelCache": {},
+          "preparedSources": {}
+        },
+        "portfolio": {
+          "requests": 0,
+          "successful": 0,
+          "errors": 0,
+          "latencyMs": {
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "wireBytes": 0,
+          "decodedBytes": 0,
+          "httpStatuses": {},
+          "vercelCache": {},
+          "preparedSources": {}
+        }
+      }
+    }
+  ],
+  "requests": 1,
+  "successful": 0,
+  "errors": 1,
+  "latencyMs": {
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "wireBytes": 0,
+  "decodedBytes": 0,
+  "httpStatuses": {
+    "0": 1
+  },
+  "vercelCache": {
+    "absent": 1
+  },
+  "preparedSources": {},
+  "completed": false,
+  "stopReason": "EAI_AGAIN",
+  "samples": [
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:29:47.592Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "error": "EAI_AGAIN",
+      "elapsedMs": 14
+    }
+  ],
+  "limitations": [
+    "Configured concurrency caps simultaneous API requests; peakInFlight records the level actually reached. Neither is a count of visitors.",
+    "One external test location and short sample; no browser rendering, geographic distribution, long soak, or 1,000-daily-user capacity guarantee.",
+    "Normal cache behavior is preserved. CDN hits do not measure Supabase origin capacity, and no cache is flushed or bypassed.",
+    "Response wire bytes are compressed HTTP body bytes, excluding headers and TLS. They are site traffic, not measured Supabase billable egress.",
+    "Latency includes network, TLS/connection reuse, server response and local decompression/JSON parsing. Percentiles have small-sample uncertainty.",
+    "Request errors, stale data, unexpected identities or unprepared responses abort the remaining ramp; no automatic retries."
+  ]
+}
