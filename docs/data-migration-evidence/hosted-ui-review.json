@@ -1,0 +1,76 @@
+{
+  "reviewedAt": "2026-09-13T05:46:56.230Z",
+  "method": "Supported cloud browser; live page reloads, hydrated DOM inspection, and viewport screenshots",
+  "deploymentReportedReady": "dpl_n4KxZzuQSDG8MBWmZgmWHhvHUgpx",
+  "deploymentCommit": "8234cc3ef7db3e5242b3c8eabe36b1eb50bb255d",
+  "result": "passed",
+  "scope": "Homepage, AAPL annual overview, and both CFTC futures-only report families",
+  "pages": [
+    {
+      "url": "https://secedgarterminal.com/",
+      "title": "EDGAR Terminal - SEC Research & CFTC Positioning",
+      "visibleResult": "Homepage hero, primary navigation, research path, and recent research rendered without an error page or visible layout regression",
+      "screenshotScratchPath": "/workspace/scratch/migration-home-active-20260913.jpg"
+    },
+    {
+      "url": "https://secedgarterminal.com/analysis/AAPL",
+      "title": "Apple Inc. (AAPL) — Financial Analysis & Ratios | EDGAR Terminal",
+      "basis": "Annual",
+      "periodStart": "2024-09-29",
+      "periodEnd": "2025-09-27",
+      "comparisonPeriodEnd": "2024-09-28",
+      "coverage": "61/64 metrics available",
+      "displayedMetrics": {
+        "revenue": "$416,161M",
+        "netIncome": "$112,010M",
+        "operatingMargin": "31.97%",
+        "operatingCashFlow": "$111,482M",
+        "freeCashFlow": "$98,767M",
+        "returnOnAverageEquity": "171.42%"
+      },
+      "matchesPreActivationVisibleBaseline": true,
+      "screenshotScratchPath": "/workspace/scratch/migration-analysis-active-20260913.jpg"
+    },
+    {
+      "url": "https://secedgarterminal.com/market?tab=positioning&family=tff&contract=13874A&group=leveraged-funds&history=5y&display=net-oi",
+      "title": "Market Research — SEC Fundamentals & CFTC Positioning | EDGAR Terminal",
+      "family": "TFF",
+      "basis": "Futures only",
+      "sourceReport": "2026-09-08",
+      "retrievedDisplayed": "2026-09-13 05:35 UTC",
+      "cacheStateDisplayed": "prepared",
+      "verifiedCurrentContracts": 99,
+      "launchMarketCoverage": "13 / 13",
+      "launchRowsMissingRequiredValues": 0,
+      "quarantinedSourceRows": 0,
+      "visibleResult": "Populated heatmap with contract and participant labels; E-mini S&P 500 leveraged-funds net/open-interest displayed as -16.5%",
+      "screenshotScratchPath": "/workspace/scratch/migration-cftc-active-20260913.jpg"
+    },
+    {
+      "url": "https://secedgarterminal.com/market?tab=positioning&family=disaggregated&contract=067651&group=managed-money&history=5y&display=net-oi",
+      "title": "Market Research — SEC Fundamentals & CFTC Positioning | EDGAR Terminal",
+      "family": "Disaggregated",
+      "basis": "Futures only",
+      "sourceReport": "2026-09-08",
+      "retrievedDisplayed": "2026-09-13 05:36 UTC",
+      "cacheStateDisplayed": "prepared",
+      "verifiedCurrentContracts": 277,
+      "launchMarketCoverage": "12 / 12",
+      "launchRowsMissingRequiredValues": 0,
+      "quarantinedSourceRows": 0,
+      "visibleResult": "Report-family tab switched successfully; coverage, WTI contract, managed-money category, and loaded heatmap/chart headings remained available",
+      "screenshotScratchPath": "/workspace/scratch/migration-cftc-disaggregated-active-20260913.jpg"
+    }
+  ],
+  "console": {
+    "siteErrorsObserved": 0,
+    "excluded": "Browser-extension metadata messages with chrome-extension source URLs"
+  },
+  "limitations": [
+    "Browser verification confirms visible rendering and sampled displayed values, not the storage origin of each network response; hosted API and provenance checks are recorded separately.",
+    "This was a desktop viewport review, not a mobile, accessibility, or capacity test.",
+    "No refresh-data controls, administration routes, forms, saved views, or other data mutations were invoked.",
+    "One browser scroll gesture reported a tool timeout after scrolling had occurred; a subsequent screenshot verified the resulting viewport without repeating the gesture.",
+    "Screenshots are transient review intermediates in scratch and are not repository assets."
+  ]
+}

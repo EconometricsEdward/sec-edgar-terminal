@@ -1,0 +1,364 @@
+{
+  "reviewVersion": 1,
+  "observedAt": "2026-09-13 05:38:51.509397+00",
+  "projectRef": "vvkihuduqqnxqahhbphs",
+  "namespace": "production",
+  "method": "Read-only SQL joins of current dataset heads, immutable versions, normalized metrics, source asset records and Storage metadata; independently compared with retained public SEC JSON whose SHA-256 hashes were first matched to current hosted source versions. Numeric SQL values were read as decimal strings.",
+  "result": "passed",
+  "checks": {
+    "cohortCompanies": 4,
+    "financialBasesPerCompany": 4,
+    "currentFinancialVersions": 16,
+    "currentSecVersions": 8,
+    "sourceHashesMatchingLocalPublicSamples": 8,
+    "normalizedMetricRowsCompared": 136,
+    "metricClassificationCounts": {
+      "reported": 62,
+      "calculated": 70,
+      "unavailable": 4
+    },
+    "currentInputDocumentLineagesVerified": 32,
+    "reportedMetricsMatchedDirectlyToRawSecContexts": 62,
+    "sourceCatalogReferencesMatchedToRawSecContexts": 306,
+    "distinctReferencedCatalogEntriesMatched": 193,
+    "privateSourceAssetsWithMatchingStorageSizeMetadata": 8
+  },
+  "limitations": [
+    "This is database and Storage metadata verification. It does not independently verify production HTTP responses, Redis contents, OIDC authorization, Storage byte downloads, browser behavior or response latency; those need separate application checks.",
+    "The local samples were not presumed current: all eight hosted current SEC source content hashes first matched the retained source bytes. A future source revision requires a new comparison.",
+    "The selected normalized projection contains nine metrics per basis for AAPL, MSFT and ACU, and seven for JPM. JPM generic revenue and currentRatio are absent because its bank model uses other measures; this review does not claim a normalized bank revenue row.",
+    "SourceCatalog references were checked against same-source local prepared snapshots and raw SEC contexts. Full hosted JSON snapshot contents were not downloaded during this independent SQL review."
+  ],
+  "sources": [
+    {
+      "ticker": "ACU",
+      "cik": "0000002098",
+      "resource": "companyfacts",
+      "sourceUrl": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002098.json",
+      "sha256": "06951158c151bcf8f37297593ceee4916d4d357dcfc6e8b24f66d74ba2a6b0e3",
+      "localSampleHashMatches": true,
+      "rawBytes": 2513049,
+      "fetchedAt": "2026-09-13T05:38:26.093Z"
+    },
+    {
+      "ticker": "ACU",
+      "cik": "0000002098",
+      "resource": "submissions",
+      "sourceUrl": "https://data.sec.gov/submissions/CIK0000002098.json",
+      "sha256": "1f8ea700a01e7fc4c3d0c88f11bd3db0f5bc09d30b54a1cf37c67a14309e53e8",
+      "localSampleHashMatches": true,
+      "rawBytes": 160935,
+      "fetchedAt": "2026-09-13T05:38:23.761Z"
+    },
+    {
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "resource": "companyfacts",
+      "sourceUrl": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000019617.json",
+      "sha256": "15370a4150dad20644e9827dca3ce1465d8b8ad8bd9862fd372bf1ba7c7e7fa6",
+      "localSampleHashMatches": true,
+      "rawBytes": 7935919,
+      "fetchedAt": "2026-09-13T05:38:05.490Z"
+    },
+    {
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "resource": "submissions",
+      "sourceUrl": "https://data.sec.gov/submissions/CIK0000019617.json",
+      "sha256": "b84e49bedf485f2e47eb83ee4dc0795f9425db06c8c0408e96bffe3774cbcf10",
+      "localSampleHashMatches": true,
+      "rawBytes": 4608297,
+      "fetchedAt": "2026-09-13T05:38:01.937Z"
+    },
+    {
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "resource": "companyfacts",
+      "sourceUrl": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json",
+      "sha256": "73a86c6aedc31f77cac2ea4df5f80f0b3bd7e6eb58bb4e01444fbedf3afb9c43",
+      "localSampleHashMatches": true,
+      "rawBytes": 3789099,
+      "fetchedAt": "2026-09-13T05:35:56.323Z"
+    },
+    {
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "resource": "submissions",
+      "sourceUrl": "https://data.sec.gov/submissions/CIK0000320193.json",
+      "sha256": "cb90ffafc5b6f997b60aa109e07008223ad35abe896ec7918fd43652b4057329",
+      "localSampleHashMatches": true,
+      "rawBytes": 164091,
+      "fetchedAt": "2026-09-13T05:35:53.614Z"
+    },
+    {
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "resource": "companyfacts",
+      "sourceUrl": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json",
+      "sha256": "f8aae2965b20ad0df44bdf7ccbedf797d275b6b8dc030154a7a311361bb7246f",
+      "localSampleHashMatches": true,
+      "rawBytes": 4881196,
+      "fetchedAt": "2026-09-13T05:36:22.007Z"
+    },
+    {
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "resource": "submissions",
+      "sourceUrl": "https://data.sec.gov/submissions/CIK0000789019.json",
+      "sha256": "6fe5c233fd41818614d0d1663ee39f7c033d5ea669fc6c39f45563f555e158ad",
+      "localSampleHashMatches": true,
+      "rawBytes": 184700,
+      "fetchedAt": "2026-09-13T05:36:19.299Z"
+    }
+  ],
+  "financialVersions": [
+    {
+      "ticker": "ACU",
+      "cik": "0000002098",
+      "basis": "annual",
+      "reportPeriod": "2025-12-31",
+      "versionId": "d8f6b469-c42a-4e8b-b69f-202c74f665f9",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:38:23.761Z",
+      "expiresAt": "2026-09-14T06:38:23.761Z"
+    },
+    {
+      "ticker": "ACU",
+      "cik": "0000002098",
+      "basis": "quarter",
+      "reportPeriod": "2026-06-30",
+      "versionId": "effc85a5-ab81-4f0e-9613-b9d2b62d77b5",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:38:23.761Z",
+      "expiresAt": "2026-09-14T06:38:23.761Z"
+    },
+    {
+      "ticker": "ACU",
+      "cik": "0000002098",
+      "basis": "ttm",
+      "reportPeriod": "2026-06-30",
+      "versionId": "53fe79c4-aa62-4cfd-933e-f203f0789543",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:38:23.761Z",
+      "expiresAt": "2026-09-14T06:38:23.761Z"
+    },
+    {
+      "ticker": "ACU",
+      "cik": "0000002098",
+      "basis": "ytd",
+      "reportPeriod": "2026-06-30",
+      "versionId": "8f42717e-e241-4764-bf87-e05c1602ba45",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:38:23.761Z",
+      "expiresAt": "2026-09-14T06:38:23.761Z"
+    },
+    {
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "basis": "annual",
+      "reportPeriod": "2025-12-31",
+      "versionId": "b9f434fc-8219-47db-be41-be39ce5a1909",
+      "generation": "1",
+      "metricRows": 7,
+      "fetchedAt": "2026-09-13T05:38:01.937Z",
+      "expiresAt": "2026-09-14T06:38:01.937Z"
+    },
+    {
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "basis": "quarter",
+      "reportPeriod": "2026-06-30",
+      "versionId": "92844a1b-592e-4fb7-9ad4-280b81cd489f",
+      "generation": "1",
+      "metricRows": 7,
+      "fetchedAt": "2026-09-13T05:38:01.937Z",
+      "expiresAt": "2026-09-14T06:38:01.937Z"
+    },
+    {
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "basis": "ttm",
+      "reportPeriod": "2026-06-30",
+      "versionId": "3f0aa1f7-c223-426d-a4e3-7279ce43f23d",
+      "generation": "1",
+      "metricRows": 7,
+      "fetchedAt": "2026-09-13T05:38:01.937Z",
+      "expiresAt": "2026-09-14T06:38:01.937Z"
+    },
+    {
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "basis": "ytd",
+      "reportPeriod": "2026-06-30",
+      "versionId": "99bc2c80-9e79-47a1-9fe7-8c6f5d7ef821",
+      "generation": "1",
+      "metricRows": 7,
+      "fetchedAt": "2026-09-13T05:38:01.937Z",
+      "expiresAt": "2026-09-14T06:38:01.937Z"
+    },
+    {
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "basis": "annual",
+      "reportPeriod": "2025-09-27",
+      "versionId": "5b3aefad-2b65-45d5-a1b0-7775393f56ac",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:35:53.614Z",
+      "expiresAt": "2026-09-14T06:35:53.614Z"
+    },
+    {
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "basis": "quarter",
+      "reportPeriod": "2026-06-27",
+      "versionId": "ba518f1d-d1a7-4b48-b954-cd88a1dcc4b6",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:35:53.614Z",
+      "expiresAt": "2026-09-14T06:35:53.614Z"
+    },
+    {
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "basis": "ttm",
+      "reportPeriod": "2026-06-27",
+      "versionId": "bcefa865-ff24-4578-8efe-627891f20fe1",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:35:53.614Z",
+      "expiresAt": "2026-09-14T06:35:53.614Z"
+    },
+    {
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "basis": "ytd",
+      "reportPeriod": "2026-06-27",
+      "versionId": "bf108649-e611-48f2-bc88-04fb67968d53",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:35:53.614Z",
+      "expiresAt": "2026-09-14T06:35:53.614Z"
+    },
+    {
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "basis": "annual",
+      "reportPeriod": "2026-06-30",
+      "versionId": "4b8d5d9c-f69d-40c8-912b-3eb1aded6ed3",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:36:19.299Z",
+      "expiresAt": "2026-09-14T06:36:19.300Z"
+    },
+    {
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "basis": "quarter",
+      "reportPeriod": "2026-06-30",
+      "versionId": "d53d1524-3e5f-47a4-85a1-985ec9cd2ccf",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:36:19.299Z",
+      "expiresAt": "2026-09-14T06:36:19.300Z"
+    },
+    {
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "basis": "ttm",
+      "reportPeriod": "2026-06-30",
+      "versionId": "e8f07a02-401a-4475-9977-0de88d498f50",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:36:19.299Z",
+      "expiresAt": "2026-09-14T06:36:19.300Z"
+    },
+    {
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "basis": "ytd",
+      "reportPeriod": "2026-06-30",
+      "versionId": "e25e4d1d-3a1d-4f4a-b632-7ba9de1f6711",
+      "generation": "1",
+      "metricRows": 9,
+      "fetchedAt": "2026-09-13T05:36:19.299Z",
+      "expiresAt": "2026-09-14T06:36:19.300Z"
+    }
+  ],
+  "examples": [
+    {
+      "ticker": "AAPL",
+      "basis": "annual",
+      "metric": "revenue",
+      "value": "416161000000",
+      "unit": "USD",
+      "periodStart": "2024-09-29",
+      "periodEnd": "2025-09-27",
+      "accession": "0000320193-25-000079",
+      "form": "10-K",
+      "filed": "2025-10-31",
+      "classification": "reported",
+      "formula": null,
+      "sourceCatalogIds": [
+        0
+      ]
+    },
+    {
+      "ticker": "MSFT",
+      "basis": "quarter",
+      "metric": "revenue",
+      "value": "90007000000",
+      "unit": "USD",
+      "periodStart": "2026-04-01",
+      "periodEnd": "2026-06-30",
+      "accession": null,
+      "form": null,
+      "filed": null,
+      "classification": "calculated",
+      "formula": "Current cumulative value \u2212 prior cumulative value",
+      "sourceCatalogIds": [
+        0,
+        1
+      ]
+    },
+    {
+      "ticker": "JPM",
+      "basis": "annual",
+      "metric": "netIncome",
+      "value": "57048000000",
+      "unit": "USD",
+      "periodStart": "2025-01-01",
+      "periodEnd": "2025-12-31",
+      "accession": "0001628280-26-008131",
+      "form": "10-K",
+      "filed": "2026-02-13",
+      "classification": "reported",
+      "formula": null,
+      "sourceCatalogIds": [
+        31
+      ]
+    },
+    {
+      "ticker": "ACU",
+      "basis": "annual",
+      "metric": "revenue",
+      "value": "196541816",
+      "unit": "USD",
+      "periodStart": "2025-01-01",
+      "periodEnd": "2025-12-31",
+      "accession": "0001193125-26-102079",
+      "form": "10-K",
+      "filed": "2026-03-11",
+      "classification": "reported",
+      "formula": null,
+      "sourceCatalogIds": [
+        0
+      ]
+    }
+  ],
+  "issues": []
+}

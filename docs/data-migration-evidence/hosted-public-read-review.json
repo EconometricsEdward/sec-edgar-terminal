@@ -1,0 +1,514 @@
+{
+  "checkedAt": "2026-09-13T05:51:49.979Z",
+  "site": "https://secedgarterminal.com",
+  "scope": "Bounded real public requests, no production stress test.",
+  "durationNote": "Durations include the scratch client network path and cold starts; these are not browser timings or a capacity benchmark.",
+  "checksPassed": true,
+  "requests": [
+    {
+      "file": "public-active-aapl-annual.json",
+      "at": "2026-09-13T05:45:14.912604+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "decodedBytes": 434218,
+      "durationSeconds": 6.761181,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=60",
+        "X-Cache-Source": "warm-prepared",
+        "X-Data-Fetched-At": "2026-09-13T05:35:53.614Z",
+        "X-Data-Revalidated-At": "2026-09-13T05:35:53.614+00:00",
+        "X-Data-Stale": "false",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::bqssb-1789278320994-ae6c94c9df85"
+      },
+      "checks": {
+        "http200": true,
+        "exactPublishedPayload": true
+      },
+      "payloadSha256": "10017fba4415569afdb76e657297e57092df7c5c496a6f5f42388a365acf35f0",
+      "versionId": "5b3aefad-2b65-45d5-a1b0-7775393f56ac",
+      "firstPeriod": {
+        "fy": 2025,
+        "fp": "FY",
+        "end": "2025-09-27",
+        "filed": "2025-10-31",
+        "form": "10-K",
+        "accession": "0000320193-25-000079",
+        "kind": "annual",
+        "fiscalStart": "2024-09-29",
+        "asOf": "",
+        "start": "2024-09-29",
+        "ttmStart": null
+      },
+      "sourceCatalogEntries": 412
+    },
+    {
+      "file": "public-active-aapl-submissions.json",
+      "at": "2026-09-13T05:45:39.877451+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/sec?host=data&path=/submissions/CIK0000320193.json",
+      "status": 200,
+      "decodedBytes": 164091,
+      "durationSeconds": 7.977886,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=3600",
+        "X-Cache-Source": "supabase",
+        "X-Data-Fetched-At": "2026-09-13T05:35:53.614Z",
+        "X-Data-Revalidated-At": "2026-09-13T05:35:53.614+00:00",
+        "X-Data-Stale": "false",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::qzfxx-1789278346660-63cec77668d1"
+      },
+      "checks": {
+        "http200": true,
+        "exactCanonicalSec": true
+      },
+      "canonicalSha256": "4d81440e8b1a649dc38ec39f57552ad5d26774e2cf9e6697c9734c9e0a8a2081"
+    },
+    {
+      "file": "public-active-acu-ttm.json",
+      "at": "2026-09-13T05:45:34.797940+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/analysis-research?ticker=ACU&basis=ttm",
+      "status": 200,
+      "decodedBytes": 1658595,
+      "durationSeconds": 4.967163,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=60",
+        "X-Cache-Source": "warm-prepared",
+        "X-Data-Fetched-At": "2026-09-13T05:38:23.761Z",
+        "X-Data-Revalidated-At": "2026-09-13T05:38:23.761+00:00",
+        "X-Data-Stale": "false",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::w5lm6-1789278339237-ea2c14506e75"
+      },
+      "checks": {
+        "http200": true,
+        "exactPublishedPayload": true
+      },
+      "payloadSha256": "4addeb85faa494318a24f546648fef20d0f531ca223a931e2c3cd35bf413450d",
+      "versionId": "53fe79c4-aa62-4cfd-933e-f203f0789543",
+      "firstPeriod": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001193125-26-338211",
+        "kind": "ttm",
+        "fiscalStart": "2026-01-01",
+        "asOf": "",
+        "start": "2025-07-01",
+        "ttmStart": "2025-07-01"
+      },
+      "sourceCatalogEntries": 1402
+    },
+    {
+      "file": "public-active-disaggregated-history-new.json",
+      "at": "2026-09-13T05:47:08.536663+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/v1/cftc/history?family=disaggregated&contract=002602&group=non-reportables&date=latest&window=1y",
+      "status": 200,
+      "decodedBytes": 50787,
+      "durationSeconds": 9.541782,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=300",
+        "X-Cache-Source": "computed-from-prepared-raw",
+        "X-Data-Stale": "0",
+        "X-Report-Date": "2026-09-08",
+        "X-Schema-Version": "edgar.cftc-positioning.v1",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::4sl8t-1789278433765-5e7bcd2e8108"
+      },
+      "checks": {
+        "http200": true,
+        "ready": true,
+        "futuresOnly": true
+      },
+      "coreSha256": "60c4ab8866dd3d2dacefb3e8b9744972084f541cb18edbe34c21dc8fdc8e4678",
+      "reportDate": "2026-09-08",
+      "sourceDataset": "72hh-3qpy",
+      "selection": {
+        "contract": "002602",
+        "group": "non-reportables",
+        "report_date": "2026-09-08",
+        "history_window": "1y",
+        "required_prior_reports": 52
+      }
+    },
+    {
+      "file": "public-active-disaggregated-history.json",
+      "at": "2026-09-13T05:46:15.675108+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/v1/cftc/history?family=disaggregated&contract=067651&group=swap-dealers&date=latest&window=3y",
+      "status": 200,
+      "decodedBytes": 143523,
+      "durationSeconds": 5.923469,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=300",
+        "X-Cache-Source": "prepared",
+        "X-Data-Stale": "0",
+        "X-Report-Date": "2026-09-08",
+        "X-Schema-Version": "edgar.cftc-positioning.v1",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::dzrzs-1789278381400-f869aec38623"
+      },
+      "checks": {
+        "http200": true,
+        "ready": true,
+        "futuresOnly": true
+      },
+      "coreSha256": "03a304377ee16ce77824cf72b53728e641a0c70018e985df7fcaeb2b762593ef",
+      "reportDate": "2026-09-08",
+      "sourceDataset": "72hh-3qpy",
+      "selection": {
+        "contract": "067651",
+        "group": "swap-dealers",
+        "report_date": "2026-09-08",
+        "history_window": "3y",
+        "required_prior_reports": 156
+      }
+    },
+    {
+      "file": "public-active-disaggregated-markets.json",
+      "at": "2026-09-13T05:46:00.249663+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/v1/cftc/markets?family=disaggregated&date=latest",
+      "status": 200,
+      "decodedBytes": 190455,
+      "durationSeconds": 4.664328,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=300",
+        "X-Cache-Source": "prepared",
+        "X-Data-Stale": "0",
+        "X-Report-Date": "2026-09-08",
+        "X-Schema-Version": "edgar.cftc-positioning.v1",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::zdm2j-1789278364748-845b54030046"
+      },
+      "checks": {
+        "http200": true,
+        "ready": true,
+        "futuresOnly": true
+      },
+      "coreSha256": "61053696d2a0ecde1430ca40392936d58bda6eea74744f4d4764a1c1352d9444",
+      "reportDate": "2026-09-08",
+      "sourceDataset": "72hh-3qpy",
+      "selection": null
+    },
+    {
+      "file": "public-active-jpm-companyfacts.json",
+      "at": "2026-09-13T05:45:47.916667+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/sec?host=data&path=/api/xbrl/companyfacts/CIK0000019617.json",
+      "status": 200,
+      "decodedBytes": 7935919,
+      "durationSeconds": 6.550752,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=3600",
+        "X-Cache-Source": "supabase",
+        "X-Data-Fetched-At": "2026-09-13T05:38:05.490Z",
+        "X-Data-Revalidated-At": "2026-09-13T05:38:05.49+00:00",
+        "X-Data-Stale": "false",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::fvf6g-1789278352692-8c3bdb6e8d9f"
+      },
+      "checks": {
+        "http200": true,
+        "exactCanonicalSec": true
+      },
+      "canonicalSha256": "9bbe2bedc5c5cb9eb757cf83de2b786d26e3b5e2598610c964a29bb95ddfccab"
+    },
+    {
+      "file": "public-active-jpm-ytd.json",
+      "at": "2026-09-13T05:45:28.678425+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/analysis-research?ticker=JPM&basis=ytd",
+      "status": 200,
+      "decodedBytes": 1074686,
+      "durationSeconds": 6.030988,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=60",
+        "X-Cache-Source": "warm-prepared",
+        "X-Data-Fetched-At": "2026-09-13T05:38:01.937Z",
+        "X-Data-Revalidated-At": "2026-09-13T05:38:01.937+00:00",
+        "X-Data-Stale": "false",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::vp247-1789278334263-c37e6e661322"
+      },
+      "checks": {
+        "http200": true,
+        "exactPublishedPayload": true
+      },
+      "payloadSha256": "a174646a18eefb9fe7e0baf3a978e3149ee802b7bfbfeb71ab132a4a50f13351",
+      "versionId": "99bc2c80-9e79-47a1-9fe7-8c6f5d7ef821",
+      "firstPeriod": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001628280-26-054343",
+        "kind": "ytd",
+        "fiscalStart": "2026-01-01",
+        "asOf": "",
+        "start": "2026-01-01",
+        "ttmStart": "2025-07-01"
+      },
+      "sourceCatalogEntries": 1188
+    },
+    {
+      "file": "public-active-msft-quarter.json",
+      "at": "2026-09-13T05:45:21.753310+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/analysis-research?ticker=MSFT&basis=quarter",
+      "status": 200,
+      "decodedBytes": 1616299,
+      "durationSeconds": 6.810161,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=60",
+        "X-Cache-Source": "warm-prepared",
+        "X-Data-Fetched-At": "2026-09-13T05:36:19.299Z",
+        "X-Data-Revalidated-At": "2026-09-13T05:36:19.299+00:00",
+        "X-Data-Stale": "false",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::9vp8c-1789278327930-39bffb228000"
+      },
+      "checks": {
+        "http200": true,
+        "exactPublishedPayload": true
+      },
+      "payloadSha256": "1122f295cff7e788c05b34c87a02078990d37fa53ffb5cd517e668b744b168bd",
+      "versionId": "d53d1524-3e5f-47a4-85a1-985ec9cd2ccf",
+      "firstPeriod": {
+        "fy": 2026,
+        "fp": "Q4",
+        "end": "2026-06-30",
+        "filed": "2026-07-29",
+        "form": "10-K",
+        "accession": "0001193125-26-323660",
+        "kind": "quarter",
+        "fiscalStart": "2025-07-01",
+        "asOf": "",
+        "start": "2026-04-01",
+        "ttmStart": "2025-07-01"
+      },
+      "sourceCatalogEntries": 1668
+    },
+    {
+      "file": "public-active-tff-history.json",
+      "at": "2026-09-13T05:46:04.980018+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/v1/cftc/history?family=tff&contract=13874A&group=dealer&date=latest&window=3y",
+      "status": 200,
+      "decodedBytes": 144083,
+      "durationSeconds": 10.633989,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=300",
+        "X-Cache-Source": "computed-from-prepared-raw",
+        "X-Data-Stale": "0",
+        "X-Report-Date": "2026-09-08",
+        "X-Schema-Version": "edgar.cftc-positioning.v1",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::7m5zq-1789278370122-e9d88b219278"
+      },
+      "checks": {
+        "http200": true,
+        "ready": true,
+        "futuresOnly": true
+      },
+      "coreSha256": "1038a3151b19e70df24d3889e5cef4ad8a1a304c8b4eec34b7ef021819ddafa9",
+      "reportDate": "2026-09-08",
+      "sourceDataset": "gpe5-46if",
+      "selection": {
+        "contract": "13874A",
+        "group": "dealer",
+        "report_date": "2026-09-08",
+        "history_window": "3y",
+        "required_prior_reports": 156
+      }
+    },
+    {
+      "file": "public-active-tff-markets.json",
+      "at": "2026-09-13T05:45:54.994965+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/v1/cftc/markets?family=tff&date=latest",
+      "status": 200,
+      "decodedBytes": 137842,
+      "durationSeconds": 5.19342,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=300",
+        "X-Cache-Source": "prepared",
+        "X-Data-Stale": "0",
+        "X-Report-Date": "2026-09-08",
+        "X-Schema-Version": "edgar.cftc-positioning.v1",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::25zgj-1789278359949-3b3cbcac43b4"
+      },
+      "checks": {
+        "http200": true,
+        "ready": true,
+        "futuresOnly": true
+      },
+      "coreSha256": "c7dba944db4c4722f2d5d6c137c4a735216d081190a8a20e3b0d8277b3aef208",
+      "reportDate": "2026-09-08",
+      "sourceDataset": "gpe5-46if",
+      "selection": null
+    },
+    {
+      "file": "public-rollback-aapl-annual.json",
+      "at": "2026-09-13T05:50:05.760737+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "decodedBytes": 434218,
+      "durationSeconds": 8.398086,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=60",
+        "X-Cache-Source": "warm",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::bbw9m-1789278613590-b89687b2e931"
+      },
+      "checks": {
+        "http200": true,
+        "exactPublishedPayload": true
+      },
+      "payloadSha256": "10017fba4415569afdb76e657297e57092df7c5c496a6f5f42388a365acf35f0",
+      "versionId": "5b3aefad-2b65-45d5-a1b0-7775393f56ac",
+      "firstPeriod": {
+        "fy": 2025,
+        "fp": "FY",
+        "end": "2025-09-27",
+        "filed": "2025-10-31",
+        "form": "10-K",
+        "accession": "0000320193-25-000079",
+        "kind": "annual",
+        "fiscalStart": "2024-09-29",
+        "asOf": "",
+        "start": "2024-09-29",
+        "ttmStart": null
+      },
+      "sourceCatalogEntries": 412
+    },
+    {
+      "file": "public-rollback-aapl-companyfacts.json",
+      "at": "2026-09-13T05:50:59.363195+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/sec?host=data&path=/api/xbrl/companyfacts/CIK0000320193.json",
+      "status": 200,
+      "decodedBytes": 3789099,
+      "durationSeconds": 5.122834,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=3600",
+        "X-Cache-Source": "upstream",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::xqsc2-1789278663653-1145522b8040"
+      },
+      "checks": {
+        "http200": true,
+        "exactCanonicalSec": true
+      },
+      "canonicalSha256": "bee5edf4d44829781c56ab8e7fb9c5719b3ff79b8a81bc602a658283f5dd9588"
+    },
+    {
+      "file": "public-rollback-aapl-submissions.json",
+      "at": "2026-09-13T05:50:23.205196+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/sec?host=data&path=/submissions/CIK0000320193.json",
+      "status": 200,
+      "decodedBytes": 164091,
+      "durationSeconds": 30.508106,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=3600",
+        "X-Cache-Source": "warm",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::8vvls-1789278653290-d8628d304bbd"
+      },
+      "checks": {
+        "http200": true,
+        "exactCanonicalSec": true
+      },
+      "canonicalSha256": "4d81440e8b1a649dc38ec39f57552ad5d26774e2cf9e6697c9734c9e0a8a2081"
+    },
+    {
+      "file": "public-rollback-disaggregated-markets.json",
+      "at": "2026-09-13T05:50:53.803286+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/v1/cftc/markets?family=disaggregated&date=latest",
+      "status": 200,
+      "decodedBytes": 190455,
+      "durationSeconds": 5.462014,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=300",
+        "X-Cache-Source": "prepared",
+        "X-Data-Stale": "0",
+        "X-Report-Date": "2026-09-08",
+        "X-Schema-Version": "edgar.cftc-positioning.v1",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::gn6wz-1789278658966-701aa40b471a"
+      },
+      "checks": {
+        "http200": true,
+        "ready": true,
+        "futuresOnly": true,
+        "sameActivatedReportData": true
+      },
+      "coreSha256": "61053696d2a0ecde1430ca40392936d58bda6eea74744f4d4764a1c1352d9444",
+      "reportDate": "2026-09-08",
+      "sourceDataset": "72hh-3qpy",
+      "selection": null
+    },
+    {
+      "file": "public-rollback-msft-quarter.json",
+      "at": "2026-09-13T05:50:14.254405+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/analysis-research?ticker=MSFT&basis=quarter",
+      "status": 200,
+      "decodedBytes": 1616299,
+      "durationSeconds": 8.795155,
+      "headers": {
+        "Age": "0",
+        "Cache-Control": "public, max-age=60",
+        "X-Cache-Source": "warm",
+        "X-Vercel-Cache": "MISS",
+        "X-Vercel-Id": "cle1::iad1::f4629-1789278622485-abcdea3024e9"
+      },
+      "checks": {
+        "http200": true,
+        "exactPublishedPayload": true
+      },
+      "payloadSha256": "1122f295cff7e788c05b34c87a02078990d37fa53ffb5cd517e668b744b168bd",
+      "versionId": "d53d1524-3e5f-47a4-85a1-985ec9cd2ccf",
+      "firstPeriod": {
+        "fy": 2026,
+        "fp": "Q4",
+        "end": "2026-06-30",
+        "filed": "2026-07-29",
+        "form": "10-K",
+        "accession": "0001193125-26-323660",
+        "kind": "quarter",
+        "fiscalStart": "2025-07-01",
+        "asOf": "",
+        "start": "2026-04-01",
+        "ttmStart": "2025-07-01"
+      },
+      "sourceCatalogEntries": 1668
+    }
+  ]
+}
