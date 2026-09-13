@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: `${SITE_NAME} - SEC Filings & Financial Data Explorer`,
     short_name: SITE_NAME,
     description:
-      'Free, source-linked explorer for SEC filings, XBRL financials, insider trading, funds, disclosures, and peer comparisons.',
+      'Free, source-linked explorer for SEC filings, XBRL financials, funds, disclosures, peer comparisons, and official CFTC futures positioning.',
     id: SITE_URL,
     start_url: '/',
     scope: '/',

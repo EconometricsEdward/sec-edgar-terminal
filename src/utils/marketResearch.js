@@ -1,9 +1,19 @@
+import { CFTC_FAMILIES, cftcDate } from './cftc.js';
+import { MARKET_LENSES } from './marketCohorts.js';
+import { QUANT_GROUPS } from './quantGroups.js';
+
 export const MARKET_VERSION = 'market-research-v3';
 // The production prewarmer runs daily. Keep one hour of scheduling margin so
 // ordinary visitors consume the shared snapshot instead of rebuilding the
 // full SEC universe between scheduled runs.
 export const MARKET_ATLAS_FRESH_MS = 25 * 60 * 60 * 1000;
 export const MARKET_SAVED_KEY = 'edgar:market-research:v1';
+export const MARKET_PROVIDER_RETIREMENT_NOTICE = 'A saved price-model view was moved to Fundamental Lab. Retired price, return, and proxy settings were removed; your SEC filters, watchlist, baselines, and notes were preserved.';
+const RETIRED_MARKET_FIELDS = new Set([
+  'price_through', 'price_sample', 'price_status', 'price_source', 'price_basis', 'price_model_observations',
+  'exposure', 'event', 'co_movement', 'associations', 'sector_proxy', 'market_beta', 'downside_beta', 'sector_beta',
+  'residual_volatility', 'response_z', 'price_response_z', 'post_filing_response', 'evidence_gap',
+]);
 export const MARKET_METRICS = [
   { key: 'revenueGrowth', label: 'Revenue growth', unit: 'pct', formula: '(Revenue / prior-year revenue − 1) × 100', inputs: ['revenue'], growth: true },
   { key: 'netMargin', label: 'Net margin', unit: 'pct', formula: 'Net income / revenue × 100', inputs: ['netIncome', 'revenue'] },
@@ -45,13 +55,22 @@ export function isOlderReport(company, basis, observedAt) {
 }
 export const DEFAULT_MARKET_VIEW = {
   tab: 'overview', basis: 'ttm', cohort: 'all', query: '', screen: 'all', sort: 'revenueGrowth', direction: 'desc',
-  metric: 'revenueGrowth', statistic: 'median', selected: [], factorTicker: 'MSFT', factorWindow: '3y', factorSector: 'auto', quantThreshold: 0,
+  metric: 'revenueGrowth', statistic: 'median', selected: [], quantThreshold: 0,
+  cftcFamily: 'tff', cftcContract: '13874A', cftcGroup: 'leveraged-funds', cftcDate: 'latest', cftcHistory: '5y', cftcDisplay: 'net-oi',
 };
-export function parseMarketView(query, cohortIds = []) {
+export const CFTC_HISTORY_REPORTS = Object.freeze({ '1y': 52, '3y': 156, '5y': 260 });
+const MARKET_VIEW_KEYS = new Set(['tab', 'basis', 'cohort', 'q', 'screen', 'sort', 'direction', 'metric', 'statistic', 'peers', 'cutoff', 'family', 'contract', 'group', 'date', 'history', 'display']);
+const RETIRED_MARKET_VIEW_KEYS = ['asset', 'window', 'proxy'];
+const MARKET_VIEW_QUERY_MAX = 2048;
+export const MARKET_COHORT_IDS = Object.freeze([...MARKET_LENSES, ...QUANT_GROUPS].map(item => item.id));
+export function parseMarketView(query, cohortIds = MARKET_COHORT_IDS) {
   const p = new URLSearchParams(query);
   const choice = (key, options, fallback) => options.includes(p.get(key)) ? p.get(key) : fallback;
-  const asset = (p.get('asset') || DEFAULT_MARKET_VIEW.factorTicker).trim().toUpperCase();
-  return { tab: choice('tab', ['overview', 'sectors', 'companies', 'factors', 'saved'], 'overview'), basis: choice('basis', ['annual', 'ttm'], 'ttm'),
+  const rawTab = p.get('tab') === 'factors' ? 'fundamentals' : p.get('tab');
+  const family = choice('family', ['tff', 'disaggregated'], DEFAULT_MARKET_VIEW.cftcFamily);
+  const contract = (p.get('contract') || (family === 'tff' ? '13874A' : '067651')).trim().toUpperCase();
+  const groupOptions = family === 'tff' ? ['dealer', 'asset-manager', 'leveraged-funds', 'other-reportables', 'non-reportables'] : ['producer-merchant', 'swap-dealers', 'managed-money', 'other-reportables', 'non-reportables'];
+  return { tab: ['overview', 'positioning', 'sectors', 'companies', 'fundamentals', 'saved'].includes(rawTab) ? rawTab : 'overview', basis: choice('basis', ['annual', 'ttm'], 'ttm'),
     cohort: choice('cohort', ['all', ...cohortIds], 'all'), query: (p.get('q') || '').slice(0, 100),
     screen: choice('screen', ['all', 'growth', 'contraction', 'profitable', 'positiveCash', 'losses', 'negativeCash', 'older', 'watchlist'], 'all'),
     sort: choice('sort', ['ticker', 'filed', ...MARKET_METRICS.map((m) => m.key)], 'revenueGrowth'),
@@ -59,9 +78,10 @@ export function parseMarketView(query, cohortIds = []) {
     statistic: choice('statistic', ['median', 'mean'], 'median'),
     selected: [...new Set((p.get('peers') || '').split(',').filter((t) => /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(t)))].slice(0, 5),
     quantThreshold: Number(choice('cutoff', ['0', '0.5', '1'], '0')),
-    factorTicker: /^[A-Z0-9][A-Z0-9.-]{0,9}$/.test(asset) ? asset : DEFAULT_MARKET_VIEW.factorTicker,
-    factorWindow: choice('window', ['1y', '3y', '5y'], DEFAULT_MARKET_VIEW.factorWindow),
-    factorSector: choice('proxy', ['auto', 'XLF', 'XLRE', 'XHB', 'XLE', 'XLY', 'XLK', 'XLI', 'XLV', 'XLU', 'XLC', 'XLP', 'XLB'], DEFAULT_MARKET_VIEW.factorSector),
+    cftcFamily: family, cftcContract: /^[A-Z0-9+]{3,12}$/.test(contract) ? contract : family === 'tff' ? '13874A' : '067651',
+    cftcGroup: choice('group', groupOptions, family === 'tff' ? 'leveraged-funds' : 'managed-money'),
+    cftcDate: p.get('date') === 'latest' || p.has('date') && cftcDate(p.get('date')) === p.get('date') ? p.get('date') : 'latest',
+    cftcHistory: choice('history', ['1y', '3y', '5y'], '5y'), cftcDisplay: choice('display', ['net-oi', 'percentile'], 'net-oi'),
   };
 }
 export function marketViewQuery(view) {
@@ -70,16 +90,135 @@ export function marketViewQuery(view) {
   if ([0.5, 1].includes(view.quantThreshold)) p.set('cutoff', String(view.quantThreshold));
   if (view.query) p.set('q', view.query);
   if (view.selected.length) p.set('peers', view.selected.join(','));
-  if (view.tab === 'factors') {
-    p.set('asset', view.factorTicker || DEFAULT_MARKET_VIEW.factorTicker);
-    p.set('window', view.factorWindow || DEFAULT_MARKET_VIEW.factorWindow);
-    p.set('proxy', view.factorSector || DEFAULT_MARKET_VIEW.factorSector);
-  } else {
-    if (view.factorTicker && view.factorTicker !== DEFAULT_MARKET_VIEW.factorTicker) p.set('asset', view.factorTicker);
-    if (view.factorWindow && view.factorWindow !== DEFAULT_MARKET_VIEW.factorWindow) p.set('window', view.factorWindow);
-    if (view.factorSector && view.factorSector !== DEFAULT_MARKET_VIEW.factorSector) p.set('proxy', view.factorSector);
+  if (view.tab === 'positioning') {
+    p.set('family', view.cftcFamily);
+    p.set('contract', view.cftcContract);
+    p.set('group', view.cftcGroup);
+    if (view.cftcDate !== 'latest') p.set('date', view.cftcDate);
+    p.set('history', view.cftcHistory);
+    p.set('display', view.cftcDisplay);
   }
   return p.toString();
+}
+export function marketViewPath(view) {
+  const query = marketViewQuery(view);
+  return `/market${query ? `?${query}` : ''}`;
+}
+export function marketViewForCftcAvailability(view, cftcEnabled = true) {
+  return !cftcEnabled && view?.tab === 'positioning' ? { ...view, tab: 'overview' } : view;
+}
+export function isCftcPositioningPath(path) {
+  if (typeof path !== 'string') return false;
+  let url;
+  try { url = new URL(path, 'https://secedgarterminal.com'); } catch { return false; }
+  if (url.origin !== 'https://secedgarterminal.com') return false;
+  return url.pathname === '/market/positioning'
+    || (url.pathname === '/market' && url.searchParams.getAll('tab').includes('positioning'));
+}
+export function marketSavedViewsForCftcAvailability(views, cohortIds = MARKET_COHORT_IDS, cftcEnabled = true) {
+  if (!Array.isArray(views)) return [];
+  return views.map((view, index) => ({ view, index }))
+    .filter(({ view }) => cftcEnabled || parseMarketView(view?.query || '', cohortIds).tab !== 'positioning');
+}
+export function marketViewHistoryMode(current, next, forcePush = false) {
+  if (marketViewPath(current) === marketViewPath(next)) return null;
+  return forcePush || current.tab !== next.tab ? 'pushState' : 'replaceState';
+}
+export function migrateMarketViewQuery(query) {
+  const params = new URLSearchParams(query);
+  let migrated = false;
+  if (params.get('tab') === 'factors') { params.set('tab', 'fundamentals'); migrated = true; }
+  for (const key of RETIRED_MARKET_VIEW_KEYS) if (params.has(key)) { params.delete(key); params.set('tab', 'fundamentals'); migrated = true; }
+  return { query: params.toString(), migrated };
+}
+export function migrateMarketPath(path) {
+  if (typeof path !== 'string') return { path, migrated: false };
+  let url;
+  try { url = new URL(path, 'https://secedgarterminal.com'); } catch { return { path, migrated: false }; }
+  if (url.origin !== 'https://secedgarterminal.com' || url.pathname !== '/market') return { path, migrated: false };
+  const result = migrateMarketViewQuery(url.search);
+  return { path: `${url.pathname}${result.query ? `?${result.query}` : ''}${url.hash}`, migrated: result.migrated };
+}
+function stripRetiredMarketFields(value) {
+  if (Array.isArray(value)) {
+    let migrated = false;
+    const output = value.map(item => { const result = stripRetiredMarketFields(item); migrated ||= result.migrated; return result.value; });
+    return { value: output, migrated };
+  }
+  if (!value || typeof value !== 'object') return { value, migrated: false };
+  let migrated = false;
+  const output = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (RETIRED_MARKET_FIELDS.has(key)) { migrated = true; continue; }
+    const result = stripRetiredMarketFields(child); migrated ||= result.migrated; output[key] = result.value;
+  }
+  return { value: output, migrated };
+}
+export function sanitizeMarketBaselines(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { baselines: {}, migrated: false };
+  const result = stripRetiredMarketFields(value);
+  return { baselines: result.value, migrated: result.migrated };
+}
+function validSavedViewParams(params, cohortIds) {
+  if ([...params.keys()].some(key => !MARKET_VIEW_KEYS.has(key))) return false;
+  if ([...MARKET_VIEW_KEYS].some(key => params.getAll(key).length > 1)) return false;
+  const allowed = (key, values) => !params.has(key) || values.includes(params.get(key));
+  if (!allowed('tab', ['overview', 'positioning', 'sectors', 'companies', 'fundamentals', 'saved'])
+    || !allowed('basis', ['annual', 'ttm'])
+    || !allowed('cohort', ['all', ...cohortIds])
+    || !allowed('screen', ['all', 'growth', 'contraction', 'profitable', 'positiveCash', 'losses', 'negativeCash', 'older', 'watchlist'])
+    || !allowed('sort', ['ticker', 'filed', ...MARKET_METRICS.map(metric => metric.key)])
+    || !allowed('direction', ['asc', 'desc'])
+    || !allowed('metric', MARKET_METRICS.map(metric => metric.key))
+    || !allowed('statistic', ['median', 'mean'])
+    || !allowed('cutoff', ['0', '0.5', '1'])
+    || !allowed('family', ['tff', 'disaggregated'])
+    || !allowed('history', ['1y', '3y', '5y'])
+    || !allowed('display', ['net-oi', 'percentile'])) return false;
+  if ((params.get('q') || '').length > 100) return false;
+  const peers = params.has('peers') ? params.get('peers').split(',') : [];
+  if (peers.length > 5 || new Set(peers).size !== peers.length || peers.some(ticker => !/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(ticker))) return false;
+  const family = params.get('family') || DEFAULT_MARKET_VIEW.cftcFamily;
+  const contract = (params.get('contract') || '').trim().toUpperCase();
+  if (params.has('contract') && !/^[A-Z0-9+]{3,12}$/.test(contract)) return false;
+  const groups = family === 'tff' ? ['dealer', 'asset-manager', 'leveraged-funds', 'other-reportables', 'non-reportables'] : ['producer-merchant', 'swap-dealers', 'managed-money', 'other-reportables', 'non-reportables'];
+  if (!allowed('group', groups)) return false;
+  return !params.has('date') || params.get('date') === 'latest' || cftcDate(params.get('date')) === params.get('date');
+}
+export function canonicalMarketViewQuery(query, cohortIds = MARKET_COHORT_IDS) {
+  if (typeof query !== 'string' || query.length > MARKET_VIEW_QUERY_MAX) return { query: null, migrated: false };
+  const migrated = migrateMarketViewQuery(query);
+  const params = new URLSearchParams(migrated.query);
+  if (!validSavedViewParams(params, cohortIds)) return { query: null, migrated: migrated.migrated };
+  return { query: marketViewQuery(parseMarketView(params, cohortIds)), migrated: migrated.migrated };
+}
+export function marketSavedViewSummary(query, cohortIds = MARKET_COHORT_IDS) {
+  const view = parseMarketView(query, cohortIds);
+  if (view.tab === 'positioning') {
+    const family = CFTC_FAMILIES[view.cftcFamily];
+    const group = family.groups.find(item => item.id === view.cftcGroup)?.label || view.cftcGroup;
+    return `${family.shortLabel} futures only · CFTC ${view.cftcContract} · ${group} · ${CFTC_HISTORY_REPORTS[view.cftcHistory]} prior reports`;
+  }
+  if (view.tab === 'fundamentals') return `Fundamental Lab · ${view.basis === 'ttm' ? 'Latest TTM' : 'Annual'} SEC fundamentals`;
+  const tab = { overview: 'Market briefing', sectors: 'Sector heatmap', companies: 'Company screener', saved: 'Saved research' }[view.tab] || 'Market research';
+  const detail = view.tab === 'companies' ? ` · ${view.screen}${view.query ? ` · “${view.query}”` : ''}` : '';
+  return `${tab} · ${view.basis === 'ttm' ? 'Latest TTM' : 'Annual'} SEC fundamentals${detail}`;
+}
+export function cftcPercentileForHistory(group, historyWindow) {
+  const required = CFTC_HISTORY_REPORTS[historyWindow] || CFTC_HISTORY_REPORTS['5y'];
+  const candidates = [group?.percentile, ...(Array.isArray(group?.shorterPercentiles) ? group.shorterPercentiles : [])];
+  return candidates.find(item => item?.required === required) || { value: null, reason: 'insufficient_history', observations: 0, required, comparisonRange: { observations: 0, earliest: null, latest: null } };
+}
+export function cftcHeatCellDescription({ family, row, group, groupLabel, display, historyWindow }) {
+  const percentile = cftcPercentileForHistory(group, historyWindow);
+  const value = display === 'percentile' ? percentile.value : group?.netPctOi;
+  const valueLabel = Number.isFinite(value) ? `${Number(value).toFixed(1)}%` : 'unavailable';
+  const weekly = Number.isFinite(group?.oneWeekNetPctChange) ? `${group.oneWeekNetPctChange > 0 ? '+' : ''}${Number(group.oneWeekNetPctChange).toFixed(1)} percentage points` : 'unavailable';
+  const comparisonRange = percentile?.comparisonRange;
+  const range = comparisonRange?.earliest && comparisonRange?.latest ? `${comparisonRange.earliest} to ${comparisonRange.latest}` : 'unavailable';
+  const observations = comparisonRange?.observations ?? percentile.observations;
+  const metric = display === 'percentile' ? `${percentile.required}-prior-report within-series percentile` : 'net as a percentage of open interest';
+  return `${family} futures only; ${row.launchLabel || row.contractName}; CFTC ${row.code}; ${row.exchange || 'venue unavailable'}; ${groupLabel}; report ${row.reportDate}; ${metric}: ${valueLabel}; exact-week change in net/open interest: ${weekly}; percentile comparison ${observations} of ${percentile.required} prior reports, ${range}.`;
 }
 export function selectMarketCompanies(companies, view, watchlist, observedAt) {
   const query = view.query.toLowerCase().trim();
@@ -109,13 +248,26 @@ export function selectMarketCompanies(companies, view, watchlist, observedAt) {
     return (view.direction === 'asc' ? difference : -difference) || a.ticker.localeCompare(b.ticker);
   });
 }
-export function parseMarketSaved(raw) {
+export function parseMarketSaved(raw, cohortIds = MARKET_COHORT_IDS) {
   if (!raw) return { version: 1, watchlist: [], views: [], baselines: {} };
   const saved = JSON.parse(raw);
   if (saved.version !== 1 || !Array.isArray(saved.watchlist) || !Array.isArray(saved.views)) throw new Error('Saved Market research could not be read. Your existing saved data has been preserved.');
-  return { version: 1, watchlist: [...new Set(saved.watchlist.filter((t) => typeof t === 'string' && /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(t)))],
-    views: saved.views.filter((v) => typeof v.name === 'string' && typeof v.query === 'string').slice(0, 12),
-    baselines: saved.baselines && typeof saved.baselines === 'object' && !Array.isArray(saved.baselines) ? saved.baselines : {} };
+  let migrated = false, rejected = Math.max(0, saved.views.length - 12);
+  const views = saved.views.slice(0, 12).flatMap(view => {
+    if (!view || typeof view.name !== 'string' || !view.name.trim() || typeof view.query !== 'string') { rejected += 1; return []; }
+    const result = canonicalMarketViewQuery(view.query, cohortIds); migrated ||= result.migrated;
+    if (result.query == null) { rejected += 1; return []; }
+    return [{ name: view.name.trim().slice(0, 60), query: result.query }];
+  });
+  const sanitized = sanitizeMarketBaselines(saved.baselines);
+  migrated ||= sanitized.migrated;
+  const notices = [];
+  if (migrated) notices.push(MARKET_PROVIDER_RETIREMENT_NOTICE);
+  else if (typeof saved.migrationNotice === 'string' && saved.migrationNotice.includes('saved price-model view')) notices.push(MARKET_PROVIDER_RETIREMENT_NOTICE);
+  if (rejected) notices.push(`${rejected} saved ${rejected === 1 ? 'view was' : 'views were'} not restored because its filters were unsupported or malformed; no replacement screening rule was applied.`);
+  return { version: 1, watchlist: [...new Set(saved.watchlist.filter((t) => typeof t === 'string' && /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(t)))], views,
+    baselines: sanitized.baselines,
+    ...(notices.length ? { migrationNotice: notices.join(' ') } : {}) };
 }
 export function baselineChanges(before, after, basis) {
   if (!before || before.version !== after.version) return [];
@@ -141,7 +293,7 @@ export function marketBrief(companies, view, data, url) {
   return [`# SEC Market research brief`, `Data observed: ${data.generatedAt}`, `View: ${url}`, `Scope: ${scope} · ${companies.length} companies in this screen`,
     `Basis: ${view.basis === 'ttm' ? 'Quarter-end balances and trailing twelve months' : 'Annual financial statements'}`,
     `Filter: ${view.screen}; search: ${view.query || 'none'}; sort: ${view.sort} ${view.direction}.`, '',
-    '## Methodology', `${data.coverage ? `Coverage: ${data.companies.length} of ${data.requested} targeted SEC issuers, shared with Quant Lab. Each issuer belongs to one primary sector; optional research themes can overlap. Fund holdings are a coverage proxy, not certified current index membership. Sources: ${data.coverage.sources.map(source => `${source.fund} (${source.as_of}): ${source.url}`).join('; ')}.` : 'Curated research cohorts, not the entire stock market. Cohorts can overlap.'} Fiscal ends differ. Missing metrics are excluded from their own denominators. No stock-price, return, credit-rating, or default-probability signals are inferred.`,
+    '## Methodology', `${data.coverage ? `Coverage: ${data.companies.length} of ${data.requested} targeted SEC issuers, shared with Fundamental Lab. Each issuer belongs to one primary sector; optional research themes can overlap. Fund holdings are a coverage proxy, not certified current index membership. Sources: ${data.coverage.sources.map(source => `${source.fund} (${source.as_of}): ${source.url}`).join('; ')}.` : 'Curated research cohorts, not the entire stock market. Cohorts can overlap.'} Fiscal ends differ. Missing metrics are excluded from their own denominators. No stock-price, return, credit-rating, or default-probability signals are inferred.`,
     'Flow ratios require positive revenue; growth requires positive revenue for the comparable prior year. Free cash flow is operating cash flow less absolute PP&E purchases. Financial-company cash flows and capital structures require sector-specific interpretation.', '',
     ...MARKET_METRICS.slice(0, 9).map((m) => `${m.label}: ${m.formula}.`), '', '## Companies',
     ...companies.map((c) => `### ${c.ticker} — ${c.name}\nReporting end: ${c.reports[view.basis]?.end || 'Unavailable'}; filed: ${c.reports[view.basis]?.filed || 'Unavailable'}.\n${MARKET_METRICS.map((m) => `${m.label}: ${formatMarket(c.metrics[view.basis]?.[m.key], m.unit)}`).join('; ')}\nSEC facts: https://data.sec.gov/api/xbrl/companyfacts/CIK${c.cik}.json`),

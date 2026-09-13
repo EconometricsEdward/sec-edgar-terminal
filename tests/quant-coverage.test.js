@@ -4,9 +4,10 @@ import { randomBytes } from 'node:crypto';
 import seed from '../src/data/quant-coverage.json' with { type: 'json' };
 import { QUANT_GROUPS, QUANT_BATCHES, quantBatch } from '../src/utils/quantGroups.js';
 import { parseHoldingsCsv } from '../src/utils/quantMembership.js';
-import { filingFingerprint, needsFactsRefresh, membershipId } from '../src/utils/quantCoverageServer.js';
+import { filingFingerprint, needsFactsRefresh, membershipId, QUANT_ATLAS_CACHE, QUANT_COMPANY_CACHE, QUANT_COVERAGE_CACHE } from '../src/utils/quantCoverageServer.js';
+import { cacheDeploymentScope } from '../src/utils/cacheScope.js';
 import { readSnapshot, writeSnapshot } from '../src/utils/snapshotCache.js';
-import { computeCoMovement, buildUniverseSnapshot } from '../src/utils/marketUniverse.js';
+import { buildUniverseSnapshot } from '../src/utils/marketUniverse.js';
 import { chooseUniversePublication } from '../src/utils/marketUniverseServer.js';
 import { GET as cron } from '../src/app/api/cron/quant-coverage/route.js';
 
@@ -14,11 +15,21 @@ test('coverage manifest maps 1,505 exposures to 1,500 unique issuers in bounded 
   assert.equal(seed.securities, 1505); assert.equal(seed.issuers, 1500);
   assert.equal(new Set(seed.rows.map(r => r.cik)).size, 1500);
   assert.equal(seed.rows.reduce((n, r) => n + r.aliases.length, 0), 1505);
-  assert.ok(seed.rows.every(r => QUANT_GROUPS.some(g => g.label === r.sector && g.proxy)));
+  assert.ok(seed.rows.every(r => QUANT_GROUPS.some(g => g.label === r.sector)));
   const buckets = Array.from({ length: QUANT_BATCHES }, (_, i) => seed.rows.filter(r => quantBatch(r.cik) === i));
   assert.equal(buckets.flat().length, 1500); assert.ok(buckets.every(b => b.length <= 120));
   assert.equal(membershipId(seed), membershipId({ ...seed, checked_at: '2030-01-01' }));
   assert.notEqual(membershipId(seed), membershipId({ ...seed, rows: seed.rows.slice(1) }));
+});
+
+test('quant cache namespaces isolate production, preview commits and local work', () => {
+  assert.equal(cacheDeploymentScope('production', 'abcdef'), 'production');
+  assert.equal(cacheDeploymentScope('preview', 'abcdef1234567890'), 'preview-abcdef123456');
+  assert.equal(cacheDeploymentScope('preview', ''), 'preview-unknown');
+  assert.equal(cacheDeploymentScope('development', 'abcdef'), 'local');
+  assert.match(QUANT_COVERAGE_CACHE, /^quant-coverage-v2:(?:local|production|preview-[a-z0-9]+)$/);
+  assert.match(QUANT_COMPANY_CACHE, /^quant-company-v2:(?:local|production|preview-[a-z0-9]+)$/);
+  assert.match(QUANT_ATLAS_CACHE, /^quant-atlas-v2:(?:local|production|preview-[a-z0-9]+)$/);
 });
 
 test('holdings parser handles class shares, quoted names, duplicates and completeness gates', () => {
@@ -58,41 +69,41 @@ test('immutable chunks round-trip and a failed write cannot replace a completed 
   assert.equal(await readSnapshot('test', 'current', store), null);
 });
 
-test('linear co-movement exactly matches brute-force correlations on the same complete sample', () => {
-  const benchmark = Array.from({ length: 126 }, (_, i) => ({ key: String(i), startDate: `s${i}`, endDate: `e${i}` }));
-  const rows = Array.from({ length: 20 }, (_, i) => ({ ticker: `T${i}` }));
-  const vectors = rows.map((_, j) => benchmark.map((_, t) => j === 0 ? 0 : Math.sin(t * .17 + j) * .01 + Math.cos(t * .041 * j) * .005));
-  const maps = new Map(rows.map((r, i) => [r.ticker, new Map(benchmark.map((b, t) => [b.key, vectors[i][t]]))]));
-  const result = computeCoMovement(rows, maps, benchmark); assert.equal(result.issuers, 19);
-  for (const [start, actual] of [[0, result.prior.mean], [63, result.current.mean]]) {
-    let sum = 0, count = 0;
-    const centered = vectors.slice(1).map(v => { const x = v.slice(start, start + 63), mean = x.reduce((a, b) => a + b, 0) / 63; return x.map(value => value - mean); });
-    for (let i = 0; i < centered.length; i++) for (let j = i + 1; j < centered.length; j++) {
-      const x = centered[i], y = centered[j];
-      sum += x.reduce((n, v, t) => n + v * y[t], 0) / Math.sqrt(x.reduce((n, v) => n + v * v, 0) * y.reduce((n, v) => n + v * v, 0)); count++;
-    }
-    assert.ok(Math.abs(actual - sum / count) < 1e-12); assert.equal(result.pairs, count);
-  }
-});
-
-test('membership change starts a new history segment and unknown sectors never inherit industrial beta', () => {
+test('membership change starts a new history segment and unknown sectors remain unclassified', () => {
   const now = new Date('2026-09-10'), company = { ticker: 'X', cik: '1', name: 'X', sic: '1234', cohorts: [] };
   const atlas = { generatedAt: now.toISOString(), requested: 1, companies: [company] };
   const previous = buildUniverseSnapshot(atlas, {}, { now }); previous.history = [{ sec_snapshot_at: '2026-09-01' }];
   const next = buildUniverseSnapshot({ ...atlas, coverage: { membership_id: 'new' } }, {}, { now });
   const result = chooseUniversePublication(previous, next, now.getTime());
   assert.equal(result.history.length, 1); assert.match(result.history_note, /Coverage membership changed/);
-  assert.equal(next.rows[0].sector_proxy, null); assert.equal(next.scopes.unclassified.companies, 1);
+  assert.equal('sector_proxy' in next.rows[0], false); assert.equal(next.scopes.unclassified.companies, 1);
 });
 
 test('coverage refresh endpoints require authorization and reject unbounded batches', async () => {
   let response = await cron(new Request('https://example.test/api/cron/quant-coverage?batch=0'));
   assert.equal(response.status, 401); assert.equal(response.headers.get('cache-control'), 'private, no-store');
-  const original = process.env.CRON_SECRET; process.env.CRON_SECRET = 'test';
+  const original = process.env.CRON_SECRET, originalEnvironment = process.env.VERCEL_ENV;
+  process.env.CRON_SECRET = 'test'; process.env.VERCEL_ENV = 'production';
   try {
     for (const query of ['batch=16', 'batch=-1', 'batch=0&batch=1', 'batch=0&membership=1', 'membership=2', '']) {
       response = await cron(new Request(`https://example.test/api/cron/quant-coverage?${query}`, { headers: { authorization: 'Bearer test' } }));
       assert.equal(response.status, 400); assert.equal(response.headers.get('cache-control'), 'private, no-store');
     }
-  } finally { if (original === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = original; }
+  } finally {
+    if (original === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = original;
+    if (originalEnvironment === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = originalEnvironment;
+  }
+});
+
+test('authorized preview deployments cannot mutate quant coverage caches', async () => {
+  const original = process.env.CRON_SECRET, originalEnvironment = process.env.VERCEL_ENV;
+  process.env.CRON_SECRET = 'test'; process.env.VERCEL_ENV = 'preview';
+  try {
+    const response = await cron(new Request('https://example.test/api/cron/quant-coverage?batch=0', { headers: { authorization: 'Bearer test' } }));
+    assert.equal(response.status, 403);
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+  } finally {
+    if (original === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = original;
+    if (originalEnvironment === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = originalEnvironment;
+  }
 });

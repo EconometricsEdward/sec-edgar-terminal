@@ -10,12 +10,9 @@ import {
  * Props:
  *   cik:       Padded 10-digit CIK string
  *   filings:   array of all filings from submissions API (we filter for form==='4')
- *   onMarkersReady: callback({ markers: [] }) invoked when chart markers are computed,
- *                   so the parent StockPriceChart can overlay them.
- *
  * Fetches up to 20 most recent Form 4s, parses XML, displays transactions table.
  */
-export default function InsiderActivity({ cik, filings, onMarkersReady }) {
+export default function InsiderActivity({ cik, filings }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -64,31 +61,6 @@ export default function InsiderActivity({ cik, filings, onMarkersReady }) {
     fetchData();
     return () => { cancelled = true; };
   }, [cik, accessionsParam]);
-
-  // Compute chart markers whenever data changes, pass up to parent
-  useEffect(() => {
-    if (!onMarkersReady) return;
-    if (!data?.transactions) {
-      onMarkersReady([]);
-      return;
-    }
-    // Filter to open-market buys/sells only (P and S codes) — other codes are noise on a chart
-    const markers = data.transactions
-      .filter((tx) => tx.direction === 'buy' || tx.direction === 'sell')
-      .filter((tx) => tx.value && tx.value > 10000) // filter tiny transactions
-      .map((tx) => ({
-        date: tx.date,
-        direction: tx.direction,
-        ownerName: tx.ownerName,
-        relationship: tx.relationship,
-        shares: tx.shares,
-        price: tx.price,
-        value: tx.value,
-        accession: tx.accession,
-        xmlUrl: tx.xmlUrl,
-      }));
-    onMarkersReady(markers);
-  }, [data, onMarkersReady]);
 
   if (form4Accessions.length === 0) {
     return (
@@ -268,7 +240,7 @@ export default function InsiderActivity({ cik, filings, onMarkersReady }) {
       <p className="p-4 text-[10px] text-stone-600 leading-relaxed border-t border-stone-800">
         Parsed from SEC Form 4 XML filings. Only the {form4Accessions.length} most recent Form 4s are shown.
         Open-market buys (code P) and sells (code S) are highlighted; awards, gifts, tax withholdings, and
-        option exercises are shown but marked separately. Chart markers above show buys/sells only.
+        option exercises are shown but marked separately.
       </p>
     </div>
   );

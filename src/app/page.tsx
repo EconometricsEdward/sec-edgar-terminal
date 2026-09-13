@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ArrowUpRight,
+  Activity,
   BarChart3,
   FileSearch,
   FileText,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import HomeResearch from "../components/site/HomeResearch";
 import ResearchWorkflow from "../components/site/ResearchWorkflow";
+import { isCftcEnabled } from "../utils/cftcFeature.js";
 import styles from "./home.module.css";
 
 const tools = [
@@ -47,24 +49,35 @@ const tools = [
     icon: Globe2,
     href: "/market",
     number: "05",
-    text: "Explore covered companies by sector, screen fundamentals, and build a company watchlist.",
+    text: "Explore covered companies by sector, screen SEC fundamentals, and build a company watchlist.",
+  },
+  {
+    title: "CFTC Positioning",
+    icon: Activity,
+    href: "/market?tab=positioning",
+    number: "06",
+    text: "Compare official futures-only COT positioning by contract, participant group, and report date.",
   },
   {
     title: "Funds",
     icon: Wallet,
     href: "/fund",
-    number: "06",
+    number: "07",
     text: "Inspect reported fund holdings, portfolio concentration, overlap, and N-PORT source documents.",
   },
   {
     title: "Disclosures",
     icon: FileSearch,
     href: "/disclosures",
-    number: "07",
+    number: "08",
     text: "Search filing language, compare passages, and collect quotations for a research brief.",
   },
 ];
 export default function HomePage() {
+  const cftcEnabled = isCftcEnabled();
+  const availableTools = tools.filter(
+    (tool) => cftcEnabled || tool.href !== "/market?tab=positioning",
+  );
   return (
     <div className={styles.page}>
       <section className={styles.hero}>
@@ -95,7 +108,7 @@ export default function HomePage() {
         </div>
         <ResearchWorkflow />
       </section>
-      <HomeResearch />
+      <HomeResearch cftcEnabled={cftcEnabled} />
       <section aria-labelledby="tools-title">
         <div className={styles.sectionHeading}>
           <div>
@@ -107,7 +120,7 @@ export default function HomePage() {
           </Link>
         </div>
         <div className={styles.tools}>
-          {tools.map((tool) => (
+          {availableTools.map((tool) => (
             <Link
               href={tool.href}
               key={tool.title}
@@ -134,8 +147,8 @@ export default function HomePage() {
           <p>
             Reported financials and filing text come from SEC records.
             Calculations, missing data, reporting dates, and limited search
-            windows need context. Fund holdings are historical reports;
-            supplementary market data is labeled separately.
+            windows need context. Fund holdings are historical reports
+            {cftcEnabled && "; official CFTC positioning is labeled and sourced separately"}.
           </p>
         </div>
         <Link href="/help#coverage">

@@ -5,16 +5,31 @@ import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary } from 
 import { MARKET_ATLAS_FRESH_MS, MARKET_VERSION, metricStats } from './marketResearch.js';
 import { appendSnapshot } from './marketEvidence.js';
 import { secFetch } from './secClient.js';
-import { isMarketAtlas } from './marketResearchValidation.js';
+import { isMarketAtlas, isMarketCompany } from './marketResearchValidation.js';
+import { cacheDeploymentScope } from './cacheScope.js';
 
 const COMPANY_FRESH_MS = MARKET_ATLAS_FRESH_MS;
 const MINIMUM_ATLAS_COVERAGE = 0.95;
 const MARKET_REBUILD_LEASE = 'sec-market-rebuild';
 const MARKET_REBUILD_LEASE_ID = 'global';
+export function marketCompanyCacheNamespace(environment = process.env.VERCEL_ENV, commit = process.env.VERCEL_GIT_COMMIT_SHA) {
+  return `${MARKET_VERSION}:company:${cacheDeploymentScope(environment, commit)}`;
+}
+export const MARKET_COMPANY_CACHE = marketCompanyCacheNamespace();
+export async function readMarketCompanyCache(ticker, read = warmGet) {
+  const value = await read(MARKET_COMPANY_CACHE, ticker);
+  return isMarketCompany(value, MARKET_VERSION, ticker) ? value : null;
+}
+export async function writeMarketCompanyCache(ticker, company, write = warmSet) {
+  if (!isMarketCompany(company, MARKET_VERSION, ticker)) throw new Error('Market company cache record failed validation.');
+  return write(MARKET_COMPANY_CACHE, ticker, company, 7 * 86400);
+}
 const pending = new Map();
 const memory = new Map();
+const companyKey = ticker => `${MARKET_COMPANY_CACHE}:${ticker}`;
 function rememberCompany(ticker, company) {
-  memory.delete(ticker); memory.set(ticker, company);
+  const key = companyKey(ticker);
+  memory.delete(key); memory.set(key, company);
   while (memory.size > 64) memory.delete(memory.keys().next().value);
 }
 let atlas = null;
@@ -32,11 +47,12 @@ async function secJson(path, signal) {
   return response.json();
 }
 export async function loadMarketCompany(ticker, knownEntry = null, { signal, forceRefresh = false } = {}) {
-  const existing = memory.get(ticker);
+  const key = companyKey(ticker);
+  const existing = memory.get(key);
   if (!forceRefresh && existing && Date.now() - Date.parse(existing.observedAt) < COMPANY_FRESH_MS) return existing;
-  if (pending.has(ticker)) return pending.get(ticker);
+  if (pending.has(key)) return pending.get(key);
   const task = (async () => {
-    const cached = await warmGet(MARKET_VERSION, ticker);
+    const cached = await readMarketCompanyCache(ticker);
     if (!forceRefresh && cached && Date.now() - Date.parse(cached.observedAt) < COMPANY_FRESH_MS) { rememberCompany(ticker, cached); return cached; }
     try {
       const entry = knownEntry || await getOperatingTicker(ticker);
@@ -50,7 +66,7 @@ export async function loadMarketCompany(ticker, knownEntry = null, { signal, for
         acceptanceTimes: marketAcceptanceTimes(submissions) },
         MARKET_LENSES.filter((c) => c.tickers.includes(ticker)).map((c) => c.id));
       rememberCompany(ticker, company);
-      await warmSet(MARKET_VERSION, ticker, company, 7 * 86400);
+      await writeMarketCompanyCache(ticker, company);
       return company;
     } catch (error) {
       if (cached) {
@@ -61,8 +77,8 @@ export async function loadMarketCompany(ticker, knownEntry = null, { signal, for
       throw error;
     }
   })();
-  pending.set(ticker, task);
-  try { return await task; } finally { pending.delete(ticker); }
+  pending.set(key, task);
+  try { return await task; } finally { pending.delete(key); }
 }
 
 export async function loadMarketAtlas({ signal, forceRefresh = false } = {}) {

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "25090813874A001",
+    "market_and_exchange_names": "E-MINI S&P 500 STOCK INDEX - CHICAGO MERCANTILE EXCHANGE",
+    "report_date_as_yyyy_mm_dd": "2026-09-08T00:00:00.000",
+    "contract_market_name": "E-MINI S&P 500",
+    "cftc_contract_market_code": "13874A",
+    "cftc_market_code": "CME",
+    "commodity_name": "S&P 500 STOCK INDEX",
+    "commodity_subgroup_name": "STOCK INDICES",
+    "commodity_group_name": "FINANCIAL AND METALS",
+    "open_interest_all": "410",
+    "contract_units": "$50 X S&P 500 INDEX",
+    "futonly_or_combined": "FutOnly",
+    "dealer_positions_long_all": "100",
+    "dealer_positions_short_all": "90",
+    "dealer_positions_spread_all": "10",
+    "asset_mgr_positions_long": "120",
+    "asset_mgr_positions_short": "100",
+    "asset_mgr_positions_spread": "20",
+    "lev_money_positions_long": "80",
+    "lev_money_positions_short": "110",
+    "lev_money_positions_spread": "10",
+    "other_rept_positions_long": "50",
+    "other_rept_positions_short": "45",
+    "other_rept_positions_spread": "5",
+    "nonrept_positions_long_all": "15",
+    "nonrept_positions_short_all": "20"
+  }
+]

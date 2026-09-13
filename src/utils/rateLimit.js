@@ -155,8 +155,9 @@ export function getClientIp(request) {
  */
 export function rateLimitedResponse(info, extraHeaders = {}) {
   const retryAfter = String(Math.max(1, Math.ceil((info.resetAt - Date.now()) / 1000)));
+  const schemaVersion = extraHeaders['X-Schema-Version'] || extraHeaders['x-schema-version'];
   return Response.json(
-    { error: 'Rate limit exceeded. Please wait a moment before retrying.' },
+    { ...(schemaVersion ? { schema_version: schemaVersion } : {}), error: 'Rate limit exceeded. Please wait a moment before retrying.', code: 'RATE_LIMITED', retryable: true },
     {
       status: 429,
       headers: {

@@ -318,7 +318,7 @@
 @media (max-width:760px) { .factorRunRow,.factorResultHeader,.factorSectionHeading { align-items:stretch; flex-direction:column; } .factorStatusGroup { align-items:flex-start; } .factorRunRow .primary { width:100%; } .factorFilingRefs,.factorClocks,.factorCaveatGrid,.factorRegimeGrid { grid-template-columns:1fr; } .factorRollingSummary { justify-content:flex-start; } .factorMapLabel { text-align:left; } }
 @media (max-width:430px) { .factorControlGrid,.factorMetricGrid,.factorScenarioResults { grid-template-columns:1fr; } .factorScenarioResults p { grid-column:auto; } .factorIntro { padding:17px; } .factorEquationGrid code { font-size:10px; } .factorMapSvg { min-width:440px; } .factorChartSvg { min-width:620px; } .factorMapQuadrant { display:none; } .factorMapAxisLabel,.factorChartLabel { font-size:12px; } .factorMapNeutralLabel { font-size:11px; } .factorGap > strong { font-size:38px; } .factorInfluenceList > div { grid-template-columns:24px 1fr 70px; } .factorInfluenceList > div > div { grid-column:2/-1; grid-row:2; } }
 
-/* Plain-language Factor Lab: definitions stay close to values; detail is opt-in. */
+/* Plain-language Fundamental Lab: definitions stay close to values; detail is opt-in. */
 .factorIntro { grid-template-columns:1fr; gap:16px; }
 .factorIntroCopy > p { max-width:900px; font-size:1rem; }
 .factorEquationDetails summary { cursor:pointer; color:var(--m-accent); font-size:.875rem; }
@@ -374,5 +374,5 @@
 
 .factorUniverseHero { padding-block:20px; margin-bottom:8px; }
 .factorUniverseHero h1 { font-size:2.5rem; line-height:1.15; }
-.factorUniverseHero .heroAside { display:none; }
+.factorUniverseHero .heroAside { align-self:start; }
 .factorUniverseHero p { max-width:900px; font-size:1rem; }

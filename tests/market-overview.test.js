@@ -46,11 +46,11 @@ test('Heatmap selections, tab navigation and exports retain the expanded scope',
   const rows = selectMarketCompanies(overview.companies, selected, [], overview.generatedAt);
   assert.deepEqual(rows.map(r => r.ticker), ['NEW']);
   assert.equal(updateMarketView(selected, { tab: 'overview' }).cohort, 'sector-0');
-  assert.equal(updateMarketView(selected, { tab: 'factors' }).cohort, 'sector-0');
-  assert.equal(updateMarketView({ ...selected, cohort: 'theme' }, { tab: 'factors' }).cohort, 'all');
+  assert.equal(updateMarketView(selected, { tab: 'fundamentals' }).cohort, 'sector-0');
+  assert.equal(updateMarketView({ ...selected, cohort: 'theme' }, { tab: 'fundamentals' }).cohort, 'all');
   const csv = marketCsv(rows, 'ttm', overview.generatedAt, overview);
   assert.equal(csv.split('\r\n').length, 2); assert.match(csv, /Primary sector/); assert.match(csv, /membership-a/);
-  assert.match(marketBrief(rows, selected, overview, 'https://example.test/market'), /shared with Quant Lab/);
+  assert.match(marketBrief(rows, selected, overview, 'https://example.test/market'), /shared with Fundamental Lab/);
 });
 
 test('Public projection does not invent observations and scheduled history resets when membership changes', () => {

@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 
 export const SITE_URL = 'https://secedgarterminal.com';
 export const SITE_NAME = 'EDGAR Terminal';
-export const OG_IMAGE_URL = `${SITE_URL}/og-image.png`;
+export const OG_IMAGE_URL = `${SITE_URL}/opengraph-image`;
 
 const OG_IMAGE = {
   url: OG_IMAGE_URL,
   width: 1200,
   height: 630,
-  alt: 'EDGAR Terminal interface for source-linked SEC filings and financial analysis',
+  alt: 'EDGAR Terminal for source-linked SEC research and separate official CFTC positioning',
 };
 
 interface PageMetadataInput {

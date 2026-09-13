@@ -2,10 +2,10 @@
 
 import GlobalSearchBar from "./GlobalSearchBar.jsx";
 
-export default function HeaderSearchWrapper() {
+export default function HeaderSearchWrapper({ cftcEnabled = true }: { cftcEnabled?: boolean }) {
   return (
     <div className="header-command-search w-full">
-      <GlobalSearchBar />
+      <GlobalSearchBar cftcEnabled={cftcEnabled} />
     </div>
   );
 }

@@ -5,12 +5,11 @@
  * when the CDN cache misses. The layering is:
  *
  *   Request -> Vercel edge CDN (60s-24h) -> API route -> warm cache (Vercel KV)
- *                                                    -> upstream (SEC/Yahoo/etc)
+ *                                                    -> allowlisted public sources
  *
- * The CDN is the fastest layer and handles the bulk of traffic for popular
- * tickers. The warm cache catches cold-CDN requests (e.g. after expiry, or
- * for a brand-new ticker that was just added to the popular list) and keeps
- * them from having to hit upstream.
+ * The CDN is the fastest layer and handles the bulk of repeated traffic. The
+ * warm cache catches cold-CDN requests after edge expiry and retains prepared
+ * datasets without forcing every reader back to a public upstream source.
  *
  * Keys are namespaced: `warm:<type>:<ticker>` so multiple data types for the
  * same ticker don't collide.
@@ -261,6 +260,38 @@ export function warmCacheEnabled() {
   return ENABLED;
 }
 
+/**
+ * Read a bounded page of members from an audited raw Redis set. This is kept
+ * separate from the `warm:*` helpers because a small number of operational
+ * sets predate the namespaced cache. Callers must provide a fixed internal key;
+ * request input must never reach this helper.
+ */
+export async function warmReadRawSetMembers(rawKey, maxMembers = 100) {
+  if (!ENABLED) return [];
+  if (typeof rawKey !== 'string' || !/^[a-z0-9:_-]{3,120}$/i.test(rawKey) || !Number.isSafeInteger(maxMembers) || maxMembers < 1 || maxMembers > 250) return null;
+  try {
+    let cursor = '0';
+    const members = new Set();
+    for (let page = 0; page < 8 && members.size < maxMembers; page += 1) {
+      const response = await fetch(REST_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(['SSCAN', rawKey, cursor, 'COUNT', String(Math.min(100, maxMembers))]),
+        signal: AbortSignal.timeout(3000),
+      });
+      const data = await response.json();
+      const nextCursor = String(data?.result?.[0] ?? ''), values = data?.result?.[1];
+      if (!response.ok || !/^\d+$/.test(nextCursor) || !Array.isArray(values) || values.some(value => typeof value !== 'string')) return null;
+      values.slice(0, maxMembers - members.size).forEach(value => members.add(value));
+      cursor = nextCursor;
+      if (cursor === '0') break;
+    }
+    return [...members];
+  } catch {
+    return null;
+  }
+}
+
 /** Remove only explicitly named reproducible cache values, in bounded batches. */
 export async function warmDeleteMany(type, ids) {
   if (!ENABLED) return null;
@@ -277,4 +308,62 @@ export async function warmDeleteMany(type, ids) {
     } catch { return null; }
   }
   return removed;
+}
+
+/**
+ * Delete a bounded page of keys whose cache type starts with an audited prefix.
+ * This low-level helper is for versioned migrations; public callers must never
+ * supply the prefix or cursor.
+ */
+export async function warmDeleteTypePrefix(typePrefix, cursor = '0', maxKeys = 500) {
+  if (!ENABLED) return null;
+  if (typeof typePrefix !== 'string' || !/^[a-z0-9.:_-]{3,80}$/i.test(typePrefix) || !/^\d+$/.test(String(cursor)) || !Number.isSafeInteger(maxKeys) || maxKeys < 1 || maxKeys > 2500) return null;
+  try {
+    const response = await fetch(REST_URL, { method: 'POST', headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(['SCAN', String(cursor), 'MATCH', `warm:${typePrefix}:*`, 'COUNT', String(maxKeys)]), signal: AbortSignal.timeout(5000) });
+    const data = await response.json();
+    const nextCursor = String(data?.result?.[0] ?? ''), found = data?.result?.[1];
+    const keys = Array.isArray(found) ? found.slice(0, maxKeys) : found;
+    if (!response.ok || !/^\d+$/.test(nextCursor) || !Array.isArray(keys) || keys.some(item => typeof item !== 'string' || !item.startsWith(`warm:${typePrefix}:`))) return null;
+    let removed = 0;
+    for (let offset = 0; offset < keys.length; offset += 100) {
+      const deletion = await fetch(REST_URL, { method: 'POST', headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(['DEL', ...keys.slice(offset, offset + 100)]), signal: AbortSignal.timeout(5000) });
+      const result = await deletion.json();
+      if (!deletion.ok || !Number.isSafeInteger(result?.result)) return null;
+      removed += result.result;
+    }
+    const overflow = Array.isArray(found) && found.length > keys.length;
+    return { cursor: overflow ? '0' : nextCursor, matched: keys.length, removed, complete: !overflow && nextCursor === '0' };
+  } catch { return null; }
+}
+
+/** Delete exact raw Redis keys selected by an internal migration. */
+export async function warmDeleteRawMany(rawKeys) {
+  if (!ENABLED) return null;
+  if (!Array.isArray(rawKeys) || !rawKeys.length || rawKeys.length > 100 || rawKeys.some(item => typeof item !== 'string' || !/^[a-z0-9:_-]{3,120}$/i.test(item))) return null;
+  try {
+    const response = await fetch(REST_URL, { method: 'POST', headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(['DEL', ...rawKeys]), signal: AbortSignal.timeout(5000) });
+    const data = await response.json();
+    return response.ok && Number.isSafeInteger(data?.result) ? data.result : null;
+  } catch { return null; }
+}
+
+/** Delete one bounded page of raw analytics keys from an audited migration. */
+export async function warmDeleteRawPrefix(rawPrefix, cursor = '0', maxKeys = 500) {
+  if (!ENABLED) return null;
+  if (typeof rawPrefix !== 'string' || !/^[a-z0-9:_-]{3,80}$/i.test(rawPrefix) || !/^\d+$/.test(String(cursor)) || !Number.isSafeInteger(maxKeys) || maxKeys < 1 || maxKeys > 2500) return null;
+  try {
+    const response = await fetch(REST_URL, { method: 'POST', headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(['SCAN', String(cursor), 'MATCH', `${rawPrefix}*`, 'COUNT', String(maxKeys)]), signal: AbortSignal.timeout(5000) });
+    const data = await response.json();
+    const nextCursor = String(data?.result?.[0] ?? ''), found = data?.result?.[1];
+    const keys = Array.isArray(found) ? found.slice(0, maxKeys) : found;
+    if (!response.ok || !/^\d+$/.test(nextCursor) || !Array.isArray(keys) || keys.some(item => typeof item !== 'string' || !item.startsWith(rawPrefix))) return null;
+    let removed = 0;
+    for (let offset = 0; offset < keys.length; offset += 100) {
+      const batchRemoved = await warmDeleteRawMany(keys.slice(offset, offset + 100));
+      if (batchRemoved == null) return null;
+      removed += batchRemoved;
+    }
+    const overflow = Array.isArray(found) && found.length > keys.length;
+    return { cursor: overflow ? '0' : nextCursor, matched: keys.length, removed, complete: !overflow && nextCursor === '0' };
+  } catch { return null; }
 }

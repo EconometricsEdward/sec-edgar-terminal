@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { loadMarketCompany } from '../../../utils/marketResearchServer.js';
+import { loadMarketCompany, MARKET_COMPANY_CACHE } from '../../../utils/marketResearchServer.js';
 import { readMarketOverview } from '../../../utils/marketOverviewServer.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
 
@@ -10,7 +10,7 @@ export async function GET(request) {
   const ticker = new URL(request.url).searchParams.get('ticker')?.trim().toUpperCase();
   if (ticker !== undefined && !/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(ticker)) return NextResponse.json({ error: 'Choose a company from the Market research universe.' }, { status: 400, headers: { 'Cache-Control': 'private, no-store' } });
   const limit = await checkRateLimit({
-    key: `rl:market-research:${getClientIp(request)}`,
+    key: `rl:market-research:${MARKET_COMPANY_CACHE}:${getClientIp(request)}`,
     windowMs: 10 * 60_000,
     max: 60,
     // The shared SEC gate and distributed atlas lease account for upstream

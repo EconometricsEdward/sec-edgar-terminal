@@ -5,6 +5,7 @@ export const maxDuration=300;
 export async function GET(request){
   const headers={'Cache-Control':'private, no-store'};
   if(!process.env.CRON_SECRET||request.headers.get('authorization')!==`Bearer ${process.env.CRON_SECRET}`)return Response.json({error:'Unauthorized'},{status:401,headers});
+  if(process.env.VERCEL_ENV!=='production')return Response.json({error:'Fundamental Lab publication runs only in production.'},{status:403,headers});
   const controller=new AbortController(),deadline=Date.now()+285000;
   const timer=setTimeout(()=>controller.abort(new Error('Universe refresh deadline reached.')),260000);
   try{return Response.json(await refreshUniverseSnapshot({signal:controller.signal,deadline}),{headers});}

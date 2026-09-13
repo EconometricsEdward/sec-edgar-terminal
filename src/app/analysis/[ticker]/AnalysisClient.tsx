@@ -12,7 +12,6 @@ import { MetricChart as MetricChartImpl } from '../../../components/MetricChart.
 import CompanyOverview from '../../../components/research/CompanyOverview';
 import FilingChangesPanel from '../../../components/research/FilingChangesPanel';
 import EvidenceProvider, { useEvidence } from '../../../components/research/EvidenceProvider';
-import StockPriceChartImpl from '../../../components/StockPriceChart.jsx';
 import InsiderActivityImpl from '../../../components/InsiderActivity.jsx';
 import HoldersSectionImpl from '../../../components/HoldersSection.jsx';
 import ConceptHistoryModalImpl from '../../../components/ConceptHistoryModal.jsx';
@@ -50,7 +49,6 @@ import { classifyIndustry, industryLabel, industryDisclosure, INDUSTRY_GROUPS } 
 // runtime behavior is unchanged.
 // ============================================================================
 const MetricChart = MetricChartImpl as any;
-const StockPriceChart = StockPriceChartImpl as any;
 const InsiderActivity = InsiderActivityImpl as any;
 const HoldersSection = HoldersSectionImpl as any;
 const ConceptHistoryModal = ConceptHistoryModalImpl as any;
@@ -89,18 +87,6 @@ interface CompanyState {
   ein?: string;
 }
 
-interface InsiderMarker {
-  date: string;
-  direction: 'buy' | 'sell';
-  ownerName?: string;
-  relationship?: string;
-  shares?: number;
-  price?: number;
-  value?: number;
-  accession?: string;
-  xmlUrl?: string;
-}
-
 interface ConceptToTrace {
   tag: string;
   taxonomy: string;
@@ -116,7 +102,6 @@ const SECTIONS = [
   { id: 'filings-risk', label: 'Filings & Risk', icon: FileText, eyebrow: 'Events and disclosure' },
   { id: 'quality', label: 'Quality', icon: ShieldCheck, eyebrow: 'Operating diagnostics' },
   { id: 'financials', label: 'Financials', icon: DollarSign, eyebrow: 'Statements and ratios' },
-  { id: 'market', label: 'Market', icon: LineChart, eyebrow: 'Price and filing markers' },
   { id: 'ownership', label: 'Ownership', icon: Users, eyebrow: 'Insiders and holders' },
 ];
 
@@ -375,11 +360,6 @@ export default function AnalysisClient({
     window.history.replaceState(null, '', url);
   }
 
-  const [insiderMarkers, setInsiderMarkers] = useState<InsiderMarker[]>([]);
-  const handleInsiderMarkers = useCallback((markers: InsiderMarker[]) => {
-    setInsiderMarkers(markers || []);
-  }, []);
-
   const [conceptToTrace, setConceptToTrace] = useState<ConceptToTrace | null>(null);
 
   // ==========================================================================
@@ -394,7 +374,6 @@ export default function AnalysisClient({
       // Clear state immediately so any previous company's data disappears
       setFacts(null);
       setFilings([]);
-      setInsiderMarkers([]);
       setError(null);
 
       // Fund detection — if already known to be a fund, redirect
@@ -678,7 +657,7 @@ export default function AnalysisClient({
           <p className="text-stone-500 text-sm uppercase tracking-widest mb-2">Financial Analysis</p>
           <p className="text-stone-600 text-xs max-w-md mx-auto">
             Use the search bar above to look up any company by ticker or name.
-            You'll see financial data, industry-specific ratios, stock prices with filing markers,
+            You&apos;ll see financial data, industry-specific ratios,
             disclosure risk radar, quarterly momentum, expense discipline, profitability bridge, earnings quality, growth durability, per-share economics, capital efficiency, asset composition, balance sheet risk, cash conversion, payout coverage, and insider trading activity.
           </p>
           <p className="text-stone-700 text-[10px] max-w-md mx-auto mt-3">
@@ -949,25 +928,11 @@ export default function AnalysisClient({
                 </section>
               )}
 
-              {activeWorkspace === 'market' && (
-                <section id="market" className="space-y-6 scroll-mt-28">
-                  <SectionHeader icon={LineChart} title="Market Timeline" />
-                  {company?.cik && <div hidden><InsiderActivity cik={company.cik} filings={filings} onMarkersReady={handleInsiderMarkers} /></div>}
-                  {chartTicker && filings.length > 0 ? (
-                    <StockPriceChart ticker={chartTicker} filings={filings} insiderMarkers={insiderMarkers} />
-                  ) : (
-                    <div className="panel-card p-8 text-center">
-                      <p className="text-slate-500 text-xs uppercase tracking-widest">Stock chart unavailable</p>
-                    </div>
-                  )}
-                </section>
-              )}
-
               {activeWorkspace === 'ownership' && (
                 <section id="ownership" className="space-y-6 scroll-mt-28">
                   <SectionHeader icon={Users} title="Ownership" />
                   {company?.cik ? (
-                    <InsiderActivity cik={company.cik} filings={filings} onMarkersReady={handleInsiderMarkers} />
+                    <InsiderActivity cik={company.cik} filings={filings} />
                   ) : (
                     <div className="panel-card p-8 text-center">
                       <p className="text-slate-500 text-xs uppercase tracking-widest">Loading insider data...</p>

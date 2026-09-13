@@ -1,0 +1,600 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://secedgarterminal.com/schemas/cftc-markets-v1.schema.json",
+  "title": "EDGAR Terminal CFTC COT Markets v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "calculation_version",
+    "report_family",
+    "report_basis",
+    "report_date",
+    "retrieved_at",
+    "status",
+    "freshness",
+    "source",
+    "groups",
+    "catalog",
+    "launch_codes",
+    "latest",
+    "coverage",
+    "methodology"
+  ],
+  "properties": {
+    "schema_version": { "const": "edgar.cftc-positioning.v1" },
+    "calculation_version": { "const": "cftc-positioning-1.0.0" },
+    "report_family": { "enum": ["tff", "disaggregated"] },
+    "report_basis": { "const": "futures_only" },
+    "report_date": { "type": "string", "format": "date" },
+    "retrieved_at": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["ready", "partial", "stale"] },
+    "refresh_warning": { "type": "string" },
+    "cache_publication": { "$ref": "#/definitions/cachePublication" },
+    "freshness": { "$ref": "#/definitions/freshness" },
+    "source": { "$ref": "#/definitions/source" },
+    "groups": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/groupDefinition" }
+    },
+    "catalog": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/catalogItem" }
+    },
+    "launch_codes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "latest": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/observation" }
+    },
+    "coverage": { "$ref": "#/definitions/marketCoverage" },
+    "quarantine": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/quarantineItem" }
+    },
+    "diagnostics": { "$ref": "#/definitions/diagnostics" },
+    "methodology": { "$ref": "#/definitions/methodology" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "report_family": { "const": "tff" } } },
+      "then": {
+        "properties": {
+          "source": {
+            "properties": {
+              "dataset_id": { "const": "gpe5-46if" },
+              "report_family": { "const": "Traders in Financial Futures" }
+            }
+          },
+          "groups": {
+            "items": {
+              "properties": {
+                "id": {
+                  "enum": [
+                    "dealer",
+                    "asset-manager",
+                    "leveraged-funds",
+                    "other-reportables",
+                    "non-reportables"
+                  ]
+                }
+              }
+            }
+          },
+          "catalog": {
+            "items": { "properties": { "family": { "const": "tff" } } }
+          },
+          "latest": {
+            "items": {
+              "properties": {
+                "family": { "const": "tff" },
+                "groups": {
+                  "propertyNames": {
+                    "enum": [
+                      "dealer",
+                      "asset-manager",
+                      "leveraged-funds",
+                      "other-reportables",
+                      "non-reportables"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "source": {
+            "properties": {
+              "dataset_id": { "const": "72hh-3qpy" },
+              "report_family": { "const": "Disaggregated" }
+            }
+          },
+          "groups": {
+            "items": {
+              "properties": {
+                "id": {
+                  "enum": [
+                    "producer-merchant",
+                    "swap-dealers",
+                    "managed-money",
+                    "other-reportables",
+                    "non-reportables"
+                  ]
+                }
+              }
+            }
+          },
+          "catalog": {
+            "items": {
+              "properties": { "family": { "const": "disaggregated" } }
+            }
+          },
+          "latest": {
+            "items": {
+              "properties": {
+                "family": { "const": "disaggregated" },
+                "groups": {
+                  "propertyNames": {
+                    "enum": [
+                      "producer-merchant",
+                      "swap-dealers",
+                      "managed-money",
+                      "other-reportables",
+                      "non-reportables"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "freshness": {
+            "properties": { "source_report_age_days": { "minimum": 15 } }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "freshness": {
+            "properties": { "source_currency": { "const": "aged" } }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "freshness": {
+            "properties": { "source_currency": { "const": "current" } }
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "cachePublication": {
+      "type": "object",
+      "required": [
+        "cache_required",
+        "primary_persisted",
+        "last_good_persisted",
+        "raw_history_expected",
+        "raw_history_persisted",
+        "durable"
+      ],
+      "properties": {
+        "cache_required": { "type": "boolean" },
+        "primary_persisted": { "type": ["boolean", "null"] },
+        "last_good_persisted": { "type": ["boolean", "null"] },
+        "raw_history_expected": { "type": "integer", "minimum": 0 },
+        "raw_history_persisted": { "type": "integer", "minimum": 0 },
+        "durable": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "nullableNumber": { "type": ["number", "null"] },
+    "nullableString": { "type": ["string", "null"] },
+    "freshness": {
+      "type": "object",
+      "required": [
+        "report_date",
+        "retrieved_at",
+        "cache_status",
+        "source_report_age_days",
+        "source_currency",
+        "source_currency_max_days",
+        "publication_time_verified"
+      ],
+      "properties": {
+        "report_date": { "type": "string", "format": "date" },
+        "retrieved_at": { "type": "string", "format": "date-time" },
+        "cache_status": { "type": "string" },
+        "source_report_age_days": { "type": "integer", "minimum": 0 },
+        "source_currency": { "enum": ["current", "aged"] },
+        "source_currency_max_days": { "const": 14 },
+        "publication_time_verified": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "agency",
+        "dataset_id",
+        "report_family",
+        "report_basis",
+        "url",
+        "history_url",
+        "documentation"
+      ],
+      "properties": {
+        "agency": { "const": "U.S. Commodity Futures Trading Commission" },
+        "dataset_id": { "enum": ["gpe5-46if", "72hh-3qpy"] },
+        "report_family": { "type": "string" },
+        "report_basis": { "const": "futures_only" },
+        "url": { "type": "string", "format": "uri" },
+        "history_url": { "type": ["string", "null"], "format": "uri" },
+        "documentation": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+    "traderGroupId": {
+      "enum": [
+        "dealer",
+        "asset-manager",
+        "leveraged-funds",
+        "producer-merchant",
+        "swap-dealers",
+        "managed-money",
+        "other-reportables",
+        "non-reportables"
+      ]
+    },
+    "groupDefinition": {
+      "type": "object",
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/definitions/traderGroupId" },
+        "label": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "catalogItem": {
+      "type": "object",
+      "required": [
+        "family",
+        "code",
+        "contractName",
+        "marketName",
+        "exchange",
+        "commodity",
+        "units",
+        "category",
+        "categoryLabel",
+        "launch",
+        "launchLabel",
+        "reportDate"
+      ],
+      "properties": {
+        "family": { "enum": ["tff", "disaggregated"] },
+        "code": { "type": "string" },
+        "contractName": { "type": "string" },
+        "marketName": { "type": "string" },
+        "exchange": { "type": "string" },
+        "commodity": { "type": "string" },
+        "units": { "type": ["string", "null"] },
+        "category": { "type": "string" },
+        "categoryLabel": { "type": "string" },
+        "launch": { "type": "boolean" },
+        "launchLabel": { "type": ["string", "null"] },
+        "reportDate": { "type": "string", "format": "date" }
+      },
+      "additionalProperties": false
+    },
+    "percentile": {
+      "type": "object",
+      "required": ["value", "reason", "observations", "required", "comparisonRange"],
+      "properties": {
+        "value": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "reason": { "$ref": "#/definitions/nullableString" },
+        "observations": { "type": "integer", "minimum": 0, "maximum": 260 },
+        "required": { "enum": [52, 156, 260] },
+        "comparisonRange": {
+          "type": "object",
+          "required": ["observations", "earliest", "latest"],
+          "properties": {
+            "observations": { "type": "integer", "minimum": 0, "maximum": 260 },
+            "earliest": { "type": ["string", "null"], "format": "date" },
+            "latest": { "type": ["string", "null"], "format": "date" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "historyCompatibility": {
+      "type": "object",
+      "required": ["code", "venueCode", "units"],
+      "properties": {
+        "code": { "type": "string" },
+        "venueCode": { "$ref": "#/definitions/nullableString" },
+        "units": { "$ref": "#/definitions/nullableString" }
+      },
+      "additionalProperties": false
+    },
+    "historyRange": {
+      "type": "object",
+      "required": ["observations", "earliest", "latest", "compatibility"],
+      "properties": {
+        "observations": { "type": "integer", "minimum": 0 },
+        "earliest": { "type": ["string", "null"], "format": "date" },
+        "latest": { "type": ["string", "null"], "format": "date" },
+        "compatibility": { "$ref": "#/definitions/historyCompatibility" },
+        "required_values_unavailable": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "rawFields": {
+      "type": "object",
+      "required": ["long", "short", "spreading"],
+      "properties": {
+        "long": { "type": "string" },
+        "short": { "type": "string" },
+        "spreading": { "$ref": "#/definitions/nullableString" }
+      },
+      "additionalProperties": false
+    },
+    "groupValue": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "long",
+        "short",
+        "spreading",
+        "spreadingStatus",
+        "net",
+        "netPctOi",
+        "rawFields"
+      ],
+      "properties": {
+        "id": { "$ref": "#/definitions/traderGroupId" },
+        "label": { "type": "string" },
+        "long": { "$ref": "#/definitions/nullableNumber" },
+        "short": { "$ref": "#/definitions/nullableNumber" },
+        "spreading": { "$ref": "#/definitions/nullableNumber" },
+        "spreadingStatus": {
+          "enum": ["reported", "unavailable", "not_applicable"]
+        },
+        "net": { "$ref": "#/definitions/nullableNumber" },
+        "netPctOi": { "$ref": "#/definitions/nullableNumber" },
+        "oneWeekChange": { "$ref": "#/definitions/nullableNumber" },
+        "oneWeekNetPctChange": { "$ref": "#/definitions/nullableNumber" },
+        "fourWeekChange": { "$ref": "#/definitions/nullableNumber" },
+        "fourWeekNetPctChange": { "$ref": "#/definitions/nullableNumber" },
+        "percentile": { "$ref": "#/definitions/percentile" },
+        "shorterPercentiles": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/percentile" }
+        },
+        "historyRange": { "$ref": "#/definitions/historyRange" },
+        "rawFields": { "$ref": "#/definitions/rawFields" }
+      },
+      "additionalProperties": false
+    },
+    "reconciliation": {
+      "type": "object",
+      "required": [
+        "available",
+        "status",
+        "tolerance",
+        "longTotal",
+        "shortTotal",
+        "longDifference",
+        "shortDifference"
+      ],
+      "properties": {
+        "available": { "type": "boolean" },
+        "status": { "enum": ["ok", "mismatch", "unavailable"] },
+        "tolerance": { "type": "number" },
+        "longTotal": { "$ref": "#/definitions/nullableNumber" },
+        "shortTotal": { "$ref": "#/definitions/nullableNumber" },
+        "longDifference": { "$ref": "#/definitions/nullableNumber" },
+        "shortDifference": { "$ref": "#/definitions/nullableNumber" }
+      },
+      "additionalProperties": false
+    },
+    "rawObservation": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": ["string", "number", "null"] }
+    },
+    "observation": {
+      "type": "object",
+      "required": [
+        "identity",
+        "family",
+        "reportBasis",
+        "reportDate",
+        "code",
+        "sourceRowId",
+        "venueCode",
+        "marketName",
+        "contractName",
+        "exchange",
+        "commodity",
+        "category",
+        "categoryLabel",
+        "units",
+        "openInterest",
+        "groups",
+        "unavailable",
+        "reconciliation",
+        "raw"
+      ],
+      "properties": {
+        "identity": { "type": "string" },
+        "family": { "enum": ["tff", "disaggregated"] },
+        "reportBasis": { "const": "futures_only" },
+        "reportDate": { "type": "string", "format": "date" },
+        "code": { "type": "string" },
+        "sourceRowId": { "$ref": "#/definitions/nullableString" },
+        "venueCode": { "$ref": "#/definitions/nullableString" },
+        "marketName": { "type": "string" },
+        "contractName": { "type": "string" },
+        "exchange": { "type": "string" },
+        "commodity": { "type": "string" },
+        "category": { "type": "string" },
+        "categoryLabel": { "type": "string" },
+        "units": { "$ref": "#/definitions/nullableString" },
+        "openInterest": { "$ref": "#/definitions/nullableNumber" },
+        "groups": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/definitions/groupValue" }
+        },
+        "unavailable": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "reconciliation": { "$ref": "#/definitions/reconciliation" },
+        "raw": { "$ref": "#/definitions/rawObservation" },
+        "launchLabel": { "type": "string" },
+        "selectedGroup": { "$ref": "#/definitions/groupValue" },
+        "oneWeekChange": { "$ref": "#/definitions/nullableNumber" },
+        "oneWeekNetPctChange": { "$ref": "#/definitions/nullableNumber" },
+        "fourWeekChange": { "$ref": "#/definitions/nullableNumber" },
+        "fourWeekNetPctChange": { "$ref": "#/definitions/nullableNumber" },
+        "previousAvailableChange": { "$ref": "#/definitions/nullableNumber" },
+        "previousAvailableDate": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "previousAvailableElapsedDays": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "marketCoverage": {
+      "type": "object",
+      "required": [
+        "catalog_rows",
+        "launch_expected",
+        "launch_available",
+        "missing_launch_codes",
+        "missing_launch_history_codes",
+        "insufficient_launch_history_codes",
+        "required_values_unavailable",
+        "quarantined_rows",
+        "reconciliation_differences",
+        "launch_reconciliation_differences"
+      ],
+      "properties": {
+        "catalog_rows": { "type": "integer", "minimum": 0 },
+        "launch_expected": { "type": "integer", "minimum": 0 },
+        "launch_available": { "type": "integer", "minimum": 0 },
+      "missing_launch_codes": {
+          "type": "array",
+          "items": { "type": "string" },
+        "uniqueItems": true
+      },
+      "missing_launch_history_codes": {
+        "type": "array",
+        "items": { "type": "string" },
+        "uniqueItems": true
+      },
+      "insufficient_launch_history_codes": {
+        "type": "array",
+        "items": { "type": "string" },
+        "uniqueItems": true
+      },
+        "required_values_unavailable": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "quarantined_rows": { "type": "integer", "minimum": 0 },
+        "reconciliation_differences": { "type": "integer", "minimum": 0 },
+        "launch_reconciliation_differences": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "quarantineItem": {
+      "type": "object",
+      "required": ["reason"],
+      "properties": {
+        "reason": { "type": "string" },
+        "sourceRowId": { "$ref": "#/definitions/nullableString" },
+        "identity": { "type": "string" },
+        "sourceRowIds": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/nullableString" }
+        },
+        "longDifference": { "$ref": "#/definitions/nullableNumber" },
+        "shortDifference": { "$ref": "#/definitions/nullableNumber" }
+      },
+      "additionalProperties": false
+    },
+    "reconciliationIssue": {
+      "type": "object",
+      "required": ["identity", "code", "longDifference", "shortDifference"],
+      "properties": {
+        "identity": { "type": "string" },
+        "code": { "type": "string" },
+        "longDifference": { "$ref": "#/definitions/nullableNumber" },
+        "shortDifference": { "$ref": "#/definitions/nullableNumber" }
+      },
+      "additionalProperties": false
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": ["reconciliation_differences"],
+      "properties": {
+        "reconciliation_differences": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/reconciliationIssue" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "methodology": {
+      "type": "object",
+      "required": [
+        "net_contracts",
+        "net_percent_open_interest",
+        "percentile",
+        "weekly_change",
+        "weekly_net_percent_open_interest_change",
+        "four_week_change",
+        "four_week_net_percent_open_interest_change",
+        "previous_available_change"
+      ],
+      "properties": {
+        "net_contracts": { "type": "string" },
+        "net_percent_open_interest": { "type": "string" },
+        "percentile": { "type": "string" },
+        "weekly_change": { "type": "string" },
+        "weekly_net_percent_open_interest_change": { "type": "string" },
+        "four_week_change": { "type": "string" },
+        "four_week_net_percent_open_interest_change": { "type": "string" },
+        "previous_available_change": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

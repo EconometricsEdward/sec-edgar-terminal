@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { computeFundamentalDiagnostics, pairedGroupVariance, UNIVERSE_METRICS } from '../src/utils/marketFundamentals.js';
-import { upgradeUniverseSnapshot, UNIVERSE_METHOD, universeMarkdown } from '../src/utils/marketUniverse.js';
+import { buildUniverseSnapshot, upgradeUniverseSnapshot, UNIVERSE_METHOD, universeMarkdown } from '../src/utils/marketUniverse.js';
 import { isUniverseSnapshot } from '../src/utils/marketUniverseServer.js';
 import { DEFAULT_MARKET_VIEW, parseMarketView, marketViewQuery } from '../src/utils/marketResearch.js';
 
@@ -47,20 +47,27 @@ test('population variance partitions exactly with fixed groups and excludes unpa
   const flat=[row(0,0),row(1,0)];flat.forEach(r=>r.metrics.netMargin={prior:1,current:1});
   const zero=pairedGroupVariance(flat,'netMargin');assert.equal(zero.current.within_share,null);assert.equal(zero.current.between_share,null);
 });
-test('additive cached upgrades preserve source clocks, original rows, price models and history',()=>{
-  const rows=Array.from({length:10},(_,i)=>row(i)),co={available:false,reason:'No prices',current:null};
-  const prior={schema_version:'edgar.factor-universe.v1',methodology_version:'factor-universe-1.0.0',basis:'ttm',generated_at:'2026-09-09T05:00:00Z',sec_snapshot_at:'2026-09-09T04:00:00Z',price_through:'2026-09-08',status:'ready',rows,scopes:{all:{id:'all',label:'All',companies:10,co_movement:co,exposure:{eligible:10}}},history:[{sec_snapshot_at:'2026-09-08T04:00:00Z'}],limitations:[],links:{methodology:'/market/factors',api:'/api/v1/factor-universe'}};
+test('v2 additive upgrades preserve SEC source clocks and rows while refusing legacy mixed snapshots',()=>{
+  const companies=Array.from({length:10},(_,i)=>{
+    const source=row(i),accession=`${String(i+1).padStart(10,'0')}-26-000001`;
+    const current=Object.fromEntries(UNIVERSE_METRICS.map(metric=>[metric.key,source.metrics[metric.key].current]));
+    const previous=Object.fromEntries(UNIVERSE_METRICS.map(metric=>[metric.key,source.metrics[metric.key].prior]));
+    return {ticker:source.ticker,cik:source.cik,name:`Issuer ${i}`,sic:'1000',cohorts:['a'],checkedAt:'2026-09-09T04:00:00Z',factsRetrievedAt:'2026-09-09T03:00:00Z',filingComparisons:{ttm:{pointInTime:true,gapDays:365,current:{metrics:current,filed:'2026-08-01',end:'2026-06-30',accession,factorSourceAccessions:[accession]},prior:{metrics:previous,filed:'2025-08-01',end:'2025-06-30',factorSourceAccessions:[`${String(i+1).padStart(10,'0')}-25-000001`]}}}};
+  });
+  const prior=buildUniverseSnapshot({generatedAt:'2026-09-09T04:00:00Z',requested:10,companies,groups:[{id:'a',label:'A'}],coverage:{membership_id:'test',duplicate_share_classes:0,grouping:'Test groups.'}}, {}, {basis:'ttm',now:new Date('2026-09-09T05:00:00Z')});
+  prior.history=[{sec_snapshot_at:'2026-09-08T04:00:00Z'}];
   assert.equal(isUniverseSnapshot(prior),true);
   const original=JSON.stringify(prior),next=upgradeUniverseSnapshot(prior);
   assert.equal(next.methodology_version,UNIVERSE_METHOD);assert.equal(JSON.stringify(prior),original);
-  for(const key of ['generated_at','sec_snapshot_at','price_through','rows','history'])assert.strictEqual(next[key],prior[key]);
-  assert.strictEqual(next.scopes.all.co_movement,co);assert.strictEqual(next.scopes.all.exposure,prior.scopes.all.exposure);
-  assert.equal(next.scopes.all.cash_confirmation.eligible,10);assert.strictEqual(upgradeUniverseSnapshot(next),next);
-  const note=universeMarkdown(next,'all',1);assert.match(note,/outside ±1 percentage points/);assert.match(note,/\| Revenue growth acceleration \| 0 \/ 10 \|/);
+  for(const key of ['generated_at','sec_snapshot_at','rows','history'])assert.strictEqual(next[key],prior[key]);
+  assert.equal(next.scopes.all.cash_confirmation.eligible,10);
+  assert.throws(()=>upgradeUniverseSnapshot({...prior,schema_version:'edgar.factor-universe.v1'}),/cannot be upgraded/);
+  const note=universeMarkdown(next,'all',1);assert.match(note,/Direction threshold: ±1 percentage points/);assert.match(note,/SEC Fundamental Lab/);
 });
-test('shared Quant Lab views preserve the threshold and metric while existing URLs stay valid',()=>{
-  const view={...DEFAULT_MARKET_VIEW,tab:'factors',metric:'freeCashFlowMargin',quantThreshold:.5};
+test('legacy factors views migrate to Fundamental Lab while preserving SEC metric settings',()=>{
+  const view={...DEFAULT_MARKET_VIEW,tab:'fundamentals',metric:'freeCashFlowMargin',quantThreshold:.5};
   assert.deepEqual(parseMarketView(marketViewQuery(view)),view);
+  assert.equal(parseMarketView('tab=factors').tab,'fundamentals');
   assert.equal(parseMarketView('tab=factors').quantThreshold,0);
   assert.equal(parseMarketView('tab=factors&cutoff=-1').quantThreshold,0);
 });

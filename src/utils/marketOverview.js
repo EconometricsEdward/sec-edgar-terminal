@@ -47,6 +47,6 @@ export function buildMarketOverview(atlas, { membership = null, previous = null,
 /** Keep shared sector filters through tab changes and honor heatmap selections. */
 export function updateMarketView(view, patch) {
   const next = { ...view, ...patch };
-  if (next.tab === 'factors' && next.cohort !== 'all' && !next.cohort.startsWith('sector-')) next.cohort = 'all';
+  if (next.tab === 'fundamentals' && next.cohort !== 'all' && !next.cohort.startsWith('sector-')) next.cohort = 'all';
   return next;
 }

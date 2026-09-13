@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, RefreshCw } from "lucide-react";
-import { describeServiceHealth } from "../../utils/serviceStatus.js";
+import { describeCftcHealth, describeServiceHealth } from "../../utils/serviceStatus.js";
 import styles from "./ServiceStatus.module.css";
 
 type Status = {
@@ -12,6 +12,7 @@ type Status = {
   secConfiguration?: string;
   cacheConfiguration?: string;
   rateLimitConfiguration?: string;
+  cftcConfiguration?: string;
   message?: string;
 };
 
@@ -52,19 +53,20 @@ export default function ServiceStatus() {
       message: undefined,
     }));
     try {
-      const response = await fetch("/api/health", {
-        signal: controller.signal,
-        headers: { Accept: "application/json" },
-      });
-      const health = describeServiceHealth(
-        await response.json(),
-        response.status,
-      );
+      const [secResult, cftcResult] = await Promise.allSettled([
+        fetch("/api/health", { signal: controller.signal, headers: { Accept: "application/json" } }).then(async response => describeServiceHealth(await response.json(), response.status)),
+        fetch("/api/v1/cftc/status", { signal: controller.signal, headers: { Accept: "application/json" } }).then(async response => describeCftcHealth(await response.json(), response.status)),
+      ]);
+      const health = secResult.status === "fulfilled" ? secResult.value : null;
+      const cftcConfiguration = cftcResult.status === "fulfilled" ? cftcResult.value : "Check unavailable";
       if (id === requestId.current) {
-        setStatus({
-          ...health,
-          phase: health.phase as Status["phase"],
+        setStatus(health ? {
+          ...health, cftcConfiguration,
+          phase: health.phase as Status["phase"], checkedAt: new Date().toISOString(),
+        } : {
+          phase: navigator.onLine ? "unavailable" : "offline", cftcConfiguration,
           checkedAt: new Date().toISOString(),
+          message: "The core SEC service check did not complete. The CFTC cache result below is independent.",
         });
       }
     } catch {
@@ -172,26 +174,31 @@ export default function ServiceStatus() {
             )}
           </p>
           {status.message && <p>{status.message}</p>}
-          {status.secConfiguration && !["idle", "checking"].includes(status.phase) && (
+          {(status.secConfiguration || status.cftcConfiguration) && !["idle", "checking"].includes(status.phase) && (
             <dl>
-              <div>
+              {status.secConfiguration && <div>
                 <dt>SEC request configuration</dt>
                 <dd>{status.secConfiguration}</dd>
-              </div>
-              <div>
+              </div>}
+              {status.cacheConfiguration && <div>
                 <dt>Shared cache configuration</dt>
                 <dd>{status.cacheConfiguration}</dd>
-              </div>
-              <div>
+              </div>}
+              {status.rateLimitConfiguration && <div>
                 <dt>Shared SEC request gate</dt>
                 <dd>{status.rateLimitConfiguration}</dd>
-              </div>
+              </div>}
+              {status.cftcConfiguration && <div>
+                <dt>CFTC positioning cache</dt>
+                <dd>{status.cftcConfiguration}</dd>
+              </div>}
             </dl>
           )}
           <p>
-            This checks the application response and configuration. It does not
-            test SEC availability or certify that a filing or price is current.
-            Check the source and reporting dates in each tool.
+            This checks core SEC application configuration and prepared CFTC
+            cache state independently. It does not contact or certify either
+            upstream source, or certify that a filing or COT report is current.
+            Check source and reporting dates in each tool.
           </p>
           <div className={styles.actions}>
             <button

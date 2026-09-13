@@ -1,49 +1,30 @@
-// Prepare the first market-wide snapshot during a production build, never as
-// a side effect of visitor traffic. Daily cron owns subsequent refreshes.
-import { warmCacheEnabled, warmGet } from '../src/utils/warmCache.js';
-import { refreshUniverseSnapshot, isUniverseSnapshot } from '../src/utils/marketUniverseServer.js';
-import { UNIVERSE_VERSION } from '../src/utils/marketUniverse.js';
-import { readQuantAtlas, refreshQuantBatch, readQuantMembership, membershipId, compactQuantMigration } from '../src/utils/quantCoverageServer.js';
+// Production build hook: publish only SEC-derived Market/Fundamental snapshots.
+import { warmCacheEnabled } from '../src/utils/warmCache.js';
+import { refreshUniverseSnapshot } from '../src/utils/marketUniverseServer.js';
+import { readQuantAtlas, refreshQuantBatch, readQuantMembership, membershipId } from '../src/utils/quantCoverageServer.js';
 import { QUANT_BATCHES } from '../src/utils/quantGroups.js';
 import { publishMarketOverview } from '../src/utils/marketOverviewServer.js';
-if(process.env.VERCEL_ENV==='production'&&warmCacheEnabled()){
-  try{console.log('[Quant Lab] Storage compaction:',JSON.stringify(await compactQuantMigration()));}
-  catch(error){console.warn('[Quant Lab] Storage check:',error.message);}
-  // One-time migration uses the same bounded/checkpointed jobs as the daily
-  // schedule. A failed deployment can resume without refetching completed work.
-  const coverage=await readQuantMembership(), expanded=await readQuantAtlas();
-  if(expanded){
-    try{const overview=await publishMarketOverview(expanded,membershipId(coverage)===expanded.coverage.membership_id?coverage:null);console.log('[Market] Shared overview:',JSON.stringify({companies:overview.companies.length,sectors:overview.cohorts.length,source:overview.generatedAt}));}
-    catch(error){console.warn('[Market] Prepared overview deferred:',error.message);}
+
+if (process.env.VERCEL_ENV === 'production' && warmCacheEnabled()) {
+  const coverage = await readQuantMembership();
+  let expanded = await readQuantAtlas();
+  if (expanded) {
+    try {
+      const overview = await publishMarketOverview(expanded, membershipId(coverage) === expanded.coverage.membership_id ? coverage : null);
+      console.log('[Market] Prepared SEC overview:', JSON.stringify({ companies: overview.companies.length, sectors: overview.cohorts.length, source: overview.generatedAt }));
+    } catch (error) { console.warn('[Market] Prepared SEC overview deferred:', error.message); }
   }
-  if(expanded?.coverage?.membership_id!==membershipId(coverage)){
-    const migrationDeadline=Date.now()+25*60_000;
-    const deferred=[];
-    for(let batch=0;batch<QUANT_BATCHES&&Date.now()<migrationDeadline-30000;batch++){
-      const controller=new AbortController(),budget=Math.min(260000,migrationDeadline-Date.now()-10000),timer=setTimeout(()=>controller.abort(),budget);
-      try{const result=await refreshQuantBatch(batch,{signal:controller.signal,deadline:Date.now()+budget});console.log('[Quant Lab] Coverage checkpoint:',JSON.stringify(result));if(result.skipped)deferred.push(batch);}
-      catch(error){deferred.push(batch);console.warn('[Quant Lab] Coverage batch deferred:',batch,error.message);}
-      finally{clearTimeout(timer);}
+  if (expanded?.coverage?.membership_id !== membershipId(coverage)) {
+    const deadline = Date.now() + 25 * 60_000;
+    for (let batch = 0; batch < QUANT_BATCHES && Date.now() < deadline - 30000; batch++) {
+      const controller = new AbortController(), budget = Math.min(260000, deadline - Date.now() - 10000), timer = setTimeout(()=>controller.abort(),budget);
+      try { console.log('[Fundamental Lab] SEC coverage checkpoint:', JSON.stringify(await refreshQuantBatch(batch,{signal:controller.signal,deadline:Date.now()+budget}))); }
+      catch (error) { console.warn('[Fundamental Lab] SEC coverage batch deferred:', batch, error.message); }
+      finally { clearTimeout(timer); }
     }
-    // Retry only deferred batches once after the first pass. This covers brief
-    // coordination/storage recovery without refetching completed checkpoints.
-    for(const batch of deferred){
-      if(Date.now()>=migrationDeadline-30000)break;
-      const controller=new AbortController(),budget=Math.min(260000,migrationDeadline-Date.now()-10000),timer=setTimeout(()=>controller.abort(),budget);
-      try{console.log('[Quant Lab] Resumed coverage checkpoint:',JSON.stringify(await refreshQuantBatch(batch,{signal:controller.signal,deadline:Date.now()+budget})));}
-      catch(error){console.warn('[Quant Lab] Coverage retry deferred:',batch,error.message);}
-      finally{clearTimeout(timer);}
-    }
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),260000);
-    try{console.log('[Quant Lab] Expanded publication:',JSON.stringify(await refreshUniverseSnapshot({signal:controller.signal,deadline:Date.now()+285000})));}
-    catch(error){console.warn('[Quant Lab] Expansion retained for scheduled completion:',error.message);}
-    finally{clearTimeout(timer);}
   }
-  const snapshots=await Promise.all(['ttm','annual'].map(b=>warmGet(UNIVERSE_VERSION,b)));
-  if(snapshots.some(s=>!isUniverseSnapshot(s))){
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),260000);
-    try{console.log('[Factor Lab] Initial snapshot:',JSON.stringify(await refreshUniverseSnapshot({signal:controller.signal,deadline:Date.now()+285000})));}
-    catch(error){console.warn('[Factor Lab] Initial price snapshot deferred to the daily job:',error.message);}
-    finally{clearTimeout(timer);}
-  }else console.log('[Factor Lab] Prepared snapshots already exist; daily schedule owns updates.');
+  const controller = new AbortController(), timer = setTimeout(()=>controller.abort(),260000);
+  try { console.log('[Fundamental Lab] SEC-only v2 publication:', JSON.stringify(await refreshUniverseSnapshot({signal:controller.signal,deadline:Date.now()+285000}))); }
+  catch (error) { console.warn('[Fundamental Lab] Publication retained for scheduled completion:', error.message); }
+  finally { clearTimeout(timer); }
 }

@@ -36,3 +36,12 @@ export function describeServiceHealth(payload, httpStatus) {
         : "Unknown",
   };
 }
+
+/** Interpret the independent cache-only CFTC check without affecting SEC health. */
+export function describeCftcHealth(payload, httpStatus) {
+  if (!payload || payload.schema_version !== 'edgar.cftc-positioning.v1' || !['ready', 'degraded', 'unavailable', 'disabled'].includes(payload.status) || ![200, 503].includes(httpStatus) || !Array.isArray(payload.families)) return 'Check unavailable';
+  if (payload.status === 'disabled') return payload.code === 'CFTC_DISABLED' ? 'Paused by provider-free rollback switch' : 'Shared cache disabled';
+  const label = { tff: 'TFF', disaggregated: 'Disaggregated' };
+  if (!payload.families.length) return payload.status === 'unavailable' ? 'No prepared snapshots' : 'Check unavailable';
+  return payload.families.map(family => `${label[family.family] || family.family}: ${family.status}${family.report_date ? ` · ${family.report_date}` : ''}`).join(' | ');
+}

@@ -10,6 +10,7 @@ import { PORTFOLIOS_KEY, readPortfolios } from "./portfolioStorage.js";
 import { RESEARCH_INBOX_KEY, readResearchInbox } from "./researchInbox.js";
 import { PORTFOLIO_VIEWS_KEY, readPortfolioViews } from "./portfolioViews.js";
 import { RESEARCH_BRIEFS_KEY, readResearchBriefs } from "./researchBriefs.js";
+import { MARKET_SAVED_KEY, parseMarketSaved } from "./marketResearch.js";
 
 export const RESEARCH_STORAGE_EVENT = "research-storage";
 export const RESEARCH_BACKUP_LIMIT = 16 * 1024 * 1024;
@@ -371,7 +372,7 @@ function inspectTree(value) {
   walk(value);
 }
 
-/** Validation preserves the original payload, including compatible fields added by individual research tools. */
+/** Validation preserves compatible tool fields; retired Market provider fields are removed. */
 export function validateResearchStore(key, raw) {
   requireShape(allowedKey(key), "Unknown research store.");
   requireShape(
@@ -385,13 +386,19 @@ export function validateResearchStore(key, raw) {
     );
     return raw;
   }
-  const data = JSON.parse(raw);
+  let data = JSON.parse(raw);
   // Portfolios also contain a validated internal fund-workflow destination.
   if (key === PORTFOLIOS_KEY) return readPortfolios(raw);
   // Dedicated readers enforce each browser-local store's schema and limits.
   if (key === RESEARCH_INBOX_KEY) return readResearchInbox(raw);
   if (key === PORTFOLIO_VIEWS_KEY) return readPortfolioViews(raw);
   if (key === RESEARCH_BRIEFS_KEY) return readResearchBriefs(raw);
+  // Market is the one portable store whose prior schema contained fields and
+  // routes backed by the retired price providers. Apply the same lossless
+  // migration used by the Market client before validating, indexing, exporting,
+  // or restoring it. Independent SEC baselines, the watchlist, and notes remain.
+  if (key === MARKET_SAVED_KEY && object(data) && data.version === 1)
+    data = parseMarketSaved(raw);
   inspectTree(data);
   if (key === "edgar-funds-shelf-v1") {
     requireShape(
@@ -650,7 +657,7 @@ export function validateResearchStore(key, raw) {
           "Disclosure review marker is invalid.",
         );
     }
-  } else if (key === "edgar:market-research:v1") {
+  } else if (key === MARKET_SAVED_KEY) {
     requireShape(
       array(data.watchlist, "Market watchlist", 1000).every(ticker),
       "Invalid market ticker.",
@@ -676,6 +683,17 @@ export function validateResearchStore(key, raw) {
     }
   }
   return data;
+}
+
+function portableResearchStoreRaw(key, raw) {
+  if (raw === null || key !== MARKET_SAVED_KEY) return raw;
+  try {
+    return JSON.stringify(validateResearchStore(key, raw));
+  } catch {
+    // Corrupt stores remain downloadable for recovery, but parse/restore will
+    // continue to mark them unavailable and never overwrite valid research.
+    return raw;
+  }
 }
 
 function pathWithSettings(path, input = {}) {
@@ -1356,7 +1374,10 @@ export function readResearchVault(storage) {
 /** Raw strings ensure a backup preserves even an unreadable store without silently normalizing it. */
 export function exportResearchBackup(storage, now = new Date().toISOString()) {
   const stores = Object.fromEntries(
-    listResearchStores(storage).map((s) => [s.key, storage.getItem(s.key)]),
+    listResearchStores(storage).map((s) => {
+      const raw = storage.getItem(s.key);
+      return [s.key, portableResearchStoreRaw(s.key, raw)];
+    }),
   );
   const raw = JSON.stringify(
     { format: "edgar-research-backup", version: 1, exportedAt: now, stores },
@@ -1417,7 +1438,8 @@ export function parseResearchBackup(raw) {
     stores[key] = value;
     if (value !== null)
       try {
-        validateResearchStore(key, value);
+        const validated = validateResearchStore(key, value);
+        if (key === MARKET_SAVED_KEY) stores[key] = JSON.stringify(validated);
       } catch (error) {
         issues.push({
           key,
@@ -1466,13 +1488,17 @@ export function previewResearchRestore(storage, backup) {
             s,
           ).length;
       }
+      const comparableCurrent = portableResearchStoreRaw(s.key, current);
+      const comparableIncoming = portableResearchStoreRaw(s.key, incoming);
       return {
         ...s,
         incomingCount,
         currentCount,
-        identical: current === incoming,
-        conflict: current !== null && current !== incoming,
-        available: incoming !== null && !error && current !== incoming,
+        identical: comparableCurrent === comparableIncoming,
+        conflict:
+          comparableCurrent !== null && comparableCurrent !== comparableIncoming,
+        available:
+          comparableIncoming !== null && !error && comparableCurrent !== comparableIncoming,
         error,
         incomingEmpty: incoming === null,
       };
@@ -1504,11 +1530,13 @@ export function restoreResearchVault(
       : fundNoteTicker(key)
         ? null
         : undefined;
+    const current = storage.getItem(key);
+    const comparableCurrent = portableResearchStoreRaw(key, current);
     requireShape(
-      storage.getItem(key) === expected,
+      comparableCurrent === expected,
       "Saved research changed after the safety backup. Download a fresh backup and review the replacement again.",
     );
-    originals[key] = storage.getItem(key);
+    originals[key] = comparableCurrent;
     validateResearchStore(key, backup.stores[key]);
   }
   const written = [];
