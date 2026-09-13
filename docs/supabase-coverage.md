@@ -42,6 +42,18 @@ The gateway retains production Vercel OIDC verification, fixed project/team iden
 
 The platform-owned `pg_net` queue has grants this project's database role cannot revoke. The signed protocol therefore keeps the long-lived credential out of that queue. No platform role or access-control bypass was used. The `pg_net` extension was installed with its registry in the extensions schema before any requests were queued.
 
+## SEC coordination and prepared identity resilience
+
+The first deployed membership check stopped before staging because the existing Redis coordinator returned an invalid pipeline response. A cold Portfolio request hit the same failure while loading complete SEC identity directories. The precise Redis provider error was not exposed; quota exhaustion was not established. The active membership, evidence, and completed daily jobs remained intact.
+
+Deployed SEC requests now share one private Supabase dispatch coordinator. Five-second UUID leases, monotonic client expiry checks with a 500 ms margin, conservative spacing after actual dispatch, and extend-only provider cooldowns preserve the maximum of seven request starts per second. Effective throughput is lower because both request holding and database release add spacing. A failed coordinator denies new SEC fetching; deployed runtimes never fall back to Redis or independent local pacing. Supabase project identity and the restricted gateway still apply; previews cannot acquire production permission.
+
+The coordinator is initially unarmed. After the new production version is READY and the previous generated deployment URLs are confirmed protected, a database owner arms an exact ten-minute handoff. This allows old requests and their possible cooldowns to drain. The service role and gateway cannot arm or shorten it. Existing [Vercel deployment protection](https://vercel.com/docs/deployment-protection) restricts old generated deployment URLs; the scheduler uses the current public domain. Do not use protected old deployment APIs or roll back to a Redis-coordinated bundle after handoff. Rollback should retain the Supabase coordinator or pause new SEC fetching.
+
+Known active-company Portfolio requests use the validated membership identities already stored in Supabase, including share-class aliases and the separately maintained ACU pilot. Complete SEC company and fund directories remain necessary for unknown tickers, funds, name-only searches, and identity conflicts. Prepared requests therefore keep working when live directory refresh is unavailable. Other optional Redis cache and inbound rate-limit code remains unchanged; this release does not establish Redis service recovery.
+
+The dispatch follow-up passed 1,672 application/regression tests with two intentional skips, plus all ten exact dispatch migration tests. The owner can inspect `edgar_private.sec_dispatch_control` counters and timestamps without acquiring a permit. If failed checks accumulated during handoff, a bounded operator retry may advance only `membership_control.next_check_at` after the handoff and provider cooldown have elapsed and the membership lease is free; it must preserve prior error evidence until a successful check.
+
 ## Verification and rollout
 
 The automatic membership and operations release passed 1,656 regression tests, with two intentional skips, typecheck, production build, and all ten existing database recovery gates. Exact new migration fixtures cover thirteen membership cases and eight operations database cases; focused application tests cover cache failures, candidate activation, removed issuers, frozen jobs, provenance changes, and protected status access. Seven pre-existing ESLint warnings remain outside the changed functionality.
