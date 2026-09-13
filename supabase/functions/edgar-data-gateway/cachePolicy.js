@@ -21,7 +21,12 @@ const atlas = /^(?:ATLAS|ATLAS-LAST-GOOD)$/;
 const snapshotTypes = new Set(['market-v2', 'market-research-v3', 'market-overview-v1', 'quant-atlas-v1', 'quant-atlas-v2:production']);
 const companyTypes = new Set(['quant-company-v1', 'quant-company-v2:production', 'quant-company-v2:production:attempts']);
 const coverageTypes = new Set(['quant-coverage-v1', 'quant-coverage-v2:production']);
-const filingDocument = re(`${CIK}:${ACCESSION}:[A-Z0-9_][A-Z0-9_.-]{0,254}`);
+const filingDocumentKey = re(`${CIK}:${ACCESSION}:([A-Z0-9_][A-Z0-9_./-]{0,239})`);
+function filingDocument(type, id) {
+  const path = filingDocumentKey.exec(id)?.[1];
+  if (!path || path.includes('..') || path.includes('//') || path.split('/').some(part => part === '.')) return false;
+  return (type === 'filings-reader-text-v2' ? /\.(?:HTM|HTML|TXT|XML)$/ : /\.(?:HTM|HTML|TXT)$/).test(path);
+}
 const secPath = re(`/SUBMISSIONS/CIK(${CIK})(-SUBMISSIONS-[0-9]{1,10})?\\.JSON|/API/XBRL/COMPANYFACTS/CIK(${CIK})\\.JSON`);
 const submissionsFile = re(`CIK(${CIK})(-SUBMISSIONS-[0-9]{1,10})?\\.JSON`);
 const PILOT_TICKERS = Object.freeze({ '0000320193': 'AAPL', '0000789019': 'MSFT', '0000019617': 'JPM', '0000002098': 'ACU' });
@@ -58,7 +63,7 @@ export function disposableCachePolicy(type, originalId) {
   else if (type === 'holders-v3' && ticker.test(id)) family = 'document';
   else if (type === 'risk-workspace-v4' && ticker.test(id)) family = 'research';
   else if (type === 'risk-workspace-v4-scan' && accession.test(id)) family = 'document';
-  else if (['filings-reader-text-v2', 'disclosure-text-v1'].includes(type) && filingDocument.test(id)) family = 'document';
+  else if (['filings-reader-text-v2', 'disclosure-text-v1'].includes(type) && filingDocument(type, id)) family = 'document';
   else if (type === 'disclosure-history-v1' && re(`${CIK}:${DATE}`).test(id)) family = 'research';
   else if (type === 'disclosure-scan-v1' && /^[A-F0-9]{64}$/.test(id)) family = 'research';
   else if (type === 'scanner-results-v2' && re(`${TICKER}:(?:SCAN|KW:[A-F0-9]{64})`).test(id)) family = 'research';

@@ -75,6 +75,28 @@ test('policy excludes coordination, arbitrary URLs, unknown and preview namespac
   assert.equal(disposableCachePolicy('analysis-research', `${ANALYSIS_VERSION}:SMALL:annual:`).family, 'research');
 });
 
+test('filing text cache admits bounded manifest-relative nested documents without traversal or URL suffixes', () => {
+  const prefix = `${cik}:${accession}:`;
+  for (const [type, path] of [
+    ['filings-reader-text-v2', 'xslF345X05/ownership.xml'],
+    ['filings-reader-text-v2', 'reports/exhibits/annual-report.htm'],
+    ['disclosure-text-v1', 'reports/annual-report.html'],
+    ['disclosure-text-v1', 'reports/annual-report.txt'],
+    ['filings-reader-text-v2', `${'a'.repeat(236)}.xml`],
+  ]) {
+    const policy = disposableCachePolicy(type, prefix + path);
+    assert.equal(policy?.family, 'document', path);
+    assert.equal(policy.id, (prefix + path).toUpperCase());
+  }
+  for (const type of ['filings-reader-text-v2', 'disclosure-text-v1']) {
+    for (const path of ['/reports/annual.htm', 'reports//annual.htm', 'reports/../annual.htm', 'reports/./annual.htm',
+      'reports/annual..htm', 'reports/annual.htm?download=1', 'reports/annual.htm#section', 'reports\\annual.htm',
+      'reports/%2e%2e/annual.htm', 'https://www.sec.gov/annual.htm', 'reports/annual.pdf', `${'a'.repeat(237)}.htm`])
+      assert.equal(disposableCachePolicy(type, prefix + path), null, `${type}/${path}`);
+  }
+  assert.equal(disposableCachePolicy('disclosure-text-v1', prefix + 'xslF345X05/ownership.xml'), null);
+});
+
 test('CFTC cache identity supports actual variable-length and plus-sign contract codes', () => {
   const namespace = 'edgar.cftc-positioning.v1:production';
   for (const code of ['12460+', '20974+', '13874+', 'ABC', 'ABCDEFGHIJKL']) {
