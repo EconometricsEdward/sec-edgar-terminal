@@ -139,6 +139,19 @@ function evidenceScore(text, market, category) {
 
 const MONEY = /(?:US\$|U\.S\.\s*\$|USD|EUR|GBP|JPY|CAD|AUD|CHF|\$|€|£|¥)\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:trillion|billion|million|thousand)\b|\b\d+(?:,\d{3})*(?:\.\d+)?\s*(?:trillion|billion|million|thousand)\s+(?:U\.S\. dollars?|US dollars?|euros?|British pounds?|Japanese yen|Canadian dollars?)\b/gi;
 const PHYSICAL = /\b\d+(?:,\d{3})*(?:\.\d+)?\s*(?:(?:million|billion|thousand)\s+)?(?:barrels|ounces|metric tons|metric tonnes|bushels|pounds|cubic feet|MWh|megawatt hours)\b/gi;
+function hasUnresolvedVolumeQualifier(clause, volume) {
+  const before = clause.slice(0, volume.index), after = clause.slice(volume.index + volume[0].length);
+  const remainder = `${before} ${after}`;
+  // A regex match can start inside a signed number or at the last member of
+  // a shared-unit list. Keep the quote, but do not detach that qualification.
+  if (/(?:[+−±–—\-([.,/]|\bnegative)\s*$/i.test(before) || /^\s*[)\]]/.test(after)
+    || before.lastIndexOf('(') > before.lastIndexOf(')') || before.lastIndexOf('[') > before.lastIndexOf(']')) return true;
+  if (/\brespectively\b/i.test(clause)
+    || /\b\d+(?:,\d{3})*(?:\.\d+)?\s*(?:million|billion|thousand)\b/i.test(remainder)
+    || /\d+(?:,\d{3})*(?:\.\d+)?\s*(?:,|and|or|to|through|[-−–—])\s*(?:(?:approximately|about|nearly)\s+)?$/i.test(before)
+    || /^\s*(?:,|and|or|to|through|[-−–—])\s*(?:(?:approximately|about|nearly)\s+)?[+−-]?\s*\d/i.test(after)) return true;
+  return new Set(remainder.match(/\b(?:19|20)\d{2}\b/g) || []).size > 1;
+}
 function amountBelongsToMarket(clause, amount, kind, category, market) {
   if (kind === 'notional' || kind === 'sensitivity') return true;
   const marketMatch = market.re.exec(clause);
@@ -160,7 +173,7 @@ function qualifiedAmounts(clause, sentence, marketCount, category, market) {
   const currencyNumbers = [...clause.matchAll(/(?:US\$|U\.S\.\s*\$|USD|EUR|GBP|JPY|CAD|AUD|CHF|\$|€|£|¥)\s*[+-]?\s*\d/g)];
   if (money.length === 1 && currencyNumbers.length <= 1 && !/\b(?:between|ranging|range of|from)\s+(?:US\$|USD|EUR|GBP|JPY|\$|€|£|¥)?\s*\d/i.test(clause)) {
     const amount = money[0], before = clause.slice(Math.max(0, amount.index - 150), amount.index), after = clause.slice(amount.index + amount[0].length, amount.index + amount[0].length + 55);
-    if (!/(?:[([±+-]|\bnegative)\s*$/i.test(before) && !/^\s*(?:[)\]]|per\b|(?:[-–—]|to|and)\s*(?:[$€£¥]|USD|EUR)?\s*\d|\/(?:barrel|ounce|ton|bushel|MWh))/i.test(after)) {
+    if (!/(?:[([±+−–—-]|\bnegative)\s*$/i.test(before) && !/^\s*(?:[)\]]|per\b|(?:[-−–—]|to|and)\s*(?:[$€£¥]|USD|EUR)?\s*\d|\/(?:barrel|ounce|ton|bushel|MWh))/i.test(after)) {
       let kind = null;
       if (/\b(?:would|could)\b[^;.!?]{0,100}\b(?:change|increase|decrease|reduce|reduction|decline|impact|affect|loss|gain)\b[^;.!?]{0,45}$/i.test(before) || /\b(?:hypothetical|sensitivity)\b[^;.!?]{0,60}$/i.test(before)) kind = 'sensitivity';
       else if (/\bnotional(?:\s+(?:amounts?|value|principal|balance|of|was|were|totaled|totalled|aggregate|outstanding|approximately|about|had|a|an|total|is|at|and|net|gross))*\s*$/i.test(before)) kind = 'notional';
@@ -170,7 +183,7 @@ function qualifiedAmounts(clause, sentence, marketCount, category, market) {
     }
   }
   const volume = [...clause.matchAll(PHYSICAL)];
-  if (money.length === 0 && volume.length === 1 && /\b(?:produced|production|purchased|consumed|sold|sales|procured)\b/i.test(clause) && !/\b(?:per|daily|average|approximately between|range|from|to)\b/i.test(clause.slice(Math.max(0, volume[0].index - 15), volume[0].index + volume[0][0].length + 20))) {
+  if (money.length === 0 && volume.length === 1 && !hasUnresolvedVolumeQualifier(clause, volume[0]) && /\b(?:produced|production|purchased|consumed|sold|sales|procured)\b/i.test(clause) && !/\b(?:per|daily|average|approximately between|range|from|to)\b/i.test(clause.slice(Math.max(0, volume[0].index - 15), volume[0].index + volume[0][0].length + 20))) {
     return [{ text: volume[0][0].trim(), kind: 'volume', context: sentence }];
   }
   return [];
