@@ -3,6 +3,7 @@ import { isSecCoverageScheduleEnabled } from '../../../../utils/dataStoreDeploym
 import { authorizeSecCoverageSchedule } from '../../../../utils/secCoverageScheduleAuth.js';
 import { runSecCoverageJob } from '../../../../utils/secCoverageJobs.js';
 import { maintainSecCoverageMembership } from '../../../../utils/secCoverageMaintenance.js';
+import { maintainRedisCache } from '../../../../utils/redisMaintenance.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -32,8 +33,20 @@ export async function GET(request) {
     const result = await runSecCoverageJob({ ...(shardText === null ? {} : { shard: Number(shardText) }),
       dynamicMembership: true, maxCompanies: countText === null ? 6 : Number(countText),
       signal: controller.signal, deadline: startedAt + 225_000 });
+    // Cache housekeeping uses only the time left after scheduled research work.
+    // Its independent lease and byte/command budgets cannot extend this route
+    // or turn an acknowledged company refresh into a failed refresh response.
+    let cacheMaintenance = { status: 'deferred', reason: 'research-budget' };
+    if (!controller.signal.aborted && Date.now() < startedAt + 200_000) {
+      try {
+        cacheMaintenance = await maintainRedisCache({ signal: controller.signal,
+          deadline: Math.min(startedAt + 225_000, Date.now() + 20_000) });
+      } catch {
+        cacheMaintenance = { status: 'unavailable', code: 'CACHE_MAINTENANCE_UNAVAILABLE' };
+      }
+    }
     return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', ...result,
-      membership,
+      membership, cacheMaintenance,
       started_at: new Date(startedAt).toISOString(), duration_ms: Date.now() - startedAt }, { headers });
   } catch {
     return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', status: 'failed', code: 'SEC_COVERAGE_JOB_FAILED' }, { status: 503, headers });
