@@ -106,6 +106,19 @@ const AnalysisResearchQuestions = dynamic(
   () => import("../AnalysisResearchQuestions"),
   { loading: AnalysisToolLoading },
 );
+const CompanyCftcContext = dynamic(
+  () => import("../../../components/cftc/CompanyCftcContext"),
+  { loading: AnalysisToolLoading },
+);
+type ScenarioMarketContext = {
+  label: string;
+  contract: string;
+  family: string;
+  reportDate: string;
+  summary: string;
+  marketPath?: string;
+  asOf: string;
+};
 const views = [
   ["overview", "Overview"],
   ["statements", "Statements"],
@@ -114,6 +127,7 @@ const views = [
   ["cash", "Cash quality"],
   ["capital", "Capital & funding"],
   ["drivers", "Return drivers"],
+  ["cftc", "CFTC context"],
   ["scenarios", "Scenarios"],
   ["formula", "Custom ratios"],
   ["checks", "Sources & checks"],
@@ -145,6 +159,7 @@ export default function AnalysisWorkspace(props: any) {
 }
 function Workspace(props: any) {
   const ticker = props.urlTicker.toUpperCase();
+  const cftcEnabled = props.cftcEnabled === true;
   const [settings, setSettings] = useState<any>({ ...ANALYSIS_SETTINGS });
   const [hydrated, setHydrated] = useState(false);
   const [data, setData] = useState<any>(null);
@@ -156,9 +171,13 @@ function Workspace(props: any) {
   const [viewName, setViewName] = useState("");
   const [extended, setExtended] = useState(false);
   const [scenarioOpened, setScenarioOpened] = useState(false);
+  const [cftcOpened, setCftcOpened] = useState(false);
+  const [scenarioMarketContext, setScenarioMarketContext] =
+    useState<ScenarioMarketContext | null>(null);
   useEffect(() => {
     if (settings.view === "scenarios") setScenarioOpened(true);
-  }, [settings.view]);
+    if (cftcEnabled && settings.view === "cftc") setCftcOpened(true);
+  }, [settings.view, cftcEnabled]);
   const root = useRef<HTMLDivElement>(null);
   const controls = useRef<HTMLDivElement>(null);
   const evidenceTrigger = useRef<HTMLElement | null>(null);
@@ -174,14 +193,19 @@ function Workspace(props: any) {
   const { notes, setNotes } = notebook;
   useEffect(() => {
     const read = () => {
-      setSettings(readAnalysisSettings(window.location.search));
+      const restored = readAnalysisSettings(window.location.search);
+      setSettings(
+        !cftcEnabled && restored.view === "cftc"
+          ? { ...restored, view: "overview" }
+          : restored,
+      );
       setSelection(null);
     };
     read();
     setHydrated(true);
     window.addEventListener("popstate", read);
     return () => window.removeEventListener("popstate", read);
-  }, []);
+  }, [cftcEnabled]);
   useEffect(() => {
     if (hydrated) {
       const path = analysisPath(ticker, settings);
@@ -280,8 +304,23 @@ function Workspace(props: any) {
   const patch = useCallback((next: any) => {
     setSelection(null);
     setStatus("");
-    setSettings((s) => normalizeAnalysisSettings({ ...s, ...next }));
-  }, []);
+    setSettings((s) => {
+      const updated = normalizeAnalysisSettings({ ...s, ...next });
+      return !cftcEnabled && updated.view === "cftc"
+        ? { ...updated, view: "overview" }
+        : updated;
+    });
+  }, [cftcEnabled]);
+  function saveCftcNote(text: string) {
+    if (!notebook.ready || notebook.status === "conflict" || workspace.error)
+      return;
+    setNotes(`${notes.trimEnd()}${notes.trim() ? "\n\n" : ""}${text}`);
+    setStatus(
+      notebook.flush()
+        ? "Dated CFTC evidence saved in your Notebook research notes."
+        : "The CFTC note is in your draft. Open Notebook to resolve the save issue or export it.",
+    );
+  }
   function save(patchValue: any, message: string) {
     const ok = workspace.update((w) => ({
       ...w,
@@ -725,18 +764,20 @@ function Workspace(props: any) {
           </div>
         </details>
         <nav className={styles.viewNav} aria-label="Analysis views">
-          {views.map(([key, label]) => (
-            <button
-              key={key}
-              aria-pressed={settings.view === key}
-              onClick={() => patch({ view: key })}
-            >
-              {label}
-              {key === "notebook" && saved?.evidence?.length
-                ? ` (${saved.evidence.length})`
-                : ""}
-            </button>
-          ))}
+          {views
+            .filter(([key]) => cftcEnabled || key !== "cftc")
+            .map(([key, label]) => (
+              <button
+                key={key}
+                aria-pressed={settings.view === key}
+                onClick={() => patch({ view: key })}
+              >
+                {label}
+                {key === "notebook" && saved?.evidence?.length
+                  ? ` (${saved.evidence.length})`
+                  : ""}
+              </button>
+            ))}
         </nav>
       </div>
       {(status || workspace.error) && (
@@ -744,7 +785,26 @@ function Workspace(props: any) {
           {workspace.error || status}
         </p>
       )}
-      {loading && (
+      {hydrated && cftcEnabled && (settings.view === "cftc" || cftcOpened) && (
+        <div hidden={settings.view !== "cftc"}>
+          <CompanyCftcContext
+            ticker={ticker}
+            companyName={data?.name || props.preloadedCompanyName || ticker}
+            asOf={settings.asOf}
+            mode="analysis"
+            onSaveNote={
+              notebook.ready && notebook.status !== "conflict" && !workspace.error
+                ? saveCftcNote
+                : undefined
+            }
+            onOpenScenario={(context) => {
+              setScenarioMarketContext({ ...context, asOf: settings.asOf });
+              patch({ view: "scenarios", scenarioTab: "model" });
+            }}
+          />
+        </div>
+      )}
+      {loading && settings.view !== "cftc" && (
         <div className={styles.loading} role="status">
           <span className={styles.badge}>Loading SEC evidence</span>
           <h2>Building {ticker}’s financial workspace</h2>
@@ -756,7 +816,7 @@ function Workspace(props: any) {
           <div />
         </div>
       )}
-      {error && (
+      {error && settings.view !== "cftc" && (
         <section className={styles.panel} role="alert">
           <h2>Financial data is unavailable</h2>
           <p>{error}</p>
@@ -775,7 +835,7 @@ function Workspace(props: any) {
           </Link>
         </section>
       )}
-      {data && !period && (
+      {data && !period && settings.view !== "cftc" && (
         <section className={styles.panel}>
           <h2>No matching reporting period</h2>
           <p>
@@ -788,7 +848,7 @@ function Workspace(props: any) {
         </section>
       )}
       {data && period && checks && (
-        <>
+        <div hidden={settings.view === "cftc"}>
           <div className={styles.periodBanner}>
             <div>
               <strong>
@@ -841,6 +901,7 @@ function Workspace(props: any) {
                     index={index}
                     onInspect={inspectSelection}
                     onPatch={patch}
+                    cftcEnabled={cftcEnabled}
                   />
                   <AnalysisThresholds
                     data={data}
@@ -879,6 +940,18 @@ function Workspace(props: any) {
                     onPatch={patch}
                     cases={saved?.analysisScenarios || []}
                     ready={workspace.ready && !workspace.error}
+                    cftcEnabled={cftcEnabled}
+                    marketContext={
+                      cftcEnabled && scenarioMarketContext?.asOf === settings.asOf
+                        ? scenarioMarketContext
+                        : null
+                    }
+                    onClearMarketContext={() => setScenarioMarketContext(null)}
+                    onSaveMarketNote={
+                      notebook.ready && notebook.status !== "conflict" && !workspace.error
+                        ? saveCftcNote
+                        : undefined
+                    }
                     onSaveCases={(updater: any) =>
                       save(
                         (current: any) => ({
@@ -1908,7 +1981,7 @@ function Workspace(props: any) {
               </a>
             </p>
           </footer>
-        </>
+        </div>
       )}
     </div>
   );

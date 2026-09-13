@@ -94,6 +94,34 @@
   gap: 20px;
   align-items: start;
 }
+.marketContext {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid var(--analysis-border);
+  border-radius: 12px;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--analysis-accent) 7%, var(--analysis-panel)), var(--analysis-panel));
+}
+.marketContext > div:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.marketContext p:last-child {
+  margin-bottom: 0;
+  color: var(--analysis-muted);
+  font-size: 12px;
+  max-width: 760px;
+}
+.marketContext button {
+  flex-shrink: 0;
+}
+.marketIcon {
+  color: var(--analysis-accent);
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--analysis-bg);
+}
 .mainGrid > section {
   min-width: 0;
 }
@@ -176,6 +204,13 @@
   }
 }
 @media (max-width: 600px) {
+  .marketContext {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .marketContext button {
+    width: 100%;
+  }
   .intro {
     align-items: flex-start;
     flex-direction: column;

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import RiskClient from './RiskClient';
 import { buildPageMetadata } from '../../utils/siteMetadata';
+import { isCftcEnabled } from '../../utils/cftcFeature.js';
 
 export const metadata: Metadata = {
   ...buildPageMetadata({
@@ -22,5 +23,5 @@ export default async function RiskPage({ searchParams }: { searchParams: SearchP
   const params = await searchParams;
   const initialTicker = firstParam(params.ticker) || firstParam(params.symbol);
 
-  return <RiskClient initialTicker={initialTicker.toUpperCase()} />;
+  return <RiskClient initialTicker={initialTicker.toUpperCase()} initialView={firstParam(params.view)} initialEntity={firstParam(params.entity)} cftcEnabled={isCftcEnabled()} />;
 }

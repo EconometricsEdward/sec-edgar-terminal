@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight, Layers, ScanLine, GitCompareArrows } from "lucide-react";
 import { buildPageMetadata } from "../../utils/siteMetadata";
 import CompanySearch from "./CompanySearch";
+import { isCftcEnabled } from "../../utils/cftcFeature.js";
 import styles from "./analysis.module.css";
 export const metadata = buildPageMetadata({
   title: "Financial Analysis — SEC XBRL Data",
@@ -10,6 +11,7 @@ export const metadata = buildPageMetadata({
   path: "/analysis",
 });
 export default function AnalysisIndexPage() {
+  const cftcEnabled = isCftcEnabled();
   return (
     <div className={styles.page}>
       <section className={styles.landing}>
@@ -86,6 +88,38 @@ export default function AnalysisIndexPage() {
           ))}
         </div>
       </section>
+      {cftcEnabled && (
+        <section className={styles.panel}>
+          <div className={styles.sectionHeading}>
+            <div>
+              <p className={styles.eyebrow}>Official CFTC positioning</p>
+              <h2>Put the business in market context.</h2>
+            </div>
+            <span className={styles.badge}>Inside each company’s CFTC context view</span>
+          </div>
+          <p className={styles.muted}>
+            Investigate the commodity, currency, and rate markets behind a
+            company’s business. Review dated futures positioning, check its
+            relevance against SEC disclosures, and carry evidence into your
+            Notebook or scenario review.
+          </p>
+          <div className={styles.companyGrid}>
+            {[
+              ["CVX", "Chevron", "Oil and natural gas context"],
+              ["AAPL", "Apple", "Rates and financing research"],
+              ["JPM", "JPMorgan Chase", "Rates and funding context"],
+              ["CAT", "Caterpillar", "Commodity-cycle research"],
+            ].map(([ticker, name, description]) => (
+              <Link href={`/analysis/${ticker}?view=cftc`} key={ticker}>
+                <ArrowUpRight size={20} />
+                <strong>{ticker}</strong>
+                <span>{name}</span>
+                <p>{description}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
