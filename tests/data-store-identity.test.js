@@ -12,8 +12,8 @@ test('production uses request-scoped workload identity without exporting a Supab
       calls.push({ url, options });
       return Response.json(null);
     } });
-  await store.readDataset('sec', 'sec-documents-v1:0000320193:companyfacts');
-  await store.readDataset('sec', 'sec-documents-v1:0000320193:companyfacts');
+  await store.readDataset('sec', 'sec-documents-v1:CIK0000320193:companyfacts');
+  await store.readDataset('sec', 'sec-documents-v1:CIK0000320193:companyfacts');
   assert.equal(issued, 2);
   for (const [i, { url, options }] of calls.entries()) {
     assert.equal(url, 'https://vvkihuduqqnxqahhbphs.supabase.co/functions/v1/edgar-data-gateway/rest/v1/rpc/edgar_get_version');

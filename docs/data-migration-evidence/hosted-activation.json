@@ -1,0 +1,660 @@
+{
+  "checkedAt": "2026-09-13T05:39:20.130414+00:00",
+  "project": "vvkihuduqqnxqahhbphs",
+  "shadowDeployment": {
+    "id": "dpl_FMHrFehPt3DKXfiwY1tgyTvYGsRU",
+    "commit": "a0a5046db5f5f77137691dccd91a001a2e9f6f98",
+    "pullRequest": 60
+  },
+  "gateway": {
+    "version": 3,
+    "digest": "2a50109cb0be56acb9710bac1c9a52ade081dc3e51f1c9b27d86145d0ad94c45",
+    "fix": "Accept exact hosted function-name routing prefix as documented by Supabase."
+  },
+  "receipts": [
+    {
+      "at": "2026-09-13T05:35:23.115347+00:00",
+      "path": "/api/internal/data-migration",
+      "status": 200,
+      "durationSeconds": 9.442754,
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "X-Vercel-Cache": "BYPASS"
+      },
+      "body": {
+        "flags": {
+          "cftc": "shadow",
+          "sec": "shadow",
+          "financial": "shadow"
+        },
+        "status": {
+          "jobs": {},
+          "heads": 0,
+          "versions": 0,
+          "sourceAssets": 0,
+          "databaseBytes": 188416,
+          "preparedBytes": 0,
+          "sourceStoredBytes": 0,
+          "latestRevalidation": null,
+          "snapshotStoredBytes": 0
+        },
+        "retention": {
+          "dryRun": true,
+          "deletionEnabled": false,
+          "terminalJobCandidates": 0,
+          "sourceEvidenceDeletion": false,
+          "derivedSnapshotCandidates": []
+        },
+        "orphans": {
+          "dryRun": true,
+          "objects": [],
+          "deletionEnabled": false
+        },
+        "cftc": {
+          "mode": "shadow",
+          "scope": "current-process",
+          "comparison_limit_per_hour": 8,
+          "writes": 0,
+          "write_failures": 0,
+          "read_failures": 0,
+          "shadow_matches": 0,
+          "shadow_mismatches": 0,
+          "shadow_revision_skips": 0
+        },
+        "alerts": "unconfigured"
+      }
+    },
+    {
+      "at": "2026-09-13T05:35:45.281197+00:00",
+      "path": "/api/internal/data-migration",
+      "status": 202,
+      "durationSeconds": 54.204224,
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "X-Vercel-Cache": "MISS"
+      },
+      "body": {
+        "cursor": 0,
+        "nextCursor": 2,
+        "done": false,
+        "results": [
+          {
+            "ticker": "AAPL",
+            "submissions": "updated",
+            "companyfacts": "updated",
+            "financial": {
+              "ticker": "AAPL",
+              "status": "prepared",
+              "bases": [
+                {
+                  "basis": "annual",
+                  "status": "updated",
+                  "bytes": 434218,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "quarter",
+                  "status": "updated",
+                  "bytes": 1624149,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "ytd",
+                  "status": "updated",
+                  "bytes": 1496986,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "ttm",
+                  "status": "updated",
+                  "bytes": 1714410,
+                  "rollbackStored": true
+                }
+              ]
+            }
+          },
+          {
+            "ticker": "MSFT",
+            "submissions": "updated",
+            "companyfacts": "updated",
+            "financial": {
+              "ticker": "MSFT",
+              "status": "prepared",
+              "bases": [
+                {
+                  "basis": "annual",
+                  "status": "updated",
+                  "bytes": 436157,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "quarter",
+                  "status": "updated",
+                  "bytes": 1616299,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "ytd",
+                  "status": "updated",
+                  "bytes": 1512372,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "ttm",
+                  "status": "updated",
+                  "bytes": 1724100,
+                  "rollbackStored": true
+                }
+              ]
+            }
+          }
+        ],
+        "coverage": 4,
+        "jobId": "b3b99d17-fdaf-4c26-a851-3f82cf844be2",
+        "status": "resume-required"
+      }
+    },
+    {
+      "at": "2026-09-13T05:36:47.727508+00:00",
+      "path": "/api/internal/data-migration",
+      "status": 202,
+      "durationSeconds": 6.203814,
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "X-Vercel-Cache": "MISS"
+      },
+      "body": {
+        "status": "busy-or-finished",
+        "retryAfterSeconds": 30
+      }
+    },
+    {
+      "at": "2026-09-13T05:37:54.551365+00:00",
+      "path": "/api/internal/data-migration",
+      "status": 200,
+      "durationSeconds": 45.914266,
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "X-Vercel-Cache": "MISS"
+      },
+      "body": {
+        "cursor": 2,
+        "nextCursor": 4,
+        "done": true,
+        "results": [
+          {
+            "ticker": "JPM",
+            "submissions": "updated",
+            "companyfacts": "updated",
+            "financial": {
+              "ticker": "JPM",
+              "status": "prepared",
+              "bases": [
+                {
+                  "basis": "annual",
+                  "status": "updated",
+                  "bytes": 306351,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "quarter",
+                  "status": "updated",
+                  "bytes": 1190666,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "ytd",
+                  "status": "updated",
+                  "bytes": 1074686,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "ttm",
+                  "status": "updated",
+                  "bytes": 1265671,
+                  "rollbackStored": true
+                }
+              ]
+            }
+          },
+          {
+            "ticker": "ACU",
+            "submissions": "updated",
+            "companyfacts": "updated",
+            "financial": {
+              "ticker": "ACU",
+              "status": "prepared",
+              "bases": [
+                {
+                  "basis": "annual",
+                  "status": "updated",
+                  "bytes": 511229,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "quarter",
+                  "status": "updated",
+                  "bytes": 1575327,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "ytd",
+                  "status": "updated",
+                  "bytes": 1483781,
+                  "rollbackStored": true
+                },
+                {
+                  "basis": "ttm",
+                  "status": "updated",
+                  "bytes": 1658595,
+                  "rollbackStored": true
+                }
+              ]
+            }
+          }
+        ],
+        "coverage": 4,
+        "jobId": "b3b99d17-fdaf-4c26-a851-3f82cf844be2",
+        "status": "done"
+      }
+    },
+    {
+      "at": "2026-09-13T05:35:46.548239+00:00",
+      "path": "/api/internal/data-migration",
+      "status": 200,
+      "durationSeconds": 31.279522,
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "X-Vercel-Cache": "MISS"
+      },
+      "body": {
+        "schema_version": "edgar.cftc-positioning.v1",
+        "refreshed_at": "2026-09-13T05:36:17.749Z",
+        "status": "ready",
+        "checkpoint": {
+          "schema_version": "edgar.cftc-refresh-checkpoint.v2",
+          "started_at": "2026-09-13T05:35:54.776Z",
+          "updated_at": "2026-09-13T05:36:17.109Z",
+          "complete": true
+        },
+        "families": [
+          {
+            "family": "tff",
+            "status": "ready",
+            "report_date": "2026-09-08",
+            "catalog_rows": 99,
+            "cache_durable": true,
+            "durable_published": true,
+            "durable_publication": {
+              "generation": "1",
+              "content_hash": "225686d78a6710a13994df3ec802d68628b19e337f85ec5448edd47b9a264a7f",
+              "report_date": "2026-09-08",
+              "raw_history_count": 13
+            }
+          },
+          {
+            "family": "disaggregated",
+            "status": "ready",
+            "report_date": "2026-09-08",
+            "catalog_rows": 277,
+            "cache_durable": true,
+            "durable_published": true,
+            "durable_publication": {
+              "generation": "1",
+              "content_hash": "e25db89970b7b731d2ab426523992bb0d3b15fff2659a393ac5cc164cf267bec",
+              "report_date": "2026-09-08",
+              "raw_history_count": 12
+            }
+          }
+        ],
+        "durable_job": {
+          "job_key": "cftc-refresh:2026-09-13",
+          "generation": 1,
+          "resume_source": "durable",
+          "status": "done"
+        }
+      }
+    },
+    {
+      "at": "2026-09-13T05:37:02.764739+00:00",
+      "path": "/api/internal/data-migration?financial=AAPL&basis=annual",
+      "status": 200,
+      "durationSeconds": 6.911701,
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "X-Vercel-Cache": "BYPASS"
+      },
+      "body": {
+        "key": "financial-analysis-v1:analysis-v1.4:context-v3:CIK0000320193:annual:latest",
+        "metadata": {
+          "basis": "annual",
+          "entityId": "0000320193",
+          "sourceId": "sec-edgar",
+          "expiresAt": "2026-09-14T06:35:53.614+00:00",
+          "fetchedAt": "2026-09-13T05:35:53.614Z",
+          "sourceUrl": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json",
+          "publishedAt": null,
+          "reportPeriod": "2025-09-27",
+          "parserVersion": "financial-analysis-v1",
+          "revalidatedAt": "2026-09-13T05:35:53.614+00:00",
+          "inputDocuments": [
+            {
+              "key": "sec-documents-v1:CIK0000320193:submissions",
+              "fetchedAt": "2026-09-13T05:35:53.614Z",
+              "generation": 1,
+              "contentHash": "cb90ffafc5b6f997b60aa109e07008223ad35abe896ec7918fd43652b4057329"
+            },
+            {
+              "key": "sec-documents-v1:CIK0000320193:companyfacts",
+              "fetchedAt": "2026-09-13T05:35:56.323Z",
+              "generation": 1,
+              "contentHash": "73a86c6aedc31f77cac2ea4df5f80f0b3bd7e6eb58bb4e01444fbedf3afb9c43"
+            }
+          ],
+          "calculationVersion": "analysis-v1.4:context-v3",
+          "financialInputHash": "b2f75d42cd80bbf05058660c4a7e8f032e3032d4241dbe2d8d7e648af56ec2df",
+          "contentHash": "10017fba4415569afdb76e657297e57092df7c5c496a6f5f42388a365acf35f0",
+          "identityHash": "e32b17f02ab03cd8e6a1dac723d50c224c936ae9e0a7567b1241b3d26516a8a3",
+          "versionId": "5b3aefad-2b65-45d5-a1b0-7775393f56ac",
+          "generation": 1
+        },
+        "observations": [
+          {
+            "form": "10-K",
+            "unit": "USD",
+            "filed": "2025-10-31",
+            "value": "416161000000",
+            "metric": "revenue",
+            "concept": "RevenueFromContractWithCustomerExcludingAssessedTax",
+            "context": {
+              "kind": "annual",
+              "reason": null,
+              "formula": null,
+              "sourceIds": [
+                0
+              ],
+              "calculationIds": [],
+              "classification": "reported",
+              "evidenceLocation": "version_snapshot.sourceCatalog",
+              "calculationLocation": "version_snapshot.calculationCatalog"
+            },
+            "taxonomy": "us-gaap",
+            "accession": "0000320193-25-000079",
+            "period_end": "2025-09-27",
+            "fiscal_year": 2025,
+            "period_start": "2024-09-29",
+            "fiscal_period": "FY"
+          },
+          {
+            "form": "10-K",
+            "unit": "USD",
+            "filed": "2025-10-31",
+            "value": "112010000000",
+            "metric": "netIncome",
+            "concept": "NetIncomeLoss",
+            "context": {
+              "kind": "annual",
+              "reason": null,
+              "formula": null,
+              "sourceIds": [
+                97
+              ],
+              "calculationIds": [],
+              "classification": "reported",
+              "evidenceLocation": "version_snapshot.sourceCatalog",
+              "calculationLocation": "version_snapshot.calculationCatalog"
+            },
+            "taxonomy": "us-gaap",
+            "accession": "0000320193-25-000079",
+            "period_end": "2025-09-27",
+            "fiscal_year": 2025,
+            "period_start": "2024-09-29",
+            "fiscal_period": "FY"
+          },
+          {
+            "form": "10-Q",
+            "unit": "USD",
+            "filed": "2026-07-31",
+            "value": "359241000000",
+            "metric": "totalAssets",
+            "concept": "Assets",
+            "context": {
+              "kind": "annual",
+              "reason": null,
+              "formula": null,
+              "sourceIds": [
+                211
+              ],
+              "calculationIds": [],
+              "classification": "reported",
+              "evidenceLocation": "version_snapshot.sourceCatalog",
+              "calculationLocation": "version_snapshot.calculationCatalog"
+            },
+            "taxonomy": "us-gaap",
+            "accession": "0000320193-26-000020",
+            "period_end": "2025-09-27",
+            "fiscal_year": 2025,
+            "period_start": null,
+            "fiscal_period": "FY"
+          },
+          {
+            "form": "10-Q",
+            "unit": "USD",
+            "filed": "2026-07-31",
+            "value": "73733000000",
+            "metric": "stockholdersEquity",
+            "concept": "StockholdersEquity",
+            "context": {
+              "kind": "annual",
+              "reason": null,
+              "formula": null,
+              "sourceIds": [
+                288
+              ],
+              "calculationIds": [],
+              "classification": "reported",
+              "evidenceLocation": "version_snapshot.sourceCatalog",
+              "calculationLocation": "version_snapshot.calculationCatalog"
+            },
+            "taxonomy": "us-gaap",
+            "accession": "0000320193-26-000020",
+            "period_end": "2025-09-27",
+            "fiscal_year": 2025,
+            "period_start": null,
+            "fiscal_period": "FY"
+          },
+          {
+            "form": "10-K",
+            "unit": "USD",
+            "filed": "2025-10-31",
+            "value": "111482000000",
+            "metric": "operatingCashFlow",
+            "concept": "NetCashProvidedByUsedInOperatingActivities",
+            "context": {
+              "kind": "annual",
+              "reason": null,
+              "formula": null,
+              "sourceIds": [
+                299
+              ],
+              "calculationIds": [],
+              "classification": "reported",
+              "evidenceLocation": "version_snapshot.sourceCatalog",
+              "calculationLocation": "version_snapshot.calculationCatalog"
+            },
+            "taxonomy": "us-gaap",
+            "accession": "0000320193-25-000079",
+            "period_end": "2025-09-27",
+            "fiscal_year": 2025,
+            "period_start": "2024-09-29",
+            "fiscal_period": "FY"
+          },
+          {
+            "form": null,
+            "unit": "USD",
+            "filed": null,
+            "value": "98767000000",
+            "metric": "freeCashFlow",
+            "concept": null,
+            "context": {
+              "kind": "annual",
+              "reason": null,
+              "formula": "Operating cash flow \u2212 reported purchases of property, plant and equipment",
+              "sourceIds": [
+                299,
+                332
+              ],
+              "calculationIds": [],
+              "classification": "calculated",
+              "evidenceLocation": "version_snapshot.sourceCatalog",
+              "calculationLocation": "version_snapshot.calculationCatalog"
+            },
+            "taxonomy": null,
+            "accession": null,
+            "period_end": "2025-09-27",
+            "fiscal_year": 2025,
+            "period_start": "2024-09-29",
+            "fiscal_period": "FY"
+          },
+          {
+            "form": null,
+            "unit": "%",
+            "filed": null,
+            "value": "171.42244974480232",
+            "metric": "roe",
+            "concept": null,
+            "context": {
+              "kind": "annual",
+              "reason": null,
+              "formula": "Net income / average beginning and ending equity \u00d7 annualization factor \u00d7 100",
+              "sourceIds": [
+                97,
+                288,
+                289
+              ],
+              "calculationIds": [],
+              "classification": "calculated",
+              "evidenceLocation": "version_snapshot.sourceCatalog",
+              "calculationLocation": "version_snapshot.calculationCatalog"
+            },
+            "taxonomy": null,
+            "accession": null,
+            "period_end": "2025-09-27",
+            "fiscal_year": 2025,
+            "period_start": "2024-09-29",
+            "fiscal_period": "FY"
+          },
+          {
+            "form": null,
+            "unit": "%",
+            "filed": null,
+            "value": "30.93254683307996",
+            "metric": "roa",
+            "concept": null,
+            "context": {
+              "kind": "annual",
+              "reason": null,
+              "formula": "Net income / average beginning and ending assets \u00d7 annualization factor \u00d7 100",
+              "sourceIds": [
+                97,
+                211,
+                212
+              ],
+              "calculationIds": [],
+              "classification": "calculated",
+              "evidenceLocation": "version_snapshot.sourceCatalog",
+              "calculationLocation": "version_snapshot.calculationCatalog"
+            },
+            "taxonomy": null,
+            "accession": null,
+            "period_end": "2025-09-27",
+            "fiscal_year": 2025,
+            "period_start": "2024-09-29",
+            "fiscal_period": "FY"
+          },
+          {
+            "form": null,
+            "unit": "ratio",
+            "filed": null,
+            "value": "0.8932929222186667",
+            "metric": "currentRatio",
+            "concept": null,
+            "context": {
+              "kind": "annual",
+              "reason": null,
+              "formula": "Current assets / current liabilities",
+              "sourceIds": [
+                182,
+                244
+              ],
+              "calculationIds": [],
+              "classification": "calculated",
+              "evidenceLocation": "version_snapshot.sourceCatalog",
+              "calculationLocation": "version_snapshot.calculationCatalog"
+            },
+            "taxonomy": null,
+            "accession": null,
+            "period_end": "2025-09-27",
+            "fiscal_year": 2025,
+            "period_start": "2024-09-29",
+            "fiscal_period": "FY"
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-09-13T05:38:56.693980+00:00",
+      "path": "/api/internal/data-migration",
+      "status": 200,
+      "durationSeconds": 10.154976,
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "X-Vercel-Cache": "BYPASS"
+      },
+      "body": {
+        "flags": {
+          "cftc": "shadow",
+          "sec": "shadow",
+          "financial": "shadow"
+        },
+        "status": {
+          "jobs": {
+            "done": 2
+          },
+          "heads": 26,
+          "versions": 26,
+          "sourceAssets": 10,
+          "databaseBytes": 417792,
+          "preparedBytes": 0,
+          "sourceStoredBytes": 2537014,
+          "latestRevalidation": "2026-09-13T05:38:26.093+00:00",
+          "snapshotStoredBytes": 1194405
+        },
+        "retention": {
+          "dryRun": true,
+          "deletionEnabled": false,
+          "terminalJobCandidates": 0,
+          "sourceEvidenceDeletion": false,
+          "derivedSnapshotCandidates": []
+        },
+        "orphans": {
+          "dryRun": true,
+          "objects": [],
+          "deletionEnabled": false
+        },
+        "cftc": {
+          "mode": "shadow",
+          "scope": "current-process",
+          "comparison_limit_per_hour": 8,
+          "writes": 2,
+          "write_failures": 0,
+          "read_failures": 0,
+          "shadow_matches": 2,
+          "shadow_mismatches": 0,
+          "shadow_revision_skips": 0
+        },
+        "alerts": "unconfigured"
+      }
+    }
+  ]
+}

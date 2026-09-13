@@ -99,6 +99,26 @@ test('gateway rejects queries, method changes, encoded paths and arbitrary servi
   assert.equal(calls.length, 0);
 });
 
+test('hosted function prefix and full local prefix route identically; prefix lookalikes fail closed', async () => {
+  const { handler, calls } = setup();
+  const invoke = (prefix, path, body) => handler(new Request(`${URL}${prefix}${path}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { Authorization: `Bearer ${TOKEN}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }));
+  for (const prefix of ['/edgar-data-gateway', '/functions/v1/edgar-data-gateway']) {
+    assert.equal((await invoke(prefix, '/health')).status, 200);
+    assert.equal((await invoke(prefix, '/rest/v1/rpc/edgar_store_status', { p_namespace: 'production' })).status, 200);
+    assert.equal((await invoke(prefix, '/rest/v1/rpc/edgar_store_status', { p_namespace: 'rehearsal' })).status, 403);
+  }
+  for (const prefix of ['/other/edgar-data-gateway', '/edgar-data-gateway-extra', '/functions/v1/other/edgar-data-gateway', '/functions/v1/edgar-data-gateway-extra', '/edgar-data-gateway/edgar-data-gateway', '']) {
+    assert.equal((await invoke(prefix, '/health')).status, 403, prefix);
+  }
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0][0], `${URL}/rest/v1/rpc/edgar_store_status`);
+  assert.equal(calls[1][0], calls[0][0]);
+});
+
 test('gateway permits only approved dataset/resource/cohort formats', async () => {
   const { handler, calls } = setup();
   const valid = [

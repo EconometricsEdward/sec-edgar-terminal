@@ -32,13 +32,20 @@ The existing SEC prewarm and CFTC cron remain the only authoritative refresh sch
 
 ## Deployment and acceptance receipt
 
-Connection implementation and controlled tests are complete. The gateway is installed; anonymous and forged-token requests returned 401 with private/no-store headers. Production shadow deployment, real cohort ingestion, reader activation and rollback verification are recorded below as they finish.
+PR #60 deployed commit `a0a5046db5f5f77137691dccd91a001a2e9f6f98` to production (`dpl_FMHrFehPt3DKXfiwY1tgyTvYGsRU`) in shadow mode. The first hosted check exposed Supabase's relay path normalization: the function receives `/edgar-data-gateway/...`, without `/functions/v1`. Gateway version 3 accepts those two exact hosted/local prefixes and preserves the same authentication and inner operation allowlist. Seventeen gateway tests, including prefix lookalikes, and the Deno check pass. The production status endpoint then returned HTTP 200 through real Vercel workload identity; anonymous and forged gateway requests remain denied.
+
+At 05:39 UTC on 2026-09-13, the live application had published 26 current versions: eight canonical SEC documents, sixteen financial views (annual, quarter, YTD, TTM for AAPL, MSFT, JPM and ACU), and two CFTC market snapshots. Ten immutable source assets include the eight SEC documents and both exact CFTC source bundles, with all 13 TFF and 12 disaggregated launch-market raw histories. CFTC report date is 2026-09-08. All sixteen financial rollback mirrors were acknowledged. Both durable ingestion jobs are done; SEC resumed from cursor 2 to 4 on its second claimed batch. One intervening call safely returned busy during its stored cooldown.
+
+The protected financial endpoint read the AAPL annual snapshot and nine normalized observations through the live gateway, including revenue `416161000000` for 2025-09-27, with accession, filing date, source document hashes and calculation lineage. The status check reported 2,537,014 source bytes and 1,194,405 derived snapshot bytes, zero orphan candidates, and deletion disabled. These are logical referenced compressed bytes; shared source/snapshot objects are not double-counted as physical storage. Full bootstrap receipts are in `data-migration-evidence/hosted-activation.json`.
+
+The next reviewed deployment enables all three Supabase reader defaults and the bounded four-company SEC work within the existing prewarm cron. Public endpoint checks and a real off/restore deployment drill are recorded after that deployment; they are not implied by successful bootstrap.
 
 ## Sources
 
 - [Vercel OIDC custom API authentication](https://vercel.com/docs/oidc/api)
 - [Vercel OIDC token source, claims and lifetime](https://vercel.com/docs/oidc/reference)
 - [Supabase Edge runtime secrets](https://supabase.com/docs/guides/functions/secrets)
+- [Supabase hosted function routing](https://supabase.com/docs/guides/functions/routing)
 - [Supabase Edge Function limits](https://supabase.com/docs/guides/functions/limits)
 - [Supabase Edge invocation pricing](https://supabase.com/docs/guides/functions/pricing)
 - [Supabase egress accounting](https://supabase.com/docs/guides/troubleshooting/all-about-supabase-egress-a_Sg_e)
