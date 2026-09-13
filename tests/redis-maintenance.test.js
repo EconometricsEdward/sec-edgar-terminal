@@ -37,6 +37,11 @@ function fixture(entries = [], overrides = {}) {
     if (kind === 'INFO') return '# Memory\r\nused_memory:266338304\r\nmaxmemory:268435456\r\nsecret_field:DO_NOT_SHOW\r\n';
     if (kind === 'DBSIZE') return values.size;
     if (kind === 'EVAL_RO') return [get(args[2])?.raw || null, ttl(args[2])];
+    if (kind === 'DELEX') {
+      assert.equal(args.length, 3); assert.equal(args[1], 'IFEQ');
+      if (get(args[0])?.raw !== args[2]) return 0;
+      values.delete(args[0]); return 1;
+    }
     if (kind === 'EVAL') {
       const [script, count, ...rest] = args, keys = rest.slice(0, count), hashes = rest.slice(count);
       const matches = (key, hash) => hash === 'absent' ? !get(key) : get(key) && digest(get(key).raw, 'sha1') === hash;
@@ -108,7 +113,7 @@ test('inventory records metadata only, with no mutation and no secrets in summar
   assert.equal(result.inventory.byFamily.history.expiresLater, 1);
   assert.equal(result.redis.usedMemoryBytes, 266338304);
   assert.equal(f.writes.length, 0);
-  assert.ok(f.calls.every(call => !['GET', 'EVAL', 'DEL', 'SET'].includes(call[0])));
+  assert.ok(f.calls.every(call => !['GET', 'EVAL', 'DELEX', 'DEL', 'SET'].includes(call[0])));
   assert.doesNotMatch(JSON.stringify(result), /10\.1\.2\.3|DO_NOT_SHOW|0000320193/);
   const calls = f.calls.length; assert.equal((await f.run()).status, 'waiting'); assert.equal(f.calls.length, calls);
 });
@@ -155,27 +160,79 @@ test('fresh runtime handoff imports but never deletes before ten minutes', async
   await f.run(); f.control.mode = 'migrate';
   const result = await f.run();
   assert.equal(result.counters.migrated, 1); assert.equal(result.counters.removed, 0);
-  assert.equal(f.values.has(key), true); assert.ok(!f.calls.some(call => call[0] === 'EVAL'));
+  assert.equal(f.values.has(key), true); assert.ok(!f.calls.some(call => ['EVAL', 'DELEX', 'DEL'].includes(call[0])));
 });
 
-test('concurrent changed Redis writer survives compare-hash deletion', async () => {
+test('concurrent changed Redis writer survives native exact-value compare-delete', async () => {
   const key = 'warm:quant-company-v1:0000320193';
   const f = fixture([[key, { version: 1 }]], {
-    beforeCommand(parts, { values }) { if (parts[0] === 'EVAL') values.get(key).raw = JSON.stringify({ version: 2 }); },
+    beforeCommand(parts, { values }) { if (parts[0] === 'DELEX') values.get(key).raw = JSON.stringify({ version: 2 }); },
   });
   await f.run(); f.migrate();
   const result = await f.run();
   assert.equal(result.counters.removed, 0);
+  assert.equal(result.counters.removedStringValueBytes, 0);
   assert.equal(JSON.parse(f.values.get(key).raw).version, 2);
+});
+
+test('native compare-delete frees verified standalone bytes when capacity rejects every write script', async () => {
+  const key = 'warm:quant-company-v1:0000320193', raw = ' {\n "company": "Café" }\n';
+  const f = fixture(snapshotEntries({}, [[key, raw]]), {
+    beforeCommand(parts) { if (parts[0] === 'EVAL') throw Object.assign(new Error('private capacity diagnostic'), { code: 'redis_storage_limit' }); },
+  });
+  await f.run(); f.migrate(); const result = await f.run();
+  assert.equal(f.values.has(key), false); assert.equal(f.values.has(parentKey), true); assert.equal(f.values.has(chunkKey(GENERATION)), true);
+  assert.equal(result.counters.removed, 1); assert.equal(result.counters.removedStringValueBytes, Buffer.byteLength(raw));
+  assert.equal(result.errors.redis_storage_limit, 1);
+  assert.deepEqual(f.calls.find(call => call[0] === 'DELEX'), ['DELEX', key, 'IFEQ', raw]);
+  assert.deepEqual(f.durable.get('quant-company-v1:0000320193').payload, { company: 'Café' });
+  assert.ok(!f.calls.some(call => call[0] === 'DEL'));
+});
+
+test('invalid native acknowledgements or unsupported command preserve accounting with no unconditional fallback', async () => {
+  const key = 'warm:quant-company-v1:0000320193';
+  for (const reply of [-1, 2, '1', null, 'unsupported']) {
+    const f = fixture([[key, { company: 'safe' }]]);
+    const original = f.injected.redis.command;
+    f.injected.redis.command = async parts => {
+      if (parts[0] !== 'DELEX') return original(parts);
+      f.calls.push(parts);
+      if (reply === 'unsupported') throw Object.assign(new Error('unknown command private information'), { code: 'redis_unsupported' });
+      return reply;
+    };
+    await f.run(); f.migrate(); const result = await f.run();
+    assert.equal(result.counters.removed, 0); assert.equal(result.counters.removedStringValueBytes, 0);
+    assert.equal(f.values.has(key), true);
+    assert.equal(result.errors[reply === 'unsupported' ? 'redis_unsupported' : 'redis_delete_response'], 1);
+    assert.ok(!f.calls.some(call => ['DEL', 'EVAL'].includes(call[0])));
+    assert.doesNotMatch(JSON.stringify(result), /private information/);
+  }
 });
 
 test('durable mismatch or write failure preserves Redis', async () => {
   const key = 'warm:quant-company-v1:0000320193';
-  for (const overrides of [{ cacheGet: row => ({ ...row, rawSha256: 'f'.repeat(64) }) }, { beforePut: () => { throw new Error('private secret error'); } }]) {
+  for (const overrides of [{ cacheGet: row => ({ ...row, rawSha256: 'f'.repeat(64) }) },
+    { cacheGet: () => null }, { cacheGet: row => ({ ...row, expiresAt: '2026-09-14T11:59:59Z' }) },
+    { beforePut: () => { throw new Error('private secret error'); } }]) {
     const f = fixture([[key, { version: 1 }]], overrides);
     await f.run(); f.migrate(); const result = await f.run();
     assert.equal(f.values.has(key), true); assert.equal(result.counters.removed, 0);
+    assert.ok(!f.calls.some(call => ['DELEX', 'DEL'].includes(call[0])));
     assert.doesNotMatch(JSON.stringify(result), /private secret/);
+  }
+});
+
+test('only known DisposableCacheError codes become safe cache diagnostics', async () => {
+  for (const [code, name, expected] of [
+    ['timeout', 'DisposableCacheError', 'cache_timeout'], ['transport_failure', 'DisposableCacheError', 'cache_transport_failure'],
+    ['http_503', 'DisposableCacheError', 'cache_http_error'], ['integrity_mismatch', 'DisposableCacheError', 'cache_integrity_mismatch'],
+    ['deadline', 'DisposableCacheError', 'cache_deadline'], ['private_secret', 'DisposableCacheError', 'maintenance_operation'],
+    ['timeout', 'Error', 'maintenance_operation'],
+  ]) {
+    const f = fixture();
+    f.injected.readState = async () => { throw Object.assign(new Error('private raw provider message'), { name, code }); };
+    const result = await f.run(); assert.equal(result.code, expected);
+    assert.doesNotMatch(JSON.stringify(result), /private|raw provider/);
   }
 });
 
@@ -364,8 +421,9 @@ test('cold metadata reads receive five seconds while deletes and the total deadl
   await transport.command(['SCAN', '0', 'COUNT', '100'], { deadline: 21_000 });
   await transport.pipeline([['TYPE', 'warm:known:ID'], ['PTTL', 'warm:known:ID']], { deadline: 21_000 });
   await transport.command(['EVAL', 'return 0', 1, 'warm:known:ID'], { deadline: 21_000 });
+  await transport.command(['DELEX', 'warm:known:ID', 'IFEQ', 'original'], { deadline: 21_000 });
   await transport.command(['SCAN', '0', 'COUNT', '100'], { deadline: 1800 });
-  assert.deepEqual(durations, [5000, 5000, 2000, 800]);
+  assert.deepEqual(durations, [5000, 5000, 2000, 2000, 800]);
 });
 
 test('maintenance transport distinguishes request timeout, total deadline and network errors', async () => {

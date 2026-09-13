@@ -208,13 +208,6 @@ if not value then return {false, -2} end
 return {value, redis.call('PTTL', KEYS[1])}
 `;
 
-const COMPARE_DELETE = `
-local value = redis.call('GET', KEYS[1])
-if not value or redis.sha1hex(value) ~= ARGV[1] then return {0, 0} end
-local bytes = string.len(value)
-return {redis.call('DEL', KEYS[1]), bytes}
-`;
-
 // Parent and every individual chunk are fenced. A renewed/changed Redis writer
 // cannot lose its data after our independent Supabase read-back verification.
 const DELETE_SNAPSHOT = `
@@ -248,7 +241,20 @@ function addDeletion(state, result, maximum) {
   if (result[0]) state.counters.removedStringValueBytes += result[1];
 }
 
+const DISPOSABLE_ERROR_CODES = new Set([
+  'disabled', 'deadline', 'timeout', 'transport_failure', 'identity_unavailable', 'invalid_response',
+  'response_too_large', 'request_too_large', 'stale_generation', 'invalid_record', 'integrity_mismatch',
+  'invalid_gzip', 'invalid_json', 'incomplete_batch', 'invalid_batch', 'invalid_write', 'raw_too_large',
+  'source_identity_mismatch', 'compressed_too_large', 'invalid_acknowledgement', 'invalid_generation_claim',
+  'invalid_owner', 'invalid_state',
+]);
+const DISPOSABLE_HTTP_ERRORS = new Set([400, 401, 403, 404, 408, 409, 413, 422, 429, 500, 502, 503, 504].map(status => `http_${status}`));
 function errorCode(error) {
+  if (error?.name === 'DisposableCacheError') {
+    if (DISPOSABLE_ERROR_CODES.has(error.code)) return `cache_${error.code}`;
+    if (DISPOSABLE_HTTP_ERRORS.has(error.code)) return 'cache_http_error';
+    return 'maintenance_operation';
+  }
   return typeof error?.code === 'string' && /^(?:redis|cache|maintenance|snapshot|migration)_[a-z_]{1,48}$/.test(error.code) ? error.code : 'maintenance_operation';
 }
 function recordError(state, error) {
@@ -469,7 +475,15 @@ export async function maintainRedisCache({ signal, deadline = Date.now() + 20_00
     const proof = await preserve(classification.type, classification.id, payload, row.expiresAt);
     if (!proof) { state.counters.preserved++; return; }
     state.counters.migrated++;
-    if (drainComplete() && remaining()) addDeletion(state, await command(['EVAL', COMPARE_DELETE, 1, key, row.sha1]), 1);
+    if (drainComplete() && remaining()) {
+      // Upstash's native DELEX IFEQ atomically compares the exact original
+      // string and deletes it. It avoids EVAL's write classification at full
+      // storage capacity; the SDK has no typed helper, so use its Redis command
+      // directly: https://upstash.com/docs/redis/commands/string/delex
+      const removed = await command(['DELEX', key, 'IFEQ', row.raw]);
+      if (removed !== 0 && removed !== 1) throw fail('redis_delete_response');
+      addDeletion(state, [removed, removed === 1 ? Buffer.byteLength(row.raw) : 0], 1);
+    }
   }
 
   try {
