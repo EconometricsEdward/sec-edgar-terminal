@@ -53,6 +53,23 @@ test('parenthesized SEC fund aliases remain exact and never overwrite an unparen
   assert.equal(result['(NWAKX)'].classId, 'C000000002'); assert.equal(result.NWAKX.classId, 'C000000003');
 });
 
+test('a valid SEC class without a symbol does not prevent searchable fund identities from loading', async () => {
+  const raw = { fields: ['cik', 'seriesId', 'classId', 'symbol'], data: [
+    [1388485, 'S000099871', 'C000269656', ''],
+    [1234567, 'S000000001', 'C000000002', 'ABCFX'],
+  ] };
+  let persisted;
+  const cache = createTickerDirectoryCache({ now: () => instant, read: async () => null,
+    fetchSec: async () => Response.json(raw), write: async (_type, _id, value) => { persisted = value; return true; } });
+  const result = await cache.get('funds');
+  assert.deepEqual(Object.keys(result), ['ABCFX']); assert.equal(result.ABCFX.classId, 'C000000002');
+  assert.deepEqual(Object.keys(persisted.data), ['ABCFX']); assert.equal(Object.hasOwn(result, ''), false);
+  raw.data[0][1] = 'invalid-series';
+  const invalid = createTickerDirectoryCache({ now: () => instant, read: async () => null,
+    fetchSec: async () => Response.json(raw), write: async () => { throw new Error('invalid identities cannot be persisted'); } });
+  await assert.rejects(invalid.get('funds'), /identity is malformed/);
+});
+
 test('malformed shared directory falls through to a validated source and never poisons local identity', async () => {
   const cache = createTickerDirectoryCache({ now: () => instant,
     read: async () => envelope('operating', { ZZZZ: { cik: '0000000000', name: 'Wrong' } }),

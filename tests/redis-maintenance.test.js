@@ -123,6 +123,18 @@ test('SCAN count overflow is resumed without dropping page keys', async () => {
   assert.equal(f.calls.filter(call => call[0] === 'SCAN').length, 1);
 });
 
+test('unknown inventory groups only bounded safe type prefixes without exposing IDs or changing admission', async () => {
+  const entries = [['warm:old-company-v0:0000320193', 'large'], ['warm:old-company-v0:0000789019', 'large'],
+    ['warm:user-notes:alice', 'private'], ['warm:auth-session:secret', 'protected'], ['warm:ALICE:email@example.com', 'private'],
+    ...Array.from({ length: 30 }, (_, index) => [`warm:legacy-type-${index}:sensitive-${index}`, 'other'])];
+  const f = fixture(entries); const result = await f.run();
+  assert.equal(result.inventory.byUnknownType['old-company-v0'].keyObservations, 2);
+  assert.equal(Object.keys(result.inventory.byUnknownType).filter(key => key !== 'other').length, 24);
+  assert.ok(result.inventory.byUnknownType.other.keyObservations > 0);
+  assert.doesNotMatch(JSON.stringify(result), /0000320193|0000789019|alice|email@example|sensitive|user-notes|auth-session/);
+  assert.equal(classifyRedisMaintenanceKey('warm:old-company-v0:0000320193').family, 'unknown');
+});
+
 test('migration preserves verified data including history and deletes only reviewed source values', async () => {
   const dataKey = 'warm:quant-company-v1:0000320193';
   const historyKey = 'warm:market-research-v3:OBSERVATIONS';
@@ -341,5 +353,32 @@ test('Redis transport uses existing credential internally and exposes only class
     const transport = createRedisMaintenanceTransport({ env: { KV_REST_API_URL: 'https://example.invalid', KV_REST_API_TOKEN: 'top-secret' },
       fetchImpl: async (_url, options) => { assert.equal(options.headers.Authorization, 'Bearer top-secret'); return Response.json({ error }, { status: 400 }); } });
     await assert.rejects(transport.command(['INFO', 'memory']), problem => problem.code === code && !problem.message.includes('top-secret'));
+  }
+});
+
+test('cold metadata reads receive five seconds while deletes and the total deadline stay bounded', async () => {
+  const durations = [];
+  const transport = createRedisMaintenanceTransport({ env: { KV_REST_API_URL: 'https://example.invalid', KV_REST_API_TOKEN: 'secret' }, now: () => 1000,
+    timeoutSignal: milliseconds => { durations.push(milliseconds); return new AbortController().signal; },
+    fetchImpl: async (_url, options) => Response.json(Array.isArray(JSON.parse(options.body)[0]) ? [{ result: 'string' }, { result: 4000 }] : { result: 1 }) });
+  await transport.command(['SCAN', '0', 'COUNT', '100'], { deadline: 21_000 });
+  await transport.pipeline([['TYPE', 'warm:known:ID'], ['PTTL', 'warm:known:ID']], { deadline: 21_000 });
+  await transport.command(['EVAL', 'return 0', 1, 'warm:known:ID'], { deadline: 21_000 });
+  await transport.command(['SCAN', '0', 'COUNT', '100'], { deadline: 1800 });
+  assert.deepEqual(durations, [5000, 5000, 2000, 800]);
+});
+
+test('maintenance transport distinguishes request timeout, total deadline and network errors', async () => {
+  const cases = [
+    { deadline: 21_000, abort: true, expected: 'redis_timeout' },
+    { deadline: 1800, abort: true, expected: 'maintenance_deadline' },
+    { deadline: 21_000, abort: false, expected: 'redis_transport' },
+  ];
+  for (const scenario of cases) {
+    const controller = new AbortController();
+    const transport = createRedisMaintenanceTransport({ env: { KV_REST_API_URL: 'https://example.invalid', KV_REST_API_TOKEN: 'secret' }, now: () => 1000,
+      timeoutSignal: () => controller.signal,
+      fetchImpl: async () => { if (scenario.abort) controller.abort(); throw new Error('private connection details'); } });
+    await assert.rejects(transport.command(['SCAN', '0', 'COUNT', '100'], { deadline: scenario.deadline }), error => error.code === scenario.expected && !error.message.includes('private'));
   }
 });

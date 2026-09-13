@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkRateLimit, rateLimitHeaders, rateLimitedResponse } from '../src/utils/rateLimit.js';
+import { checkRateLimit, rateLimitHeaders, rateLimitedResponse, rateLimitRejectionCode } from '../src/utils/rateLimit.js';
+
+test('provider rejection diagnostics distinguish capacity failures without returning provider text', () => {
+  assert.equal(rateLimitRejectionCode([{ error: 'ERR max data size exceeded' }, { result: 0 }, { result: -2 }]), 'redis_storage_limit');
+  assert.equal(rateLimitRejectionCode([{ error: 'OOM command not allowed when used memory > maxmemory' }]), 'redis_memory_limit');
+  assert.equal(rateLimitRejectionCode({ error: 'ERR daily request limit reached' }), 'redis_quota');
+  assert.equal(rateLimitRejectionCode([{ error: 'WRONGPASS secret-token' }]), 'redis_auth');
+  assert.equal(rateLimitRejectionCode([{ error: 'ERR syntax error' }]), 'redis_command');
+  assert.equal(rateLimitRejectionCode([{ error: 'unexpected sensitive-provider-string' }]), 'redis_invalid_response');
+  assert.equal(rateLimitRejectionCode(null), 'redis_invalid_response');
+});
 
 test('rate-limit responses are non-cacheable and expose standard quota headers', async () => {
   const info = { limit: 20, remaining: 0, resetAt: Date.now() + 2500 };

@@ -13,6 +13,8 @@ const MAX_STATE_BYTES = 60 * 1024;
 const MAX_RAW_BYTES = 32 * 1024 * 1024;
 const MAX_KEYS = 200;
 const MAX_ORPHANS = 96;
+const MAX_UNKNOWN_TYPES = 24;
+const READ_ONLY_COMMANDS = new Set(['SCAN', 'TYPE', 'STRLEN', 'PTTL', 'INFO', 'DBSIZE', 'EVAL_RO']);
 const SHA256 = /^[a-f0-9]{64}$/;
 const GENERATION = /^(?:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|[a-f0-9]{64})$/i;
 const MODES = new Set(['inventory', 'migrate', 'steady']);
@@ -106,38 +108,49 @@ async function boundedResponse(response, maximum) {
 }
 
 /** Factory is injectable for offline tests. Never returns its runtime secrets. */
-export function createRedisMaintenanceTransport({ env = process.env, fetchImpl = (...args) => fetch(...args), now = Date.now } = {}) {
+export function createRedisMaintenanceTransport({ env = process.env, fetchImpl = (...args) => fetch(...args), now = Date.now, timeoutSignal = milliseconds => AbortSignal.timeout(milliseconds) } = {}) {
   const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
   const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
-  async function send(commands, { signal, deadline = now() + 2000, pipeline = false, maxBytes = 2 * 1024 * 1024 } = {}) {
+  async function send(commands, { signal, deadline = now() + 5000, pipeline = false, maxBytes = 2 * 1024 * 1024 } = {}) {
     if (!url || !token) throw fail('redis_unconfigured');
-    const remaining = Math.min(2000, deadline - now());
+    // Cold SCAN pages can load Redis's persisted key index. Give read-only
+    // maintenance five seconds while preserving the caller's overall budget;
+    // deletion scripts keep their smaller two-second bound.
+    const readOnly = pipeline ? commands.every(command => READ_ONLY_COMMANDS.has(command[0])) : READ_ONLY_COMMANDS.has(commands[0]);
+    const timeoutMs = readOnly ? 5000 : 2000;
+    const budgetMs = deadline - now(), remaining = Math.min(timeoutMs, budgetMs);
     if (remaining <= 0 || signal?.aborted) throw fail('maintenance_deadline');
-    let response;
+    const timeout = timeoutSignal(remaining);
     try {
-      response = await fetchImpl(`${url}${pipeline ? '/pipeline' : ''}`, {
+      const response = await fetchImpl(`${url}${pipeline ? '/pipeline' : ''}`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(commands), redirect: 'error', cache: 'no-store',
-        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(remaining)]) : AbortSignal.timeout(remaining),
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       });
-    } catch { throw fail('redis_transport'); }
-    const result = await boundedResponse(response, maxBytes);
-    if (!response.ok || result?.error) throw fail(safeProviderCode(result, response.status));
-    if (!pipeline) {
-      if (!result || !Object.hasOwn(result, 'result')) throw fail('redis_response');
-      return result.result;
+      const result = await boundedResponse(response, maxBytes);
+      if (!response.ok || result?.error) throw fail(safeProviderCode(result, response.status));
+      if (!pipeline) {
+        if (!result || !Object.hasOwn(result, 'result')) throw fail('redis_response');
+        return result.result;
+      }
+      if (!Array.isArray(result) || result.length !== commands.length || result.some(item => !item || !Object.hasOwn(item, 'result') || item.error)) {
+        throw fail(safeProviderCode(result?.find?.(item => item?.error), response.status));
+      }
+      return result.map(item => item.result);
+    } catch (error) {
+      if (signal?.aborted || timeout.aborted && budgetMs < timeoutMs) throw fail('maintenance_deadline');
+      if (timeout.aborted || error?.name === 'TimeoutError') throw fail('redis_timeout');
+      if (error?.cause?.code === 'UND_ERR_CONNECT_TIMEOUT') throw fail('redis_connect_timeout');
+      if (typeof error?.code === 'string' && /^redis_[a-z_]{1,48}$/.test(error.code)) throw error;
+      throw fail('redis_transport');
     }
-    if (!Array.isArray(result) || result.length !== commands.length || result.some(item => !item || !Object.hasOwn(item, 'result') || item.error)) {
-      throw fail(safeProviderCode(result?.find?.(item => item?.error), response.status));
-    }
-    return result.map(item => item.result);
   }
   return { command: (command, options) => send(command, options), pipeline: (commands, options) => send(commands, { ...options, pipeline: true }) };
 }
 
 function initialState(now) {
   return { version: VERSION, phase: 'inventory', cursor: '0', pending: [], snapshotIndex: 0,
-    startedAt: new Date(now).toISOString(), inventory: { pages: 0, keyObservations: 0, stringValueBytes: 0, byFamily: {} },
+    startedAt: new Date(now).toISOString(), inventory: { pages: 0, keyObservations: 0, stringValueBytes: 0, byFamily: {}, byUnknownType: {} },
     counters: { inspected: 0, migrated: 0, removed: 0, removedStringValueBytes: 0, preserved: 0, errors: 0 },
     snapshotProofs: {}, orphans: {}, errors: {}, completedAt: null, nextAt: null };
 }
@@ -155,6 +168,13 @@ function checkedState(value, now) {
 
 const FAMILY_NAMES = new Set(['unknown', 'coordination', 'legacy-scan', 'snapshot-chunks', 'snapshot', 'checkpoint', 'research', 'document', 'reference', 'history']);
 const numberOrNull = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+const safeUnknownType = value => typeof value === 'string' && /^[a-z][a-z0-9._-]{2,63}$/.test(value)
+  && !['constructor', 'prototype', '__proto__'].includes(value)
+  && !/(?:auth|session|token|lease|generation|cooldown|user|account|credential|secret|password|login|profile|note)/i.test(value);
+function unknownTypeLabel(rawKey) {
+  const type = /^warm:([^:]+):/.exec(rawKey)?.[1];
+  return safeUnknownType(type) ? type : 'other';
+}
 /** Safe operator display: no Redis keys, queues, hashes or raw error text. */
 export function summarizeRedisMaintenanceState(state) {
   if (!state || state.version !== VERSION) return null;
@@ -164,9 +184,14 @@ export function summarizeRedisMaintenanceState(state) {
     if (!FAMILY_NAMES.has(family)) continue;
     byFamily[family] = Object.fromEntries(['keyObservations', 'stringValueBytes', 'persistent', 'expiresWithinDay', 'expiresLater'].map(key => [key, numberOrNull(values?.[key])]));
   }
+  const byUnknownType = {};
+  for (const [type, values] of Object.entries(state.inventory?.byUnknownType || {})) {
+    if (!safeUnknownType(type) || Object.keys(byUnknownType).filter(key => key !== 'other').length >= MAX_UNKNOWN_TYPES && type !== 'other') continue;
+    byUnknownType[type] = { keyObservations: numberOrNull(values?.keyObservations), stringValueBytes: numberOrNull(values?.stringValueBytes) };
+  }
   return { version: VERSION, phase: ['inventory', 'migration', 'steady'].includes(state.phase) ? state.phase : null, counters,
     inventory: { pages: numberOrNull(state.inventory?.pages), keyObservations: numberOrNull(state.inventory?.keyObservations),
-      stringValueBytes: numberOrNull(state.inventory?.stringValueBytes), byFamily,
+      stringValueBytes: numberOrNull(state.inventory?.stringValueBytes), byFamily, byUnknownType,
       basis: 'SCAN observations; duplicate visits and concurrent changes are possible; string bytes exclude Redis overhead.' },
     errors: Object.fromEntries(Object.entries(state.errors || {}).filter(([key, count]) => /^(?:redis|cache|maintenance|snapshot|migration)_[a-z_]{1,48}$/.test(key) && numberOrNull(count) !== null).slice(0, 32)),
     redis: state.redis ? { checkedAt: finiteTime(state.redis.checkedAt) ? state.redis.checkedAt : null,
@@ -303,6 +328,13 @@ export async function maintainRedisCache({ signal, deadline = Date.now() + 20_00
       const family = classifyRedisMaintenanceKey(key).family;
       const total = state.inventory.byFamily[family] ||= { keyObservations: 0, stringValueBytes: 0, persistent: 0, expiresWithinDay: 0, expiresLater: 0 };
       total.keyObservations++; total.stringValueBytes += bytes;
+      if (family === 'unknown') {
+        const types = state.inventory.byUnknownType ||= {};
+        let type = unknownTypeLabel(key);
+        if (!Object.hasOwn(types, type) && Object.keys(types).filter(key => key !== 'other').length >= MAX_UNKNOWN_TYPES) type = 'other';
+        const summary = types[type] ||= { keyObservations: 0, stringValueBytes: 0 };
+        summary.keyObservations++; summary.stringValueBytes += bytes;
+      }
       if (ttl === -1) total.persistent++; else if (ttl >= 0 && ttl <= 86400_000) total.expiresWithinDay++; else if (ttl > 86400_000) total.expiresLater++;
       state.inventory.keyObservations++; state.inventory.stringValueBytes += bytes; state.counters.inspected++;
     });

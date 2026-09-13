@@ -8,8 +8,8 @@
  * evicts on its own, so a long-lived instance can leak memory.
  *
  * Solution: use Vercel KV (Upstash Redis under the hood) as the shared
- * counter store. The REST API has sub-10ms latency from Vercel Functions
- * and its free tier covers 10k commands/day.
+ * counter store. Its separate storage and command quotas are monitored
+ * independently from the Supabase research cache.
  *
  * If KV env vars are missing (e.g. local dev without KV set up), we fall
  * back to the in-memory behavior with a one-time warning — this keeps
@@ -61,6 +61,18 @@ function localCheck(key, windowMs, max, cost) {
 }
 
 // ---------- Upstash REST path ----------
+/** Log a fixed diagnostic category, never provider text or client keys. */
+export function rateLimitRejectionCode(value) {
+  const errors = (Array.isArray(value) ? value.slice(0, 3) : [value])
+    .flatMap(item => typeof item?.error === 'string' ? [item.error.slice(0, 2048)] : []).join(' ');
+  if (/WRONGPASS|NOAUTH|NOPERM/i.test(errors)) return 'redis_auth';
+  if (/\bOOM\b|maxmemory|memory.*limit/i.test(errors)) return 'redis_memory_limit';
+  if (/max.*(?:data|size)|storage.*limit|data.*size.*limit/i.test(errors)) return 'redis_storage_limit';
+  if (/quota|request.*limit|command.*limit/i.test(errors)) return 'redis_quota';
+  if (/unknown command|unsupported|syntax error/i.test(errors)) return 'redis_command';
+  return 'redis_invalid_response';
+}
+
 async function remoteCheck(key, windowMs, max, cost) {
   // Fixed window using INCR + conditional EXPIRE. Good enough for our
   // protection goals and avoids sorted-set complexity.
@@ -86,7 +98,7 @@ async function remoteCheck(key, windowMs, max, cost) {
   if (!res.ok) throw new Error(`KV HTTP ${res.status}`);
   const results = await res.json();
   if (!Array.isArray(results) || results.length !== 3 || results.some((item) => item?.error)) {
-    throw new Error('KV returned an invalid rate-limit pipeline response');
+    throw new Error(`KV rejected rate-limit commands (${rateLimitRejectionCode(results)})`);
   }
   // Pipeline response: [{ result: <value> }, ...]
   const count = Number(results?.[0]?.result ?? 0);
