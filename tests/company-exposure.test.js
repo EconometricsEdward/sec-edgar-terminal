@@ -186,3 +186,52 @@ test('different commodity actions are not cross-assigned to every market in a se
   assert.ok(row(shared, 'revenue:natural-gas'));
   assert.ok(row(shared, 'input-costs:natural-gas'));
 });
+
+test('physical quantities retain signs, shared scales, ranges, and reporting-period qualifications in quotes only', () => {
+  const ambiguous = [
+    'We produced 31 million and 29 million barrels of crude oil in 2026 and 2025, respectively.',
+    'We produced 31 and 29 million barrels of crude oil during the current year.',
+    'We produced 29 million barrels and 31 million of crude oil during the current year.',
+    'We produced between 29 and 31 million barrels of crude oil during the current year.',
+    'We produced 29–31 million barrels of crude oil during the current year.',
+    'We produced 29 million barrels to 31 million of crude oil during the current year.',
+    'We produced 29 million barrels of crude oil in 2026 and 2025.',
+    'We produced 29 million barrels of crude oil in the current and prior years, respectively.',
+    'We sold -5 million barrels of crude oil in 2026.',
+    'We sold +5 million barrels of crude oil in 2026.',
+    'We sold −5 million barrels of crude oil in 2026.',
+    'We sold –5 million barrels of crude oil in 2026.',
+    'We sold ±5 million barrels of crude oil in 2026.',
+    'We sold (5 million barrels) of crude oil in 2026.',
+    'We sold (approximately 5 million barrels) of crude oil in 2026.',
+  ];
+  for (const text of ambiguous) {
+    const evidence = row(extract(text), 'revenue:crude-oil')?.evidence[0];
+    assert.ok(evidence, text);
+    assert.equal(evidence.text, text);
+    assert.deepEqual(evidence.amounts, [], text);
+  }
+});
+
+test('straightforward fully qualified physical quantities preserve positive and explicitly reported zero amounts', () => {
+  for (const [text, quantity] of [
+    ['We produced 29 million barrels of crude oil in 2026.', '29 million barrels'],
+    ['We produced 0 barrels of crude oil during the year 2026.', '0 barrels'],
+    ['We produced 0 million barrels of crude oil in 2026.', '0 million barrels'],
+    ['Our gold production was 500,000 ounces during the year ended December 31, 2025.', '500,000 ounces'],
+  ]) {
+    const result = extract(text);
+    assert.equal(result.rows.length, 1);
+    assert.deepEqual(result.rows[0].evidence[0].amounts, [{ text: quantity, kind: 'volume', context: text }]);
+  }
+});
+
+test('Unicode monetary signs remain attached to the exact source quote rather than becoming a positive amount', () => {
+  for (const sign of ['−', '–', '—']) {
+    const text = `Our copper sales were ${sign}$5 million during the current year.`;
+    const evidence = row(extract(text), 'revenue:copper')?.evidence[0];
+    assert.ok(evidence);
+    assert.equal(evidence.text, text);
+    assert.deepEqual(evidence.amounts, []);
+  }
+});
