@@ -656,5 +656,169 @@
         "alerts": "unconfigured"
       }
     }
-  ]
+  ],
+  "readerActivation": {
+    "pullRequest": 61,
+    "commit": "8234cc3ef7db3e5242b3c8eabe36b1eb50bb255d",
+    "deployment": "dpl_n4KxZzuQSDG8MBWmZgmWHhvHUgpx",
+    "qualityRun": 34740890972,
+    "publicChecks": "hosted-public-read-review.json",
+    "status": {
+      "at": "2026-09-13T05:45:13.627228+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/internal/data-migration",
+      "status": 200,
+      "decodedBytes": 718,
+      "durationSeconds": 11.351509,
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "X-Vercel-Cache": "BYPASS",
+        "X-Vercel-Id": "cle1::iad1::f4467-1789278323335-d0466f5ba0a8"
+      },
+      "body": {
+        "flags": {
+          "cftc": "supabase",
+          "sec": "supabase",
+          "financial": "supabase"
+        },
+        "status": {
+          "jobs": {
+            "done": 2
+          },
+          "heads": 26,
+          "versions": 26,
+          "sourceAssets": 10,
+          "databaseBytes": 417792,
+          "preparedBytes": 0,
+          "sourceStoredBytes": 2537014,
+          "latestRevalidation": "2026-09-13T05:38:26.093+00:00",
+          "snapshotStoredBytes": 1194405
+        },
+        "retention": {
+          "dryRun": true,
+          "deletionEnabled": false,
+          "terminalJobCandidates": 0,
+          "sourceEvidenceDeletion": false,
+          "derivedSnapshotCandidates": []
+        },
+        "orphans": {
+          "dryRun": true,
+          "objects": [],
+          "deletionEnabled": false
+        },
+        "cftc": {
+          "mode": "supabase",
+          "scope": "current-process",
+          "comparison_limit_per_hour": 8,
+          "writes": 0,
+          "write_failures": 0,
+          "read_failures": 0,
+          "shadow_matches": 0,
+          "shadow_mismatches": 0,
+          "shadow_revision_skips": 0
+        },
+        "alerts": "unconfigured"
+      }
+    },
+    "databaseAfterHistoryReads": {
+      "at": "2026-09-13T05:49:23.129778+00:00",
+      "status": {
+        "jobs": {
+          "done": 2
+        },
+        "heads": 28,
+        "versions": 28,
+        "sourceAssets": 12,
+        "databaseBytes": 499712,
+        "preparedBytes": 50837,
+        "sourceStoredBytes": 2591978,
+        "latestRevalidation": "2026-09-13T05:47:16.487+00:00",
+        "snapshotStoredBytes": 1208612
+      },
+      "storage": [
+        {
+          "objects": 31,
+          "stored_bytes": 3800590
+        }
+      ],
+      "historyVersions": [
+        {
+          "prepared_at": "2026-09-13T05:46:12.797Z",
+          "content_hash": "863e792ee35c4bb64dc6070225614b218d5d2193ec8a602264926ae25addd3af",
+          "resource_key": "history:tff:13874A:dealer:2026-09-08:3y",
+          "original_source_fetched_at": "2026-09-13T05:35:59.220Z"
+        },
+        {
+          "prepared_at": "2026-09-13T05:47:16.487Z",
+          "content_hash": "614524685e52a25808d4e2961829cc3b60c6b2cf8116a08fead0ae4e2848f34e",
+          "resource_key": "history:disaggregated:002602:non-reportables:2026-09-08:1y",
+          "original_source_fetched_at": "2026-09-13T05:36:09.760Z"
+        }
+      ]
+    }
+  },
+  "rollbackDrill": {
+    "pullRequest": 62,
+    "commit": "373aa31a46a8fa72e3f15b7f69d4f107dde9e0cd",
+    "deployment": "dpl_GLne9mvLqpKiR64jtu6mUECNzVcx",
+    "qualityRun": 34741062511,
+    "status": {
+      "at": "2026-09-13T05:50:04.495836+00:00",
+      "origin": "https://secedgarterminal.com",
+      "path": "/api/internal/data-migration",
+      "status": 200,
+      "decodedBytes": 702,
+      "durationSeconds": 8.136055,
+      "headers": {
+        "Cache-Control": "private, no-store",
+        "X-Vercel-Cache": "BYPASS",
+        "X-Vercel-Id": "cle1::iad1::sjccv-1789278611266-5063bc83998d"
+      },
+      "body": {
+        "flags": {
+          "cftc": "off",
+          "sec": "off",
+          "financial": "off"
+        },
+        "status": {
+          "jobs": {
+            "done": 2
+          },
+          "heads": 28,
+          "versions": 28,
+          "sourceAssets": 12,
+          "databaseBytes": 499712,
+          "preparedBytes": 50837,
+          "sourceStoredBytes": 2591978,
+          "latestRevalidation": "2026-09-13T05:47:16.487+00:00",
+          "snapshotStoredBytes": 1208612
+        },
+        "retention": {
+          "dryRun": true,
+          "deletionEnabled": false,
+          "terminalJobCandidates": 0,
+          "sourceEvidenceDeletion": false,
+          "derivedSnapshotCandidates": []
+        },
+        "orphans": {
+          "dryRun": true,
+          "objects": [],
+          "deletionEnabled": false
+        },
+        "cftc": {
+          "mode": "off",
+          "scope": "current-process",
+          "comparison_limit_per_hour": 8,
+          "writes": 0,
+          "write_failures": 0,
+          "read_failures": 0,
+          "shadow_matches": 0,
+          "shadow_mismatches": 0,
+          "shadow_revision_skips": 0
+        },
+        "alerts": "unconfigured"
+      }
+    },
+    "result": "Five legacy requests returned 200; financial snapshots match exact published hashes, canonical SEC documents match original source data, and CFTC report data matches activation. Every response had X-Vercel-Cache MISS and Age 0 under verified off defaults."
+  }
 }
