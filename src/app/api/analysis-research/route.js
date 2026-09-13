@@ -8,6 +8,8 @@ import {
   ANALYSIS_VERSION,
 } from "../../../utils/analysisResearch.js";
 import { warmGet, warmSet } from "../../../utils/warmCache.js";
+import { readPreparedAnalysis, sampleFinancialShadow } from "../../../utils/preparedFinancialData.js";
+import { preparedDataHeaders, preparedCacheControl } from "../../../utils/secDocumentStore.js";
 import {
   checkRateLimit,
   getClientIp,
@@ -46,6 +48,10 @@ export async function GET(request) {
   });
   if (!limit.allowed) return rateLimitedResponse(limit);
   try {
+    const prepared = await readPreparedAnalysis({ ticker, basis, asOf });
+    if (prepared) return NextResponse.json(prepared.payload, {
+      headers: { "Cache-Control": preparedCacheControl(prepared), ...preparedDataHeaders(prepared, prepared.cacheSource) },
+    });
     const id = `${ANALYSIS_VERSION}:${ticker}:${basis}:${asOf}`;
     const cached = await warmGet("analysis-research", id);
     if (cached?.gzip) {
@@ -66,6 +72,7 @@ export async function GET(request) {
     const result = packAnalysisCompany(
       buildAnalysisCompany(company, { basis, asOf }),
     );
+    await sampleFinancialShadow(company, result);
     await warmSet(
       "analysis-research",
       id,

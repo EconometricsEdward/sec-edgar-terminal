@@ -1,6 +1,8 @@
 import { getOperatingTickers } from './tickerMap.js';
 import { secFetch } from './secClient.js';
 import { warmReadRawSetMembers, warmSet } from './warmCache.js';
+import { getDataStoreMode } from './dataStore.js';
+import { secDocumentIdentity, refreshSecDocument } from './secDocumentStore.js';
 
 const PREWARM_OVERRIDE_KEY = 'popular_tickers';
 const MAX_TICKERS = 25;
@@ -44,6 +46,8 @@ export async function prewarmSecSubmissions({
   resolveTickers = getOperatingTickers,
   fetchSec = secFetch,
   store = warmSet,
+  documentMode = getDataStoreMode('sec'),
+  refreshDocument = refreshSecDocument,
 } = {}) {
   const selected = normalizeSecPrewarmTickers(tickers || await readSecPrewarmTickers());
   const directory = await resolveTickers(selected);
@@ -60,6 +64,16 @@ export async function prewarmSecSubmissions({
     while (queue.length && !signal?.aborted && Date.now() < deadline - ITEM_TIMEOUT_MS - 2000) {
       const item = queue.shift();
       try {
+        const path = `/submissions/CIK${item.cik}.json`;
+        if (documentMode !== 'off' && secDocumentIdentity(path)?.covered) {
+          const refreshed = await refreshDocument(path, { signal, fetchSec, mode: documentMode });
+          if (refreshed.status === 'busy') { failures.push({ ticker: item.ticker, reason: 'Canonical SEC refresh is already in progress.' }); continue; }
+          if (!refreshed.envelope?.payload) throw new Error('Canonical SEC submissions checkpoint is unavailable.');
+          // The canonical refresher already mirrors rollback data using its
+          // original generation fence. Never overwrite it with an unfenced SET.
+          results.push(item.ticker);
+          continue;
+        }
         const response = await fetchSec(`https://data.sec.gov/submissions/CIK${item.cik}.json`, {
           headers: { Accept: 'application/json' }, signal, timeoutMs: ITEM_TIMEOUT_MS, retries: 0, cache: 'no-store',
         });

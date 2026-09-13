@@ -1,6 +1,7 @@
 import { CFTC_CALCULATION_VERSION, CFTC_CATEGORY_LABELS, CFTC_FAMILIES, CFTC_HISTORY_WINDOWS, CFTC_LAUNCH_CATALOG, CFTC_REPORT_BASIS, CFTC_SCHEMA_VERSION, cftcCatalog, cftcDate, cftcGroup, cftcSeries, isCftcContractCode, isCftcFamily, normalizeCftcRow, normalizeCftcRows } from './cftc.js';
 import { CftcTransportError, cftcOutboundGate } from './cftcTransport.js';
-import { warmAcquireLease, warmCacheEnabled, warmGet, warmReleaseLease, warmSet } from './warmCache.js';
+import { warmAcquireLease, warmCacheEnabled, warmGet, warmReleaseLease, warmReserveGeneration, warmSet, warmSetGeneration } from './warmCache.js';
+import { cftcPersistence } from './cftcPersistence.js';
 
 const deploymentScope = process.env.VERCEL_ENV === 'production'
   ? 'production'
@@ -796,10 +797,63 @@ function validHistoryEnvelope(envelope, family, code, group, throughDate, window
     && validHistoryResponse(envelope.response, family, code, group, throughDate, window, nowMs);
 }
 
+function validatePreparedKey(key, envelope, nowMs = Date.now()) {
+  const [kind, family, codeOrDate, group, throughDate, window] = key.split(':');
+  if (kind === 'markets') return validStatusEnvelope(envelope, family, nowMs, codeOrDate) && isPublishedCftcPrimary(envelope);
+  if (kind === 'history') return validHistoryEnvelope(envelope, family, codeOrDate, group, throughDate, window, nowMs) && isPublishedCftcPrimary(envelope);
+  return false;
+}
+
+/** Durable failures may use only validated prepared legacy data, never a new source crawl. */
+function preparedCftcReader(legacyGet, persistence = cftcPersistence, nowMs = null) {
+  if (persistence.mode() !== 'supabase') return legacyGet;
+  const pending = new Map();
+  return (namespace, id) => {
+    if (!pending.has(id)) pending.set(id, (async () => {
+      const key = id.replace('markets-last-good:', 'markets:').replace('history-last-good:', 'history:');
+      let legacy = null;
+      try { legacy = await legacyGet(namespace, id); } catch { /* The durable store can serve a Redis outage. */ }
+      const checkedAt = nowMs ?? Date.now();
+      // Keep popular compact, strictly validated CFTC responses on the existing
+      // Redis hot path. Only source/schema-bound current envelopes qualify.
+      if (validatePreparedKey(key, legacy, checkedAt) && cacheAge(legacy, checkedAt) >= 0 && cacheAge(legacy, checkedAt) < CFTC_FRESH_MS) return legacy;
+      const result = await persistence.prepared(key, {
+        pointer: id.includes('-last-good:') ? 'last-good' : 'current',
+        validate: envelope => validatePreparedKey(key, envelope, nowMs ?? Date.now()),
+      });
+      if (result) return result;
+      return legacy;
+    })());
+    return pending.get(id);
+  };
+}
+
+function durableRawValidator(envelope, key) {
+  const [kind, , , group, , window] = key.split(':');
+  return validateRawHistoryEnvelope(envelope, { family: envelope.family, code: envelope.code, throughDate: envelope.through_date,
+    count: kind === 'history' ? CFTC_HISTORY_WINDOWS[window] : 260, group: kind === 'history' ? group : null });
+}
+
+async function saveCftcPrepared(persistence, { key, claim, response, savedAt, rawHistories, latestRows = [] }) {
+  return persistence.save({ key, claim, envelope: { savedAt, response }, rawHistories, latestRows,
+    validate: envelope => validatePreparedKey(key, envelope), validateRaw: envelope => durableRawValidator(envelope, key),
+    promoteLastGood: response.status === 'ready' && response.cache_publication?.durable === true,
+  });
+}
+
+async function reserveCftcLegacyWriter(persistence, cacheId, claim) {
+  if (persistence.mode() === 'off' || !warmCacheEnabled()) return warmSet;
+  if (!claim || !await warmReserveGeneration(CFTC_CACHE_NAMESPACE, cacheId, claim.generation, claim)) {
+    throw new CftcError('Shared CFTC publication coordination is unavailable.', { code: 'CFTC_COORDINATION_UNAVAILABLE', status: 503 });
+  }
+  return (namespace, id, value, ttl) => warmSetGeneration(namespace, id, value, ttl, { ...claim, fenceId: cacheId });
+}
+
 /** Cache-only service status. This never invokes an upstream CFTC request. */
-export async function readCftcCacheStatus({ now = new Date(), get = warmGet, enabled = warmCacheEnabled } = {}) {
+export async function readCftcCacheStatus({ now = new Date(), get = warmGet, enabled = warmCacheEnabled, persistence = cftcPersistence } = {}) {
   const nowMs = new Date(now).getTime();
-  if (!enabled()) return { schema_version: CFTC_SCHEMA_VERSION, status: 'disabled', checked_at: new Date(nowMs).toISOString(), families: [] };
+  if (!enabled() && persistence.mode() !== 'supabase') return { schema_version: CFTC_SCHEMA_VERSION, status: 'disabled', checked_at: new Date(nowMs).toISOString(), families: [] };
+  get = preparedCftcReader(get, persistence, nowMs);
   const ids = ['tff', 'disaggregated'].flatMap(family => [`markets:${family}:latest`, `markets-last-good:${family}:latest`]);
   const values = await Promise.all(ids.map(id => get(CFTC_CACHE_NAMESPACE, id)));
   const families = ['tff', 'disaggregated'].map((family, index) => {
@@ -869,10 +923,13 @@ export function validateRawHistoryEnvelope(envelope, { family, code, throughDate
   return sufficient || envelope.sourceExhausted || envelope.capReached;
 }
 
-async function computeMarkets(family, { reportDate = 'latest', signal, fetchImpl } = {}) {
+async function computeMarkets(family, { reportDate = 'latest', signal, fetchImpl, captureRaw = null, captureLatest = null, cacheWrite = warmSet } = {}) {
   const latest = reportDate === 'latest' ? await discoverLatestCftcDate(family, { signal, fetchImpl }) : { date: reportDate, sourceUrl: CFTC_FAMILIES[family].sourceUrl };
   const latestRows = await fetchCftcLatestRows(family, latest.date, { signal, fetchImpl });
   const latestNormalized = normalizeCftcRows(latestRows.rows, family);
+  // Preserve the actual selected source fields, including quarantined rows,
+  // so evidence is not silently replaced by the normalized output.
+  captureLatest?.(latestRows.rows);
   if (!latestNormalized.rows.some(row => row.reportDate === latest.date)) throw new CftcError('No validated CFTC report exists for that date.', { code: 'CFTC_REPORT_DATE_UNAVAILABLE', status: 404 });
   let historyRows = { rows: [], sourceUrl: null, pages: 0 }, historyError = null;
   try { historyRows = await fetchCftcLaunchHistory(family, latest.date, { signal, fetchImpl }); }
@@ -886,11 +943,15 @@ async function computeMarkets(family, { reportDate = 'latest', signal, fetchImpl
     const historyNormalized = normalizeCftcRows(historyRows.rows, family);
     const conflictingCodes = new Set(latestHistoryObservationConflicts(latestNormalized.rows.filter(row => row.reportDate === latest.date), historyNormalized.rows).map(item => item.identity.split('|')[2]));
     rawHistoryExpected = expectedCodes.length;
+    for (const code of expectedCodes) {
+      const rows = byCode.get(code);
+      if (rows?.length && rows.length <= 600 && !conflictingCodes.has(code)) captureRaw?.(rawHistoryEnvelope({ family, code, throughDate: latest.date, rows, sourceUrl: historyRows.sourceUrl, pages: historyRows.pages, retrievedAt, sourceExhausted: true, originScope: 'launch_selection', sourceRows: historyRows.rows.length, sourcePageSize: 1000, sourceRowLimit: 5000, savedAt: retrievedAt }));
+    }
     if (cacheRequired && rawHistoryExpected) {
       try {
         const stored = await boundedOperation(Promise.all(expectedCodes.map(code => {
           const rows = byCode.get(code);
-          return rows?.length && rows.length <= 600 && !conflictingCodes.has(code) ? warmSet(CFTC_CACHE_NAMESPACE, `raw-history:${family}:${code}:${latest.date}`, rawHistoryEnvelope({ family, code, throughDate: latest.date, rows, sourceUrl: historyRows.sourceUrl, pages: historyRows.pages, retrievedAt, sourceExhausted: true, originScope: 'launch_selection', sourceRows: historyRows.rows.length, sourcePageSize: 1000, sourceRowLimit: 5000, savedAt: retrievedAt }), 16 * 86400) : false;
+          return rows?.length && rows.length <= 600 && !conflictingCodes.has(code) ? cacheWrite(CFTC_CACHE_NAMESPACE, `raw-history:${family}:${code}:${latest.date}`, rawHistoryEnvelope({ family, code, throughDate: latest.date, rows, sourceUrl: historyRows.sourceUrl, pages: historyRows.pages, retrievedAt, sourceExhausted: true, originScope: 'launch_selection', sourceRows: historyRows.rows.length, sourcePageSize: 1000, sourceRowLimit: 5000, savedAt: retrievedAt }), 16 * 86400) : false;
         })), signal);
         rawHistoryPersisted = stored.filter(Boolean).length;
       } catch { rawHistoryPersisted = 0; }
@@ -960,11 +1021,13 @@ export function isDurableCftcTwin(primary, lastGood) {
     && lastGood.response.cache_publication?.durable === true;
 }
 
-export async function loadCftcMarkets({ family = 'tff', reportDate = 'latest', signal, forceRefresh = false, preparedOnly = false, fetchImpl, cacheGet = warmGet, internalSignal = null, deadlineMs = CFTC_LOAD_BUDGET_MS } = {}) {
+export async function loadCftcMarkets({ family = 'tff', reportDate = 'latest', signal, forceRefresh = false, preparedOnly = false, fetchImpl, cacheGet = warmGet, internalSignal = null, deadlineMs = CFTC_LOAD_BUDGET_MS, persistence = cftcPersistence } = {}) {
   if (!isCftcFamily(family)) throw new CftcError('Use family=tff or family=disaggregated.', { code: 'INVALID_REPORT_FAMILY', status: 400 });
   if (reportDate !== 'latest' && !isCftcPublicReportDate(reportDate)) throw new CftcError('Use date=latest or a YYYY-MM-DD date within the retained six-year CFTC range.', { code: 'INVALID_REPORT_DATE', status: 400 });
   const operationSignal = internalSignal || deadlineSignal(undefined, deadlineMs);
   const callerWaitSignal = signal ? AbortSignal.any([signal, operationSignal]) : operationSignal;
+  cacheGet = preparedCftcReader(cacheGet, persistence);
+  if (persistence.mode() === 'supabase' && !forceRefresh) preparedOnly = true;
   const cacheId = `markets:${family}:${reportDate}`, cached = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, cacheId), callerWaitSignal), nowMs = Date.now();
   const cachedShapeValid = validStatusEnvelope(cached, family, nowMs, reportDate);
   const cachedValid = cachedShapeValid && isPublishedCftcPrimary(cached);
@@ -1011,7 +1074,12 @@ export async function loadCftcMarkets({ family = 'tff', reportDate = 'latest', s
           throw new CftcError('A prepared CFTC snapshot is not ready yet.', { code: 'CFTC_REFRESH_IN_PROGRESS', status: 503, retryAfter: 3000 });
         }
       }
-      const response = await computeMarkets(family, { reportDate, signal: operationSignal, fetchImpl });
+      // Reserve before discovery and source retrieval; an expired worker cannot publish over a newer one.
+      const durableClaim = await persistence.reserve(cacheId), rawHistories = [];
+      const cacheWrite = await reserveCftcLegacyWriter(persistence, cacheId, durableClaim);
+      let latestRows = [];
+      const response = await computeMarkets(family, { reportDate, signal: operationSignal, fetchImpl, cacheWrite,
+        captureRaw: persistence.mode() === 'off' ? null : envelope => rawHistories.push(envelope), captureLatest: persistence.mode() === 'off' ? null : rows => { latestRows = rows; } });
       if (reportDate === 'latest') {
         const lastGood = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, `markets-last-good:${family}:${reportDate}`), operationSignal);
         const priors = [cachedValid ? cached : null, lastGood].filter(envelope => validStatusEnvelope(envelope, family, Date.now(), reportDate) && cacheAge(envelope) < CFTC_STALE_MAX_MS).sort((a, b) => b.response.report_date.localeCompare(a.response.report_date));
@@ -1020,7 +1088,9 @@ export async function loadCftcMarkets({ family = 'tff', reportDate = 'latest', s
       const savedAt = new Date().toISOString();
       const preparedResponse = presentCftcResponse(response, { savedAt, cacheStatus: 'computed', requireCurrent: reportDate === 'latest' });
       const allowLastGood = preparedResponse.status === 'ready' && (reportDate !== 'latest' || preparedResponse.freshness.source_currency === 'current');
-      return publishPreparedResponse({ cacheId, lastGoodId: `markets-last-good:${family}:${reportDate}`, response: preparedResponse, savedAt, signal: operationSignal, allowLastGood });
+      const published = await publishPreparedResponse({ cacheId, lastGoodId: `markets-last-good:${family}:${reportDate}`, response: preparedResponse, savedAt, signal: operationSignal, allowLastGood, cacheWrite });
+      await saveCftcPrepared(persistence, { key: cacheId, claim: durableClaim, response: published, savedAt, rawHistories, latestRows });
+      return published;
     } catch (error) {
       if (error?.code === 'CFTC_REQUEST_CANCELLED') throw error;
       const lastGood = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, `markets-last-good:${family}:${reportDate}`), deadlineSignal(undefined, 3500));
@@ -1039,18 +1109,32 @@ export async function loadCftcMarkets({ family = 'tff', reportDate = 'latest', s
 
 export async function fetchCftcContractHistory(family, code, throughDate, count, options = {}) {
   if (!isCftcFamily(family) || !isCftcContractCode(code) || cftcDate(throughDate) !== throughDate || ![52, 156, 260, 520].includes(count)) throw new CftcError('Invalid bounded CFTC history request.', { code: 'INVALID_CFTC_REQUEST', status: 400 });
-  const { group = null, signal, expectedSelectedRaw = null, bypassPrepared = false, cacheGet = warmGet, cacheSet = warmSet, cacheEnabled = warmCacheEnabled, ...requestOptions } = options;
+  const { group = null, signal, expectedSelectedRaw = null, bypassPrepared = false, cacheGet = warmGet, cacheSet = warmSet, cacheEnabled = warmCacheEnabled, persistence = cftcPersistence, durableKey = null, captureRaw = null, ...requestOptions } = options;
   if (group && !cftcGroup(family, group)) throw new CftcError('Invalid CFTC history participant group.', { code: 'INVALID_TRADER_GROUP', status: 400 });
   const expected = expectedHistoryObservation(expectedSelectedRaw, family, code, throughDate);
-  const prepared = bypassPrepared ? null : await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, `raw-history:${family}:${code}:${throughDate}`), signal);
+  let prepared = null;
+  if (!bypassPrepared && persistence.mode() === 'supabase') {
+    const keys = [...new Set([durableKey, `markets:${family}:latest`, `markets:${family}:${throughDate}`].filter(Boolean))];
+    for (const key of keys) {
+      prepared = await boundedOperation(persistence.raw(key, { family, code, throughDate,
+        validate: envelope => validateRawHistoryEnvelope(envelope, { family, code, throughDate, count, group }) }), signal);
+      if (prepared) break;
+    }
+  }
+  if (!bypassPrepared && !prepared) {
+    const read = boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, `raw-history:${family}:${code}:${throughDate}`), signal);
+    prepared = persistence.mode() === 'supabase' ? await read.catch(() => null) : await read;
+  }
   if (!bypassPrepared && validateRawHistoryEnvelope(prepared, { family, code, throughDate, count, group, now: new Date() })) {
     try {
       assertHistoryMatchesExpected(prepared.rows, family, code, throughDate, expected);
+      captureRaw?.(prepared);
       return { rows: prepared.rows, sourceUrl: prepared.sourceUrl, pages: prepared.pages, sourceRows: prepared.sourceRows, sourcePageSize: prepared.sourcePageSize, sourceRowLimit: prepared.sourceRowLimit, originScope: prepared.originScope, retrievedAt: prepared.retrievedAt, cacheStatus: 'prepared', capReached: prepared.capReached, sourceExhausted: prepared.sourceExhausted, cachePersisted: true };
     } catch (error) {
       if (!['CFTC_SOURCE_CONFLICT', 'CFTC_SOURCE_INCOMPLETE'].includes(error?.code)) throw error;
     }
   }
+  if (persistence.mode() === 'supabase' && !bypassPrepared) throw new CftcError('That CFTC history has not been prepared by the bounded refresh job.', { code: 'CFTC_REPORT_NOT_PREPARED', status: 503 });
   const rows = [], tracker = createPageTracker(); let offset = 0, pages = 0, sourceExhausted = false;
   const order = totalCftcOrder(family, [['report_date_as_yyyy_mm_dd', 'DESC'], ['cftc_market_code', 'ASC'], ['contract_units', 'ASC'], ['id', 'ASC']]);
   const sourceUrl = cftcResourceUrl(family, contractHistoryQuery(family, code, throughDate));
@@ -1069,6 +1153,7 @@ export async function fetchCftcContractHistory(family, code, throughDate, count,
   const capReached = rows.length >= 600 && !sufficient;
   assertHistoryMatchesExpected(rows, family, code, throughDate, expected);
   const envelope = rawHistoryEnvelope({ family, code, throughDate, rows, sourceUrl, pages, retrievedAt, capReached, sourceExhausted });
+  captureRaw?.(envelope);
   const cachePersisted = !cacheEnabled() ? null : await boundedOperation(cacheSet(CFTC_CACHE_NAMESPACE, `raw-history:${family}:${code}:${throughDate}`, envelope, 16 * 86400), signal).catch(() => false);
   return { rows, sourceUrl, pages, sourceRows: rows.length, sourcePageSize: 200, sourceRowLimit: 600, originScope: 'contract_history', retrievedAt, cacheStatus: 'computed', capReached, sourceExhausted, cachePersisted };
 }
@@ -1090,13 +1175,14 @@ export function buildCftcHistoryResponse({ family, code, group, throughDate, win
     formula: { ...CFTC_HISTORY_FORMULA } });
 }
 
-export async function loadCftcHistory({ family = 'tff', code, group, reportDate = 'latest', window = '5y', signal, forceRefresh = false, fetchImpl, deadlineMs = CFTC_LOAD_BUDGET_MS } = {}) {
+export async function loadCftcHistory({ family = 'tff', code, group, reportDate = 'latest', window = '5y', signal, forceRefresh = false, fetchImpl, deadlineMs = CFTC_LOAD_BUDGET_MS, persistence = cftcPersistence, cacheGet = warmGet } = {}) {
   if (!isCftcFamily(family) || !isCftcContractCode(code)) throw new CftcError('Use a verified CFTC contract code.', { code: 'INVALID_CONTRACT', status: 400 });
   if (!cftcGroup(family, group)) throw new CftcError('Use a trader group from the selected report family.', { code: 'INVALID_TRADER_GROUP', status: 400 });
   if (!Object.hasOwn(CFTC_HISTORY_WINDOWS, window)) throw new CftcError('Use window=1y, 3y, or 5y.', { code: 'INVALID_HISTORY_WINDOW', status: 400 });
   const operationSignal = deadlineSignal(undefined, deadlineMs);
   const callerWaitSignal = signal ? AbortSignal.any([signal, operationSignal]) : operationSignal;
-  const markets = await loadCftcMarkets({ family, signal, fetchImpl, internalSignal: operationSignal });
+  const markets = await loadCftcMarkets({ family, signal, fetchImpl, internalSignal: operationSignal, persistence, cacheGet });
+  cacheGet = preparedCftcReader(cacheGet, persistence);
   if (!markets.catalog.some(item => item.code === code)) throw new CftcError('That contract is not in the current verified CFTC catalog for this report family.', { code: 'UNSUPPORTED_CONTRACT', status: 404 });
   let throughDate = reportDate;
   if (reportDate === 'latest') throughDate = markets.report_date;
@@ -1104,14 +1190,19 @@ export async function loadCftcHistory({ family = 'tff', code, group, reportDate 
   if (throughDate > markets.report_date) throw new CftcError('The requested date is later than the latest validated CFTC report.', { code: 'INVALID_REPORT_DATE', status: 400 });
   const expectedLatest = throughDate === markets.report_date ? markets.latest.find(row => row.code === code) : null;
   const expected = expectedHistoryObservation(expectedLatest?.raw, family, code, throughDate);
-  const cacheId = `history:${family}:${code}:${group}:${throughDate}:${window}`, cached = await boundedOperation(warmGet(CFTC_CACHE_NAMESPACE, cacheId), callerWaitSignal), nowMs = Date.now(), age = cacheAge(cached);
+  const cacheId = `history:${family}:${code}:${group}:${throughDate}:${window}`, cached = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, cacheId), callerWaitSignal), nowMs = Date.now(), age = cacheAge(cached);
   const cachedShapeValid = validHistoryEnvelope(cached, family, code, group, throughDate, window, nowMs) && historyResponseMatchesExpected(cached.response, expected, family);
   const cachedValid = cachedShapeValid && isPublishedCftcPrimary(cached);
   if (!forceRefresh && cachedShapeValid && !cachedValid && age >= 0 && age < CFTC_FRESH_MS) {
-    const lastGood = await boundedOperation(warmGet(CFTC_CACHE_NAMESPACE, `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`), callerWaitSignal).catch(() => null);
+    const lastGood = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`), callerWaitSignal).catch(() => null);
     if (validHistoryEnvelope(lastGood, family, code, group, throughDate, window, nowMs) && historyResponseMatchesExpected(lastGood.response, expected, family) && cacheAge(lastGood, nowMs) >= 0 && cacheAge(lastGood, nowMs) < CFTC_FRESH_MS && isDurableCftcTwin(cached, lastGood)) return presentCftcResponse(lastGood.response, { savedAt: lastGood.savedAt, cacheStatus: 'prepared', requireCurrent: reportDate === 'latest' });
   }
   if (!forceRefresh && cachedValid && age >= 0 && age < CFTC_FRESH_MS) return presentCftcResponse(cached.response, { savedAt: cached.savedAt, cacheStatus: 'prepared', requireCurrent: reportDate === 'latest' });
+  if (persistence.mode() === 'supabase' && !forceRefresh) {
+    const lastGood = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`), callerWaitSignal);
+    const candidate = [cachedValid ? cached : null, lastGood].find(envelope => validHistoryEnvelope(envelope, family, code, group, throughDate, window, nowMs) && isPublishedCftcPrimary(envelope) && historyResponseMatchesExpected(envelope.response, expected, family) && cacheAge(envelope, nowMs) >= 0 && cacheAge(envelope, nowMs) < CFTC_STALE_MAX_MS);
+    if (candidate) return presentCftcResponse(candidate.response, { savedAt: candidate.savedAt, cacheStatus: 'stale-last-good', requireCurrent: reportDate === 'latest', forceStale: true, warning: 'The prepared history is awaiting its scheduled revalidation.' });
+  }
   const inflightKey = cacheId;
   if (requestCache.has(inflightKey)) return awaitShared(requestCache.get(inflightKey), callerWaitSignal);
   const task = (async () => {
@@ -1120,30 +1211,35 @@ export async function loadCftcHistory({ family = 'tff', code, group, reportDate 
     if (warmCacheEnabled()) {
       lease = await boundedOperation(warmAcquireLease(CFTC_CACHE_NAMESPACE, `load:${cacheId}`, 45_000), operationSignal);
       if (!lease) {
-        const prepared = await boundedOperation(warmGet(CFTC_CACHE_NAMESPACE, cacheId), operationSignal);
+        const prepared = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, cacheId), operationSignal);
           if (validHistoryEnvelope(prepared, family, code, group, throughDate, window, Date.now()) && isPublishedCftcPrimary(prepared) && historyResponseMatchesExpected(prepared.response, expected, family) && cacheAge(prepared) >= 0 && cacheAge(prepared) < CFTC_STALE_MAX_MS) return presentCftcResponse(prepared.response, { savedAt: prepared.savedAt, cacheStatus: 'prepared-after-wait', requireCurrent: reportDate === 'latest' });
-          const lastGood = await boundedOperation(warmGet(CFTC_CACHE_NAMESPACE, `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`), operationSignal);
+          const lastGood = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`), operationSignal);
           if (validHistoryEnvelope(lastGood, family, code, group, throughDate, window, Date.now()) && historyResponseMatchesExpected(lastGood.response, expected, family) && cacheAge(lastGood) >= 0 && cacheAge(lastGood) < CFTC_STALE_MAX_MS) return isDurableCftcTwin(prepared, lastGood)
             ? presentCftcResponse(lastGood.response, { savedAt: lastGood.savedAt, cacheStatus: 'prepared-after-wait', requireCurrent: reportDate === 'latest' })
             : presentCftcResponse(lastGood.response, { savedAt: lastGood.savedAt, cacheStatus: 'stale-last-good', requireCurrent: reportDate === 'latest', forceStale: true, warning: 'Another bounded CFTC refresh is in progress.' });
         throw new CftcError('Prepared CFTC history is not ready yet.', { code: 'CFTC_REFRESH_IN_PROGRESS', status: 503, retryAfter: 3000 });
       }
     }
+    const durableClaim = await persistence.reserve(cacheId), rawHistories = [];
+    const cacheWrite = await reserveCftcLegacyWriter(persistence, cacheId, durableClaim);
     const rawThroughDate = throughDate, count = CFTC_HISTORY_WINDOWS[window];
-    const source = await fetchCftcContractHistory(family, code, rawThroughDate, count, { group, signal: operationSignal, fetchImpl, expectedSelectedRaw: expectedLatest?.raw, bypassPrepared: forceRefresh });
+    const source = await fetchCftcContractHistory(family, code, rawThroughDate, count, { group, signal: operationSignal, fetchImpl, expectedSelectedRaw: expectedLatest?.raw, bypassPrepared: forceRefresh,
+      persistence, durableKey: cacheId, cacheSet: cacheWrite, captureRaw: persistence.mode() === 'off' ? null : envelope => rawHistories.push(envelope) });
     const responseCacheStatus = cftcHistoryResponseCacheStatus(source.cacheStatus);
     const response = cftcPublicationStatus(buildCftcHistoryResponse({ family, code, group, throughDate, window, rawRows: source.rows, retrievedAt: source.retrievedAt, sourceUrl: source.sourceUrl, cacheStatus: responseCacheStatus, retrieval: { origin_scope: source.originScope, scope_rows: source.rows.length, source_rows: source.sourceRows, source_pages: source.pages, source_page_size: source.sourcePageSize, cap_reached: Boolean(source.capReached), bounded_scope_rows: 600, bounded_source_rows: source.sourceRowLimit } }), {
       cacheRequired: warmCacheEnabled(),
       rawHistoryExpected: warmCacheEnabled() ? 1 : 0,
-      rawHistoryPersisted: source.cachePersisted === true || source.cacheStatus === 'prepared' ? 1 : 0,
+      rawHistoryPersisted: warmCacheEnabled() && (source.cachePersisted === true || source.cacheStatus === 'prepared') ? 1 : 0,
     });
     const savedAt = new Date().toISOString();
     const preparedResponse = presentCftcResponse(response, { savedAt, cacheStatus: responseCacheStatus, requireCurrent: reportDate === 'latest' });
     const allowLastGood = preparedResponse.status === 'ready' && (reportDate !== 'latest' || preparedResponse.freshness.source_currency === 'current');
-    return publishPreparedResponse({ cacheId, lastGoodId: `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`, response: preparedResponse, savedAt, signal: operationSignal, allowLastGood });
+    const published = await publishPreparedResponse({ cacheId, lastGoodId: `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`, response: preparedResponse, savedAt, signal: operationSignal, allowLastGood, cacheWrite });
+    await saveCftcPrepared(persistence, { key: cacheId, claim: durableClaim, response: published, savedAt, rawHistories });
+    return published;
   } catch (error) {
     if (error?.code === 'CFTC_REQUEST_CANCELLED' || error?.code === 'CFTC_SOURCE_CONFLICT') throw error;
-    const lastGood = await boundedOperation(warmGet(CFTC_CACHE_NAMESPACE, `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`), deadlineSignal(undefined, 3500));
+    const lastGood = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`), deadlineSignal(undefined, 3500));
     const selected = [cachedValid ? cached : null, lastGood].find(envelope => validHistoryEnvelope(envelope, family, code, group, throughDate, window, Date.now()) && historyResponseMatchesExpected(envelope.response, expected, family) && cacheAge(envelope) >= 0 && cacheAge(envelope) < CFTC_STALE_MAX_MS);
     if (selected) return presentCftcResponse(selected.response, { savedAt: selected.savedAt, cacheStatus: 'stale-last-good', requireCurrent: reportDate === 'latest', forceStale: true, warning: error.message });
     throw error;
@@ -1156,25 +1252,36 @@ export async function loadCftcHistory({ family = 'tff', code, group, reportDate 
   return awaitShared(task, callerWaitSignal);
 }
 
-export async function refreshCftcSnapshots({ signal } = {}) {
+export async function refreshCftcSnapshots({ signal, persistence = cftcPersistence } = {}) {
   if (!warmCacheEnabled()) throw new CftcError('Shared CFTC cache storage is unavailable.', { code: 'CFTC_CACHE_UNAVAILABLE', status: 503 });
   const jobSignal = signal || deadlineSignal(undefined, 240_000);
   const lease = await boundedOperation(warmAcquireLease(CFTC_CACHE_NAMESPACE, 'refresh', 240_000), jobSignal);
   if (!lease) return { skipped: 'CFTC refresh is already running or coordination is unavailable.' };
+  let durableJob = null, checkpoint = null, resumeSource = 'new';
   try {
     const now = Date.now(), prior = await boundedOperation(warmGet(CFTC_CACHE_NAMESPACE, 'refresh-checkpoint'), jobSignal);
     const resumable = validCftcRefreshCheckpoint(prior, now) && !prior.complete && now - Date.parse(prior.started_at) < CFTC_REFRESH_RESUME_MS;
-    let checkpoint = resumable ? prior : { schema_version: CFTC_REFRESH_CHECKPOINT_VERSION, started_at: new Date(now).toISOString(), updated_at: new Date(now).toISOString(), complete: false, families: {} };
+    checkpoint = resumable ? prior : { schema_version: CFTC_REFRESH_CHECKPOINT_VERSION, started_at: new Date(now).toISOString(), updated_at: new Date(now).toISOString(), complete: false, families: {} };
+    resumeSource = resumable ? 'redis' : 'new';
+    durableJob = await persistence.startRefreshJob(checkpoint);
+    if (persistence.mode() !== 'off' && !durableJob) return { skipped: 'The bounded daily CFTC durable job is complete, busy, delayed, or at its retry limit.' };
+    const durablePrior = durableJob?.checkpoint?.refresh_checkpoint;
+    if (validCftcRefreshCheckpoint(durablePrior, now) && !durablePrior.complete && now - Date.parse(durablePrior.started_at) < CFTC_REFRESH_RESUME_MS
+      && (!resumable || Date.parse(durablePrior.updated_at) > Date.parse(prior.updated_at))) {
+      checkpoint = durablePrior;
+      resumeSource = 'durable';
+    }
     async function persist() {
       checkpoint = { ...checkpoint, updated_at: new Date().toISOString() };
       const stored = await boundedOperation(warmSet(CFTC_CACHE_NAMESPACE, 'refresh-checkpoint', checkpoint, 3 * 86400), jobSignal);
       if (!stored) throw new CftcError('The CFTC refresh checkpoint could not be persisted.', { code: 'CFTC_CACHE_PUBLICATION_FAILED', status: 503 });
+      await boundedOperation(persistence.checkpointRefreshJob(durableJob, checkpoint), jobSignal);
     }
-    if (!resumable) await persist();
+    if (!resumable || resumeSource === 'durable') await persist();
     for (const family of ['tff', 'disaggregated']) {
       if (checkpoint.families[family]?.status === 'ready' && checkpoint.families[family]?.cache_durable === true) continue;
       try {
-        const value = await loadCftcMarkets({ family, forceRefresh: true, signal: jobSignal });
+        const value = await loadCftcMarkets({ family, forceRefresh: true, signal: jobSignal, persistence });
         checkpoint = { ...checkpoint, families: { ...checkpoint.families, [family]: { family, status: value.status, report_date: value.report_date, catalog_rows: value.catalog.length, cache_durable: value.cache_publication?.durable === true } } };
       } catch (error) {
         checkpoint = { ...checkpoint, families: { ...checkpoint.families, [family]: { family, status: 'failed', cache_durable: false, error: error?.message || 'Unknown CFTC refresh error' } } };
@@ -1185,7 +1292,13 @@ export async function refreshCftcSnapshots({ signal } = {}) {
     checkpoint = { ...checkpoint, complete: families.every(item => item.status === 'ready' && item.cache_durable === true), ...(families.every(item => item.status === 'ready' && item.cache_durable === true) ? { completed_at: new Date().toISOString() } : {}) };
     await persist();
     if (families.every(item => item.status === 'failed' || item.status === 'stale')) throw new CftcError('Both CFTC report families failed to produce a fresh refresh.', { code: 'CFTC_REFRESH_FAILED', status: 503, details: families });
-    return { schema_version: CFTC_SCHEMA_VERSION, refreshed_at: new Date().toISOString(), status: checkpoint.complete ? 'ready' : 'degraded', checkpoint: { schema_version: checkpoint.schema_version, started_at: checkpoint.started_at, updated_at: checkpoint.updated_at, complete: checkpoint.complete }, families };
+    await persistence.completeRefreshJob(durableJob, checkpoint, checkpoint.complete ? null : 'CFTC_REFRESH_DEGRADED');
+    const durableStatus = durableJob ? { job_key: durableJob.jobKey, generation: durableJob.generation, resume_source: resumeSource, status: checkpoint.complete ? 'done' : 'retry' } : null;
+    durableJob = null;
+    return { schema_version: CFTC_SCHEMA_VERSION, refreshed_at: new Date().toISOString(), status: checkpoint.complete ? 'ready' : 'degraded', checkpoint: { schema_version: checkpoint.schema_version, started_at: checkpoint.started_at, updated_at: checkpoint.updated_at, complete: checkpoint.complete }, families, ...(durableStatus ? { durable_job: durableStatus } : {}) };
+  } catch (error) {
+    if (durableJob && checkpoint) await persistence.completeRefreshJob(durableJob, checkpoint, error?.code || 'CFTC_REFRESH_FAILED').catch(() => {});
+    throw error;
   } finally { await releaseLeaseBestEffort('refresh', lease); }
 }
 

@@ -22,6 +22,7 @@
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
 import { warmGet, warmSet } from '../../../utils/warmCache.js';
 import { isValidSecUserAgent, secFetch } from '../../../utils/secClient.js';
+import { readPreparedSecDocument, sampleSecShadow, preparedDataHeaders, preparedCacheControl } from '../../../utils/secDocumentStore.js';
 
 export const runtime = 'nodejs';
 
@@ -89,9 +90,21 @@ export async function GET(request) {
   // the SEC call entirely — big win during rate-limit-tight moments.
   const cik = host === 'data' ? extractSubmissionsCik(path) : null;
   const cacheControl = cacheControlFor(host, path);
+  if (host === 'data') {
+    try {
+      const prepared = await readPreparedSecDocument(path);
+      if (prepared) return Response.json(prepared.payload, {
+        headers: { 'Cache-Control': preparedCacheControl(prepared, { maxAge: 3600, sharedMaxAge: 21600 }), ...preparedDataHeaders(prepared) },
+      });
+    } catch (error) {
+      return Response.json({ error: error.message, path }, { status: error.status || 503,
+        headers: { 'Cache-Control': 'private, no-store', 'Retry-After': '60' } });
+    }
+  }
   if (cik) {
     const warm = await warmGet('submissions-cik', cik);
     if (warm) {
+      await sampleSecShadow(path, warm);
       return Response.json(warm, {
         headers: {
           'Cache-Control': cacheControl,
@@ -132,6 +145,9 @@ export async function GET(request) {
     }
 
     const body = await secRes.text();
+    if (host === 'data') {
+      try { await sampleSecShadow(path, JSON.parse(body)); } catch { /* Non-JSON SEC resources retain their existing response type. */ }
+    }
     if (cik) {
       try {
         await warmSet('submissions-cik', cik, JSON.parse(body), 25 * 3600);

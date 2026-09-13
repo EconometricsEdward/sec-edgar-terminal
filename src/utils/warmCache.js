@@ -260,6 +260,108 @@ export function warmCacheEnabled() {
   return ENABLED;
 }
 
+// Additive migration-only fencing. The tiny generation marker deliberately has
+// no TTL: expiring response bodies must never let an older worker become current.
+// Existing warmSet callers and off-mode behavior are unchanged.
+const MIGRATION_COHORT_TICKERS = Object.freeze({
+  '0000320193': 'AAPL', '0000789019': 'MSFT',
+  '0000019617': 'JPM', '0000002098': 'ACU',
+});
+
+function migrationFenceTarget(type, fenceId, id = null) {
+  if (typeof type !== 'string' || typeof fenceId !== 'string' || fenceId.length > 512) return false;
+  if (/^edgar\.cftc-positioning\.v1:(production|local|preview-[A-Za-z0-9_-]{1,12})$/.test(type)) {
+    const market = /^markets:(tff|disaggregated):(latest|\d{4}-\d{2}-\d{2})$/.exec(fenceId);
+    const history = /^history:(tff|disaggregated):([A-Z0-9+]{3,12}):([a-z-]{3,32}):(\d{4}-\d{2}-\d{2}):(1y|3y|5y)$/.exec(fenceId);
+    if (!market && !history) return false;
+    if (id === null || id === fenceId || id === fenceId.replace(/^(markets|history):/, '$1-last-good:')) return true;
+    const raw = /^raw-history:(tff|disaggregated):([A-Z0-9+]{3,12}):(\d{4}-\d{2}-\d{2})$/.exec(id);
+    // Raw-history keys can also be produced by another independently claimed
+    // resource. Their existing selected-observation validation is still required.
+    return Boolean(raw && (market ? raw[1] === market[1] && (market[2] === 'latest' || raw[3] === market[2])
+      : raw[1] === history[1] && raw[2] === history[2] && raw[3] === history[4]));
+  }
+  const sec = /^sec-documents-v1:CIK(\d{10}):(submissions|companyfacts)$/.exec(fenceId);
+  if (sec && Object.hasOwn(MIGRATION_COHORT_TICKERS, sec[1])) {
+    if (type === 'submissions-cik') return sec[2] === 'submissions' && (id === null || id === sec[1]);
+    if (type === 'research-sec-v1') return id === null || id === (sec[2] === 'submissions'
+      ? `/submissions/CIK${sec[1]}.json` : `/api/xbrl/companyfacts/CIK${sec[1]}.json`);
+  }
+  const financial = /^financial-analysis-v1:(analysis-[A-Za-z0-9:._-]{1,200}):CIK(\d{10}):(annual|quarter|ytd|ttm):latest$/.exec(fenceId);
+  return Boolean(type === 'analysis-research' && financial && Object.hasOwn(MIGRATION_COHORT_TICKERS, financial[2])
+    && (id === null || id === `${financial[1]}:${MIGRATION_COHORT_TICKERS[financial[2]]}:${financial[3]}:`));
+}
+
+function migrationFenceClaim(type, fenceId, generation, claim) {
+  if (!migrationFenceTarget(type, fenceId) || (typeof generation === 'number' && !Number.isSafeInteger(generation))) return null;
+  const text = String(generation), expires = Date.parse(claim?.expiresAt || '');
+  if (!/^[1-9]\d{0,18}$/.test(text) || (text.length === 19 && text > '9223372036854775807')
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(claim?.owner || '')
+    || !Number.isSafeInteger(expires) || expires <= 0) return null;
+  return { generation: text, owner: claim.owner.toLowerCase(), expires: String(expires) };
+}
+
+const MIGRATION_FENCE_LUA = `
+  local clock = redis.call('TIME')
+  local now = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
+  local expires = tonumber(ARGV[3])
+  if not expires or expires <= now or expires > now + 960000 then return 0 end
+  local record = redis.call('GET', KEYS[1])
+  local generation, owner, lease = nil, nil, nil
+  if record then
+    generation, owner, lease = string.match(record, '^([1-9][0-9]*)|([0-9a-f-]+)|([0-9]+)$')
+    if not generation then return 0 end
+  end
+  if ARGV[4] == 'reserve' then
+    if generation then
+      if #generation > #ARGV[1] or (#generation == #ARGV[1] and generation > ARGV[1]) then return 0 end
+      if generation == ARGV[1] then
+        if owner ~= ARGV[2] or lease ~= ARGV[3] then return 0 end
+        return 1
+      end
+    end
+    redis.call('SET', KEYS[1], ARGV[1] .. '|' .. ARGV[2] .. '|' .. ARGV[3])
+    return 1
+  end
+  if generation ~= ARGV[1] or owner ~= ARGV[2] or lease ~= ARGV[3] then return 0 end
+  redis.call('SET', KEYS[2], ARGV[5], 'EX', ARGV[6])
+  return 1
+`;
+
+async function executeMigrationFence(keys, args) {
+  if (!ENABLED) return false;
+  try {
+    const response = await fetch(REST_URL, {
+      method: 'POST', headers: { Authorization: `Bearer ${REST_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['EVAL', MIGRATION_FENCE_LUA, keys.length, ...keys, ...args]),
+      signal: AbortSignal.timeout(3000),
+    });
+    const result = response.ok ? await response.json() : null;
+    return !result?.error && result?.result === 1;
+  } catch { return false; } // Coordination failure must never become an unfenced write.
+}
+
+/** Reserve immediately after the durable claim, before upstream work begins. */
+export async function warmReserveGeneration(type, fenceId, generation, claim) {
+  const checked = migrationFenceClaim(type, fenceId, generation, claim);
+  if (!checked) return false;
+  return executeMigrationFence([key(`generation:${type}`, fenceId)], [checked.generation, checked.owner, checked.expires, 'reserve']);
+}
+
+/** Atomically reject older, expired, unreserved or differently owned writers. */
+export async function warmSetGeneration(type, id, value, ttlSeconds, claim) {
+  const checked = migrationFenceClaim(type, claim?.fenceId, claim?.generation, claim);
+  if (!checked || typeof id !== 'string' || !migrationFenceTarget(type, claim.fenceId, id)
+    || !Number.isSafeInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 32 * 86400) return false;
+  let body;
+  try {
+    body = JSON.stringify(value);
+    if (typeof body !== 'string' || new TextEncoder().encode(body).byteLength > 900_000) return false;
+  } catch { return false; }
+  return executeMigrationFence([key(`generation:${type}`, claim.fenceId), key(type, id)],
+    [checked.generation, checked.owner, checked.expires, 'write', body, String(ttlSeconds)]);
+}
+
 /**
  * Read a bounded page of members from an audited raw Redis set. This is kept
  * separate from the `warm:*` helpers because a small number of operational
