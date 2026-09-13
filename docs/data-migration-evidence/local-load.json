@@ -1,0 +1,474 @@
+{
+  "kind": "local-http-serving-helper-fixture-rehearsal",
+  "startedAt": "2026-09-13T03:14:11.339Z",
+  "assumptions": {
+    "fixtureRoundTripDelayMs": 20,
+    "requestsPerSimulatedUser": 10,
+    "maximumConcurrency": 50,
+    "responseCompression": "none on local HTTP",
+    "publicUpstreams": "blocked",
+    "fixtureExpiry": "2026-09-13T04:14:11.339Z"
+  },
+  "limitations": [
+    "Not production Next.js route/UI execution, Vercel/CDN latency, real Supabase/RLS capacity, real Redis latency, or a 1000-user capacity guarantee.",
+    "Warm means Analysis hot cache; CFTC and SEC still read durable fixtures. Prepared miss means Analysis hot-cache miss with prepared durable data available.",
+    "Portfolio route simulates five prepared-company reads including one duplicate; it does not claim production portfolio migration.",
+    "Data API/Storage delays and freshness clock are injected. Sample financial/report dates and full response sizes are retained."
+  ],
+  "stages": [
+    {
+      "mode": "warm",
+      "concurrency": 5,
+      "requests": 50,
+      "elapsedMs": 1560,
+      "p50Ms": 112,
+      "p95Ms": 335,
+      "errors": 0,
+      "errorRate": 0,
+      "responseBytes": 80857709,
+      "rssMiB": 429,
+      "counters": {
+        "dataApiReads": 20,
+        "objectReads": 15,
+        "fixtureResponseBytes": 1025043,
+        "hotReads": 70,
+        "hotHits": 70,
+        "hotWrites": 0
+      },
+      "byRoute": {
+        "/cftc/history": {
+          "requests": 5,
+          "p95Ms": 182,
+          "errors": 0,
+          "responseBytes": 275475
+        },
+        "/analysis": {
+          "requests": 20,
+          "p95Ms": 335,
+          "errors": 0,
+          "responseBytes": 24894760
+        },
+        "/cftc/markets": {
+          "requests": 10,
+          "p95Ms": 247,
+          "errors": 0,
+          "responseBytes": 1641485
+        },
+        "/sec/submissions": {
+          "requests": 5,
+          "p95Ms": 285,
+          "errors": 0,
+          "responseBytes": 5282114
+        },
+        "/portfolio-fanout": {
+          "requests": 10,
+          "p95Ms": 538,
+          "errors": 0,
+          "responseBytes": 48763875
+        }
+      },
+      "proposedLatencyTargetMs": 750,
+      "meetsProposedFixtureTargets": true
+    },
+    {
+      "mode": "warm",
+      "concurrency": 10,
+      "requests": 100,
+      "elapsedMs": 4309,
+      "p50Ms": 303,
+      "p95Ms": 1067,
+      "errors": 0,
+      "errorRate": 0,
+      "responseBytes": 161755192,
+      "rssMiB": 425,
+      "counters": {
+        "dataApiReads": 40,
+        "objectReads": 30,
+        "fixtureResponseBytes": 2042754,
+        "hotReads": 140,
+        "hotHits": 140,
+        "hotWrites": 0
+      },
+      "byRoute": {
+        "/analysis": {
+          "requests": 40,
+          "p95Ms": 551,
+          "errors": 0,
+          "responseBytes": 49808685
+        },
+        "/cftc/history": {
+          "requests": 10,
+          "p95Ms": 817,
+          "errors": 0,
+          "responseBytes": 550950
+        },
+        "/cftc/markets": {
+          "requests": 20,
+          "p95Ms": 912,
+          "errors": 0,
+          "responseBytes": 3282970
+        },
+        "/portfolio-fanout": {
+          "requests": 20,
+          "p95Ms": 1274,
+          "errors": 0,
+          "responseBytes": 97527750
+        },
+        "/sec/submissions": {
+          "requests": 10,
+          "p95Ms": 948,
+          "errors": 0,
+          "responseBytes": 10584837
+        }
+      },
+      "proposedLatencyTargetMs": 750,
+      "meetsProposedFixtureTargets": false
+    },
+    {
+      "mode": "warm",
+      "concurrency": 25,
+      "requests": 250,
+      "elapsedMs": 7505,
+      "p50Ms": 548,
+      "p95Ms": 1672,
+      "errors": 0,
+      "errorRate": 0,
+      "responseBytes": 407296149,
+      "rssMiB": 416,
+      "counters": {
+        "dataApiReads": 100,
+        "objectReads": 75,
+        "fixtureResponseBytes": 5560213,
+        "hotReads": 350,
+        "hotHits": 350,
+        "hotWrites": 0
+      },
+      "byRoute": {
+        "/analysis": {
+          "requests": 100,
+          "p95Ms": 2406,
+          "errors": 0,
+          "responseBytes": 123019745
+        },
+        "/cftc/history": {
+          "requests": 25,
+          "p95Ms": 960,
+          "errors": 0,
+          "responseBytes": 1377375
+        },
+        "/portfolio-fanout": {
+          "requests": 50,
+          "p95Ms": 2107,
+          "errors": 0,
+          "responseBytes": 243819375
+        },
+        "/cftc/markets": {
+          "requests": 50,
+          "p95Ms": 1310,
+          "errors": 0,
+          "responseBytes": 8207425
+        },
+        "/sec/submissions": {
+          "requests": 25,
+          "p95Ms": 2376,
+          "errors": 0,
+          "responseBytes": 30872229
+        }
+      },
+      "proposedLatencyTargetMs": 750,
+      "meetsProposedFixtureTargets": false
+    },
+    {
+      "mode": "warm",
+      "concurrency": 50,
+      "requests": 500,
+      "elapsedMs": 11916,
+      "p50Ms": 629,
+      "p95Ms": 2794,
+      "errors": 0,
+      "errorRate": 0,
+      "responseBytes": 814632072,
+      "rssMiB": 540,
+      "counters": {
+        "dataApiReads": 200,
+        "objectReads": 150,
+        "fixtureResponseBytes": 11113094,
+        "hotReads": 700,
+        "hotHits": 700,
+        "hotWrites": 0
+      },
+      "byRoute": {
+        "/analysis": {
+          "requests": 200,
+          "p95Ms": 4262,
+          "errors": 0,
+          "responseBytes": 246058655
+        },
+        "/cftc/history": {
+          "requests": 50,
+          "p95Ms": 2738,
+          "errors": 0,
+          "responseBytes": 2754750
+        },
+        "/portfolio-fanout": {
+          "requests": 100,
+          "p95Ms": 2778,
+          "errors": 0,
+          "responseBytes": 487638750
+        },
+        "/cftc/markets": {
+          "requests": 100,
+          "p95Ms": 1330,
+          "errors": 0,
+          "responseBytes": 16414850
+        },
+        "/sec/submissions": {
+          "requests": 50,
+          "p95Ms": 6091,
+          "errors": 0,
+          "responseBytes": 61765067
+        }
+      },
+      "proposedLatencyTargetMs": 750,
+      "meetsProposedFixtureTargets": false
+    },
+    {
+      "mode": "prepared-miss",
+      "concurrency": 5,
+      "requests": 50,
+      "elapsedMs": 1715,
+      "p50Ms": 159,
+      "p95Ms": 296,
+      "errors": 0,
+      "errorRate": 0,
+      "responseBytes": 80857709,
+      "rssMiB": 547,
+      "counters": {
+        "dataApiReads": 90,
+        "objectReads": 85,
+        "fixtureResponseBytes": 5545147,
+        "hotReads": 70,
+        "hotHits": 0,
+        "hotWrites": 0
+      },
+      "byRoute": {
+        "/cftc/history": {
+          "requests": 5,
+          "p95Ms": 159,
+          "errors": 0,
+          "responseBytes": 275475
+        },
+        "/cftc/markets": {
+          "requests": 10,
+          "p95Ms": 208,
+          "errors": 0,
+          "responseBytes": 1641485
+        },
+        "/analysis": {
+          "requests": 20,
+          "p95Ms": 296,
+          "errors": 0,
+          "responseBytes": 24894760
+        },
+        "/sec/submissions": {
+          "requests": 5,
+          "p95Ms": 240,
+          "errors": 0,
+          "responseBytes": 5282114
+        },
+        "/portfolio-fanout": {
+          "requests": 10,
+          "p95Ms": 300,
+          "errors": 0,
+          "responseBytes": 48763875
+        }
+      },
+      "proposedLatencyTargetMs": 2000,
+      "meetsProposedFixtureTargets": true
+    },
+    {
+      "mode": "prepared-miss",
+      "concurrency": 10,
+      "requests": 100,
+      "elapsedMs": 2608,
+      "p50Ms": 251,
+      "p95Ms": 415,
+      "errors": 0,
+      "errorRate": 0,
+      "responseBytes": 161755192,
+      "rssMiB": 545,
+      "counters": {
+        "dataApiReads": 180,
+        "objectReads": 170,
+        "fixtureResponseBytes": 11076979,
+        "hotReads": 140,
+        "hotHits": 0,
+        "hotWrites": 0
+      },
+      "byRoute": {
+        "/cftc/history": {
+          "requests": 10,
+          "p95Ms": 293,
+          "errors": 0,
+          "responseBytes": 550950
+        },
+        "/cftc/markets": {
+          "requests": 20,
+          "p95Ms": 318,
+          "errors": 0,
+          "responseBytes": 3282970
+        },
+        "/analysis": {
+          "requests": 40,
+          "p95Ms": 377,
+          "errors": 0,
+          "responseBytes": 49808685
+        },
+        "/sec/submissions": {
+          "requests": 10,
+          "p95Ms": 415,
+          "errors": 0,
+          "responseBytes": 10584837
+        },
+        "/portfolio-fanout": {
+          "requests": 20,
+          "p95Ms": 461,
+          "errors": 0,
+          "responseBytes": 97527750
+        }
+      },
+      "proposedLatencyTargetMs": 2000,
+      "meetsProposedFixtureTargets": true
+    },
+    {
+      "mode": "prepared-miss",
+      "concurrency": 25,
+      "requests": 250,
+      "elapsedMs": 6627,
+      "p50Ms": 505,
+      "p95Ms": 1139,
+      "errors": 0,
+      "errorRate": 0,
+      "responseBytes": 407296149,
+      "rssMiB": 574,
+      "counters": {
+        "dataApiReads": 450,
+        "objectReads": 425,
+        "fixtureResponseBytes": 28023667,
+        "hotReads": 350,
+        "hotHits": 0,
+        "hotWrites": 0
+      },
+      "byRoute": {
+        "/cftc/history": {
+          "requests": 25,
+          "p95Ms": 499,
+          "errors": 0,
+          "responseBytes": 1377375
+        },
+        "/cftc/markets": {
+          "requests": 50,
+          "p95Ms": 767,
+          "errors": 0,
+          "responseBytes": 8207425
+        },
+        "/analysis": {
+          "requests": 100,
+          "p95Ms": 923,
+          "errors": 0,
+          "responseBytes": 123019745
+        },
+        "/sec/submissions": {
+          "requests": 25,
+          "p95Ms": 2742,
+          "errors": 0,
+          "responseBytes": 30872229
+        },
+        "/portfolio-fanout": {
+          "requests": 50,
+          "p95Ms": 1192,
+          "errors": 0,
+          "responseBytes": 243819375
+        }
+      },
+      "proposedLatencyTargetMs": 2000,
+      "meetsProposedFixtureTargets": true
+    },
+    {
+      "mode": "prepared-miss",
+      "concurrency": 50,
+      "requests": 500,
+      "elapsedMs": 12213,
+      "p50Ms": 791,
+      "p95Ms": 2515,
+      "errors": 0,
+      "errorRate": 0,
+      "responseBytes": 814632072,
+      "rssMiB": 572,
+      "counters": {
+        "dataApiReads": 900,
+        "objectReads": 850,
+        "fixtureResponseBytes": 56034019,
+        "hotReads": 700,
+        "hotHits": 0,
+        "hotWrites": 0
+      },
+      "byRoute": {
+        "/cftc/history": {
+          "requests": 50,
+          "p95Ms": 1137,
+          "errors": 0,
+          "responseBytes": 2754750
+        },
+        "/cftc/markets": {
+          "requests": 100,
+          "p95Ms": 1275,
+          "errors": 0,
+          "responseBytes": 16414850
+        },
+        "/analysis": {
+          "requests": 200,
+          "p95Ms": 2294,
+          "errors": 0,
+          "responseBytes": 246058655
+        },
+        "/sec/submissions": {
+          "requests": 50,
+          "p95Ms": 3430,
+          "errors": 0,
+          "responseBytes": 61765067
+        },
+        "/portfolio-fanout": {
+          "requests": 100,
+          "p95Ms": 5891,
+          "errors": 0,
+          "responseBytes": 487638750
+        }
+      },
+      "proposedLatencyTargetMs": 2000,
+      "meetsProposedFixtureTargets": false
+    }
+  ],
+  "faultProbes": [
+    {
+      "injected": "redis",
+      "expectedStatus": 200,
+      "status": 200,
+      "passed": true
+    },
+    {
+      "injected": "storage",
+      "expectedStatus": 503,
+      "status": 503,
+      "passed": true
+    },
+    {
+      "injected": "missing",
+      "expectedStatus": 503,
+      "status": 503,
+      "passed": true
+    }
+  ],
+  "blockedUpstreamAttempts": 0,
+  "finishedAt": "2026-09-13T03:15:02.941Z"
+}

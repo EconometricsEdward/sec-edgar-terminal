@@ -1,0 +1,178 @@
+[
+  {
+    "ticker": "AAPL",
+    "fullMarket": {
+      "rawBytes": 143791,
+      "gzipBytes": 8346
+    },
+    "compactMarket": {
+      "rawBytes": 4301,
+      "gzipBytes": 1286
+    },
+    "annualAnalysis": {
+      "rawBytes": 434218,
+      "gzipBytes": 30182
+    },
+    "marketComputeMs": 234,
+    "annualAnalysisComputeMs": 83,
+    "reports": {
+      "annual": {
+        "fy": 2025,
+        "fp": "FY",
+        "end": "2025-09-27",
+        "filed": "2025-10-31",
+        "form": "10-K",
+        "accession": "0000320193-25-000079",
+        "kind": "annual",
+        "fiscalStart": "2024-09-29",
+        "start": "2024-09-29",
+        "ttmStart": null
+      },
+      "ttm": {
+        "fy": 2026,
+        "fp": "Q3",
+        "end": "2026-06-27",
+        "filed": "2026-07-31",
+        "form": "10-Q",
+        "accession": "0000320193-26-000020",
+        "kind": "ttm",
+        "fiscalStart": "2025-09-28",
+        "start": "2025-06-29",
+        "ttmStart": "2025-06-29"
+      }
+    },
+    "annualRevenue": 416161000000
+  },
+  {
+    "ticker": "MSFT",
+    "fullMarket": {
+      "rawBytes": 107600,
+      "gzipBytes": 6048
+    },
+    "compactMarket": {
+      "rawBytes": 4035,
+      "gzipBytes": 913
+    },
+    "annualAnalysis": {
+      "rawBytes": 436157,
+      "gzipBytes": 29555
+    },
+    "marketComputeMs": 194,
+    "annualAnalysisComputeMs": 88,
+    "reports": {
+      "annual": {
+        "fy": 2026,
+        "fp": "FY",
+        "end": "2026-06-30",
+        "filed": "2026-07-29",
+        "form": "10-K",
+        "accession": "0001193125-26-323660",
+        "kind": "annual",
+        "fiscalStart": "2025-07-01",
+        "start": "2025-07-01",
+        "ttmStart": null
+      },
+      "ttm": {
+        "fy": 2026,
+        "fp": "Q4",
+        "end": "2026-06-30",
+        "filed": "2026-07-29",
+        "form": "10-K",
+        "accession": "0001193125-26-323660",
+        "kind": "ttm",
+        "fiscalStart": "2025-07-01",
+        "start": "2025-07-01",
+        "ttmStart": "2025-07-01"
+      }
+    },
+    "annualRevenue": 331839000000
+  },
+  {
+    "ticker": "JPM",
+    "fullMarket": {
+      "rawBytes": 110400,
+      "gzipBytes": 6598
+    },
+    "compactMarket": {
+      "rawBytes": 4013,
+      "gzipBytes": 1159
+    },
+    "annualAnalysis": {
+      "rawBytes": 306351,
+      "gzipBytes": 20903
+    },
+    "marketComputeMs": 168,
+    "annualAnalysisComputeMs": 69,
+    "reports": {
+      "annual": {
+        "fy": 2025,
+        "fp": "FY",
+        "end": "2025-12-31",
+        "filed": "2026-02-13",
+        "form": "10-K",
+        "accession": "0001628280-26-008131",
+        "kind": "annual",
+        "fiscalStart": "2025-01-01",
+        "start": "2025-01-01",
+        "ttmStart": null
+      },
+      "ttm": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001628280-26-054343",
+        "kind": "ttm",
+        "fiscalStart": "2026-01-01",
+        "start": "2025-07-01",
+        "ttmStart": "2025-07-01"
+      }
+    },
+    "annualRevenue": 182447000000
+  },
+  {
+    "ticker": "ACU",
+    "fullMarket": {
+      "rawBytes": 138602,
+      "gzipBytes": 8332
+    },
+    "compactMarket": {
+      "rawBytes": 4296,
+      "gzipBytes": 1332
+    },
+    "annualAnalysis": {
+      "rawBytes": 511229,
+      "gzipBytes": 31714
+    },
+    "marketComputeMs": 169,
+    "annualAnalysisComputeMs": 68,
+    "reports": {
+      "annual": {
+        "fy": 2025,
+        "fp": "FY",
+        "end": "2025-12-31",
+        "filed": "2026-03-11",
+        "form": "10-K",
+        "accession": "0001193125-26-102079",
+        "kind": "annual",
+        "fiscalStart": "2025-01-01",
+        "start": "2025-01-01",
+        "ttmStart": null
+      },
+      "ttm": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001193125-26-338211",
+        "kind": "ttm",
+        "fiscalStart": "2026-01-01",
+        "start": "2025-07-01",
+        "ttmStart": "2025-07-01"
+      }
+    },
+    "annualRevenue": 196541816
+  }
+]

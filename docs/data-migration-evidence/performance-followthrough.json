@@ -1,0 +1,2676 @@
+{
+  "kind": "migration-performance-followthrough",
+  "recordedAt": "2026-09-13T05:17:24.080465+00:00",
+  "status": "Representative isolated-driver fixture targets met; synthetic stress warm target remains unmet. Hosted production acceptance and traffic capacity remain unmeasured.",
+  "changes": [
+    "Fresh Postgres head lookup on every durable read. SHA-256 verified immutable payload reuse with exact serialized JSON, 32MiB decoded-input budget, 32 entries, 8MiB per entry, absolute 60-second TTL, coalesced concurrent object loads, asynchronous gunzip.",
+    "Fresh Redis lookup on every warm financial read. Bounded immutable gzip decode cache and original metadata validation are maintained by the financial read utility.",
+    "Actual prepared Analysis route responds using verified serialized JSON without repeated parsing or serialization.",
+    "Harness retains original five-full-Analysis stress workload, adds separately labeled actual compact portfolio helper workload and client worker isolation, server timing and cold/fault probes."
+  ],
+  "limits": [
+    "Cache budgets count serialized JSON inputs, not actual JavaScript object heap; measured RSS includes fixtures, application, and clients.",
+    "Immutable content caching never replaces live head freshness/version/expiry checks; source export and upload verification perform actual object reads.",
+    "Representative portfolio uses actual runPortfolioResearch and loadFreshPortfolioCompany helpers with same saved SEC documents, but company cache reads are injected and warm. This is not cold portfolio ingestion or Supabase portfolio persistence.",
+    "Injected dependency latency is 20ms; local public network is blocked. No production latency, browser rendering, Vercel/CDN, real Supabase/Redis concurrency, real billing, or 1,000-daily-user capacity claim.",
+    "The 16MiB worker stress run stopped at 1259MiB RSS under the existing 1200MiB guard. This failed run is preserved. Increasing budget to 32MiB fits the approved prepared cohort; final representative RSS 629MiB maximum."
+  ],
+  "verification": {
+    "dataStoreTests": {
+      "passed": 18,
+      "failed": 0
+    },
+    "ownedFilesEslint": "passed",
+    "gitDiffCheck": "passed"
+  },
+  "codeHashes": {
+    "src/utils/dataStore.js": "1e7ae3b1c5b544b7daf8c2687228eb3ef96593329bb532f4c24ab12c115dfec8",
+    "src/utils/preparedFinancialData.js": "6f939a140b4796d02641738d9ab68cadddcb213d783e9480d6e994e2f4b068a5",
+    "src/app/api/analysis-research/route.js": "4d462461aed782ab940d664148fc41fbcf9126457ab00612e0eefa74dd951459",
+    "scripts/data-migration-load.mjs": "39793f5eb4220907b2ce59a6b3b185da69199c1e665904e75408df5122a949f8"
+  },
+  "runs": {
+    "optimized16MiBStressShared": {
+      "kind": "local-http-serving-helper-fixture-rehearsal",
+      "startedAt": "2026-09-13T05:11:22.951Z",
+      "assumptions": {
+        "fixtureRoundTripDelayMs": 20,
+        "hotCacheDelayMs": 0,
+        "requestsPerSimulatedUser": 10,
+        "maximumConcurrency": 50,
+        "driver": "shared",
+        "responseCompression": "none on local HTTP",
+        "publicUpstreams": "blocked",
+        "fixtureExpiry": "2026-09-13T06:11:22.951Z"
+      },
+      "limitations": [
+        "Not production Next.js route/UI execution, Vercel/CDN latency, real Supabase/RLS capacity, real Redis latency, or a 1000-user capacity guarantee.",
+        "Warm means Analysis hot cache; CFTC and SEC still read durable manifests. Prepared miss means Analysis hot-cache miss with prepared durable data available; verified immutable content can be reused in process.",
+        "Portfolio route deliberately stresses five full prepared Analysis responses including one duplicate; it is not the compact production portfolio response and does not claim production portfolio migration.",
+        "Data API/Storage delays and freshness clock are injected. Sample financial/report dates and full response sizes are retained.",
+        "Load driver and HTTP server share one process and one event-loop thread; loopback response bytes do not measure external service egress.",
+        "Memory is process RSS including fixture data, caches, client buffers and any driver worker; cache limits count decoded JSON input bytes, not JavaScript object heap."
+      ],
+      "stages": [
+        {
+          "mode": "warm",
+          "concurrency": 5,
+          "requests": 50,
+          "elapsedMs": 985,
+          "p50Ms": 52,
+          "p95Ms": 204,
+          "serverP95Ms": 167,
+          "eventLoopP95Ms": 54,
+          "cpuMs": 2209,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 80857709,
+          "rssMiB": 480,
+          "counters": {
+            "dataApiReads": 20,
+            "objectReads": 6,
+            "fixtureResponseBytes": 864630,
+            "hotReads": 70,
+            "hotHits": 70,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/history": {
+              "requests": 5,
+              "p95Ms": 150,
+              "serverP95Ms": 50,
+              "errors": 0,
+              "responseBytes": 275475
+            },
+            "/analysis": {
+              "requests": 20,
+              "p95Ms": 167,
+              "serverP95Ms": 22,
+              "errors": 0,
+              "responseBytes": 24894760
+            },
+            "/cftc/markets": {
+              "requests": 10,
+              "p95Ms": 239,
+              "serverP95Ms": 194,
+              "errors": 0,
+              "responseBytes": 1641485
+            },
+            "/sec/submissions": {
+              "requests": 5,
+              "p95Ms": 599,
+              "serverP95Ms": 571,
+              "errors": 0,
+              "responseBytes": 5282114
+            },
+            "/portfolio-fanout": {
+              "requests": 10,
+              "p95Ms": 124,
+              "serverP95Ms": 55,
+              "errors": 0,
+              "responseBytes": 48763875
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 10,
+          "requests": 100,
+          "elapsedMs": 1311,
+          "p50Ms": 105,
+          "p95Ms": 298,
+          "serverP95Ms": 69,
+          "eventLoopP95Ms": 84,
+          "cpuMs": 2971,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 161755192,
+          "rssMiB": 480,
+          "counters": {
+            "dataApiReads": 40,
+            "objectReads": 0,
+            "fixtureResponseBytes": 569714,
+            "hotReads": 140,
+            "hotHits": 140,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 40,
+              "p95Ms": 456,
+              "serverP95Ms": 6,
+              "errors": 0,
+              "responseBytes": 49808685
+            },
+            "/cftc/markets": {
+              "requests": 20,
+              "p95Ms": 174,
+              "serverP95Ms": 70,
+              "errors": 0,
+              "responseBytes": 3282970
+            },
+            "/cftc/history": {
+              "requests": 10,
+              "p95Ms": 186,
+              "serverP95Ms": 71,
+              "errors": 0,
+              "responseBytes": 550950
+            },
+            "/sec/submissions": {
+              "requests": 10,
+              "p95Ms": 182,
+              "serverP95Ms": 72,
+              "errors": 0,
+              "responseBytes": 10584837
+            },
+            "/portfolio-fanout": {
+              "requests": 20,
+              "p95Ms": 304,
+              "serverP95Ms": 59,
+              "errors": 0,
+              "responseBytes": 97527750
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 25,
+          "requests": 250,
+          "elapsedMs": 3112,
+          "p50Ms": 167,
+          "p95Ms": 670,
+          "serverP95Ms": 98,
+          "eventLoopP95Ms": 113,
+          "cpuMs": 6801,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 407296149,
+          "rssMiB": 560,
+          "counters": {
+            "dataApiReads": 100,
+            "objectReads": 0,
+            "fixtureResponseBytes": 1424287,
+            "hotReads": 350,
+            "hotHits": 350,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 100,
+              "p95Ms": 792,
+              "serverP95Ms": 6,
+              "errors": 0,
+              "responseBytes": 123019745
+            },
+            "/cftc/markets": {
+              "requests": 50,
+              "p95Ms": 456,
+              "serverP95Ms": 98,
+              "errors": 0,
+              "responseBytes": 8207425
+            },
+            "/cftc/history": {
+              "requests": 25,
+              "p95Ms": 639,
+              "serverP95Ms": 106,
+              "errors": 0,
+              "responseBytes": 1377375
+            },
+            "/sec/submissions": {
+              "requests": 25,
+              "p95Ms": 443,
+              "serverP95Ms": 130,
+              "errors": 0,
+              "responseBytes": 30872229
+            },
+            "/portfolio-fanout": {
+              "requests": 50,
+              "p95Ms": 1082,
+              "serverP95Ms": 58,
+              "errors": 0,
+              "responseBytes": 243819375
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 50,
+          "requests": 500,
+          "elapsedMs": 6385,
+          "p50Ms": 293,
+          "p95Ms": 2155,
+          "serverP95Ms": 161,
+          "eventLoopP95Ms": 171,
+          "cpuMs": 13779,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 814632072,
+          "rssMiB": 591,
+          "counters": {
+            "dataApiReads": 200,
+            "objectReads": 0,
+            "fixtureResponseBytes": 2848574,
+            "hotReads": 700,
+            "hotHits": 700,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 200,
+              "p95Ms": 1604,
+              "serverP95Ms": 6,
+              "errors": 0,
+              "responseBytes": 246058655
+            },
+            "/cftc/markets": {
+              "requests": 100,
+              "p95Ms": 487,
+              "serverP95Ms": 186,
+              "errors": 0,
+              "responseBytes": 16414850
+            },
+            "/cftc/history": {
+              "requests": 50,
+              "p95Ms": 2981,
+              "serverP95Ms": 219,
+              "errors": 0,
+              "responseBytes": 2754750
+            },
+            "/sec/submissions": {
+              "requests": 50,
+              "p95Ms": 1831,
+              "serverP95Ms": 186,
+              "errors": 0,
+              "responseBytes": 61765067
+            },
+            "/portfolio-fanout": {
+              "requests": 100,
+              "p95Ms": 2525,
+              "serverP95Ms": 56,
+              "errors": 0,
+              "responseBytes": 487638750
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": false
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 5,
+          "requests": 50,
+          "elapsedMs": 951,
+          "p50Ms": 49,
+          "p95Ms": 286,
+          "serverP95Ms": 198,
+          "eventLoopP95Ms": 53,
+          "cpuMs": 1882,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 80857709,
+          "rssMiB": 589,
+          "counters": {
+            "dataApiReads": 90,
+            "objectReads": 19,
+            "fixtureResponseBytes": 1857540,
+            "hotReads": 70,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 10,
+              "p95Ms": 81,
+              "serverP95Ms": 77,
+              "errors": 0,
+              "responseBytes": 1641485
+            },
+            "/cftc/history": {
+              "requests": 5,
+              "p95Ms": 64,
+              "serverP95Ms": 52,
+              "errors": 0,
+              "responseBytes": 275475
+            },
+            "/analysis": {
+              "requests": 20,
+              "p95Ms": 153,
+              "serverP95Ms": 104,
+              "errors": 0,
+              "responseBytes": 24894760
+            },
+            "/sec/submissions": {
+              "requests": 5,
+              "p95Ms": 214,
+              "serverP95Ms": 209,
+              "errors": 0,
+              "responseBytes": 5282114
+            },
+            "/portfolio-fanout": {
+              "requests": 10,
+              "p95Ms": 308,
+              "serverP95Ms": 217,
+              "errors": 0,
+              "responseBytes": 48763875
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 10,
+          "requests": 100,
+          "elapsedMs": 1699,
+          "p50Ms": 99,
+          "p95Ms": 428,
+          "serverP95Ms": 270,
+          "eventLoopP95Ms": 88,
+          "cpuMs": 3311,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 161755192,
+          "rssMiB": 643,
+          "counters": {
+            "dataApiReads": 180,
+            "objectReads": 24,
+            "fixtureResponseBytes": 2554942,
+            "hotReads": 140,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 20,
+              "p95Ms": 130,
+              "serverP95Ms": 92,
+              "errors": 0,
+              "responseBytes": 3282970
+            },
+            "/cftc/history": {
+              "requests": 10,
+              "p95Ms": 137,
+              "serverP95Ms": 47,
+              "errors": 0,
+              "responseBytes": 550950
+            },
+            "/analysis": {
+              "requests": 40,
+              "p95Ms": 261,
+              "serverP95Ms": 251,
+              "errors": 0,
+              "responseBytes": 49808685
+            },
+            "/portfolio-fanout": {
+              "requests": 20,
+              "p95Ms": 435,
+              "serverP95Ms": 312,
+              "errors": 0,
+              "responseBytes": 97527750
+            },
+            "/sec/submissions": {
+              "requests": 10,
+              "p95Ms": 622,
+              "serverP95Ms": 574,
+              "errors": 0,
+              "responseBytes": 10584837
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 25,
+          "requests": 250,
+          "elapsedMs": 3742,
+          "p50Ms": 151,
+          "p95Ms": 916,
+          "serverP95Ms": 760,
+          "eventLoopP95Ms": 145,
+          "cpuMs": 7333,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 407296149,
+          "rssMiB": 615,
+          "counters": {
+            "dataApiReads": 450,
+            "objectReads": 16,
+            "fixtureResponseBytes": 3447222,
+            "hotReads": 350,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 50,
+              "p95Ms": 445,
+              "serverP95Ms": 298,
+              "errors": 0,
+              "responseBytes": 8207425
+            },
+            "/cftc/history": {
+              "requests": 25,
+              "p95Ms": 306,
+              "serverP95Ms": 192,
+              "errors": 0,
+              "responseBytes": 1377375
+            },
+            "/analysis": {
+              "requests": 100,
+              "p95Ms": 984,
+              "serverP95Ms": 904,
+              "errors": 0,
+              "responseBytes": 123019745
+            },
+            "/sec/submissions": {
+              "requests": 25,
+              "p95Ms": 1838,
+              "serverP95Ms": 1429,
+              "errors": 0,
+              "responseBytes": 30872229
+            },
+            "/portfolio-fanout": {
+              "requests": 50,
+              "p95Ms": 629,
+              "serverP95Ms": 353,
+              "errors": 0,
+              "responseBytes": 243819375
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 50,
+          "requests": 500,
+          "elapsedMs": 6601,
+          "p50Ms": 237,
+          "p95Ms": 2333,
+          "serverP95Ms": 1363,
+          "eventLoopP95Ms": 220,
+          "cpuMs": 13183,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 814632072,
+          "rssMiB": 760,
+          "counters": {
+            "dataApiReads": 900,
+            "objectReads": 20,
+            "fixtureResponseBytes": 5279389,
+            "hotReads": 700,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 100,
+              "p95Ms": 472,
+              "serverP95Ms": 213,
+              "errors": 0,
+              "responseBytes": 16414850
+            },
+            "/cftc/history": {
+              "requests": 50,
+              "p95Ms": 609,
+              "serverP95Ms": 209,
+              "errors": 0,
+              "responseBytes": 2754750
+            },
+            "/analysis": {
+              "requests": 200,
+              "p95Ms": 1852,
+              "serverP95Ms": 1363,
+              "errors": 0,
+              "responseBytes": 246058655
+            },
+            "/portfolio-fanout": {
+              "requests": 100,
+              "p95Ms": 2980,
+              "serverP95Ms": 1532,
+              "errors": 0,
+              "responseBytes": 487638750
+            },
+            "/sec/submissions": {
+              "requests": 50,
+              "p95Ms": 1646,
+              "serverP95Ms": 1222,
+              "errors": 0,
+              "responseBytes": 61765067
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": false
+        }
+      ],
+      "faultProbes": [
+        {
+          "injected": "redis",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-verified-content-hit",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-cold-content",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "database",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "missing",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        }
+      ],
+      "blockedUpstreamAttempts": 0,
+      "finishedAt": "2026-09-13T05:11:50.061Z"
+    },
+    "optimized16MiBStressWorkerStopped": {
+      "kind": "local-http-serving-helper-fixture-rehearsal",
+      "startedAt": "2026-09-13T05:12:45.995Z",
+      "assumptions": {
+        "fixtureRoundTripDelayMs": 20,
+        "hotCacheDelayMs": 0,
+        "requestsPerSimulatedUser": 10,
+        "maximumConcurrency": 50,
+        "driver": "worker",
+        "responseCompression": "none on local HTTP",
+        "publicUpstreams": "blocked",
+        "fixtureExpiry": "2026-09-13T06:12:45.996Z"
+      },
+      "limitations": [
+        "Not production Next.js route/UI execution, Vercel/CDN latency, real Supabase/RLS capacity, real Redis latency, or a 1000-user capacity guarantee.",
+        "Warm means Analysis hot cache; CFTC and SEC still read durable manifests. Prepared miss means Analysis hot-cache miss with prepared durable data available; verified immutable content can be reused in process.",
+        "Portfolio route deliberately stresses five full prepared Analysis responses including one duplicate; it is not the compact production portfolio response and does not claim production portfolio migration.",
+        "Data API/Storage delays and freshness clock are injected. Sample financial/report dates and full response sizes are retained.",
+        "Load driver and HTTP server share one process with separate event-loop threads; loopback response bytes do not measure external service egress.",
+        "Memory is process RSS including fixture data, caches, client buffers and any driver worker; cache limits count decoded JSON input bytes, not JavaScript object heap."
+      ],
+      "stages": [
+        {
+          "mode": "warm",
+          "concurrency": 5,
+          "requests": 50,
+          "elapsedMs": 1010,
+          "p50Ms": 43,
+          "p95Ms": 175,
+          "serverP95Ms": 162,
+          "eventLoopP95Ms": 63,
+          "cpuMs": 1835,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 80857709,
+          "rssMiB": 548,
+          "counters": {
+            "dataApiReads": 20,
+            "objectReads": 6,
+            "fixtureResponseBytes": 864630,
+            "hotReads": 70,
+            "hotHits": 70,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 20,
+              "p95Ms": 102,
+              "serverP95Ms": 19,
+              "errors": 0,
+              "responseBytes": 24894760
+            },
+            "/cftc/history": {
+              "requests": 5,
+              "p95Ms": 118,
+              "serverP95Ms": 69,
+              "errors": 0,
+              "responseBytes": 275475
+            },
+            "/cftc/markets": {
+              "requests": 10,
+              "p95Ms": 173,
+              "serverP95Ms": 162,
+              "errors": 0,
+              "responseBytes": 1641485
+            },
+            "/sec/submissions": {
+              "requests": 5,
+              "p95Ms": 598,
+              "serverP95Ms": 583,
+              "errors": 0,
+              "responseBytes": 5282114
+            },
+            "/portfolio-fanout": {
+              "requests": 10,
+              "p95Ms": 125,
+              "serverP95Ms": 78,
+              "errors": 0,
+              "responseBytes": 48763875
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 10,
+          "requests": 100,
+          "elapsedMs": 1111,
+          "p50Ms": 94,
+          "p95Ms": 191,
+          "serverP95Ms": 89,
+          "eventLoopP95Ms": 99,
+          "cpuMs": 1843,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 161755192,
+          "rssMiB": 607,
+          "counters": {
+            "dataApiReads": 40,
+            "objectReads": 0,
+            "fixtureResponseBytes": 569714,
+            "hotReads": 140,
+            "hotHits": 140,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 40,
+              "p95Ms": 159,
+              "serverP95Ms": 7,
+              "errors": 0,
+              "responseBytes": 49808685
+            },
+            "/portfolio-fanout": {
+              "requests": 20,
+              "p95Ms": 171,
+              "serverP95Ms": 56,
+              "errors": 0,
+              "responseBytes": 97527750
+            },
+            "/cftc/markets": {
+              "requests": 20,
+              "p95Ms": 214,
+              "serverP95Ms": 104,
+              "errors": 0,
+              "responseBytes": 3282970
+            },
+            "/cftc/history": {
+              "requests": 10,
+              "p95Ms": 178,
+              "serverP95Ms": 106,
+              "errors": 0,
+              "responseBytes": 550950
+            },
+            "/sec/submissions": {
+              "requests": 10,
+              "p95Ms": 265,
+              "serverP95Ms": 96,
+              "errors": 0,
+              "responseBytes": 10584837
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 25,
+          "requests": 250,
+          "elapsedMs": 2298,
+          "p50Ms": 207,
+          "p95Ms": 424,
+          "serverP95Ms": 189,
+          "eventLoopP95Ms": 215,
+          "cpuMs": 4321,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 407296149,
+          "rssMiB": 816,
+          "counters": {
+            "dataApiReads": 100,
+            "objectReads": 0,
+            "fixtureResponseBytes": 1424287,
+            "hotReads": 350,
+            "hotHits": 350,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 100,
+              "p95Ms": 334,
+              "serverP95Ms": 5,
+              "errors": 0,
+              "responseBytes": 123019745
+            },
+            "/portfolio-fanout": {
+              "requests": 50,
+              "p95Ms": 421,
+              "serverP95Ms": 56,
+              "errors": 0,
+              "responseBytes": 243819375
+            },
+            "/cftc/markets": {
+              "requests": 50,
+              "p95Ms": 460,
+              "serverP95Ms": 211,
+              "errors": 0,
+              "responseBytes": 8207425
+            },
+            "/cftc/history": {
+              "requests": 25,
+              "p95Ms": 410,
+              "serverP95Ms": 199,
+              "errors": 0,
+              "responseBytes": 1377375
+            },
+            "/sec/submissions": {
+              "requests": 25,
+              "p95Ms": 484,
+              "serverP95Ms": 203,
+              "errors": 0,
+              "responseBytes": 30872229
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 50,
+          "requests": 500,
+          "elapsedMs": 5561,
+          "p50Ms": 465,
+          "p95Ms": 1172,
+          "serverP95Ms": 398,
+          "eventLoopP95Ms": 589,
+          "cpuMs": 9831,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 814632072,
+          "rssMiB": 1259,
+          "counters": {
+            "dataApiReads": 200,
+            "objectReads": 0,
+            "fixtureResponseBytes": 2848574,
+            "hotReads": 700,
+            "hotHits": 700,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 200,
+              "p95Ms": 779,
+              "serverP95Ms": 9,
+              "errors": 0,
+              "responseBytes": 246058655
+            },
+            "/portfolio-fanout": {
+              "requests": 100,
+              "p95Ms": 1267,
+              "serverP95Ms": 70,
+              "errors": 0,
+              "responseBytes": 487638750
+            },
+            "/cftc/markets": {
+              "requests": 100,
+              "p95Ms": 1433,
+              "serverP95Ms": 609,
+              "errors": 0,
+              "responseBytes": 16414850
+            },
+            "/cftc/history": {
+              "requests": 50,
+              "p95Ms": 911,
+              "serverP95Ms": 488,
+              "errors": 0,
+              "responseBytes": 2754750
+            },
+            "/sec/submissions": {
+              "requests": 50,
+              "p95Ms": 1227,
+              "serverP95Ms": 560,
+              "errors": 0,
+              "responseBytes": 61765067
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": false
+        }
+      ],
+      "faultProbes": [
+        {
+          "injected": "redis",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-verified-content-hit",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-cold-content",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "database",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "missing",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        }
+      ],
+      "stoppedEarly": "Memory, latency or error guard reached.",
+      "blockedUpstreamAttempts": 0,
+      "finishedAt": "2026-09-13T05:12:58.782Z"
+    },
+    "final32MiBStressShared": {
+      "kind": "local-http-serving-helper-fixture-rehearsal",
+      "startedAt": "2026-09-13T05:15:11.377Z",
+      "assumptions": {
+        "fixtureRoundTripDelayMs": 20,
+        "hotCacheDelayMs": 0,
+        "requestsPerSimulatedUser": 10,
+        "maximumConcurrency": 50,
+        "driver": "shared",
+        "workload": "stress",
+        "responseCompression": "none on local HTTP",
+        "publicUpstreams": "blocked",
+        "fixtureExpiry": "2026-09-13T06:15:11.378Z"
+      },
+      "limitations": [
+        "Not production Next.js route/UI execution, Vercel/CDN latency, real Supabase/RLS capacity, real Redis latency, or a 1000-user capacity guarantee.",
+        "Warm means Analysis hot cache; CFTC and SEC still read durable manifests. Prepared miss means Analysis hot-cache miss with prepared durable data available; verified immutable content can be reused in process.",
+        "Portfolio route deliberately stresses five full prepared Analysis responses including one duplicate; it is not the compact production portfolio response and does not claim production portfolio migration.",
+        "Data API/Storage delays and freshness clock are injected. Sample financial/report dates and full response sizes are retained.",
+        "Load driver and HTTP server share one process and one event-loop thread; loopback response bytes do not measure external service egress.",
+        "Memory is process RSS including fixture data, caches, client buffers and any driver worker; cache limits count decoded JSON input bytes, not JavaScript object heap."
+      ],
+      "stages": [
+        {
+          "mode": "warm",
+          "concurrency": 5,
+          "requests": 50,
+          "elapsedMs": 970,
+          "p50Ms": 45,
+          "p95Ms": 211,
+          "serverP95Ms": 208,
+          "eventLoopP95Ms": 53,
+          "cpuMs": 2006,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 80857709,
+          "rssMiB": 541,
+          "counters": {
+            "dataApiReads": 20,
+            "objectReads": 6,
+            "fixtureResponseBytes": 864630,
+            "hotReads": 70,
+            "hotHits": 70,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/history": {
+              "requests": 5,
+              "p95Ms": 72,
+              "serverP95Ms": 58,
+              "errors": 0,
+              "responseBytes": 275475
+            },
+            "/analysis": {
+              "requests": 20,
+              "p95Ms": 94,
+              "serverP95Ms": 26,
+              "errors": 0,
+              "responseBytes": 24894760
+            },
+            "/cftc/markets": {
+              "requests": 10,
+              "p95Ms": 204,
+              "serverP95Ms": 188,
+              "errors": 0,
+              "responseBytes": 1641485
+            },
+            "/sec/submissions": {
+              "requests": 5,
+              "p95Ms": 575,
+              "serverP95Ms": 542,
+              "errors": 0,
+              "responseBytes": 5282114
+            },
+            "/portfolio-fanout": {
+              "requests": 10,
+              "p95Ms": 151,
+              "serverP95Ms": 59,
+              "errors": 0,
+              "responseBytes": 48763875
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 10,
+          "requests": 100,
+          "elapsedMs": 1324,
+          "p50Ms": 107,
+          "p95Ms": 262,
+          "serverP95Ms": 72,
+          "eventLoopP95Ms": 95,
+          "cpuMs": 2906,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 161755192,
+          "rssMiB": 505,
+          "counters": {
+            "dataApiReads": 40,
+            "objectReads": 0,
+            "fixtureResponseBytes": 569714,
+            "hotReads": 140,
+            "hotHits": 140,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 40,
+              "p95Ms": 256,
+              "serverP95Ms": 7,
+              "errors": 0,
+              "responseBytes": 49808685
+            },
+            "/cftc/markets": {
+              "requests": 20,
+              "p95Ms": 182,
+              "serverP95Ms": 92,
+              "errors": 0,
+              "responseBytes": 3282970
+            },
+            "/cftc/history": {
+              "requests": 10,
+              "p95Ms": 187,
+              "serverP95Ms": 95,
+              "errors": 0,
+              "responseBytes": 550950
+            },
+            "/sec/submissions": {
+              "requests": 10,
+              "p95Ms": 205,
+              "serverP95Ms": 84,
+              "errors": 0,
+              "responseBytes": 10584837
+            },
+            "/portfolio-fanout": {
+              "requests": 20,
+              "p95Ms": 294,
+              "serverP95Ms": 56,
+              "errors": 0,
+              "responseBytes": 97527750
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 25,
+          "requests": 250,
+          "elapsedMs": 3186,
+          "p50Ms": 185,
+          "p95Ms": 746,
+          "serverP95Ms": 129,
+          "eventLoopP95Ms": 159,
+          "cpuMs": 6818,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 407296149,
+          "rssMiB": 557,
+          "counters": {
+            "dataApiReads": 100,
+            "objectReads": 0,
+            "fixtureResponseBytes": 1424287,
+            "hotReads": 350,
+            "hotHits": 350,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 100,
+              "p95Ms": 829,
+              "serverP95Ms": 6,
+              "errors": 0,
+              "responseBytes": 123019745
+            },
+            "/cftc/markets": {
+              "requests": 50,
+              "p95Ms": 449,
+              "serverP95Ms": 160,
+              "errors": 0,
+              "responseBytes": 8207425
+            },
+            "/cftc/history": {
+              "requests": 25,
+              "p95Ms": 594,
+              "serverP95Ms": 121,
+              "errors": 0,
+              "responseBytes": 1377375
+            },
+            "/sec/submissions": {
+              "requests": 25,
+              "p95Ms": 526,
+              "serverP95Ms": 141,
+              "errors": 0,
+              "responseBytes": 30872229
+            },
+            "/portfolio-fanout": {
+              "requests": 50,
+              "p95Ms": 1575,
+              "serverP95Ms": 56,
+              "errors": 0,
+              "responseBytes": 243819375
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 50,
+          "requests": 500,
+          "elapsedMs": 7294,
+          "p50Ms": 301,
+          "p95Ms": 1831,
+          "serverP95Ms": 205,
+          "eventLoopP95Ms": 264,
+          "cpuMs": 14738,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 814632072,
+          "rssMiB": 650,
+          "counters": {
+            "dataApiReads": 200,
+            "objectReads": 0,
+            "fixtureResponseBytes": 2848574,
+            "hotReads": 700,
+            "hotHits": 700,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 200,
+              "p95Ms": 1831,
+              "serverP95Ms": 7,
+              "errors": 0,
+              "responseBytes": 246058655
+            },
+            "/cftc/markets": {
+              "requests": 100,
+              "p95Ms": 733,
+              "serverP95Ms": 260,
+              "errors": 0,
+              "responseBytes": 16414850
+            },
+            "/cftc/history": {
+              "requests": 50,
+              "p95Ms": 1080,
+              "serverP95Ms": 259,
+              "errors": 0,
+              "responseBytes": 2754750
+            },
+            "/sec/submissions": {
+              "requests": 50,
+              "p95Ms": 2818,
+              "serverP95Ms": 288,
+              "errors": 0,
+              "responseBytes": 61765067
+            },
+            "/portfolio-fanout": {
+              "requests": 100,
+              "p95Ms": 3544,
+              "serverP95Ms": 67,
+              "errors": 0,
+              "responseBytes": 487638750
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": false
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 5,
+          "requests": 50,
+          "elapsedMs": 828,
+          "p50Ms": 52,
+          "p95Ms": 175,
+          "serverP95Ms": 137,
+          "eventLoopP95Ms": 107,
+          "cpuMs": 1629,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 80857709,
+          "rssMiB": 557,
+          "counters": {
+            "dataApiReads": 90,
+            "objectReads": 0,
+            "fixtureResponseBytes": 373496,
+            "hotReads": 70,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 10,
+              "p95Ms": 141,
+              "serverP95Ms": 137,
+              "errors": 0,
+              "responseBytes": 1641485
+            },
+            "/cftc/history": {
+              "requests": 5,
+              "p95Ms": 152,
+              "serverP95Ms": 26,
+              "errors": 0,
+              "responseBytes": 275475
+            },
+            "/analysis": {
+              "requests": 20,
+              "p95Ms": 93,
+              "serverP95Ms": 36,
+              "errors": 0,
+              "responseBytes": 24894760
+            },
+            "/sec/submissions": {
+              "requests": 5,
+              "p95Ms": 175,
+              "serverP95Ms": 87,
+              "errors": 0,
+              "responseBytes": 5282114
+            },
+            "/portfolio-fanout": {
+              "requests": 10,
+              "p95Ms": 189,
+              "serverP95Ms": 143,
+              "errors": 0,
+              "responseBytes": 48763875
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 10,
+          "requests": 100,
+          "elapsedMs": 1671,
+          "p50Ms": 149,
+          "p95Ms": 281,
+          "serverP95Ms": 170,
+          "eventLoopP95Ms": 137,
+          "cpuMs": 3738,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 161755192,
+          "rssMiB": 498,
+          "counters": {
+            "dataApiReads": 180,
+            "objectReads": 0,
+            "fixtureResponseBytes": 746994,
+            "hotReads": 140,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 20,
+              "p95Ms": 206,
+              "serverP95Ms": 170,
+              "errors": 0,
+              "responseBytes": 3282970
+            },
+            "/cftc/history": {
+              "requests": 10,
+              "p95Ms": 324,
+              "serverP95Ms": 146,
+              "errors": 0,
+              "responseBytes": 550950
+            },
+            "/analysis": {
+              "requests": 40,
+              "p95Ms": 256,
+              "serverP95Ms": 108,
+              "errors": 0,
+              "responseBytes": 49808685
+            },
+            "/sec/submissions": {
+              "requests": 10,
+              "p95Ms": 314,
+              "serverP95Ms": 153,
+              "errors": 0,
+              "responseBytes": 10584837
+            },
+            "/portfolio-fanout": {
+              "requests": 20,
+              "p95Ms": 303,
+              "serverP95Ms": 195,
+              "errors": 0,
+              "responseBytes": 97527750
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 25,
+          "requests": 250,
+          "elapsedMs": 3635,
+          "p50Ms": 240,
+          "p95Ms": 773,
+          "serverP95Ms": 324,
+          "eventLoopP95Ms": 156,
+          "cpuMs": 7697,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 407296149,
+          "rssMiB": 499,
+          "counters": {
+            "dataApiReads": 450,
+            "objectReads": 0,
+            "fixtureResponseBytes": 1867486,
+            "hotReads": 350,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 50,
+              "p95Ms": 452,
+              "serverP95Ms": 358,
+              "errors": 0,
+              "responseBytes": 8207425
+            },
+            "/cftc/history": {
+              "requests": 25,
+              "p95Ms": 448,
+              "serverP95Ms": 326,
+              "errors": 0,
+              "responseBytes": 1377375
+            },
+            "/analysis": {
+              "requests": 100,
+              "p95Ms": 534,
+              "serverP95Ms": 324,
+              "errors": 0,
+              "responseBytes": 123019745
+            },
+            "/sec/submissions": {
+              "requests": 25,
+              "p95Ms": 542,
+              "serverP95Ms": 190,
+              "errors": 0,
+              "responseBytes": 30872229
+            },
+            "/portfolio-fanout": {
+              "requests": 50,
+              "p95Ms": 852,
+              "serverP95Ms": 259,
+              "errors": 0,
+              "responseBytes": 243819375
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 50,
+          "requests": 500,
+          "elapsedMs": 6526,
+          "p50Ms": 369,
+          "p95Ms": 1363,
+          "serverP95Ms": 360,
+          "eventLoopP95Ms": 224,
+          "cpuMs": 13445,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 814632072,
+          "rssMiB": 613,
+          "counters": {
+            "dataApiReads": 900,
+            "objectReads": 0,
+            "fixtureResponseBytes": 3734974,
+            "hotReads": 700,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 100,
+              "p95Ms": 552,
+              "serverP95Ms": 259,
+              "errors": 0,
+              "responseBytes": 16414850
+            },
+            "/cftc/history": {
+              "requests": 50,
+              "p95Ms": 1363,
+              "serverP95Ms": 327,
+              "errors": 0,
+              "responseBytes": 2754750
+            },
+            "/analysis": {
+              "requests": 200,
+              "p95Ms": 1759,
+              "serverP95Ms": 364,
+              "errors": 0,
+              "responseBytes": 246058655
+            },
+            "/sec/submissions": {
+              "requests": 50,
+              "p95Ms": 1841,
+              "serverP95Ms": 360,
+              "errors": 0,
+              "responseBytes": 61765067
+            },
+            "/portfolio-fanout": {
+              "requests": 100,
+              "p95Ms": 1237,
+              "serverP95Ms": 366,
+              "errors": 0,
+              "responseBytes": 487638750
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        }
+      ],
+      "faultProbes": [
+        {
+          "injected": "redis",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-verified-content-hit",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-cold-content",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "database",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "missing",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        }
+      ],
+      "blockedUpstreamAttempts": 0,
+      "finishedAt": "2026-09-13T05:15:39.120Z"
+    },
+    "final32MiBRepresentativeShared": {
+      "kind": "local-http-serving-helper-fixture-rehearsal",
+      "startedAt": "2026-09-13T05:14:25.455Z",
+      "assumptions": {
+        "fixtureRoundTripDelayMs": 20,
+        "hotCacheDelayMs": 0,
+        "requestsPerSimulatedUser": 10,
+        "maximumConcurrency": 50,
+        "driver": "shared",
+        "workload": "representative",
+        "responseCompression": "none on local HTTP",
+        "publicUpstreams": "blocked",
+        "fixtureExpiry": "2026-09-13T06:14:25.456Z"
+      },
+      "limitations": [
+        "Not production Next.js route/UI execution, Vercel/CDN latency, real Supabase/RLS capacity, real Redis latency, or a 1000-user capacity guarantee.",
+        "Warm means Analysis hot cache; CFTC and SEC still read durable manifests. Prepared miss means Analysis hot-cache miss with prepared durable data available; verified immutable content can be reused in process.",
+        "Portfolio uses the actual runPortfolioResearch helper and full compact output, with current per-company cache fixtures built by loadFreshPortfolioCompany from saved SEC sources. This measures prepared cache hits, not cold portfolio recalculation, network cache misses, or Supabase portfolio persistence.",
+        "Data API/Storage delays and freshness clock are injected. Sample financial/report dates and full response sizes are retained.",
+        "Load driver and HTTP server share one process and one event-loop thread; loopback response bytes do not measure external service egress.",
+        "Memory is process RSS including fixture data, caches, client buffers and any driver worker; cache limits count decoded JSON input bytes, not JavaScript object heap."
+      ],
+      "stages": [
+        {
+          "mode": "warm",
+          "concurrency": 5,
+          "requests": 50,
+          "elapsedMs": 672,
+          "p50Ms": 30,
+          "p95Ms": 187,
+          "serverP95Ms": 159,
+          "eventLoopP95Ms": 31,
+          "cpuMs": 1253,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 36719374,
+          "rssMiB": 505,
+          "counters": {
+            "dataApiReads": 20,
+            "objectReads": 6,
+            "fixtureResponseBytes": 864630,
+            "hotReads": 20,
+            "hotHits": 20,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/history": {
+              "requests": 5,
+              "p95Ms": 64,
+              "serverP95Ms": 38,
+              "errors": 0,
+              "responseBytes": 275475
+            },
+            "/analysis": {
+              "requests": 20,
+              "p95Ms": 135,
+              "serverP95Ms": 19,
+              "errors": 0,
+              "responseBytes": 24894760
+            },
+            "/cftc/markets": {
+              "requests": 10,
+              "p95Ms": 261,
+              "serverP95Ms": 222,
+              "errors": 0,
+              "responseBytes": 1641485
+            },
+            "/sec/submissions": {
+              "requests": 5,
+              "p95Ms": 330,
+              "serverP95Ms": 321,
+              "errors": 0,
+              "responseBytes": 5282114
+            },
+            "/portfolio": {
+              "requests": 10,
+              "p95Ms": 24,
+              "serverP95Ms": 11,
+              "errors": 0,
+              "responseBytes": 4625540
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 10,
+          "requests": 100,
+          "elapsedMs": 571,
+          "p50Ms": 49,
+          "p95Ms": 116,
+          "serverP95Ms": 44,
+          "eventLoopP95Ms": 34,
+          "cpuMs": 1265,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 73478522,
+          "rssMiB": 565,
+          "counters": {
+            "dataApiReads": 40,
+            "objectReads": 0,
+            "fixtureResponseBytes": 569714,
+            "hotReads": 40,
+            "hotHits": 40,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 40,
+              "p95Ms": 116,
+              "serverP95Ms": 5,
+              "errors": 0,
+              "responseBytes": 49808685
+            },
+            "/cftc/markets": {
+              "requests": 20,
+              "p95Ms": 89,
+              "serverP95Ms": 45,
+              "errors": 0,
+              "responseBytes": 3282970
+            },
+            "/cftc/history": {
+              "requests": 10,
+              "p95Ms": 88,
+              "serverP95Ms": 55,
+              "errors": 0,
+              "responseBytes": 550950
+            },
+            "/sec/submissions": {
+              "requests": 10,
+              "p95Ms": 119,
+              "serverP95Ms": 52,
+              "errors": 0,
+              "responseBytes": 10584837
+            },
+            "/portfolio": {
+              "requests": 20,
+              "p95Ms": 132,
+              "serverP95Ms": 9,
+              "errors": 0,
+              "responseBytes": 9251080
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 25,
+          "requests": 250,
+          "elapsedMs": 1440,
+          "p50Ms": 91,
+          "p95Ms": 308,
+          "serverP95Ms": 72,
+          "eventLoopP95Ms": 63,
+          "cpuMs": 3284,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 186604474,
+          "rssMiB": 566,
+          "counters": {
+            "dataApiReads": 100,
+            "objectReads": 0,
+            "fixtureResponseBytes": 1424287,
+            "hotReads": 100,
+            "hotHits": 100,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 100,
+              "p95Ms": 439,
+              "serverP95Ms": 4,
+              "errors": 0,
+              "responseBytes": 123019745
+            },
+            "/portfolio": {
+              "requests": 50,
+              "p95Ms": 249,
+              "serverP95Ms": 11,
+              "errors": 0,
+              "responseBytes": 23127700
+            },
+            "/cftc/markets": {
+              "requests": 50,
+              "p95Ms": 286,
+              "serverP95Ms": 73,
+              "errors": 0,
+              "responseBytes": 8207425
+            },
+            "/cftc/history": {
+              "requests": 25,
+              "p95Ms": 295,
+              "serverP95Ms": 73,
+              "errors": 0,
+              "responseBytes": 1377375
+            },
+            "/sec/submissions": {
+              "requests": 25,
+              "p95Ms": 230,
+              "serverP95Ms": 79,
+              "errors": 0,
+              "responseBytes": 30872229
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 50,
+          "requests": 500,
+          "elapsedMs": 2618,
+          "p50Ms": 115,
+          "p95Ms": 779,
+          "serverP95Ms": 82,
+          "eventLoopP95Ms": 79,
+          "cpuMs": 6408,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 373248722,
+          "rssMiB": 580,
+          "counters": {
+            "dataApiReads": 200,
+            "objectReads": 0,
+            "fixtureResponseBytes": 2848574,
+            "hotReads": 200,
+            "hotHits": 200,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 200,
+              "p95Ms": 675,
+              "serverP95Ms": 5,
+              "errors": 0,
+              "responseBytes": 246058655
+            },
+            "/portfolio": {
+              "requests": 100,
+              "p95Ms": 590,
+              "serverP95Ms": 11,
+              "errors": 0,
+              "responseBytes": 46255400
+            },
+            "/cftc/markets": {
+              "requests": 100,
+              "p95Ms": 906,
+              "serverP95Ms": 90,
+              "errors": 0,
+              "responseBytes": 16414850
+            },
+            "/cftc/history": {
+              "requests": 50,
+              "p95Ms": 1461,
+              "serverP95Ms": 89,
+              "errors": 0,
+              "responseBytes": 2754750
+            },
+            "/sec/submissions": {
+              "requests": 50,
+              "p95Ms": 556,
+              "serverP95Ms": 101,
+              "errors": 0,
+              "responseBytes": 61765067
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": false
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 5,
+          "requests": 50,
+          "elapsedMs": 350,
+          "p50Ms": 33,
+          "p95Ms": 60,
+          "serverP95Ms": 35,
+          "eventLoopP95Ms": 33,
+          "cpuMs": 727,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 36719374,
+          "rssMiB": 586,
+          "counters": {
+            "dataApiReads": 40,
+            "objectReads": 0,
+            "fixtureResponseBytes": 310166,
+            "hotReads": 20,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 10,
+              "p95Ms": 55,
+              "serverP95Ms": 39,
+              "errors": 0,
+              "responseBytes": 1641485
+            },
+            "/cftc/history": {
+              "requests": 5,
+              "p95Ms": 36,
+              "serverP95Ms": 30,
+              "errors": 0,
+              "responseBytes": 275475
+            },
+            "/analysis": {
+              "requests": 20,
+              "p95Ms": 61,
+              "serverP95Ms": 33,
+              "errors": 0,
+              "responseBytes": 24894760
+            },
+            "/sec/submissions": {
+              "requests": 5,
+              "p95Ms": 60,
+              "serverP95Ms": 48,
+              "errors": 0,
+              "responseBytes": 5282114
+            },
+            "/portfolio": {
+              "requests": 10,
+              "p95Ms": 35,
+              "serverP95Ms": 13,
+              "errors": 0,
+              "responseBytes": 4625540
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 10,
+          "requests": 100,
+          "elapsedMs": 598,
+          "p50Ms": 54,
+          "p95Ms": 98,
+          "serverP95Ms": 62,
+          "eventLoopP95Ms": 61,
+          "cpuMs": 1271,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 73478522,
+          "rssMiB": 584,
+          "counters": {
+            "dataApiReads": 80,
+            "objectReads": 0,
+            "fixtureResponseBytes": 620334,
+            "hotReads": 40,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/portfolio": {
+              "requests": 20,
+              "p95Ms": 58,
+              "serverP95Ms": 12,
+              "errors": 0,
+              "responseBytes": 9251080
+            },
+            "/cftc/markets": {
+              "requests": 20,
+              "p95Ms": 98,
+              "serverP95Ms": 72,
+              "errors": 0,
+              "responseBytes": 3282970
+            },
+            "/cftc/history": {
+              "requests": 10,
+              "p95Ms": 98,
+              "serverP95Ms": 62,
+              "errors": 0,
+              "responseBytes": 550950
+            },
+            "/analysis": {
+              "requests": 40,
+              "p95Ms": 99,
+              "serverP95Ms": 59,
+              "errors": 0,
+              "responseBytes": 49808685
+            },
+            "/sec/submissions": {
+              "requests": 10,
+              "p95Ms": 105,
+              "serverP95Ms": 76,
+              "errors": 0,
+              "responseBytes": 10584837
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 25,
+          "requests": 250,
+          "elapsedMs": 1338,
+          "p50Ms": 121,
+          "p95Ms": 163,
+          "serverP95Ms": 81,
+          "eventLoopP95Ms": 60,
+          "cpuMs": 3029,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 186604474,
+          "rssMiB": 587,
+          "counters": {
+            "dataApiReads": 200,
+            "objectReads": 0,
+            "fixtureResponseBytes": 1550836,
+            "hotReads": 100,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/portfolio": {
+              "requests": 50,
+              "p95Ms": 125,
+              "serverP95Ms": 10,
+              "errors": 0,
+              "responseBytes": 23127700
+            },
+            "/cftc/markets": {
+              "requests": 50,
+              "p95Ms": 155,
+              "serverP95Ms": 81,
+              "errors": 0,
+              "responseBytes": 8207425
+            },
+            "/cftc/history": {
+              "requests": 25,
+              "p95Ms": 162,
+              "serverP95Ms": 76,
+              "errors": 0,
+              "responseBytes": 1377375
+            },
+            "/analysis": {
+              "requests": 100,
+              "p95Ms": 165,
+              "serverP95Ms": 79,
+              "errors": 0,
+              "responseBytes": 123019745
+            },
+            "/sec/submissions": {
+              "requests": 25,
+              "p95Ms": 201,
+              "serverP95Ms": 83,
+              "errors": 0,
+              "responseBytes": 30872229
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 50,
+          "requests": 500,
+          "elapsedMs": 2720,
+          "p50Ms": 156,
+          "p95Ms": 462,
+          "serverP95Ms": 132,
+          "eventLoopP95Ms": 100,
+          "cpuMs": 6542,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 373248722,
+          "rssMiB": 588,
+          "counters": {
+            "dataApiReads": 400,
+            "objectReads": 0,
+            "fixtureResponseBytes": 3101674,
+            "hotReads": 200,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/portfolio": {
+              "requests": 100,
+              "p95Ms": 384,
+              "serverP95Ms": 13,
+              "errors": 0,
+              "responseBytes": 46255400
+            },
+            "/cftc/markets": {
+              "requests": 100,
+              "p95Ms": 303,
+              "serverP95Ms": 132,
+              "errors": 0,
+              "responseBytes": 16414850
+            },
+            "/cftc/history": {
+              "requests": 50,
+              "p95Ms": 304,
+              "serverP95Ms": 125,
+              "errors": 0,
+              "responseBytes": 2754750
+            },
+            "/analysis": {
+              "requests": 200,
+              "p95Ms": 746,
+              "serverP95Ms": 140,
+              "errors": 0,
+              "responseBytes": 246058655
+            },
+            "/sec/submissions": {
+              "requests": 50,
+              "p95Ms": 1190,
+              "serverP95Ms": 148,
+              "errors": 0,
+              "responseBytes": 61765067
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        }
+      ],
+      "faultProbes": [
+        {
+          "injected": "redis",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-verified-content-hit",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-cold-content",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "database",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "missing",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        }
+      ],
+      "portfolioFixtures": [
+        {
+          "key": "0000320193:annual",
+          "bytes": 110764,
+          "status": "partial"
+        },
+        {
+          "key": "0000320193:quarter",
+          "bytes": 122484,
+          "status": "partial"
+        },
+        {
+          "key": "0000789019:annual",
+          "bytes": 109798,
+          "status": "partial"
+        },
+        {
+          "key": "0000789019:quarter",
+          "bytes": 138960,
+          "status": "partial"
+        },
+        {
+          "key": "0000019617:annual",
+          "bytes": 83952,
+          "status": "partial"
+        },
+        {
+          "key": "0000019617:quarter",
+          "bytes": 93959,
+          "status": "partial"
+        },
+        {
+          "key": "0000002098:annual",
+          "bytes": 124364,
+          "status": "partial"
+        },
+        {
+          "key": "0000002098:quarter",
+          "bytes": 106540,
+          "status": "partial"
+        }
+      ],
+      "blockedUpstreamAttempts": 0,
+      "finishedAt": "2026-09-13T05:14:38.787Z"
+    },
+    "final32MiBRepresentativeWorker": {
+      "kind": "local-http-serving-helper-fixture-rehearsal",
+      "startedAt": "2026-09-13T05:16:10.215Z",
+      "assumptions": {
+        "fixtureRoundTripDelayMs": 20,
+        "hotCacheDelayMs": 0,
+        "requestsPerSimulatedUser": 10,
+        "maximumConcurrency": 50,
+        "driver": "worker",
+        "workload": "representative",
+        "responseCompression": "none on local HTTP",
+        "publicUpstreams": "blocked",
+        "fixtureExpiry": "2026-09-13T06:16:10.217Z"
+      },
+      "limitations": [
+        "Not production Next.js route/UI execution, Vercel/CDN latency, real Supabase/RLS capacity, real Redis latency, or a 1000-user capacity guarantee.",
+        "Warm means Analysis hot cache; CFTC and SEC still read durable manifests. Prepared miss means Analysis hot-cache miss with prepared durable data available; verified immutable content can be reused in process.",
+        "Portfolio uses the actual runPortfolioResearch helper and full compact output, with current per-company cache fixtures built by loadFreshPortfolioCompany from saved SEC sources. This measures prepared cache hits, not cold portfolio recalculation, network cache misses, or Supabase portfolio persistence.",
+        "Data API/Storage delays and freshness clock are injected. Sample financial/report dates and full response sizes are retained.",
+        "Load driver and HTTP server share one process with separate event-loop threads; loopback response bytes do not measure external service egress.",
+        "Memory is process RSS including fixture data, caches, client buffers and any driver worker; cache limits count decoded JSON input bytes, not JavaScript object heap."
+      ],
+      "stages": [
+        {
+          "mode": "warm",
+          "concurrency": 5,
+          "requests": 50,
+          "elapsedMs": 602,
+          "p50Ms": 30,
+          "p95Ms": 152,
+          "serverP95Ms": 144,
+          "eventLoopP95Ms": 31,
+          "cpuMs": 1203,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 36719374,
+          "rssMiB": 503,
+          "counters": {
+            "dataApiReads": 20,
+            "objectReads": 6,
+            "fixtureResponseBytes": 864630,
+            "hotReads": 20,
+            "hotHits": 20,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 20,
+              "p95Ms": 48,
+              "serverP95Ms": 18,
+              "errors": 0,
+              "responseBytes": 24894760
+            },
+            "/cftc/history": {
+              "requests": 5,
+              "p95Ms": 56,
+              "serverP95Ms": 50,
+              "errors": 0,
+              "responseBytes": 275475
+            },
+            "/cftc/markets": {
+              "requests": 10,
+              "p95Ms": 156,
+              "serverP95Ms": 146,
+              "errors": 0,
+              "responseBytes": 1641485
+            },
+            "/sec/submissions": {
+              "requests": 5,
+              "p95Ms": 281,
+              "serverP95Ms": 274,
+              "errors": 0,
+              "responseBytes": 5282114
+            },
+            "/portfolio": {
+              "requests": 10,
+              "p95Ms": 44,
+              "serverP95Ms": 15,
+              "errors": 0,
+              "responseBytes": 4625540
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 10,
+          "requests": 100,
+          "elapsedMs": 462,
+          "p50Ms": 35,
+          "p95Ms": 71,
+          "serverP95Ms": 37,
+          "eventLoopP95Ms": 41,
+          "cpuMs": 788,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 73478522,
+          "rssMiB": 559,
+          "counters": {
+            "dataApiReads": 40,
+            "objectReads": 0,
+            "fixtureResponseBytes": 569714,
+            "hotReads": 40,
+            "hotHits": 40,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 40,
+              "p95Ms": 53,
+              "serverP95Ms": 4,
+              "errors": 0,
+              "responseBytes": 49808685
+            },
+            "/portfolio": {
+              "requests": 20,
+              "p95Ms": 57,
+              "serverP95Ms": 8,
+              "errors": 0,
+              "responseBytes": 9251080
+            },
+            "/cftc/markets": {
+              "requests": 20,
+              "p95Ms": 71,
+              "serverP95Ms": 43,
+              "errors": 0,
+              "responseBytes": 3282970
+            },
+            "/cftc/history": {
+              "requests": 10,
+              "p95Ms": 84,
+              "serverP95Ms": 35,
+              "errors": 0,
+              "responseBytes": 550950
+            },
+            "/sec/submissions": {
+              "requests": 10,
+              "p95Ms": 97,
+              "serverP95Ms": 49,
+              "errors": 0,
+              "responseBytes": 10584837
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 25,
+          "requests": 250,
+          "elapsedMs": 1104,
+          "p50Ms": 86,
+          "p95Ms": 211,
+          "serverP95Ms": 94,
+          "eventLoopP95Ms": 104,
+          "cpuMs": 2058,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 186604474,
+          "rssMiB": 569,
+          "counters": {
+            "dataApiReads": 100,
+            "objectReads": 0,
+            "fixtureResponseBytes": 1424287,
+            "hotReads": 100,
+            "hotHits": 100,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 100,
+              "p95Ms": 113,
+              "serverP95Ms": 6,
+              "errors": 0,
+              "responseBytes": 123019745
+            },
+            "/portfolio": {
+              "requests": 50,
+              "p95Ms": 145,
+              "serverP95Ms": 9,
+              "errors": 0,
+              "responseBytes": 23127700
+            },
+            "/cftc/markets": {
+              "requests": 50,
+              "p95Ms": 234,
+              "serverP95Ms": 108,
+              "errors": 0,
+              "responseBytes": 8207425
+            },
+            "/cftc/history": {
+              "requests": 25,
+              "p95Ms": 228,
+              "serverP95Ms": 117,
+              "errors": 0,
+              "responseBytes": 1377375
+            },
+            "/sec/submissions": {
+              "requests": 25,
+              "p95Ms": 231,
+              "serverP95Ms": 102,
+              "errors": 0,
+              "responseBytes": 30872229
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "warm",
+          "concurrency": 50,
+          "requests": 500,
+          "elapsedMs": 2617,
+          "p50Ms": 199,
+          "p95Ms": 470,
+          "serverP95Ms": 204,
+          "eventLoopP95Ms": 235,
+          "cpuMs": 4659,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 373248722,
+          "rssMiB": 624,
+          "counters": {
+            "dataApiReads": 200,
+            "objectReads": 0,
+            "fixtureResponseBytes": 2848574,
+            "hotReads": 200,
+            "hotHits": 200,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/analysis": {
+              "requests": 200,
+              "p95Ms": 339,
+              "serverP95Ms": 8,
+              "errors": 0,
+              "responseBytes": 246058655
+            },
+            "/portfolio": {
+              "requests": 100,
+              "p95Ms": 338,
+              "serverP95Ms": 16,
+              "errors": 0,
+              "responseBytes": 46255400
+            },
+            "/cftc/markets": {
+              "requests": 100,
+              "p95Ms": 506,
+              "serverP95Ms": 236,
+              "errors": 0,
+              "responseBytes": 16414850
+            },
+            "/cftc/history": {
+              "requests": 50,
+              "p95Ms": 512,
+              "serverP95Ms": 244,
+              "errors": 0,
+              "responseBytes": 2754750
+            },
+            "/sec/submissions": {
+              "requests": 50,
+              "p95Ms": 506,
+              "serverP95Ms": 244,
+              "errors": 0,
+              "responseBytes": 61765067
+            }
+          },
+          "proposedLatencyTargetMs": 750,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 5,
+          "requests": 50,
+          "elapsedMs": 382,
+          "p50Ms": 29,
+          "p95Ms": 53,
+          "serverP95Ms": 33,
+          "eventLoopP95Ms": 21,
+          "cpuMs": 485,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 36719374,
+          "rssMiB": 608,
+          "counters": {
+            "dataApiReads": 40,
+            "objectReads": 0,
+            "fixtureResponseBytes": 310166,
+            "hotReads": 20,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/cftc/markets": {
+              "requests": 10,
+              "p95Ms": 53,
+              "serverP95Ms": 47,
+              "errors": 0,
+              "responseBytes": 1641485
+            },
+            "/cftc/history": {
+              "requests": 5,
+              "p95Ms": 37,
+              "serverP95Ms": 32,
+              "errors": 0,
+              "responseBytes": 275475
+            },
+            "/analysis": {
+              "requests": 20,
+              "p95Ms": 50,
+              "serverP95Ms": 32,
+              "errors": 0,
+              "responseBytes": 24894760
+            },
+            "/sec/submissions": {
+              "requests": 5,
+              "p95Ms": 59,
+              "serverP95Ms": 45,
+              "errors": 0,
+              "responseBytes": 5282114
+            },
+            "/portfolio": {
+              "requests": 10,
+              "p95Ms": 21,
+              "serverP95Ms": 9,
+              "errors": 0,
+              "responseBytes": 4625540
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 10,
+          "requests": 100,
+          "elapsedMs": 597,
+          "p50Ms": 50,
+          "p95Ms": 80,
+          "serverP95Ms": 59,
+          "eventLoopP95Ms": 42,
+          "cpuMs": 987,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 73478522,
+          "rssMiB": 611,
+          "counters": {
+            "dataApiReads": 80,
+            "objectReads": 0,
+            "fixtureResponseBytes": 620334,
+            "hotReads": 40,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/portfolio": {
+              "requests": 20,
+              "p95Ms": 39,
+              "serverP95Ms": 14,
+              "errors": 0,
+              "responseBytes": 9251080
+            },
+            "/cftc/markets": {
+              "requests": 20,
+              "p95Ms": 76,
+              "serverP95Ms": 52,
+              "errors": 0,
+              "responseBytes": 3282970
+            },
+            "/cftc/history": {
+              "requests": 10,
+              "p95Ms": 83,
+              "serverP95Ms": 72,
+              "errors": 0,
+              "responseBytes": 550950
+            },
+            "/analysis": {
+              "requests": 40,
+              "p95Ms": 82,
+              "serverP95Ms": 56,
+              "errors": 0,
+              "responseBytes": 49808685
+            },
+            "/sec/submissions": {
+              "requests": 10,
+              "p95Ms": 80,
+              "serverP95Ms": 69,
+              "errors": 0,
+              "responseBytes": 10584837
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 25,
+          "requests": 250,
+          "elapsedMs": 998,
+          "p50Ms": 93,
+          "p95Ms": 152,
+          "serverP95Ms": 95,
+          "eventLoopP95Ms": 78,
+          "cpuMs": 1831,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 186604474,
+          "rssMiB": 596,
+          "counters": {
+            "dataApiReads": 200,
+            "objectReads": 0,
+            "fixtureResponseBytes": 1550836,
+            "hotReads": 100,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/portfolio": {
+              "requests": 50,
+              "p95Ms": 86,
+              "serverP95Ms": 10,
+              "errors": 0,
+              "responseBytes": 23127700
+            },
+            "/cftc/markets": {
+              "requests": 50,
+              "p95Ms": 150,
+              "serverP95Ms": 89,
+              "errors": 0,
+              "responseBytes": 8207425
+            },
+            "/cftc/history": {
+              "requests": 25,
+              "p95Ms": 157,
+              "serverP95Ms": 95,
+              "errors": 0,
+              "responseBytes": 1377375
+            },
+            "/analysis": {
+              "requests": 100,
+              "p95Ms": 153,
+              "serverP95Ms": 98,
+              "errors": 0,
+              "responseBytes": 123019745
+            },
+            "/sec/submissions": {
+              "requests": 25,
+              "p95Ms": 159,
+              "serverP95Ms": 92,
+              "errors": 0,
+              "responseBytes": 30872229
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        },
+        {
+          "mode": "prepared-miss",
+          "concurrency": 50,
+          "requests": 500,
+          "elapsedMs": 1880,
+          "p50Ms": 143,
+          "p95Ms": 290,
+          "serverP95Ms": 159,
+          "eventLoopP95Ms": 140,
+          "cpuMs": 3865,
+          "errors": 0,
+          "errorRate": 0,
+          "responseBytes": 373248722,
+          "rssMiB": 629,
+          "counters": {
+            "dataApiReads": 400,
+            "objectReads": 0,
+            "fixtureResponseBytes": 3101674,
+            "hotReads": 200,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "byRoute": {
+            "/portfolio": {
+              "requests": 100,
+              "p95Ms": 188,
+              "serverP95Ms": 9,
+              "errors": 0,
+              "responseBytes": 46255400
+            },
+            "/cftc/markets": {
+              "requests": 100,
+              "p95Ms": 307,
+              "serverP95Ms": 153,
+              "errors": 0,
+              "responseBytes": 16414850
+            },
+            "/cftc/history": {
+              "requests": 50,
+              "p95Ms": 319,
+              "serverP95Ms": 160,
+              "errors": 0,
+              "responseBytes": 2754750
+            },
+            "/analysis": {
+              "requests": 200,
+              "p95Ms": 290,
+              "serverP95Ms": 159,
+              "errors": 0,
+              "responseBytes": 246058655
+            },
+            "/sec/submissions": {
+              "requests": 50,
+              "p95Ms": 317,
+              "serverP95Ms": 165,
+              "errors": 0,
+              "responseBytes": 61765067
+            }
+          },
+          "proposedLatencyTargetMs": 2000,
+          "meetsProposedFixtureTargets": true
+        }
+      ],
+      "coldStartProbes": [
+        {
+          "path": "/analysis",
+          "elapsedMs": 105,
+          "status": 200,
+          "bytes": 1714410,
+          "counters": {
+            "dataApiReads": 1,
+            "objectReads": 1,
+            "fixtureResponseBytes": 111550,
+            "hotReads": 1,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "limitation": "Single cold immutable-content request with injected dependency latency; not a concurrent serverless cold-start test."
+        },
+        {
+          "path": "/sec/companyfacts",
+          "elapsedMs": 123,
+          "status": 200,
+          "bytes": 3789099,
+          "counters": {
+            "dataApiReads": 1,
+            "objectReads": 1,
+            "fixtureResponseBytes": 270590,
+            "hotReads": 0,
+            "hotHits": 0,
+            "hotWrites": 0
+          },
+          "limitation": "Single cold immutable-content request with injected dependency latency; not a concurrent serverless cold-start test."
+        }
+      ],
+      "faultProbes": [
+        {
+          "injected": "redis",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-verified-content-hit",
+          "expectedStatus": 200,
+          "status": 200,
+          "passed": true
+        },
+        {
+          "injected": "storage-cold-content",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "database",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        },
+        {
+          "injected": "missing",
+          "expectedStatus": 503,
+          "status": 503,
+          "passed": true
+        }
+      ],
+      "portfolioFixtures": [
+        {
+          "key": "0000320193:annual",
+          "bytes": 110764,
+          "status": "partial"
+        },
+        {
+          "key": "0000320193:quarter",
+          "bytes": 122484,
+          "status": "partial"
+        },
+        {
+          "key": "0000789019:annual",
+          "bytes": 109798,
+          "status": "partial"
+        },
+        {
+          "key": "0000789019:quarter",
+          "bytes": 138960,
+          "status": "partial"
+        },
+        {
+          "key": "0000019617:annual",
+          "bytes": 83952,
+          "status": "partial"
+        },
+        {
+          "key": "0000019617:quarter",
+          "bytes": 93959,
+          "status": "partial"
+        },
+        {
+          "key": "0000002098:annual",
+          "bytes": 124364,
+          "status": "partial"
+        },
+        {
+          "key": "0000002098:quarter",
+          "bytes": 106540,
+          "status": "partial"
+        }
+      ],
+      "blockedUpstreamAttempts": 0,
+      "finishedAt": "2026-09-13T05:16:22.148Z"
+    }
+  }
+}

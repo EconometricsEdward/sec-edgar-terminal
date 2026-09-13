@@ -27,6 +27,9 @@ jobs:
       - name: Financial and research regression tests
         run: npm test
 
+      - name: Durable storage SQL and recovery rehearsal
+        run: npm run test:data-store-db
+
       - name: Lint
         run: npm run lint
 

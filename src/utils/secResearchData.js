@@ -3,11 +3,16 @@ import { buildFilingUrl } from './filingTextParser.js';
 import { warmGet, warmSet } from './warmCache.js';
 import { RESEARCH_FORMS } from './researchWorkspace.js';
 import { secFetch } from './secClient.js';
+import { readPreparedSecDocument, sampleSecShadow } from './secDocumentStore.js';
 
 export async function secResearchJson(path, signal) {
   if (!/^\/(submissions\/CIK[\d-]+\.json|api\/xbrl\/companyfacts\/CIK\d{10}\.json)$/.test(path)) throw new Error('Invalid SEC data path.');
+  // Research callers return only raw JSON and cannot label last-good metadata.
+  // Require a validated-fresh source instead of silently restamping stale data.
+  const prepared = await readPreparedSecDocument(path, { allowStale: false });
+  if (prepared) return prepared.payload;
   const cached = await warmGet('research-sec-v1', path);
-  if (cached) return cached;
+  if (cached) { await sampleSecShadow(path, cached); return cached; }
   const response = await secFetch(`https://data.sec.gov${path}`, {
     headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com', Accept: 'application/json' },
     signal,
@@ -16,6 +21,7 @@ export async function secResearchJson(path, signal) {
   if (!response.ok) throw new Error(`SEC data request returned HTTP ${response.status}.`);
   const data = await response.json();
   await warmSet('research-sec-v1', path, data, 300);
+  await sampleSecShadow(path, data);
   return data;
 }
 
