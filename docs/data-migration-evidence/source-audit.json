@@ -1,0 +1,359 @@
+{
+  "auditVersion": 1,
+  "startedAt": "2026-09-13T03:02:51.108Z",
+  "cohort": [
+    {
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "selection": "large nonfinancial; September fiscal year end"
+    },
+    {
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "selection": "large nonfinancial; June fiscal year end"
+    },
+    {
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "selection": "bank; December fiscal year end"
+    },
+    {
+      "ticker": "ACU",
+      "cik": "0000002098",
+      "selection": "smaller nonfinancial issuer candidate; verify source identity"
+    }
+  ],
+  "secGate": {
+    "sharedGate": "disabled",
+    "startsPerSecond": 7,
+    "userAgent": "invalid"
+  },
+  "limits": {
+    "secLogicalRequests": 8,
+    "secRetries": 0,
+    "secResponseBytes": 33554432,
+    "totalResponseBytes": 104857600,
+    "publicRequests": 4,
+    "redisKeys": 11
+  },
+  "measurements": [
+    {
+      "label": "aapl-submissions",
+      "kind": "sec",
+      "url": "https://data.sec.gov/submissions/CIK0000320193.json",
+      "retrievedAt": "2026-09-13T03:02:51.109Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 164091,
+      "gzipBytes": 27913,
+      "sha256": "cb90ffafc5b6f997b60aa109e07008223ad35abe896ec7918fd43652b4057329",
+      "jsonReserializedBytes": 164091,
+      "exceedsWarmSetLimit": false,
+      "contentEncoding": "gzip",
+      "cacheControl": null,
+      "cacheSource": null,
+      "sourceIdentity": {
+        "cik": "0000320193",
+        "name": "Apple Inc.",
+        "fiscalYearEnd": "0926"
+      },
+      "latestFinancialFiling": {
+        "accession": "0000320193-26-000020",
+        "form": "10-Q",
+        "filed": "2026-07-31",
+        "reportDate": "2026-06-27",
+        "acceptanceDateTime": "2026-07-31T10:01:02.000Z"
+      },
+      "elapsedMs": 10660
+    },
+    {
+      "label": "aapl-companyfacts",
+      "kind": "sec",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json",
+      "retrievedAt": "2026-09-13T03:03:01.769Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 3789099,
+      "gzipBytes": 269991,
+      "sha256": "73a86c6aedc31f77cac2ea4df5f80f0b3bd7e6eb58bb4e01444fbedf3afb9c43",
+      "jsonReserializedBytes": 3789099,
+      "exceedsWarmSetLimit": true,
+      "contentEncoding": "gzip",
+      "cacheControl": null,
+      "cacheSource": null,
+      "sourceIdentity": {
+        "cik": "320193",
+        "name": "Apple Inc.",
+        "fiscalYearEnd": null
+      },
+      "concepts": 505,
+      "observations": 25135,
+      "elapsedMs": 194
+    },
+    {
+      "label": "msft-submissions",
+      "kind": "sec",
+      "url": "https://data.sec.gov/submissions/CIK0000789019.json",
+      "retrievedAt": "2026-09-13T03:03:01.963Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 184700,
+      "gzipBytes": 20581,
+      "sha256": "6fe5c233fd41818614d0d1663ee39f7c033d5ea669fc6c39f45563f555e158ad",
+      "jsonReserializedBytes": 184700,
+      "exceedsWarmSetLimit": false,
+      "contentEncoding": "gzip",
+      "cacheControl": null,
+      "cacheSource": null,
+      "sourceIdentity": {
+        "cik": "0000789019",
+        "name": "MICROSOFT CORP",
+        "fiscalYearEnd": "0630"
+      },
+      "latestFinancialFiling": {
+        "accession": "0001193125-26-323660",
+        "form": "10-K",
+        "filed": "2026-07-29",
+        "reportDate": "2026-06-30",
+        "acceptanceDateTime": "2026-07-29T20:08:01.000Z"
+      },
+      "elapsedMs": 36
+    },
+    {
+      "label": "msft-companyfacts",
+      "kind": "sec",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json",
+      "retrievedAt": "2026-09-13T03:03:01.999Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 4881196,
+      "gzipBytes": 333527,
+      "sha256": "f8aae2965b20ad0df44bdf7ccbedf797d275b6b8dc030154a7a311361bb7246f",
+      "jsonReserializedBytes": 4881196,
+      "exceedsWarmSetLimit": true,
+      "contentEncoding": "gzip",
+      "cacheControl": null,
+      "cacheSource": null,
+      "sourceIdentity": {
+        "cik": "789019",
+        "name": "MICROSOFT CORPORATION",
+        "fiscalYearEnd": null
+      },
+      "concepts": 565,
+      "observations": 32671,
+      "elapsedMs": 456
+    },
+    {
+      "label": "jpm-submissions",
+      "kind": "sec",
+      "url": "https://data.sec.gov/submissions/CIK0000019617.json",
+      "retrievedAt": "2026-09-13T03:03:02.455Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 4608297,
+      "gzipBytes": 472209,
+      "sha256": "b84e49bedf485f2e47eb83ee4dc0795f9425db06c8c0408e96bffe3774cbcf10",
+      "jsonReserializedBytes": 4608297,
+      "exceedsWarmSetLimit": true,
+      "contentEncoding": "gzip",
+      "cacheControl": null,
+      "cacheSource": null,
+      "sourceIdentity": {
+        "cik": "0000019617",
+        "name": "JPMORGAN CHASE & CO",
+        "fiscalYearEnd": "1231"
+      },
+      "latestFinancialFiling": {
+        "accession": "0001628280-26-054343",
+        "form": "10-Q",
+        "filed": "2026-08-06",
+        "reportDate": "2026-06-30",
+        "acceptanceDateTime": "2026-08-06T20:19:03.000Z"
+      },
+      "elapsedMs": 165
+    },
+    {
+      "label": "jpm-companyfacts",
+      "kind": "sec",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000019617.json",
+      "retrievedAt": "2026-09-13T03:03:02.620Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 7935919,
+      "gzipBytes": 532584,
+      "sha256": "15370a4150dad20644e9827dca3ce1465d8b8ad8bd9862fd372bf1ba7c7e7fa6",
+      "jsonReserializedBytes": 7935919,
+      "exceedsWarmSetLimit": true,
+      "contentEncoding": "gzip",
+      "cacheControl": null,
+      "cacheSource": null,
+      "sourceIdentity": {
+        "cik": "19617",
+        "name": "JPMORGAN CHASE & CO",
+        "fiscalYearEnd": null
+      },
+      "concepts": 936,
+      "observations": 53666,
+      "elapsedMs": 632
+    },
+    {
+      "label": "acu-submissions",
+      "kind": "sec",
+      "url": "https://data.sec.gov/submissions/CIK0000002098.json",
+      "retrievedAt": "2026-09-13T03:03:03.252Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 160935,
+      "gzipBytes": 25945,
+      "sha256": "1f8ea700a01e7fc4c3d0c88f11bd3db0f5bc09d30b54a1cf37c67a14309e53e8",
+      "jsonReserializedBytes": 160935,
+      "exceedsWarmSetLimit": false,
+      "contentEncoding": "gzip",
+      "cacheControl": null,
+      "cacheSource": null,
+      "sourceIdentity": {
+        "cik": "0000002098",
+        "name": "ACME UNITED CORP",
+        "fiscalYearEnd": "1231"
+      },
+      "latestFinancialFiling": {
+        "accession": "0001193125-26-338211",
+        "form": "10-Q",
+        "filed": "2026-08-06",
+        "reportDate": "2026-06-30",
+        "acceptanceDateTime": "2026-08-06T20:30:41.000Z"
+      },
+      "elapsedMs": 322
+    },
+    {
+      "label": "acu-companyfacts",
+      "kind": "sec",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002098.json",
+      "retrievedAt": "2026-09-13T03:03:03.574Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 2513049,
+      "gzipBytes": 178335,
+      "sha256": "06951158c151bcf8f37297593ceee4916d4d357dcfc6e8b24f66d74ba2a6b0e3",
+      "jsonReserializedBytes": 2513049,
+      "exceedsWarmSetLimit": true,
+      "contentEncoding": "gzip",
+      "cacheControl": null,
+      "cacheSource": null,
+      "sourceIdentity": {
+        "cik": "2098",
+        "name": "ACME UNITED CORP",
+        "fiscalYearEnd": null
+      },
+      "concepts": 389,
+      "observations": 16931,
+      "elapsedMs": 469
+    },
+    {
+      "label": "cftc-0",
+      "kind": "application",
+      "url": "https://secedgarterminal.com/api/v1/cftc/markets?family=tff",
+      "retrievedAt": "2026-09-13T03:03:04.043Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 137842,
+      "gzipBytes": 15174,
+      "sha256": "3d456f57b1829af093dce78f10f4d9ea14640c8df5f5deeca5deada8f240e1b6",
+      "jsonReserializedBytes": 137842,
+      "exceedsWarmSetLimit": false,
+      "contentEncoding": "br",
+      "cacheControl": "public, max-age=300",
+      "cacheSource": "prepared",
+      "sourceIdentity": {
+        "schema": "edgar.cftc-positioning.v1",
+        "reportDate": "2026-09-08",
+        "family": "tff",
+        "status": "ready"
+      },
+      "elapsedMs": 7325
+    },
+    {
+      "label": "cftc-1",
+      "kind": "application",
+      "url": "https://secedgarterminal.com/api/v1/cftc/markets?family=disaggregated",
+      "retrievedAt": "2026-09-13T03:03:11.368Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 190455,
+      "gzipBytes": 18112,
+      "sha256": "b7861c12a1b07753b45020313c2baad603a309ce9387bd920926853b15def5b0",
+      "jsonReserializedBytes": 190455,
+      "exceedsWarmSetLimit": false,
+      "contentEncoding": "br",
+      "cacheControl": "public, max-age=300",
+      "cacheSource": "prepared",
+      "sourceIdentity": {
+        "schema": "edgar.cftc-positioning.v1",
+        "reportDate": "2026-09-08",
+        "family": "disaggregated",
+        "status": "ready"
+      },
+      "elapsedMs": 274
+    },
+    {
+      "label": "cftc-2",
+      "kind": "application",
+      "url": "https://secedgarterminal.com/api/v1/cftc/history?family=tff&contract=13874A&group=leveraged-funds&window=1y",
+      "retrievedAt": "2026-09-13T03:03:11.642Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 55095,
+      "gzipBytes": 6925,
+      "sha256": "44a78e097a59c48e00d93f4bdbf01a19abee268bfebc8b2db901a3aab5d8ee0d",
+      "jsonReserializedBytes": 55095,
+      "exceedsWarmSetLimit": false,
+      "contentEncoding": "br",
+      "cacheControl": "public, max-age=300",
+      "cacheSource": "computed-from-prepared-raw",
+      "sourceIdentity": {
+        "schema": "edgar.cftc-positioning.v1",
+        "reportDate": "2026-09-08",
+        "family": "tff",
+        "status": "ready"
+      },
+      "elapsedMs": 301
+    },
+    {
+      "label": "cftc-3",
+      "kind": "application",
+      "url": "https://secedgarterminal.com/api/v1/cftc/status",
+      "retrievedAt": "2026-09-13T03:03:11.943Z",
+      "httpStatus": 200,
+      "status": "measured",
+      "rawBytes": 544,
+      "gzipBytes": 249,
+      "sha256": "d932c8e4a39d6ad7a99a84c363509926b64af57ae48dfefd3965bcf8704ac85a",
+      "jsonReserializedBytes": 544,
+      "exceedsWarmSetLimit": false,
+      "contentEncoding": "br",
+      "cacheControl": "public, max-age=0",
+      "cacheSource": null,
+      "sourceIdentity": {
+        "schema": "edgar.cftc-positioning.v1",
+        "reportDate": null,
+        "family": null,
+        "status": "ready"
+      },
+      "elapsedMs": 1176
+    }
+  ],
+  "redis": {
+    "status": "not-configured",
+    "commands": 0,
+    "responseBytes": 0,
+    "keys": []
+  },
+  "notes": [
+    "Logical calls are counted; SEC redirect starts and coordination commands are not an observed provider billing total.",
+    "gzipBytes uses local gzip level 6 over decoded response bytes, not measured compressed network transfer.",
+    "Failed/error responses are not financial or CFTC payload size observations.",
+    "Selection is representative by issuer type and fiscal year, not measured traffic. Missing-data/restatement coverage requires separate reconciliation."
+  ],
+  "finishedAt": "2026-09-13T03:03:13.119Z",
+  "totalDecodedResponseBytes": 24621222
+}

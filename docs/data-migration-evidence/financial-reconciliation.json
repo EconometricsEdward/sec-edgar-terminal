@@ -1,0 +1,3456 @@
+{
+  "measuredAt": "2026-09-13T03:10:15.170Z",
+  "method": "Local existing calculations over eight verified source JSON samples; prepared response sizes, not measured network egress. All sourceCatalog entries checked against raw taxonomy/concept/unit/accession/start/end/value.",
+  "measurements": [
+    {
+      "ticker": "AAPL",
+      "basis": "annual",
+      "responseBytes": 434218,
+      "gzipBytes": 30498,
+      "sourceEvidenceCount": 412,
+      "exactRawEvidenceReconciled": 412,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:02:51.109Z",
+      "latestPeriod": {
+        "fy": 2025,
+        "fp": "FY",
+        "end": "2025-09-27",
+        "filed": "2025-10-31",
+        "form": "10-K",
+        "accession": "0000320193-25-000079",
+        "kind": "annual",
+        "fiscalStart": "2024-09-29",
+        "asOf": "",
+        "start": "2024-09-29",
+        "ttmStart": null
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 416161000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000079",
+              "filed": "2025-10-31",
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "form": "10-K",
+              "value": 416161000000,
+              "durationDays": 364,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 112010000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000079",
+              "filed": "2025-10-31",
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "form": "10-K",
+              "value": 112010000000,
+              "durationDays": 364,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 359241000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": null,
+              "end": "2025-09-27",
+              "form": "10-Q",
+              "value": 359241000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 73733000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": null,
+              "end": "2025-09-27",
+              "form": "10-Q",
+              "value": 73733000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 98767000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000079",
+              "filed": "2025-10-31",
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "form": "10-K",
+              "value": 111482000000,
+              "durationDays": 364,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000079",
+              "filed": "2025-10-31",
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "form": "10-K",
+              "value": 12715000000,
+              "durationDays": 364,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 2947.27
+    },
+    {
+      "ticker": "AAPL",
+      "basis": "quarter",
+      "responseBytes": 1624149,
+      "gzipBytes": 97977,
+      "sourceEvidenceCount": 1578,
+      "exactRawEvidenceReconciled": 1578,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:02:51.109Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q3",
+        "end": "2026-06-27",
+        "filed": "2026-07-31",
+        "form": "10-Q",
+        "accession": "0000320193-26-000020",
+        "kind": "quarter",
+        "fiscalStart": "2025-09-28",
+        "asOf": "",
+        "start": "2026-03-29",
+        "ttmStart": "2025-06-29"
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 109417000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2026-03-29",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 109417000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 29789000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2026-03-29",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 29789000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 383266000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": null,
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 383266000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 107520000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": null,
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 107520000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 31914000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 116996000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000013",
+              "filed": "2026-05-01",
+              "start": "2025-09-28",
+              "end": "2026-03-28",
+              "form": "10-Q",
+              "value": 82627000000,
+              "durationDays": 182,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 6799000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000013",
+              "filed": "2026-05-01",
+              "start": "2025-09-28",
+              "end": "2026-03-28",
+              "form": "10-Q",
+              "value": 4344000000,
+              "durationDays": 182,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 2947.29
+    },
+    {
+      "ticker": "AAPL",
+      "basis": "ytd",
+      "responseBytes": 1496986,
+      "gzipBytes": 85824,
+      "sourceEvidenceCount": 1502,
+      "exactRawEvidenceReconciled": 1502,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:02:51.109Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q3",
+        "end": "2026-06-27",
+        "filed": "2026-07-31",
+        "form": "10-Q",
+        "accession": "0000320193-26-000020",
+        "kind": "ytd",
+        "fiscalStart": "2025-09-28",
+        "asOf": "",
+        "start": "2025-09-28",
+        "ttmStart": "2025-06-29"
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 364357000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 364357000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 101464000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 101464000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 383266000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": null,
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 383266000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 107520000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": null,
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 107520000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 110197000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 116996000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 6799000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 2947.29
+    },
+    {
+      "ticker": "AAPL",
+      "basis": "ttm",
+      "responseBytes": 1714410,
+      "gzipBytes": 110285,
+      "sourceEvidenceCount": 1581,
+      "exactRawEvidenceReconciled": 1581,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:02:51.109Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q3",
+        "end": "2026-06-27",
+        "filed": "2026-07-31",
+        "form": "10-Q",
+        "accession": "0000320193-26-000020",
+        "kind": "ttm",
+        "fiscalStart": "2025-09-28",
+        "asOf": "",
+        "start": "2025-06-29",
+        "ttmStart": "2025-06-29"
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 466823000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2026-03-29",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 109417000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            },
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000013",
+              "filed": "2026-05-01",
+              "start": "2025-12-28",
+              "end": "2026-03-28",
+              "form": "10-Q",
+              "value": 111184000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+              "revisions": []
+            },
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000006",
+              "filed": "2026-01-30",
+              "start": "2025-09-28",
+              "end": "2025-12-27",
+              "form": "10-Q",
+              "value": 143756000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm",
+              "revisions": []
+            },
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000079",
+              "filed": "2025-10-31",
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "form": "10-K",
+              "value": 416161000000,
+              "durationDays": 364,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+              "revisions": []
+            },
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000073",
+              "filed": "2025-08-01",
+              "start": "2024-09-29",
+              "end": "2025-06-28",
+              "form": "10-Q",
+              "value": 313695000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000073/aapl-20250628.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 128930000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2026-03-29",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 29789000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000013",
+              "filed": "2026-05-01",
+              "start": "2025-12-28",
+              "end": "2026-03-28",
+              "form": "10-Q",
+              "value": 29578000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000006",
+              "filed": "2026-01-30",
+              "start": "2025-09-28",
+              "end": "2025-12-27",
+              "form": "10-Q",
+              "value": 42097000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000079",
+              "filed": "2025-10-31",
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "form": "10-K",
+              "value": 112010000000,
+              "durationDays": 364,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000073",
+              "filed": "2025-08-01",
+              "start": "2024-09-29",
+              "end": "2025-06-28",
+              "form": "10-Q",
+              "value": 84544000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000073/aapl-20250628.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 383266000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": null,
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 383266000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 107520000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": null,
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 107520000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 136683000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 116996000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000013",
+              "filed": "2026-05-01",
+              "start": "2025-09-28",
+              "end": "2026-03-28",
+              "form": "10-Q",
+              "value": 82627000000,
+              "durationDays": 182,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000006",
+              "filed": "2026-01-30",
+              "start": "2025-09-28",
+              "end": "2025-12-27",
+              "form": "10-Q",
+              "value": 53925000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000079",
+              "filed": "2025-10-31",
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "form": "10-K",
+              "value": 111482000000,
+              "durationDays": 364,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000073",
+              "filed": "2025-08-01",
+              "start": "2024-09-29",
+              "end": "2025-06-28",
+              "form": "10-Q",
+              "value": 81754000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000073/aapl-20250628.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000020",
+              "filed": "2026-07-31",
+              "start": "2025-09-28",
+              "end": "2026-06-27",
+              "form": "10-Q",
+              "value": 6799000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000013",
+              "filed": "2026-05-01",
+              "start": "2025-09-28",
+              "end": "2026-03-28",
+              "form": "10-Q",
+              "value": 4344000000,
+              "durationDays": 182,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-26-000006",
+              "filed": "2026-01-30",
+              "start": "2025-09-28",
+              "end": "2025-12-27",
+              "form": "10-Q",
+              "value": 2373000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000079",
+              "filed": "2025-10-31",
+              "start": "2024-09-29",
+              "end": "2025-09-27",
+              "form": "10-K",
+              "value": 12715000000,
+              "durationDays": 364,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000320193-25-000073",
+              "filed": "2025-08-01",
+              "start": "2024-09-29",
+              "end": "2025-06-28",
+              "form": "10-Q",
+              "value": 9473000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000073/aapl-20250628.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 2947.29
+    },
+    {
+      "ticker": "MSFT",
+      "basis": "annual",
+      "responseBytes": 436157,
+      "gzipBytes": 29799,
+      "sourceEvidenceCount": 412,
+      "exactRawEvidenceReconciled": 412,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:01.963Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "FY",
+        "end": "2026-06-30",
+        "filed": "2026-07-29",
+        "form": "10-K",
+        "accession": "0001193125-26-323660",
+        "kind": "annual",
+        "fiscalStart": "2025-07-01",
+        "asOf": "",
+        "start": "2025-07-01",
+        "ttmStart": null
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 331839000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 331839000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 133749000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 133749000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 758376000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 758376000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 442387000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 442387000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 66987000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 182935000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 115948000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 2365.17
+    },
+    {
+      "ticker": "MSFT",
+      "basis": "quarter",
+      "responseBytes": 1616299,
+      "gzipBytes": 96225,
+      "sourceEvidenceCount": 1668,
+      "exactRawEvidenceReconciled": 1668,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:01.963Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q4",
+        "end": "2026-06-30",
+        "filed": "2026-07-29",
+        "form": "10-K",
+        "accession": "0001193125-26-323660",
+        "kind": "quarter",
+        "fiscalStart": "2025-07-01",
+        "asOf": "",
+        "start": "2026-04-01",
+        "ttmStart": "2025-07-01"
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 90007000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 331839000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-191507",
+              "filed": "2026-04-29",
+              "start": "2025-07-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 241832000000,
+              "durationDays": 274,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 35766000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 133749000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-191507",
+              "filed": "2026-04-29",
+              "start": "2025-07-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 97983000000,
+              "durationDays": 274,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 758376000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 758376000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 442387000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 442387000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 19639000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 182935000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-191507",
+              "filed": "2026-04-29",
+              "start": "2025-07-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 127494000000,
+              "durationDays": 274,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 115948000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-191507",
+              "filed": "2026-04-29",
+              "start": "2025-07-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 80146000000,
+              "durationDays": 274,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 2365.18
+    },
+    {
+      "ticker": "MSFT",
+      "basis": "ytd",
+      "responseBytes": 1512372,
+      "gzipBytes": 85328,
+      "sourceEvidenceCount": 1519,
+      "exactRawEvidenceReconciled": 1519,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:01.963Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q4",
+        "end": "2026-06-30",
+        "filed": "2026-07-29",
+        "form": "10-K",
+        "accession": "0001193125-26-323660",
+        "kind": "ytd",
+        "fiscalStart": "2025-07-01",
+        "asOf": "",
+        "start": "2025-07-01",
+        "ttmStart": "2025-07-01"
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 331839000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 331839000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 133749000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 133749000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 758376000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 758376000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 442387000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 442387000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 66987000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 182935000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 115948000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 2365.18
+    },
+    {
+      "ticker": "MSFT",
+      "basis": "ttm",
+      "responseBytes": 1724100,
+      "gzipBytes": 107247,
+      "sourceEvidenceCount": 1658,
+      "exactRawEvidenceReconciled": 1658,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:01.963Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q4",
+        "end": "2026-06-30",
+        "filed": "2026-07-29",
+        "form": "10-K",
+        "accession": "0001193125-26-323660",
+        "kind": "ttm",
+        "fiscalStart": "2025-07-01",
+        "asOf": "",
+        "start": "2025-07-01",
+        "ttmStart": "2025-07-01"
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 331839000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 331839000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 133749000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 133749000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 758376000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 758376000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 442387000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 442387000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 66987000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 182935000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-323660",
+              "filed": "2026-07-29",
+              "start": "2025-07-01",
+              "end": "2026-06-30",
+              "form": "10-K",
+              "value": 115948000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 2365.18
+    },
+    {
+      "ticker": "JPM",
+      "basis": "annual",
+      "responseBytes": 306351,
+      "gzipBytes": 20577,
+      "sourceEvidenceCount": 322,
+      "exactRawEvidenceReconciled": 322,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:02.455Z",
+      "latestPeriod": {
+        "fy": 2025,
+        "fp": "FY",
+        "end": "2025-12-31",
+        "filed": "2026-02-13",
+        "form": "10-K",
+        "accession": "0001628280-26-008131",
+        "kind": "annual",
+        "fiscalStart": "2025-01-01",
+        "asOf": "",
+        "start": "2025-01-01",
+        "ttmStart": null
+      },
+      "metrics": [
+        {
+          "metric": "bankRevenue",
+          "value": 182447000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "InterestIncomeExpenseNet",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-008131",
+              "filed": "2026-02-13",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 95443000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NoninterestIncome",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-008131",
+              "filed": "2026-02-13",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 87004000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 57048000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-008131",
+              "filed": "2026-02-13",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 57048000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 4424900000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2025-12-31",
+              "form": "10-Q",
+              "value": 4424900000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 362438000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2025-12-31",
+              "form": "10-Q",
+              "value": 362438000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": null,
+          "classification": "unavailable",
+          "sources": []
+        }
+      ],
+      "totalFourBasisPreparationMs": 1824.48
+    },
+    {
+      "ticker": "JPM",
+      "basis": "quarter",
+      "responseBytes": 1190666,
+      "gzipBytes": 68446,
+      "sourceEvidenceCount": 1246,
+      "exactRawEvidenceReconciled": 1246,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:02.455Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001628280-26-054343",
+        "kind": "quarter",
+        "fiscalStart": "2026-01-01",
+        "asOf": "",
+        "start": "2026-04-01",
+        "ttmStart": "2025-07-01"
+      },
+      "metrics": [
+        {
+          "metric": "bankRevenue",
+          "value": 57347000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "InterestIncomeExpenseNet",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 25511000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NoninterestIncome",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 31836000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 21155000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 21155000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 5015069000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 5015069000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 374598000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 374598000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": null,
+          "classification": "unavailable",
+          "sources": []
+        }
+      ],
+      "totalFourBasisPreparationMs": 1824.5
+    },
+    {
+      "ticker": "JPM",
+      "basis": "ytd",
+      "responseBytes": 1074686,
+      "gzipBytes": 60594,
+      "sourceEvidenceCount": 1188,
+      "exactRawEvidenceReconciled": 1188,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:02.455Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001628280-26-054343",
+        "kind": "ytd",
+        "fiscalStart": "2026-01-01",
+        "asOf": "",
+        "start": "2026-01-01",
+        "ttmStart": "2025-07-01"
+      },
+      "metrics": [
+        {
+          "metric": "bankRevenue",
+          "value": 107183000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "InterestIncomeExpenseNet",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 50877000000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NoninterestIncome",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 56306000000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 37649000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 37649000000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 5015069000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 5015069000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 374598000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 374598000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": null,
+          "classification": "unavailable",
+          "sources": []
+        }
+      ],
+      "totalFourBasisPreparationMs": 1824.5
+    },
+    {
+      "ticker": "JPM",
+      "basis": "ttm",
+      "responseBytes": 1265671,
+      "gzipBytes": 78395,
+      "sourceEvidenceCount": 1242,
+      "exactRawEvidenceReconciled": 1242,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:02.455Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001628280-26-054343",
+        "kind": "ttm",
+        "fiscalStart": "2026-01-01",
+        "asOf": "",
+        "start": "2025-07-01",
+        "ttmStart": "2025-07-01"
+      },
+      "metrics": [
+        {
+          "metric": "bankRevenue",
+          "value": 199408000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "InterestIncomeExpenseNet",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 25511000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "InterestIncomeExpenseNet",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-029344",
+              "filed": "2026-05-01",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 25366000000,
+              "durationDays": 90,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026029344/jpm-20260331.htm",
+              "revisions": []
+            },
+            {
+              "tag": "InterestIncomeExpenseNet",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-008131",
+              "filed": "2026-02-13",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 95443000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm",
+              "revisions": []
+            },
+            {
+              "tag": "InterestIncomeExpenseNet",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-25-048859",
+              "filed": "2025-11-04",
+              "start": "2025-01-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 70448000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm",
+              "revisions": []
+            },
+            {
+              "tag": "InterestIncomeExpenseNet",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-25-048859",
+              "filed": "2025-11-04",
+              "start": "2025-07-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 23966000000,
+              "durationDays": 92,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NoninterestIncome",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 31836000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NoninterestIncome",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-029344",
+              "filed": "2026-05-01",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 24470000000,
+              "durationDays": 90,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026029344/jpm-20260331.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NoninterestIncome",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-008131",
+              "filed": "2026-02-13",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 87004000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NoninterestIncome",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-25-048859",
+              "filed": "2025-11-04",
+              "start": "2025-01-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 66201000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NoninterestIncome",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-25-048859",
+              "filed": "2025-11-04",
+              "start": "2025-07-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 22461000000,
+              "durationDays": 92,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 65067000000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 21155000000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-029344",
+              "filed": "2026-05-01",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 16494000000,
+              "durationDays": 90,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026029344/jpm-20260331.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-008131",
+              "filed": "2026-02-13",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 57048000000,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-25-048859",
+              "filed": "2025-11-04",
+              "start": "2025-01-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 44023000000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-25-048859",
+              "filed": "2025-11-04",
+              "start": "2025-07-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 14393000000,
+              "durationDays": 92,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 5015069000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 5015069000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 374598000000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001628280-26-054343",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 374598000000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/19617/000162828026054343/jpm-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": null,
+          "classification": "unavailable",
+          "sources": []
+        }
+      ],
+      "totalFourBasisPreparationMs": 1824.5
+    },
+    {
+      "ticker": "ACU",
+      "basis": "annual",
+      "responseBytes": 511229,
+      "gzipBytes": 31539,
+      "sourceEvidenceCount": 367,
+      "exactRawEvidenceReconciled": 367,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:03.252Z",
+      "latestPeriod": {
+        "fy": 2025,
+        "fp": "FY",
+        "end": "2025-12-31",
+        "filed": "2026-03-11",
+        "form": "10-K",
+        "accession": "0001193125-26-102079",
+        "kind": "annual",
+        "fiscalStart": "2025-01-01",
+        "asOf": "",
+        "start": "2025-01-01",
+        "ttmStart": null
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 196541816,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Revenues",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-102079",
+              "filed": "2026-03-11",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 196541816,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 10184421,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-102079",
+              "filed": "2026-03-11",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 10184421,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 170998000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2025-12-31",
+              "form": "10-Q",
+              "value": 170998000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": true,
+              "revisionNote": "Different values were filed for this exact context. Inspect the filings to determine the reason.",
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": [
+                {
+                  "value": 170998209,
+                  "filed": "2026-03-11",
+                  "accession": "0001193125-26-102079",
+                  "form": "10-K",
+                  "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm"
+                },
+                {
+                  "value": 170998000,
+                  "filed": "2026-05-06",
+                  "accession": "0001193125-26-209010",
+                  "form": "10-Q",
+                  "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526209010/acu-20260331.htm"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 117611000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2025-12-31",
+              "form": "10-Q",
+              "value": 117611000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": true,
+              "revisionNote": "Different values were filed for this exact context. Inspect the filings to determine the reason.",
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": [
+                {
+                  "value": 117611109,
+                  "filed": "2026-03-11",
+                  "accession": "0001193125-26-102079",
+                  "form": "10-K",
+                  "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm"
+                },
+                {
+                  "value": 117611000,
+                  "filed": "2026-05-06",
+                  "accession": "0001193125-26-209010",
+                  "form": "10-Q",
+                  "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526209010/acu-20260331.htm"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 7577536,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-102079",
+              "filed": "2026-03-11",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 18229449,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-102079",
+              "filed": "2026-03-11",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 10651913,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 1708.75
+    },
+    {
+      "ticker": "ACU",
+      "basis": "quarter",
+      "responseBytes": 1575327,
+      "gzipBytes": 85587,
+      "sourceEvidenceCount": 1390,
+      "exactRawEvidenceReconciled": 1390,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:03.252Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001193125-26-338211",
+        "kind": "quarter",
+        "fiscalStart": "2026-01-01",
+        "asOf": "",
+        "start": "2026-04-01",
+        "ttmStart": "2025-07-01"
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 62716000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Revenues",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 62716000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 5051000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 5051000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 200645000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 200645000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 121302000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 121302000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 12052000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 10887000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-209010",
+              "filed": "2026-05-06",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": -2233000,
+              "durationDays": 90,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526209010/acu-20260331.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 2957000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-209010",
+              "filed": "2026-05-06",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 1889000,
+              "durationDays": 90,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526209010/acu-20260331.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 1708.75
+    },
+    {
+      "ticker": "ACU",
+      "basis": "ytd",
+      "responseBytes": 1483781,
+      "gzipBytes": 77478,
+      "sourceEvidenceCount": 1341,
+      "exactRawEvidenceReconciled": 1341,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:03.252Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001193125-26-338211",
+        "kind": "ytd",
+        "fiscalStart": "2026-01-01",
+        "asOf": "",
+        "start": "2026-01-01",
+        "ttmStart": "2025-07-01"
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 115017000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Revenues",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 115017000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 6034000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 6034000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 200645000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 200645000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 121302000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 121302000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 7930000,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 10887000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 2957000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 1708.75
+    },
+    {
+      "ticker": "ACU",
+      "basis": "ttm",
+      "responseBytes": 1658595,
+      "gzipBytes": 95467,
+      "sourceEvidenceCount": 1402,
+      "exactRawEvidenceReconciled": 1402,
+      "unresolvedEvidence": [],
+      "sourceFetchedAt": "2026-09-13T03:03:03.252Z",
+      "latestPeriod": {
+        "fy": 2026,
+        "fp": "Q2",
+        "end": "2026-06-30",
+        "filed": "2026-08-06",
+        "form": "10-Q",
+        "accession": "0001193125-26-338211",
+        "kind": "ttm",
+        "fiscalStart": "2026-01-01",
+        "asOf": "",
+        "start": "2025-07-01",
+        "ttmStart": "2025-07-01"
+      },
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 211603816,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "Revenues",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 62716000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "Revenues",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-209010",
+              "filed": "2026-05-06",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 52301000,
+              "durationDays": 90,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526209010/acu-20260331.htm",
+              "revisions": []
+            },
+            {
+              "tag": "Revenues",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-102079",
+              "filed": "2026-03-11",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 196541816,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm",
+              "revisions": []
+            },
+            {
+              "tag": "Revenues",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-25-269422",
+              "filed": "2025-11-06",
+              "start": "2025-01-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 149018000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312525269422/acu-20250930.htm",
+              "revisions": []
+            },
+            {
+              "tag": "Revenues",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-25-269422",
+              "filed": "2025-11-06",
+              "start": "2025-07-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 49063000,
+              "durationDays": 92,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312525269422/acu-20250930.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "netIncome",
+          "value": 9815421,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-04-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 5051000,
+              "durationDays": 91,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-209010",
+              "filed": "2026-05-06",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 985000,
+              "durationDays": 90,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526209010/acu-20260331.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-102079",
+              "filed": "2026-03-11",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 10184421,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-25-269422",
+              "filed": "2025-11-06",
+              "start": "2025-01-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 8308000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312525269422/acu-20250930.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetIncomeLoss",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-25-269422",
+              "filed": "2025-11-06",
+              "start": "2025-07-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 1903000,
+              "durationDays": 92,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312525269422/acu-20250930.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "totalAssets",
+          "value": 200645000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "Assets",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 200645000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "stockholdersEquity",
+          "value": 121302000,
+          "classification": "reported",
+          "sources": [
+            {
+              "tag": "StockholdersEquity",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": null,
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 121302000,
+              "durationDays": null,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            }
+          ]
+        },
+        {
+          "metric": "freeCashFlow",
+          "value": 15482536,
+          "classification": "calculated",
+          "sources": [
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 10887000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-209010",
+              "filed": "2026-05-06",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": -2233000,
+              "durationDays": 90,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526209010/acu-20260331.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-102079",
+              "filed": "2026-03-11",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 18229449,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-25-269422",
+              "filed": "2025-11-06",
+              "start": "2025-01-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 10079000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312525269422/acu-20250930.htm",
+              "revisions": []
+            },
+            {
+              "tag": "NetCashProvidedByUsedInOperatingActivities",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000950170-25-103966",
+              "filed": "2025-08-06",
+              "start": "2025-01-01",
+              "end": "2025-06-30",
+              "form": "10-Q",
+              "value": 2998000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000095017025103966/acu-20250630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-338211",
+              "filed": "2026-08-06",
+              "start": "2026-01-01",
+              "end": "2026-06-30",
+              "form": "10-Q",
+              "value": 2957000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526338211/acu-20260630.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-209010",
+              "filed": "2026-05-06",
+              "start": "2026-01-01",
+              "end": "2026-03-31",
+              "form": "10-Q",
+              "value": 1889000,
+              "durationDays": 90,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526209010/acu-20260331.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-26-102079",
+              "filed": "2026-03-11",
+              "start": "2025-01-01",
+              "end": "2025-12-31",
+              "form": "10-K",
+              "value": 10651913,
+              "durationDays": 365,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312526102079/acu-20251231.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0001193125-25-269422",
+              "filed": "2025-11-06",
+              "start": "2025-01-01",
+              "end": "2025-09-30",
+              "form": "10-Q",
+              "value": 9753000,
+              "durationDays": 273,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000119312525269422/acu-20250930.htm",
+              "revisions": []
+            },
+            {
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "taxonomy": "us-gaap",
+              "unit": "USD",
+              "accession": "0000950170-25-103966",
+              "filed": "2025-08-06",
+              "start": "2025-01-01",
+              "end": "2025-06-30",
+              "form": "10-Q",
+              "value": 2973000,
+              "durationDays": 181,
+              "classification": "reported",
+              "revised": false,
+              "revisionNote": null,
+              "documentUrl": "https://www.sec.gov/Archives/edgar/data/2098/000095017025103966/acu-20250630.htm",
+              "revisions": []
+            }
+          ]
+        }
+      ],
+      "totalFourBasisPreparationMs": 1708.75
+    }
+  ]
+}
