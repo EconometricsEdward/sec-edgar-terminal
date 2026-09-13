@@ -20,6 +20,9 @@ import { comparePointQuality } from "./compareQuality.js";
 import { classifyIndustry, industryLabel } from "./industry.js";
 import { warmGet, warmSet } from "./warmCache.js";
 import { readPreparedPortfolio } from "./preparedResearchStore.js";
+import { getDataStoreMode } from "./dataStore.js";
+import { isBroadSecCoverageEnabled } from "./dataStoreDeployment.js";
+import { loadSecCoverageRegistry } from "./secCoverageRegistry.js";
 import {
   normalizePortfolioInput,
   createPortfolioRows,
@@ -205,11 +208,28 @@ async function scheduledSecJson(path, signal) {
   return secResearchJson(path, signal);
 }
 
-export async function loadPortfolioDirectory() {
+export async function loadPortfolioDirectory(input, {
+  mode = getDataStoreMode('financial'), broad = isBroadSecCoverageEnabled(),
+  loadRegistry = loadSecCoverageRegistry, loadOperating = getOperatingDirectory,
+  loadFunds = getFundDirectory,
+} = {}) {
+  if (input && mode === 'supabase' && broad) {
+    const registry = await loadRegistry();
+    const prepared = Object.fromEntries(registry.active.issuers.flatMap(company =>
+      company.aliases.map(ticker => [ticker, { cik: company.cik, name: company.name, ticker, isFund: false }])));
+    // ACU is the separately maintained pilot, verified in source-audit.json.
+    prepared.ACU = { cik: '0000002098', name: 'ACME UNITED CORP', ticker: 'ACU', isFund: false };
+    const rows = resolvePortfolioRows(createPortfolioRows(input.holdings, input.row_choices), prepared);
+    // Only a fully resolved request can use the prepared issuer directory.
+    // Unknown tickers, funds, name-only searches and conflicting identities keep
+    // the complete operating/fund directory path and its classification rules.
+    if (rows.every(row => row.excluded || row.resolution.status === 'resolved'
+      && row.resolution.kind === 'company' && !row.resolution.needsVerification)) return prepared;
+  }
   // If either directory fails, do not silently identify an ETF as an operating company.
   const [operating, funds] = await Promise.all([
-    getOperatingDirectory(),
-    getFundDirectory(),
+    loadOperating(),
+    loadFunds(),
   ]);
   return {
     ...Object.fromEntries(
@@ -959,7 +979,7 @@ export async function runPortfolioResearch(rawInput, dependencies = {}) {
   const input = validatePortfolioRequest(rawInput);
   const directory =
     dependencies.directory ||
-    (await (dependencies.loadDirectory || loadPortfolioDirectory)());
+    (await (dependencies.loadDirectory || loadPortfolioDirectory)(input));
   const rows = resolvePortfolioRows(
     createPortfolioRows(input.holdings, input.row_choices),
     directory,

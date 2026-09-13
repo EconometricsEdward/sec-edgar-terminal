@@ -15,6 +15,8 @@ const unzip = promisify(gunzip);
 // age, revalidation and expiry are read from Postgres on every request. The byte
 // budget measures decoded JSON input; parsed JavaScript objects use extra heap.
 const OBJECT_CACHE = Object.freeze({ entries: 32, inputBytes: 32 * 1024 * 1024, entryBytes: 8 * 1024 * 1024, ttlMs: 60000, pending: 32 });
+const SEC_DISPATCH_OPERATIONS = new Set(['edgar_acquire_sec_dispatch', 'edgar_release_sec_dispatch', 'edgar_publish_sec_cooldown']);
+const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 function freezeJson(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -120,7 +122,7 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   const decodedObjects = new Map(), pendingObjects = new Map();
   let decodedInputBytes = 0;
   function enabled(dataset) { checkDataset(dataset); return getDataStoreMode(dataset, env) !== 'off'; }
-  async function request(path, { method = 'POST', body, raw = false, allowDuplicate = false, timeoutMs = LIMITS.requestTimeoutMs } = {}) {
+  async function request(path, { method = 'POST', body, raw = false, allowDuplicate = false, timeoutMs = LIMITS.requestTimeoutMs, signal } = {}) {
     const config = getConfiguration(env);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -140,7 +142,8 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
       const requestBody = body == null ? undefined : raw ? (upload ? Readable.toWeb(Readable.from([body])) : body) : JSON.stringify(body);
       if (!raw && requestBody && Buffer.byteLength(requestBody) > LIMITS.rpcBytes) throw new DataStoreError('request_too_large', 413);
       const prefix = config.oidc ? '/functions/v1/edgar-data-gateway' : '';
-      const response = await fetchImpl(`${config.url}${prefix}${path}`, { method, headers, body: requestBody, ...(upload ? { duplex: 'half' } : {}), signal: controller.signal, cache: 'no-store', redirect: 'error' });
+      const response = await fetchImpl(`${config.url}${prefix}${path}`, { method, headers, body: requestBody, ...(upload ? { duplex: 'half' } : {}),
+        signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal, cache: 'no-store', redirect: 'error' });
       const bytes = await boundedBytes(response, method === 'GET' && raw ? LIMITS.objectBytes : LIMITS.rpcBytes);
       if (!response.ok && !(allowDuplicate && [400, 409].includes(response.status))) {
         let code; try { code = JSON.parse(bytes.toString()).code; } catch { /* omit untrusted API error text */ }
@@ -160,10 +163,10 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
       throw new DataStoreError(error?.name === 'AbortError' ? 'timeout' : 'transport_failure');
     } finally { clearTimeout(timeout); }
   }
-  async function rpc(name, params = {}) {
+  async function rpc(name, params = {}, { signal } = {}) {
     const config = getConfiguration(env);
-    return request(`/rest/v1/rpc/${name}`, { body: { p_namespace: config.namespace, ...params },
-      ...(name === 'edgar_stage_membership' ? { timeoutMs: 20000 } : {}) });
+    return request(`/rest/v1/rpc/${name}`, { body: { p_namespace: config.namespace, ...params }, signal,
+      ...(name === 'edgar_stage_membership' ? { timeoutMs: 20000 } : SEC_DISPATCH_OPERATIONS.has(name) ? { timeoutMs: 2000 } : {}) });
   }
   function pathFor(dataset, type, hash) {
     const { namespace } = getConfiguration(env);
@@ -401,6 +404,33 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     if (!Number.isInteger(hours) || hours < 1 || hours > 168) throw new DataStoreError('invalid_hours', 422);
     return rpc('edgar_coverage_operations', { p_hours: hours });
   }
+  async function acquireSecDispatchPermit(owner, { signal } = {}) {
+    if (typeof owner !== 'string' || !UUID_PATTERN.test(owner)) throw new DataStoreError('invalid_sec_dispatch_owner', 422);
+    if (signal?.aborted) throw new DataStoreError('sec_dispatch_aborted', 503);
+    const result = await rpc('edgar_acquire_sec_dispatch', { p_owner: owner }, { signal });
+    if (!result || typeof result !== 'object' || Array.isArray(result)
+      || Object.keys(result).some(key => !['allowed', 'owner', 'acquiredAt', 'expiresAt', 'leaseMs', 'waitMs', 'cooldown'].includes(key))
+      || typeof result.allowed !== 'boolean' || typeof result.cooldown !== 'boolean' || result.leaseMs !== 5000
+      || !Number.isSafeInteger(result.waitMs) || result.waitMs < 0 || result.waitMs > 600000
+      || (result.allowed ? typeof result.owner !== 'string' || result.owner.toLowerCase() !== owner.toLowerCase() || result.waitMs !== 0 || result.cooldown
+          || typeof result.acquiredAt !== 'string' || typeof result.expiresAt !== 'string'
+          || !Number.isFinite(Date.parse(result.acquiredAt)) || Date.parse(result.expiresAt) - Date.parse(result.acquiredAt) !== 5000
+        : result.owner !== null || result.acquiredAt !== null || result.expiresAt !== null || result.waitMs < 1)) throw new DataStoreError('invalid_sec_dispatch_response', 502);
+    return result;
+  }
+  async function releaseSecDispatchPermit(owner, { cooldownMs = 0 } = {}) {
+    if (typeof owner !== 'string' || !UUID_PATTERN.test(owner)) throw new DataStoreError('invalid_sec_dispatch_owner', 422);
+    if (!Number.isSafeInteger(cooldownMs) || cooldownMs < 0 || cooldownMs > 300000) throw new DataStoreError('invalid_sec_cooldown', 422);
+    const result = await rpc('edgar_release_sec_dispatch', { p_owner: owner, p_cooldown_ms: cooldownMs });
+    if (typeof result !== 'boolean') throw new DataStoreError('invalid_sec_dispatch_response', 502);
+    return result;
+  }
+  async function publishSecDispatchCooldown(delayMs) {
+    if (!Number.isSafeInteger(delayMs) || delayMs < 1 || delayMs > 300000) throw new DataStoreError('invalid_sec_cooldown', 422);
+    const result = await rpc('edgar_publish_sec_cooldown', { p_cooldown_ms: delayMs });
+    if (typeof result !== 'boolean') throw new DataStoreError('invalid_sec_dispatch_response', 502);
+    return result;
+  }
   async function verifyCoverageScheduleSignature({ timestamp, nonce, signature }) {
     if (!Number.isSafeInteger(timestamp) || timestamp < 1000000000 || timestamp > 9999999999
       || typeof nonce !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(nonce)
@@ -443,6 +473,7 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     beginCoverageMembershipCheck, stageCoverageMembership, activateCoverageMembership, finishCoverageMembershipCheck,
     readCoverageRegistry: () => rpc('edgar_coverage_registry'),
     readCoverageOperations, captureCoverageOperations: () => rpc('edgar_capture_coverage_operations'),
+    acquireSecDispatchPermit, releaseSecDispatchPermit, publishSecDispatchCooldown,
     verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob,
     checkpointDataStoreJob: async (claim, { checkpoint, leaseSeconds = 120 }) => {
       if (Buffer.byteLength(stableDataStoreJson(checkpoint)) > 16384) throw new DataStoreError('checkpoint_too_large', 413);
@@ -459,4 +490,4 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   };
 }
 const defaultStore = createDataStore();
-export const { readDataset, readDatasetManifests, readDatasetBatch, readDatasetVersion, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, readDatasetSource, enqueueDataStoreJob, enqueueCoverageJobs, enqueueCurrentCoverageJobs, readCoverageRegistry, beginCoverageMembershipCheck, stageCoverageMembership, activateCoverageMembership, finishCoverageMembershipCheck, readCoverageOperations, captureCoverageOperations, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob, checkpointDataStoreJob, readDataStoreStatus, readDataStoreCoverageStatus, readFinancialMetrics, exportDataStoreManifests, dataStoreRetentionDryRun, dataStoreOrphanDryRun } = defaultStore;
+export const { readDataset, readDatasetManifests, readDatasetBatch, readDatasetVersion, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, readDatasetSource, enqueueDataStoreJob, enqueueCoverageJobs, enqueueCurrentCoverageJobs, readCoverageRegistry, beginCoverageMembershipCheck, stageCoverageMembership, activateCoverageMembership, finishCoverageMembershipCheck, readCoverageOperations, captureCoverageOperations, acquireSecDispatchPermit, releaseSecDispatchPermit, publishSecDispatchCooldown, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob, checkpointDataStoreJob, readDataStoreStatus, readDataStoreCoverageStatus, readFinancialMetrics, exportDataStoreManifests, dataStoreRetentionDryRun, dataStoreOrphanDryRun } = defaultStore;

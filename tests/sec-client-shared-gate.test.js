@@ -1,188 +1,120 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createSecDispatchCoordinator } from '../src/utils/secClient.js';
 
-function restoreEnv(name, value) {
-  if (value === undefined) delete process.env[name];
-  else process.env[name] = value;
+const granted = owner => ({ allowed: true, owner, acquiredAt: '2099-01-01T00:00:00Z', expiresAt: '2099-01-01T00:00:05Z', leaseMs: 5000, waitMs: 0, cooldown: false });
+const denied = (waitMs, cooldown = false) => ({ allowed: false, owner: null, acquiredAt: null, expiresAt: null, leaseMs: 5000, waitMs, cooldown });
+function databaseGate() {
+  let owner = null, expiresAt = 0, nextStart = 0, cooldownUntil = 0;
+  const events = [];
+  return {
+    events,
+    acquire: async identity => {
+      const now = performance.now();
+      if (now < cooldownUntil) return denied(Math.ceil(cooldownUntil - now), true);
+      if (owner && now >= expiresAt) owner = null;
+      if (owner || now < nextStart) return denied(Math.ceil(Math.max(expiresAt * Number(Boolean(owner)), nextStart) - now));
+      owner = identity; expiresAt = now + 5000; events.push({ event: 'acquire', owner }); return granted(owner);
+    },
+    release: async (identity, { cooldownMs }) => {
+      const now = performance.now();
+      if (identity !== owner || now >= expiresAt) return false;
+      events.push({ event: 'release', owner, cooldownMs }); owner = null; nextStart = now + 143;
+      if (cooldownMs) cooldownUntil = Math.max(cooldownUntil, now + cooldownMs);
+      return true;
+    },
+    publish: async ms => { cooldownUntil = Math.max(cooldownUntil, performance.now() + ms); return true; },
+  };
 }
 
-test('deployed SEC requests reserve the shared gate before contacting SEC', async () => {
-  const originalFetch = globalThis.fetch;
-  const originalUrl = process.env.KV_REST_API_URL;
-  const originalToken = process.env.KV_REST_API_TOKEN;
-  const originalVercel = process.env.VERCEL_ENV;
-  const originalAgent = process.env.SEC_USER_AGENT;
-  process.env.KV_REST_API_URL = 'https://redis.example.test';
-  process.env.KV_REST_API_TOKEN = 'test-token';
-  process.env.VERCEL_ENV = 'preview';
-  process.env.SEC_USER_AGENT = 'EDGAR Terminal tests@example.com';
-  const calls = [];
+test('deployed coordinator obtains Supabase permission before SEC dispatch and releases the same owner', async () => {
+  const gate = databaseGate();
+  const coordinator = createSecDispatchCoordinator({ ...gate, transport: async () => { gate.events.push({ event: 'dispatch' }); return Response.json({ ok: true }); } });
+  assert.deepEqual(await (await coordinator.fetch('https://data.sec.gov/example.json', {})).json(), { ok: true });
+  assert.deepEqual(gate.events.map(row => row.event), ['acquire', 'dispatch', 'release']);
+  assert.equal(gate.events[0].owner, gate.events[2].owner);
+  assert.equal(gate.events[2].cooldownMs, 0);
+});
 
-  try {
-    globalThis.fetch = async (url, options) => {
-      calls.push({ url: String(url), options });
-      if (String(url).endsWith('/pipeline')) {
-        const commands = JSON.parse(options.body);
-        assert.equal(commands.length, 1);
-        assert.equal(commands[0][0], 'EVAL');
-        return Response.json([{
-          result: commands[0][1].includes("redis.call('DEL'") ? 1 : [1, 0],
-        }]);
-      }
-      return Response.json({ ok: true });
-    };
+test('shared database permission plus actual dispatch hold spaces simultaneous requests conservatively', async () => {
+  const gate = databaseGate(), starts = [];
+  const originalAcquire = gate.acquire;
+  // A real held lease reports at most a short poll wait, not its full lifetime.
+  gate.acquire = async owner => { const value = await originalAcquire(owner); return !value.allowed && !value.cooldown ? { ...value, waitMs: Math.min(value.waitMs, 50) } : value; };
+  const coordinator = createSecDispatchCoordinator({ ...gate, transport: async () => { starts.push(performance.now()); return Response.json({ ok: true }); } });
+  await Promise.all([coordinator.fetch('https://data.sec.gov/one.json', {}), coordinator.fetch('https://data.sec.gov/two.json', {})]);
+  assert.equal(starts.length, 2); assert.ok(starts[1] - starts[0] >= 275, `dispatch gap was ${starts[1] - starts[0]} ms`);
+});
 
-    const { secFetch } = await import(`../src/utils/secClient.js?shared=${Date.now()}`);
-    const response = await secFetch('https://data.sec.gov/example.json', { retries: 0 });
+test('an early SEC throttle is published atomically with owner release and blocks the next dispatch', async () => {
+  const gate = databaseGate(); let calls = 0;
+  const coordinator = createSecDispatchCoordinator({ ...gate, transport: async () => { calls++; return new Response('slow down', { status: 429, headers: { 'Retry-After': '5' } }); } });
+  assert.equal((await coordinator.fetch('https://data.sec.gov/one.json', {})).status, 429);
+  await assert.rejects(coordinator.fetch('https://data.sec.gov/two.json', {}), error => error.code === 'SEC_UPSTREAM_COOLDOWN');
+  assert.equal(calls, 1); assert.equal(gate.events.at(-1).cooldownMs, 5000);
+});
 
-    assert.deepEqual(await response.json(), { ok: true });
-    assert.equal(calls.length, 3);
-    assert.equal(calls[0].url, 'https://redis.example.test/pipeline');
-    assert.equal(calls[1].url, 'https://data.sec.gov/example.json');
-    assert.equal(calls[2].url, 'https://redis.example.test/pipeline');
-    const releaseCommand = JSON.parse(calls[2].options.body)[0];
-    assert.match(releaseCommand[1], /candidate > 0 and candidate > current/);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv('KV_REST_API_URL', originalUrl);
-    restoreEnv('KV_REST_API_TOKEN', originalToken);
-    restoreEnv('VERCEL_ENV', originalVercel);
-    restoreEnv('SEC_USER_AGENT', originalAgent);
+test('database failures and invalid grants fail closed without contacting any source transport', async () => {
+  for (const acquire of [
+    async () => { throw new Error('backend unavailable'); },
+    async owner => ({ ...granted(owner), owner: 'different-owner' }),
+    async owner => ({ ...granted(owner), leaseMs: 60000 }),
+    async owner => ({ ...granted(owner), acquiredAt: 'invalid' }),
+    async () => denied(-1),
+  ]) {
+    const coordinator = createSecDispatchCoordinator({ acquire, transport: () => assert.fail('No SEC or alternate backend dispatch.') });
+    await assert.rejects(coordinator.fetch('https://data.sec.gov/example.json', {}), error => error.code === 'SEC_RATE_GATE_UNAVAILABLE' && error.status === 503);
   }
 });
 
-test('shared start mutex spaces concurrent outbound dispatches', async () => {
-  const originalFetch = globalThis.fetch;
-  const originalUrl = process.env.KV_REST_API_URL;
-  const originalToken = process.env.KV_REST_API_TOKEN;
-  const originalVercel = process.env.VERCEL_ENV;
-  const originalAgent = process.env.SEC_USER_AGENT;
-  process.env.KV_REST_API_URL = 'https://redis.example.test';
-  process.env.KV_REST_API_TOKEN = 'test-token';
-  process.env.VERCEL_ENV = 'preview';
-  process.env.SEC_USER_AGENT = 'EDGAR Terminal tests@example.com';
-  let locked = false;
-  const dispatches = [];
-
-  try {
-    globalThis.fetch = async (url, options) => {
-      if (String(url).endsWith('/pipeline')) {
-        const command = JSON.parse(options.body)[0];
-        if (command[1].includes("redis.call('DEL'")) {
-          locked = false;
-          return Response.json([{ result: 1 }]);
-        }
-        if (locked) return Response.json([{ result: [0, 10] }]);
-        locked = true;
-        return Response.json([{ result: [1, 0] }]);
-      }
-      dispatches.push(Date.now());
-      return Response.json({ ok: true });
-    };
-
-    const { secFetch } = await import(`../src/utils/secClient.js?spacing=${Date.now()}`);
-    await Promise.all([
-      secFetch('https://data.sec.gov/one.json', { retries: 0 }),
-      secFetch('https://data.sec.gov/two.json', { retries: 0 }),
-    ]);
-
-    assert.equal(dispatches.length, 2);
-    assert.ok(dispatches[1] - dispatches[0] >= 135, `dispatch gap was ${dispatches[1] - dispatches[0]} ms`);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv('KV_REST_API_URL', originalUrl);
-    restoreEnv('KV_REST_API_TOKEN', originalToken);
-    restoreEnv('VERCEL_ENV', originalVercel);
-    restoreEnv('SEC_USER_AGENT', originalAgent);
+test('unarmed and ten-minute migration cooldowns do not poll or bypass shared coordination', async () => {
+  for (const waitMs of [300000, 600000]) {
+    let attempts = 0;
+    const coordinator = createSecDispatchCoordinator({ acquire: async () => { attempts++; return denied(waitMs, true); }, transport: () => assert.fail('Migration handoff cannot dispatch.') });
+    await assert.rejects(coordinator.fetch('https://data.sec.gov/example.json', {}), error => error.code === 'SEC_UPSTREAM_COOLDOWN');
+    assert.equal(attempts, 1);
   }
 });
 
-test('an early SEC throttle atomically blocks the next dispatch', async () => {
-  const originalFetch = globalThis.fetch;
-  const originalUrl = process.env.KV_REST_API_URL;
-  const originalToken = process.env.KV_REST_API_TOKEN;
-  const originalVercel = process.env.VERCEL_ENV;
-  const originalAgent = process.env.SEC_USER_AGENT;
-  process.env.KV_REST_API_URL = 'https://redis.example.test';
-  process.env.KV_REST_API_TOKEN = 'test-token';
-  process.env.VERCEL_ENV = 'production';
-  process.env.SEC_USER_AGENT = 'EDGAR Terminal tests@example.com';
-  let locked = false;
-  let cooldownUntil = 0;
-  let secCalls = 0;
-
-  try {
-    globalThis.fetch = async (url, options) => {
-      if (String(url).endsWith('/pipeline')) {
-        const command = JSON.parse(options.body)[0];
-        const script = command[1];
-        if (script.includes("redis.call('DEL'")) {
-          const cooldownMs = Number(command[6]);
-          if (cooldownMs > 0) cooldownUntil = Date.now() + cooldownMs;
-          locked = false;
-          return Response.json([{ result: 1 }]);
-        }
-        if (script.includes("redis.call('SET', KEYS[1], ARGV[1], 'NX'")) {
-          const remaining = cooldownUntil - Date.now();
-          if (remaining > 0) return Response.json([{ result: [-1, remaining] }]);
-          if (locked) return Response.json([{ result: [0, 10] }]);
-          locked = true;
-          return Response.json([{ result: [1, 0] }]);
-        }
-        return Response.json([{ result: 1 }]);
-      }
-      secCalls += 1;
-      return new Response('slow down', { status: 429, headers: { 'Retry-After': '5' } });
-    };
-
-    const { secFetch, SecRequestError } = await import(`../src/utils/secClient.js?cooldown=${Date.now()}`);
-    const throttled = await secFetch('https://data.sec.gov/one.json', { retries: 0 });
-    assert.equal(throttled.status, 429);
-    await assert.rejects(
-      secFetch('https://data.sec.gov/two.json', { retries: 0 }),
-      (error) => error instanceof SecRequestError && error.code === 'SEC_UPSTREAM_COOLDOWN',
-    );
-    assert.equal(secCalls, 1);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv('KV_REST_API_URL', originalUrl);
-    restoreEnv('KV_REST_API_TOKEN', originalToken);
-    restoreEnv('VERCEL_ENV', originalVercel);
-    restoreEnv('SEC_USER_AGENT', originalAgent);
-  }
+test('late grant replies are rejected using monotonic elapsed time without trusting server wall clocks', async () => {
+  let time = 0, releases = 0;
+  const coordinator = createSecDispatchCoordinator({ now: () => time,
+    acquire: async owner => { time = 4501; return granted(owner); },
+    release: async () => { releases++; return true; }, transport: () => assert.fail('Expired permission must not dispatch.') });
+  await assert.rejects(coordinator.fetch('https://data.sec.gov/example.json', {}), /arrived too late/);
+  assert.equal(releases, 1);
 });
 
-test('deployed SEC requests fail closed when shared coordination fails', async () => {
-  const originalFetch = globalThis.fetch;
-  const originalUrl = process.env.KV_REST_API_URL;
-  const originalToken = process.env.KV_REST_API_TOKEN;
-  const originalVercel = process.env.VERCEL_ENV;
-  const originalAgent = process.env.SEC_USER_AGENT;
-  process.env.KV_REST_API_URL = 'https://redis.example.test';
-  process.env.KV_REST_API_TOKEN = 'test-token';
-  process.env.VERCEL_ENV = 'production';
-  process.env.SEC_USER_AGENT = 'EDGAR Terminal tests@example.com';
-  let secCalls = 0;
+test('permission is checked again immediately before dispatch after event-loop delay', async () => {
+  const times = [0, 0, 0, 5000, 5000]; let releases = 0;
+  const coordinator = createSecDispatchCoordinator({ now: () => times.shift() ?? 5000,
+    acquire: async owner => granted(owner), release: async () => { releases++; return true; },
+    transport: () => assert.fail('Permission expired between acquisition and dispatch.') });
+  await assert.rejects(coordinator.fetch('https://data.sec.gov/example.json', {}), /expired before use/);
+  assert.equal(releases, 1);
+});
 
-  try {
-    globalThis.fetch = async (url) => {
-      if (String(url).includes('sec.gov')) secCalls += 1;
-      return new Response('unavailable', { status: 503 });
-    };
+test('caller cancellation after acquisition releases permission without dispatching', async () => {
+  const controller = new AbortController(); let releases = 0;
+  const coordinator = createSecDispatchCoordinator({ acquire: async owner => { controller.abort(); return granted(owner); },
+    release: async () => { releases++; return true; }, transport: () => assert.fail('Aborted caller cannot dispatch.') });
+  await assert.rejects(coordinator.fetch('https://data.sec.gov/example.json', {}, controller.signal), { name: 'AbortError' });
+  assert.equal(releases, 1);
+});
 
-    const { secFetch, SecRequestError } = await import(`../src/utils/secClient.js?closed=${Date.now()}`);
-    await assert.rejects(
-      secFetch('https://data.sec.gov/example.json', { retries: 0 }),
-      (error) => error instanceof SecRequestError
-        && error.code === 'SEC_RATE_GATE_UNAVAILABLE'
-        && error.status === 503,
-    );
-    assert.equal(secCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv('KV_REST_API_URL', originalUrl);
-    restoreEnv('KV_REST_API_TOKEN', originalToken);
-    restoreEnv('VERCEL_ENV', originalVercel);
-    restoreEnv('SEC_USER_AGENT', originalAgent);
-  }
+test('failed release preserves the database lease rather than creating a second fallback permission', async () => {
+  const gate = databaseGate(); let calls = 0;
+  const coordinator = createSecDispatchCoordinator({ ...gate, release: async () => { throw new Error('release unavailable'); },
+    transport: async () => { calls++; return Response.json({ ok: true }); } });
+  assert.equal((await coordinator.fetch('https://data.sec.gov/one.json', {})).status, 200);
+  await assert.rejects(coordinator.fetch('https://data.sec.gov/two.json', {}), error => error.code === 'SEC_RATE_GATE_SATURATED');
+  assert.equal(calls, 1);
+});
+
+test('provider cooldown publication is bounded independently of the migration handoff window', async () => {
+  const published = [];
+  const coordinator = createSecDispatchCoordinator({ publish: async ms => { published.push(ms); return true; } });
+  assert.equal(await coordinator.publishCooldown(600000), true);
+  assert.equal(await coordinator.publishCooldown(0), false);
+  assert.deepEqual(published, [300000]);
 });

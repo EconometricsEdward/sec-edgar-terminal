@@ -77,7 +77,7 @@ test('cryptographic verifier accepts valid RS256 and rejects forged, wrong audie
 });
 
 test('only the explicitly reviewed RPC names are supported and namespace is forced', async () => {
-  assert.equal(Object.keys(RPC_PARAMETERS).length, 29);
+  assert.equal(Object.keys(RPC_PARAMETERS).length, 32);
   const { handler, calls } = setup();
   assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: key }))).status, 200);
   assert.equal(calls[0][0], `${URL}/rest/v1/rpc/edgar_get_version`);
@@ -504,4 +504,31 @@ test('registry, membership fences and operations expose only exact bounded param
   for (const [name, params] of invalid) assert.equal((await handler(rpc(name, params))).status, 422, name);
   assert.equal(calls.length, valid.length);
   assert.ok(calls.every(([, options]) => JSON.parse(options.body).p_namespace === 'production'));
+});
+
+test('SEC dispatch gateway exposes only fixed global coordination with bounded owner and provider cooldown fields', async () => {
+  const { handler, calls } = setup();
+  const valid = [
+    ['edgar_acquire_sec_dispatch', { p_owner: UUID }],
+    ['edgar_release_sec_dispatch', { p_owner: UUID, p_cooldown_ms: 0 }],
+    ['edgar_release_sec_dispatch', { p_owner: UUID, p_cooldown_ms: 300000 }],
+    ['edgar_publish_sec_cooldown', { p_cooldown_ms: 300000 }],
+  ];
+  for (const [name, params] of valid) assert.equal((await handler(rpc(name, params))).status, 200, name);
+  const invalid = [
+    ['edgar_acquire_sec_dispatch', { p_owner: UUID, p_rate: 100 }],
+    ['edgar_acquire_sec_dispatch', { p_owner: UUID, p_host: 'another-provider' }],
+    ['edgar_acquire_sec_dispatch', { p_owner: UUID, p_lease_ms: 0 }],
+    ['edgar_acquire_sec_dispatch', { p_owner: UUID, p_handoff_ms: 0 }],
+    ['edgar_acquire_sec_dispatch', { p_owner: 'arbitrary' }],
+    ['edgar_release_sec_dispatch', { p_owner: UUID, p_cooldown_ms: 600000 }],
+    ['edgar_release_sec_dispatch', { p_owner: UUID, p_cooldown_ms: -1 }],
+    ['edgar_publish_sec_cooldown', { p_cooldown_ms: 0 }],
+    ['edgar_publish_sec_cooldown', { p_cooldown_ms: 300001 }],
+    ['edgar_publish_sec_cooldown', { p_cooldown_ms: '1000' }],
+  ];
+  for (const [name, params] of invalid) assert.equal((await handler(rpc(name, params))).status, 422, name);
+  assert.equal((await handler(rpc('edgar_acquire_sec_dispatch', { p_owner: UUID, p_namespace: 'rehearsal' }))).status, 403);
+  assert.equal((await handler(rpc('edgar_arm_sec_dispatch', {}))).status, 403);
+  assert.equal(calls.length, valid.length);
 });

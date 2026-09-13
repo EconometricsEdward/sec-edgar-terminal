@@ -63,6 +63,9 @@ export const RPC_PARAMETERS = Object.freeze({
   edgar_enqueue_current_coverage_jobs: ['p_cycle', 'p_shards'],
   edgar_coverage_operations: ['p_hours'],
   edgar_capture_coverage_operations: [],
+  edgar_acquire_sec_dispatch: ['p_owner'],
+  edgar_release_sec_dispatch: ['p_owner', 'p_cooldown_ms'],
+  edgar_publish_sec_cooldown: ['p_cooldown_ms'],
   edgar_authorize_coverage_schedule: ['p_timestamp', 'p_nonce', 'p_signature'],
   edgar_claim_job: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_job_key'],
   edgar_claim_job_prefix: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_prefix'],
@@ -281,6 +284,8 @@ function validateRpc(name, params, nowMs) {
     if (!match || !date(match[1])) reject('invalid_membership');
   }
   if (name === 'edgar_coverage_operations' && has(params, 'p_hours') && !integer(params.p_hours, 1, 168)) reject('invalid_hours');
+  if (name === 'edgar_release_sec_dispatch' && has(params, 'p_cooldown_ms') && !integer(params.p_cooldown_ms, 0, 300000)) reject('invalid_sec_cooldown');
+  if (name === 'edgar_publish_sec_cooldown' && !integer(params.p_cooldown_ms, 1, 300000)) reject('invalid_sec_cooldown');
   if (name === 'edgar_authorize_coverage_schedule') {
     if (!integer(params.p_timestamp,1000000000,9999999999)
       || typeof params.p_nonce !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(params.p_nonce)
@@ -438,7 +443,10 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       const rpcMatch = /^\/rest\/v1\/rpc\/([a-z_]+)$/.exec(path);
       // Evidence verification is the only larger operation. Ordinary reads keep
       // their original timeout, and injected shorter test/operator limits win.
-      timer = setTimeout(() => controller.abort(), rpcMatch?.[1] === 'edgar_stage_membership' && timeoutMs === 5500 ? 15000 : timeoutMs);
+      const secDispatchOperation = ['edgar_acquire_sec_dispatch', 'edgar_release_sec_dispatch', 'edgar_publish_sec_cooldown'].includes(rpcMatch?.[1]);
+      const operationTimeout = secDispatchOperation ? Math.min(timeoutMs, 1500)
+        : rpcMatch?.[1] === 'edgar_stage_membership' && timeoutMs === 5500 ? 15000 : timeoutMs;
+      timer = setTimeout(() => controller.abort(), operationTimeout);
       if (rpcMatch && has(RPC_PARAMETERS, rpcMatch[1])) {
         if (request.method !== 'POST') reject('method_denied', 405);
         if (request.headers.get('content-type')?.split(';', 1)[0].trim() !== 'application/json') reject('content_type_denied', 415);

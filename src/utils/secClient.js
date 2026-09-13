@@ -2,15 +2,14 @@
  * Shared server-side SEC transport.
  *
  * Every direct request to an SEC host should pass through this module. It
- * enforces one application-wide request-start budget with Upstash in
+ * enforces one application-wide request-start budget with Supabase in
  * production, retains a conservative per-instance fallback for local work,
  * honors Retry-After, and applies bounded retries/timeouts.
  */
 
+import { acquireSecDispatchPermit, releaseSecDispatchPermit, publishSecDispatchCooldown } from './dataStore.js';
+
 const SEC_HOSTS = new Set(['data.sec.gov', 'www.sec.gov', 'efts.sec.gov']);
-const REST_URL = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '');
-const REST_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-const SHARED_GATE_ENABLED = Boolean(REST_URL && REST_TOKEN);
 const DEPLOYED_RUNTIME = Boolean(process.env.VERCEL_ENV || process.env.VERCEL)
   || process.env.NODE_ENV === 'production';
 const STARTS_PER_SECOND = 7;
@@ -20,6 +19,8 @@ const MAX_COOLDOWN_MS = 5 * 60_000;
 const MAX_GATE_WAIT_MS = 2_000;
 const START_LOCK_TTL_MS = 5_000;
 const START_LOCK_POLL_MS = 50;
+const START_LOCK_SAFETY_MS = 500;
+const MAX_HANDOFF_COOLDOWN_MS = 600000;
 const DEFAULT_USER_AGENT = 'EDGAR Terminal research@secedgarterminal.com';
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -120,122 +121,91 @@ async function localPermit(signal) {
   await delay(scheduledAt - now, signal);
 }
 
-async function gatePipeline(commands, signal) {
-  const response = await fetch(`${REST_URL}/pipeline`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${REST_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(commands),
-    signal: signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(2000)])
-      : AbortSignal.timeout(2000),
-    cache: 'no-store',
-  });
-  if (!response.ok) throw new Error(`shared gate returned HTTP ${response.status}`);
-  const results = await response.json();
-  if (!Array.isArray(results) || results.length !== commands.length || results.some((item) => item?.error)) {
-    throw new Error('shared gate returned an invalid pipeline response');
+/** Production coordination has one backend. No Redis/local fallback on failure. */
+export function createSecDispatchCoordinator({
+  acquire = acquireSecDispatchPermit, release = releaseSecDispatchPermit,
+  publish = publishSecDispatchCooldown, now = () => performance.now(),
+  uuid = () => crypto.randomUUID(), wait = delay,
+  transport = (...args) => fetch(...args),
+} = {}) {
+  async function safeRelease(permit, cooldownMs = 0) {
+    if (!permit?.owner) return false;
+    try { return await release(permit.owner, { cooldownMs: Math.max(0, Math.ceil(cooldownMs)) }) === true; }
+    catch { return false; } // The fixed server lease remains the release fallback.
   }
-  return results;
-}
-
-async function sharedPermit(signal) {
-  if (signal?.aborted) throw abortError(signal);
-  // Hold a short distributed mutex across the actual fetch() dispatch. Merely
-  // reserving timestamps can bunch starts when Redis responses arrive out of
-  // order; the mutex is released only after the real request has started and
-  // the minimum interval has elapsed.
-  const script = `
-    local cooldown = redis.call('PTTL', KEYS[2])
-    if cooldown > 0 then return { -1, cooldown } end
-    local acquired = redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2])
-    if acquired then return { 1, 0 } end
-    local lock_ttl = redis.call('PTTL', KEYS[1])
-    if lock_ttl < 1 then lock_ttl = 1 end
-    return { 0, math.min(lock_ttl, tonumber(ARGV[3])) }
-  `;
-  const token = crypto.randomUUID();
-  const deadline = Date.now() + MAX_GATE_WAIT_MS;
-  while (true) {
-    const results = await gatePipeline([
-      [
-        'EVAL',
-        script,
-        2,
-        'upstream:sec:start-lock',
-        'upstream:sec:cooldown',
-        token,
-        START_LOCK_TTL_MS,
-        START_LOCK_POLL_MS,
-      ],
-    ], signal);
-    const reservation = results?.[0]?.result;
-    const state = Number(reservation?.[0]);
-    const waitMs = Number(reservation?.[1]);
-    if (![-1, 0, 1].includes(state) || !Number.isFinite(waitMs) || waitMs < 0) {
-      throw new Error('shared gate returned an invalid lock response');
-    }
-    if (state === 1) return { token };
-    const remaining = deadline - Date.now();
-    if (remaining <= 0 || (state === -1 && waitMs > remaining)) {
-      throw new SecRequestError('SEC request coordination is temporarily saturated.', {
-        code: state === -1 ? 'SEC_UPSTREAM_COOLDOWN' : 'SEC_RATE_GATE_SATURATED',
-        status: 503,
-      });
-    }
-    await delay(Math.min(Math.max(1, waitMs), remaining), signal);
+  function validateReply(value, owner) {
+    return value && typeof value.allowed === 'boolean' && typeof value.cooldown === 'boolean'
+      && value.leaseMs === START_LOCK_TTL_MS && Number.isSafeInteger(value.waitMs)
+      && value.waitMs >= 0 && value.waitMs <= MAX_HANDOFF_COOLDOWN_MS
+      && (value.allowed ? value.owner === owner && !value.cooldown && value.waitMs === 0
+        && Number.isFinite(Date.parse(value.acquiredAt)) && Number.isFinite(Date.parse(value.expiresAt)) : value.owner === null);
   }
-}
-
-async function reservePermit(signal) {
-  if (!SHARED_GATE_ENABLED) {
-    if (DEPLOYED_RUNTIME) {
-      throw new SecRequestError('Shared SEC request coordination is unavailable.', {
-        code: 'SEC_RATE_GATE_UNAVAILABLE',
-        status: 503,
-      });
-    }
-    return localPermit(signal);
-  }
-  try {
-    return await sharedPermit(signal);
-  } catch (error) {
-    if (signal?.aborted) throw abortError(signal);
-    if (DEPLOYED_RUNTIME) {
+  async function reserve(signal) {
+    signal?.throwIfAborted();
+    const owner = uuid(), deadline = now() + MAX_GATE_WAIT_MS;
+    try {
+      while (true) {
+        const requestStarted = now(), remaining = deadline - requestStarted;
+        if (remaining <= 0) throw new SecRequestError('SEC request coordination is temporarily saturated.', { code: 'SEC_RATE_GATE_SATURATED', status: 503 });
+        const timeout = AbortSignal.timeout(Math.max(1, Math.ceil(remaining)));
+        const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+        const reply = await acquire(owner, { signal: requestSignal });
+        if (!validateReply(reply, owner)) throw new SecRequestError('Shared SEC request coordination returned invalid lease evidence.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });
+        if (reply.allowed) {
+          // Server timestamps are evidence, not the client's clock. Measuring
+          // from BEFORE the request conservatively includes all network delay.
+          const permit = { owner, validUntil: requestStarted + START_LOCK_TTL_MS - START_LOCK_SAFETY_MS };
+          if (now() >= permit.validUntil || requestSignal.aborted) {
+            await safeRelease(permit);
+            throw new SecRequestError('SEC dispatch permission arrived too late.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });
+          }
+          return permit;
+        }
+        const waitMs = Math.max(1, reply.waitMs), left = deadline - now();
+        if (reply.cooldown || left <= 0 || waitMs > left) throw new SecRequestError('SEC request coordination is temporarily saturated.', {
+          code: reply.cooldown ? 'SEC_UPSTREAM_COOLDOWN' : 'SEC_RATE_GATE_SATURATED', status: 503,
+        });
+        await wait(Math.min(waitMs, START_LOCK_POLL_MS, left), signal);
+      }
+    } catch (error) {
+      if (signal?.aborted) throw abortError(signal);
       if (error instanceof SecRequestError) throw error;
-      throw new SecRequestError('Shared SEC request coordination failed.', {
-        code: 'SEC_RATE_GATE_UNAVAILABLE',
-        status: 503,
-        cause: error,
-      });
+      throw new SecRequestError('Shared SEC request coordination failed.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });
     }
-    return localPermit(signal);
   }
+  async function publishCooldown(delayMs) {
+    if (delayMs <= 0) return false;
+    try { return await publish(Math.min(MAX_COOLDOWN_MS, Math.ceil(delayMs))) === true; }
+    catch { return false; }
+  }
+  async function paced(input, init, signal) {
+    const permit = await reserve(signal), startedAt = now();
+    let request;
+    try {
+      signal?.throwIfAborted(); init.signal?.throwIfAborted();
+      // No asynchronous work is permitted between this check and dispatch.
+      if (now() >= permit.validUntil) throw new SecRequestError('SEC dispatch permission expired before use.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });
+      request = transport(input, init);
+    } catch (error) { await safeRelease(permit); throw error; }
+    const outcome = Promise.resolve(request).then(response => ({ response }), error => ({ error }));
+    // Preserve early provider cooldown publication under the owned lease. The
+    // database also adds 143 ms at release: intentionally conservative spacing.
+    const hold = wait(Math.max(0, LOCAL_INTERVAL_MS - (now() - startedAt)));
+    const early = await Promise.race([outcome.then(settled => ({ settled })), hold.then(() => null)]);
+    const earlyResponse = early?.settled?.response;
+    const earlyCooldown = cooldownForResponse(earlyResponse) || 0;
+    await hold;
+    if (await safeRelease(permit, earlyCooldown) && earlyResponse && earlyCooldown > 0) cooldownPublished.add(earlyResponse);
+    const settled = await outcome;
+    if (settled.error) throw settled.error;
+    return settled.response;
+  }
+  return Object.freeze({ fetch: paced, publishCooldown });
 }
 
+const dispatchCoordinator = createSecDispatchCoordinator();
 async function publishCooldown(delayMs) {
-  if (!SHARED_GATE_ENABLED || delayMs <= 0) return false;
-  try {
-    const script = `
-      local current = redis.call('PTTL', KEYS[1])
-      local candidate = tonumber(ARGV[1])
-      if candidate > current then
-        redis.call('SET', KEYS[1], '1', 'PX', candidate)
-        return candidate
-      end
-      return current
-    `;
-    await gatePipeline([
-      ['EVAL', script, 1, 'upstream:sec:cooldown', Math.ceil(delayMs)],
-    ]);
-    return true;
-  } catch {
-    // The current request still backs off locally; a failed advisory write
-    // must not replace the more useful upstream error.
-    return false;
-  }
+  return DEPLOYED_RUNTIME ? dispatchCoordinator.publishCooldown(delayMs) : false;
 }
 
 function cooldownForResponse(response) {
@@ -256,81 +226,10 @@ async function publishResponseCooldown(response) {
   }
 }
 
-async function releaseSharedPermit(permit, startedAt, cooldownMs = 0) {
-  if (!permit?.token) return false;
-  // Do not let caller cancellation shorten the global spacing guarantee.
-  await delay(Math.max(0, LOCAL_INTERVAL_MS - (Date.now() - startedAt)));
-  const script = `
-    if redis.call('GET', KEYS[1]) == ARGV[1] then
-      local candidate = tonumber(ARGV[2])
-      local current = redis.call('PTTL', KEYS[2])
-      if candidate > 0 and candidate > current then
-        redis.call('SET', KEYS[2], '1', 'PX', candidate)
-      end
-      redis.call('DEL', KEYS[1])
-      return 1
-    end
-    return 0
-  `;
-  try {
-    const result = await gatePipeline([
-      [
-        'EVAL',
-        script,
-        2,
-        'upstream:sec:start-lock',
-        'upstream:sec:cooldown',
-        permit.token,
-        Math.max(0, Math.ceil(cooldownMs)),
-      ],
-    ]);
-    return Number(result?.[0]?.result) === 1;
-  } catch {
-    // The five-second lease is the safe fallback if an explicit release fails.
-    return false;
-  }
-}
-
 async function pacedFetch(input, init, signal) {
-  const permit = await reservePermit(signal);
-  const startedAt = Date.now();
-  let request;
-  try {
-    request = fetch(input, init);
-  } catch (error) {
-    await releaseSharedPermit(permit, startedAt);
-    throw error;
-  }
-  // Attach both handlers immediately so a fast rejection cannot become an
-  // unhandled promise while the start lock completes its hold interval.
-  const outcome = Promise.resolve(request).then(
-    (response) => ({ response }),
-    (error) => ({ error }),
-  );
-  // If response headers arrive inside the hold interval, publish a 403/429
-  // cooldown while the mutex is still owned. This prevents a delayed lock-
-  // release response from opening a race before the cooldown write.
-  let earlyResponse = null;
-  let earlyCooldown = 0;
-  if (permit?.token) {
-    const hold = delay(Math.max(0, LOCAL_INTERVAL_MS - (Date.now() - startedAt)));
-    const early = await Promise.race([
-      outcome.then((settled) => ({ settled })),
-      hold.then(() => null),
-    ]);
-    if (early?.settled?.response) {
-      earlyResponse = early.settled.response;
-      earlyCooldown = cooldownForResponse(earlyResponse) || 0;
-    }
-    await hold;
-  }
-  const released = await releaseSharedPermit(permit, startedAt, earlyCooldown);
-  if (released && earlyResponse && earlyCooldown > 0) {
-    cooldownPublished.add(earlyResponse);
-  }
-  const settled = await outcome;
-  if (settled.error) throw settled.error;
-  return settled.response;
+  if (DEPLOYED_RUNTIME) return dispatchCoordinator.fetch(input, init, signal);
+  await localPermit(signal);
+  return fetch(input, init);
 }
 
 function retryDelay(response, attempt) {
@@ -507,7 +406,8 @@ export async function secFetch(input, options = {}) {
 
 export function secClientStatus() {
   return {
-    sharedGate: SHARED_GATE_ENABLED ? 'configured' : 'disabled',
+    sharedGate: process.env.VERCEL_ENV === 'production' ? 'configured' : 'disabled',
+    coordinationBackend: DEPLOYED_RUNTIME ? 'supabase' : 'local',
     startsPerSecond: STARTS_PER_SECOND,
     userAgent: isValidSecUserAgent(process.env.SEC_USER_AGENT) ? 'configured' : 'invalid',
   };
