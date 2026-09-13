@@ -316,12 +316,13 @@ export async function GET(request) {
     }
 
     try {
+      const scanStartedAt = Date.now();
       const result = await scanTicker(ticker, entry.cik, depth, parsed.definitions, matchMode);
       results.push({ ...result, fromCache: false });
 
       if (!result.error && result.totalFilingsFailed === 0) {
         try {
-          await setCachedDisclosureScan(ticker, signature, result);
+          await setCachedDisclosureScan(ticker, signature, result, { startedAt: scanStartedAt });
         } catch (err) {
           console.warn('[disclosure-search] Cache write failed for', ticker, err.message);
         }

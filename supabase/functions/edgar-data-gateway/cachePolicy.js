@@ -24,6 +24,8 @@ const coverageTypes = new Set(['quant-coverage-v1', 'quant-coverage-v2:productio
 const filingDocument = re(`${CIK}:${ACCESSION}:[A-Z0-9_][A-Z0-9_.-]{0,254}`);
 const secPath = re(`/SUBMISSIONS/CIK(${CIK})(-SUBMISSIONS-[0-9]{1,10})?\\.JSON|/API/XBRL/COMPANYFACTS/CIK(${CIK})\\.JSON`);
 const submissionsFile = re(`CIK(${CIK})(-SUBMISSIONS-[0-9]{1,10})?\\.JSON`);
+const PILOT_TICKERS = Object.freeze({ '0000320193': 'AAPL', '0000789019': 'MSFT', '0000019617': 'JPM', '0000002098': 'ACU' });
+const researchServing = /^RESEARCH-(COMPARE|PORTFOLIO)-V1:(?:COMPARE-V2|ANALYSIS-V1\.4):CONTEXT-V3:CIK([0-9]{10}):(ANNUAL|QUARTER|YTD|TTM):LATEST$/;
 
 /** Preserve the legacy warm cache identity: type is exact, id is uppercase. */
 export function disposableCachePolicy(type, originalId) {
@@ -46,6 +48,11 @@ export function disposableCachePolicy(type, originalId) {
     const match = submissionsFile.exec(id);
     if (match) { family = match[2] ? 'document' : 'research'; sourceCik = match[2] ? null : match[1]; }
   } else if (type === 'analysis-research' && re(`ANALYSIS-V1\\.4:(?:CONTEXT-V3|XBRL-V1):${TICKER}:${BASIS}:(?:${DATE})?`).test(id)) family = 'research';
+  else if (type === 'research-serving-v1') {
+    const match = researchServing.exec(id);
+    if (match && Object.hasOwn(PILOT_TICKERS, match[2]) && (match[1] !== 'COMPARE' || match[3] !== 'YTD')
+      && (match[1] === 'COMPARE' ? id.includes(':COMPARE-V2:') : id.includes(':ANALYSIS-V1.4:'))) family = 'research';
+  }
   else if (type === 'compare-research' && re(`COMPARE-V2:(?:CONTEXT-V3|XBRL-V1):${TICKER}:(?:ANNUAL|QUARTER|TTM):(?:${DATE})?`).test(id)) family = 'research';
   else if (type === 'portfolio-company-v3-evidence-continuity' && re(`PORTFOLIO-COMPANY-V3-EVIDENCE-CONTINUITY:COMPARE-V2:CONTEXT-V3:ANALYSIS-V1\\.4:CONTEXT-V3:${CIK}:${BASIS}`).test(id)) family = 'research';
   else if (type === 'holders-v3' && ticker.test(id)) family = 'document';
@@ -54,6 +61,8 @@ export function disposableCachePolicy(type, originalId) {
   else if (['filings-reader-text-v2', 'disclosure-text-v1'].includes(type) && filingDocument.test(id)) family = 'document';
   else if (type === 'disclosure-history-v1' && re(`${CIK}:${DATE}`).test(id)) family = 'research';
   else if (type === 'disclosure-scan-v1' && /^[A-F0-9]{64}$/.test(id)) family = 'research';
+  else if (type === 'scanner-results-v2' && re(`${TICKER}:(?:SCAN|KW:[A-F0-9]{64})`).test(id)) family = 'research';
+  else if (type === 'scanner-invalidations-v1' && re(`${TICKER}:(?:SCAN|KW:[A-F0-9]{64})`).test(id)) family = 'reference';
   else if (type === 'filing-changes' && re(`FILING-DIFF-V3-CONTEXT-V2:${CIK}:${ACCESSION}:${ACCESSION}`).test(id)) family = 'document';
   else if (['edgar.company-exposure-sources.v1:production', 'edgar.company-cftc-context.v1:production'].includes(type) && re(`${TICKER}:(?:LATEST|${DATE})`).test(id)) family = 'research';
   else if (type === 'edgar.cftc-fcm.v1:production' && id === 'LATEST') family = 'history';
@@ -62,8 +71,51 @@ export function disposableCachePolicy(type, originalId) {
   else if (type === 'edgar.cftc-positioning.v1:production') {
     if (id === 'REFRESH-CHECKPOINT') family = 'checkpoint';
     else if (re(`MARKETS(?:-LAST-GOOD)?:(?:TFF|DISAGGREGATED):(?:LATEST|${DATE})`).test(id)) family = 'history';
-    else if (re(`RAW-HISTORY:(?:TFF|DISAGGREGATED):[A-Z0-9]{6}:${DATE}`).test(id)) family = 'history';
-    else if (re(`HISTORY(?:-LAST-GOOD)?:(?:TFF|DISAGGREGATED):[A-Z0-9]{6}:(?:DEALER|ASSET-MANAGER|LEVERAGED-FUNDS|OTHER-REPORTABLES|NON-REPORTABLES|PRODUCER-MERCHANT|SWAP-DEALERS|MANAGED-MONEY):${DATE}:(?:1Y|3Y|5Y)`).test(id)) family = 'history';
+    else if (re(`RAW-HISTORY:(?:TFF|DISAGGREGATED):[A-Z0-9+]{3,12}:${DATE}`).test(id)) family = 'history';
+    else if (re(`HISTORY(?:-LAST-GOOD)?:(?:TFF|DISAGGREGATED):[A-Z0-9+]{3,12}:(?:DEALER|ASSET-MANAGER|LEVERAGED-FUNDS|OTHER-REPORTABLES|NON-REPORTABLES|PRODUCER-MERCHANT|SWAP-DEALERS|MANAGED-MONEY):${DATE}:(?:1Y|3Y|5Y)`).test(id)) family = 'history';
   }
   return family ? Object.freeze({ family, type, id, maxTtlSeconds: DISPOSABLE_CACHE_TTLS[family], ...(sourceCik ? { sourceCik } : {}) }) : null;
+}
+
+/** Only existing canonical CFTC/pilot claims may fence corresponding mirrors.
+ * Canonical resource keys retain their case; disposable cache IDs are uppercase.
+ */
+export function disposableCacheFencePolicy(type, fenceId, originalId = null) {
+  if (typeof type !== 'string' || typeof fenceId !== 'string' || fenceId.length > 512) return null;
+  const id = originalId === null ? null : typeof originalId === 'string' ? originalId.toUpperCase() : '';
+  if (id !== null && !disposableCachePolicy(type, id)) return null;
+  let dataset = null;
+  if (type === 'edgar.cftc-positioning.v1:production') {
+    const market = /^markets:(tff|disaggregated):(latest|\d{4}-\d{2}-\d{2})$/.exec(fenceId);
+    const history = /^history:(tff|disaggregated):([A-Z0-9+]{3,12}):([a-z-]{3,32}):(\d{4}-\d{2}-\d{2}):(1y|3y|5y)$/.exec(fenceId);
+    const groups = { tff: ['dealer', 'asset-manager', 'leveraged-funds', 'other-reportables', 'non-reportables'],
+      disaggregated: ['producer-merchant', 'swap-dealers', 'managed-money', 'other-reportables', 'non-reportables'] };
+    if (!market && !(history && groups[history[1]].includes(history[3]))) return null;
+    if (id !== null && id !== fenceId.toUpperCase() && id !== fenceId.replace(/^(markets|history):/, '$1-last-good:').toUpperCase()) {
+      const raw = /^RAW-HISTORY:(TFF|DISAGGREGATED):([A-Z0-9+]{3,12}):(\d{4}-\d{2}-\d{2})$/.exec(id);
+      if (!raw || (market ? raw[1] !== market[1].toUpperCase() || market[2] !== 'latest' && raw[3] !== market[2]
+        : raw[1] !== history[1].toUpperCase() || raw[2] !== history[2] || raw[3] !== history[4])) return null;
+    }
+    dataset = 'cftc';
+  } else {
+    const sec = /^sec-documents-v1:CIK([0-9]{10}):(submissions|companyfacts)$/.exec(fenceId);
+    if (sec && Object.hasOwn(PILOT_TICKERS, sec[1])) {
+      const expected = type === 'submissions-cik' && sec[2] === 'submissions' ? sec[1]
+        : type === 'research-sec-v1' ? (sec[2] === 'submissions' ? `/SUBMISSIONS/CIK${sec[1]}.JSON` : `/API/XBRL/COMPANYFACTS/CIK${sec[1]}.JSON`) : null;
+      if (expected && (id === null || id === expected)) dataset = 'sec';
+    }
+    const financial = /^financial-analysis-v1:(analysis-v1\.4:context-v3):CIK([0-9]{10}):(annual|quarter|ytd|ttm):latest$/.exec(fenceId);
+    if (type === 'analysis-research' && financial && Object.hasOwn(PILOT_TICKERS, financial[2])
+      && (id === null || id === `${financial[1]}:${PILOT_TICKERS[financial[2]]}:${financial[3]}:`.toUpperCase())) dataset = 'financial';
+    if (type === 'research-serving-v1' && disposableCachePolicy(type, fenceId)
+      && (id === null || id === fenceId.toUpperCase()) && /^research-(compare|portfolio)-v1:/.test(fenceId)) dataset = 'financial';
+  }
+  return dataset ? Object.freeze({ dataset, key: fenceId, type, ...(id === null ? {} : { id }) }) : null;
+}
+
+/** Reserve requests have no cache destination yet; constrain canonical claims. */
+export function disposableCacheFenceResource(dataset, key) {
+  const types = dataset === 'cftc' ? ['edgar.cftc-positioning.v1:production']
+    : dataset === 'sec' ? ['research-sec-v1'] : dataset === 'financial' ? ['analysis-research', 'research-serving-v1'] : [];
+  return types.some(type => disposableCacheFencePolicy(type, key)?.dataset === dataset);
 }

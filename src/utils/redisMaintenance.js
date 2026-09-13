@@ -85,7 +85,7 @@ function safeProviderCode(body, status) {
   if (status === 401 || /WRONGPASS|NOAUTH|NOPERM/i.test(text)) return 'redis_auth';
   if (/\bOOM\b/i.test(text)) return 'redis_oom';
   if (/maxmemory|max.*memory|memory.*limit/i.test(text)) return 'redis_maxmemory';
-  if (/max.*(?:data|size)|storage.*limit|data.*size.*limit/i.test(text)) return 'redis_storage_limit';
+  if (/DB capacity quota exceeded|max.*(?:data|size)|storage.*limit|data.*size.*limit/i.test(text)) return 'redis_storage_limit';
   if (status === 429 || /quota|request.*limit|command.*limit/i.test(text)) return 'redis_quota';
   if (/unknown command|unsupported/i.test(text)) return 'redis_unsupported';
   return status >= 400 ? 'redis_http' : 'redis_response';

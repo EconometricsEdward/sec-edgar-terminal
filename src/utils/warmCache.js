@@ -1,8 +1,8 @@
 /**
  * Shared public-data cache. Reviewed data families use the bounded disposable
  * Supabase cache; Redis remains a read-only transition fallback for those data.
- * Coordination and generation-fenced rollback mirrors retain their separate
- * Redis paths below. A cache read never renews an old value's freshness.
+ * Coordination and off/shadow generation mirrors retain their separate Redis
+ * paths below. A cache read never renews an old value's freshness.
  *
  * This is what the pre-warmer writes to, and what the API routes read from
  * when the CDN cache misses. The layering is:
@@ -26,7 +26,9 @@
  * Supabase cache requests use the existing production workload identity.
  */
 
-import { disposableCacheEnabled, disposableCachePolicy, cacheGet, cacheGetMany, cachePut } from './disposableCache.js';
+import { disposableCacheEnabled, disposableCachePolicy, disposableCacheFencePolicy, cacheGet, cacheGetMany, cachePut,
+  cacheReserveGeneration, cachePutFenced } from './disposableCache.js';
+import { getDataStoreMode } from './dataStoreRegistry.js';
 
 const REST_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const REST_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -491,14 +493,14 @@ async function executeMigrationFence(keys, args) {
 }
 
 /** Reserve immediately after the durable claim, before upstream work begins. */
-export async function warmReserveGeneration(type, fenceId, generation, claim) {
+async function legacyReserveGeneration(type, fenceId, generation, claim) {
   const checked = migrationFenceClaim(type, fenceId, generation, claim);
   if (!checked) return false;
   return executeMigrationFence([key(`generation:${type}`, fenceId)], [checked.generation, checked.owner, checked.expires, 'reserve']);
 }
 
 /** Atomically reject older, expired, unreserved or differently owned writers. */
-export async function warmSetGeneration(type, id, value, ttlSeconds, claim) {
+async function legacySetGeneration(type, id, value, ttlSeconds, claim) {
   const checked = migrationFenceClaim(type, claim?.fenceId, claim?.generation, claim);
   if (!checked || typeof id !== 'string' || !migrationFenceTarget(type, claim.fenceId, id)
     || !Number.isSafeInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 32 * 86400) return false;
@@ -510,6 +512,51 @@ export async function warmSetGeneration(type, id, value, ttlSeconds, claim) {
   return executeMigrationFence([key(`generation:${type}`, claim.fenceId), key(type, id)],
     [checked.generation, checked.owner, checked.expires, 'write', body, String(ttlSeconds)]);
 }
+
+/** Canonical workload claims fence selected cache mirrors in Supabase. Redis
+ * remains the explicit off/shadow behavior; a failed Supabase write never falls
+ * back to Redis or an ordinary unfenced cache write.
+ */
+export function createWarmGenerationCache({
+  enabled = disposableCacheEnabled, mode = getDataStoreMode, policy = disposableCacheFencePolicy,
+  reserve = cacheReserveGeneration, put = cachePutFenced,
+  legacyReserve = legacyReserveGeneration, legacyWrite = legacySetGeneration,
+} = {}) {
+  const destination = (type, fenceId, id = null) => {
+    if (!enabled()) return null;
+    const target = policy(type, fenceId, id);
+    return target && mode(target.dataset) === 'supabase' ? target : null;
+  };
+  const canonicalClaim = (target, checked, claim) => Boolean(target && checked && claim
+    && claim.dataset === target.dataset && claim.key === target.key
+    && (claim.fenceId === undefined || claim.fenceId === target.key)
+    && String(claim.generation) === checked.generation);
+  return Object.freeze({
+    async reserve(type, fenceId, generation, claim) {
+      const checked = migrationFenceClaim(type, fenceId, generation, claim);
+      if (!checked) return false;
+      const target = destination(type, fenceId);
+      if (!target) return legacyReserve(type, fenceId, generation, claim);
+      if (!canonicalClaim(target, checked, claim)) return false;
+      try { return await reserve(type, fenceId, { ...claim, owner: checked.owner, generation: checked.generation }) === true; }
+      catch { return false; }
+    },
+    async set(type, id, value, ttlSeconds, claim) {
+      const checked = migrationFenceClaim(type, claim?.fenceId, claim?.generation, claim);
+      if (!checked || typeof id !== 'string' || !migrationFenceTarget(type, claim.fenceId, id)
+        || !Number.isSafeInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 32 * 86400) return false;
+      const target = destination(type, claim.fenceId, id);
+      if (!target) return legacyWrite(type, id, value, ttlSeconds, claim);
+      if (!canonicalClaim(target, checked, claim)) return false;
+      try { return (await put(type, id, value, ttlSeconds, { ...claim, owner: checked.owner, generation: checked.generation }))?.stored === true; }
+      catch { return false; }
+    },
+  });
+}
+
+const generationCache = createWarmGenerationCache();
+export const warmReserveGeneration = (...args) => generationCache.reserve(...args);
+export const warmSetGeneration = (...args) => generationCache.set(...args);
 
 /**
  * Read a bounded page of members from an audited raw Redis set. This is kept

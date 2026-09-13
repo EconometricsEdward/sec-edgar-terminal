@@ -1,6 +1,6 @@
 /** Narrow workload gateway. Supabase credentials never leave this function. */
 import { APPROVED_SEC_CIKS, SUPPORTING_SOURCE_CIKS } from './coverage.js';
-import { DISPOSABLE_CACHE_LIMITS as CACHE_LIMITS, disposableCachePolicy } from './cachePolicy.js';
+import { DISPOSABLE_CACHE_LIMITS as CACHE_LIMITS, disposableCachePolicy, disposableCacheFencePolicy, disposableCacheFenceResource } from './cachePolicy.js';
 export const TRUST = Object.freeze({
   issuer: 'https://oidc.vercel.com/econometricsedwards-projects',
   audience: 'https://vercel.com/econometricsedwards-projects',
@@ -71,6 +71,8 @@ export const RPC_PARAMETERS = Object.freeze({
   edgar_cache_put: ['p_family', 'p_type', 'p_id', 'p_gzip_base64', 'p_raw_sha256', 'p_gzip_sha256', 'p_raw_bytes', 'p_ttl_seconds', 'p_if_hash', 'p_expires_at'],
   edgar_cache_status: [],
   edgar_cache_maintenance: ['p_action', 'p_owner', 'p_state'],
+  edgar_reserve_cache_generation: ['p_dataset', 'p_key', 'p_claim'],
+  edgar_cache_put_fenced: ['p_dataset', 'p_key', 'p_claim', 'p_family', 'p_type', 'p_id', 'p_gzip_base64', 'p_raw_sha256', 'p_gzip_sha256', 'p_raw_bytes', 'p_ttl_seconds', 'p_if_hash', 'p_expires_at'],
   edgar_authorize_coverage_schedule: ['p_timestamp', 'p_nonce', 'p_signature'],
   edgar_claim_job: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_job_key'],
   edgar_claim_job_prefix: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_prefix'],
@@ -291,7 +293,12 @@ function validateRpc(name, params, nowMs) {
   if (name === 'edgar_coverage_operations' && has(params, 'p_hours') && !integer(params.p_hours, 1, 168)) reject('invalid_hours');
   if (name === 'edgar_release_sec_dispatch' && has(params, 'p_cooldown_ms') && !integer(params.p_cooldown_ms, 0, 300000)) reject('invalid_sec_cooldown');
   if (name === 'edgar_publish_sec_cooldown' && !integer(params.p_cooldown_ms, 1, 300000)) reject('invalid_sec_cooldown');
-  if (name === 'edgar_cache_get' || name === 'edgar_cache_put') {
+  if (name === 'edgar_reserve_cache_generation' && !disposableCacheFenceResource(params.p_dataset, params.p_key)) reject('cache_fence_denied', 403);
+  if (name === 'edgar_cache_put_fenced') {
+    const binding = disposableCacheFencePolicy(params.p_type, params.p_key, params.p_id);
+    if (!binding || binding.dataset !== params.p_dataset) reject('cache_fence_denied', 403);
+  }
+  if (['edgar_cache_get', 'edgar_cache_put', 'edgar_cache_put_fenced'].includes(name)) {
     const ids = name === 'edgar_cache_get' ? params.p_ids : [params.p_id];
     if (!Array.isArray(ids) || !integer(ids.length, 1, CACHE_LIMITS.batch)) reject('invalid_cache_batch');
     let policy;
@@ -299,7 +306,7 @@ function validateRpc(name, params, nowMs) {
       policy = disposableCachePolicy(params.p_type, id);
       if (!policy || policy.id !== id || policy.family !== params.p_family) reject('cache_resource_denied', 403);
     }
-    if (name === 'edgar_cache_put') {
+    if (name !== 'edgar_cache_get') {
       if (has(params, 'p_expires_at')) timestamp(params.p_expires_at, true);
       if (!HASH.test(params.p_raw_sha256 || '') || !HASH.test(params.p_gzip_sha256 || '')
         || !integer(params.p_raw_bytes, 1, CACHE_LIMITS.rawBytes) || !integer(params.p_ttl_seconds, 1, policy.maxTtlSeconds)
@@ -489,7 +496,7 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       // Evidence verification is the only larger operation. Ordinary reads keep
       // their original timeout, and injected shorter test/operator limits win.
       const secDispatchOperation = ['edgar_acquire_sec_dispatch', 'edgar_release_sec_dispatch', 'edgar_publish_sec_cooldown'].includes(rpcMatch?.[1]);
-      const cacheDataOperation = ['edgar_cache_get', 'edgar_cache_put'].includes(rpcMatch?.[1]);
+      const cacheDataOperation = ['edgar_cache_get', 'edgar_cache_put', 'edgar_cache_put_fenced'].includes(rpcMatch?.[1]);
       const operationTimeout = secDispatchOperation ? Math.min(timeoutMs, 1500)
         : rpcMatch?.[1] === 'edgar_stage_membership' && timeoutMs === 5500 ? 15000
           : cacheDataOperation && timeoutMs === 5500 ? 9000 : timeoutMs;
@@ -501,7 +508,7 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
         let parsed; try { parsed = JSON.parse(decoder.decode(bytes)); } catch { reject('invalid_json', 400); }
         const params = validateRpc(rpcMatch[1], parsed, now());
         if (rpcMatch[1] === 'edgar_stage_membership') await verifyMembershipEvidence(params, controller.signal);
-        if (rpcMatch[1] === 'edgar_cache_put') await verifyCachePayload(params, controller.signal);
+        if (['edgar_cache_put', 'edgar_cache_put_fenced'].includes(rpcMatch[1])) await verifyCachePayload(params, controller.signal);
         await admitMembership(params, { fetchImpl, secret, signal: controller.signal });
         body = JSON.stringify(params);
         targetPath = `/rest/v1/rpc/${rpcMatch[1]}`;

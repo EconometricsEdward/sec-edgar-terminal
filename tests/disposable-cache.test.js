@@ -75,6 +75,19 @@ test('policy excludes coordination, arbitrary URLs, unknown and preview namespac
   assert.equal(disposableCachePolicy('analysis-research', `${ANALYSIS_VERSION}:SMALL:annual:`).family, 'research');
 });
 
+test('CFTC cache identity supports actual variable-length and plus-sign contract codes', () => {
+  const namespace = 'edgar.cftc-positioning.v1:production';
+  for (const code of ['12460+', '20974+', '13874+', 'ABC', 'ABCDEFGHIJKL']) {
+    assert.equal(disposableCachePolicy(namespace, `raw-history:tff:${code}:2026-09-08`).family, 'history');
+    assert.equal(disposableCachePolicy(namespace, `history-last-good:tff:${code}:leveraged-funds:2026-09-08:1y`).family, 'history');
+  }
+  for (const code of ['12', 'A'.repeat(13), '12/345', '12:345', '12?345', '12%345']) {
+    assert.equal(disposableCachePolicy(namespace, `raw-history:tff:${code}:2026-09-08`), null);
+    assert.equal(disposableCachePolicy(namespace, `history:tff:${code}:dealer:2026-09-08:1y`), null);
+  }
+  assert.equal(disposableCachePolicy('edgar.cftc-positioning.v1:preview-abc', 'raw-history:tff:12460+:2026-09-08'), null);
+});
+
 test('production-only adapter uses fixed OIDC endpoint and never service credentials', async () => {
   for (const env of [{}, { VERCEL_ENV: 'preview' }, { VERCEL_ENV: 'production', EDGAR_DISPOSABLE_CACHE_MODE: 'off' }]) {
     assert.equal(disposableCacheEnabled(env), false);
