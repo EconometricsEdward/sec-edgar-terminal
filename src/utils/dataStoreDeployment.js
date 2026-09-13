@@ -1,7 +1,7 @@
 /** Reviewed deployment defaults. Explicit environment flags always override these. */
 export const DATA_STORE_DEPLOYMENT = Object.freeze({
-  stage: 'supabase',
-  secSchedule: true,
+  stage: 'off',
+  secSchedule: false,
   project: 'vvkihuduqqnxqahhbphs',
   gateway: 'edgar-data-gateway',
 });

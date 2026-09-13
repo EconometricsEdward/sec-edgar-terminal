@@ -6,7 +6,7 @@ import { isSecMigrationScheduleEnabled } from '../src/utils/dataStoreDeployment.
 test('production uses request-scoped workload identity without exporting a Supabase key', async () => {
   let issued = 0;
   const calls = [];
-  const store = createDataStore({ env: { VERCEL_ENV: 'production' },
+  const store = createDataStore({ env: { VERCEL_ENV: 'production', EDGAR_DATASTORE_SEC: 'shadow' },
     identityTokenImpl: async () => `short.lived.${++issued}`,
     fetchImpl: async (url, options) => {
       calls.push({ url, options });
