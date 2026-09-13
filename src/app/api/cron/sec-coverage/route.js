@@ -2,6 +2,7 @@ import { getDataStoreMode } from '../../../../utils/dataStore.js';
 import { isSecCoverageScheduleEnabled } from '../../../../utils/dataStoreDeployment.js';
 import { authorizeSecCoverageSchedule } from '../../../../utils/secCoverageScheduleAuth.js';
 import { runSecCoverageJob } from '../../../../utils/secCoverageJobs.js';
+import { maintainSecCoverageMembership } from '../../../../utils/secCoverageMaintenance.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -26,9 +27,13 @@ export async function GET(request) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 230_000);
   try {
+    const membership = await maintainSecCoverageMembership({ signal: controller.signal,
+      deadline: startedAt + 125_000 });
     const result = await runSecCoverageJob({ ...(shardText === null ? {} : { shard: Number(shardText) }),
-      maxCompanies: countText === null ? 6 : Number(countText), signal: controller.signal, deadline: startedAt + 225_000 });
+      dynamicMembership: true, maxCompanies: countText === null ? 6 : Number(countText),
+      signal: controller.signal, deadline: startedAt + 225_000 });
     return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', ...result,
+      membership,
       started_at: new Date(startedAt).toISOString(), duration_ms: Date.now() - startedAt }, { headers });
   } catch {
     return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', status: 'failed', code: 'SEC_COVERAGE_JOB_FAILED' }, { status: 503, headers });

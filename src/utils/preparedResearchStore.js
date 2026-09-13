@@ -4,7 +4,8 @@ import { ANALYSIS_VERSION, unpackAnalysisCompany } from './analysisResearch.js';
 import { COMPARE_VERSION } from './compareResearch.js';
 import { unpackPortfolioCompany } from './portfolioEvidenceCodec.js';
 import { warmGet } from './warmCache.js';
-import { preparedEnvelopeUsable, PreparedSecUnavailableError, isSecPreparedReadEnabled, getSecPreparedCompany, SEC_MIGRATION_COHORT } from './secDocumentStore.js';
+import { preparedEnvelopeUsable, PreparedSecUnavailableError, isSecPreparedReadEnabled, getActiveSecPreparedCompany, SEC_MIGRATION_COHORT } from './secDocumentStore.js';
+import { loadSecCoverageRegistry } from './secCoverageRegistry.js';
 
 export const RESEARCH_SERVING_NAMESPACE = 'research-serving-v1';
 export const RESEARCH_VIEW_BASES = Object.freeze({
@@ -34,9 +35,10 @@ function validView(envelope, kind, cik, basis) {
 /** Published projections only. A missing projection keeps the existing bounded path during backfill. */
 export async function readPreparedResearchView(kind, { ticker, cik, basis = 'annual', asOf = '', format = 'expanded' } = {}, {
   mode = getDataStoreMode('financial'), read = readDataset, hotRead = warmGet,
-  lookup = getSecPreparedCompany, enabled = isSecPreparedReadEnabled,
+  lookup = getActiveSecPreparedCompany, enabled = isSecPreparedReadEnabled, loadRegistry = loadSecCoverageRegistry,
 } = {}) {
   if (mode !== 'supabase' || asOf || !RESEARCH_VIEW_BASES[kind]?.includes(basis)) return null;
+  await loadRegistry();
   const entity = lookup(cik || ticker);
   if (!entity || !enabled(entity.cik)) return null;
   const key = researchPreparedKey(kind, entity.cik, basis);

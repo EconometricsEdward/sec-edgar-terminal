@@ -101,16 +101,29 @@ function claimArguments(claim) {
   if (!claim || !Number.isSafeInteger(Number(claim.generation)) || Number(claim.generation) < 1 || !/^[a-f0-9-]{36}$/i.test(claim.owner || '')) throw new DataStoreError('invalid_claim', 409);
   return { generation: claim.generation, owner: claim.owner };
 }
+function membershipClaimArguments(claim) {
+  const generation = claim?.generation;
+  if (!claim || typeof claim.owner !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(claim.owner)
+    || !(typeof generation === 'string' && /^[1-9]\d{0,18}$/.test(generation)
+      || Number.isSafeInteger(generation) && generation > 0)
+    || BigInt(generation) > 9223372036854775807n) throw new DataStoreError('invalid_claim', 409);
+  return { generation, owner: claim.owner };
+}
+function validCoverageCycle(cycle, shards) {
+  return typeof cycle === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cycle) && Number.isFinite(Date.parse(cycle)) && new Date(cycle).toISOString().slice(0, 10) === cycle
+    && (shards === null || Array.isArray(shards) && shards.length >= 1 && shards.length <= 32 && new Set(shards).size === shards.length
+      && shards.every(shard => Number.isInteger(shard) && shard >= 0 && shard <= 31));
+}
 
 /** Injection is for local fixture/rehearsal tests; production uses the exports below. */
 export function createDataStore({ env = process.env, fetchImpl = (...args) => fetch(...args), identityTokenImpl = getDataStoreIdentityToken } = {}) {
   const decodedObjects = new Map(), pendingObjects = new Map();
   let decodedInputBytes = 0;
   function enabled(dataset) { checkDataset(dataset); return getDataStoreMode(dataset, env) !== 'off'; }
-  async function request(path, { method = 'POST', body, raw = false, allowDuplicate = false } = {}) {
+  async function request(path, { method = 'POST', body, raw = false, allowDuplicate = false, timeoutMs = LIMITS.requestTimeoutMs } = {}) {
     const config = getConfiguration(env);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), LIMITS.requestTimeoutMs);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers = {};
       // New secret keys authenticate with apikey. Legacy JWT service keys also
@@ -149,7 +162,8 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   }
   async function rpc(name, params = {}) {
     const config = getConfiguration(env);
-    return request(`/rest/v1/rpc/${name}`, { body: { p_namespace: config.namespace, ...params } });
+    return request(`/rest/v1/rpc/${name}`, { body: { p_namespace: config.namespace, ...params },
+      ...(name === 'edgar_stage_membership' ? { timeoutMs: 20000 } : {}) });
   }
   function pathFor(dataset, type, hash) {
     const { namespace } = getConfiguration(env);
@@ -350,12 +364,42 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   }
   async function enqueueCoverageJobs({ cycle, version, shards = null }) {
     if (!enabled('sec')) return null;
-    if (typeof cycle !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(cycle) || !Number.isFinite(Date.parse(cycle)) || new Date(cycle).toISOString().slice(0,10) !== cycle
-      || typeof version !== 'string' || !/^[a-f0-9]{16}$/.test(version)
-      || shards !== null && (!Array.isArray(shards) || shards.length < 1 || shards.length > 32 || new Set(shards).size !== shards.length || shards.some(shard => !Number.isInteger(shard) || shard < 0 || shard > 31))) {
+    if (!validCoverageCycle(cycle, shards) || typeof version !== 'string' || !/^[a-f0-9]{16}$/.test(version)) {
       throw new DataStoreError('invalid_coverage_jobs', 422);
     }
     return rpc('edgar_enqueue_coverage_jobs', { p_cycle: cycle, p_version: version, p_shards: shards });
+  }
+  async function enqueueCurrentCoverageJobs({ cycle, shards = null }) {
+    if (!enabled('sec')) return null;
+    if (!validCoverageCycle(cycle, shards)) throw new DataStoreError('invalid_coverage_jobs', 422);
+    return rpc('edgar_enqueue_current_coverage_jobs', { p_cycle: cycle, p_shards: shards });
+  }
+  async function beginCoverageMembershipCheck() {
+    if (!enabled('sec') || !enabled('financial')) return null;
+    return rpc('edgar_begin_membership_check', { p_owner: randomUUID() });
+  }
+  async function stageCoverageMembership(claim, snapshot, evidence) {
+    if (!enabled('sec') || !enabled('financial')) return null;
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) || !evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new DataStoreError('invalid_membership', 422);
+    // Canonical validation rejects non-finite numbers before JSON serialization
+    // could silently replace them with null. Gateway and SQL validate semantics.
+    stableDataStoreJson(snapshot); stableDataStoreJson(evidence);
+    return rpc('edgar_stage_membership', { p_claim: membershipClaimArguments(claim), p_snapshot: snapshot, p_evidence: evidence });
+  }
+  async function activateCoverageMembership(claim, id) {
+    if (!enabled('sec') || !enabled('financial')) return null;
+    const match = typeof id === 'string' && /^sec-coverage-v1:ivv:(\d{4}-\d{2}-\d{2}):[a-f0-9]{16}$/.exec(id);
+    if (!match || !validCoverageCycle(match[1], null)) throw new DataStoreError('invalid_membership', 422);
+    return rpc('edgar_activate_membership', { p_claim: membershipClaimArguments(claim), p_id: id });
+  }
+  async function finishCoverageMembershipCheck(claim, error = null) {
+    if (!enabled('sec') || !enabled('financial')) return false;
+    const safeError = error === null ? null : typeof error === 'string' && /^[A-Za-z0-9_]{1,100}$/.test(error) ? error : 'MEMBERSHIP_CHECK_FAILED';
+    return rpc('edgar_finish_membership_check', { p_claim: membershipClaimArguments(claim), p_error: safeError });
+  }
+  async function readCoverageOperations({ hours = 24 } = {}) {
+    if (!Number.isInteger(hours) || hours < 1 || hours > 168) throw new DataStoreError('invalid_hours', 422);
+    return rpc('edgar_coverage_operations', { p_hours: hours });
   }
   async function verifyCoverageScheduleSignature({ timestamp, nonce, signature }) {
     if (!Number.isSafeInteger(timestamp) || timestamp < 1000000000 || timestamp > 9999999999
@@ -395,7 +439,11 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
       return envelope(await rpc('edgar_get_version', { p_dataset: dataset, p_key: key, p_identity: identityHash }));
     },
     readDatasetSource: (record) => record?._source ? readObject(record._source) : Promise.resolve(null),
-    enqueueDataStoreJob, enqueueCoverageJobs, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob,
+    enqueueDataStoreJob, enqueueCoverageJobs, enqueueCurrentCoverageJobs,
+    beginCoverageMembershipCheck, stageCoverageMembership, activateCoverageMembership, finishCoverageMembershipCheck,
+    readCoverageRegistry: () => rpc('edgar_coverage_registry'),
+    readCoverageOperations, captureCoverageOperations: () => rpc('edgar_capture_coverage_operations'),
+    verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob,
     checkpointDataStoreJob: async (claim, { checkpoint, leaseSeconds = 120 }) => {
       if (Buffer.byteLength(stableDataStoreJson(checkpoint)) > 16384) throw new DataStoreError('checkpoint_too_large', 413);
       const ok = await rpc('edgar_checkpoint_job', { p_claim: { ...claimArguments(claim), id: claim.id }, p_checkpoint: checkpoint, p_lease_seconds: leaseSeconds });
@@ -411,4 +459,4 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   };
 }
 const defaultStore = createDataStore();
-export const { readDataset, readDatasetManifests, readDatasetBatch, readDatasetVersion, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, readDatasetSource, enqueueDataStoreJob, enqueueCoverageJobs, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob, checkpointDataStoreJob, readDataStoreStatus, readDataStoreCoverageStatus, readFinancialMetrics, exportDataStoreManifests, dataStoreRetentionDryRun, dataStoreOrphanDryRun } = defaultStore;
+export const { readDataset, readDatasetManifests, readDatasetBatch, readDatasetVersion, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, readDatasetSource, enqueueDataStoreJob, enqueueCoverageJobs, enqueueCurrentCoverageJobs, readCoverageRegistry, beginCoverageMembershipCheck, stageCoverageMembership, activateCoverageMembership, finishCoverageMembershipCheck, readCoverageOperations, captureCoverageOperations, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob, checkpointDataStoreJob, readDataStoreStatus, readDataStoreCoverageStatus, readFinancialMetrics, exportDataStoreManifests, dataStoreRetentionDryRun, dataStoreOrphanDryRun } = defaultStore;

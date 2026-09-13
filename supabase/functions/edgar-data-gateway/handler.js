@@ -24,13 +24,20 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const HASH = /^[a-f0-9]{64}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const CIKS = `(?:${APPROVED_SEC_CIKS.join('|')})`;
-const SOURCE_CIKS = `(?:${[...APPROVED_SEC_CIKS, ...SUPPORTING_SOURCE_CIKS].join('|')})`;
-const SEC_KEY = new RegExp(`^sec-documents-v1:CIK${SOURCE_CIKS}:(?:submissions|companyfacts)$`);
-const FINANCIAL_KEY = new RegExp(`^financial-analysis-v1:analysis-v1\\.4:context-v3:CIK${CIKS}:(?:annual|quarter|ytd|ttm):latest$`);
-const COMPARE_KEY = new RegExp(`^research-compare-v1:compare-v2:context-v3:CIK${CIKS}:(?:annual|quarter|ttm):latest$`);
-const PORTFOLIO_KEY = new RegExp(`^research-portfolio-v1:analysis-v1\\.4:context-v3:CIK${CIKS}:(?:annual|quarter|ytd|ttm):latest$`);
-const COMPANY_KEY = new RegExp(`^research-company-v1:CIK${CIKS}$`);
+const APPROVED = new Set(APPROVED_SEC_CIKS);
+const SOURCE_ONLY = new Set(SUPPORTING_SOURCE_CIKS);
+const CIK = /^(?!0000000000)[0-9]{10}$/;
+// These patterns validate structure only. Unknown CIKs require a separate,
+// private membership admission lookup after all parameters and JWT are valid.
+const SEC_KEY = /^sec-documents-v1:CIK((?!0000000000)[0-9]{10}):(?:submissions|companyfacts)$/;
+const FINANCIAL_KEY = /^financial-analysis-v1:analysis-v1\.4:context-v3:CIK((?!0000000000)[0-9]{10}):(?:annual|quarter|ytd|ttm):latest$/;
+const COMPARE_KEY = /^research-compare-v1:compare-v2:context-v3:CIK((?!0000000000)[0-9]{10}):(?:annual|quarter|ttm):latest$/;
+const PORTFOLIO_KEY = /^research-portfolio-v1:analysis-v1\.4:context-v3:CIK((?!0000000000)[0-9]{10}):(?:annual|quarter|ytd|ttm):latest$/;
+const COMPANY_KEY = /^research-company-v1:CIK((?!0000000000)[0-9]{10})$/;
+const MEMBERSHIP_ID = /^sec-coverage-v1:ivv:(\d{4}-\d{2}-\d{2}):[a-f0-9]{16}$/;
+const MEMBERSHIP_SOURCE = 'https://www.ishares.com/us/products/239726/ishares-core-s-p-500-etf/latest-holdings.csv';
+const MEMBERSHIP_MAPPING_SOURCE = 'https://www.sec.gov/files/company_tickers.json';
+const MEMBERSHIP_SECTORS = new Set(['Information Technology', 'Financials', 'Health Care', 'Consumer Discretionary', 'Communication', 'Industrials', 'Consumer Staples', 'Energy', 'Utilities', 'Real Estate', 'Materials']);
 const GROUPS = Object.freeze({
   tff: ['dealer', 'asset-manager', 'leveraged-funds', 'other-reportables', 'non-reportables'],
   disaggregated: ['producer-merchant', 'swap-dealers', 'managed-money', 'other-reportables', 'non-reportables'],
@@ -48,6 +55,14 @@ export const RPC_PARAMETERS = Object.freeze({
   edgar_release_write: ['p_dataset', 'p_key', 'p_claim'],
   edgar_enqueue_job: ['p_dataset', 'p_key', 'p_job_key', 'p_checkpoint', 'p_max_attempts'],
   edgar_enqueue_coverage_jobs: ['p_cycle', 'p_version', 'p_shards'],
+  edgar_coverage_registry: [],
+  edgar_begin_membership_check: ['p_owner'],
+  edgar_stage_membership: ['p_claim', 'p_snapshot', 'p_evidence'],
+  edgar_activate_membership: ['p_claim', 'p_id'],
+  edgar_finish_membership_check: ['p_claim', 'p_error'],
+  edgar_enqueue_current_coverage_jobs: ['p_cycle', 'p_shards'],
+  edgar_coverage_operations: ['p_hours'],
+  edgar_capture_coverage_operations: [],
   edgar_authorize_coverage_schedule: ['p_timestamp', 'p_nonce', 'p_signature'],
   edgar_claim_job: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_job_key'],
   edgar_claim_job_prefix: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_prefix'],
@@ -86,7 +101,11 @@ function validKey(dataset, key, job = false) {
   if (typeof key !== 'string' || key.length > 512) return false;
   if (job) return (dataset === 'sec' && (key === 'financial-cohort-v1' || /^sec-coverage-v1:shard:(?:[0-2]\d|3[01])$/.test(key))) || (dataset === 'cftc' && key === 'refresh:tff-disaggregated');
   if (dataset === 'sec') return SEC_KEY.test(key);
-  if (dataset === 'financial') return FINANCIAL_KEY.test(key) || COMPARE_KEY.test(key) || PORTFOLIO_KEY.test(key) || COMPANY_KEY.test(key) || key === 'research-market-overview-v1:latest';
+  if (dataset === 'financial') {
+    if (key === 'research-market-overview-v1:latest') return true;
+    const match = FINANCIAL_KEY.exec(key) || COMPARE_KEY.exec(key) || PORTFOLIO_KEY.exec(key) || COMPANY_KEY.exec(key);
+    return !!match && !SOURCE_ONLY.has(match[1]);
+  }
   if (dataset !== 'cftc') return false;
   const parts = key.split(':');
   if (!has(GROUPS, parts[1])) return false;
@@ -158,7 +177,73 @@ function publishRecord(record, dataset) {
   }
   if (!Array.isArray(record.observations) || record.observations.length > 512 || (dataset !== 'financial' && record.observations.length)) reject('invalid_observations');
 }
-function validateRpc(name, params) {
+function membershipSnapshot(value, nowMs) {
+  knownKeys(value, ['version', 'id', 'label', 'reference', 'sourceSnapshot', 'mapping', 'membershipFingerprint', 'issuerCount', 'securityCount', 'issuers', 'securities', 'sourceExclusions']);
+  knownKeys(value.reference, ['fund', 'asOf', 'checkedAt', 'url', 'description']);
+  knownKeys(value.sourceSnapshot, ['path', 'sha256']);
+  knownKeys(value.mapping, ['sourceUrl', 'description', 'sourceSha256', 'checkedAt']);
+  if (value.version !== 'sec-coverage-v1' || value.reference.fund !== 'IVV' || value.reference.url !== MEMBERSHIP_SOURCE
+    || value.mapping.sourceUrl !== MEMBERSHIP_MAPPING_SOURCE || !HASH.test(value.membershipFingerprint || '')
+    || !HASH.test(value.sourceSnapshot.sha256 || '') || !date(value.reference.asOf)) reject('invalid_membership');
+  timestamp(value.reference.checkedAt);
+  if (has(value.mapping, 'sourceSha256') || has(value.mapping, 'checkedAt')) {
+    if (!HASH.test(value.mapping.sourceSha256 || '')) reject('invalid_membership');
+    timestamp(value.mapping.checkedAt);
+    if (Date.parse(value.mapping.checkedAt) > nowMs + 60000) reject('invalid_membership');
+  }
+  if (Date.parse(value.reference.asOf) > Date.parse(value.reference.checkedAt)
+    || Date.parse(value.reference.checkedAt) > nowMs + 60000
+    || value.id !== `sec-coverage-v1:ivv:${value.reference.asOf}:${value.membershipFingerprint.slice(0, 16)}`) reject('invalid_membership');
+  for (const [text, max] of [[value.label, 300], [value.reference.description, 2000], [value.mapping.description, 2000]]) {
+    if (text !== undefined && (typeof text !== 'string' || text.length > max)) reject('invalid_membership');
+  }
+  if (typeof value.sourceSnapshot.path !== 'string' || !value.sourceSnapshot.path.length || value.sourceSnapshot.path.length > 1024
+    || !Array.isArray(value.issuers) || !integer(value.issuers.length, 475, 525) || value.issuerCount !== value.issuers.length
+    || !Array.isArray(value.securities) || !integer(value.securities.length, 475, 550) || value.securityCount !== value.securities.length) reject('invalid_membership');
+  const ciks = new Set(), aliases = new Map();
+  const tickerPattern = /^[A-Z][A-Z0-9-]{0,9}$/;
+  for (const row of value.issuers) {
+    knownKeys(row, ['cik', 'ticker', 'name', 'sector', 'fund', 'aliases']);
+    if (typeof row.cik !== 'string' || !CIK.test(row.cik) || ciks.has(row.cik)
+      || typeof row.ticker !== 'string' || !tickerPattern.test(row.ticker) || row.fund !== 'IVV'
+      || typeof row.name !== 'string' || !row.name.trim() || row.name.length > 300 || !MEMBERSHIP_SECTORS.has(row.sector)
+      || !Array.isArray(row.aliases) || !integer(row.aliases.length, 1, 10) || !row.aliases.includes(row.ticker)) reject('invalid_membership');
+    ciks.add(row.cik);
+    for (const ticker of row.aliases) {
+      if (typeof ticker !== 'string' || !tickerPattern.test(ticker) || aliases.has(ticker)) reject('invalid_membership');
+      aliases.set(ticker, row.cik);
+    }
+  }
+  const observed = new Set();
+  for (const row of value.securities) {
+    knownKeys(row, ['ticker', 'cik']);
+    if (typeof row.ticker !== 'string' || aliases.get(row.ticker) !== row.cik || observed.has(row.ticker)) reject('invalid_membership');
+    observed.add(row.ticker);
+  }
+  if (aliases.size !== value.securities.length) reject('invalid_membership');
+  if (has(value, 'sourceExclusions')) {
+    if (!Array.isArray(value.sourceExclusions) || value.sourceExclusions.length > 25) reject('invalid_membership');
+    const excluded = new Set(); let total = 0;
+    for (const row of value.sourceExclusions) {
+      knownKeys(row, ['ticker', 'name', 'exchange', 'currency', 'marketValueUsd', 'weightPercent', 'reason']);
+      if (typeof row.ticker !== 'string' || !tickerPattern.test(row.ticker) || aliases.has(row.ticker) || excluded.has(row.ticker)
+        || typeof row.name !== 'string' || !row.name.trim() || row.name.length > 300
+        || typeof row.exchange !== 'string' || row.exchange.length > 100 || !/^NO MARKET(?:\s|$)/i.test(row.exchange)
+        || row.currency !== 'USD' || !Number.isFinite(row.marketValueUsd) || row.marketValueUsd < 0 || row.marketValueUsd > 100000
+        || row.weightPercent !== 0 || row.reason !== 'Unlisted residual holding, excluded from listed-security research coverage.') reject('invalid_membership');
+      total += row.marketValueUsd; excluded.add(row.ticker);
+    }
+    if (total > 100000) reject('invalid_membership');
+  }
+}
+function membershipEvidence(value, snapshot) {
+  knownKeys(value, ['rawSha256', 'rawBytes', 'gzipSha256', 'gzipBase64']);
+  if (!HASH.test(value.rawSha256 || '') || !HASH.test(value.gzipSha256 || '')
+    || value.rawSha256 !== snapshot.sourceSnapshot.sha256 || !integer(value.rawBytes, 1, 750000)
+    || typeof value.gzipBase64 !== 'string' || value.gzipBase64.length > 266668 || !value.gzipBase64.length
+    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.gzipBase64)) reject('invalid_membership_evidence');
+}
+function validateRpc(name, params, nowMs) {
   knownKeys(params, ['p_namespace', ...RPC_PARAMETERS[name]]);
   if (has(params, 'p_namespace') && params.p_namespace !== NAMESPACE) reject('namespace_denied', 403);
   if (RPC_PARAMETERS[name].includes('p_dataset')) {
@@ -185,11 +270,17 @@ function validateRpc(name, params) {
     if ((name === 'edgar_enqueue_job' || params.p_job_key != null) && !jobKey(params.p_dataset, params.p_job_key)) reject('invalid_job_key');
   }
   if (name === 'edgar_claim_job_prefix' && (params.p_dataset !== 'sec' || !['sec-financial-cohort-v1:', 'sec-coverage-v1:'].includes(params.p_prefix))) reject('invalid_job_prefix', 403);
-  if (name === 'edgar_enqueue_coverage_jobs') {
-    if (!date(params.p_cycle) || typeof params.p_version !== 'string' || !/^[a-f0-9]{16}$/.test(params.p_version)) reject('invalid_coverage_cycle');
+  if (name === 'edgar_enqueue_coverage_jobs' || name === 'edgar_enqueue_current_coverage_jobs') {
+    if (!date(params.p_cycle) || (name === 'edgar_enqueue_coverage_jobs' && (typeof params.p_version !== 'string' || !/^[a-f0-9]{16}$/.test(params.p_version)))) reject('invalid_coverage_cycle');
     if (params.p_shards != null && (!Array.isArray(params.p_shards) || params.p_shards.length < 1 || params.p_shards.length > 32
       || new Set(params.p_shards).size !== params.p_shards.length || params.p_shards.some(shard => !integer(shard,0,31)))) reject('invalid_coverage_shards');
   }
+  if (name === 'edgar_stage_membership') { membershipSnapshot(params.p_snapshot, nowMs); membershipEvidence(params.p_evidence, params.p_snapshot); }
+  if (name === 'edgar_activate_membership') {
+    const match = typeof params.p_id === 'string' && MEMBERSHIP_ID.exec(params.p_id);
+    if (!match || !date(match[1])) reject('invalid_membership');
+  }
+  if (name === 'edgar_coverage_operations' && has(params, 'p_hours') && !integer(params.p_hours, 1, 168)) reject('invalid_hours');
   if (name === 'edgar_authorize_coverage_schedule') {
     if (!integer(params.p_timestamp,1000000000,9999999999)
       || typeof params.p_nonce !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(params.p_nonce)
@@ -202,6 +293,7 @@ function validateRpc(name, params) {
   }
   if (name === 'edgar_finish_job' && !['done', 'retry', 'dead'].includes(params.p_status)) reject('invalid_job_status');
   if (has(params, 'p_error') && params.p_error !== null && (typeof params.p_error !== 'string' || !/^[A-Za-z0-9_:-]{1,100}$/.test(params.p_error))) reject();
+  if (name === 'edgar_finish_membership_check' && params.p_error != null && !/^[A-Za-z0-9_]{1,100}$/.test(params.p_error)) reject();
   if (has(params, 'p_delay_seconds') && !integer(params.p_delay_seconds, 0, 2147483647)) reject();
   if (name === 'edgar_yield_job' && has(params, 'p_delay_seconds') && !integer(params.p_delay_seconds, 1, 86400)) reject('invalid_yield_delay');
   if (name === 'edgar_read_financial_metrics' && !UUID.test(params.p_version || '')) reject();
@@ -269,6 +361,58 @@ async function boundedBytes(message, limit, signal) {
   }
 }
 
+async function sha256(bytes) {
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+async function verifyMembershipEvidence(params, signal) {
+  const evidence = params.p_evidence;
+  let compressed;
+  try { compressed = Uint8Array.from(atob(evidence.gzipBase64), value => value.charCodeAt(0)); } catch { reject('invalid_membership_evidence'); }
+  if (compressed.byteLength < 3 || compressed.byteLength > 200000 || compressed[0] !== 0x1f || compressed[1] !== 0x8b || compressed[2] !== 8
+    || await sha256(compressed) !== evidence.gzipSha256) reject('invalid_membership_evidence');
+  let raw;
+  try {
+    const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+    raw = await boundedBytes(new Response(stream), 750000, signal);
+  } catch (error) {
+    if (error instanceof GatewayError) throw error;
+    reject('invalid_membership_evidence');
+  }
+  if (raw.byteLength !== evidence.rawBytes || await sha256(raw) !== evidence.rawSha256) reject('invalid_membership_evidence');
+  const issuerIdentity = params.p_snapshot.issuers.map(row => [row.cik, row.ticker, row.name, row.sector, row.fund, [...row.aliases].sort()])
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  if (await sha256(encoder.encode(JSON.stringify(issuerIdentity))) !== params.p_snapshot.membershipFingerprint) reject('invalid_membership');
+}
+function serviceHeaders(secret) {
+  const headers = { apikey: secret, 'Accept-Encoding': 'identity' };
+  if (!secret.startsWith('sb_secret_')) headers.Authorization = `Bearer ${secret}`;
+  return headers;
+}
+async function admitMembership(params, { fetchImpl, secret, signal }) {
+  if (!['sec', 'financial'].includes(params.p_dataset)) return;
+  const keys = has(params, 'p_keys') ? params.p_keys : [params.p_key];
+  const unknown = new Set();
+  for (const key of keys) {
+    if (typeof key !== 'string') continue;
+    const match = SEC_KEY.exec(key) || FINANCIAL_KEY.exec(key) || COMPARE_KEY.exec(key) || PORTFOLIO_KEY.exec(key) || COMPANY_KEY.exec(key);
+    if (match && !APPROVED.has(match[1]) && !(params.p_dataset === 'sec' && SOURCE_ONLY.has(match[1]))) unknown.add(match[1]);
+  }
+  if (!unknown.size) return;
+  const upstream = await fetchImpl(`${PROJECT_URL}/rest/v1/rpc/edgar_membership_admission`, {
+    method: 'POST', headers: { ...serviceHeaders(secret), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_namespace: NAMESPACE, p_ciks: [...unknown] }), redirect: 'error', signal, cache: 'no-store',
+  });
+  if (!upstream.ok) { await upstream.body?.cancel().catch(() => {}); reject('membership_unavailable', 503); }
+  let admission;
+  try { admission = JSON.parse(decoder.decode(await boundedBytes(upstream, 8192, signal))); }
+  catch (error) { if (signal.aborted) throw error; reject('membership_unavailable', 503); }
+  if (!object(admission) || Object.keys(admission).some(key => !['allowedCiks', 'sourceOnlyCiks'].includes(key))
+    || !['allowedCiks', 'sourceOnlyCiks'].every(key => Array.isArray(admission[key]) && admission[key].length <= unknown.size
+      && new Set(admission[key]).size === admission[key].length && admission[key].every(cik => typeof cik === 'string' && CIK.test(cik) && unknown.has(cik)))) reject('membership_unavailable', 503);
+  const allowed = new Set(admission.allowedCiks), sourceOnly = new Set(admission.sourceOnlyCiks);
+  if ([...unknown].some(cik => params.p_dataset === 'sec' ? !allowed.has(cik) && !sourceOnly.has(cik) : !allowed.has(cik) || sourceOnly.has(cik))) reject('resource_denied', 403);
+}
+
 /** @param {string} _name @returns {string | undefined} */
 function defaultEnvironment(_name) { return undefined; }
 
@@ -290,15 +434,20 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       if (path === '/health' && request.method === 'GET') return json({ ok: true, auth: 'vercel-oidc', environment: 'production', namespace: NAMESPACE, operations: 'bounded-data-store' });
       if (request.headers.has('content-encoding') || request.headers.has('x-upsert')) reject('unsupported_headers', 400);
       const controller = new AbortController();
-      timer = setTimeout(() => controller.abort(), timeoutMs);
       let targetPath, body, raw = false;
       const rpcMatch = /^\/rest\/v1\/rpc\/([a-z_]+)$/.exec(path);
+      // Evidence verification is the only larger operation. Ordinary reads keep
+      // their original timeout, and injected shorter test/operator limits win.
+      timer = setTimeout(() => controller.abort(), rpcMatch?.[1] === 'edgar_stage_membership' && timeoutMs === 5500 ? 15000 : timeoutMs);
       if (rpcMatch && has(RPC_PARAMETERS, rpcMatch[1])) {
         if (request.method !== 'POST') reject('method_denied', 405);
         if (request.headers.get('content-type')?.split(';', 1)[0].trim() !== 'application/json') reject('content_type_denied', 415);
         const bytes = await boundedBytes(request, RPC_BYTES, controller.signal);
         let parsed; try { parsed = JSON.parse(decoder.decode(bytes)); } catch { reject('invalid_json', 400); }
-        body = JSON.stringify(validateRpc(rpcMatch[1], parsed));
+        const params = validateRpc(rpcMatch[1], parsed, now());
+        if (rpcMatch[1] === 'edgar_stage_membership') await verifyMembershipEvidence(params, controller.signal);
+        await admitMembership(params, { fetchImpl, secret, signal: controller.signal });
+        body = JSON.stringify(params);
         targetPath = `/rest/v1/rpc/${rpcMatch[1]}`;
       } else {
         const downloadPrefix = `/storage/v1/object/authenticated/${BUCKET}/`;
@@ -316,8 +465,7 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
         targetPath = `${download ? downloadPrefix : uploadPrefix}${reference}`;
         raw = download;
       }
-      const headers = { apikey: secret, 'Accept-Encoding': 'identity' };
-      if (!secret.startsWith('sb_secret_')) headers.Authorization = `Bearer ${secret}`;
+      const headers = serviceHeaders(secret);
       if (body !== undefined) headers['Content-Type'] = typeof body === 'string' ? 'application/json' : 'application/gzip';
       const upstream = await fetchImpl(`${PROJECT_URL}${targetPath}`, { method: request.method, headers, body, redirect: 'error', signal: controller.signal, cache: 'no-store' });
       if (!upstream.ok) {

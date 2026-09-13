@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { createLocalJWKSet, exportJWK, generateKeyPair, jwtVerify, SignJWT } from 'jose';
 import { assertProductionClaims, createGateway, createJwtVerifier, RPC_PARAMETERS, TRUST } from '../supabase/functions/edgar-data-gateway/handler.js';
 import { APPROVED_SEC_CIKS, COVERAGE_MEMBERSHIP_ID, SUPPORTING_SOURCE_CIKS } from '../supabase/functions/edgar-data-gateway/coverage.js';
-import { SEC_COVERAGE_COHORT, SEC_COVERAGE_MEMBERSHIP_ID } from '../src/utils/secCoverageUniverse.js';
+import { SEC_COVERAGE_COHORT, SEC_COVERAGE_MEMBERSHIP_ID, SEC_COVERAGE_UNIVERSE } from '../src/utils/secCoverageUniverse.js';
 
 const BASE = 'https://vvkihuduqqnxqahhbphs.supabase.co/functions/v1/edgar-data-gateway';
 const URL = 'https://vvkihuduqqnxqahhbphs.supabase.co';
@@ -19,7 +19,7 @@ const environment = { SUPABASE_URL: URL, SUPABASE_SECRET_KEYS: JSON.stringify({ 
 function setup(options = {}) {
   const calls = [];
   const handler = createGateway({ verifyToken: async () => claims(), now: () => NOW, env: name => environment[name],
-    fetchImpl: async (...args) => { calls.push(args); return Response.json({ ok: true }); }, ...options });
+    fetchImpl: async (...args) => { calls.push(args); return Response.json(args[0].endsWith('/edgar_membership_admission') ? { allowedCiks: [], sourceOnlyCiks: [] } : { ok: true }); }, ...options });
   return { calls, handler };
 }
 function request(path, body, options = {}) {
@@ -77,7 +77,7 @@ test('cryptographic verifier accepts valid RS256 and rejects forged, wrong audie
 });
 
 test('only the explicitly reviewed RPC names are supported and namespace is forced', async () => {
-  assert.equal(Object.keys(RPC_PARAMETERS).length, 21);
+  assert.equal(Object.keys(RPC_PARAMETERS).length, 29);
   const { handler, calls } = setup();
   assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: key }))).status, 200);
   assert.equal(calls[0][0], `${URL}/rest/v1/rpc/edgar_get_version`);
@@ -134,7 +134,7 @@ test('gateway permits only approved dataset/resource/cohort formats', async () =
     ['cftc', 'history:tff:098662:asset-manager:2026-09-08:5y'],
   ];
   for (const [dataset, resource] of valid) assert.equal((await handler(rpc('edgar_get_version', { p_dataset: dataset, p_key: resource }))).status, 200, resource);
-  const invalid = [ ['other', key], ['sec', 'sec-documents-v1:CIK9999999999:companyfacts'], ['sec', 'financial-cohort-v1'], ['cftc', 'markets:legacy:latest'], ['cftc', 'markets:tff:2026-02-31'], ['cftc', 'history:tff:098662:managed-money:2026-09-08:5y'], ['cftc', 'history:tff:098662:asset-manager:2026-09-08:all'] ];
+  const invalid = [ ['other', key], ['sec', 'sec-documents-v1:CIK0000000000:companyfacts'], ['sec', 'financial-cohort-v1'], ['cftc', 'markets:legacy:latest'], ['cftc', 'markets:tff:2026-02-31'], ['cftc', 'history:tff:098662:managed-money:2026-09-08:5y'], ['cftc', 'history:tff:098662:asset-manager:2026-09-08:all'] ];
   for (const [dataset, resource] of invalid) assert.equal((await handler(rpc('edgar_get_version', { p_dataset: dataset, p_key: resource }))).status, 403, resource);
   assert.equal(calls.length, valid.length);
 });
@@ -150,7 +150,8 @@ test('gateway eligibility exactly matches the dated 500 issuer universe plus ret
   }
   assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'financial', p_key: 'research-compare-v1:compare-v2:context-v3:CIK9999999999:annual:latest' }))).status, 403);
   assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'financial', p_key: 'research-portfolio-v1:analysis-v1.4:context-v3:CIK0000320193:annual:2020-01-01' }))).status, 403);
-  assert.equal(calls.length, 501);
+  assert.equal(calls.length, 502);
+  assert.equal(calls.at(-1)[0], `${URL}/rest/v1/rpc/edgar_membership_admission`);
 });
 
 test('historical XOM continuity access is confined to its two SEC source documents', async () => {
@@ -192,7 +193,7 @@ test('manifest and compact batch gates enforce every key, exact parameters, and 
   assert.equal((await handler(rpc('edgar_get_manifests', { p_dataset: 'sec', p_keys: Array(100).fill(key) }))).status, 200);
   assert.equal((await handler(rpc('edgar_get_compact_batch', { p_dataset: 'sec', p_keys: Array(5).fill(key) }))).status, 200);
   for (const [name, keys] of [['edgar_get_manifests', Array(101).fill(key)], ['edgar_get_compact_batch', Array(6).fill(key)],
-    ['edgar_get_manifests', [key, 'sec-documents-v1:CIK9999999999:companyfacts']], ['edgar_get_manifests', null]]) {
+    ['edgar_get_manifests', [key, 'sec-documents-v1:CIK0000000000:companyfacts']], ['edgar_get_manifests', null]]) {
     assert.equal((await handler(rpc(name, { p_dataset: 'sec', p_keys: keys }))).status, 403);
   }
   assert.equal((await handler(rpc('edgar_get_manifests', { p_dataset: 'sec', p_keys: [key], include_payload: true }))).status, 422);
@@ -325,4 +326,182 @@ test('slow request streams are cancelled within the gateway deadline', async () 
   const { handler, calls } = setup({ timeoutMs: 20 });
   const incoming = new Request(`${BASE}/rest/v1/rpc/edgar_store_status`, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }, body, duplex: 'half' });
   assert.equal((await handler(incoming)).status, 504); assert.equal(cancelled, true); assert.equal(calls.length, 0);
+});
+
+test('new membership admits exact SEC and financial families through one private lookup per request', async () => {
+  const cik = '0001999999';
+  const calls = [];
+  const { handler } = setup({ fetchImpl: async (...args) => {
+    calls.push(args);
+    return Response.json(args[0].endsWith('/edgar_membership_admission') ? { allowedCiks: [cik], sourceOnlyCiks: [] } : { ok: true });
+  } });
+  const resources = [
+    ['sec', `sec-documents-v1:CIK${cik}:companyfacts`],
+    ['financial', `financial-analysis-v1:analysis-v1.4:context-v3:CIK${cik}:ytd:latest`],
+    ['financial', `research-compare-v1:compare-v2:context-v3:CIK${cik}:annual:latest`],
+    ['financial', `research-portfolio-v1:analysis-v1.4:context-v3:CIK${cik}:ttm:latest`],
+    ['financial', `research-company-v1:CIK${cik}`],
+  ];
+  for (const [p_dataset, p_key] of resources) assert.equal((await handler(rpc('edgar_get_version', { p_dataset, p_key }))).status, 200);
+  assert.equal(calls.length, resources.length * 2);
+  for (let index = 0; index < calls.length; index += 2) {
+    assert.equal(calls[index][0], `${URL}/rest/v1/rpc/edgar_membership_admission`);
+    assert.deepEqual(JSON.parse(calls[index][1].body), { p_namespace: 'production', p_ciks: [cik] });
+    assert.equal(calls[index][1].headers.apikey, JSON.parse(environment.SUPABASE_SECRET_KEYS).default);
+    assert.equal(calls[index][1].redirect, 'error');
+    assert.equal(calls[index + 1][0], `${URL}/rest/v1/rpc/edgar_get_version`);
+  }
+  assert.equal((await handler(rpc('edgar_membership_admission', { p_ciks: [cik] }))).status, 403);
+  assert.equal(calls.length, resources.length * 2, 'internal admission cannot be invoked as a caller-selected RPC');
+});
+
+test('batch admission deduplicates unknown issuers and denies the entire batch if any is absent', async () => {
+  const first = '0001999999', second = '0001888888';
+  const calls = []; let admitted = [first, second];
+  const { handler } = setup({ fetchImpl: async (...args) => {
+    calls.push(args);
+    return Response.json(args[0].endsWith('/edgar_membership_admission') ? { allowedCiks: admitted, sourceOnlyCiks: [] } : { ok: true });
+  } });
+  const params = { p_dataset: 'sec', p_keys: [key, `sec-documents-v1:CIK${first}:companyfacts`, `sec-documents-v1:CIK${first}:submissions`, `sec-documents-v1:CIK${second}:submissions`] };
+  assert.equal((await handler(rpc('edgar_get_manifests', params))).status, 200);
+  assert.deepEqual(JSON.parse(calls[0][1].body).p_ciks, [first, second]);
+  assert.equal(calls.length, 2);
+  admitted = [first];
+  assert.equal((await handler(rpc('edgar_get_manifests', params))).status, 403);
+  assert.equal(calls.length, 3, 'recheck uses no process-wide positive cache and never forwards a partially admitted batch');
+  assert.equal((await handler(rpc('edgar_get_manifests', { ...params, p_keys: Array(101).fill(params.p_keys[1]) }))).status, 403);
+  assert.equal((await handler(rpc('edgar_get_manifests', { ...params, include_payload: true }))).status, 422);
+  assert.equal(calls.length, 3, 'all structural validation completes before admission');
+});
+
+test('dynamic source-only admission cannot grant research access; preview JWT cannot query admission', async () => {
+  const cik = '0001999999'; const calls = [];
+  const { handler } = setup({ fetchImpl: async (...args) => {
+    calls.push(args);
+    return Response.json(args[0].endsWith('/edgar_membership_admission') ? { allowedCiks: [], sourceOnlyCiks: [cik] } : { ok: true });
+  } });
+  assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: `sec-documents-v1:CIK${cik}:submissions` }))).status, 200);
+  assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'financial', p_key: `research-company-v1:CIK${cik}` }))).status, 403);
+  assert.equal(calls.length, 3);
+  const preview = setup({ verifyToken: async () => claims({ environment: 'preview' }) });
+  assert.equal((await preview.handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: `sec-documents-v1:CIK${cik}:submissions` }))).status, 401);
+  assert.equal(preview.calls.length, 0);
+});
+
+test('membership admission errors and unexpected response shapes fail closed without forwarding', async () => {
+  const cik = '0001999999';
+  const responses = [
+    () => Response.json({ allowedCiks: [cik] }),
+    () => Response.json({ allowedCiks: [cik, cik], sourceOnlyCiks: [] }),
+    () => Response.json({ allowedCiks: ['0001888888'], sourceOnlyCiks: [] }),
+    () => Response.json({ allowedCiks: [cik], sourceOnlyCiks: [], override: true }),
+    () => Response.json({ message: environment.SUPABASE_SECRET_KEYS }, { status: 500 }),
+    () => new Response('not JSON'),
+    () => { throw new Error(environment.SUPABASE_SECRET_KEYS); },
+  ];
+  for (const respond of responses) {
+    let count = 0;
+    const { handler } = setup({ fetchImpl: async () => { count += 1; return respond(); } });
+    const response = await handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: `sec-documents-v1:CIK${cik}:submissions` }));
+    assert.equal(response.status, 503); assert.equal(count, 1);
+    assert.doesNotMatch(await response.text(), /sb_secret|SUPABASE|this_value/);
+  }
+});
+
+function membershipStage(raw = Buffer.from('Ticker,Name\nAAPL,Apple Inc.\n')) {
+  const snapshot = structuredClone(SEC_COVERAGE_UNIVERSE);
+  const compressed = gzipSync(raw);
+  const rawSha256 = createHash('sha256').update(raw).digest('hex');
+  snapshot.sourceSnapshot = { path: `memberships/ivv/${snapshot.reference.asOf}/${rawSha256}.csv`, sha256: rawSha256 };
+  snapshot.mapping.sourceSha256 = 'b'.repeat(64);
+  snapshot.mapping.checkedAt = new Date(NOW).toISOString();
+  return { p_claim: { generation: '9007199254740993', owner: UUID }, p_snapshot: snapshot,
+    p_evidence: { rawSha256, rawBytes: raw.byteLength, gzipSha256: createHash('sha256').update(compressed).digest('hex'), gzipBase64: compressed.toString('base64') } };
+}
+
+test('membership staging forwards only validated snapshots and independently hash-verified raw evidence', async () => {
+  const { handler, calls } = setup();
+  const params = membershipStage();
+  assert.equal((await handler(rpc('edgar_stage_membership', params))).status, 200);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(JSON.parse(calls[0][1].body), { ...params, p_namespace: 'production' });
+  const changes = [
+    value => { value.p_evidence.rawBytes += 1; },
+    value => { value.p_evidence.rawSha256 = 'c'.repeat(64); value.p_snapshot.sourceSnapshot.sha256 = value.p_evidence.rawSha256; },
+    value => { value.p_evidence.gzipSha256 = 'c'.repeat(64); },
+    value => { value.p_evidence.gzipBase64 = 'not base64'; },
+    value => { value.p_snapshot.issuers[0].name = 'Changed after fingerprint'; },
+    value => { value.p_snapshot.issuers[0].aliases.push(value.p_snapshot.issuers[1].ticker); },
+    value => { value.p_snapshot.reference.url = 'https://attacker.example/holdings.csv'; },
+    value => { value.p_snapshot.mapping.sourceUrl = 'https://attacker.example/tickers.json'; },
+    value => { value.p_snapshot.mapping.sourceSha256 = 'invalid'; },
+    value => { value.p_snapshot.mapping.checkedAt = new Date(NOW + 120000).toISOString(); },
+    value => { value.p_snapshot.reference.checkedAt = new Date(NOW + 120000).toISOString(); },
+    value => { value.p_snapshot.reference.asOf = '2026-02-31'; },
+    value => { value.p_snapshot.issuers.pop(); },
+    value => { value.p_snapshot.unreviewed = true; },
+    value => { value.p_claim.expiresAt = new Date(NOW).toISOString(); },
+    value => { value.p_claim.generation = '9223372036854775808'; },
+  ];
+  for (const change of changes) {
+    const invalid = structuredClone(params); change(invalid);
+    assert.equal((await handler(rpc('edgar_stage_membership', invalid))).status, 422, change.toString());
+  }
+  assert.equal(calls.length, 1, 'invalid evidence and snapshots never reach SQL');
+});
+
+test('membership evidence rejects corrupt gzip and bounds decompressed bytes independently of declarations', async () => {
+  const { handler, calls } = setup();
+  const corrupt = membershipStage();
+  const bytes = Buffer.from([0x1f, 0x8b, 8, 0, 0, 0]);
+  corrupt.p_evidence.gzipBase64 = bytes.toString('base64');
+  corrupt.p_evidence.gzipSha256 = createHash('sha256').update(bytes).digest('hex');
+  assert.equal((await handler(rpc('edgar_stage_membership', corrupt))).status, 422);
+  const oversized = membershipStage(Buffer.alloc(750001, 65));
+  oversized.p_evidence.rawBytes = 750000;
+  assert.equal((await handler(rpc('edgar_stage_membership', oversized))).status, 413);
+  assert.equal(calls.length, 0);
+});
+
+test('residual exclusions are narrow, auditable and cannot silently remove a listed security', async () => {
+  const { handler, calls } = setup();
+  const params = membershipStage();
+  const exclusion = { ticker: 'RESID', name: 'Residual', exchange: 'NO MARKET (E.G. UNLISTED)', currency: 'USD', marketValueUsd: 28433.88, weightPercent: 0, reason: 'Unlisted residual holding, excluded from listed-security research coverage.' };
+  params.p_snapshot.sourceExclusions = [exclusion];
+  assert.equal((await handler(rpc('edgar_stage_membership', params))).status, 200);
+  for (const patch of [{ exchange: 'NASDAQ' }, { exchange: 'NO MARKETEVIL' }, { ticker: 'AAPL' }, { weightPercent: 0.01 }, { currency: 'EUR' }, { marketValueUsd: 100000.01 }, { marketValueUsd: -1 }, { reason: 'Ignore inconvenient data' }]) {
+    const value = structuredClone(params); Object.assign(value.p_snapshot.sourceExclusions[0], patch);
+    assert.equal((await handler(rpc('edgar_stage_membership', value))).status, 422, JSON.stringify(patch));
+  }
+  const aggregate = structuredClone(params);
+  aggregate.p_snapshot.sourceExclusions = [ { ...exclusion, marketValueUsd: 60000 }, { ...exclusion, ticker: 'RESIDB', marketValueUsd: 60000 } ];
+  assert.equal((await handler(rpc('edgar_stage_membership', aggregate))).status, 422);
+  assert.equal(calls.length, 1);
+});
+
+test('registry, membership fences and operations expose only exact bounded parameters', async () => {
+  const { handler, calls } = setup();
+  const claim = { owner: UUID, generation: '9007199254740993' };
+  const valid = [
+    ['edgar_coverage_registry', {}], ['edgar_begin_membership_check', { p_owner: UUID }],
+    ['edgar_activate_membership', { p_claim: claim, p_id: SEC_COVERAGE_MEMBERSHIP_ID }],
+    ['edgar_finish_membership_check', { p_claim: claim, p_error: 'MEMBERSHIP_SOURCE_UNAVAILABLE' }],
+    ['edgar_enqueue_current_coverage_jobs', { p_cycle: '2026-09-13', p_shards: [0, 31] }],
+    ['edgar_coverage_operations', {}], ['edgar_coverage_operations', { p_hours: 168 }],
+    ['edgar_capture_coverage_operations', {}],
+  ];
+  for (const [name, params] of valid) assert.equal((await handler(rpc(name, params))).status, 200, name);
+  const invalid = [
+    ['edgar_coverage_registry', { rawEvidence: true }], ['edgar_begin_membership_check', { p_owner: 'other' }],
+    ['edgar_activate_membership', { p_claim: claim, p_id: SEC_COVERAGE_MEMBERSHIP_ID.replace('2026-09-08', '2026-02-31') }],
+    ['edgar_finish_membership_check', { p_claim: claim, p_error: 'https://private.example?secret=value' }],
+    ['edgar_finish_membership_check', { p_claim: claim, p_error: 'MEMBERSHIP:ERROR-CODE' }],
+    ['edgar_enqueue_current_coverage_jobs', { p_cycle: '2026-09-13', p_shards: [0, 0] }],
+    ['edgar_enqueue_current_coverage_jobs', { p_cycle: '2026-09-13', p_version: 'a'.repeat(16) }],
+    ['edgar_coverage_operations', { p_hours: 169 }], ['edgar_coverage_operations', { p_hours: 0 }],
+    ['edgar_capture_coverage_operations', { target: 'other' }],
+  ];
+  for (const [name, params] of invalid) assert.equal((await handler(rpc(name, params))).status, 422, name);
+  assert.equal(calls.length, valid.length);
+  assert.ok(calls.every(([, options]) => JSON.parse(options.body).p_namespace === 'production'));
 });

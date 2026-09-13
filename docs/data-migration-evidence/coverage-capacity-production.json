@@ -1,0 +1,5219 @@
+{
+  "kind": "bounded-public-prepared-capacity-v1",
+  "startedAt": "2026-09-13T15:31:03.256Z",
+  "finishedAt": "2026-09-13T15:31:45.008Z",
+  "runtime": {
+    "node": "v24.19.0",
+    "environmentProxyConfigured": true
+  },
+  "origin": "https://secedgarterminal.com",
+  "limits": {
+    "origin": "https://secedgarterminal.com",
+    "requests": 108,
+    "milliseconds": 300000,
+    "requestsPerSecond": 5,
+    "routeRequestsPerMinute": 40,
+    "requestTimeoutMs": 20000,
+    "wireBytes": 104857600,
+    "decodedBytes": 104857600,
+    "responseWireBytes": 1048576,
+    "responseDecodedBytes": 4194304
+  },
+  "stages": [
+    {
+      "concurrencyLimit": 1,
+      "peakInFlight": 1,
+      "plannedRequests": 18,
+      "elapsedMs": 20519,
+      "requests": 18,
+      "successful": 18,
+      "errors": 0,
+      "latencyMs": {
+        "p50": 248.8,
+        "p95": 9450.2,
+        "p99": 9450.2
+      },
+      "wireBytes": 589441,
+      "decodedBytes": 9168609,
+      "httpStatuses": {
+        "200": 18
+      },
+      "vercelCache": {
+        "MISS": 10,
+        "HIT": 8
+      },
+      "preparedSources": {
+        "supabase-prepared": 9,
+        "warm-prepared": 21
+      },
+      "byRoute": {
+        "analysis": {
+          "requests": 6,
+          "successful": 6,
+          "errors": 0,
+          "latencyMs": {
+            "p50": 192.1,
+            "p95": 9450.2,
+            "p99": 9450.2
+          },
+          "wireBytes": 350675,
+          "decodedBytes": 5686434,
+          "httpStatuses": {
+            "200": 6
+          },
+          "vercelCache": {
+            "MISS": 2,
+            "HIT": 4
+          },
+          "preparedSources": {
+            "supabase-prepared": 3,
+            "warm-prepared": 3
+          }
+        },
+        "compare": {
+          "requests": 6,
+          "successful": 6,
+          "errors": 0,
+          "latencyMs": {
+            "p50": 144.2,
+            "p95": 1049.9,
+            "p99": 1049.9
+          },
+          "wireBytes": 86952,
+          "decodedBytes": 1471863,
+          "httpStatuses": {
+            "200": 6
+          },
+          "vercelCache": {
+            "MISS": 2,
+            "HIT": 4
+          },
+          "preparedSources": {
+            "warm-prepared": 3,
+            "supabase-prepared": 3
+          }
+        },
+        "portfolio": {
+          "requests": 6,
+          "successful": 6,
+          "errors": 0,
+          "latencyMs": {
+            "p50": 1316.5,
+            "p95": 1979.4,
+            "p99": 1979.4
+          },
+          "wireBytes": 151814,
+          "decodedBytes": 2010312,
+          "httpStatuses": {
+            "200": 6
+          },
+          "vercelCache": {
+            "MISS": 6
+          },
+          "preparedSources": {
+            "warm-prepared": 15,
+            "supabase-prepared": 3
+          }
+        }
+      }
+    },
+    {
+      "concurrencyLimit": 3,
+      "peakInFlight": 3,
+      "plannedRequests": 36,
+      "elapsedMs": 10358,
+      "requests": 36,
+      "successful": 36,
+      "errors": 0,
+      "latencyMs": {
+        "p50": 230.4,
+        "p95": 5462.7,
+        "p99": 5757.3
+      },
+      "wireBytes": 1179958,
+      "decodedBytes": 18337218,
+      "httpStatuses": {
+        "200": 36
+      },
+      "vercelCache": {
+        "HIT": 24,
+        "MISS": 12
+      },
+      "preparedSources": {
+        "supabase-prepared": 18,
+        "warm-prepared": 42
+      },
+      "byRoute": {
+        "analysis": {
+          "requests": 12,
+          "successful": 12,
+          "errors": 0,
+          "latencyMs": {
+            "p50": 162.7,
+            "p95": 433.3,
+            "p99": 433.3
+          },
+          "wireBytes": 702528,
+          "decodedBytes": 11372868,
+          "httpStatuses": {
+            "200": 12
+          },
+          "vercelCache": {
+            "HIT": 12
+          },
+          "preparedSources": {
+            "supabase-prepared": 6,
+            "warm-prepared": 6
+          }
+        },
+        "compare": {
+          "requests": 12,
+          "successful": 12,
+          "errors": 0,
+          "latencyMs": {
+            "p50": 160.3,
+            "p95": 5462.7,
+            "p99": 5462.7
+          },
+          "wireBytes": 173994,
+          "decodedBytes": 2943726,
+          "httpStatuses": {
+            "200": 12
+          },
+          "vercelCache": {
+            "HIT": 12
+          },
+          "preparedSources": {
+            "supabase-prepared": 6,
+            "warm-prepared": 6
+          }
+        },
+        "portfolio": {
+          "requests": 12,
+          "successful": 12,
+          "errors": 0,
+          "latencyMs": {
+            "p50": 668.4,
+            "p95": 5757.3,
+            "p99": 5757.3
+          },
+          "wireBytes": 303436,
+          "decodedBytes": 4020624,
+          "httpStatuses": {
+            "200": 12
+          },
+          "vercelCache": {
+            "MISS": 12
+          },
+          "preparedSources": {
+            "supabase-prepared": 6,
+            "warm-prepared": 30
+          }
+        }
+      }
+    },
+    {
+      "concurrencyLimit": 6,
+      "peakInFlight": 6,
+      "plannedRequests": 54,
+      "elapsedMs": 10868,
+      "requests": 54,
+      "successful": 54,
+      "errors": 0,
+      "latencyMs": {
+        "p50": 176.2,
+        "p95": 2938.2,
+        "p99": 5066.9
+      },
+      "wireBytes": 1769773,
+      "decodedBytes": 27505827,
+      "httpStatuses": {
+        "200": 54
+      },
+      "vercelCache": {
+        "HIT": 36,
+        "MISS": 18
+      },
+      "preparedSources": {
+        "warm-prepared": 63,
+        "supabase-prepared": 27
+      },
+      "byRoute": {
+        "analysis": {
+          "requests": 18,
+          "successful": 18,
+          "errors": 0,
+          "latencyMs": {
+            "p50": 167.8,
+            "p95": 5066.9,
+            "p99": 5066.9
+          },
+          "wireBytes": 1053792,
+          "decodedBytes": 17059302,
+          "httpStatuses": {
+            "200": 18
+          },
+          "vercelCache": {
+            "HIT": 18
+          },
+          "preparedSources": {
+            "supabase-prepared": 9,
+            "warm-prepared": 9
+          }
+        },
+        "compare": {
+          "requests": 18,
+          "successful": 18,
+          "errors": 0,
+          "latencyMs": {
+            "p50": 113.6,
+            "p95": 2938.2,
+            "p99": 2938.2
+          },
+          "wireBytes": 260991,
+          "decodedBytes": 4415589,
+          "httpStatuses": {
+            "200": 18
+          },
+          "vercelCache": {
+            "HIT": 18
+          },
+          "preparedSources": {
+            "warm-prepared": 9,
+            "supabase-prepared": 9
+          }
+        },
+        "portfolio": {
+          "requests": 18,
+          "successful": 18,
+          "errors": 0,
+          "latencyMs": {
+            "p50": 600.3,
+            "p95": 4520.2,
+            "p99": 4520.2
+          },
+          "wireBytes": 454990,
+          "decodedBytes": 6030936,
+          "httpStatuses": {
+            "200": 18
+          },
+          "vercelCache": {
+            "MISS": 18
+          },
+          "preparedSources": {
+            "warm-prepared": 45,
+            "supabase-prepared": 9
+          }
+        }
+      }
+    }
+  ],
+  "requests": 108,
+  "successful": 108,
+  "errors": 0,
+  "latencyMs": {
+    "p50": 220.5,
+    "p95": 2938.2,
+    "p99": 5757.3
+  },
+  "wireBytes": 3539172,
+  "decodedBytes": 55011654,
+  "httpStatuses": {
+    "200": 108
+  },
+  "vercelCache": {
+    "MISS": 40,
+    "HIT": 68
+  },
+  "preparedSources": {
+    "supabase-prepared": 54,
+    "warm-prepared": 126
+  },
+  "completed": true,
+  "stopReason": null,
+  "samples": [
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:03.257Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "0",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::nmpkp-1789313470302-5082934bc68e",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 9369.47139,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 9450.240559,
+      "wireBytes": 84937,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:12.708Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "0",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::jl84r-1789313472754-fb9c88617619",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 163.96644500000002,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 248.80809600000066,
+      "wireBytes": 7387,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:12.958Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::jl84r-1789313473003-e06bc75bcecd",
+        "x-ratelimit-remaining": "59"
+      },
+      "ttfbMs": 1769.8982859999996,
+      "decodedBytes": 320739,
+      "sha256": "88f16455d2bfbad58e3f90add67d5c1469a47f6156f66ac11685879ba7c86a52",
+      "elapsedMs": 1842.0195459999995,
+      "wireBytes": 24673,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:14.801Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "0",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::jl84r-1789313474846-7408423218a9",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 169.43665499999952,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 239.4717759999985,
+      "wireBytes": 31562,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:15.041Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "0",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::jl84r-1789313475086-5a07db152256",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 1013.0286610000003,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 1049.9345809999995,
+      "wireBytes": 21567,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:16.092Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::cb5gl-1789313476135-b05661a179b8",
+        "x-ratelimit-remaining": "58"
+      },
+      "ttfbMs": 1188.2739459999993,
+      "decodedBytes": 349365,
+      "sha256": "215dbff8cacdab3aadecef0ab697137ffbaab148e233930820e078b1029b71c0",
+      "elapsedMs": 1237.9269860000004,
+      "wireBytes": 25934,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:17.330Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "5",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::rp54v-1789313477373-e157a891c5ed",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 108.65012399999978,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 257.3845819999988,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:17.589Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "5",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::bclvt-1789313477635-6181d15e4637",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 99.43626100000074,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 104.31368099999963,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:17.694Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::9cjqk-1789313477737-d0ee8dc7e4e5",
+        "x-ratelimit-remaining": "57"
+      },
+      "ttfbMs": 371.41097700000137,
+      "decodedBytes": 320739,
+      "sha256": "808e59720752b8b14c40384d0900feded21bacec6a03c90689edb545e69cfabd",
+      "elapsedMs": 419.0818100000015,
+      "wireBytes": 24647,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:18.113Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "4",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::5rsld-1789313478158-5403f5180bcf",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 116.88049300000057,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 164.0628680000009,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:18.278Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "2",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::r6fqm-1789313478320-85c2b64e3d19",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 94.45645299999887,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 181.43583599999874,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:18.460Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::bclvt-1789313478501-4bf6fc2b60c6",
+        "x-ratelimit-remaining": "56"
+      },
+      "ttfbMs": 1287.46292,
+      "decodedBytes": 349365,
+      "sha256": "e53b7f852737d8b30eb432085afcfa5baa4973c874013cc82dad257bf3604873",
+      "elapsedMs": 1352.802990000002,
+      "wireBytes": 25934,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:19.813Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "7",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::gz5z6-1789313479857-95fc00c45158",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 129.81362300000183,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 187.88460300000224,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:20.001Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "8",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::kz8xr-1789313480044-446ff551ebbe",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 97.01086099999884,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 139.11986500000057,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:20.141Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::cb5gl-1789313480183-90c959ad9874",
+        "x-ratelimit-remaining": "55"
+      },
+      "ttfbMs": 1912.1268769999988,
+      "decodedBytes": 320739,
+      "sha256": "b6e93ea12bb359f4f8712d8eb0832428fa49172eed4537ad50acd5dd36a10fc6",
+      "elapsedMs": 1979.3782619999984,
+      "wireBytes": 24692,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:22.121Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "8",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::d4qrd-1789313482168-9f362cb35b07",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 99.30281600000308,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 192.14631900000313,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:22.314Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "6",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::p8mwt-1789313482357-394af2e9fd4d",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 100.21659,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 144.17292199999793,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 1,
+      "startedAt": "2026-09-13T15:31:22.458Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::ptrb5-1789313482500-a88a78829dd3",
+        "x-ratelimit-remaining": "54"
+      },
+      "ttfbMs": 1266.0496710000007,
+      "decodedBytes": 349365,
+      "sha256": "6449f3b4cd34886df1c15d5e9de9b6f57a5be1163bfc9d4ad45c0b379ce132a9",
+      "elapsedMs": 1316.510914999999,
+      "wireBytes": 25934,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:23.776Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "11",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::hflpj-1789313483831-98ca92d59a3a",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 134.21540300000197,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 191.97119400000156,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:23.969Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "10",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::n48mt-1789313484015-960288ae9fdd",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 117.57601599999907,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 162.67450699999972,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:24.131Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "8",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::g8pkd-1789313484175-30566bd99b1c",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 98.11867599999823,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 190.62231699999757,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:24.787Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::2zg4x-1789313484837-31425f0bec51",
+        "x-ratelimit-remaining": "53"
+      },
+      "ttfbMs": 700.2238670000006,
+      "decodedBytes": 349365,
+      "sha256": "d2bd3ab78d14623fbc665d74528fbd01d8d0e163ce60d4b424fa28ffd2bac3c5",
+      "elapsedMs": 981.290022000001,
+      "wireBytes": 25934,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:25.773Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "13",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::ptrb5-1789313485819-15f5742392d9",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 210.99614999999903,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 403.318722,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:26.205Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "14",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::fz8kl-1789313486290-955539594673",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 203.73315100000036,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 285.1344530000024,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:26.652Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::4jm76-1789313486739-e4006c2f127f",
+        "x-ratelimit-remaining": "52"
+      },
+      "ttfbMs": 545.342643,
+      "decodedBytes": 320739,
+      "sha256": "933b95368cbea65c8d86d63d707b70d60319f46ffe35de4ed66aabc4aa1e3b86",
+      "elapsedMs": 724.459426999998,
+      "wireBytes": 24655,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:27.460Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "13",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::gbnp4-1789313487525-0291fdad9b8f",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 245.09824800000206,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 433.2715250000001,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:27.905Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "12",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::cb5gl-1789313488023-a7df75015a15",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 205.95798400000058,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 220.47960700000112,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:28.127Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::dwqdv-1789313488180-4f8bba0efba8",
+        "x-ratelimit-remaining": "51"
+      },
+      "ttfbMs": 826.6523840000009,
+      "decodedBytes": 349365,
+      "sha256": "d68ce13748554fca9a58682f25fcf48228a48dde0cb121048be914fb1403a827",
+      "elapsedMs": 870.9509409999991,
+      "wireBytes": 25934,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:29.003Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "17",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::cgpx2-1789313489051-75121b3ccc06",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 182.28348900000128,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 230.3964760000017,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:23.777Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "17",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::jl84r-1789313489131-f51ec3f384b2",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 5459.1143550000015,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 5462.665864000002,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:23.777Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::drcmp-1789313488998-7fb2ede10e63",
+        "x-ratelimit-remaining": "59"
+      },
+      "ttfbMs": 5629.0993549999985,
+      "decodedBytes": 320739,
+      "sha256": "38a507a12704554eaa6914b4cec985d0cfb6bf95fb7d655d34b0e852066068fe",
+      "elapsedMs": 5757.282196,
+      "wireBytes": 24602,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:29.235Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "17",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::p8mwt-1789313489285-142e6c090d91",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 305.76499599999806,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 307.60762599999725,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:29.538Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "15",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::ddjmm-1789313489588-d62d18943e10",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 104.17612699999881,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 120.41670000000158,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:29.542Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "13",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::2qkdt-1789313489636-013afdbb2594",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 163.75264799999786,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 171.51075599999967,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:29.240Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::h4slb-1789313489298-395eb04dccba",
+        "x-ratelimit-remaining": "50"
+      },
+      "ttfbMs": 474.828207999999,
+      "decodedBytes": 320739,
+      "sha256": "b5e9ed0a52438cac0299db2035f2820090eeffd534f332b808a7a940869115eb",
+      "elapsedMs": 519.4645569999993,
+      "wireBytes": 24602,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:30.235Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "18",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::hflpj-1789313490280-5dbe7134ae07",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 109.204816999998,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 149.0987239999995,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:30.241Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "18",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::kfjp9-1789313490293-116e707e7eac",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 120.326216999998,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 144.82720300000074,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:30.542Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "16",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::5vq6f-1789313490592-785169f2ed8e",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 102.24539999999979,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 117.30011699999886,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:30.028Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::5xlj6-1789313490090-eb32ad83f491",
+        "x-ratelimit-remaining": "49"
+      },
+      "ttfbMs": 816.1877459999996,
+      "decodedBytes": 349365,
+      "sha256": "8b5165543889338865009c2a3fbdb31b839c553c058d01caf851264b8afa614b",
+      "elapsedMs": 844.1727939999982,
+      "wireBytes": 25935,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:30.539Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::v5j8l-1789313490587-18b912a16a7f",
+        "x-ratelimit-remaining": "58"
+      },
+      "ttfbMs": 336.50698999999804,
+      "decodedBytes": 320739,
+      "sha256": "c02490f900530a790d9a10f536d08f7fc2ddae9171426b6dc396c73343d56a47",
+      "elapsedMs": 348.7391439999992,
+      "wireBytes": 24655,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:31.028Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "15",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::gdlf5-1789313491079-d7003d62c2e0",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 126.5686769999993,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 131.13897899999938,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:31.241Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "19",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::bvvqj-1789313491294-8ce958529165",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 124.70478500000172,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 191.39220399999977,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:31.540Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "19",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::7nshg-1789313491636-75624b865fe6",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 146.0158659999979,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 150.93329699999958,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:31.236Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::wk7p5-1789313491281-09dff7784a19",
+        "x-ratelimit-remaining": "57"
+      },
+      "ttfbMs": 709.9999649999991,
+      "decodedBytes": 349365,
+      "sha256": "ea0c16fe18c33488caa61211b10e19b1654228f2704a307848dccc998a8daf61",
+      "elapsedMs": 756.8737089999995,
+      "wireBytes": 25984,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:31.542Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::kc6wz-1789313491642-fb2a25de7acf",
+        "x-ratelimit-remaining": "48"
+      },
+      "ttfbMs": 452.7122049999998,
+      "decodedBytes": 320739,
+      "sha256": "3ea63863f4be979e93ab1c2a1e3f38444335f42141b0ccc82feb8715c2206852",
+      "elapsedMs": 467.1851349999997,
+      "wireBytes": 24663,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:32.028Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "18",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::zvcvz-1789313492071-20da8da6bb0d",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 96.4669270000013,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 142.5500009999996,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:32.236Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "16",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::n48mt-1789313492281-0e6d8d28762c",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 119.45282399999996,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 122.03928799999994,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:32.542Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "20",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::mpqcs-1789313492597-84d9141681ea",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 104.5049250000011,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 107.83624299999792,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:32.540Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "20",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::n48mt-1789313492586-14be9f20e3ee",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 231.46748800000205,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 247.22250300000087,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:32.241Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::x8k8f-1789313492292-bda6ddfd29ef",
+        "x-ratelimit-remaining": "56"
+      },
+      "ttfbMs": 635.2256049999996,
+      "decodedBytes": 349365,
+      "sha256": "e090143e9c148724b78f3ba37a1e04d08c654d92f9bbc576acf38ba4b674f774",
+      "elapsedMs": 668.3828690000009,
+      "wireBytes": 25937,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:33.237Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "19",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::sjwsg-1789313493289-497631e2abf3",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 109.60026199999993,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 116.68720699999903,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:33.028Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::trwnh-1789313493073-d2aaf420b536",
+        "x-ratelimit-remaining": "55"
+      },
+      "ttfbMs": 318.47657000000254,
+      "decodedBytes": 320739,
+      "sha256": "8628a3bfdf3eaf0079d5f4060be86c134b3b648d9aec4b8ab502848a001d346c",
+      "elapsedMs": 336.29705300000205,
+      "wireBytes": 24602,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:33.241Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "17",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::sjwsg-1789313493302-ffce7b36074b",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 115.98889300000155,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 160.25512399999934,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 3,
+      "startedAt": "2026-09-13T15:31:33.540Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::ptrb5-1789313493593-6191804a1a2c",
+        "x-ratelimit-remaining": "47"
+      },
+      "ttfbMs": 563.6917509999985,
+      "decodedBytes": 349365,
+      "sha256": "c3019e9d669c4a8baffe00e54af77df862f51458481e326fb34ee76f549dc340",
+      "elapsedMs": 593.3668010000001,
+      "wireBytes": 25933,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:34.135Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "22",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::smn8x-1789313494194-17480c6d5d3a",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 110.11267200000293,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 112.4757230000032,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:34.135Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "22",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::p8mwt-1789313494192-b6030ef34863",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 117.24484500000108,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 223.61054199999853,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:34.238Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::n48mt-1789313494281-aacfa576b071",
+        "x-ratelimit-remaining": "46"
+      },
+      "ttfbMs": 375.0524830000031,
+      "decodedBytes": 320739,
+      "sha256": "2c7da1031f3c440f5b0f165d38c43ab45f136fdcf576d1eba0b95f31f974bcb4",
+      "elapsedMs": 395.41840800000136,
+      "wireBytes": 24655,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:34.540Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "18",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::n48mt-1789313494587-7938442ccc61",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 96.31326199999967,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 146.4389630000005,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:35.144Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "23",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::fb8pn-1789313495235-d47593adab32",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 156.06865499999913,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 193.97300299999915,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:35.238Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "23",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::j6lh7-1789313495287-7679f707a2a1",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 149.41578799999843,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 153.20054900000105,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:35.540Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "21",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::trwnh-1789313495631-5b0b34321252",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 154.18559900000037,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 160.01947199999995,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:35.136Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::qwvqp-1789313495189-f0888ca335be",
+        "x-ratelimit-remaining": "45"
+      },
+      "ttfbMs": 627.3741030000019,
+      "decodedBytes": 349365,
+      "sha256": "8d2becea2cfb1e080f485dd680b35dad50a93bd18022f595dc5fe13ec8f4bdf4",
+      "elapsedMs": 656.5172010000024,
+      "wireBytes": 25935,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:36.136Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "20",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::wzj4k-1789313496184-9b5253374cea",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 112.632157,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 119.79634899999655,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:36.238Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "24",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::m5bjw-1789313496286-a47507980771",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 111.11428999999771,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 138.75934699999925,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:36.145Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::5phsc-1789313496236-3c9150ccf3b7",
+        "x-ratelimit-remaining": "54"
+      },
+      "ttfbMs": 718.9806390000012,
+      "decodedBytes": 349365,
+      "sha256": "b2d47c2407fe8f8b3b94f3c4655ae9895fdbe1f4e0d4d214d0e3150762f4024c",
+      "elapsedMs": 748.3402659999992,
+      "wireBytes": 25935,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:36.541Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::tkbbk-1789313496583-51f75ba77f3b",
+        "x-ratelimit-remaining": "44"
+      },
+      "ttfbMs": 327.6360149999964,
+      "decodedBytes": 320739,
+      "sha256": "9ba176f5067702b8d53e9c8097681695eda6891ea24fca93fb23637584e284c3",
+      "elapsedMs": 354.9929789999951,
+      "wireBytes": 24602,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:37.136Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "23",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::cb5gl-1789313497182-645d99f8a46b",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 95.97230300000228,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 106.80940700000065,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:37.145Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "21",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::jvq8l-1789313497192-41b48e8153aa",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 112.85487499999726,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 116.93838699999469,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:37.243Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "25",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::d4qrd-1789313497290-de4a9e507ebb",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 117.11304999999993,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 231.3881240000046,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:37.541Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "25",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::tdgg2-1789313497587-56466e6333f7",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 95.83083599999372,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 99.40036200000031,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:37.238Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::6m9sr-1789313497289-33eaf4f44281",
+        "x-ratelimit-remaining": "43"
+      },
+      "ttfbMs": 575.7814910000016,
+      "decodedBytes": 349365,
+      "sha256": "ea721bba6a476e1b923b6e9eb13dfac56c29df50c14eb87a132aefdd4e84ec98",
+      "elapsedMs": 600.3207689999981,
+      "wireBytes": 25936,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:38.145Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "24",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::s74wq-1789313498189-31d29b63b1b5",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 104.0130180000051,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 153.016896000001,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:38.239Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "22",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::nk9mt-1789313498288-4832cf01cb3a",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 109.35950700000103,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 113.87787499999831,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:38.136Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::4jm76-1789313498182-9d927d74bb26",
+        "x-ratelimit-remaining": "42"
+      },
+      "ttfbMs": 393.4782359999954,
+      "decodedBytes": 320739,
+      "sha256": "1934a022ae69f54f08ed0ae33c3596d8e446b302fb58ab32ec5b957a4c7ccfb7",
+      "elapsedMs": 421.2540099999969,
+      "wireBytes": 24602,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:38.541Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "26",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::gdlf5-1789313498588-e0efae05988f",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 356.5700310000029,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 444.86174400000164,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:36.241Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "27",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::7w4rm-1789313499083-d0ee1bae16bd",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 2894.624772000003,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 2938.1757199999993,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:39.136Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "27",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::pmxpt-1789313499190-a86315d17551",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 104.67151000000013,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 107.54861099999835,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:34.241Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "25",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::jmfxn-1789313499203-39f16c72b897",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 5019.173406999998,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 5066.944593999997,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:39.240Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "25",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::x78rt-1789313499287-732fbc62ae65",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 100.10153600000194,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 113.08135200000106,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:39.299Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "23",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::m5bjw-1789313499346-60acc49b5860",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 97.51351199999772,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 147.0350499999986,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:39.145Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::p66kd-1789313499199-fa58e68fc051",
+        "x-ratelimit-remaining": "40"
+      },
+      "ttfbMs": 345.91352899999765,
+      "decodedBytes": 320739,
+      "sha256": "a739199e42a3e1fab82596f70bba747f63efd8bb9cf385361e1f3124c57d2a14",
+      "elapsedMs": 364.86067999999796,
+      "wireBytes": 24600,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:35.241Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::4mjwc-1789313499038-486a97b82a51",
+        "x-ratelimit-remaining": "39"
+      },
+      "ttfbMs": 4476.387695999998,
+      "decodedBytes": 320739,
+      "sha256": "9db640a5716d1554c10f9bce01b148a4c3bb5daee0033ee155f28159f8d49f1a",
+      "elapsedMs": 4520.239151000002,
+      "wireBytes": 24655,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:39.541Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::cb5gl-1789313499586-b48aee43a55f",
+        "x-ratelimit-remaining": "38"
+      },
+      "ttfbMs": 592.6889249999949,
+      "decodedBytes": 349365,
+      "sha256": "7261af7c8ad3096bc6544d6684a110955c6b3ae75a348d26e767893a9fe1b846",
+      "elapsedMs": 648.4565479999947,
+      "wireBytes": 25935,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:40.136Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "28",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::cb5gl-1789313500180-012d2d2961ab",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 107.45788000000175,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 143.65673500000412,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:40.165Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "28",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::rhlmh-1789313500220-449cad523871",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 112.56102200000169,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 113.57842700000037,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:38.298Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::vmxzx-1789313498340-53732b88bed4",
+        "x-ratelimit-remaining": "41"
+      },
+      "ttfbMs": 2066.4238699999987,
+      "decodedBytes": 349365,
+      "sha256": "68c6052d706b2eee10e1b97080a0e3c6464b7831007cda234b44f1193a415d5d",
+      "elapsedMs": 2111.9868050000005,
+      "wireBytes": 25935,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:40.299Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "26",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::fclr2-1789313500366-74e4644905d2",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 121.88597899999877,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 176.22208300000057,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:40.241Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::k7nvw-1789313500288-ee73e2308f07",
+        "x-ratelimit-remaining": "37"
+      },
+      "ttfbMs": 326.60118599999987,
+      "decodedBytes": 320739,
+      "sha256": "ac09b664c6ad0f1b3ab1035ad51d2f79296534d5d0c57d2190a1795f6244b91c",
+      "elapsedMs": 390.0562209999989,
+      "wireBytes": 24655,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:40.541Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "24",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::x78rt-1789313500588-99b5f1280802",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 98.88155700000061,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 150.45237700000143,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:41.242Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "29",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::cpcx8-1789313501286-87ec9dfb4917",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 99.3467909999963,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 101.9957679999934,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:41.166Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "29",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::4jm76-1789313501236-3f3d3091bec6",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 141.62367699999595,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 199.41234099999565,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:41.300Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::25kwh-1789313501343-72441347595a",
+        "x-ratelimit-remaining": "36"
+      },
+      "ttfbMs": 303.5684309999997,
+      "decodedBytes": 320739,
+      "sha256": "e6c3b79da129f667dfa98f0551ffe24be16f2f0c764ebde23babf26812af388e",
+      "elapsedMs": 327.89143299999705,
+      "wireBytes": 24602,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:41.541Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "27",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::k7nvw-1789313501600-a29000ec52df",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 133.58640799999557,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 186.21890300000086,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:41.137Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::nk9mt-1789313501184-c005fcde1632",
+        "x-ratelimit-remaining": "53"
+      },
+      "ttfbMs": 643.5476609999969,
+      "decodedBytes": 349365,
+      "sha256": "3676ef9afdf5d8767ac2f978ecaeb2fd56bc4b924c1578eb5347359edcfad72c",
+      "elapsedMs": 668.7860169999985,
+      "wireBytes": 25934,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:42.137Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "26",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::wzj4k-1789313502183-06f556b2e175",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 105.33495400000538,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 111.82630900000368,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:42.242Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "30",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::4jm76-1789313502291-ad1eb99a37f7",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 127.35980800000107,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 149.65973900000245,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:42.300Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "30",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::6btg9-1789313502347-a88d83c25fdf",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 95.16129499999806,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 99.15728999999556,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:42.167Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::2vgn5-1789313502213-77a81de94e05",
+        "x-ratelimit-remaining": "35"
+      },
+      "ttfbMs": 751.431273000002,
+      "decodedBytes": 349365,
+      "sha256": "0db81f6c252cc3e5e26ad2ab2c7db0443b0b22ec2ef42e5445f11093ddaf360d",
+      "elapsedMs": 774.117886,
+      "wireBytes": 25935,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:42.541Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::5vq6f-1789313502586-b380f1e44c0e",
+        "x-ratelimit-remaining": "52"
+      },
+      "ttfbMs": 390.82280999999784,
+      "decodedBytes": 320739,
+      "sha256": "82b2bc2b61a06d61e6dff568652db4850da932ec3b33a0af0800603ace6fe18c",
+      "elapsedMs": 418.63706199999433,
+      "wireBytes": 24602,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:43.168Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "27",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::5lsxq-1789313503215-4d246ac68ce9",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 98.11566799999855,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 108.8513380000004,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:43.137Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "29",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::fflws-1789313503185-2efcd1313a99",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 161.8956560000006,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 167.82753200000298,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-amzn-quarter",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:43.300Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AMZN&basis=quarter",
+      "status": 200,
+      "headers": {
+        "age": "31",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::2vgn5-1789313503347-32aa535bf505",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 108.41166099999828,
+      "decodedBytes": 1461260,
+      "sha256": "c52053a9ed526e43f9827c921f54d9fb67d1863bdb0ff180cf9c07a5d6dd027d",
+      "elapsedMs": 227.11581699999806,
+      "wireBytes": 85318,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 77,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-aapl-annual",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:43.541Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AAPL&basis=annual&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "31",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::6hm9r-1789313503590-4bae3d144c8d",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 111.56988999999885,
+      "decodedBytes": 104013,
+      "sha256": "a3586a05ec158e91f810c01ecb0fb5d53fa0d6b9a66ea5f9923fe481e82c6443",
+      "elapsedMs": 154.91667099999904,
+      "wireBytes": 7382,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 27,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:43.243Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::jw7ct-1789313503289-7b4635ee03ce",
+        "x-ratelimit-remaining": "34"
+      },
+      "ttfbMs": 547.1136479999986,
+      "decodedBytes": 349365,
+      "sha256": "50c96d9deae6c1c3e5763e3ee1e906c816a36003665ca1b50a68411ad4a6b824",
+      "elapsedMs": 607.1931509999995,
+      "wireBytes": 25935,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "analysis-aapl-annual",
+      "route": "analysis",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:44.168Z",
+      "method": "GET",
+      "path": "/api/analysis-research?ticker=AAPL&basis=annual",
+      "status": 200,
+      "headers": {
+        "age": "30",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "warm-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::wf7f9-1789313504215-e3e5333dd250",
+        "x-data-fetched-at": "2026-09-13T05:35:53.614Z",
+        "x-data-revalidated-at": "2026-09-13T05:35:53.614+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 108.91163500000403,
+      "decodedBytes": 434218,
+      "sha256": "4d779ad9b80f202da957f899e3e674e2a6481568872a212ac9af65e5b74e6ca6",
+      "elapsedMs": 114.55155599999853,
+      "wireBytes": 31770,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 77,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "compare-amzn-quarter",
+      "route": "compare",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:44.243Z",
+      "method": "GET",
+      "path": "/api/compare-research?ticker=AMZN&basis=quarter&format=packed",
+      "status": 200,
+      "headers": {
+        "age": "28",
+        "cache-control": "public, max-age=60",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-cache-source": "supabase-prepared",
+        "x-vercel-cache": "HIT",
+        "x-vercel-id": "cle1::iad1::mnsp9-1789313504290-983b734469df",
+        "x-data-fetched-at": "2026-09-13T08:15:39.645Z",
+        "x-data-revalidated-at": "2026-09-13T08:15:39.645+00:00",
+        "x-data-stale": "false"
+      },
+      "ttfbMs": 101.77971599999728,
+      "decodedBytes": 386608,
+      "sha256": "c98178d96f99451c3a104485201d1c949375bb112f71d6d064bcfb929cbd868f",
+      "elapsedMs": 111.11291000000347,
+      "wireBytes": 21617,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 27,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-aapl-msft-jpm-annual",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:44.137Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::4flt2-1789313504183-b788bbc981ef",
+        "x-ratelimit-remaining": "33"
+      },
+      "ttfbMs": 367.7358980000063,
+      "decodedBytes": 320739,
+      "sha256": "8968294dd123f0d052c9b02a3a0472960a50853d7ffc977b2e1935f423fc78ac",
+      "elapsedMs": 383.13325300000724,
+      "wireBytes": 24602,
+      "content": {
+        "basis": "annual",
+        "identities": [
+          {
+            "ticker": "AAPL",
+            "cik": "0000320193",
+            "period": "2025-09-27",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:35:53.614Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2025-12-31",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "portfolio-amzn-msft-jpm-quarter",
+      "route": "portfolio",
+      "concurrencyLimit": 6,
+      "startedAt": "2026-09-13T15:31:44.301Z",
+      "method": "POST",
+      "path": "/api/v1/portfolio-research",
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "x-vercel-cache": "MISS",
+        "x-vercel-id": "cle1::iad1::2vgn5-1789313504374-f09b3f8e10e1",
+        "x-ratelimit-remaining": "32"
+      },
+      "ttfbMs": 613.9907600000006,
+      "decodedBytes": 349365,
+      "sha256": "b2244a8dd07e2e97a3a762addce16bdffe8c9f60eddcbffaf0848de2baa2a586",
+      "elapsedMs": 701.4646120000034,
+      "wireBytes": 25935,
+      "content": {
+        "basis": "quarter",
+        "identities": [
+          {
+            "ticker": "AMZN",
+            "cik": "0001018724",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "supabase-prepared",
+            "checkedAt": "2026-09-13T08:15:39.645Z",
+            "stale": false
+          },
+          {
+            "ticker": "MSFT",
+            "cik": "0000789019",
+            "period": "2026-06-30",
+            "metrics": 90,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:36:19.299Z",
+            "stale": false
+          },
+          {
+            "ticker": "JPM",
+            "cik": "0000019617",
+            "period": "2026-06-30",
+            "metrics": 71,
+            "cacheSource": "warm-prepared",
+            "checkedAt": "2026-09-13T05:38:01.937Z",
+            "stale": false
+          }
+        ]
+      }
+    }
+  ],
+  "limitations": [
+    "Configured concurrency caps simultaneous API requests; peakInFlight records the level actually reached. Neither is a count of visitors.",
+    "One external test location and short sample; no browser rendering, geographic distribution, long soak, or 1,000-daily-user capacity guarantee.",
+    "Normal cache behavior is preserved. CDN hits do not measure Supabase origin capacity, and no cache is flushed or bypassed.",
+    "Response wire bytes are compressed HTTP body bytes, excluding headers and TLS. They are site traffic, not measured Supabase billable egress.",
+    "Latency includes network, TLS/connection reuse, server response and local decompression/JSON parsing. Percentiles have small-sample uncertainty.",
+    "Request errors, stale data, unexpected identities or unprepared responses abort the remaining ramp; no automatic retries."
+  ],
+  "databaseObservations": {
+    "source": "Operator read-only SQL snapshots in approved production project vvkihuduqqnxqahhbphs",
+    "before": {
+      "observedAt": "2026-09-13T15:29:20Z",
+      "databaseBytes": 129723539,
+      "commits": 109373,
+      "rollbacks": 6225,
+      "blocksHit": 4094993,
+      "blocksRead": 1469,
+      "temporaryBytes": 363473606,
+      "deadlocks": 0,
+      "clientConnections": 7,
+      "statsReset": "2026-08-25T20:33:23.891825Z",
+      "privateObjects": 6209,
+      "privateObjectBytes": 311009628,
+      "expiredHeads": 0,
+      "runningCoverageJobs": 0
+    },
+    "after": {
+      "observedAt": "2026-09-13T15:32:36Z",
+      "databaseBytes": 129723539,
+      "commits": 109548,
+      "rollbacks": 6225,
+      "blocksHit": 4102383,
+      "blocksRead": 1469,
+      "temporaryBytes": 363473606,
+      "deadlocks": 0,
+      "clientConnections": 9,
+      "statsReset": "2026-08-25T20:33:23.891825Z",
+      "privateObjects": 6209,
+      "privateObjectBytes": 311009628,
+      "expiredHeads": 0,
+      "runningCoverageJobs": 0
+    },
+    "deltas": {
+      "databaseBytes": 0,
+      "commits": 175,
+      "rollbacks": 0,
+      "blocksHit": 7390,
+      "blocksRead": 0,
+      "temporaryBytes": 0,
+      "deadlocks": 0,
+      "privateObjects": 0,
+      "privateObjectBytes": 0
+    },
+    "limitations": [
+      "The SQL interval includes idle time and concurrent production background activity; the workload cannot be credited with every counter delta.",
+      "Connection counts are two point observations, not measured peak connections. No CPU or RAM saturation conclusion follows.",
+      "PostgreSQL block hits are distinct from CDN or Redis cache hits; these counters and storage sizes are not Supabase billing measurements."
+    ]
+  }
+}
