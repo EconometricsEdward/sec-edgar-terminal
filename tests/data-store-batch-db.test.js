@@ -94,10 +94,15 @@ async function makeDatabase() {
     const migrations = await Promise.all((await readdir(migrationsDirectory)).filter(name => name.endsWith('.sql')).sort().map(async name => ({ name, sql: await readFile(new URL(name, migrationsDirectory), 'utf8') })));
     const base = migrations.find(migration => migration.name === '20260913031639_edgar_staged_data_store.sql');
     const additions = migrations.filter(migration => /create(?: or replace)? function public\.edgar_get_manifests\(/i.test(migration.sql));
+    const stableOrders = migrations.filter(migration => migration.name.endsWith('_edgar_coverage_stable_order.sql'));
     assert.ok(base, 'original tracked migration must be present');
     assert.equal(additions.length, 1, 'exactly one tracked batch-read migration must be present');
+    assert.equal(stableOrders.length, 1, 'exactly one tracked stable-order migration must be present');
+    assert.ok(stableOrders[0].sql.trim().length > 100, 'tracked stable-order migration must contain SQL');
     await db.exec(base.sql);
     await db.exec(additions[0].sql);
+    // Apply the exact ordering fix without activating unrelated cron migrations.
+    await db.exec(stableOrders[0].sql);
     return db;
   } catch (error) {
     await db.close();
@@ -450,5 +455,64 @@ test('batch SQL serves ordered, bounded, isolated current publications under res
       await assert.rejects(rpc(db, 'edgar_enqueue_coverage_jobs', [ns, cycle, version, shards]), { code: '22023' });
     }
     assert.equal(Number((await db.query('select count(*) as count from public.edgar_ingestion_jobs where namespace=$1', [ns])).rows[0].count), 0);
+  });
+
+  await t.test('coverage claims finish an eligible shard in stable order despite reverse UUIDs and later yield timestamps', async () => {
+    const ns = 'stable-shard-order';
+    const shardZeroId = 'ffffffff-ffff-4fff-bfff-fffffffffff0';
+    const shardOneId = '00000000-0000-4000-8000-000000000101';
+    const key = shard => `sec-coverage-v1:2026-09-13:${shard}:0123456789abcdef`;
+    const zero = await enqueue(db, ns, key('00'));
+    const one = await enqueue(db, ns, key('01'));
+    await db.query("update public.edgar_ingestion_jobs set id=$1,available_at='2000-01-01T00:00:00Z' where id=$2", [shardZeroId, zero]);
+    await db.query("update public.edgar_ingestion_jobs set id=$1,available_at='2000-01-01T00:00:00Z' where id=$2", [shardOneId, one]);
+    const otherNamespaceId = await enqueue(db, 'stable-shard-other', 'sec-coverage-v1:1999-01-01:00:0123456789abcdef');
+    const otherDatasetId = await enqueue(db, ns, 'sec-coverage-v1:1999-01-01:00:0123456789abcdef', 'cftc');
+    const first = await claimPrefix(db, ns);
+    assert.equal(first.id, shardZeroId, 'shard00 precedes the smaller shard01 UUID when availability timestamps tie');
+    assert.equal(await rpc(db, 'edgar_yield_job', [ns, first, { next: 7 }, 1]), true);
+    await db.query("update public.edgar_ingestion_jobs set available_at='2000-01-02T00:00:00Z' where id=$1", [shardZeroId]);
+    const continued = await claimPrefix(db, ns);
+    assert.equal(continued.id, shardZeroId, 'an eligible continuation precedes the next shard even with a later available_at');
+    assert.deepEqual(continued.checkpoint, { next: 7 });
+    assert.ok(continued.generation > first.generation);
+    assert.equal(continued.attempts, 1, 'a successful yield preserves the failure budget');
+    assert.equal(await rpc(db, 'edgar_yield_job', [ns, first, { next: 999 }, 1]), false, 'stable ordering retains generation fencing');
+    assert.equal(await rpc(db, 'edgar_yield_job', [ns, continued, { next: 8 }, 60]), true);
+    const following = await claimPrefix(db, ns);
+    assert.equal(following.id, shardOneId, 'a future cooldown keeps shard00 ineligible while shard01 can advance');
+    const untouched = (await db.query('select state,attempts from public.edgar_ingestion_jobs where id=any($1::uuid[])', [[otherNamespaceId, otherDatasetId]])).rows;
+    assert.equal(untouched.length, 2);
+    assert.ok(untouched.every(row => row.state === 'queued' && row.attempts === 0));
+  });
+
+  await t.test('coverage ordering selects the oldest eligible cycle before a newer cycle with a lower shard number', async () => {
+    const ns = 'stable-cycle-order';
+    const earlier = await enqueue(db, ns, 'sec-coverage-v1:2026-09-12:31:0123456789abcdef');
+    const later = await enqueue(db, ns, 'sec-coverage-v1:2026-09-13:00:0123456789abcdef');
+    await db.query("update public.edgar_ingestion_jobs set available_at='2000-01-02T00:00:00Z' where id=$1", [earlier]);
+    await db.query("update public.edgar_ingestion_jobs set available_at='2000-01-01T00:00:00Z' where id=$1", [later]);
+    const claimed = await claimPrefix(db, ns);
+    assert.equal(claimed.id, earlier, 'cycle date precedes shard number and availability ordering for eligible work');
+    assert.equal(await rpc(db, 'edgar_finish_job', [ns, claimed, 'done', { next: 16 }, null, 1]), true);
+    assert.equal((await claimPrefix(db, ns)).id, later);
+  });
+
+  await t.test('legacy cohort claims retain availability ordering and UUID tie breaking', async () => {
+    const ns = 'legacy-claim-order';
+    const jobs = [
+      { key: 'sec-financial-cohort-v1:a', id: 'ffffffff-ffff-4fff-bfff-ffffffffffe1', available: '2000-01-02T00:00:00Z' },
+      { key: 'sec-financial-cohort-v1:b', id: '00000000-0000-4000-8000-000000000103', available: '2000-01-02T00:00:00Z' },
+      { key: 'sec-financial-cohort-v1:z', id: '00000000-0000-4000-8000-000000000104', available: '2000-01-01T00:00:00Z' },
+    ];
+    for (const job of jobs) {
+      const id = await enqueue(db, ns, job.key);
+      await db.query('update public.edgar_ingestion_jobs set id=$1,available_at=$2::timestamptz where id=$3', [job.id, job.available, id]);
+    }
+    const first = await claimPrefix(db, ns, 'sec-financial-cohort-v1:');
+    assert.equal(first.id, jobs[2].id, 'the oldest available legacy job wins despite its later key and larger UUID');
+    assert.equal(await rpc(db, 'edgar_finish_job', [ns, first, 'done', { next: 4 }, null, 1]), true);
+    const second = await claimPrefix(db, ns, 'sec-financial-cohort-v1:');
+    assert.equal(second.id, jobs[1].id, 'tied legacy timestamps use UUID order instead of lexical job keys');
   });
 });
