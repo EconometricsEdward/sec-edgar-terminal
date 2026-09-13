@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCftcPersistence, cftcSnapshotIdentity, cftcSourceBundle } from '../src/utils/cftcPersistence.js';
 import { CFTC_FAMILIES, CFTC_LAUNCH_CATALOG } from '../src/utils/cftc.js';
-import { buildCftcMarketsSnapshot, cftcPublicationStatus, cftcResourceUrl, fetchCftcContractHistory, loadCftcHistory, loadCftcMarkets, publishPreparedResponse, validMarketsResponse, validateRawHistoryEnvelope } from '../src/utils/cftcServer.js';
+import { CFTC_REFRESH_CHECKPOINT_VERSION, buildCftcMarketsSnapshot, cftcPublicationStatus, cftcResourceUrl, fetchCftcContractHistory, loadCftcHistory, loadCftcMarkets, publishPreparedResponse, refreshCftcSnapshots, validCftcRefreshCheckpoint, validMarketsResponse, validateRawHistoryEnvelope } from '../src/utils/cftcServer.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const priorDay = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) - days * 86400_000).toISOString().slice(0, 10);
@@ -133,6 +133,105 @@ test('shadow writes compare only their own published generation and cap comparis
   assert.equal(await save(store), null, 'shadow storage failures cannot break legacy responses');
 });
 
+test('bounded market ingestion archives exact latest rows and every launch history and emits a private publication receipt', async () => {
+  const store = fakeStore('shadow'), requests = [], receipts = [];
+  const orderedRows = [...rows].sort((a, b) => a.cftc_contract_market_code.localeCompare(b.cftc_contract_market_code)
+    || b.report_date_as_yyyy_mm_dd.localeCompare(a.report_date_as_yyyy_mm_dd));
+  const orderedLatest = orderedRows.filter(row => row.report_date_as_yyyy_mm_dd.startsWith(date));
+  const value = await loadCftcMarkets({ family: 'tff', forceRefresh: true, persistence: store.api, cacheGet: async () => null,
+    onDurablePublication: receipt => receipts.push(receipt),
+    fetchImpl: async input => {
+      const url = new URL(input); requests.push(url);
+      const where = url.searchParams.get('$where');
+      if (where === "futonly_or_combined='FutOnly'") return Response.json(orderedLatest);
+      if (where.startsWith('report_date_as_yyyy_mm_dd=')) return Response.json(orderedLatest);
+      const offset = Number(url.searchParams.get('$offset'));
+      return Response.json(orderedRows.slice(offset, offset + 1000));
+    },
+  });
+  assert.equal(value.status, 'ready');
+  assert.equal(requests.length, 2 + Math.ceil(rows.length / 1000), 'only the existing discovery, latest, and bounded launch-history requests run');
+  const stored = store.current.get('markets:tff:latest');
+  const source = JSON.parse(stored.sourceBytes.toString('utf8'));
+  assert.deepEqual(source.latestRows, orderedLatest);
+  assert.deepEqual(source.rawHistories.map(item => item.code).sort(), [...codes].sort());
+  assert.deepEqual(source.rawHistories.flatMap(item => item.rows).sort((a, b) => a.id.localeCompare(b.id)), [...rows].sort((a, b) => a.id.localeCompare(b.id)));
+  assert.equal(receipts.length, 1);
+  assert.equal(receipts[0].raw_history_count, codes.length);
+  assert.equal(receipts[0].report_date, date);
+  assert.equal(receipts[0].content_hash, stored.metadata.contentHash);
+  assert.equal(Object.hasOwn(value, 'durable_publication'), false, 'job evidence never changes the public response schema');
+});
+
+function refreshHarness(mode = 'shadow', prior = null) {
+  const calls = [], checkpoints = [], finished = [];
+  const claim = { id: 'job', generation: '1', jobKey: `cftc-refresh:${new Date().toISOString().slice(0, 10)}` };
+  const cache = {
+    enabled: () => true,
+    get: async () => prior,
+    set: async (_namespace, _key, checkpoint) => { checkpoints.push(structuredClone(checkpoint)); return true; },
+    acquire: async () => 'refresh-owner',
+    release: async () => { calls.push('release'); },
+  };
+  const persistence = {
+    mode: () => mode,
+    startRefreshJob: async () => mode === 'off' ? null : claim,
+    checkpointRefreshJob: async () => {},
+    completeRefreshJob: async (_claim, checkpoint, error) => { finished.push({ checkpoint: structuredClone(checkpoint), error }); },
+  };
+  return { cache, persistence, calls, checkpoints, finished };
+}
+
+const publicationFor = family => ({ generation: '1', content_hash: 'a'.repeat(64), report_date: date,
+  raw_history_count: CFTC_LAUNCH_CATALOG.filter(item => item.family === family).length });
+const readyFamily = family => ({ family, status: 'ready', report_date: date, catalog_rows: 13, cache_durable: true });
+
+test('shadow refresh cannot complete on successful Redis publication when the Supabase write failed', async () => {
+  const harness = refreshHarness(), store = fakeStore('shadow'); store.setFailWrite(true);
+  const result = await refreshCftcSnapshots({ ...harness,
+    loadMarkets: async ({ family, onDurablePublication }) => {
+      harness.calls.push(family);
+      const record = await save(store);
+      if (record) onDurablePublication(publicationFor(family));
+      return { ...response, catalog: [1], cache_publication: { durable: true } };
+    },
+  });
+  assert.equal(result.status, 'degraded');
+  assert.equal(result.checkpoint.complete, false);
+  assert.equal(result.durable_job.status, 'retry');
+  assert.equal(result.families.every(item => item.status === 'ready' && item.cache_durable && item.durable_published === false), true);
+  assert.equal(harness.finished.at(-1).error, 'CFTC_REFRESH_DEGRADED');
+  assert.equal(harness.checkpoints.every(value => validCftcRefreshCheckpoint(value)), true);
+  assert.deepEqual(harness.calls, ['tff', 'disaggregated', 'release']);
+});
+
+test('durable refresh resumes only the family with verified Supabase evidence and retries a Redis-only checkpoint', async () => {
+  const prior = { schema_version: CFTC_REFRESH_CHECKPOINT_VERSION, durable_required: true, started_at: retrievedAt, updated_at: savedAt, complete: false,
+    families: { tff: { ...readyFamily('tff'), durable_published: true, durable_publication: publicationFor('tff') }, disaggregated: { ...readyFamily('disaggregated'), durable_published: false } },
+  };
+  const harness = refreshHarness('shadow', prior);
+  const result = await refreshCftcSnapshots({ ...harness,
+    loadMarkets: async ({ family, onDurablePublication }) => {
+      harness.calls.push(family); onDurablePublication(publicationFor(family));
+      return { ...response, catalog: [1], cache_publication: { durable: true } };
+    },
+  });
+  assert.deepEqual(harness.calls, ['disaggregated', 'release']);
+  assert.equal(result.status, 'ready');
+  assert.equal(result.durable_job.status, 'done');
+  assert.equal(harness.finished.at(-1).error, null);
+  assert.equal(validCftcRefreshCheckpoint(harness.finished.at(-1).checkpoint), true);
+});
+
+test('off-mode refresh still completes on legacy publication without a Supabase receipt', async () => {
+  const harness = refreshHarness('off');
+  const result = await refreshCftcSnapshots({ ...harness, loadMarkets: async () => ({ ...response, catalog: [1], cache_publication: { durable: true } }) });
+  assert.equal(result.status, 'ready');
+  assert.equal(result.checkpoint.complete, true);
+  assert.equal(Object.hasOwn(result, 'durable_job'), false);
+  assert.equal(validCftcRefreshCheckpoint(harness.finished.at(-1).checkpoint), true);
+});
+
 test('supabase history can calculate from durable raw without another public-source retrieval', async () => {
   const store = fakeStore(); await save(store);
   let requests = 0;
@@ -176,7 +275,7 @@ test('legacy staged/final publication survives a final-primary interruption and 
 test('existing CFTC refresh gains an idempotent durable claim and exact resumable family checkpoints', async () => {
   const calls = [], claim = { id: 'job', generation: 3, jobKey: 'cftc-refresh:2026-09-13' };
   let enqueued = false;
-  const checkpoint = { schema_version: 'edgar.cftc-refresh-checkpoint.v1', started_at: retrievedAt, updated_at: savedAt, complete: false, families: { tff: { family: 'tff', status: 'ready', report_date: date, catalog_rows: 13, cache_durable: true } } };
+  const checkpoint = { schema_version: CFTC_REFRESH_CHECKPOINT_VERSION, durable_required: true, started_at: retrievedAt, updated_at: savedAt, complete: false, families: { tff: { family: 'tff', status: 'ready', report_date: date, catalog_rows: 13, cache_durable: true, durable_published: false } } };
   const api = createCftcPersistence({ mode: () => 'shadow', now: () => Date.parse('2026-09-13T12:00:00Z'),
     enqueueJob: async args => { calls.push(['enqueue', args]); enqueued = true; return 'job'; },
     claimJob: async args => { calls.push(['claim', args]); return enqueued ? claim : null; },

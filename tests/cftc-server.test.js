@@ -135,12 +135,14 @@ test('publication ordering protects last-good and final-primary recovery',async(
 
 test('refresh checkpoints are versioned, bounded to known families, and cannot forge completion',()=>{
   const now=Date.parse('2026-09-12T12:00:00Z');
-  const base={schema_version:CFTC_REFRESH_CHECKPOINT_VERSION,started_at:'2026-09-12T11:00:00Z',updated_at:'2026-09-12T11:30:00Z',complete:false,families:{tff:{family:'tff',status:'ready',report_date:'2026-09-08',catalog_rows:100,cache_durable:true}}};
+  const base={schema_version:CFTC_REFRESH_CHECKPOINT_VERSION,durable_required:false,started_at:'2026-09-12T11:00:00Z',updated_at:'2026-09-12T11:30:00Z',complete:false,families:{tff:{family:'tff',status:'ready',report_date:'2026-09-08',catalog_rows:100,cache_durable:true}}};
   assert.equal(validCftcRefreshCheckpoint(base,now),true);
   assert.equal(validCftcRefreshCheckpoint({...base,complete:true},now),false);
   assert.equal(validCftcRefreshCheckpoint({...base,families:{invented:{status:'ready',report_date:'2026-09-08',catalog_rows:1,cache_durable:true}}},now),false);
   const both={...base,families:{...base.families,disaggregated:{family:'disaggregated',status:'ready',report_date:'2026-09-08',catalog_rows:100,cache_durable:true}}};
   assert.equal(validCftcRefreshCheckpoint({...both,complete:true,completed_at:'2026-09-12T11:20:00Z'},now),true);
+  assert.equal(validCftcRefreshCheckpoint({...both,durable_required:true,complete:true,completed_at:'2026-09-12T11:20:00Z'},now),false,'Redis publication cannot prove a Supabase refresh completed');
+  assert.equal(validCftcRefreshCheckpoint({...both,schema_version:'edgar.cftc-refresh-checkpoint.v1'},now),false,'old Redis-only checkpoints must be refreshed after activation');
 });
 
 test('public CFTC dates use a timezone-safe six-calendar-year retention boundary',async()=>{
