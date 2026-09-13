@@ -1,7 +1,7 @@
-const RISK_VIEWS = new Set(['overview', 'stress', 'disclosures', 'cftc', 'fcm']);
+const RISK_VIEWS = new Set(['overview', 'exposures', 'stress', 'disclosures', 'cftc', 'fcm']);
 
 export function normalizeRiskView(value, cftcEnabled = true) {
-  return RISK_VIEWS.has(value) && (cftcEnabled || !['cftc', 'fcm'].includes(value)) ? value : 'overview';
+  return RISK_VIEWS.has(value) && (cftcEnabled || !['exposures', 'cftc', 'fcm'].includes(value)) ? value : 'overview';
 }
 
 export function parseRiskLocation(search, cftcEnabled = true) {
@@ -10,6 +10,7 @@ export function parseRiskLocation(search, cftcEnabled = true) {
     ticker: (params.get('ticker') || params.get('symbol') || '').toUpperCase(),
     view: normalizeRiskView(params.get('view'), cftcEnabled),
     entity: params.get('entity') || '',
+    asOf: params.get('asOf') || '',
   };
 }
 
