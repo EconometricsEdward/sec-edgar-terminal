@@ -9,7 +9,10 @@ export const TRUST = Object.freeze({
   projectId: 'prj_tjTGC2omKa1JOT7il31bFZ8ilk8f',
 });
 const PROJECT_URL = 'https://vvkihuduqqnxqahhbphs.supabase.co';
-const PREFIX = '/functions/v1/edgar-data-gateway';
+// Supabase's hosted relay removes /functions/v1 before invoking the handler.
+// Support its exact function prefix and the full local HTTP URL, never an
+// arbitrary suffix or an attacker-selected function name.
+const PREFIXES = Object.freeze(['/edgar-data-gateway', '/functions/v1/edgar-data-gateway']);
 const BUCKET = 'edgar-durable-private';
 const NAMESPACE = 'production';
 const RPC_BYTES = 512 * 1024;
@@ -245,8 +248,9 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       try { assertProductionClaims(await verifyToken(authorization.slice(7)), now()); } catch { reject('unauthorized', 401); }
       // No body parsing, configuration access, or data access before verification.
       const url = new URL(request.url);
-      if (url.search || url.hash || !url.pathname.startsWith(`${PREFIX}/`) || url.pathname.includes('%')) reject('route_denied', 403);
-      const path = url.pathname.slice(PREFIX.length);
+      const prefix = PREFIXES.find((candidate) => url.pathname.startsWith(`${candidate}/`));
+      if (url.search || url.hash || !prefix || url.pathname.includes('%')) reject('route_denied', 403);
+      const path = url.pathname.slice(prefix.length);
       const secret = configuration(env);
       if (path === '/health' && request.method === 'GET') return json({ ok: true, auth: 'vercel-oidc', environment: 'production', namespace: NAMESPACE, operations: 'bounded-data-store' });
       if (request.headers.has('content-encoding') || request.headers.has('x-upsert')) reject('unsupported_headers', 400);
