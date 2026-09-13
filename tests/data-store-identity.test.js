@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDataStore, getDataStoreMode } from '../src/utils/dataStore.js';
-import { isSecMigrationScheduleEnabled } from '../src/utils/dataStoreDeployment.js';
+import {
+  isSecMigrationScheduleEnabled, isSecCoverageScheduleEnabled, isBroadSecCoverageEnabled, MIGRATION_BOOTSTRAP,
+} from '../src/utils/dataStoreDeployment.js';
 
 test('production uses request-scoped workload identity without exporting a Supabase key', async () => {
   let issued = 0;
@@ -36,6 +38,10 @@ test('identity cannot target another endpoint or namespace and errors never reve
 });
 
 test('explicit independent switches override reviewed deployment defaults; previews remain off', async () => {
+  for (const dataset of ['sec', 'financial', 'cftc']) {
+    assert.equal(getDataStoreMode(dataset, { VERCEL_ENV: 'production' }), 'supabase');
+    assert.equal(getDataStoreMode(dataset, { VERCEL_ENV: 'preview' }), 'off');
+  }
   assert.equal(getDataStoreMode('sec', { VERCEL_ENV: 'preview' }), 'off');
   assert.equal(getDataStoreMode('sec', {}), 'off');
   assert.equal(getDataStoreMode('sec', { VERCEL_ENV: 'production', EDGAR_DATASTORE_SEC: 'off' }), 'off');
@@ -46,4 +52,24 @@ test('explicit independent switches override reviewed deployment defaults; previ
   const store = createDataStore({ env: { VERCEL_ENV: 'production', EDGAR_DATASTORE_SEC: 'off' },
     identityTokenImpl: async () => assert.fail('off must not acquire credentials') });
   assert.equal(await store.readDataset('sec', 'unused'), null);
+});
+
+test('production activates broad coverage with one replacement schedule and explicit rollback switches', () => {
+  const production = { VERCEL_ENV: 'production' };
+  assert.equal(isBroadSecCoverageEnabled(production), true);
+  assert.equal(isSecCoverageScheduleEnabled(production), true);
+  assert.equal(isSecMigrationScheduleEnabled(production), false);
+  assert.equal(MIGRATION_BOOTSTRAP, null);
+  for (const env of [{}, { VERCEL_ENV: 'preview' }, { VERCEL_ENV: 'development' }]) {
+    assert.equal(isBroadSecCoverageEnabled(env), false);
+    assert.equal(isSecCoverageScheduleEnabled(env), false);
+    assert.equal(isSecMigrationScheduleEnabled(env), false);
+  }
+  const rollback = { ...production, EDGAR_DATASTORE_BROAD_COVERAGE: '0' };
+  assert.equal(isBroadSecCoverageEnabled(rollback), false);
+  assert.equal(isSecCoverageScheduleEnabled(rollback), true);
+  assert.equal(isSecMigrationScheduleEnabled(rollback), false);
+  assert.equal(isSecCoverageScheduleEnabled({ ...production, EDGAR_DATASTORE_SEC_COVERAGE_SCHEDULE: '0' }), false);
+  assert.equal(isSecMigrationScheduleEnabled({ ...production, EDGAR_DATASTORE_SEC_SCHEDULE: '1' }), true);
+  assert.equal(isBroadSecCoverageEnabled({ ...production, EDGAR_DATASTORE_BROAD_COVERAGE: 'typo' }), false);
 });

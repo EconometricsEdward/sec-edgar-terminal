@@ -1,9 +1,9 @@
 /** Reviewed deployment defaults. Explicit environment flags always override these. */
 export const DATA_STORE_DEPLOYMENT = Object.freeze({
   stage: 'supabase',
-  secSchedule: true,
-  // Writers can prepare the larger universe before its readers are activated.
-  broadCoverage: false,
+  // The coverage worker now refreshes the full universe, including the pilots.
+  secSchedule: false,
+  broadCoverage: true,
   secCoverageSchedule: true,
   project: 'vvkihuduqqnxqahhbphs',
   gateway: 'edgar-data-gateway',

@@ -837,14 +837,33 @@ function Workspace(props: any) {
       )}
       {data && !period && settings.view !== "cftc" && (
         <section className={styles.panel}>
-          <h2>No matching reporting period</h2>
-          <p>
-            The selected period or filing cutoff has no compatible financial
-            observations.
-          </p>
-          <button onClick={() => patch({ end: "latest", asOf: "" })}>
-            Show latest available data
-          </button>
+          {data.periods.length > 0 ? (
+            <>
+              <h2>No matching reporting period</h2>
+              <p>
+                The selected period or filing cutoff has no compatible financial
+                observations.
+              </p>
+              <button onClick={() => patch({ end: "latest", asOf: "" })}>
+                Show latest available data
+              </button>
+            </>
+          ) : (
+            <>
+              <h2>No reported history for this basis</h2>
+              <p>
+                No compatible {basisNames[settings.basis].toLowerCase()} reporting
+                history is available for this SEC issuer
+                {settings.asOf ? ` in filings through ${settings.asOf}` : ""}.
+              </p>
+              <p>
+                {settings.basis === "annual" || settings.basis === "ttm"
+                  ? "Try Standalone quarter or Year to date using Reporting basis above."
+                  : "Choose another Reporting basis above to check its available history."}
+                {settings.asOf && " You can also change the filing cutoff above."}
+              </p>
+            </>
+          )}
         </section>
       )}
       {data && period && checks && (

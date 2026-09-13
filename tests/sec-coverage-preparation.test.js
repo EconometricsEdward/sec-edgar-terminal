@@ -66,20 +66,26 @@ function memoryPreparation() {
   return { stored, writes, validations, sourceReads, options };
 }
 
-test('expanded eligibility retains four pilot readers while broad readers require activation', async () => {
+test('production activates every prepared issuer and an explicit rollback retains only pilot readers', async () => {
   assert.deepEqual(SEC_MIGRATION_COHORT.map(row => row.ticker), ['AAPL', 'MSFT', 'JPM', 'ACU']);
   assert.equal(SEC_PREPARED_COHORT.length, 501);
   assert.equal(new Set(SEC_PREPARED_COHORT.map(row => row.cik)).size, 501);
   assert.equal(secDocumentIdentity(paths[0]).covered, true);
+  const production = { VERCEL_ENV: 'production' };
   const off = { VERCEL_ENV: 'production', EDGAR_DATASTORE_BROAD_COVERAGE: '0' };
   const on = { VERCEL_ENV: 'production', EDGAR_DATASTORE_BROAD_COVERAGE: '1' };
+  for (const row of SEC_PREPARED_COHORT) {
+    assert.equal(isSecPreparedReadEnabled(row.cik, production), true);
+    assert.equal(isSecPreparedReadEnabled(row.cik, off), SEC_MIGRATION_COHORT.some(pilot => pilot.cik === row.cik));
+  }
   for (const row of SEC_MIGRATION_COHORT) assert.equal(isSecPreparedReadEnabled(row.cik, off), true);
   assert.equal(isSecPreparedReadEnabled(cik, off), false);
   assert.equal(isSecPreparedReadEnabled(cik, on), true);
   assert.equal(isSecPreparedReadEnabled('0000000001', on), false);
-  const staged = { mode: 'supabase', read: rejectNetwork, hotRead: rejectNetwork, readEnabled: value => isSecPreparedReadEnabled(value, off) };
-  assert.equal(await readPreparedSecDocument(paths[0], staged), null);
-  assert.equal(await readPreparedAnalysis({ ticker: 'GOOG' }, staged), null);
+  assert.equal(isSecPreparedReadEnabled('0000000001', production), false);
+  const rollback = { mode: 'supabase', read: rejectNetwork, hotRead: rejectNetwork, readEnabled: value => isSecPreparedReadEnabled(value, off) };
+  assert.equal(await readPreparedSecDocument(paths[0], rollback), null);
+  assert.equal(await readPreparedAnalysis({ ticker: 'GOOG' }, rollback), null);
   assert.equal(financialPreparedKey('GOOG', 'annual', '2025-12-31'), null);
 });
 
@@ -116,7 +122,7 @@ test('one broad company refresh supplies two canonical documents to all financia
   let researchCalls = 0;
   const result = await refreshSecCoverageCompany('GOOG', {
     refresh: async (path, options) => {
-      refreshed.push(path); assert.equal(options.minRecheckAgeMs, 20 * 3600000);
+      refreshed.push(path); assert.equal(options.minRecheckAgeMs, 15 * 60000);
       return { status: 'current', envelope: documents[paths.indexOf(path)] };
     },
     read: rejectNetwork,
@@ -139,9 +145,11 @@ test('one broad company refresh supplies two canonical documents to all financia
 });
 
 test('recent source revalidation is reused without provider fetch, new timestamps, or Redis copies', async () => {
-  const released = [], previous = structuredClone(documents[0]), unchanged = structuredClone(previous);
+  const released = [], previous = structuredClone(documents[0]);
+  previous.metadata.revalidatedAt = new Date(now - 5 * 60000).toISOString();
+  const unchanged = structuredClone(previous);
   const result = await refreshSecDocument(paths[0], {
-    mode: 'supabase', now: () => now, minRecheckAgeMs: 20 * 3600000,
+    mode: 'supabase', now: () => now, minRecheckAgeMs: 15 * 60000,
     begin: async () => ({ owner: 'coverage-test', generation: 7 }), read: async () => previous,
     fetchSec: rejectNetwork, publish: rejectNetwork, revalidate: rejectNetwork,
     reserveLegacy: rejectNetwork, legacyWrite: rejectNetwork,
@@ -154,12 +162,12 @@ test('recent source revalidation is reused without provider fetch, new timestamp
 
 test('an expired or old source must revalidate even when the refresh interval is supplied', async () => {
   for (const previous of [
-    { ...documents[0], metadata: { ...metadata, revalidatedAt: new Date(now - 21 * 3600000).toISOString() } },
+    { ...documents[0], metadata: { ...metadata, revalidatedAt: new Date(now - 16 * 60000).toISOString() } },
     { ...documents[0], metadata: { ...metadata, expiresAt: new Date(now - 1).toISOString() } },
   ]) {
     let fetched = 0, validated = 0;
     const result = await refreshSecDocument(paths[0], {
-      mode: 'supabase', now: () => now, minRecheckAgeMs: 20 * 3600000,
+      mode: 'supabase', now: () => now, minRecheckAgeMs: 15 * 60000,
       begin: async () => ({ generation: 8 }), read: async () => previous,
       fetchSec: async () => { fetched++; return new Response(null, { status: 304 }); },
       revalidate: async () => { validated++; return true; },
@@ -169,6 +177,33 @@ test('an expired or old source must revalidate even when the refresh interval is
     assert.equal(result.envelope.metadata.fetchedAt, metadata.fetchedAt);
     assert.equal(result.envelope.metadata.revalidatedAt, new Date(now).toISOString());
   }
+});
+
+test('the midnight coverage cycle revalidates a daytime backfill before its 25-hour source TTL expires', async () => {
+  const cycleAt = Date.parse('2026-09-14T00:00:00.000Z');
+  const fetchedAt = '2026-09-13T08:00:00.000Z';
+  const prior = documents.map(source => ({ ...source, metadata: { ...source.metadata,
+    fetchedAt, revalidatedAt: fetchedAt, expiresAt: '2026-09-14T09:00:00.000Z' } }));
+  let providerCalls = 0, revalidations = 0;
+  const result = await refreshSecCoverageCompany('GOOG', {
+    refresh: (path, options) => refreshSecDocument(path, { ...options,
+      mode: 'supabase', now: () => cycleAt,
+      begin: async () => ({ generation: 9 }), read: async () => prior[paths.indexOf(path)],
+      fetchSec: async () => { providerCalls++; return new Response(null, { status: 304 }); },
+      revalidate: async (_dataset, _key, value) => {
+        revalidations++; assert.equal(value.revalidatedAt, '2026-09-14T00:00:00.000Z');
+        assert.equal(value.expiresAt, '2026-09-15T01:00:00.000Z'); return true;
+      },
+      publish: rejectNetwork, reserveLegacy: rejectNetwork, legacyWrite: rejectNetwork, release: async () => true,
+    }),
+    prepare: async () => ({ status: 'prepared', bases: [] }),
+    prepareViews: async (_company, sources) => {
+      assert.ok(sources.every(source => source.metadata.fetchedAt === fetchedAt));
+      assert.ok(sources.every(source => source.metadata.revalidatedAt === '2026-09-14T00:00:00.000Z'));
+      return { status: 'prepared', bases: [] };
+    },
+  });
+  assert.equal(result.status, 'prepared'); assert.equal(providerCalls, 2); assert.equal(revalidations, 2);
 });
 
 test('latest metric projections retain correct units, nulls, actual zeroes, and complete evidence references', async () => {

@@ -270,6 +270,10 @@ export async function prepareFinancialCompany(ticker, {
   }
 }
 
+// Reuse checks only across nearby retries. A long reuse window can skip a
+// midnight daily cycle after a daytime backfill and outrun the 25-hour TTL.
+const COVERAGE_SOURCE_RETRY_REUSE_MS = 15 * 60 * 1000;
+
 /** One scheduled issuer reuses canonical source documents for every user view. */
 export async function refreshSecCoverageCompany(ticker, {
   signal, deadline = Date.now() + 230000,
@@ -283,7 +287,7 @@ export async function refreshSecCoverageCompany(ticker, {
   const sources = [];
   for (const path of sourcePaths) {
     if (signal?.aborted || Date.now() >= deadline - 60000) return { ticker: company.ticker, status: 'busy', code: 'coverage_deadline' };
-    const result = await refresh(path, { signal, minRecheckAgeMs: 20 * 3600000 });
+    const result = await refresh(path, { signal, minRecheckAgeMs: COVERAGE_SOURCE_RETRY_REUSE_MS });
     if (['busy', 'off'].includes(result.status)) return { ticker: company.ticker, status: result.status };
     sources.push(result.envelope || await read('sec', secDocumentIdentity(path).key, { allowStale: false }));
   }
@@ -298,7 +302,7 @@ export async function refreshSecCoverageCompany(ticker, {
   if (company.cik === '0002115436') {
     for (const path of ['/submissions/CIK0000034088.json', '/api/xbrl/companyfacts/CIK0000034088.json']) {
       if (signal?.aborted || Date.now() >= deadline - 30000) return { ticker: company.ticker, status: 'busy', code: 'coverage_deadline' };
-      const result = await refresh(path, { signal, minRecheckAgeMs: 20 * 3600000 });
+      const result = await refresh(path, { signal, minRecheckAgeMs: COVERAGE_SOURCE_RETRY_REUSE_MS });
       if (['busy', 'off'].includes(result.status)) return { ticker: company.ticker, status: result.status };
       supportingSources.push({ path, envelope: result.envelope || await read('sec', secDocumentIdentity(path).key, { allowStale: false }) });
     }

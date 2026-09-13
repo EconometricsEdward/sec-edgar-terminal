@@ -7,6 +7,7 @@ import { buildCompareCompany } from '../src/utils/compareResearch.js';
 import { packAnalysisCompany, unpackAnalysisCompany } from '../src/utils/analysisResearch.js';
 import { packPortfolioCompany, unpackPortfolioCompany } from '../src/utils/portfolioEvidenceCodec.js';
 import { buildPortfolioCompanyFromDocuments, loadCachedPortfolioCompany, loadFreshPortfolioCompany } from '../src/utils/portfolioResearchServer.js';
+import { isSecPreparedReadEnabled } from '../src/utils/secDocumentStore.js';
 
 function fixture(ticker = 'AAPL', cik = '0000320193') {
   const now = Date.now(), fetchedAt = new Date(now - 60000).toISOString();
@@ -103,6 +104,32 @@ test('portfolio prepared hit returns current complete evidence without source fe
   });
   assert.equal(reads, 1); assert.deepEqual(JSON.parse(JSON.stringify(result.metrics)), JSON.parse(JSON.stringify(built.payload.metrics)));
   assert.equal(result.cache.source, 'supabase-prepared'); assert.equal(result.retrievedAt, metadata.fetchedAt);
+});
+
+test('production broad Compare and Portfolio reads preserve aliases and an explicit rollback avoids prepared storage', async () => {
+  const { company, documents, metadata } = fixture('GOOGL', '0001652044');
+  const compare = packAnalysisCompany(buildCompareCompany(company, { basis: 'annual' }));
+  const portfolio = packPortfolioCompany((await buildPortfolioCompanyFromDocuments(company, 'annual', documents,
+    { retrievedAt: metadata.fetchedAt })).payload);
+  const reads = [];
+  const dependencies = env => ({ mode: 'supabase', enabled: cik => isSecPreparedReadEnabled(cik, env),
+    hotRead: async () => { throw new Error('Broad readers must not fetch Redis company documents.'); },
+    read: async (dataset, key) => {
+      assert.equal(dataset, 'financial'); reads.push(key);
+      return { payload: key === researchPreparedKey('compare', company.cik, 'annual') ? compare : portfolio, metadata };
+    },
+  });
+  for (const reader of [readPreparedCompare, readPreparedPortfolio]) {
+    const active = await reader({ ticker: 'GOOG' }, dependencies({ VERCEL_ENV: 'production' }));
+    assert.equal(active.payload.ticker, 'GOOG'); assert.equal(active.payload.cik, company.cik);
+    assert.equal(active.cacheSource, 'supabase-prepared');
+  }
+  assert.deepEqual(reads, ['compare', 'portfolio'].map(kind => researchPreparedKey(kind, company.cik, 'annual')));
+  assert.equal(compare.ticker, 'GOOGL'); assert.equal(portfolio.ticker, 'GOOGL');
+  for (const reader of [readPreparedCompare, readPreparedPortfolio]) {
+    assert.equal(await reader({ ticker: 'GOOG' }, dependencies({ VERCEL_ENV: 'production', EDGAR_DATASTORE_BROAD_COVERAGE: '0' })), null);
+  }
+  assert.equal(reads.length, 2);
 });
 
 test('unpublished, historical and disabled projections retain existing bounded paths; storage outage fails closed', async () => {
