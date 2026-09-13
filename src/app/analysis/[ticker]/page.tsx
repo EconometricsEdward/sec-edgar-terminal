@@ -3,6 +3,7 @@ import { cache } from "react";
 import AnalysisClient from "./AnalysisWorkspace";
 import { buildPageMetadata } from "../../../utils/siteMetadata";
 import { getOperatingTicker } from "../../../utils/tickerMap.js";
+import { isCftcEnabled } from "../../../utils/cftcFeature.js";
 
 // ============================================================================
 // Route configuration
@@ -187,6 +188,7 @@ export default async function AnalysisTickerPage({ params }: PageProps) {
   const { ticker } = await params;
   const upper = ticker.toUpperCase();
   const meta = await getCompanyMeta(upper);
+  const cftcEnabled = isCftcEnabled();
 
   // If the ticker doesn't resolve at all, render the client with no preload
   // and let it surface its own "not found" error message. This keeps error
@@ -198,6 +200,7 @@ export default async function AnalysisTickerPage({ params }: PageProps) {
         preloadedCik={null}
         preloadedCompanyName={null}
         preloadedSicDescription={null}
+        cftcEnabled={cftcEnabled}
       />
     );
   }
@@ -217,6 +220,7 @@ export default async function AnalysisTickerPage({ params }: PageProps) {
           preloadedCik={meta.cik}
           preloadedCompanyName={meta.name}
           preloadedSicDescription={meta.sicDescription}
+          cftcEnabled={cftcEnabled}
         />
       </div>
     </>

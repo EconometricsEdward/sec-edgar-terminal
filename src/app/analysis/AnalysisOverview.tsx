@@ -6,6 +6,7 @@ import {
   SearchCheck,
   FlaskConical,
   FileText,
+  ChartNoAxesCombined,
 } from "lucide-react";
 import {
   analysisMovements,
@@ -25,6 +26,7 @@ export default function AnalysisOverview({
   index,
   onInspect,
   onPatch,
+  cftcEnabled = false,
 }: any) {
   const overview = analysisOverview(data, index);
   const moves = analysisMovements(data, index, settings);
@@ -85,6 +87,25 @@ export default function AnalysisOverview({
           );
         })}
       </div>
+      {cftcEnabled && (
+        <section className={ui.marketContext} aria-labelledby="analysis-market-context-heading">
+          <div className={ui.marketIcon} aria-hidden="true">
+            <ChartNoAxesCombined size={23} />
+          </div>
+          <div>
+            <p className={styles.eyebrow}>Connect the business to its markets</p>
+            <h3 id="analysis-market-context-heading">CFTC positioning & business drivers</h3>
+            <p>
+              Explore futures positioning in relevant commodity, currency, and
+              interest-rate markets. Check the company’s disclosures, then take
+              a dated observation into your notes or a scenario.
+            </p>
+          </div>
+          <button onClick={() => onPatch({ view: "cftc" })}>
+            Explore CFTC context <ArrowUpRight size={15} />
+          </button>
+        </section>
+      )}
       <div className={ui.mainGrid}>
         <section className={styles.panel}>
           <div className={styles.sectionHeading}>

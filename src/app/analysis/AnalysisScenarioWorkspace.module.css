@@ -3,6 +3,39 @@
   gap: 16px;
   min-width: 0;
 }
+.marketContext {
+  padding: 20px 24px;
+  border: 1px solid var(--analysis-border);
+  border-left: 3px solid var(--analysis-accent);
+  border-radius: 12px;
+  background: var(--analysis-panel);
+  min-width: 0;
+}
+.marketActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-top: 14px;
+}
+.marketActions a {
+  font-size: 12px;
+}
+.marketEvidence {
+  border-block: 1px solid var(--analysis-border);
+  padding: 10px 0;
+  color: var(--analysis-muted);
+  font-size: 12px;
+}
+.marketEvidence summary {
+  cursor: pointer;
+}
+.marketEvidence p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow-y: auto;
+}
 .hero,
 .editor {
   padding: 24px;

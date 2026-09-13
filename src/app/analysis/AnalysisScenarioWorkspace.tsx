@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { FlaskConical, Undo2, Redo2, RotateCcw } from "lucide-react";
 import {
   buildAnalysisScenario,
@@ -38,6 +39,10 @@ function ScenarioWorkbench({
   cases,
   onSaveCases,
   ready,
+  cftcEnabled = false,
+  marketContext,
+  onClearMarketContext,
+  onSaveMarketNote,
 }: any) {
   const scenario = useMemo(
     () => buildAnalysisScenario(data, settings, index),
@@ -155,6 +160,14 @@ function ScenarioWorkbench({
   const equity = scenario.balance.rows.find(
     (row: any) => row.key === "EquityAssets",
   );
+  const marketPath = marketContext
+    ? marketContext.marketPath || `/market?${new URLSearchParams({
+        tab: "positioning",
+        family: marketContext.family,
+        contract: marketContext.contract,
+        date: marketContext.reportDate,
+      })}`
+    : "";
   const sections: any = {
     model: (
       <>
@@ -350,6 +363,75 @@ function ScenarioWorkbench({
           </span>
         </div>
       </header>
+      {cftcEnabled && (
+        <section className={styles.marketContext} aria-labelledby="scenario-market-context-heading">
+          <div className={styles.heading}>
+            <div>
+              <p className={styles.eyebrow}>Research behind your assumptions</p>
+              <h3 id="scenario-market-context-heading">
+                {marketContext ? `${marketContext.label} · CFTC context` : "Add market context to your scenario"}
+              </h3>
+            </div>
+            {marketContext && (
+              <span className={styles.badge}>Positions as of {marketContext.reportDate}</span>
+            )}
+          </div>
+          <p className={styles.muted}>
+            {marketContext
+              ? "A dated market observation is attached to this workbench. Inspect its source snapshot and decide how it relates to the assumptions you want to test."
+              : "Review positioning in the commodity, currency, or rate markets relevant to this company, then bring a dated observation back to this workbench."}
+          </p>
+          {marketContext && (
+            <details className={styles.marketEvidence}>
+              <summary>Inspect attached observation and filing sources</summary>
+              <p>{marketContext.summary}</p>
+            </details>
+          )}
+          <p className={styles.muted}>
+            CFTC positioning is market-wide research context. Choose your own
+            revenue, margin, funding, or asset-loss assumptions below; a
+            positioning change does not determine a price or earnings shock.
+          </p>
+          {marketContext && (
+            <p className={styles.muted}>
+              This observation is attached for this session
+              {marketContext.asOf ? ` with SEC filings through ${marketContext.asOf}` : ""}.
+              {marketContext.asOf && marketContext.reportDate > marketContext.asOf
+                ? " The CFTC observation postdates that SEC cutoff and is current market context."
+                : ""}
+              Save it in Notebook to preserve it with your research brief.
+            </p>
+          )}
+          <div className={styles.marketActions}>
+            <button type="button" onClick={() => onPatch({ view: "cftc" })}>
+              {marketContext ? "Review CFTC context" : "Explore CFTC context"}
+            </button>
+            {marketContext && (
+              <>
+                <Link href={marketPath}>
+                  Open contract history
+                </Link>
+                <button
+                  type="button"
+                  disabled={!onSaveMarketNote}
+                  onClick={() => onSaveMarketNote?.([
+                    `CFTC scenario research — ${marketContext.label}`,
+                    `Positions as of ${marketContext.reportDate}${marketContext.asOf ? `; research cutoff ${marketContext.asOf}` : ""}.`,
+                    marketContext.summary,
+                    "Market-wide positioning context; scenario shocks are independent user assumptions.",
+                    `https://secedgarterminal.com${marketPath}`,
+                  ].join("\n"))}
+                >
+                  Save context to Notebook
+                </button>
+                <button type="button" onClick={onClearMarketContext}>
+                  Clear context
+                </button>
+              </>
+            )}
+          </div>
+        </section>
+      )}
       {dirty && (
         <p className={styles.notice}>
           Unapplied assumption edits are waiting in Model & results.

@@ -65,6 +65,7 @@ const choices = {
     "notebook",
     "extended",
     "capital",
+    "cftc",
     "scenarios",
     "formula",
   ],
