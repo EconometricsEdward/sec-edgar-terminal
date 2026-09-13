@@ -1,6 +1,8 @@
 # Staged Supabase migration: implementation and acceptance record
 
-Status: **reviewable implementation; production cutover is blocked**. No production reader, environment variable, scheduler, compute size, or subscription was changed. This document distinguishes installed schema, working local integrations, and unverified hosted behavior.
+Historical initial-stage record. See [live activation follow-through](data-migration-live.md) for the current status.
+
+Initial status: **reviewable implementation; production cutover is blocked**. No production reader, environment variable, scheduler, compute size, or subscription was changed. This document distinguishes installed schema, working local integrations, and unverified hosted behavior.
 
 ## Baseline and installed infrastructure
 
