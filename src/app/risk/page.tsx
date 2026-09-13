@@ -23,5 +23,5 @@ export default async function RiskPage({ searchParams }: { searchParams: SearchP
   const params = await searchParams;
   const initialTicker = firstParam(params.ticker) || firstParam(params.symbol);
 
-  return <RiskClient initialTicker={initialTicker.toUpperCase()} initialView={firstParam(params.view)} initialEntity={firstParam(params.entity)} cftcEnabled={isCftcEnabled()} />;
+  return <RiskClient initialTicker={initialTicker.toUpperCase()} initialView={firstParam(params.view)} initialEntity={firstParam(params.entity)} initialAsOf={firstParam(params.asOf)} cftcEnabled={isCftcEnabled()} />;
 }

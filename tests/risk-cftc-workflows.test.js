@@ -12,8 +12,8 @@ const firm = (overrides = {}) => ({
 });
 
 test('CFTC risk links restore standalone FCM and company context without requiring a ticker for FCM', () => {
-  assert.deepEqual(parseRiskLocation('?view=fcm&entity=firm-a'), { ticker: '', view: 'fcm', entity: 'firm-a' });
-  assert.deepEqual(parseRiskLocation('?symbol=jpm&view=cftc'), { ticker: 'JPM', view: 'cftc', entity: '' });
+  assert.deepEqual(parseRiskLocation('?view=fcm&entity=firm-a'), { ticker: '', view: 'fcm', entity: 'firm-a', asOf: '' });
+  assert.deepEqual(parseRiskLocation('?symbol=jpm&view=cftc'), { ticker: 'JPM', view: 'cftc', entity: '', asOf: '' });
   assert.equal(riskViewPath('?ticker=JPM&view=fcm&entity=firm-a', 'cftc'), '/risk?ticker=JPM&view=cftc&entity=firm-a');
   assert.equal(riskViewPath('?ticker=JPM&view=cftc', 'overview'), '/risk?ticker=JPM');
   assert.equal(normalizeRiskView('unrecognized'), 'overview');
@@ -22,9 +22,17 @@ test('CFTC risk links restore standalone FCM and company context without requiri
 test('disabled CFTC views fall back to company overview without losing the ticker', () => {
   assert.equal(normalizeRiskView('cftc', false), 'overview');
   assert.equal(normalizeRiskView('fcm', false), 'overview');
+  assert.equal(normalizeRiskView('exposures', false), 'overview');
   assert.equal(normalizeRiskView('stress', false), 'stress');
-  assert.deepEqual(parseRiskLocation('?ticker=BAC&view=cftc', false), { ticker: 'BAC', view: 'overview', entity: '' });
+  assert.deepEqual(parseRiskLocation('?ticker=BAC&view=cftc', false), { ticker: 'BAC', view: 'overview', entity: '', asOf: '' });
   assert.equal(riskViewPath('?ticker=BAC&view=fcm', 'fcm', false), '/risk?ticker=BAC');
+});
+
+test('company exposure deep links preserve filing cutoff across risk views and browser restoration', () => {
+  assert.deepEqual(parseRiskLocation('?ticker=xom&view=exposures&asOf=2025-06-30'), { ticker: 'XOM', view: 'exposures', entity: '', asOf: '2025-06-30' });
+  assert.equal(riskViewPath('?ticker=XOM&view=exposures&asOf=2025-06-30', 'stress'), '/risk?ticker=XOM&view=stress&asOf=2025-06-30');
+  assert.equal(riskViewPath('?ticker=XOM&view=stress&asOf=2025-06-30', 'exposures'), '/risk?ticker=XOM&view=exposures&asOf=2025-06-30');
+  assert.deepEqual(parseRiskLocation('?ticker=XOM&view=exposures&asOf=2025-06-30', false), { ticker: 'XOM', view: 'overview', entity: '', asOf: '2025-06-30' });
 });
 
 test('capital presentation preserves zero, missing values, raw dollars and coverage multiples', () => {
