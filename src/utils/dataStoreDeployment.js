@@ -2,6 +2,9 @@
 export const DATA_STORE_DEPLOYMENT = Object.freeze({
   stage: 'supabase',
   secSchedule: true,
+  // Writers can prepare the larger universe before its readers are activated.
+  broadCoverage: false,
+  secCoverageSchedule: true,
   project: 'vvkihuduqqnxqahhbphs',
   gateway: 'edgar-data-gateway',
 });
@@ -14,6 +17,16 @@ export function getDeploymentDataStoreMode(dataset, env = process.env) {
 export function isSecMigrationScheduleEnabled(env = process.env) {
   if (Object.hasOwn(env, 'EDGAR_DATASTORE_SEC_SCHEDULE')) return env.EDGAR_DATASTORE_SEC_SCHEDULE === '1';
   return env.VERCEL_ENV === 'production' && DATA_STORE_DEPLOYMENT.secSchedule;
+}
+
+export function isSecCoverageScheduleEnabled(env = process.env) {
+  if (Object.hasOwn(env, 'EDGAR_DATASTORE_SEC_COVERAGE_SCHEDULE')) return env.EDGAR_DATASTORE_SEC_COVERAGE_SCHEDULE === '1';
+  return env.VERCEL_ENV === 'production' && DATA_STORE_DEPLOYMENT.secCoverageSchedule;
+}
+
+export function isBroadSecCoverageEnabled(env = process.env) {
+  if (Object.hasOwn(env, 'EDGAR_DATASTORE_BROAD_COVERAGE')) return env.EDGAR_DATASTORE_BROAD_COVERAGE === '1';
+  return env.VERCEL_ENV === 'production' && DATA_STORE_DEPLOYMENT.broadCoverage;
 }
 
 // Bounded bootstrap and rollback verification are complete. Administrative

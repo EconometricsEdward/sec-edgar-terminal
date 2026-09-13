@@ -19,6 +19,7 @@ import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
 import { comparePointQuality } from "./compareQuality.js";
 import { classifyIndustry, industryLabel } from "./industry.js";
 import { warmGet, warmSet } from "./warmCache.js";
+import { readPreparedPortfolio } from "./preparedResearchStore.js";
 import {
   normalizePortfolioInput,
   createPortfolioRows,
@@ -676,10 +677,9 @@ function addContinuityDisclosure(result, continuity) {
 async function freshCompany(
   identity,
   basis,
-  { secJson = scheduledSecJson, signal } = {},
+  { secJson = scheduledSecJson, signal, retrievedAt = nowIso() } = {},
 ) {
   const cik = cikString(identity.cik);
-  const retrievedAt = nowIso();
   const submissions = await secJson(`/submissions/CIK${cik}.json`, signal);
   if (cikString(submissions?.cik) !== cik || !submissions.name)
     throw new Error(
@@ -843,7 +843,18 @@ function decodeCache(value) {
   }
 }
 
-async function cachedCompany(identity, basis, options) {
+async function cachedCompany(identity, basis, options = {}) {
+  const prepared = await (options.preparedRead || readPreparedPortfolio)({
+    ticker: identity.ticker || undefined, cik: identity.cik, basis,
+  });
+  if (prepared) return {
+    ...prepared.payload,
+    cache: { status: prepared.stale ? "stale" : "cached",
+      storedAt: prepared.payload.retrievedAt, checkedAt: prepared.metadata.revalidatedAt,
+      source: prepared.cacheSource },
+    warnings: [...prepared.payload.warnings, ...(prepared.stale
+      ? ["The scheduled SEC refresh is pending. Financial metrics and source dates belong to the last validated company snapshot."] : [])],
+  };
   const key = `${CACHE_SCHEMA_VERSION}:${COMPARE_VERSION}:${ANALYSIS_VERSION}:${identity.cik}:${basis}`;
   const candidate =
     localCache.get(key) || decodeCache(await warmGet(CACHE_NAMESPACE, key));
@@ -1062,3 +1073,25 @@ export {
   freshCompany as loadFreshPortfolioCompany,
   cachedCompany as loadCachedPortfolioCompany,
 };
+
+/** Scheduled preparation supplies verified public documents; this path cannot fetch a provider. */
+export async function buildPortfolioCompanyFromDocuments(identity, basis, documents, { retrievedAt } = {}) {
+  const cik = cikString(identity.cik);
+  const requiredCiks = [cik, ...(SEC_EVIDENCE_CONTINUITY[cik]?.predecessorCiks || [])];
+  const required = requiredCiks.flatMap((sourceCik) => [
+    `/submissions/CIK${sourceCik}.json`, `/api/xbrl/companyfacts/CIK${sourceCik}.json`,
+  ]);
+  if (required.some((path) => !documents[path])) return {
+    status: "skipped", reason: "Verified current and predecessor SEC documents are required to prepare this company's complete evidence chain.",
+  };
+  const payload = await freshCompany(identity, basis, {
+    retrievedAt,
+    secJson: async (path) => {
+      if (!documents[path]) throw new Error("Prepared research cannot fetch an unverified source document.");
+      return documents[path];
+    },
+  });
+  if (payload.factsUnavailable || (payload.evidenceContinuity && payload.evidenceContinuity.status !== "applied"))
+    return { status: "skipped", reason: "The complete financial evidence chain did not pass validation." };
+  return { status: "prepared", payload };
+}

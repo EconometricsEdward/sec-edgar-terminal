@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { getDataStoreMode, readDataset, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, stableDataStoreJson } from './dataStore.js';
 import { secFetch } from './secClient.js';
 import { warmReserveGeneration, warmSetGeneration } from './warmCache.js';
+import { SEC_COVERAGE_COHORT, getSecCoverageCompany } from './secCoverageUniverse.js';
+import { isBroadSecCoverageEnabled } from './dataStoreDeployment.js';
 
 export const SEC_DOCUMENT_VERSION = 'sec-documents-v1';
 export const SEC_DOCUMENT_MAX_BYTES = 24 * 1024 * 1024;
@@ -17,7 +19,20 @@ export const SEC_MIGRATION_COHORT = Object.freeze([
   { ticker: 'JPM', cik: '0000019617' },
   { ticker: 'ACU', cik: '0000002098' },
 ].map(Object.freeze));
-const cohortCiks = new Set(SEC_MIGRATION_COHORT.map(({ cik }) => cik));
+const pilotCiks = new Set(SEC_MIGRATION_COHORT.map(({ cik }) => cik));
+// Existing, independently verified XOM predecessor/joint-filer evidence.
+// This extends source history without creating another universe constituent.
+export const SEC_SUPPORTING_SOURCE_CIKS = Object.freeze(['0000034088']);
+export const SEC_PREPARED_COHORT = Object.freeze([...SEC_COVERAGE_COHORT,
+  ...SEC_MIGRATION_COHORT.filter(company => !getSecCoverageCompany(company.cik)),
+]);
+const cohortCiks = new Set([...SEC_PREPARED_COHORT.map(({ cik }) => cik), ...SEC_SUPPORTING_SOURCE_CIKS]);
+export function getSecPreparedCompany(value) {
+  return getSecCoverageCompany(value) || SEC_MIGRATION_COHORT.find(company => company.ticker === value || company.cik === value) || null;
+}
+export function isSecPreparedReadEnabled(cik, env = process.env) {
+  return pilotCiks.has(cik) || (cohortCiks.has(cik) && isBroadSecCoverageEnabled(env));
+}
 
 export function secDocumentIdentity(path) {
   const submission = /^\/submissions\/CIK(\d{10})\.json$/.exec(path);
@@ -81,9 +96,10 @@ export function preparedCacheControl(envelope, { maxAge = 60, sharedMaxAge = 300
 /** A cohort miss/outage never calls SEC from an ordinary prepared-data read. */
 export async function readPreparedSecDocument(path, {
   mode = getDataStoreMode('sec'), read = readDataset, now = Date.now(), allowStale = true,
+  readEnabled = isSecPreparedReadEnabled,
 } = {}) {
   const identity = secDocumentIdentity(path);
-  if (mode !== 'supabase' || !identity?.covered) return null;
+  if (mode !== 'supabase' || !identity?.covered || !readEnabled(identity.cik)) return null;
   let envelope;
   try { envelope = await read('sec', identity.key, { allowStale: true }); }
   catch { throw new PreparedSecUnavailableError('Prepared SEC storage is temporarily unavailable.'); }
@@ -136,7 +152,7 @@ export async function refreshSecDocument(path, {
   signal, mode = getDataStoreMode('sec'), read = readDataset,
   begin = beginDatasetWrite, publish = publishDataset, revalidate = revalidateDataset,
   release = releaseDatasetWrite, reserveLegacy = warmReserveGeneration, legacyWrite = warmSetGeneration,
-  fetchSec = secFetch, now = () => Date.now(),
+  fetchSec = secFetch, now = () => Date.now(), minRecheckAgeMs = 0,
 } = {}) {
   const identity = secDocumentIdentity(path);
   if (!identity?.covered) throw new Error('SEC migration refresh is limited to the documented cohort and primary JSON resources.');
@@ -144,7 +160,9 @@ export async function refreshSecDocument(path, {
   const claim = await begin('sec', identity.key, { leaseSeconds: 120 });
   if (!claim) return { status: 'busy', identity };
   try {
-  const mirrors = [['research-sec-v1', path, 300], ...(identity.resource === 'submissions' ? [['submissions-cik', identity.cik, 25 * 3600]] : [])];
+  // Keep the verified pilot rollback mirrors. The broad archive belongs in
+  // Storage; copying every multi-megabyte document into Redis defeats its role.
+  const mirrors = pilotCiks.has(identity.cik) ? [['research-sec-v1', path, 300], ...(identity.resource === 'submissions' ? [['submissions-cik', identity.cik, 25 * 3600]] : [])] : [];
   for (const [type] of mirrors) await reserveLegacy(type, identity.key, claim.generation, claim);
   const mirror = async (payload) => {
     const results = [];
@@ -152,6 +170,12 @@ export async function refreshSecDocument(path, {
     return results;
   };
   const previous = await read('sec', identity.key, { allowStale: true });
+  if (Number.isFinite(minRecheckAgeMs) && minRecheckAgeMs > 0 && minRecheckAgeMs <= 20 * 3600000
+    && preparedEnvelopeUsable(previous, now()) && Date.parse(previous.metadata.expiresAt) > now()
+    && now() - Date.parse(previous.metadata.revalidatedAt || previous.metadata.fetchedAt) < minRecheckAgeMs) {
+    await release('sec', identity.key, claim);
+    return { status: 'current', identity, envelope: previous, rollback: [] };
+  }
   const headers = { Accept: 'application/json' };
   if (previous?.metadata?.etag) headers['If-None-Match'] = previous.metadata.etag;
   if (previous?.metadata?.lastModified) headers['If-Modified-Since'] = previous.metadata.lastModified;

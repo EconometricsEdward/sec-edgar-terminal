@@ -1,5 +1,5 @@
 import { authorizeDataMigration, readMigrationOperation, migrationOperationEnabled } from '../../../../utils/dataMigrationOperations.js';
-import { DataStoreError, getDataStoreMode, readDataStoreStatus,
+import { DataStoreError, getDataStoreMode, readDataStoreStatus, readDataStoreCoverageStatus,
   dataStoreRetentionDryRun, dataStoreOrphanDryRun, readDataset, readFinancialMetrics } from '../../../../utils/dataStore.js';
 import { financialPreparedKey } from '../../../../utils/preparedFinancialData.js';
 import { runSecMigrationJob } from '../../../../utils/dataMigrationJob.js';
@@ -26,10 +26,11 @@ export async function GET(request) {
       return Response.json({ key, metadata: record.metadata, observations: await readFinancialMetrics(record.metadata.versionId) }, { headers });
     }
     const status = await readDataStoreStatus();
+    const coverage = await readDataStoreCoverageStatus();
     const retention = await dataStoreRetentionDryRun({ limit: 25, before: new Date(Date.now() - 30 * 86400000).toISOString() });
     const orphans = await dataStoreOrphanDryRun({ limit: 25 });
     return Response.json({ flags: Object.fromEntries(['cftc', 'sec', 'financial'].map(dataset => [dataset, getDataStoreMode(dataset)])),
-      status, retention, orphans, cftc: cftcPersistence.status(), alerts: 'unconfigured' }, { headers });
+      status, coverage, retention, orphans, cftc: cftcPersistence.status(), alerts: 'unconfigured' }, { headers });
   } catch (error) {
     const code = error instanceof DataStoreError && /^[a-z0-9_]{1,64}$/.test(error.code)
       ? error.code : 'durable_status_unavailable';

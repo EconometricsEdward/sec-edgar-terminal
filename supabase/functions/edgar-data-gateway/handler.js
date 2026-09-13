@@ -1,4 +1,5 @@
 /** Narrow workload gateway. Supabase credentials never leave this function. */
+import { APPROVED_SEC_CIKS, SUPPORTING_SOURCE_CIKS } from './coverage.js';
 export const TRUST = Object.freeze({
   issuer: 'https://oidc.vercel.com/econometricsedwards-projects',
   audience: 'https://vercel.com/econometricsedwards-projects',
@@ -23,9 +24,13 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const HASH = /^[a-f0-9]{64}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const CIKS = '(?:0000320193|0000789019|0000019617|0000002098)';
-const SEC_KEY = new RegExp(`^sec-documents-v1:CIK${CIKS}:(?:submissions|companyfacts)$`);
+const CIKS = `(?:${APPROVED_SEC_CIKS.join('|')})`;
+const SOURCE_CIKS = `(?:${[...APPROVED_SEC_CIKS, ...SUPPORTING_SOURCE_CIKS].join('|')})`;
+const SEC_KEY = new RegExp(`^sec-documents-v1:CIK${SOURCE_CIKS}:(?:submissions|companyfacts)$`);
 const FINANCIAL_KEY = new RegExp(`^financial-analysis-v1:analysis-v1\\.4:context-v3:CIK${CIKS}:(?:annual|quarter|ytd|ttm):latest$`);
+const COMPARE_KEY = new RegExp(`^research-compare-v1:compare-v2:context-v3:CIK${CIKS}:(?:annual|quarter|ttm):latest$`);
+const PORTFOLIO_KEY = new RegExp(`^research-portfolio-v1:analysis-v1\\.4:context-v3:CIK${CIKS}:(?:annual|quarter|ytd|ttm):latest$`);
+const COMPANY_KEY = new RegExp(`^research-company-v1:CIK${CIKS}$`);
 const GROUPS = Object.freeze({
   tff: ['dealer', 'asset-manager', 'leveraged-funds', 'other-reportables', 'non-reportables'],
   disaggregated: ['producer-merchant', 'swap-dealers', 'managed-money', 'other-reportables', 'non-reportables'],
@@ -36,14 +41,21 @@ const GROUPS = Object.freeze({
 export const RPC_PARAMETERS = Object.freeze({
   edgar_begin_write: ['p_dataset', 'p_key', 'p_owner', 'p_lease_seconds'],
   edgar_get_version: ['p_dataset', 'p_key', 'p_identity', 'p_pointer'],
+  edgar_get_manifests: ['p_dataset', 'p_keys'],
+  edgar_get_compact_batch: ['p_dataset', 'p_keys'],
   edgar_publish: ['p_dataset', 'p_key', 'p_claim', 'p_record', 'p_promote_good'],
   edgar_revalidate: ['p_dataset', 'p_key', 'p_claim', 'p_metadata'],
   edgar_release_write: ['p_dataset', 'p_key', 'p_claim'],
   edgar_enqueue_job: ['p_dataset', 'p_key', 'p_job_key', 'p_checkpoint', 'p_max_attempts'],
+  edgar_enqueue_coverage_jobs: ['p_cycle', 'p_version', 'p_shards'],
+  edgar_authorize_coverage_schedule: ['p_timestamp', 'p_nonce', 'p_signature'],
   edgar_claim_job: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_job_key'],
+  edgar_claim_job_prefix: ['p_dataset', 'p_owner', 'p_lease_seconds', 'p_prefix'],
   edgar_finish_job: ['p_claim', 'p_status', 'p_checkpoint', 'p_error', 'p_delay_seconds'],
+  edgar_yield_job: ['p_claim', 'p_checkpoint', 'p_delay_seconds'],
   edgar_checkpoint_job: ['p_claim', 'p_checkpoint', 'p_lease_seconds'],
   edgar_store_status: [],
+  edgar_coverage_status: [],
   edgar_read_financial_metrics: ['p_version'],
   edgar_export_manifests: ['p_after', 'p_limit'],
   edgar_retention_dry_run: ['p_before', 'p_limit'],
@@ -72,9 +84,9 @@ function date(value) {
 }
 function validKey(dataset, key, job = false) {
   if (typeof key !== 'string' || key.length > 512) return false;
-  if (job) return (dataset === 'sec' && key === 'financial-cohort-v1') || (dataset === 'cftc' && key === 'refresh:tff-disaggregated');
+  if (job) return (dataset === 'sec' && (key === 'financial-cohort-v1' || /^sec-coverage-v1:shard:(?:[0-2]\d|3[01])$/.test(key))) || (dataset === 'cftc' && key === 'refresh:tff-disaggregated');
   if (dataset === 'sec') return SEC_KEY.test(key);
-  if (dataset === 'financial') return FINANCIAL_KEY.test(key);
+  if (dataset === 'financial') return FINANCIAL_KEY.test(key) || COMPARE_KEY.test(key) || PORTFOLIO_KEY.test(key) || COMPANY_KEY.test(key) || key === 'research-market-overview-v1:latest';
   if (dataset !== 'cftc') return false;
   const parts = key.split(':');
   if (!has(GROUPS, parts[1])) return false;
@@ -84,6 +96,10 @@ function validKey(dataset, key, job = false) {
 }
 function jobKey(dataset, value) {
   if (typeof value !== 'string') return false;
+  if (dataset === 'sec') {
+    const coverage = /^sec-coverage-v1:(\d{4}-\d{2}-\d{2}):(?:[0-2]\d|3[01]):[a-zA-Z0-9_-]{1,64}$/.exec(value);
+    if (coverage) return date(coverage[1]);
+  }
   const prefix = dataset === 'sec' ? 'sec-financial-cohort-v1:' : dataset === 'cftc' ? 'cftc-refresh:' : null;
   return !!prefix && value.startsWith(prefix) && date(value.slice(prefix.length));
 }
@@ -148,9 +164,13 @@ function validateRpc(name, params) {
   if (RPC_PARAMETERS[name].includes('p_dataset')) {
     if (!['sec', 'cftc', 'financial'].includes(params.p_dataset)) reject('dataset_denied', 403);
     if (RPC_PARAMETERS[name].includes('p_key') && !validKey(params.p_dataset, params.p_key, name === 'edgar_enqueue_job')) reject('resource_denied', 403);
+    if (RPC_PARAMETERS[name].includes('p_keys')) {
+      const bound = name === 'edgar_get_manifests' ? 100 : 5;
+      if (!Array.isArray(params.p_keys) || params.p_keys.length > bound || params.p_keys.some(key => !validKey(params.p_dataset, key))) reject('invalid_batch_keys', 403);
+    }
   }
   if (RPC_PARAMETERS[name].includes('p_owner') && !UUID.test(params.p_owner || '')) reject('invalid_owner');
-  if (RPC_PARAMETERS[name].includes('p_claim')) claim(params.p_claim, ['edgar_finish_job', 'edgar_checkpoint_job'].includes(name));
+  if (RPC_PARAMETERS[name].includes('p_claim')) claim(params.p_claim, ['edgar_finish_job', 'edgar_checkpoint_job', 'edgar_yield_job'].includes(name));
   if (has(params, 'p_lease_seconds') && !integer(params.p_lease_seconds, 10, 900)) reject('invalid_lease');
   if (has(params, 'p_identity') && params.p_identity !== null && !HASH.test(params.p_identity)) reject('invalid_identity');
   if (has(params, 'p_pointer') && !['current', 'last-good', 'rollback'].includes(params.p_pointer)) reject('invalid_pointer');
@@ -160,15 +180,30 @@ function validateRpc(name, params) {
     knownKeys(params.p_metadata, ['revalidatedAt', 'expiresAt', 'etag', 'lastModified']);
     metadata(params.p_metadata); timestamp(params.p_metadata.revalidatedAt); timestamp(params.p_metadata.expiresAt, true);
   }
-  if (['edgar_enqueue_job', 'edgar_claim_job'].includes(name)) {
+  if (['edgar_enqueue_job', 'edgar_claim_job', 'edgar_claim_job_prefix'].includes(name)) {
     if (!['sec', 'cftc'].includes(params.p_dataset)) reject('dataset_denied', 403);
     if ((name === 'edgar_enqueue_job' || params.p_job_key != null) && !jobKey(params.p_dataset, params.p_job_key)) reject('invalid_job_key');
   }
+  if (name === 'edgar_claim_job_prefix' && (params.p_dataset !== 'sec' || !['sec-financial-cohort-v1:', 'sec-coverage-v1:'].includes(params.p_prefix))) reject('invalid_job_prefix', 403);
+  if (name === 'edgar_enqueue_coverage_jobs') {
+    if (!date(params.p_cycle) || typeof params.p_version !== 'string' || !/^[a-f0-9]{16}$/.test(params.p_version)) reject('invalid_coverage_cycle');
+    if (params.p_shards != null && (!Array.isArray(params.p_shards) || params.p_shards.length < 1 || params.p_shards.length > 32
+      || new Set(params.p_shards).size !== params.p_shards.length || params.p_shards.some(shard => !integer(shard,0,31)))) reject('invalid_coverage_shards');
+  }
+  if (name === 'edgar_authorize_coverage_schedule') {
+    if (!integer(params.p_timestamp,1000000000,9999999999)
+      || typeof params.p_nonce !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(params.p_nonce)
+      || typeof params.p_signature !== 'string' || !HASH.test(params.p_signature)) reject('invalid_schedule_signature');
+  }
   if (has(params, 'p_max_attempts') && !integer(params.p_max_attempts, 1, 10)) reject();
-  if (['edgar_finish_job', 'edgar_checkpoint_job'].includes(name) || has(params, 'p_checkpoint')) metadata(params.p_checkpoint);
+  if (['edgar_finish_job', 'edgar_checkpoint_job', 'edgar_yield_job'].includes(name) || has(params, 'p_checkpoint')) {
+    metadata(params.p_checkpoint);
+    if (encoder.encode(JSON.stringify(params.p_checkpoint)).byteLength > 16384) reject('checkpoint_too_large', 413);
+  }
   if (name === 'edgar_finish_job' && !['done', 'retry', 'dead'].includes(params.p_status)) reject('invalid_job_status');
   if (has(params, 'p_error') && params.p_error !== null && (typeof params.p_error !== 'string' || !/^[A-Za-z0-9_:-]{1,100}$/.test(params.p_error))) reject();
   if (has(params, 'p_delay_seconds') && !integer(params.p_delay_seconds, 0, 2147483647)) reject();
+  if (name === 'edgar_yield_job' && has(params, 'p_delay_seconds') && !integer(params.p_delay_seconds, 1, 86400)) reject('invalid_yield_delay');
   if (name === 'edgar_read_financial_metrics' && !UUID.test(params.p_version || '')) reject();
   if (has(params, 'p_after') && params.p_after !== null && !UUID.test(params.p_after)) reject();
   if (has(params, 'p_limit') && !integer(params.p_limit, 1, 100)) reject('invalid_limit');

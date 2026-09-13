@@ -87,3 +87,25 @@ test('Published compact Market reads use shared storage without SEC or price req
     if (priorToken === undefined) delete process.env.KV_REST_API_TOKEN; else process.env.KV_REST_API_TOKEN = priorToken;
   }
 });
+
+test('durable Market fallback preserves one complete shared snapshot and rejects an older delayed publisher', async () => {
+  const { readDurableMarketOverview, publishDurableMarketOverview } = await import('../src/utils/marketOverviewServer.js');
+  const { atlas, membership } = fixture();
+  const overview = buildMarketOverview(atlas, { membership, persistHistory: true });
+  let stored = null, writes = 0, releases = 0;
+  const dependencies = { mode: 'supabase', begin: async () => ({ generation: '1' }),
+    read: async (dataset, key) => { assert.equal(dataset, 'financial'); assert.equal(key, 'research-market-overview-v1:latest'); return stored; },
+    publish: async ({ payload, metadata }) => { writes++; stored = { payload, metadata }; },
+    release: async () => { releases++; return true; } };
+  await publishDurableMarketOverview(overview, dependencies);
+  const recovered = await readDurableMarketOverview(dependencies);
+  assert.equal(recovered.cache.source, 'supabase-prepared');
+  assert.deepEqual(recovered.companies, overview.companies);
+  assert.deepEqual(recovered.observations, overview.observations);
+  assert.ok(recovered.companies.every((company) => !('facts' in company) && !('evidence' in company)));
+  const delayed = { ...overview, generatedAt: new Date(Date.parse(overview.generatedAt) - 60000).toISOString() };
+  assert.equal((await publishDurableMarketOverview(delayed, dependencies)).generatedAt, overview.generatedAt);
+  assert.equal(writes, 1); assert.equal(releases, 1);
+  stored = { ...stored, payload: { ...overview, companies: [] } };
+  assert.equal(await readDurableMarketOverview(dependencies), null);
+});

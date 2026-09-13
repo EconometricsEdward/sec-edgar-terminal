@@ -7,6 +7,9 @@ import {
   COMPARE_VERSION,
 } from "../../../utils/compareResearch.js";
 import { warmGet, warmSet } from "../../../utils/warmCache.js";
+import { packAnalysisCompany } from "../../../utils/analysisResearch.js";
+import { readPreparedCompare } from "../../../utils/preparedResearchStore.js";
+import { preparedDataHeaders, preparedCacheControl } from "../../../utils/secDocumentStore.js";
 import {
   checkRateLimit,
   getClientIp,
@@ -21,9 +24,11 @@ export async function GET(request) {
   const ticker = (params.get("ticker") || "").trim().toUpperCase();
   const basis = params.get("basis") || "annual";
   const asOf = params.get("asOf") || "";
+  const format = params.get("format") || "expanded";
   if (
     !validTicker(ticker) ||
     !["annual", "quarter", "ttm"].includes(basis) ||
+    !["expanded", "packed"].includes(format) ||
     (asOf &&
       (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) ||
         !Number.isFinite(Date.parse(asOf)) ||
@@ -33,7 +38,7 @@ export async function GET(request) {
     return NextResponse.json(
       {
         error:
-          "Use a valid ticker, annual/quarter/ttm basis, and a valid filing cutoff no later than today.",
+          "Use a valid ticker, annual/quarter/ttm basis, expanded/packed format, and a valid filing cutoff no later than today.",
       },
       { status: 400 },
     );
@@ -45,14 +50,17 @@ export async function GET(request) {
   });
   if (!limit.allowed) return rateLimitedResponse(limit);
   try {
+    const prepared = await readPreparedCompare({ ticker, basis, asOf, format });
+    if (prepared) return NextResponse.json(prepared.payload, {
+      headers: { "Cache-Control": preparedCacheControl(prepared), ...preparedDataHeaders(prepared, prepared.cacheSource) },
+    });
     const id = `${COMPARE_VERSION}:${ticker}:${basis}:${asOf}`;
     const cached = await warmGet("compare-research", id);
     if (cached?.gzip) {
       try {
+        const payload = JSON.parse(gunzipSync(Buffer.from(cached.gzip, "base64")).toString("utf8"));
         return NextResponse.json(
-          JSON.parse(
-            gunzipSync(Buffer.from(cached.gzip, "base64")).toString("utf8"),
-          ),
+          format === "packed" ? packAnalysisCompany(payload) : payload,
           { headers: { "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": "warm" } },
         );
       } catch {
@@ -69,7 +77,7 @@ export async function GET(request) {
       { gzip: gzipSync(JSON.stringify(result)).toString("base64") },
       300,
     );
-    return NextResponse.json(result, {
+    return NextResponse.json(format === "packed" ? packAnalysisCompany(result) : result, {
       headers: { "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": "upstream" },
     });
   } catch (error) {
