@@ -7,6 +7,7 @@ import { prewarmSecSubmissions, readSecPrewarmTickers } from '../../../../utils/
 import { getDataStoreMode } from '../../../../utils/dataStore.js';
 import { SEC_MIGRATION_COHORT } from '../../../../utils/secDocumentStore.js';
 import { runSecMigrationJob } from '../../../../utils/dataMigrationJob.js';
+import { isSecMigrationScheduleEnabled } from '../../../../utils/dataStoreDeployment.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -24,7 +25,7 @@ export async function GET(request) {
   const timer = setTimeout(()=>controller.abort(new Error('SEC Market prewarm deadline reached.')),285000);
   try {
     const deadline = startedAt + 280_000;
-    const migrationScheduled = process.env.EDGAR_DATASTORE_SEC_SCHEDULE === '1'
+    const migrationScheduled = isSecMigrationScheduleEnabled(process.env)
       && ['sec', 'financial'].every(dataset => getDataStoreMode(dataset) !== 'off');
     const tickers = migrationScheduled
       ? (await readSecPrewarmTickers()).filter(ticker => !SEC_MIGRATION_COHORT.some(company => company.ticker === ticker)) : undefined;

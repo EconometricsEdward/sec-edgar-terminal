@@ -186,3 +186,101 @@ test('revalidation rejects expired ownership and longer Retry-After is not short
   await store.finishDataStoreJob(claim, { status: 'retry', retryAfterSeconds: 172800 });
   assert.equal(body.p_delay_seconds, 172800); assert.equal(body.p_status, 'retry');
 });
+
+test('immutable object reuse coalesces downloads while every read observes head expiry and revisions', async () => {
+  const values = [{ rows: [{ value: 1 }], padding: 'x'.repeat(70000) }, { rows: [{ value: 2 }], padding: 'x'.repeat(70000) }];
+  const bytes = values.map(value => Buffer.from(stableDataStoreJson(value)));
+  const hashes = bytes.map(dataStoreContentHash), zipped = bytes.map(value => gzipSync(value));
+  let current = 0, expiresAt = '2099-01-01T00:00:00Z', reads = 0, downloads = 0;
+  const store = createDataStore({ env: baseEnv, fetchImpl: async (url) => {
+    if (url.includes('/rpc/')) {
+      reads++;
+      return json({ id: `version-${current}`, identityHash: hashes[current], generation: current + 1,
+        objectPath: `fixture/financial/snapshot/${hashes[current]}.json.gz`, contentHash: hashes[current],
+        rawBytes: bytes[current].length, storedBytes: zipped[current].length, metadata: metadata(), expiresAt });
+    }
+    downloads++;
+    await new Promise(resolve => setTimeout(resolve, 15));
+    return new Response(zipped[hashes.findIndex(hash => url.includes(hash))]);
+  } });
+  const results = await Promise.all(Array.from({ length: 12 }, () => store.readDataset('financial', 'one')));
+  assert.equal(reads, 12); assert.equal(downloads, 1);
+  assert.equal(results[0].serializedPayload, bytes[0].toString());
+  assert.throws(() => { results[0].payload.rows[0].value = 99; }, TypeError);
+  results[0].metadata.fetchedAt = 'mutated caller metadata';
+  expiresAt = '2000-01-01T00:00:00Z';
+  const stale = await store.readDataset('financial', 'one');
+  assert.equal(stale.stale, true); assert.equal(stale.metadata.fetchedAt, timestamp);
+  assert.equal(await store.readDataset('financial', 'one', { allowStale: false }), null);
+  assert.equal(downloads, 1);
+  current = 1; expiresAt = '2099-01-01T00:00:00Z';
+  const revised = await store.readDataset('financial', 'one');
+  assert.equal(revised.payload.rows[0].value, 2); assert.equal(revised.metadata.generation, 2);
+  assert.equal(downloads, 2); assert.equal(reads, 15);
+});
+
+test('failed object reads are retried and exact source export bypasses cached parsed payload', async () => {
+  const bytes = Buffer.from('{ "rows": [1,2,3] }\n'), zipped = gzipSync(bytes), hash = dataStoreContentHash(bytes);
+  const asset = { objectPath: `fixture/sec/source/${hash}.json.gz`, contentHash: hash, rawBytes: bytes.length, storedBytes: zipped.length };
+  let fail = true, downloads = 0;
+  const store = createDataStore({ env: baseEnv, fetchImpl: async url => {
+    if (url.includes('/rpc/')) return json({ ...asset, metadata: metadata(), source: asset });
+    downloads++;
+    return fail ? json({ code: 'outage' }, 503) : new Response(zipped);
+  } });
+  await assert.rejects(store.readDataset('sec', 'one'), { code: 'http_503' });
+  fail = false;
+  const result = await store.readDataset('sec', 'one');
+  assert.equal(downloads, 2); assert.equal(result.serializedPayload, bytes.toString());
+  fail = true;
+  assert.deepEqual((await store.readDataset('sec', 'one')).payload, { rows: [1, 2, 3] });
+  await assert.rejects(store.readDatasetSource(result), { code: 'http_503' });
+  assert.equal(downloads, 3);
+});
+
+test('object content reuse never crosses a changed credential boundary or bypasses upload verification', async () => {
+  const env = { ...baseEnv }, bytes = Buffer.from('{"value":1}'), zipped = gzipSync(bytes), hash = dataStoreContentHash(bytes);
+  let downloads = 0;
+  const store = createDataStore({ env, fetchImpl: async (url, init) => {
+    if (url.includes('/rpc/')) return json({ objectPath: `fixture/sec/source/${hash}.json.gz`, contentHash: hash, rawBytes: bytes.length, storedBytes: zipped.length, metadata: metadata() });
+    downloads++;
+    return init.headers.apikey === baseEnv.SUPABASE_SECRET_KEY ? new Response(zipped) : json({}, 401);
+  } });
+  await store.readDataset('sec', 'one');
+  env.SUPABASE_SECRET_KEY = 'sb_secret_different';
+  await assert.rejects(store.readDataset('sec', 'one'), { code: 'http_401' });
+  assert.equal(downloads, 2);
+  const f = fixture(), payload = { series: 'x'.repeat(70000) };
+  for (const key of ['one', 'two']) {
+    const claim = await f.store.beginDatasetWrite('financial', key);
+    await f.store.publishDataset({ dataset: 'financial', key, claim, payload, metadata: metadata() });
+  }
+  // Two uploads require two actual read-back verifications; only the subsequent
+  // immutable serving read can reuse the first parsed snapshot.
+  assert.equal(f.calls.filter(call => call.path.startsWith('/storage/') && call.method === 'GET').length, 3);
+});
+
+test('immutable content cache evicts by decoded input budget and absolute age', async t => {
+  let now = Date.parse('2026-09-13T00:00:00Z'), downloads = 0;
+  t.mock.method(Date, 'now', () => now);
+  const assets = Array.from({ length: 5 }, (_, index) => {
+    const bytes = Buffer.from(JSON.stringify({ index, text: 'x'.repeat(7 * 1024 * 1024) }));
+    const zipped = gzipSync(bytes), contentHash = dataStoreContentHash(bytes);
+    return { zipped, row: { objectPath: `fixture/financial/snapshot/${contentHash}.json.gz`, contentHash, rawBytes: bytes.length, storedBytes: zipped.length, metadata: metadata() } };
+  });
+  const store = createDataStore({ env: baseEnv, fetchImpl: async (url, init) => {
+    if (url.includes('/rpc/')) return json(assets[Number(JSON.parse(init.body).p_key)].row);
+    downloads++;
+    return new Response(assets.find(asset => url.includes(asset.row.contentHash)).zipped);
+  } });
+  for (let index = 0; index < assets.length; index++) await store.readDataset('financial', String(index));
+  assert.equal(downloads, 5);
+  await store.readDataset('financial', '4'); assert.equal(downloads, 5);
+  // Five 7MiB decoded inputs cannot all remain in a 32MiB cache.
+  await store.readDataset('financial', '0'); assert.equal(downloads, 6);
+  now += 59000;
+  await store.readDataset('financial', '0'); assert.equal(downloads, 6);
+  now += 1001;
+  const reread = await store.readDataset('financial', '0');
+  assert.equal(downloads, 7); assert.equal(reread.metadata.fetchedAt, timestamp);
+});

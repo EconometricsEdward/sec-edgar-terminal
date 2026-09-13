@@ -1,3 +1,5 @@
+import { getDeploymentDataStoreMode } from './dataStoreDeployment.js';
+
 /** Explicitly approved datasets; this is not a redirect for arbitrary cache keys. */
 export const DATA_STORE_REGISTRY = Object.freeze({
   cftc: Object.freeze({
@@ -39,7 +41,7 @@ export const DATA_STORE_LIMITS = Object.freeze({
 export function getDataStoreMode(dataset, env = process.env) {
   const entry = DATA_STORE_REGISTRY[dataset];
   if (!entry) throw new Error('Unregistered durable dataset');
-  const mode = String(env[entry.flag] || 'off').toLowerCase();
+  const mode = String(Object.hasOwn(env, entry.flag) ? env[entry.flag] : getDeploymentDataStoreMode(dataset, env)).toLowerCase();
   // A misspelt rollout flag must not accidentally enable a new data path.
   return ['shadow', 'supabase'].includes(mode) ? mode : 'off';
 }

@@ -1,13 +1,28 @@
 /** Server-only durable public-data persistence. No browser/Supabase client SDK. */
 import { createHash, randomUUID } from 'node:crypto';
-import { gzipSync, gunzipSync } from 'node:zlib';
+import { gzipSync, gunzip } from 'node:zlib';
 import { Readable } from 'node:stream';
+import { getDataStoreIdentityToken } from './dataStoreIdentity.js';
+import { promisify } from 'node:util';
 import { DATA_STORE_LIMITS as LIMITS, DATA_STORE_REGISTRY, getDataStoreMode, validateDataStoreSource } from './dataStoreRegistry.js';
 export { DATA_STORE_LIMITS, DATA_STORE_REGISTRY, getDataStoreMode } from './dataStoreRegistry.js';
 
 const PRODUCTION_PROJECT = 'vvkihuduqqnxqahhbphs';
 const BUCKET = 'edgar-durable-private';
 const TRANSIENT_IDENTITY_FIELDS = new Set(['fetchedAt', 'retrievedAt', 'revalidatedAt', 'generatedAt', 'expiresAt']);
+const unzip = promisify(gunzip);
+// Only immutable, hash-verified JSON content is cached. Dataset heads, source
+// age, revalidation and expiry are read from Postgres on every request. The byte
+// budget measures decoded JSON input; parsed JavaScript objects use extra heap.
+const OBJECT_CACHE = Object.freeze({ entries: 32, inputBytes: 32 * 1024 * 1024, entryBytes: 8 * 1024 * 1024, ttlMs: 60000, pending: 32 });
+
+function freezeJson(value) {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) freezeJson(child);
+    Object.freeze(value);
+  }
+  return value;
+}
 
 export class DataStoreError extends Error {
   constructor(code, status = 503) { super(`Durable data store: ${code}`); this.name = 'DataStoreError'; this.code = code; this.status = status; }
@@ -35,9 +50,10 @@ function checkDataset(dataset, key) {
 }
 function getConfiguration(env) {
   if (typeof window !== 'undefined') throw new DataStoreError('server_only', 403);
-  const rawUrl = env.SUPABASE_URL;
   const secret = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!rawUrl || !secret) throw new DataStoreError('not_configured');
+  const oidc = !secret && env.VERCEL_ENV === 'production';
+  const rawUrl = env.SUPABASE_URL || (oidc ? `https://${PRODUCTION_PROJECT}.supabase.co` : undefined);
+  if (!rawUrl || (!secret && !oidc)) throw new DataStoreError('not_configured');
   let url;
   try { url = new URL(rawUrl); } catch { throw new DataStoreError('invalid_endpoint'); }
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
@@ -51,7 +67,9 @@ function getConfiguration(env) {
   const namespace = env.EDGAR_DATASTORE_NAMESPACE || (env.VERCEL_ENV === 'production' ? 'production' : 'rehearsal');
   if (!/^[a-z0-9_-]{1,48}$/.test(namespace)) throw new DataStoreError('invalid_namespace', 422);
   if (env.VERCEL_ENV === 'production' && namespace !== 'production') throw new DataStoreError('production_namespace_mismatch', 403);
-  return { url: url.origin, secret, namespace };
+  if (oidc && local) throw new DataStoreError('unapproved_identity_endpoint', 403);
+  return { url: url.origin, secret, namespace, oidc,
+    cacheScope: oidc ? 'vercel:prj_tjTGC2omKa1JOT7il31bFZ8ilk8f:production' : dataStoreContentHash(secret) };
 }
 async function boundedBytes(response, maxBytes) {
   const announced = Number(response.headers.get('content-length'));
@@ -85,22 +103,31 @@ function claimArguments(claim) {
 }
 
 /** Injection is for local fixture/rehearsal tests; production uses the exports below. */
-export function createDataStore({ env = process.env, fetchImpl = (...args) => fetch(...args) } = {}) {
+export function createDataStore({ env = process.env, fetchImpl = (...args) => fetch(...args), identityTokenImpl = getDataStoreIdentityToken } = {}) {
+  const decodedObjects = new Map(), pendingObjects = new Map();
+  let decodedInputBytes = 0;
   function enabled(dataset) { checkDataset(dataset); return getDataStoreMode(dataset, env) !== 'off'; }
   async function request(path, { method = 'POST', body, raw = false, allowDuplicate = false } = {}) {
     const config = getConfiguration(env);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), LIMITS.requestTimeoutMs);
     try {
-      const headers = { apikey: config.secret };
+      const headers = {};
       // New secret keys authenticate with apikey. Legacy JWT service keys also
       // carry Authorization; never send a non-JWT secret as a bearer JWT.
-      if (!config.secret.startsWith('sb_secret_')) headers.Authorization = `Bearer ${config.secret}`;
+      if (config.oidc) {
+        headers.Authorization = `Bearer ${await identityTokenImpl()}`;
+        headers['x-region'] = 'us-east-1';
+      } else {
+        headers.apikey = config.secret;
+        if (!config.secret.startsWith('sb_secret_')) headers.Authorization = `Bearer ${config.secret}`;
+      }
       if (body != null) headers['Content-Type'] = raw ? 'application/gzip' : 'application/json';
       const upload = raw && body != null && body.byteLength > LIMITS.compactBytes;
       const requestBody = body == null ? undefined : raw ? (upload ? Readable.toWeb(Readable.from([body])) : body) : JSON.stringify(body);
       if (!raw && requestBody && Buffer.byteLength(requestBody) > LIMITS.rpcBytes) throw new DataStoreError('request_too_large', 413);
-      const response = await fetchImpl(`${config.url}${path}`, { method, headers, body: requestBody, ...(upload ? { duplex: 'half' } : {}), signal: controller.signal, cache: 'no-store', redirect: 'error' });
+      const prefix = config.oidc ? '/functions/v1/edgar-data-gateway' : '';
+      const response = await fetchImpl(`${config.url}${prefix}${path}`, { method, headers, body: requestBody, ...(upload ? { duplex: 'half' } : {}), signal: controller.signal, cache: 'no-store', redirect: 'error' });
       const bytes = await boundedBytes(response, method === 'GET' && raw ? LIMITS.objectBytes : LIMITS.rpcBytes);
       if (!response.ok && !(allowDuplicate && [400, 409].includes(response.status))) {
         let code; try { code = JSON.parse(bytes.toString()).code; } catch { /* omit untrusted API error text */ }
@@ -128,12 +155,51 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     return path.split('/').map(encodeURIComponent).join('/');
   }
   async function readObject(asset) {
-    if (!asset || !/^[a-f0-9]{64}$/.test(asset.contentHash || '') || asset.rawBytes > LIMITS.decodedBytes || asset.storedBytes > LIMITS.objectBytes) throw new DataStoreError('invalid_object_manifest', 502);
+    if (!asset || !/^[a-f0-9]{64}$/.test(asset.contentHash || '') || !Number.isSafeInteger(Number(asset.rawBytes)) || Number(asset.rawBytes) <= 0 || asset.rawBytes > LIMITS.decodedBytes || !Number.isSafeInteger(Number(asset.storedBytes)) || Number(asset.storedBytes) <= 0 || asset.storedBytes > LIMITS.objectBytes) throw new DataStoreError('invalid_object_manifest', 502);
     const compressed = await request(`/storage/v1/object/authenticated/${BUCKET}/${safeObjectPath(asset.objectPath)}`, { method: 'GET', raw: true });
     let bytes;
-    try { bytes = gunzipSync(compressed, { maxOutputLength: LIMITS.decodedBytes }); } catch { throw new DataStoreError('invalid_compressed_object', 502); }
+    try { bytes = await unzip(compressed, { maxOutputLength: LIMITS.decodedBytes }); } catch { throw new DataStoreError('invalid_compressed_object', 502); }
     if (bytes.length !== Number(asset.rawBytes) || dataStoreContentHash(bytes) !== asset.contentHash) throw new DataStoreError('object_integrity_mismatch', 502);
     return bytes;
+  }
+  function removeDecoded(key) {
+    const entry = decodedObjects.get(key);
+    if (entry) { decodedInputBytes -= entry.inputBytes; decodedObjects.delete(key); }
+  }
+  async function readObjectPayload(asset) {
+    const config = getConfiguration(env);
+    const path = safeObjectPath(asset.objectPath);
+    // Scope an instance even if its injected runtime configuration is changed.
+    // Never retain a secret itself in a cache key or return it in diagnostics.
+    const key = `${config.url}:${config.namespace}:${config.cacheScope}:${path}:${asset.contentHash}:${asset.rawBytes}:${asset.storedBytes}`;
+    const now = Date.now();
+    for (const [oldKey, entry] of decodedObjects) if (entry.until <= now) removeDecoded(oldKey);
+    const cached = decodedObjects.get(key);
+    if (cached) {
+      decodedObjects.delete(key); decodedObjects.set(key, cached);
+      return cached.content;
+    }
+    if (pendingObjects.has(key)) return pendingObjects.get(key);
+    const pending = (async () => {
+      const bytes = await readObject(asset);
+      const serializedPayload = bytes.toString('utf8');
+      let payload;
+      try { payload = freezeJson(JSON.parse(serializedPayload)); } catch { throw new DataStoreError('invalid_snapshot_json', 502); }
+      const content = Object.freeze({ payload, serializedPayload });
+      if (bytes.length <= OBJECT_CACHE.entryBytes) {
+        removeDecoded(key);
+        while (decodedObjects.size >= OBJECT_CACHE.entries || decodedInputBytes + bytes.length > OBJECT_CACHE.inputBytes) removeDecoded(decodedObjects.keys().next().value);
+        decodedObjects.set(key, { content, inputBytes: bytes.length, until: Date.now() + OBJECT_CACHE.ttlMs });
+        decodedInputBytes += bytes.length;
+      }
+      return content;
+    })();
+    // Excess distinct requests remain bounded by each request's existing byte
+    // and timeout limits; they do not grow the coalescing registry indefinitely.
+    const tracked = pendingObjects.size < OBJECT_CACHE.pending;
+    if (tracked) pendingObjects.set(key, pending);
+    try { return await pending; }
+    finally { if (tracked && pendingObjects.get(key) === pending) pendingObjects.delete(key); }
   }
   async function putVerifiedObject(dataset, kind, bytes, hash = dataStoreContentHash(bytes)) {
     const compressed = pack(bytes); const objectPath = pathFor(dataset, kind, hash);
@@ -145,17 +211,17 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   }
   async function envelope(row) {
     if (!row) return null;
-    let payload = row.payload;
+    let payload = row.payload, serializedPayload;
     if (row.objectPath) {
-      const bytes = await readObject(row);
-      try { payload = JSON.parse(bytes.toString('utf8')); } catch { throw new DataStoreError('invalid_snapshot_json', 502); }
-    } else if (dataStoreContentHash(stableDataStoreJson(payload)) !== row.contentHash) {
-      throw new DataStoreError('compact_integrity_mismatch', 502);
+      ({ payload, serializedPayload } = await readObjectPayload(row));
+    } else {
+      serializedPayload = stableDataStoreJson(payload);
+      if (dataStoreContentHash(serializedPayload) !== row.contentHash) throw new DataStoreError('compact_integrity_mismatch', 502);
     }
     const metadata = { ...row.metadata, contentHash: row.contentHash, identityHash: row.identityHash, versionId: row.id, generation: row.generation };
     if (row.revalidatedAt) metadata.revalidatedAt = row.revalidatedAt;
     if (row.expiresAt) metadata.expiresAt = row.expiresAt;
-    return { payload, metadata, stale: !!metadata.expiresAt && Date.parse(metadata.expiresAt) <= Date.now(), _source: row.source || null };
+    return { payload, serializedPayload, metadata, stale: !!metadata.expiresAt && Date.parse(metadata.expiresAt) <= Date.now(), _source: row.source || null };
   }
   async function readDataset(dataset, key, { allowStale = true, pointer = 'current' } = {}) {
     checkDataset(dataset, key); if (!enabled(dataset)) return null;

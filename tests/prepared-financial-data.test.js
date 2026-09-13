@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
-import { prepareFinancialCompany, readPreparedAnalysis, financialPreparedKey, refreshSecFinancialCohort, sampleFinancialShadow } from '../src/utils/preparedFinancialData.js';
+import { prepareFinancialCompany, readPreparedAnalysis, financialPreparedKey, refreshSecFinancialCohort, sampleFinancialShadow, createFinancialPayloadCache } from '../src/utils/preparedFinancialData.js';
 import { buildAnalysisCompany, packAnalysisCompany, unpackAnalysisCompany } from '../src/utils/analysisResearch.js';
 
 const now = Date.now();
@@ -117,4 +117,89 @@ test('prepared gzip hot cache preserves source metadata and never needs a databa
   assert.equal(result.cacheSource, 'warm-prepared');
   assert.equal(result.metadata.fetchedAt, metadata.fetchedAt);
   assert.deepEqual(stable(result.payload), stable(payload));
+  assert.deepEqual(JSON.parse(result.serializedPayload), result.payload);
+});
+
+test('simultaneous prepared requests reuse immutable content while checking every current Redis response', async () => {
+  const payload = packAnalysisCompany(buildAnalysisCompany(company, { basis: 'annual' }));
+  const gzip = gzipSync(JSON.stringify(payload)).toString('base64');
+  const payloadCache = createFinancialPayloadCache();
+  let hotReads = 0;
+  const dependencies = { mode: 'supabase', payloadCache,
+    hotRead: async () => { hotReads++; return { gzip, metadata: { ...metadata, generation: String(hotReads) } }; },
+    read: async () => { throw new Error('Unexpected durable read.'); },
+  };
+  const results = await Promise.all(Array.from({ length: 50 }, () => readPreparedAnalysis({ ticker: 'AAPL' }, dependencies)));
+  assert.equal(hotReads, 50);
+  assert.equal(new Set(results.map((result) => result.metadata.generation)).size, 50);
+  assert.ok(results.every((result) => result.payload === results[0].payload));
+  assert.throws(() => { results[0].payload.sourceCatalog[0].filed = '2099-01-01'; }, TypeError);
+  assert.throws(() => results[0].payload.periods.push({ end: '2099-01-01' }), TypeError);
+  results[0].metadata.generation = 'tampered';
+  assert.equal(results[1].metadata.generation, '2');
+  assert.equal(results[0].serializedPayload, JSON.stringify(payload));
+});
+
+test('cached prepared content cannot hide a new generation, expire source age later, or mask Redis loss', async () => {
+  const payload = packAnalysisCompany(buildAnalysisCompany(company, { basis: 'annual' }));
+  const gzip = (value) => gzipSync(JSON.stringify(value)).toString('base64');
+  const payloadCache = createFinancialPayloadCache();
+  let current = { gzip: gzip(payload), metadata: { ...metadata, generation: '9007199254740993' } };
+  let durableReads = 0;
+  const dependencies = { mode: 'supabase', payloadCache, hotRead: async () => current,
+    read: async () => { durableReads++; return { payload, metadata: { ...metadata, generation: '9007199254740995' } }; },
+  };
+  const first = await readPreparedAnalysis({ ticker: 'AAPL' }, dependencies);
+  const revised = { ...payload, companyName: 'Revised published fixture' };
+  current = { gzip: gzip(revised), metadata: { ...metadata, generation: '9007199254740994' } };
+  const second = await readPreparedAnalysis({ ticker: 'AAPL' }, dependencies);
+  assert.equal(second.payload.companyName, 'Revised published fixture');
+  assert.notEqual(first.payload, second.payload);
+  assert.equal(second.metadata.generation, '9007199254740994');
+  current = { ...current, metadata: { fetchedAt: new Date(now - 10 * 86400000).toISOString(),
+    revalidatedAt: new Date(now - 10 * 86400000).toISOString(), expiresAt: new Date(now - 8 * 86400000).toISOString() } };
+  const expired = await readPreparedAnalysis({ ticker: 'AAPL' }, dependencies);
+  assert.equal(expired.cacheSource, 'supabase-prepared');
+  assert.equal(expired.metadata.fetchedAt, metadata.fetchedAt);
+  current = null;
+  assert.equal((await readPreparedAnalysis({ ticker: 'AAPL' }, dependencies)).cacheSource, 'supabase-prepared');
+  assert.equal(durableReads, 2);
+});
+
+test('prepared payload cache expires absolutely and evicts by entry count and serialized bytes', () => {
+  const gzip = (value) => gzipSync(JSON.stringify(value)).toString('base64');
+  const a = gzip({ v: 'a'.repeat(32) }), b = gzip({ v: 'b'.repeat(32) }), c = gzip({ v: 'c'.repeat(32) });
+  let time = 100;
+  const byCount = createFinancialPayloadCache({ maxEntries: 2, ttlMs: 20, now: () => time });
+  const first = byCount.decode(a), second = byCount.decode(b);
+  assert.equal(byCount.decode(a), first); // Touch A, so B must leave first.
+  byCount.decode(c);
+  assert.equal(byCount.decode(a), first);
+  assert.notEqual(byCount.decode(b), second);
+  const beforeExpiry = byCount.decode(a);
+  time = 119;
+  assert.equal(byCount.decode(a), beforeExpiry);
+  time = 120;
+  assert.notEqual(byCount.decode(a), beforeExpiry); // Hits never renew TTL.
+
+  const size = Buffer.byteLength(JSON.stringify({ v: 'a'.repeat(32) }));
+  const byBytes = createFinancialPayloadCache({ maxBytes: size, maxEntries: 2 });
+  const byteLimitedFirst = byBytes.decode(a);
+  byBytes.decode(b);
+  assert.notEqual(byBytes.decode(a), byteLimitedFirst);
+  const oversized = createFinancialPayloadCache({ maxEntryBytes: size - 1 });
+  assert.notEqual(oversized.decode(a), oversized.decode(a));
+  assert.throws(() => createFinancialPayloadCache({ maxBytes: 25 * 1024 * 1024 }), /cache bound/);
+});
+
+test('corrupt warm gzip still falls back to bounded durable prepared data', async () => {
+  const payload = packAnalysisCompany(buildAnalysisCompany(company, { basis: 'annual' }));
+  let reads = 0;
+  const result = await readPreparedAnalysis({ ticker: 'AAPL' }, { mode: 'supabase',
+    hotRead: async () => ({ gzip: 'invalid gzip', metadata }),
+    read: async (dataset) => { assert.equal(dataset, 'financial'); reads++; return { payload, metadata }; },
+  });
+  assert.equal(reads, 1);
+  assert.equal(result.cacheSource, 'supabase-prepared');
+  assert.equal(result.serializedPayload, JSON.stringify(payload));
 });

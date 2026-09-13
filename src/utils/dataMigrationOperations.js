@@ -1,20 +1,45 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { MIGRATION_BOOTSTRAP } from './dataStoreDeployment.js';
 
 /** Administrative operations are never a public refresh queue. */
-export function authorizeDataMigration(request, secret = process.env.CRON_SECRET) {
-  if (!secret || secret.length < 16) return false;
-  const supplied = Buffer.from(request.headers.get('authorization') || '');
-  const expected = Buffer.from(`Bearer ${secret}`);
-  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+export function authorizeDataMigration(request, secret = process.env.CRON_SECRET, {
+  env = process.env, bootstrap = MIGRATION_BOOTSTRAP, now = Date.now(),
+} = {}) {
+  const authorization = request.headers.get('authorization') || '';
+  if (typeof secret === 'string' && secret.length >= 16) {
+    const supplied = Buffer.from(authorization);
+    const expected = Buffer.from(`Bearer ${secret}`);
+    if (supplied.length === expected.length && timingSafeEqual(supplied, expected)) return true;
+  }
+  // This short-lived operator credential authorizes this endpoint only. Neither
+  // its plaintext nor a privileged database credential is bundled or returned.
+  const expiresAt = Date.parse(bootstrap?.expiresAt);
+  if (env.VERCEL_ENV !== 'production' || !Number.isFinite(now)
+    || !Number.isFinite(expiresAt) || now >= expiresAt
+    || !/^[a-f0-9]{64}$/.test(bootstrap?.sha256 || '')) return false;
+  const token = /^Bearer ([A-Za-z0-9_-]{32,512})$/.exec(authorization)?.[1];
+  if (!token) return false;
+  return timingSafeEqual(createHash('sha256').update(token).digest(), Buffer.from(bootstrap.sha256, 'hex'));
 }
 
 export function parseMigrationOperation(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
-    || Object.keys(value).some(key => !['action', 'maxCompanies'].includes(key))
-    || value.action !== 'refresh-sec') throw new Error('Use action refresh-sec and optional maxCompanies (1 or 2).');
+    || Object.keys(value).some(key => !['action', 'maxCompanies'].includes(key))) throw new Error('Unsupported operation.');
+  if (value.action === 'refresh-cftc') {
+    if (Object.keys(value).length !== 1) throw new Error('refresh-cftc accepts no additional arguments.');
+    return { action: 'refresh-cftc' };
+  }
+  if (value.action !== 'refresh-sec') throw new Error('Use refresh-sec or refresh-cftc.');
   const maxCompanies = value.maxCompanies ?? 1;
   if (!Number.isInteger(maxCompanies) || maxCompanies < 1 || maxCompanies > 2) throw new Error('maxCompanies must be 1 or 2.');
   return { action: value.action, maxCompanies };
+}
+
+/** Dataset switches remain independent for bounded operator refreshes. */
+export function migrationOperationEnabled(operation, getMode) {
+  const datasets = operation.action === 'refresh-cftc' ? ['cftc']
+    : operation.action === 'refresh-sec' ? ['sec', 'financial'] : [];
+  return datasets.length > 0 && datasets.every(dataset => getMode(dataset) !== 'off');
 }
 
 export async function readMigrationOperation(request) {

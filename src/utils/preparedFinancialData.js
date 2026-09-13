@@ -14,6 +14,69 @@ const legacyKey = (ticker, basis) => `${ANALYSIS_VERSION}:${ticker}:${basis}:`;
 const hash = (value) => createHash('sha256').update(stableDataStoreJson(value)).digest('hex');
 const companyForTicker = (ticker) => SEC_MIGRATION_COHORT.find((company) => company.ticker === ticker);
 
+const MAX_FINANCIAL_DECODE_BYTES = 24 * 1024 * 1024;
+const MAX_FINANCIAL_GZIP_BYTES = 6 * 1024 * 1024;
+const FINANCIAL_PAYLOAD_CACHE_BYTES = 24 * 1024 * 1024;
+const FINANCIAL_PAYLOAD_CACHE_ENTRIES = 16;
+const FINANCIAL_PAYLOAD_CACHE_ENTRY_BYTES = 4 * 1024 * 1024;
+const FINANCIAL_PAYLOAD_CACHE_TTL_MS = 60000;
+
+function freezeJson(value) {
+  const pending = value && typeof value === 'object' ? [value] : [];
+  while (pending.length) {
+    const current = pending.pop();
+    for (const child of Object.values(current)) {
+      if (child && typeof child === 'object') pending.push(child);
+    }
+    Object.freeze(current);
+  }
+  return value;
+}
+
+/**
+ * Cache only immutable response content, never a Redis head or source metadata.
+ * Every request still checks the current fenced Redis response and its age.
+ * The byte budget is serialized JSON size; parsed objects also consume memory.
+ * The entry count, per-entry limit and absolute TTL bound retained objects.
+ */
+export function createFinancialPayloadCache({
+  maxBytes = FINANCIAL_PAYLOAD_CACHE_BYTES, maxEntries = FINANCIAL_PAYLOAD_CACHE_ENTRIES,
+  maxEntryBytes = FINANCIAL_PAYLOAD_CACHE_ENTRY_BYTES, ttlMs = FINANCIAL_PAYLOAD_CACHE_TTL_MS,
+  now = Date.now,
+} = {}) {
+  for (const [value, cap] of [[maxBytes, FINANCIAL_PAYLOAD_CACHE_BYTES], [maxEntries, FINANCIAL_PAYLOAD_CACHE_ENTRIES],
+    [maxEntryBytes, FINANCIAL_PAYLOAD_CACHE_ENTRY_BYTES], [ttlMs, FINANCIAL_PAYLOAD_CACHE_TTL_MS]]) {
+    if (!Number.isSafeInteger(value) || value < 1 || value > cap) throw new Error('Invalid financial payload cache bound.');
+  }
+  const entries = new Map(); let retainedBytes = 0;
+  const remove = (key) => { const item = entries.get(key); if (item) retainedBytes -= item.bytes; entries.delete(key); };
+  return Object.freeze({
+    decode(gzip) {
+      if (typeof gzip !== 'string' || gzip.length > Math.ceil(MAX_FINANCIAL_GZIP_BYTES / 3) * 4) {
+        throw new Error('Prepared financial gzip exceeds its size limit.');
+      }
+      const at = now();
+      for (const [key, item] of entries) if (at >= item.expiresAt) remove(key);
+      const key = createHash('sha256').update(gzip).digest('hex');
+      const cached = entries.get(key);
+      if (cached) {
+        entries.delete(key); entries.set(key, cached);
+        return cached.content;
+      }
+      const bytes = gunzipSync(Buffer.from(gzip, 'base64'), { maxOutputLength: MAX_FINANCIAL_DECODE_BYTES });
+      const serializedPayload = bytes.toString('utf8');
+      const content = Object.freeze({ payload: freezeJson(JSON.parse(serializedPayload)), serializedPayload });
+      if (bytes.length <= maxEntryBytes && bytes.length <= maxBytes) {
+        while (entries.size >= maxEntries || retainedBytes + bytes.length > maxBytes) remove(entries.keys().next().value);
+        entries.set(key, { content, bytes: bytes.length, expiresAt: at + ttlMs }); retainedBytes += bytes.length;
+      }
+      return content;
+    },
+  });
+}
+
+const financialPayloadCache = createFinancialPayloadCache();
+
 export function financialPreparedKey(ticker, basis, asOf = '') {
   const company = companyForTicker(ticker);
   return company && FINANCIAL_PREPARED_BASES.includes(basis) && !asOf
@@ -30,21 +93,22 @@ function validatePrepared(envelope, ticker, basis) {
 /** A compact result is the real Analysis API payload, not a second calculator. */
 export async function readPreparedAnalysis({ ticker, basis = 'annual', asOf = '' }, {
   mode = getDataStoreMode('financial'), read = readDataset, hotRead = warmGet,
+  payloadCache = financialPayloadCache,
 } = {}) {
   const key = financialPreparedKey(ticker, basis, asOf);
   if (mode !== 'supabase' || !key) return null;
   let cached = null;
   try {
     cached = await hotRead(hotNamespace, legacyKey(ticker, basis));
-    if (cached?.gzip) cached = { metadata: cached.metadata, stale: cached.stale,
-      payload: JSON.parse(gunzipSync(Buffer.from(cached.gzip, 'base64'), { maxOutputLength: 24 * 1024 * 1024 }).toString('utf8')) };
+    if (cached?.gzip) cached = { metadata: structuredClone(cached.metadata), stale: cached.stale,
+      ...payloadCache.decode(cached.gzip) };
   } catch { cached = null; /* Durable read is bounded and contains no provider fetch. */ }
   if (validatePrepared(cached, ticker, basis)) return { ...cached, cacheSource: 'warm-prepared' };
   let envelope;
   try { envelope = await read('financial', key, { allowStale: true }); }
   catch { throw new PreparedSecUnavailableError('Prepared financial storage is temporarily unavailable.'); }
   if (!validatePrepared(envelope, ticker, basis)) throw new PreparedSecUnavailableError('Prepared financial data is not ready for this reporting basis.');
-  return { ...envelope, cacheSource: 'supabase-prepared' };
+  return { ...envelope, serializedPayload: envelope.serializedPayload || JSON.stringify(envelope.payload), cacheSource: 'supabase-prepared' };
 }
 
 export function financialInputIdentity(company) {
