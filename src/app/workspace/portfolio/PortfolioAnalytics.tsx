@@ -33,6 +33,10 @@ const PortfolioConcentrationHeatMap = dynamic(
   () => import("./PortfolioConcentrationHeatMap"),
   { loading },
 );
+const PortfolioMarketConnections = dynamic(
+  () => import("./PortfolioMarketConnections"),
+  { loading },
+);
 const PortfolioFinancialProfile = dynamic(
   () => import("./PortfolioFinancialProfile"),
   { loading },
@@ -239,6 +243,9 @@ export default function PortfolioAnalytics({
   const [industry, setIndustry] = useState("");
   const [sector, setSector] = useState("");
   const [grouping, setGrouping] = useState("sector");
+  const [concentrationLens, setConcentrationLens] = useState("allocation");
+  const [marketConnectionsVisited, setMarketConnectionsVisited] =
+    useState(false);
   const membersHeading = useRef<HTMLHeadingElement>(null);
   const [focusMembers, setFocusMembers] = useState(false);
   useEffect(() => {
@@ -355,6 +362,7 @@ export default function PortfolioAnalytics({
         <PortfolioBriefing
           report={report}
           onExploreGroup={(dimension, label) => {
+            setConcentrationLens("allocation");
             setGrouping(dimension);
             setSector(dimension === "sector" ? label : "");
             setIndustry(dimension === "industry" ? label : "");
@@ -390,382 +398,430 @@ export default function PortfolioAnalytics({
       )}
       {(visitedAreas.has("concentration") || area === "concentration") && (
         <div className={s.panel} hidden={area !== "concentration"}>
-          <div className={s.sectionHeading}>
-            <div>
-              <p className={s.eyebrow}>Where exposure collects</p>
-              <h3>
-                {weighted
-                  ? "See the biggest concentrations."
-                  : "See the shape of your research universe."}
-              </h3>
-              <p>
-                {weighted
-                  ? "Holding weights combine all included share classes. Known weights retain the portfolio allocation denominator."
-                  : "Without position weights, this view counts companies and positions. A list of 100 tickers does not imply 1% in each company."}
-              </p>
-            </div>
-            <button type="button" onClick={onReviewRows}>
-              {preview
-                ? "Open full demo to review"
-                : weighted
-                  ? "Review allocation"
-                  : "Add position weights"}
+          <div
+            className={s.concentrationModes}
+            aria-label="Concentration perspectives"
+          >
+            <button
+              type="button"
+              aria-pressed={concentrationLens === "allocation"}
+              onClick={() => setConcentrationLens("allocation")}
+            >
+              <Layers3 size={16} aria-hidden="true" /> Holdings & sectors
+            </button>
+            <button
+              type="button"
+              aria-pressed={concentrationLens === "markets"}
+              onClick={() => {
+                setConcentrationLens("markets");
+                setMarketConnectionsVisited(true);
+              }}
+            >
+              <BarChart3 size={16} aria-hidden="true" /> Shared markets{" "}
+              <span>SEC + CFTC</span>
             </button>
           </div>
-          {weighted && (
-            <>
-              <div className={s.concentrationStats}>
-                {[
-                  ["Largest holding", concentration.largestIssuerWeightPct],
-                  ["Top 5 holdings", concentration.topFiveIssuerWeightPct],
-                  ["Top 10 holdings", concentration.topTenIssuerWeightPct],
-                ].map(([label, value]) => (
-                  <div key={String(label)}>
-                    <span>{label}</span>
-                    <strong>{percent(value)}</strong>
-                    <small>
-                      {concentration.complete
-                        ? "of portfolio allocation"
-                        : "known allocation only"}
-                    </small>
-                  </div>
-                ))}
-                <div>
-                  <span>Effective holding count</span>
-                  <strong>{number(concentration.effectiveIssuerCount)}</strong>
-                  <small>
-                    {concentration.complete
-                      ? `HHI: ${number(concentration.hhi, 0)} · scale 0–10,000`
-                      : "Requires complete allocation"}
-                  </small>
-                </div>
-              </div>
-              <p className={s.note}>
-                {concentration.complete
-                  ? "Effective holding count is 1 ÷ the sum of squared holding weights expressed as fractions (1% = 0.01). Ten equally sized holdings produce a count of 10; larger concentrations lower it. This measures allocation concentration, not diversification across economic risks."
-                  : concentration.reason}
-              </p>
-            </>
-          )}
-          <PortfolioConcentrationHeatMap
-            report={report}
-            onInspectCompany={onInspectCompany}
-            onReviewRows={onReviewRows}
-            onSelectGroup={(dimension, label) => {
-              setGrouping(dimension);
-              setSector(dimension === "sector" ? label : "");
-              setIndustry(dimension === "industry" ? label : "");
-              setQuery("");
-              setFocusMembers(true);
-            }}
-          />
-          {weighted && (
-            <details className={s.toolDetails}>
-              <summary>Review allocation limits & cumulative exposure</summary>
-              <PortfolioConcentrationTools
-                report={report}
-                onInspectCompany={onInspectCompany}
-              />
-            </details>
-          )}
-          <div className={s.twoColumns}>
-            {weighted && (
-              <section
-                className={s.chartCard}
-                aria-label={
-                  weighted
-                    ? "Largest holding allocations"
-                    : "Included positions by holding"
-                }
-              >
-                <div className={s.cardHeading}>
-                  <h4>
-                    {weighted
-                      ? "Largest holding allocations"
-                      : "Included positions by holding"}
-                  </h4>
-                  <span>{weighted ? "Known weight" : "Positions"}</span>
-                </div>
-                <p className={s.chartHelp}>
-                  {weighted
-                    ? "Top 10 holdings by known allocation. Select a company to inspect its evidence."
-                    : "Share classes of the same company are combined. Select a company to inspect its evidence."}
-                </p>
-                <div className={s.barList}>
-                  {rankedIssuers.map((issuer) => (
-                    <button
-                      className={s.barButton}
-                      type="button"
-                      key={issuer.cik || issuer.rowIds[0]}
-                      onClick={() => onInspectCompany(issuer.rowIds[0])}
-                      aria-label={`Inspect ${issuer.name}, ${weighted ? `${percent(issuer.weightPct)} known allocation` : `${issuer.rowIds.length} included positions`}`}
-                    >
-                      <span className={s.barCaption}>
-                        <span>
-                          <strong>
-                            {issuer.tickers.join(" / ") || issuer.name}
-                          </strong>
-                          <small>{issuer.name}</small>
-                        </span>
-                        <b>
-                          {weighted
-                            ? percent(issuer.weightPct)
-                            : count(issuer.rowIds.length)}
-                        </b>
-                      </span>
-                      <span className={s.barTrack} aria-hidden="true">
-                        <span
-                          style={{
-                            width: barWidth(
-                              weighted
-                                ? issuer.weightPct || 0
-                                : issuer.rowIds.length,
-                              maxIssuer,
-                            ),
-                          }}
-                        />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                {!rankedIssuers.length && (
-                  <p className={s.empty}>
-                    Identify your companies to see holding concentration.
-                  </p>
-                )}
-              </section>
-            )}
-            <section
-              className={s.chartCard}
-              aria-label="Sector and industry concentration"
-            >
-              <div className={s.cardHeading}>
-                <h4>
-                  {grouping === "sector" ? "Sector mix" : "SEC industry mix"}
-                </h4>
-                <span>{weighted ? "Known weight" : "Companies"}</span>
-              </div>
-              <p className={s.chartHelp}>
-                {grouping === "sector"
-                  ? "Fund-reported sectors matched by SEC company ID. Companies outside this reference retain their SEC industry; fund holdings stay separate."
-                  : "Exact SEC SIC classifications. Choose an industry to explore its companies below."}
-              </p>
-              {grouping === "sector" && classificationSources.length > 0 && (
-                <p className={s.note}>
-                  Sector reference:{" "}
-                  {classificationSources.map((source, index) => (
-                    <span key={source.url}>
-                      {index > 0 ? " · " : ""}
-                      <a
-                        href={source.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {source.provider} {source.fund}
-                      </a>{" "}
-                      ({source.asOf})
-                    </span>
-                  ))}
-                </p>
-              )}
-              <label className={s.groupingControl}>
-                Group companies by
-                <select
-                  value={grouping}
-                  onChange={(event) => {
-                    setGrouping(event.target.value);
-                    setSector("");
-                    setIndustry("");
-                    setShowIndustries(false);
-                  }}
-                >
-                  <option value="sector">Sector</option>
-                  <option value="industry">SEC industry</option>
-                </select>
-              </label>
-              <div className={s.barList}>
-                {mixGroups
-                  .slice(
-                    0,
-                    grouping === "sector" || showIndustries ? undefined : 8,
-                  )
-                  .map((entry: any) => (
-                    <button
-                      className={s.barButton}
-                      type="button"
-                      key={entry.label}
-                      aria-pressed={
-                        (grouping === "sector" ? sector : industry) ===
-                        entry.label
-                      }
-                      onClick={() => {
-                        if (grouping === "sector") {
-                          setSector(sector === entry.label ? "" : entry.label);
-                          setIndustry("");
-                        } else {
-                          setIndustry(
-                            industry === entry.label ? "" : entry.label,
-                          );
-                          setSector("");
-                        }
-                        setQuery("");
-                        setFocusMembers(true);
-                      }}
-                      aria-label={`Filter ${entry.label}, ${entry.count} companies${weighted ? `, ${percent(entry.weightPct)} known allocation` : ""}`}
-                    >
-                      <span className={s.barCaption}>
-                        <span>
-                          <strong>{entry.label}</strong>
-                          <small>
-                            {entry.count}{" "}
-                            {entry.label === "Unresolved positions"
-                              ? "positions"
-                              : entry.count === 1
-                                ? "company"
-                                : "companies"}
-                          </small>
-                        </span>
-                        <b>
-                          {weighted
-                            ? percent(entry.weightPct)
-                            : count(entry.count)}
-                        </b>
-                      </span>
-                      <span className={s.barTrack} aria-hidden="true">
-                        <span
-                          style={{
-                            width: barWidth(
-                              weighted ? entry.weightPct || 0 : entry.count,
-                              maxIndustry,
-                            ),
-                          }}
-                        />
-                      </span>
-                    </button>
-                  ))}
-              </div>
-              {grouping === "industry" &&
-                concentration.industries.length > 8 && (
-                  <button
-                    className={s.showMore}
-                    type="button"
-                    onClick={() => setShowIndustries(!showIndustries)}
-                  >
-                    {showIndustries
-                      ? "Show top 8 industries"
-                      : `Show all ${concentration.industries.length} industries`}
-                  </button>
-                )}
-            </section>
-          </div>
-          <section
-            className={s.members}
-            aria-label="Explore portfolio companies"
+          <div
+            className={s.concentrationBody}
+            hidden={concentrationLens !== "allocation"}
           >
-            <div className={s.cardHeading}>
-              <h4
-                ref={membersHeading}
-                tabIndex={-1}
-                className={s.membersHeading}
-              >
-                {sector || industry || "Explore all companies"}
-              </h4>
-              {(industry || sector) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIndustry("");
-                    setSector("");
-                  }}
-                >
-                  Clear classification filters
-                </button>
-              )}
-            </div>
-            <div className={s.filters}>
-              <label className={s.search}>
-                <span>Find a company or industry</span>
-                <span>
-                  <Search size={17} aria-hidden="true" />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Ticker, name, or industry"
-                  />
-                </span>
-              </label>
-              <label>
-                <span>Sector</span>
-                <select
-                  value={sector}
-                  onChange={(event) => {
-                    setSector(event.target.value);
-                    setIndustry("");
-                  }}
-                >
-                  <option value="">All sectors</option>
-                  {concentration.sectors.map((entry: any) => (
-                    <option key={entry.label}>{entry.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>SEC industry</span>
-                <select
-                  value={industry}
-                  onChange={(event) => setIndustry(event.target.value)}
-                >
-                  <option value="">All industries</option>
-                  {concentration.industries
-                    .filter(
-                      (entry: any) =>
-                        !sector ||
-                        entry.ciks.some((cik: string) =>
-                          issuers.some(
-                            (issuer) =>
-                              issuer.cik === cik &&
-                              (issuer.kind === "fund"
-                                ? "Funds (company metrics not applicable)"
-                                : issuer.sector || "Sector not covered") ===
-                                sector,
-                          ),
-                        ),
-                    )
-                    .map((entry: any) => (
-                      <option key={entry.label} value={entry.label}>
-                        {entry.label}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </div>
-            <p className={s.note}>
-              {count(members.length)} companies match.{" "}
-              {weighted
-                ? "Filtering does not change the portfolio weights or concentration totals above."
-                : "Each identified holding counts once, including holdings with more than one share class."}
-            </p>
-            {(industry === "Unresolved positions" ||
-              sector === "Unresolved positions") && (
+            <div className={s.sectionHeading}>
+              <div>
+                <p className={s.eyebrow}>Where exposure collects</p>
+                <h3>
+                  {weighted
+                    ? "See the biggest concentrations."
+                    : "See the shape of your research universe."}
+                </h3>
+                <p>
+                  {weighted
+                    ? "Holding weights combine all included share classes. Known weights retain the portfolio allocation denominator."
+                    : "Without position weights, this view counts companies and positions. A list of 100 tickers does not imply 1% in each company."}
+                </p>
+              </div>
               <button type="button" onClick={onReviewRows}>
                 {preview
                   ? "Open full demo to review"
-                  : "Review unresolved positions"}
+                  : weighted
+                    ? "Review allocation"
+                    : "Add position weights"}
               </button>
+            </div>
+            {weighted && (
+              <>
+                <div className={s.concentrationStats}>
+                  {[
+                    ["Largest holding", concentration.largestIssuerWeightPct],
+                    ["Top 5 holdings", concentration.topFiveIssuerWeightPct],
+                    ["Top 10 holdings", concentration.topTenIssuerWeightPct],
+                  ].map(([label, value]) => (
+                    <div key={String(label)}>
+                      <span>{label}</span>
+                      <strong>{percent(value)}</strong>
+                      <small>
+                        {concentration.complete
+                          ? "of portfolio allocation"
+                          : "known allocation only"}
+                      </small>
+                    </div>
+                  ))}
+                  <div>
+                    <span>Effective holding count</span>
+                    <strong>
+                      {number(concentration.effectiveIssuerCount)}
+                    </strong>
+                    <small>
+                      {concentration.complete
+                        ? `HHI: ${number(concentration.hhi, 0)} · scale 0–10,000`
+                        : "Requires complete allocation"}
+                    </small>
+                  </div>
+                </div>
+                <p className={s.note}>
+                  {concentration.complete
+                    ? "Effective holding count is 1 ÷ the sum of squared holding weights expressed as fractions (1% = 0.01). Ten equally sized holdings produce a count of 10; larger concentrations lower it. This measures allocation concentration, not diversification across economic risks."
+                    : concentration.reason}
+                </p>
+              </>
             )}
-            <MemberList
-              key={`${sector}:${industry}:${query}`}
-              issuers={members}
-              weighted={weighted}
+            <PortfolioConcentrationHeatMap
+              report={report}
               onInspectCompany={onInspectCompany}
-              empty={
-                industry === "Unresolved positions" ||
-                sector === "Unresolved positions"
-                  ? "These positions need confirmed identities before they can appear as companies. Review the input rows to resolve them."
-                  : undefined
-              }
+              onReviewRows={onReviewRows}
+              onSelectGroup={(dimension, label) => {
+                setGrouping(dimension);
+                setSector(dimension === "sector" ? label : "");
+                setIndustry(dimension === "industry" ? label : "");
+                setQuery("");
+                setFocusMembers(true);
+              }}
             />
-          </section>
+            {weighted && (
+              <details className={s.toolDetails}>
+                <summary>
+                  Review allocation limits & cumulative exposure
+                </summary>
+                <PortfolioConcentrationTools
+                  report={report}
+                  onInspectCompany={onInspectCompany}
+                />
+              </details>
+            )}
+            <div className={s.twoColumns}>
+              {weighted && (
+                <section
+                  className={s.chartCard}
+                  aria-label={
+                    weighted
+                      ? "Largest holding allocations"
+                      : "Included positions by holding"
+                  }
+                >
+                  <div className={s.cardHeading}>
+                    <h4>
+                      {weighted
+                        ? "Largest holding allocations"
+                        : "Included positions by holding"}
+                    </h4>
+                    <span>{weighted ? "Known weight" : "Positions"}</span>
+                  </div>
+                  <p className={s.chartHelp}>
+                    {weighted
+                      ? "Top 10 holdings by known allocation. Select a company to inspect its evidence."
+                      : "Share classes of the same company are combined. Select a company to inspect its evidence."}
+                  </p>
+                  <div className={s.barList}>
+                    {rankedIssuers.map((issuer) => (
+                      <button
+                        className={s.barButton}
+                        type="button"
+                        key={issuer.cik || issuer.rowIds[0]}
+                        onClick={() => onInspectCompany(issuer.rowIds[0])}
+                        aria-label={`Inspect ${issuer.name}, ${weighted ? `${percent(issuer.weightPct)} known allocation` : `${issuer.rowIds.length} included positions`}`}
+                      >
+                        <span className={s.barCaption}>
+                          <span>
+                            <strong>
+                              {issuer.tickers.join(" / ") || issuer.name}
+                            </strong>
+                            <small>{issuer.name}</small>
+                          </span>
+                          <b>
+                            {weighted
+                              ? percent(issuer.weightPct)
+                              : count(issuer.rowIds.length)}
+                          </b>
+                        </span>
+                        <span className={s.barTrack} aria-hidden="true">
+                          <span
+                            style={{
+                              width: barWidth(
+                                weighted
+                                  ? issuer.weightPct || 0
+                                  : issuer.rowIds.length,
+                                maxIssuer,
+                              ),
+                            }}
+                          />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {!rankedIssuers.length && (
+                    <p className={s.empty}>
+                      Identify your companies to see holding concentration.
+                    </p>
+                  )}
+                </section>
+              )}
+              <section
+                className={s.chartCard}
+                aria-label="Sector and industry concentration"
+              >
+                <div className={s.cardHeading}>
+                  <h4>
+                    {grouping === "sector" ? "Sector mix" : "SEC industry mix"}
+                  </h4>
+                  <span>{weighted ? "Known weight" : "Companies"}</span>
+                </div>
+                <p className={s.chartHelp}>
+                  {grouping === "sector"
+                    ? "Fund-reported sectors matched by SEC company ID. Companies outside this reference retain their SEC industry; fund holdings stay separate."
+                    : "Exact SEC SIC classifications. Choose an industry to explore its companies below."}
+                </p>
+                {grouping === "sector" && classificationSources.length > 0 && (
+                  <p className={s.note}>
+                    Sector reference:{" "}
+                    {classificationSources.map((source, index) => (
+                      <span key={source.url}>
+                        {index > 0 ? " · " : ""}
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {source.provider} {source.fund}
+                        </a>{" "}
+                        ({source.asOf})
+                      </span>
+                    ))}
+                  </p>
+                )}
+                <label className={s.groupingControl}>
+                  Group companies by
+                  <select
+                    value={grouping}
+                    onChange={(event) => {
+                      setGrouping(event.target.value);
+                      setSector("");
+                      setIndustry("");
+                      setShowIndustries(false);
+                    }}
+                  >
+                    <option value="sector">Sector</option>
+                    <option value="industry">SEC industry</option>
+                  </select>
+                </label>
+                <div className={s.barList}>
+                  {mixGroups
+                    .slice(
+                      0,
+                      grouping === "sector" || showIndustries ? undefined : 8,
+                    )
+                    .map((entry: any) => (
+                      <button
+                        className={s.barButton}
+                        type="button"
+                        key={entry.label}
+                        aria-pressed={
+                          (grouping === "sector" ? sector : industry) ===
+                          entry.label
+                        }
+                        onClick={() => {
+                          if (grouping === "sector") {
+                            setSector(
+                              sector === entry.label ? "" : entry.label,
+                            );
+                            setIndustry("");
+                          } else {
+                            setIndustry(
+                              industry === entry.label ? "" : entry.label,
+                            );
+                            setSector("");
+                          }
+                          setQuery("");
+                          setFocusMembers(true);
+                        }}
+                        aria-label={`Filter ${entry.label}, ${entry.count} companies${weighted ? `, ${percent(entry.weightPct)} known allocation` : ""}`}
+                      >
+                        <span className={s.barCaption}>
+                          <span>
+                            <strong>{entry.label}</strong>
+                            <small>
+                              {entry.count}{" "}
+                              {entry.label === "Unresolved positions"
+                                ? "positions"
+                                : entry.count === 1
+                                  ? "company"
+                                  : "companies"}
+                            </small>
+                          </span>
+                          <b>
+                            {weighted
+                              ? percent(entry.weightPct)
+                              : count(entry.count)}
+                          </b>
+                        </span>
+                        <span className={s.barTrack} aria-hidden="true">
+                          <span
+                            style={{
+                              width: barWidth(
+                                weighted ? entry.weightPct || 0 : entry.count,
+                                maxIndustry,
+                              ),
+                            }}
+                          />
+                        </span>
+                      </button>
+                    ))}
+                </div>
+                {grouping === "industry" &&
+                  concentration.industries.length > 8 && (
+                    <button
+                      className={s.showMore}
+                      type="button"
+                      onClick={() => setShowIndustries(!showIndustries)}
+                    >
+                      {showIndustries
+                        ? "Show top 8 industries"
+                        : `Show all ${concentration.industries.length} industries`}
+                    </button>
+                  )}
+              </section>
+            </div>
+            <section
+              className={s.members}
+              aria-label="Explore portfolio companies"
+            >
+              <div className={s.cardHeading}>
+                <h4
+                  ref={membersHeading}
+                  tabIndex={-1}
+                  className={s.membersHeading}
+                >
+                  {sector || industry || "Explore all companies"}
+                </h4>
+                {(industry || sector) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIndustry("");
+                      setSector("");
+                    }}
+                  >
+                    Clear classification filters
+                  </button>
+                )}
+              </div>
+              <div className={s.filters}>
+                <label className={s.search}>
+                  <span>Find a company or industry</span>
+                  <span>
+                    <Search size={17} aria-hidden="true" />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Ticker, name, or industry"
+                    />
+                  </span>
+                </label>
+                <label>
+                  <span>Sector</span>
+                  <select
+                    value={sector}
+                    onChange={(event) => {
+                      setSector(event.target.value);
+                      setIndustry("");
+                    }}
+                  >
+                    <option value="">All sectors</option>
+                    {concentration.sectors.map((entry: any) => (
+                      <option key={entry.label}>{entry.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>SEC industry</span>
+                  <select
+                    value={industry}
+                    onChange={(event) => setIndustry(event.target.value)}
+                  >
+                    <option value="">All industries</option>
+                    {concentration.industries
+                      .filter(
+                        (entry: any) =>
+                          !sector ||
+                          entry.ciks.some((cik: string) =>
+                            issuers.some(
+                              (issuer) =>
+                                issuer.cik === cik &&
+                                (issuer.kind === "fund"
+                                  ? "Funds (company metrics not applicable)"
+                                  : issuer.sector || "Sector not covered") ===
+                                  sector,
+                            ),
+                          ),
+                      )
+                      .map((entry: any) => (
+                        <option key={entry.label} value={entry.label}>
+                          {entry.label}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+              <p className={s.note}>
+                {count(members.length)} companies match.{" "}
+                {weighted
+                  ? "Filtering does not change the portfolio weights or concentration totals above."
+                  : "Each identified holding counts once, including holdings with more than one share class."}
+              </p>
+              {(industry === "Unresolved positions" ||
+                sector === "Unresolved positions") && (
+                <button type="button" onClick={onReviewRows}>
+                  {preview
+                    ? "Open full demo to review"
+                    : "Review unresolved positions"}
+                </button>
+              )}
+              <MemberList
+                key={`${sector}:${industry}:${query}`}
+                issuers={members}
+                weighted={weighted}
+                onInspectCompany={onInspectCompany}
+                empty={
+                  industry === "Unresolved positions" ||
+                  sector === "Unresolved positions"
+                    ? "These positions need confirmed identities before they can appear as companies. Review the input rows to resolve them."
+                    : undefined
+                }
+              />
+            </section>
+          </div>
+          {marketConnectionsVisited && (
+            <div
+              className={s.concentrationBody}
+              hidden={concentrationLens !== "markets"}
+            >
+              <PortfolioMarketConnections
+                report={report}
+                active={
+                  area === "concentration" && concentrationLens === "markets"
+                }
+                onInspectCompany={onInspectCompany}
+              />
+            </div>
+          )}
         </div>
       )}
 
