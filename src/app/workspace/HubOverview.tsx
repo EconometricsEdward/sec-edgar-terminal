@@ -265,11 +265,11 @@ export default function HubOverview({ onNavigate }: Props) {
       <section className={s.demoCard} aria-labelledby="hub-demo-title">
         <div className={s.demoCopy}>
           <p className={s.eyebrow}>See what you can build</p>
-          <h3 id="hub-demo-title">Explore a hypothetical weighted portfolio</h3>
+          <h3 id="hub-demo-title">Explore the S&P 500 top 100</h3>
           <p>
-            Start with 100 companies and example weights totaling 100%. Compare
-            concentration, scenarios and financial evidence with equal weights
-            or company counts.
+            Follow the same 100 companies across every research view. Compare
+            concentration, scenarios and SEC evidence using hypothetical
+            weights, equal weights or company counts.
           </p>
         </div>
         <div className={s.demoActions}>

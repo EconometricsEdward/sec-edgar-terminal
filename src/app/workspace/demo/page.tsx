@@ -3,9 +3,9 @@ import DemoResults from "./DemoResults";
 import s from "./demo.module.css";
 
 export const metadata = buildPageMetadata({
-  title: "S&P 500 Coverage Portfolio Demo",
+  title: "S&P 500 Top 100 Company Research Demo",
   description:
-    "Explore 100 companies from EDGAR Terminal's active S&P 500 coverage list with hypothetical weights. Compare concentration, evidence coverage, recent SEC research and scenarios, then make your own copy.",
+    "Explore the top 100 unique companies by combined weight in the stored S&P 500 holdings. Every Research Hub view uses the same company list, with SEC evidence and optional hypothetical weights.",
   path: "/workspace/demo",
 });
 

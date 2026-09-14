@@ -4,6 +4,7 @@ import { packPortfolioSnapshot } from "../src/utils/portfolioEvidenceCodec.js";
  * node scripts/generate-portfolio-demo.mjs --refresh
  * Without --refresh, updates hypothetical allocations and templates while preserving SEC evidence.
  * --resume reuses this script's bounded public-data checkpoint after interruption.
+ * --retry-failed resumes that checkpoint and retries only failed or unavailable captures.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -20,6 +21,8 @@ import {
   validatePortfolios,
 } from "../src/utils/portfolioStorage.js";
 import { validatePortfolioDemo } from "../src/utils/portfolioDemo.js";
+import { validatePortfolioDemoUniverse } from "../src/utils/portfolioDemoUniverse.js";
+import { createPortfolioBaseline } from "../src/utils/portfolioChanges.js";
 import {
   hypotheticalDemoHoldings,
   DEMO_ALLOCATION_METHOD,
@@ -34,118 +37,74 @@ const checkpointPath = path.join(
 const endpoint =
   process.env.PORTFOLIO_DEMO_ENDPOINT ||
   "https://secedgarterminal.com/api/v1/portfolio-research";
-const tickers = [
-  "AAPL",
-  "MSFT",
-  "NVDA",
-  "ORCL",
-  "ADBE",
-  "CRM",
-  "AMD",
-  "INTC",
-  "CSCO",
-  "IBM",
-  "AMZN",
-  "TSLA",
-  "HD",
-  "LOW",
-  "NKE",
-  "MCD",
-  "SBUX",
-  "TGT",
-  "TJX",
-  "BKNG",
-  "WMT",
-  "COST",
-  "PG",
-  "KO",
-  "PEP",
-  "MDLZ",
-  "CL",
-  "KMB",
-  "GIS",
-  "KHC",
-  "JPM",
-  "BAC",
-  "WFC",
-  "C",
-  "GS",
-  "MS",
-  "AXP",
-  "SCHW",
-  "USB",
-  "PNC",
-  "UNH",
-  "JNJ",
-  "LLY",
-  "MRK",
-  "ABBV",
-  "ABT",
-  "TMO",
-  "DHR",
-  "AMGN",
-  "GILD",
-  "CAT",
-  "DE",
-  "GE",
-  "HON",
-  "UPS",
-  "FDX",
-  "RTX",
-  "LMT",
-  "NOC",
-  "GD",
-  "XOM",
-  "CVX",
-  "COP",
-  "EOG",
-  "SLB",
-  "OXY",
-  "PSX",
-  "VLO",
-  "MPC",
-  "KMI",
-  "NEE",
-  "DUK",
-  "SO",
-  "AEP",
-  "EXC",
-  "SRE",
-  "XEL",
-  "WEC",
-  "ED",
-  "D",
-  "GOOGL",
-  "META",
-  "NFLX",
-  "DIS",
-  "CMCSA",
-  "VZ",
-  "T",
-  "CHTR",
-  "TTWO",
-  "WBD",
-  "LIN",
-  "APD",
-  "SHW",
-  "FCX",
-  "NEM",
-  "NUE",
-  "PLD",
-  "AMT",
-  "SPG",
-  "O",
-];
+const universe = validatePortfolioDemoUniverse(
+  JSON.parse(
+    await fs.readFile(
+      path.join(output, "portfolio-demo-100-universe.json"),
+      "utf8",
+    ),
+  ),
+);
+const tickers = universe.companies.map((company) => company.ticker);
+const identities = new Map(
+  universe.companies.map((company) => [company.ticker, company]),
+);
 const input = {
   schema_version: "edgar.portfolio.v1",
-  name: "Hypothetical weighted portfolio · 100-company demo",
-  holdings: hypotheticalDemoHoldings(tickers),
+  name: "S&P 500 coverage portfolio · top 100 companies",
+  holdings: hypotheticalDemoHoldings(tickers).map((holding) => ({
+    ...holding,
+    cik: identities.get(holding.ticker).cik,
+  })),
   allocation: { basis: "weights", normalize: false },
   research: { basis: "annual" },
 };
 if (tickers.length !== 100 || new Set(tickers).size !== 100)
   throw new Error("The demonstration requires exactly 100 unique tickers.");
 normalizePortfolioInput(input);
+
+const description = `The 100 largest issuer holdings in the stored S&P 500 coverage list, ranked by combined IVV holding weight as of ${universe.source.asOf}. Share classes are combined by SEC issuer. Portfolio allocations are fixed hypothetical examples, independent of IVV weights; this is a dated research demonstration, not an index portfolio or an investment recommendation.`;
+const canonicalTicker = (ticker) => String(ticker || "").replaceAll(".", "-");
+
+function assertResolvedRows(rows) {
+  if (!Array.isArray(rows) || rows.length !== tickers.length)
+    throw new Error(
+      "The resolved rows do not match the canonical 100-company universe.",
+    );
+  rows.forEach((row, index) => {
+    const expected = universe.companies[index];
+    if (
+      row.input?.ticker !== expected.ticker ||
+      row.input?.cik !== expected.cik ||
+      row.resolution?.status !== "resolved" ||
+      row.resolution.kind !== "company" ||
+      row.resolution.cik !== expected.cik ||
+      canonicalTicker(row.resolution.ticker) !== canonicalTicker(expected.ticker)
+    )
+      throw new Error(
+        `Resolved identity does not match the canonical universe for ${expected.ticker}.`,
+      );
+  });
+}
+
+function assertCapturedIdentity(company, expected) {
+  if (
+    company.cik !== expected.cik ||
+    canonicalTicker(company.ticker) !== canonicalTicker(expected.ticker)
+  )
+    throw new Error(
+      `Captured identity does not match the canonical universe for ${expected.ticker}.`,
+    );
+}
+
+function failedCapture(company) {
+  return (
+    !company ||
+    company.status === "failed" ||
+    company.cache?.status === "unavailable" ||
+    company.refreshStatus === "failed"
+  );
+}
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function request(payload) {
@@ -219,31 +178,63 @@ function capturedCompany(company) {
   return capture;
 }
 
+function validateCaptureStorage(result) {
+  const document = createPortfolio({
+    id: "portfolio-demo-100-validation",
+    name: input.name,
+    rows: result.rows,
+    allocation: input.allocation,
+    research: input.research,
+    snapshot: result.snapshot,
+    now: result.captured_at,
+  });
+  // A saved copy must retain enough room to establish its first comparison.
+  // Validate that full workflow without adding a baseline to the public capture.
+  document.comparisonBaseline = createPortfolioBaseline(document.snapshot);
+  validatePortfolios({
+    version: 1,
+    portfolios: [document],
+    activeId: document.id,
+  });
+  return document;
+}
+
 async function capture() {
   let checkpoint;
-  if (process.argv.includes("--resume")) {
+  const retryFailed = process.argv.includes("--retry-failed");
+  if (process.argv.includes("--resume") || retryFailed) {
     checkpoint = JSON.parse(await fs.readFile(checkpointPath, "utf8"));
-    if (JSON.stringify(checkpoint.tickers) !== JSON.stringify(tickers))
-      throw new Error("The checkpoint belongs to a different research input.");
-  } else {
-    const resolved = await request({ ...input, action: "resolve" });
     if (
-      resolved.rows?.length !== 100 ||
-      resolved.rows.some(
-        (row) =>
-          row.resolution.status !== "resolved" ||
-          row.resolution.kind !== "company",
-      )
+      checkpoint.universe?.membership_id !== universe.membership_id ||
+      checkpoint.universe?.source?.sha256 !== universe.source.sha256 ||
+      JSON.stringify(checkpoint.holdings) !== JSON.stringify(input.holdings)
     )
       throw new Error(
-        `Every demonstration ticker must resolve to an operating company. Review: ${JSON.stringify(resolved.rows?.filter((row) => row.resolution.status !== "resolved" || row.resolution.kind !== "company").map((row) => ({ ticker: row.input.ticker, resolution: row.resolution })))}`,
+        "The checkpoint belongs to a different universe, source or research input.",
       );
+    assertResolvedRows(checkpoint.rows);
+    if (!Array.isArray(checkpoint.companies) || !Array.isArray(checkpoint.requests))
+      throw new Error("The capture checkpoint is incomplete.");
+    for (const company of checkpoint.companies) {
+      const expected = universe.companies.find(
+        (candidate) => candidate.cik === company.cik,
+      );
+      if (!expected)
+        throw new Error(
+          "The checkpoint contains an issuer outside the canonical universe.",
+        );
+      assertCapturedIdentity(company, expected);
+    }
+  } else {
+    const resolved = await request({ ...input, action: "resolve" });
+    assertResolvedRows(resolved.rows);
     if (new Set(resolved.rows.map((row) => row.resolution.cik)).size !== 100)
       throw new Error(
         "The demonstration contains duplicate issuer share classes.",
       );
     checkpoint = {
-      tickers,
+      universe,
+      holdings: input.holdings,
       startedAt: new Date().toISOString(),
       rows: resolved.rows,
       companies: [],
@@ -251,15 +242,13 @@ async function capture() {
     };
   }
   for (let offset = 0; offset < checkpoint.rows.length; offset += 5) {
-    const rows = checkpoint.rows.slice(offset, offset + 5);
-    if (
-      rows.every((row) =>
-        checkpoint.companies.some(
-          (company) => company.cik === row.resolution.cik,
-        ),
-      )
-    )
-      continue;
+    const rows = checkpoint.rows.slice(offset, offset + 5).filter((row) => {
+      const company = checkpoint.companies.find(
+        (item) => item.cik === row.resolution.cik,
+      );
+      return !company || (retryFailed && failedCapture(company));
+    });
+    if (!rows.length) continue;
     const holdings = rows.map((row) => ({
       ticker: row.resolution.ticker,
       cik: row.resolution.cik,
@@ -277,6 +266,22 @@ async function capture() {
       });
     } catch (error) {
       errorMessage = error.message;
+    }
+    if (response?.companies) {
+      if (!Array.isArray(response.companies))
+        throw new Error("The research response contains an invalid company list.");
+      const returned = new Set();
+      for (const company of response.companies) {
+        const expected = holdings.find(
+          (holding) => holding.cik === company.cik,
+        );
+        if (!expected || returned.has(company.cik))
+          throw new Error(
+            "The research response contains an unexpected or duplicate issuer.",
+          );
+        assertCapturedIdentity(company, expected);
+        returned.add(company.cik);
+      }
     }
     for (const row of rows) {
       const company = response?.companies?.find(
@@ -312,7 +317,7 @@ async function capture() {
     });
     await fs.writeFile(checkpointPath, JSON.stringify(checkpoint));
     console.log(
-      `Captured ${Math.min(offset + 5, 100)}/100: ${holdings.map((item) => item.ticker).join(", ")}`,
+      `Captured ${checkpoint.companies.length}/100: ${holdings.map((item) => item.ticker).join(", ")}`,
     );
   }
   const companies = checkpoint.rows.map((row) =>
@@ -364,14 +369,18 @@ async function capture() {
   const result = {
     schema_version: "edgar.portfolio.demo.v1",
     title: input.name,
-    description:
-      "A format and research-workflow demonstration using 100 identifiable operating companies across industries. This selected list is not an index, a representative market sample, an investment recommendation or an actual portfolio.",
+    description,
+    universe,
     capture_started_at: checkpoint.startedAt,
     captured_at: capturedAt,
     input,
     rows: checkpoint.rows,
     snapshot,
     coverage,
+    allocation_example: {
+      kind: "hypothetical",
+      methodology: DEMO_ALLOCATION_METHOD,
+    },
     methodology: {
       source:
         "SEC EDGAR public company submissions and XBRL company facts, retrieved through the same Portfolio Research API used by the workspace.",
@@ -384,24 +393,12 @@ async function capture() {
       requests: checkpoint.requests,
     },
   };
-  const document = createPortfolio({
-    id: "portfolio-demo-100-validation",
-    name: input.name,
-    rows: result.rows,
-    allocation: input.allocation,
-    research: input.research,
-    snapshot,
-    now: capturedAt,
-  });
-  validatePortfolios({
-    version: 1,
-    portfolios: [document],
-    activeId: document.id,
-  });
+  const document = validateCaptureStorage(result);
   const encodedResult = {
     ...result,
     snapshot: packPortfolioSnapshot(snapshot),
   };
+  validatePortfolioDemo(encodedResult);
   await fs.writeFile(resultPath, `${JSON.stringify(encodedResult)}\n`);
   console.log(
     JSON.stringify({
@@ -435,10 +432,10 @@ async function writeTemplates() {
       {
         name: "Instructions",
         rows: [
-          ["Hypothetical weighted portfolio · 100-company demo"],
+          [input.name],
           [
             "Start",
-            "Upload this workbook in Research Hub → Portfolio research. The Holdings sheet contains 100 company tickers and hypothetical weight_pct values totaling 100%. Select Weighted portfolio — supplied weight_pct in Allocation settings after import.",
+            "Upload this workbook in Research Hub → Portfolio research. The Holdings sheet contains 100 company tickers, their verified SEC CIKs and hypothetical weight_pct values totaling 100%. Select Weighted portfolio — supplied weight_pct in Allocation settings after import.",
           ],
           [
             "Expected result",
@@ -446,12 +443,18 @@ async function writeTemplates() {
           ],
           [
             "Scope",
-            "This is a selected demonstration list, not an index, a representative market sample, actual holdings or an investment recommendation.",
+            description,
           ],
+          ["Coverage membership", universe.membership_id],
+          [
+            "Membership source",
+            `IVV holdings as of ${universe.source.asOf}; ${universe.source.url}`,
+          ],
+          ["Company selection", universe.selection.description],
           ["Hypothetical weights", DEMO_ALLOCATION_METHOD],
           [
             "Weight units",
-            "weight_pct uses percentage points: 5 means 5%, and 0.3 means 0.3%. These are literal values. The remaining input fields are blank. Clear the weights to use your own company research list.",
+            "weight_pct uses percentage points: 5 means 5%, and 0.3 means 0.3%. These are literal hypothetical allocations, not the IVV weights used to select companies. Other than ticker, CIK and weight_pct, the input fields are blank. Clear the weights to use company counts.",
           ],
           [
             "Dates",
@@ -477,8 +480,13 @@ async function writeTemplates() {
 async function updateAllocationExample() {
   const existing = JSON.parse(await fs.readFile(resultPath, "utf8"));
   if (
+    existing.universe?.membership_id !== universe.membership_id ||
+    existing.universe?.source?.sha256 !== universe.source.sha256 ||
     JSON.stringify(existing.input.holdings.map((holding) => holding.ticker)) !==
-    JSON.stringify(tickers)
+    JSON.stringify(tickers) ||
+    existing.input.holdings.some(
+      (holding, index) => holding.cik !== universe.companies[index].cik,
+    )
   )
     throw new Error(
       "The financial capture belongs to a different company list. Refresh it before changing demo allocations.",
@@ -489,8 +497,8 @@ async function updateAllocationExample() {
   const updated = {
     ...existing,
     title: input.name,
-    description:
-      "A hypothetical 100-company portfolio with fixed illustrative weights and captured public SEC evidence. The allocations are educational inputs, not actual holdings, an index, or investment recommendations. Financial values and evidence dates are preserved independently of the weights.",
+    description,
+    universe,
     input,
     rows: existing.rows.map((row) => ({
       ...row,
@@ -505,11 +513,16 @@ async function updateAllocationExample() {
       allocation: DEMO_ALLOCATION_METHOD,
     },
   };
-  validatePortfolioDemo(updated);
+  const validated = validatePortfolioDemo(updated);
+  validateCaptureStorage(validated);
   await fs.writeFile(resultPath, `${JSON.stringify(updated)}\n`);
 }
 
-if (process.argv.includes("--refresh") || process.argv.includes("--resume"))
+if (
+  process.argv.includes("--refresh") ||
+  process.argv.includes("--resume") ||
+  process.argv.includes("--retry-failed")
+)
   await capture();
 await updateAllocationExample();
 await writeTemplates();

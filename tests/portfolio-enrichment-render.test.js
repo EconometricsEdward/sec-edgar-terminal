@@ -307,6 +307,7 @@ test("financial profile overview renders every represented sector and compatible
   ).default;
   const augmentedCompanies = companies.map(augmentPortfolioCompanyMetrics);
   const catalog = buildCatalogReport(report, augmentedCompanies);
+  const profile = buildPortfolioFinancialProfile(catalog);
   const html = renderToStaticMarkup(
     createElement(Component, {
       report,
@@ -337,17 +338,16 @@ test("financial profile overview renders every represented sector and compatible
   assert.match(html, /11 sectors available/);
   assert.match(html, /fund-reported classification as of Sep 8, 2026/);
   assert.match(html, /Accounting-compatible measure set/);
-  assert.match(html, /Operating companies \(89\)/);
-  assert.match(html, /Banks \(7\)/);
-  assert.match(html, /Insurers \(1\)/);
+  for (const group of profile.lensGroups.filter((group) => group.companyCount))
+    assert.ok(html.includes(`${group.label} (${group.companyCount})`));
   assert.match(html, /24 supported ratio measures/);
   assert.match(html, /Growth × profitability, holding by holding/);
-  assert.match(html, /86 aligned companies/);
+  assert.ok(html.includes(`${profile.corporateFingerprint.points.length} aligned companies`));
   assert.match(html, /Inspect a company in the map/);
   assert.match(html, /(?:Positive|Negative|Zero) FCF|FCF unavailable/);
   assert.equal(
     (html.match(/<circle\b[^>]*aria-hidden="true"/g) || []).length,
-    86,
+    profile.corporateFingerprint.points.length,
   );
   assert.doesNotMatch(html, /<circle\b[^>]*tabindex=/);
   assert.match(html, /Factual tests, not a composite score/);

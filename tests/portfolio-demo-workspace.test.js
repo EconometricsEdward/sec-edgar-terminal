@@ -141,6 +141,112 @@ function weightedDemo() {
   return capture;
 }
 
+function rankedDemo() {
+  const capture = weightedDemo();
+  capture.universe = {
+    schema_version: "edgar.portfolio.demo-universe.v1",
+    membership_id: "sec-coverage-v1:ivv:2026-09-07:abababababababab",
+    source: {
+      fund: "IVV",
+      asOf: "2026-09-07",
+      checkedAt: capture.capture_started_at,
+      url: "https://www.ishares.com/us/products/239726/ishares-core-s-p-500-etf/latest-holdings.csv",
+      sha256: "a".repeat(64),
+    },
+    selection: {
+      method: "largest-issuer-holdings",
+      description: "Synthetic ranked issuer selection for identity tests.",
+      count: 100,
+      availableIssuers: 500,
+      sort: "weight_pct_desc_market_value_usd_desc_ticker_asc",
+    },
+    companies: capture.rows.map((row, index) => {
+      capture.input.holdings[index].cik = row.resolution.cik;
+      row.input.cik = row.resolution.cik;
+      const weight_pct = (100 - index) / 100;
+      const market_value_usd = (200 - index) * 1_000_000;
+      return {
+        rank: index + 1,
+        ticker: row.input.ticker,
+        cik: row.resolution.cik,
+        name: row.resolution.name,
+        sector: "Information Technology",
+        weight_pct,
+        market_value_usd,
+        share_classes: [{ ticker: row.input.ticker, weight_pct, market_value_usd }],
+      };
+    }),
+  };
+  return capture;
+}
+
+test("ranked captures bind every downloaded, reviewed and captured identity to the selection", () => {
+  const capture = rankedDemo();
+  assert.deepEqual(validatePortfolioDemo(capture), capture);
+  const reordered = structuredClone(capture);
+  reordered.snapshot.companies.reverse();
+  assert.doesNotThrow(() => validatePortfolioDemo(reordered),
+    "responses may finish out of rank order while retaining exact identities");
+
+  const mutations = [
+    (value) => { value.universe = null; },
+    (value) => { value.universe.companies[0].rank = 2; },
+    (value) => { value.universe.source.checkedAt = now; },
+    (value) => { delete value.input.holdings[0].cik; },
+    (value) => { value.input.holdings[0].cik = value.input.holdings[1].cik; },
+    (value) => { value.rows[0].input.cik = value.rows[1].input.cik; },
+    (value) => { value.snapshot.companies[0].ticker = null; },
+    (value) => {
+      value.rows[0].resolution.cik = "0009999999";
+      value.snapshot.companies[0].cik = "0009999999";
+    },
+    (value) => {
+      value.input.holdings.reverse();
+      value.rows.reverse();
+    },
+    (value) => {
+      value.universe.companies[1].cik = value.universe.companies[0].cik;
+    },
+  ];
+  for (const mutate of mutations) {
+    const invalid = structuredClone(capture);
+    mutate(invalid);
+    assert.throws(() => validatePortfolioDemo(invalid));
+  }
+});
+
+test("ranked reporting perspectives and saved copies retain the same 100-company selection", () => {
+  const original = rankedDemo();
+  const before = structuredClone(original);
+  for (const basis of ["annual", "quarter", "ytd", "ttm"]) {
+    const updated = applyPortfolioDemoSnapshot(original, {
+      ...original.snapshot,
+      generated_at: now,
+      checkedAt: now,
+      basis,
+      companies: original.snapshot.companies.map((company) => ({
+        ...company,
+        basis,
+        period: { ...company.period, kind: basis },
+      })),
+    });
+    assert.deepEqual(updated.universe, original.universe);
+    assert.deepEqual(updated.input.holdings, original.input.holdings);
+    assert.deepEqual(updated.rows, original.rows);
+    for (const allocationBasis of ["example", "equal", "none"]) {
+      const saved = saveDemoPortfolio(storage(), updated, { now, allocationBasis });
+      assert.match(saved.portfolio.name, /^S&P 500 top 100 · /);
+      assert.deepEqual(saved.portfolio.rows, original.rows);
+      assert.deepEqual(saved.portfolio.snapshot, updated.snapshot);
+      assert.equal(saved.portfolio.research.basis, basis);
+    }
+    const substituted = structuredClone(updated.snapshot);
+    substituted.companies[0].cik = "0009999999";
+    assert.throws(() => applyPortfolioDemoSnapshot(updated, substituted));
+  }
+  assert.deepEqual(original, before);
+});
+
 test("hypothetical demo modes carry into saved copies and reports without changing SEC evidence", () => {
   const capture = weightedDemo();
   const original = structuredClone(capture);

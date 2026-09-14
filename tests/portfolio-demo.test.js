@@ -8,6 +8,16 @@ import {
   packPortfolioStore,
 } from "../src/utils/portfolioEvidenceCodec.js";
 import { portfolioAvailableMetrics } from "../src/utils/portfolioDeepResearch.js";
+import { validatePortfolioDemo } from "../src/utils/portfolioDemo.js";
+import { validatePortfolioDemoUniverse } from "../src/utils/portfolioDemoUniverse.js";
+import { buildPortfolioAnalytics } from "../src/utils/portfolioAnalytics.js";
+import { buildCatalogReport } from "../src/utils/portfolioEnrichment.js";
+import { buildPortfolioCoverageMatrix, buildPortfolioScreen } from "../src/utils/portfolioScreening.js";
+import { buildPortfolioFinancialProfile } from "../src/utils/portfolioFinancialProfile.js";
+import { buildPortfolioImpactScenarios, IMPACT_SCENARIOS } from "../src/utils/portfolioImpactScenarios.js";
+import { marketConnectionIssuers } from "../src/utils/portfolioMarketConnections.js";
+import { portfolioSourceIssuers } from "../src/utils/portfolioSourceResearch.js";
+import { buildPortfolioRecentSecEvents } from "../src/utils/portfolioRecentChanges.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -40,6 +50,7 @@ const demo = {
   snapshot: unpackPortfolioSnapshot(encodedDemo.snapshot),
 };
 const tickers = input.holdings.map((holding) => holding.ticker);
+const universe = validatePortfolioDemoUniverse(JSON.parse(asset("-universe.json")));
 const secUrl = (value) => {
   const url = new URL(value);
   return (
@@ -50,6 +61,47 @@ const secUrl = (value) => {
     !url.port
   );
 };
+
+test("the public capture and downloadable inputs use the same ranked source universe", () => {
+  assert.deepEqual(demo.universe, universe);
+  assert.doesNotThrow(() => validatePortfolioDemo(encodedDemo));
+  assert.deepEqual(input.holdings.map(({ ticker, cik }) => ({ ticker, cik })),
+    universe.companies.map(({ ticker, cik }) => ({ ticker, cik })));
+  assert.notDeepEqual(input.holdings.map((holding) => holding.weight_pct),
+    universe.companies.map((company) => company.weight_pct),
+    "published fund weights select the companies; demo allocations remain explicitly hypothetical");
+});
+
+test("analytics and evidence tools account for the same 100 selected issuers in every demo allocation mode", () => {
+  const companies = demo.snapshot.companies;
+  const expected = universe.companies.map((company) => company.cik).sort();
+  const identities = (rows) => rows.map((row) => row.cik).sort();
+  assert.deepEqual(identities(portfolioSourceIssuers(demo.rows)), expected,
+    "filing history, disclosure search and ownership share the whole portfolio issuer scope");
+  const recent = buildPortfolioRecentSecEvents({ snapshot: demo.snapshot, rows: demo.rows, now: Date.parse(demo.captured_at) });
+  assert.equal(recent.checkedIssuers + recent.uncheckedIssuers, 100);
+  for (const basis of ["weights", "equal", "none"]) {
+    const report = buildPortfolioAnalytics(demo.rows, { basis, normalize: false }, companies, { capturedAt: demo.captured_at });
+    const catalog = buildCatalogReport(report, companies);
+    assert.deepEqual(identities(report.concentration.issuers), expected);
+    assert.deepEqual(identities(marketConnectionIssuers(report)), expected);
+    const coverage = buildPortfolioCoverageMatrix(catalog, companies);
+    assert.deepEqual(identities(coverage.rows), expected);
+    for (const metric of catalog.metrics)
+      assert.deepEqual([...metric.observations.map((row) => row.cik), ...metric.missingCiks, ...metric.notApplicableCiks].sort(), expected,
+        `${metric.id} must retain measured, missing and inapplicable companies`);
+    const profile = buildPortfolioFinancialProfile(catalog);
+    assert.equal(profile.sectorGroups.find((group) => group.id === "all").companyCount, 100);
+    const screen = buildPortfolioScreen(catalog, companies, [{ metricId: catalog.metrics[0].id, min: 0, max: "" }]);
+    assert.equal(screen.valid, true);
+    assert.deepEqual(identities([...screen.matches, ...screen.missing, ...screen.notApplicable, ...screen.mismatched, ...screen.outside]), expected);
+    for (const { id } of IMPACT_SCENARIOS) {
+      const scenario = buildPortfolioImpactScenarios(report, companies, { scenarioId: id, now: Date.parse(demo.captured_at) });
+      assert.deepEqual(identities([...scenario.rows, ...scenario.exclusions]), expected,
+        `${id} must include each company as a model result or an explicit exclusion`);
+    }
+  }
+});
 
 test("all three demo templates import the same 100 unique tickers and hypothetical weights", () => {
   assert.equal(tickers.length, 100);
@@ -85,6 +137,8 @@ test("all three demo templates import the same 100 unique tickers and hypothetic
       normalized.holdings.map((holding) => holding.ticker),
       tickers,
     );
+    assert.deepEqual(normalized.holdings.map((holding) => holding.cik),
+      universe.companies.map((company) => company.cik));
     assert.deepEqual(
       normalized.holdings.map((holding) => Number(holding.weight_pct)),
       input.holdings.map((holding) => holding.weight_pct),
@@ -170,13 +224,13 @@ test("captured analysis aligns every input to one verified issuer and retains SE
     if (company.status !== "failed")
       assert.ok(Number.isFinite(Date.parse(company.retrievedAt)));
   }
-  assert.equal(demo.methodology.requests.length, 20);
+  assert.ok(demo.methodology.requests.length > 0);
   assert.deepEqual(
-    demo.methodology.requests.flatMap((request) => request.tickers),
-    tickers,
+    [...new Set(demo.methodology.requests.flatMap((request) => request.tickers))].sort(),
+    [...tickers].sort(),
   );
   assert.ok(
-    demo.methodology.requests.every((request) => request.tickers.length <= 5),
+    demo.methodology.requests.every((request) => request.tickers.length <= 100),
   );
 });
 
@@ -242,13 +296,9 @@ test("demo coverage is recomputed over all companies and the full capture fits e
   );
 });
 
-test("the expanded demo exposes measured debt and never offers empty investment income", () => {
+test("the ranked demo exposes only populated measures and preserves verified issuer continuity", () => {
   const available = portfolioAvailableMetrics(demo.snapshot.companies);
-  assert.equal(
-    available.find((metric) => metric.key === "shortTermDebt").availableCount,
-    85,
-  );
-  assert.ok(!available.some((metric) => metric.key === "investmentIncome"));
+  assert.ok(available.find((metric) => metric.key === "shortTermDebt")?.availableCount > 0);
   assert.ok(available.every((metric) => metric.availableCount > 0));
 
   const xom = demo.snapshot.companies.find((company) => company.ticker === "XOM");

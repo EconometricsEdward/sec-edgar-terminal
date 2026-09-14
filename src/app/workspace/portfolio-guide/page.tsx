@@ -115,10 +115,12 @@ export default function PortfolioGuidePage() {
           is not a recommended portfolio or a record of your holdings. The Excel
           template includes a separate Instructions sheet.
         </p>
-        <h3>Try the prefilled 100-company demo</h3>
+        <h3>Try the S&P 500 top 100 demo</h3>
         <p>
-          Explore 100 companies with hypothetical weights totaling 100%, then
-          switch to equal weights or company counts. The demo shows
+          Explore the top 100 unique companies by combined weight in the stored
+          S&P 500 holdings. Every research view and download uses the same
+          company list. Compare hypothetical weights totaling 100%, equal
+          weights or company counts. The demo shows
           concentration, scenarios, company metrics, reporting periods, SEC
           filing links and allocation coverage.
         </p>
