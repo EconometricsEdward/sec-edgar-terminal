@@ -58,6 +58,8 @@ const contracts = {
   sofr: { family: "tff", contract: "134741", group: "leveraged-funds" },
   crude: { family: "disaggregated", contract: "067651", group: "managed-money" },
   gas: { family: "disaggregated", contract: "023651", group: "managed-money" },
+  bitcoin: { family: "tff", contract: "133741", group: "leveraged-funds" },
+  ether: { family: "tff", contract: "146021", group: "leveraged-funds" },
 };
 const resultFor = (issuer, names = ["sofr"], status = "ready") => ({
   cik: issuer.cik,
@@ -142,6 +144,20 @@ test("partial scans retain full eligible-company and full portfolio allocation d
   assert.equal(model.companyRows.find((row) => row.ticker === "C").status, "unchecked");
   assert.equal(model.coverage.noMatch, 0);
   assert.equal(model.completeScan, false);
+});
+
+test("other futures remain reachable through a category with deduplicated companies", () => {
+  const report = portfolio();
+  const [a, b] = marketConnectionIssuers(report).filter((issuer) => issuer.eligible);
+  const model = modelFor(report, [
+    resultFor(a, ["bitcoin", "ether"]),
+    resultFor(b, ["bitcoin"]),
+  ], { category: "other" });
+  const category = model.categories.find((entry) => entry.key === "other");
+  assert.equal(category.label, "Other markets");
+  assert.equal(category.count, 2);
+  assert.equal(category.marketCount, 2);
+  assert.deepEqual(model.markets.map((market) => market.contract).sort(), ["133741", "146021"]);
 });
 
 test("unchecked, unavailable, no annual filing and checked with no match remain distinct", () => {
