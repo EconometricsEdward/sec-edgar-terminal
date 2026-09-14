@@ -104,12 +104,14 @@ test("funds never acquire an operating company's sector or look-through classifi
 
 test("demo shows all 11 sectors and all 100 companies without a catch-all or financial refresh", () => {
   const before = JSON.stringify(companies);
+  const sourceIndustries = new Set(companies.map((company) => company.sicDescription));
+  assert.ok([...sourceIndustries].every((industry) => typeof industry === "string" && industry.trim()));
   for (const settings of [{ basis: "none" }, demo.allocation]) {
     const report = buildPortfolioAnalytics(demo.rows, settings, companies);
     const overview = buildPortfolioOverview(report);
     assert.equal(overview.sectorCompanyCount, 100);
     assert.equal(overview.industryCompanyCount, 100);
-    assert.equal(overview.industryCount, 56);
+    assert.equal(overview.industryCount, sourceIndustries.size);
     assert.equal(overview.mix.length, 11);
     assert.equal(overview.mixDimension, "sector");
     assert.ok(
