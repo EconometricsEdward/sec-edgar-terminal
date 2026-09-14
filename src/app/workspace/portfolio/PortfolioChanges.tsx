@@ -1,46 +1,66 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { comparePortfolioResearch } from "../../../utils/portfolioChanges.js";
-import styles from "./PortfolioChanges.module.css";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import {
-  analyzeRevisions,
-  analysisRowsCsv,
-} from "../../../utils/portfolioEnrichment.js";
+  Activity,
+  ChevronDown,
+  Download,
+  ExternalLink,
+  FileText,
+  RefreshCw,
+} from "lucide-react";
+import { comparePortfolioResearch } from "../../../utils/portfolioChanges.js";
 import { downloadText } from "../../../utils/download.js";
-import { number } from "./PortfolioInsightTools";
+import styles from "./PortfolioChanges.module.css";
 
-const KINDS = [
-  ["filing", "Newly observed filings"],
-  ["period", "Reporting periods"],
-  ["revision", "Same-period revisions"],
-  ["coverage", "Evidence coverage"],
-] as const;
+const WINDOWS = [7, 30, 60] as const;
+const KIND_LABELS: Record<string, string> = {
+  filing: "SEC filing",
+  revision: "Financial revision",
+  period: "Reporting period",
+  coverage: "Evidence coverage",
+};
 
-function date(value: string | null) {
-  return value && Number.isFinite(Date.parse(value))
-    ? new Date(value).toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "No capture yet";
+function displayDate(value: string | null | undefined, withTime = false) {
+  if (!value || !Number.isFinite(Date.parse(value))) return "Date unavailable";
+  return new Date(value).toLocaleString(undefined, withTime
+    ? { dateStyle: "medium", timeStyle: "short" }
+    : { dateStyle: "medium" });
 }
+
+function cutoffDate(anchor: string | null | undefined, days: number) {
+  const time = Date.parse(anchor || "");
+  if (!Number.isFinite(time)) return "0000-00-00";
+  return new Date(time - days * 86400000).toISOString().slice(0, 10);
+}
+
 function observation(value: string, kind: string) {
   if (kind !== "period") return value;
   try {
     const period = JSON.parse(value);
-    return (
-      [
-        period.kind?.toUpperCase(),
-        period.start && `from ${period.start}`,
-        period.end && `ending ${period.end}`,
-      ]
-        .filter(Boolean)
-        .join(" · ") || "Period unavailable"
-    );
+    return [
+      period.kind?.toUpperCase(),
+      period.start && `from ${period.start}`,
+      period.end && `ending ${period.end}`,
+    ].filter(Boolean).join(" · ") || "Period unavailable";
   } catch {
     return value;
   }
+}
+
+function signed(value: number | null | undefined, digits = 0) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "Unavailable";
+  return `${value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: digits })}`;
+}
+
+function csvCell(value: unknown) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function sourceLinks(change: any) {
+  return [...new Set([...(change.beforeSources || []), ...(change.afterSources || [])])];
 }
 
 type Props = {
@@ -51,6 +71,12 @@ type Props = {
   onInspectCompany: (rowId: string) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
+};
+
+type CftcState = {
+  loading: boolean;
+  data: any | null;
+  error: string;
 };
 
 export default function PortfolioChanges({
@@ -66,382 +92,387 @@ export default function PortfolioChanges({
     () => comparePortfolioResearch(baseline, snapshot, rows),
     [baseline, snapshot, rows],
   );
-  const [kind, setKind] = useState("all");
+  const [source, setSource] = useState<"all" | "sec" | "cftc">("all");
   const [company, setCompany] = useState("all");
-  const [unit, setUnit] = useState("");
-  const [minimum, setMinimum] = useState("0");
-  const [sortBy, setSortBy] = useState("company");
+  const [windowDays, setWindowDays] = useState<number>(30);
   const [limit, setLimit] = useState(20);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [exportMessage, setExportMessage] = useState("");
-  const companies = useMemo(
-    () =>
-      [
-        ...new Map(
-          comparison.changes.map((change: any) => [
-            change.cik,
-            { cik: change.cik, name: change.ticker || change.companyName },
-          ]),
-        ).values(),
-      ] as { cik: string; name: string }[],
-    [comparison],
+  const [cftc, setCftc] = useState<CftcState>({ loading: false, data: null, error: "" });
+
+  const anchorDate = comparison.capturedAt || snapshot?.generated_at || null;
+  const cutoff = cutoffDate(anchorDate, windowDays);
+  const weights = useMemo(
+    () => allocation?.basis && allocation.basis !== "none"
+      ? Object.fromEntries((allocation.issuers || []).map((item: any) => [item.cik, item.weightPct]))
+      : {},
+    [allocation],
   );
-  const revisionAnalysis = useMemo(
-    () =>
-      analyzeRevisions(comparison.changes, {
-        kind,
-        company,
-        unit,
-        minimum,
-        sortBy,
-        weights:
-          allocation?.basis && allocation.basis !== "none"
-            ? Object.fromEntries(
-                allocation.issuers.map((row: any) => [row.cik, row.weightPct]),
-              )
-            : {},
-      }),
-    [comparison, kind, company, unit, minimum, sortBy, allocation],
-  );
-  const changes = revisionAnalysis.rows;
-  function exportChanges() {
-    try {
-      downloadText(
-        "portfolio-research-changes.csv",
-        analysisRowsCsv(changes, {
-          earlier_capture: comparison.baselineAt,
-          current_capture: comparison.capturedAt,
-          kind,
-          company,
-          revision_unit: unit,
-          minimum_absolute_revision: minimum,
-          sort_by: sortBy,
-        }),
-        "text/csv;charset=utf-8",
-      );
-      setExportMessage(
-        `CSV prepared for ${changes.length} observations with both source sets.`,
-      );
-    } catch {
-      setExportMessage("Export could not be prepared. Please try again.");
+
+  const filingIndex = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const issuer of snapshot?.companies || []) {
+      const filings = [
+        ...(issuer.filings || []),
+        issuer.latestAnnualFiling,
+        issuer.latestInterimFiling,
+      ].filter(Boolean);
+      for (const filing of filings) {
+        if (filing?.accession && !map.has(`${issuer.cik}:${filing.accession}`))
+          map.set(`${issuer.cik}:${filing.accession}`, filing);
+      }
     }
+    return map;
+  }, [snapshot]);
+
+  const secEvents = useMemo(() => {
+    const observed = String(comparison.capturedAt || "").slice(0, 10);
+    return (comparison.changes || []).flatMap((change: any) => {
+      const filing = change.kind === "filing"
+        ? filingIndex.get(`${change.cik}:${change.after}`)
+        : null;
+      const eventDate = filing?.filingDate || observed;
+      if (!eventDate || eventDate < cutoff) return [];
+      return [{
+        ...change,
+        source: "sec",
+        eventDate,
+        filing,
+        knownWeightPct: typeof weights[change.cik] === "number" ? weights[change.cik] : null,
+      }];
+    });
+  }, [comparison, filingIndex, cutoff, weights]);
+
+  const priorityCompanies = useMemo(() => {
+    const rowByCik = new Map(
+      (rows || []).map((row: any) => [row.resolution?.cik, row]),
+    );
+    const ordered: any[] = [];
+    const seen = new Set<string>();
+    const add = (row: any) => {
+      const ticker = row?.resolution?.ticker;
+      const cik = row?.resolution?.cik;
+      if (!ticker || !/^\d{10}$/.test(cik || "") || seen.has(cik)) return;
+      if (row.excluded || row.mergedInto || row.duplicateChoice === "remove") return;
+      seen.add(cik);
+      ordered.push({ ticker, cik, rowId: row.id });
+    };
+    for (const change of comparison.changes || []) add(rowByCik.get(change.cik));
+    for (const row of rows || []) add(row);
+    return ordered.slice(0, 24);
+  }, [comparison, rows]);
+
+  useEffect(() => {
+    if (comparison.state !== "ready" || !priorityCompanies.length) {
+      setCftc({ loading: false, data: null, error: "" });
+      return;
+    }
+    const controller = new AbortController();
+    setCftc((current) => ({ ...current, loading: true, error: "" }));
+    fetch("/api/v1/cftc/portfolio-changes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ companies: priorityCompanies, days: windowDays }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "CFTC market context is unavailable.");
+        return body;
+      })
+      .then((data) => setCftc({ loading: false, data, error: "" }))
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setCftc({
+          loading: false,
+          data: null,
+          error: error instanceof Error ? error.message : "CFTC market context is unavailable.",
+        });
+      });
+    return () => controller.abort();
+  }, [comparison.state, priorityCompanies, windowDays]);
+
+  const allEvents = useMemo(() => {
+    const market = (cftc.data?.events || []).map((event: any) => ({
+      ...event,
+      eventDate: event.reportDate,
+      knownWeightPct: typeof weights[event.cik] === "number" ? weights[event.cik] : null,
+    }));
+    return [...secEvents, ...market].sort((a: any, b: any) =>
+      String(b.eventDate).localeCompare(String(a.eventDate)) ||
+      (a.source === b.source ? String(a.ticker).localeCompare(String(b.ticker)) : a.source === "sec" ? -1 : 1),
+    );
+  }, [secEvents, cftc.data, weights]);
+
+  const companyOptions = useMemo(
+    () => [...new Map(allEvents.map((event: any) => [event.cik || event.ticker, {
+      id: event.cik || event.ticker,
+      label: event.ticker || event.companyName,
+    }])).values()] as { id: string; label: string }[],
+    [allEvents],
+  );
+  const filtered = useMemo(
+    () => allEvents.filter((event: any) =>
+      (source === "all" || event.source === source) &&
+      (company === "all" || (event.cik || event.ticker) === company),
+    ),
+    [allEvents, source, company],
+  );
+  const counts = useMemo(() => ({
+    companies: new Set(allEvents.map((event: any) => event.cik || event.ticker)).size,
+    sec: allEvents.filter((event: any) => event.source === "sec").length,
+    cftc: allEvents.filter((event: any) => event.source === "cftc").length,
+  }), [allEvents]);
+
+  function toggleDetails(id: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
-  const startingPoint =
-    comparison.baselineAt === comparison.capturedAt &&
-    !comparison.changes.length;
+
+  function clearFilters() {
+    setSource("all");
+    setCompany("all");
+    setLimit(20);
+  }
+
+  function exportChanges() {
+    const header = [
+      "date", "source", "ticker", "company", "change_type", "title", "description",
+      "earlier", "current", "net_contract_change", "net_oi_change_pp", "primary_source",
+    ];
+    const lines = filtered.map((event: any) => [
+      event.eventDate,
+      event.source.toUpperCase(),
+      event.ticker,
+      event.companyName,
+      event.source === "sec" ? KIND_LABELS[event.kind] || event.kind : "CFTC positioning",
+      event.title,
+      event.description,
+      event.source === "sec" ? event.before : event.priorDate,
+      event.source === "sec" ? event.after : event.reportDate,
+      event.source === "cftc" ? event.netChange : "",
+      event.source === "cftc" ? event.netPctChange : "",
+      event.source === "cftc" ? event.cftcSource : event.afterSources?.[0] || event.beforeSources?.[0] || "",
+    ].map(csvCell).join(","));
+    downloadText(
+      "portfolio-recent-changes.csv",
+      [header.join(","), ...lines].join("\n"),
+      "text/csv;charset=utf-8",
+    );
+    setExportMessage(`Exported ${filtered.length} recent change${filtered.length === 1 ? "" : "s"}.`);
+  }
+
+  const startingPoint = comparison.baselineAt === comparison.capturedAt && !comparison.changes.length;
 
   return (
-    <section
-      className={styles.root}
-      aria-labelledby="portfolio-changes-heading"
-    >
+    <section className={styles.root} aria-labelledby="portfolio-changes-heading">
       <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>THE RESEARCH DELTA</p>
+        <div className={styles.headingCopy}>
+          <p className={styles.eyebrow}>RECENT RESEARCH ACTIVITY</p>
           <h3 id="portfolio-changes-heading">What changed?</h3>
-          <p>
-            See what deserves another look since the earlier successful research
-            capture.
-          </p>
+          <p>Recent SEC evidence changes and filing-linked CFTC market context, ordered by date and stripped down to what needs attention.</p>
         </div>
         {onRefresh && (
-          <button
-            type="button"
-            className={styles.button}
-            onClick={onRefresh}
-            disabled={refreshing}
-          >
-            {refreshing ? "Research in progress…" : "Refresh all research"}
+          <button type="button" className={styles.refreshButton} onClick={onRefresh} disabled={refreshing}>
+            <RefreshCw size={16} className={refreshing ? styles.spinning : ""} aria-hidden="true" />
+            {refreshing ? "Refreshing research…" : "Refresh all research"}
           </button>
         )}
       </header>
 
       {comparison.state === "needs_baseline" ? (
         <div className={styles.empty}>
-          <span className={styles.emptySymbol} aria-hidden="true">
-            ↻
-          </span>
+          <div className={styles.emptyIcon}><RefreshCw size={20} aria-hidden="true" /></div>
           <div>
-            <h4>Your next capture starts the comparison.</h4>
-            <p>
-              {snapshot
-                ? "Complete a full refresh to compare this captured research with newly retrieved evidence."
-                : "Run research to capture the starting point. After the next successful full refresh, newly observed filings, reporting periods, and comparable metric revisions appear here."}
-            </p>
-            <p>
-              Each change keeps its source links. Different reporting periods
-              are shown separately from same-period value revisions.
-            </p>
+            <h4>Your next complete refresh starts the change feed.</h4>
+            <p>{snapshot ? "Run a complete refresh to compare this capture with newly retrieved SEC evidence." : "Run research to create the first capture. The next successful full refresh will reveal newly observed filings and comparable evidence changes."}</p>
           </div>
         </div>
       ) : comparison.state === "incompatible" ? (
-        <div className={styles.warning} role="status">
-          {comparison.warnings.join(" ")}
-        </div>
+        <div className={styles.warning} role="status">{comparison.warnings.join(" ")}</div>
       ) : (
         <>
-          <div className={styles.captureBar}>
-            <span>
-              <small>EARLIER CAPTURE</small>
-              <strong>{date(comparison.baselineAt)}</strong>
-            </span>
-            <span aria-hidden="true">→</span>
-            <span>
-              <small>CURRENT CAPTURE</small>
-              <strong>{date(comparison.capturedAt)}</strong>
-            </span>
-            <span className={styles.checked}>
-              {comparison.checkedIssuers}{" "}
-              {comparison.checkedIssuers === 1 ? "holding" : "holdings"} checked
-              {comparison.uncheckedIssuers
-                ? ` · ${comparison.uncheckedIssuers} need a check`
-                : ""}
-            </span>
+          <div className={styles.contextBar}>
+            <div>
+              <span className={styles.contextLabel}>Compared with</span>
+              <strong>{displayDate(comparison.baselineAt, true)}</strong>
+            </div>
+            <span className={styles.contextDivider} aria-hidden="true" />
+            <div>
+              <span className={styles.contextLabel}>Current capture</span>
+              <strong>{displayDate(comparison.capturedAt, true)}</strong>
+            </div>
+            <div className={styles.checkState}>
+              <span className={comparison.uncheckedIssuers ? styles.dotWarn : styles.dotReady} aria-hidden="true" />
+              {comparison.checkedIssuers} checked{comparison.uncheckedIssuers ? ` · ${comparison.uncheckedIssuers} need retry` : ""}
+            </div>
           </div>
-          <div className={styles.stats} aria-label="Change categories">
-            {KINDS.map(([key, label]) => (
-              <button
-                type="button"
-                key={key}
-                className={`${styles.stat} ${kind === key ? styles.active : ""}`}
-                aria-pressed={kind === key}
-                onClick={() => setKind(kind === key ? "all" : key)}
-              >
-                <strong>{comparison.counts[key]}</strong>
-                <span>{label}</span>
-              </button>
-            ))}
+
+          <div className={styles.summary} aria-label="Recent change summary">
+            <div><strong>{counts.companies}</strong><span>companies with activity</span></div>
+            <div><strong>{counts.sec}</strong><span>SEC evidence changes</span></div>
+            <div><strong>{cftc.loading ? "…" : counts.cftc}</strong><span>CFTC context changes</span></div>
           </div>
+
           {!!comparison.warnings.length && (
             <div className={styles.warning} role="status">
-              {comparison.warnings.map((warning: string) => (
-                <p key={warning}>{warning}</p>
-              ))}
+              {comparison.warnings.map((warning: string) => <p key={warning}>{warning}</p>)}
             </div>
           )}
-          <div className={styles.filters}>
-            <label>
-              Change type
-              <select
-                value={kind}
-                onChange={(event) => setKind(event.target.value)}
-              >
-                <option value="all">All change types</option>
-                {KINDS.map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Company
-              <select
-                value={company}
-                onChange={(event) => setCompany(event.target.value)}
-              >
+
+          <div className={styles.toolbar}>
+            <div className={styles.sourceTabs} aria-label="Data source filter">
+              {(["all", "sec", "cftc"] as const).map((value) => (
+                <button
+                  type="button"
+                  key={value}
+                  className={source === value ? styles.sourceTabActive : styles.sourceTab}
+                  aria-pressed={source === value}
+                  onClick={() => { setSource(value); setLimit(20); }}
+                >
+                  {value === "all" ? "All updates" : value.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <label className={styles.compactField}>
+              <span>Company</span>
+              <select value={company} onChange={(event) => { setCompany(event.target.value); setLimit(20); }}>
                 <option value="all">All companies</option>
-                {companies.map((entry) => (
-                  <option key={entry.cik} value={entry.cik}>
-                    {entry.name}
-                  </option>
-                ))}
+                {companyOptions.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
               </select>
             </label>
-            <label>
-              Revision unit
-              <select
-                value={unit}
-                onChange={(event) => {
-                  setUnit(event.target.value);
-                  setMinimum("0");
-                }}
-              >
-                <option value="">All observations</option>
-                {revisionAnalysis.units.map((value: string) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
+            <label className={styles.compactField}>
+              <span>Window</span>
+              <select value={windowDays} onChange={(event) => { setWindowDays(Number(event.target.value)); setLimit(20); }}>
+                {WINDOWS.map((days) => <option key={days} value={days}>Last {days} days</option>)}
               </select>
             </label>
-            {unit && (
-              <label>
-                Minimum absolute revision ({unit})
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={minimum}
-                  onChange={(event) => setMinimum(event.target.value)}
-                />
-              </label>
-            )}
-            <label>
-              Sort observations
-              <select
-                value={sortBy}
-                onChange={(event) => setSortBy(event.target.value)}
-              >
-                <option value="company">Group by company</option>
-                {allocation?.basis && allocation.basis !== "none" && (
-                  <option value="weight">Largest known allocation</option>
-                )}
-                {unit && (
-                  <option value="magnitude">Largest absolute revision</option>
-                )}
-              </select>
-            </label>
-            <button
-              type="button"
-              className={styles.button}
-              disabled={!changes.length || Boolean(revisionAnalysis.error)}
-              onClick={exportChanges}
-            >
-              Export filtered changes
+            <button type="button" className={styles.iconButton} onClick={exportChanges} disabled={!filtered.length} title="Export visible changes">
+              <Download size={16} aria-hidden="true" />
+              Export
             </button>
-            <span className={styles.resultCount} aria-live="polite">
-              {changes.length} observation{changes.length === 1 ? "" : "s"}
-            </span>
           </div>
-          {revisionAnalysis.error && (
-            <p role="alert">{revisionAnalysis.error}</p>
-          )}
-          {exportMessage && <p role="status">{exportMessage}</p>}
-          {unit && (
-            <p>
-              Numeric differences are verified same-period revisions. Percentage
-              measures change in percentage points; they are not growth rates.
-            </p>
-          )}
-          {!changes.length ? (
+
+          <div className={styles.feedMeta}>
+            <span>{filtered.length} recent update{filtered.length === 1 ? "" : "s"}</span>
+            {cftc.loading && <span className={styles.loadingText}><span className={styles.pulse} aria-hidden="true" /> Adding CFTC context…</span>}
+            {!cftc.loading && cftc.data?.coverage?.limited && <span>CFTC scan prioritized {cftc.data.coverage.requested} issuers with recent SEC changes first.</span>}
+          </div>
+          {cftc.error && <p className={styles.quietWarning} role="status">CFTC context could not be added right now: {cftc.error} SEC changes remain available.</p>}
+          {exportMessage && <p className={styles.statusMessage} role="status">{exportMessage}</p>}
+
+          {!filtered.length ? (
             <div className={styles.empty}>
+              <div className={styles.emptyIcon}>{source === "cftc" ? <Activity size={20} aria-hidden="true" /> : <FileText size={20} aria-hidden="true" />}</div>
               <div>
-                <h4>
-                  {comparison.changes.length
-                    ? "No observations match these filters."
-                    : startingPoint
-                      ? "Your starting point is captured."
-                      : "No comparable changes observed."}
-                </h4>
-                <p>
-                  {comparison.changes.length
-                    ? "Choose another company or change type to continue reviewing."
-                    : startingPoint
-                      ? "After the next successful full refresh, this starting point will show what changed in the available evidence."
-                      : "The captured evidence matches within the available filing lists and financial fields. This does not rule out changes outside the data covered here."}
-                </p>
-                {(kind !== "all" || company !== "all") && (
-                  <button
-                    type="button"
-                    className={styles.button}
-                    onClick={() => {
-                      setKind("all");
-                      setCompany("all");
-                    }}
-                  >
-                    Clear filters
-                  </button>
-                )}
+                <h4>{allEvents.length ? "No recent updates match these filters." : startingPoint ? "Your comparison point is ready." : "No recent changes observed."}</h4>
+                <p>{allEvents.length ? "Try a wider recent window or another source." : startingPoint ? "After the next complete refresh, recent SEC evidence changes will appear here. CFTC context is added only where filing evidence supports a candidate market connection." : `Nothing in the captured evidence falls inside the last ${windowDays} days. This does not rule out changes outside the data covered here.`}</p>
+                {(source !== "all" || company !== "all") && <button type="button" className={styles.textButton} onClick={clearFilters}>Clear filters</button>}
               </div>
             </div>
           ) : (
-            <ol className={styles.list}>
-              {changes.slice(0, limit).map((change: any) => (
-                <li key={change.id} className={styles.change}>
-                  <div className={styles.changeHeader}>
-                    <span className={styles.company}>
-                      {change.ticker || change.companyName}
-                    </span>
-                    <span className={styles.badge}>
-                      {KINDS.find(([key]) => key === change.kind)?.[1]}
-                    </span>
-                    {!change.fresh && (
-                      <span className={styles.unchecked}>Needs a check</span>
-                    )}
-                  </div>
-                  <h4>{change.title}</h4>
-                  {change.knownWeightPct !== null && (
-                    <p>
-                      Known allocation: {number(change.knownWeightPct, "%")}
-                    </p>
-                  )}
-                  {change.delta !== null && (
-                    <p>
-                      <strong>
-                        Revision: {number(change.delta, change.deltaUnit)}
-                      </strong>
-                    </p>
-                  )}
-                  <p>{change.description}</p>
-                  <div className={styles.comparison}>
-                    {[
-                      {
-                        label: "Earlier",
-                        value: change.before,
-                        links: change.beforeSources,
-                      },
-                      {
-                        label: "Current",
-                        value: change.after,
-                        links: change.afterSources,
-                      },
-                    ].map((entry) => (
-                      <div key={entry.label}>
-                        <small>{entry.label}</small>
-                        <strong>{observation(entry.value, change.kind)}</strong>
-                        <div className={styles.sources}>
-                          {entry.links.length ? (
-                            entry.links.map((url: string, index: number) => (
-                              <a
-                                key={url}
-                                href={url}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                SEC source
-                                {entry.links.length > 1
-                                  ? ` ${index + 1}`
-                                  : ""}{" "}
-                                ↗
-                              </a>
-                            ))
-                          ) : (
-                            <span>No linked source in this capture</span>
-                          )}
-                        </div>
+            <ol className={styles.timeline}>
+              {filtered.slice(0, limit).map((event: any) => {
+                const isCftc = event.source === "cftc";
+                const isOpen = expanded.has(event.id);
+                const links = isCftc ? [] : sourceLinks(event);
+                const delta = !isCftc && typeof event.beforeValue === "number" && typeof event.afterValue === "number"
+                  ? event.afterValue - event.beforeValue
+                  : null;
+                return (
+                  <li key={event.id} className={styles.event}>
+                    <div className={`${styles.sourceMark} ${isCftc ? styles.cftcMark : styles.secMark}`} aria-hidden="true">
+                      {isCftc ? <Activity size={16} /> : <FileText size={16} />}
+                    </div>
+                    <div className={styles.eventBody}>
+                      <div className={styles.eventTopline}>
+                        <span className={styles.ticker}>{event.ticker || event.companyName}</span>
+                        <span className={isCftc ? styles.cftcBadge : styles.secBadge}>{isCftc ? "CFTC" : "SEC"}</span>
+                        <span className={styles.typeLabel}>{isCftc ? "Positioning" : KIND_LABELS[event.kind] || "Evidence"}</span>
+                        <time dateTime={event.eventDate}>{displayDate(event.eventDate)}</time>
                       </div>
-                    ))}
-                  </div>
-                  <div className={styles.actions}>
-                    <button
-                      className={styles.button}
-                      type="button"
-                      onClick={() => onInspectCompany(change.rowId)}
-                    >
-                      Inspect company
-                    </button>
-                  </div>
-                </li>
-              ))}
+                      <div className={styles.eventHeadline}>
+                        <div>
+                          <h4>{event.title}</h4>
+                          <p>{event.description}</p>
+                        </div>
+                        <button type="button" className={styles.detailsButton} onClick={() => toggleDetails(event.id)} aria-expanded={isOpen}>
+                          Details <ChevronDown size={14} className={isOpen ? styles.chevronOpen : ""} aria-hidden="true" />
+                        </button>
+                      </div>
+
+                      <div className={styles.quickFacts}>
+                        {isCftc ? (
+                          <>
+                            <span><small>1W net</small><strong>{signed(event.netChange)} contracts</strong></span>
+                            <span><small>Net / OI change</small><strong>{event.netPctChange === null ? "Unavailable" : `${signed(event.netPctChange, 2)} pp`}</strong></span>
+                            <span><small>Market</small><strong>{event.contractName}</strong></span>
+                          </>
+                        ) : (
+                          <>
+                            {event.filing?.form && <span><small>Form</small><strong>{event.filing.form}</strong></span>}
+                            {delta !== null && <span><small>Observed revision</small><strong>{signed(delta, 2)} {event.unit || ""}</strong></span>}
+                            {event.knownWeightPct !== null && <span><small>Known allocation</small><strong>{event.knownWeightPct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%</strong></span>}
+                          </>
+                        )}
+                      </div>
+
+                      {isOpen && (
+                        <div className={styles.detailsPanel}>
+                          {isCftc ? (
+                            <>
+                              <div className={styles.detailGrid}>
+                                <div><small>Prior CFTC report</small><strong>{displayDate(event.priorDate)}</strong></div>
+                                <div><small>Current CFTC report</small><strong>{displayDate(event.reportDate)}</strong></div>
+                                <div><small>Long change</small><strong>{signed(event.longChange)} contracts</strong></div>
+                                <div><small>Short change</small><strong>{signed(event.shortChange)} contracts</strong></div>
+                              </div>
+                              <div className={styles.connectionNote}>
+                                <strong>Why this market is shown</strong>
+                                <p>{event.candidate?.reason}</p>
+                                {event.candidate?.reviewQuestion && <p><b>Review question:</b> {event.candidate.reviewQuestion}</p>}
+                              </div>
+                              <div className={styles.linkRow}>
+                                {event.candidate?.filing?.url && <a href={event.candidate.filing.url} target="_blank" rel="noreferrer">SEC evidence <ExternalLink size={12} aria-hidden="true" /></a>}
+                                {event.cftcSource && <a href={event.cftcSource} target="_blank" rel="noreferrer">CFTC source <ExternalLink size={12} aria-hidden="true" /></a>}
+                                <Link href={event.marketPath}>Open positioning workspace <ExternalLink size={12} aria-hidden="true" /></Link>
+                              </div>
+                              <p className={styles.disclaimer}>Aggregate futures positioning is market context only. It is not the company’s own position, hedge size, cash flow, or a price forecast.</p>
+                            </>
+                          ) : (
+                            <>
+                              <div className={styles.detailGrid}>
+                                <div><small>Earlier capture</small><strong>{observation(event.before, event.kind)}</strong></div>
+                                <div><small>Current capture</small><strong>{observation(event.after, event.kind)}</strong></div>
+                              </div>
+                              <div className={styles.linkRow}>
+                                {links.map((url: string, index: number) => <a key={url} href={url} target="_blank" rel="noreferrer">SEC source{links.length > 1 ? ` ${index + 1}` : ""} <ExternalLink size={12} aria-hidden="true" /></a>)}
+                                {!links.length && <span>No linked SEC document in this capture.</span>}
+                              </div>
+                            </>
+                          )}
+                          {event.rowId && <button type="button" className={styles.inspectButton} onClick={() => onInspectCompany(event.rowId)}>Inspect company</button>}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           )}
-          {changes.length > 20 && (
-            <button
-              type="button"
-              className={styles.button}
-              onClick={() =>
-                setLimit(limit >= changes.length ? 20 : limit + 20)
-              }
-            >
-              {limit >= changes.length
-                ? "Show first 20 observations"
-                : `Show more (${Math.min(limit, changes.length)} of ${changes.length})`}
+
+          {filtered.length > 20 && (
+            <button type="button" className={styles.showMore} onClick={() => setLimit(limit >= filtered.length ? 20 : Math.min(filtered.length, limit + 20))}>
+              {limit >= filtered.length ? "Show first 20" : `Show more · ${Math.min(limit, filtered.length)} of ${filtered.length}`}
             </button>
           )}
+
           <p className={styles.method}>
-            One observation per company, even when multiple share classes are
-            selected. Filing comparisons use the captured recent filing lists.
-            Coverage changes describe the evidence available to this workspace.
+            SEC changes compare two completed research captures and keep filing/document provenance. CFTC context uses the latest official report and an exact one-week comparison only when a candidate company-market connection is supported by an SEC annual filing. The recent window is anchored to the current research capture.
           </p>
         </>
       )}
