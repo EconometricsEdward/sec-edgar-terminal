@@ -82,9 +82,11 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
   // A selected company comes first, including companies outside the initial priority scan.
   const requestCompanies = useMemo(() => {
     const changed = new Set((comparison.changes || []).map((change: any) => change.cik));
-    return [...companies].sort((a, b) => Number(b.cik === selectedCompany) - Number(a.cik === selectedCompany)
-      || Number(changed.has(b.cik)) - Number(changed.has(a.cik)))
-      .map(({ ticker, cik, rowId }) => ({ ticker, cik, rowId }));
+    const ordered = [...companies].sort((a, b) => Number(changed.has(b.cik)) - Number(changed.has(a.cik)));
+    const selectedIndex = ordered.findIndex((item) => item.cik === selectedCompany);
+    // Filtering an already-scanned issuer must not repeat the entire discovery request.
+    if (selectedIndex >= 24) ordered.unshift(...ordered.splice(selectedIndex, 1));
+    return ordered.map(({ ticker, cik, rowId }) => ({ ticker, cik, rowId }));
   }, [companies, comparison.changes, selectedCompany]);
   const requestKey = JSON.stringify(requestCompanies);
   const captureKey = snapshot?.generated_at || "";
