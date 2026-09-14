@@ -442,7 +442,8 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   async function claimDataStoreJob({ dataset, leaseSeconds = 120, jobKey = null, prefix = null }) {
     if (!enabled(dataset)) return null;
     if (prefix !== null) {
-      if (jobKey !== null || dataset !== 'sec' || !['sec-financial-cohort-v1:', 'sec-coverage-v1:'].includes(prefix)) throw new DataStoreError('invalid_job_prefix', 422);
+      if (jobKey !== null || !(dataset === 'sec' && ['sec-financial-cohort-v1:', 'sec-coverage-v1:'].includes(prefix)
+        || dataset === 'cftc' && prefix === 'cftc-history-v1:')) throw new DataStoreError('invalid_job_prefix', 422);
       return rpc('edgar_claim_job_prefix', { p_dataset: dataset, p_owner: randomUUID(), p_prefix: prefix, p_lease_seconds: leaseSeconds });
     }
     return rpc('edgar_claim_job', { p_dataset: dataset, p_owner: randomUUID(), p_lease_seconds: leaseSeconds, p_job_key: jobKey });
@@ -483,6 +484,7 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     },
     readDataStoreStatus: () => rpc('edgar_store_status'),
     readDataStoreCoverageStatus: () => rpc('edgar_coverage_status'),
+    readCftcHistoryStatus: ({ signal } = {}) => rpc('edgar_cftc_history_status', {}, { signal }),
     readFinancialMetrics: (versionId) => rpc('edgar_read_financial_metrics', { p_version: versionId }),
     exportDataStoreManifests: ({ after = null, limit = 100 } = {}) => rpc('edgar_export_manifests', { p_after: after, p_limit: Math.max(1, Math.min(100, limit)) }),
     dataStoreRetentionDryRun: ({ before = new Date(Date.now() - 30 * 86400000).toISOString(), limit = 100 } = {}) => rpc('edgar_retention_dry_run', { p_before: validTimestamp(before, true), p_limit: Math.max(1, Math.min(100, limit)) }),
@@ -490,4 +492,4 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   };
 }
 const defaultStore = createDataStore();
-export const { readDataset, readDatasetManifests, readDatasetBatch, readDatasetVersion, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, readDatasetSource, enqueueDataStoreJob, enqueueCoverageJobs, enqueueCurrentCoverageJobs, readCoverageRegistry, beginCoverageMembershipCheck, stageCoverageMembership, activateCoverageMembership, finishCoverageMembershipCheck, readCoverageOperations, captureCoverageOperations, acquireSecDispatchPermit, releaseSecDispatchPermit, publishSecDispatchCooldown, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob, checkpointDataStoreJob, readDataStoreStatus, readDataStoreCoverageStatus, readFinancialMetrics, exportDataStoreManifests, dataStoreRetentionDryRun, dataStoreOrphanDryRun } = defaultStore;
+export const { readDataset, readDatasetManifests, readDatasetBatch, readDatasetVersion, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, readDatasetSource, enqueueDataStoreJob, enqueueCoverageJobs, enqueueCurrentCoverageJobs, readCoverageRegistry, beginCoverageMembershipCheck, stageCoverageMembership, activateCoverageMembership, finishCoverageMembershipCheck, readCoverageOperations, captureCoverageOperations, acquireSecDispatchPermit, releaseSecDispatchPermit, publishSecDispatchCooldown, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob, checkpointDataStoreJob, readDataStoreStatus, readDataStoreCoverageStatus, readCftcHistoryStatus, readFinancialMetrics, exportDataStoreManifests, dataStoreRetentionDryRun, dataStoreOrphanDryRun } = defaultStore;

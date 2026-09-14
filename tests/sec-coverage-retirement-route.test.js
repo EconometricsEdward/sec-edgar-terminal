@@ -13,6 +13,8 @@ async function routeFixture() {
   let scenario, time, calls, abort;
   const mockDependency = (name, namedExports) => mock.module(new URL(name, root).href, { namedExports });
   mockDependency('src/utils/dataStore.js', { getDataStoreMode: () => 'supabase' });
+  mockDependency('src/utils/cftcFeature.js', { isCftcEnabled: () => false });
+  mockDependency('src/utils/cftcHistoryPreparation.js', { runCftcHistoryPreparation: async () => { throw new Error('CFTC feature is disabled in this retirement fixture'); } });
   mockDependency('src/utils/dataStoreDeployment.js', { isSecCoverageScheduleEnabled: () => true });
   mockDependency('src/utils/secCoverageScheduleAuth.js', { authorizeSecCoverageSchedule: async () => true });
   mockDependency('src/utils/secCoverageMaintenance.js', { maintainSecCoverageMembership: async () => ({ status: 'current' }) });

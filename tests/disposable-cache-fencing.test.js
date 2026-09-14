@@ -119,12 +119,12 @@ test('gateway validates fenced destination binding and payload before SQL, prese
   assert.equal(calls.length, 1);
 });
 
-test('market claims can publish real plus-code raw histories without widening canonical history admission', async () => {
+test('market and canonical history claims accept the same bounded plus-code identities', async () => {
   const { handler, calls } = gateway();
   const good = fencedBody(cftc, 'markets:tff:latest', 'raw-history:tff:ABC+:2026-09-08', 'cftc', { family: 'tff', code: 'ABC+' });
   assert.equal((await handler(rpc('edgar_cache_put_fenced', good))).status, 200);
   assert.equal(calls[0].params.p_id, 'RAW-HISTORY:TFF:ABC+:2026-09-08');
   assert.equal((await handler(rpc('edgar_cache_put_fenced', { ...good, p_id: 'RAW-HISTORY:DISAGGREGATED:ABC+:2026-09-08' }))).status, 403);
-  assert.equal((await handler(rpc('edgar_reserve_cache_generation', { p_dataset: 'cftc', p_key: 'history:tff:ABC+:dealer:2026-09-08:5y', p_claim: good.p_claim }))).status, 403);
-  assert.equal(calls.length, 1);
+  assert.equal((await handler(rpc('edgar_reserve_cache_generation', { p_dataset: 'cftc', p_key: 'history:tff:ABC+:dealer:2026-09-08:5y', p_claim: good.p_claim }))).status, 200);
+  assert.equal(calls.length, 2);
 });

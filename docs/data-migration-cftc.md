@@ -1,5 +1,7 @@
 # CFTC durable pilot
 
+This document records the original pilot and its measured evidence. The production cache routing was subsequently updated in [cache storage policy](cache-storage-policy.md), and broader contract-history preparation is described in [CFTC history preparation](cftc-history-preparation.md). Those documents supersede the pilot's launch-only coverage, Redis payload routing, and sole-scheduler statements below.
+
 This slice changes storage and refresh execution. It does not change positioning formulas, add report families, change the company/disclosed-position distinction, or activate production readers. `CFTC_ENABLED` remains the existing feature switch. `EDGAR_DATASTORE_CFTC` independently selects `off` (default), `shadow`, or `supabase`.
 
 ## Actual consumers and bounds

@@ -147,7 +147,17 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
     }
     return results;
   }
-  async function cacheGet(type, id, options = {}) { return (await cacheGetMany(type, [id], options))[0]; }
+  async function cacheGet(type, id, options = {}) {
+    const p = policy(type, id);
+    const legacyCftcRead = enabled() && p?.family === 'cftc-history' && type === 'edgar.cftc-positioning.v1:production';
+    // One read-only fallback preserves still-valid entries while the new family
+    // warms. Both reads share one deadline; errors and corrupt records fail
+    // closed. Reads do not rewrite, recache, or renew the original expiry.
+    const bounded = legacyCftcRead ? { ...options, deadline: Math.min(options.deadline ?? Infinity, now() + (options.timeoutMs ?? 10000)) } : options;
+    const current = (await cacheGetMany(type, [id], bounded))[0];
+    if (current !== null || !legacyCftcRead) return current;
+    return (await getBatch([{ ...p, family: 'history' }], bounded))[0];
+  }
   async function put(type, id, payload, ttlSeconds, { ifHash = null, expiresAt = null, ...options } = {}, fence = null) {
     const p = policy(type, id);
     if (!enabled() || !p) return { stored: false, reason: 'disabled' };

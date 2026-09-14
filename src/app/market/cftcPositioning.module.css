@@ -27,6 +27,14 @@
 .coverageBar { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; overflow:hidden; border:1px solid var(--m-line); border-radius:11px; background:var(--m-line); }
 .coverageBar span { display:grid; gap:2px; padding:10px 13px; color:var(--m-muted); background:var(--m-panel); font-size:10px; }
 .coverageBar b { color:var(--m-text); font-size:13px; }
+.historyCoverage { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,.8fr); gap:12px 22px; padding:17px 20px; border:1px solid var(--m-line); border-radius:12px; background:var(--m-panel); }
+.historyCoverage h3 { margin-top:5px; font-size:18px; }
+.historyCoverage p,.historyCoverage > small { color:var(--m-muted); font-size:11px; line-height:1.5; }
+.historyCoverage p { margin-top:5px; max-width:700px; }
+.historyCoverage > small { grid-column:1/-1; font-size:10px; }
+.historyCoverageCounts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-content:center; gap:14px; }
+.historyCoverageCounts span { display:grid; gap:3px; color:var(--m-muted); font-size:10px; }
+.historyCoverageCounts b { color:var(--m-text); font-size:18px; }
 .controls { display:grid; grid-template-columns:minmax(190px,1.4fr) minmax(230px,1.8fr) repeat(3,minmax(145px,1fr)); gap:10px; }
 .controls label,.reportDate { display:grid; gap:6px; color:var(--m-muted); font-size:11px; }
 .controls :is(input,select),.reportDate select { width:100%; min-width:0; height:42px; padding:0 10px; border:1px solid var(--m-line); border-radius:9px; color:var(--m-text); background:var(--m-panel); }
@@ -124,3 +132,4 @@
 @media (max-width:480px) { .error,.warning,.unsupported { align-items:flex-start; flex-wrap:wrap; } .error button,.warning button,.unsupported button { margin-left:0; } .controls,.coverageBar { grid-template-columns:1fr; } .controls label:nth-child(2) { grid-column:auto; } .familyTabs { grid-template-columns:1fr; } .snapshotBar,.previewStats { display:grid; } .detailStats { grid-template-columns:1fr; } .detailStats div { border-right:0; border-bottom:1px solid var(--m-line); } .reportDate { grid-template-columns:1fr; } .reportDate span { grid-column:auto; } .charts { padding-inline:12px; } .dataTable,.source,.method { margin-inline:12px; } }
 @media (max-width:480px) { .reportDate label { grid-column:auto; } }
 @media (prefers-reduced-motion:reduce) { .spin { animation:none; } }
+@media (max-width:760px) { .historyCoverage { grid-template-columns:1fr; padding:16px; } }

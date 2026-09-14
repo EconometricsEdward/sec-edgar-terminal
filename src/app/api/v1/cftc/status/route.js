@@ -1,6 +1,8 @@
 import { CFTC_SCHEMA_VERSION } from '../../../../../utils/cftc.js';
 import { isCftcEnabled } from '../../../../../utils/cftcFeature.js';
 import { CFTC_CACHE_NAMESPACE, readCftcCacheStatus } from '../../../../../utils/cftcServer.js';
+import { publicCftcHistoryCoverage } from '../../../../../utils/cftcHistoryCoverage.js';
+import { readCftcHistoryStatus } from '../../../../../utils/dataStore.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse, rateLimitHeaders } from '../../../../../utils/rateLimit.js';
 
 export const runtime = 'nodejs';
@@ -16,9 +18,14 @@ export async function GET(request) {
     if ([...params.keys()].length) {
       return Response.json({ schema_version: CFTC_SCHEMA_VERSION, error: 'The CFTC status route does not accept query parameters.', code: 'UNKNOWN_QUERY_PARAMETER', retryable: false }, { status: 400, headers: { ...commonHeaders, ...rateLimitHeaders(limit), 'Cache-Control': 'private, no-store' } });
     }
-    const result = await readCftcCacheStatus();
+    const [result, historyStatus] = await Promise.all([
+      readCftcCacheStatus(),
+      // Optional coverage must not turn otherwise usable family snapshots into an outage.
+      readCftcHistoryStatus({ signal: AbortSignal.timeout(2000) }).catch(() => null),
+    ]);
+    const historyCoverage = publicCftcHistoryCoverage(historyStatus, result);
     const usable = ['ready', 'degraded'].includes(result.status);
-    return Response.json(result, { status: usable ? 200 : 503, headers: { ...commonHeaders, ...rateLimitHeaders(limit), 'Cache-Control': usable ? 'public, max-age=0, s-maxage=30, stale-while-revalidate=30' : 'private, no-store' } });
+    return Response.json(historyCoverage.length ? { ...result, history_coverage: historyCoverage } : result, { status: usable ? 200 : 503, headers: { ...commonHeaders, ...rateLimitHeaders(limit), 'Cache-Control': usable ? 'public, max-age=0, s-maxage=30, stale-while-revalidate=30' : 'private, no-store' } });
   } catch (error) {
     return Response.json({ schema_version: CFTC_SCHEMA_VERSION, status: 'unavailable', checked_at: new Date().toISOString(), families: [], error: error.message || 'CFTC cache status is unavailable.' }, { status: 503, headers: { ...commonHeaders, ...rateLimitHeaders(limit), 'Cache-Control': 'private, no-store' } });
   }

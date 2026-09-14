@@ -28,7 +28,7 @@ test('CFTC UI binds the selected rank, accessible tooltip provenance, freshness,
   assert.match(cftc, /aria-describedby=\{tooltipId\}/);
   assert.match(cftc, /Source-report age/);
   assert.match(cftc, /Cache state/);
-  assert.match(cftc, /launch markets available/);
+  assert.match(cftc, /heatmap markets available/);
   assert.match(cftc, /field="net" title="Net position \(contracts\)"/);
   assert.match(cftc, /field="openInterest" title="Open interest \(contracts\)"/);
   assert.match(cftc, /point\.spreadingStatus === 'not_applicable'/);

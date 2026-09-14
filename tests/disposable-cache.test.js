@@ -50,8 +50,8 @@ test('every reviewed live key builder selects the intended disposable family', (
     ['edgar.cftc-fcm.v1:production', 'latest', 'history'], ['fund-research-v1', 'IVV:latest', 'research'],
     ['fund-research-v1', `IVV:${accession}:${'a'.repeat(16)}:15`, 'research'], ['global-fund-discovery-v1', `search:${'a'.repeat(24)}`, 'research'],
     ['edgar.cftc-positioning.v1:production', 'markets:tff:latest', 'history'], ['edgar.cftc-positioning.v1:production', 'markets-last-good:disaggregated:2026-09-08', 'history'],
-    ['edgar.cftc-positioning.v1:production', 'raw-history:tff:13874A:2026-09-08', 'history'],
-    ['edgar.cftc-positioning.v1:production', 'history-last-good:tff:13874A:dealer:2026-09-08:5y', 'history'],
+    ['edgar.cftc-positioning.v1:production', 'raw-history:tff:13874A:2026-09-08', 'cftc-history'],
+    ['edgar.cftc-positioning.v1:production', 'history-last-good:tff:13874A:dealer:2026-09-08:5y', 'cftc-history'],
     ['edgar.cftc-positioning.v1:production', 'refresh-checkpoint', 'checkpoint'],
   ];
   for (const [type, id, family] of rows) {
@@ -100,8 +100,8 @@ test('filing text cache admits bounded manifest-relative nested documents withou
 test('CFTC cache identity supports actual variable-length and plus-sign contract codes', () => {
   const namespace = 'edgar.cftc-positioning.v1:production';
   for (const code of ['12460+', '20974+', '13874+', 'ABC', 'ABCDEFGHIJKL']) {
-    assert.equal(disposableCachePolicy(namespace, `raw-history:tff:${code}:2026-09-08`).family, 'history');
-    assert.equal(disposableCachePolicy(namespace, `history-last-good:tff:${code}:leveraged-funds:2026-09-08:1y`).family, 'history');
+    assert.equal(disposableCachePolicy(namespace, `raw-history:tff:${code}:2026-09-08`).family, 'cftc-history');
+    assert.equal(disposableCachePolicy(namespace, `history-last-good:tff:${code}:leveraged-funds:2026-09-08:1y`).family, 'cftc-history');
   }
   for (const code of ['12', 'A'.repeat(13), '12/345', '12:345', '12?345', '12%345']) {
     assert.equal(disposableCachePolicy(namespace, `raw-history:tff:${code}:2026-09-08`), null);
@@ -185,4 +185,45 @@ test('maintenance has only bounded read/claim/save operations and no arming para
   await assert.rejects(cache.saveCacheMaintenanceState(owner, { data: 'x'.repeat(65536) }), /invalid_state/);
   await assert.rejects(cache.claimCacheMaintenanceState('fake'), /invalid_owner/);
   assert.equal(calls.length, 3);
+});
+
+test('CFTC family cutover reads a retained raw/history value once without rewriting or extending expiry', async () => {
+  const type = 'edgar.cftc-positioning.v1:production';
+  for (const id of ['RAW-HISTORY:TFF:12460+:2026-09-08', 'HISTORY:TFF:12460+:DEALER:2026-09-08:5Y']) {
+    const retained = record(id, { prepared: true });
+    const { cache, calls } = setup({ response: params => Response.json(params.p_family === 'cftc-history' ? [null] : [retained]) });
+    const value = await cache.cacheGet(type, id);
+    assert.deepEqual(value.payload, { prepared: true }); assert.equal(value.expiresAt, retained.expiresAt); assert.equal(value.rawSha256, retained.rawSha256);
+    assert.deepEqual(calls.map(call => call.params.p_family), ['cftc-history', 'history']);
+    assert.ok(calls.every(call => call.url.endsWith('edgar_cache_get')));
+  }
+});
+
+test('CFTC new-family hits and unrelated misses never perform a legacy read', async () => {
+  const type = 'edgar.cftc-positioning.v1:production', id = 'RAW-HISTORY:TFF:12460+:2026-09-08';
+  const hit = setup({ response: () => Response.json([record(id, { current: true })]) });
+  assert.equal((await hit.cache.cacheGet(type, id)).payload.current, true); assert.equal(hit.calls.length, 1);
+  for (const [otherType, otherId] of [['holders-v3', 'AAPL'], [type, 'MARKETS:TFF:LATEST']]) {
+    const miss = setup({ response: () => Response.json([null]) });
+    assert.equal(await miss.cache.cacheGet(otherType, otherId), null); assert.equal(miss.calls.length, 1);
+  }
+});
+
+test('expired retained CFTC rows remain misses and malformed new rows cannot hide behind old data', async () => {
+  const type = 'edgar.cftc-positioning.v1:production', id = 'RAW-HISTORY:TFF:12460+:2026-09-08';
+  const expired = setup({ response: params => Response.json(params.p_family === 'cftc-history' ? [null]
+    : [record(id, {}, { expiresAt: new Date(NOW - 1).toISOString() })]) });
+  assert.equal(await expired.cache.cacheGet(type, id), null); assert.equal(expired.calls.length, 2);
+  for (const response of [() => Response.json([record(id, {}, { gzipSha256: 'b'.repeat(64) })]), () => Response.json({ code: 'failed' }, { status: 503 })]) {
+    const broken = setup({ response });
+    await assert.rejects(broken.cache.cacheGet(type, id)); assert.equal(broken.calls.length, 1);
+  }
+});
+
+test('legacy CFTC lookup shares the first read deadline and does not add a new timeout window', async () => {
+  const type = 'edgar.cftc-positioning.v1:production', id = 'RAW-HISTORY:TFF:12460+:2026-09-08';
+  let clock = NOW;
+  const fixture = setup({ now: () => clock, response: () => { clock += 101; return Response.json([null]); } });
+  await assert.rejects(fixture.cache.cacheGet(type, id, { timeoutMs: 100 }), { code: 'deadline' });
+  assert.equal(fixture.calls.length, 1);
 });
