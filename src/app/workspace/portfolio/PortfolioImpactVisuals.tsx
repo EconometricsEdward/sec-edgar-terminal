@@ -42,7 +42,7 @@ export function ImpactWaterfall({ row }: { row: any }) {
   const bars = [
     {
       id: "baseline",
-      label: "Reported",
+      label: "Baseline",
       value: row.baseline,
       start: 0,
       end: row.baseline,
@@ -94,7 +94,7 @@ export function ImpactWaterfall({ row }: { row: any }) {
         {row.ticker}: from reported to modeled {row.metricLabel}
       </title>
       <desc id={`${id}-description`}>
-        Reported {impactMoney(row.baseline, false, true)}.{" "}
+        SEC baseline {impactMoney(row.baseline, false, true)}.{" "}
         {row.components
           .map(
             (part: any) =>
@@ -138,7 +138,7 @@ export function ImpactWaterfall({ row }: { row: any }) {
           barTop = Math.min(y(bar.start), y(bar.end));
         const parts = bar.label.split(" ");
         const split =
-          parts.length > 2 ? Math.ceil(parts.length / 2) : parts.length;
+          parts.length > 1 ? Math.ceil(parts.length / 2) : 1;
         return (
           <g key={bar.id}>
             {index < bars.length - 1 && (
@@ -254,6 +254,12 @@ export function ImpactSensitivity({
         assumptions fixed. Your assumption is {impactNumber(value)}
         {control.unit || "%"}, producing {impactMoney(row.modeled, false, true)}
         . This is a calculated sensitivity, without assigned probabilities.
+        {observations
+          .map(
+            (point: any) =>
+              ` At ${impactNumber(point.shock)}${control.unit || "%"}: ${Number.isFinite(point.value) ? impactMoney(point.value, false, true) : "unavailable under the model constraints"}.`,
+          )
+          .join("")}
       </desc>
       {[0, 1, 2, 3].map((tick) => {
         const amount = domain.low + ((domain.high - domain.low) * tick) / 3;

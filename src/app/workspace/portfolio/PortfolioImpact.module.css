@@ -413,10 +413,9 @@
 }
 .lab .companyRow {
   display: grid;
-  grid-template-columns: minmax(96px, 1fr) minmax(80px, 1.15fr) minmax(
-      100px,
-      1fr
-    ) 15px;
+  grid-template-columns:
+    minmax(96px, 1fr) minmax(80px, 1.15fr) minmax(100px, 1fr)
+    15px;
   gap: 12px;
   border: 0;
   border-bottom: 1px solid
@@ -746,6 +745,28 @@
   gap: 3px;
   font-size: 12px;
   min-height: 28px;
+}
+.sourceItem {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  padding-top: 6px;
+}
+.sourceItem > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  min-height: 28px;
+  justify-self: start;
+}
+.sourceItem > span,
+.sourceItem > small {
+  color: var(--impact-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .evidence > .chartNote {
   padding: 15px 18px;

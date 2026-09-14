@@ -602,7 +602,11 @@ export function buildPortfolioImpactScenarios(report, companies, options = {}) {
         .filter((item) => canonicalPortfolioCik(item.cik))
         .map((item) => [
           canonicalPortfolioCik(item.cik),
-          { ...item, cik: canonicalPortfolioCik(item.cik) },
+          {
+            ...item,
+            cik: canonicalPortfolioCik(item.cik),
+            sector: item.sector || "Unclassified",
+          },
         ]),
     ).values(),
   ];

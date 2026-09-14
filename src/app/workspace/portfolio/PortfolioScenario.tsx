@@ -169,21 +169,35 @@ export default function PortfolioScenario(props: Props) {
           }),
     [unfiltered, effectiveSector, report, companies, assumptions, scenarioId],
   );
+  const isAssets = scenarioId === "assets",
+    isCash = scenarioId === "cash";
   const improving =
+    !isCash &&
     finite(result.summary.medianImpactPct) &&
     result.summary.medianImpactPct > 0;
   const ordered = useMemo(
     () =>
-      [...result.rows].sort((a: any, b: any) => {
-        if (!finite(a.impactPct))
-          return finite(b.impactPct) ? 1 : a.ticker.localeCompare(b.ticker);
-        if (!finite(b.impactPct)) return -1;
-        return (
-          (improving ? b.impactPct - a.impactPct : a.impactPct - b.impactPct) ||
-          a.ticker.localeCompare(b.ticker)
-        );
-      }),
-    [result, improving],
+      result.rows
+        .map((row: any) => ({
+          ...row,
+          displayImpact: isCash ? row.afterRatio : row.impactPct,
+        }))
+        .sort((a: any, b: any) => {
+          if (!isCash && !improving && a.enteredLoss !== b.enteredLoss)
+            return Number(b.enteredLoss) - Number(a.enteredLoss);
+          if (!finite(a.displayImpact))
+            return finite(b.displayImpact)
+              ? 1
+              : a.ticker.localeCompare(b.ticker);
+          if (!finite(b.displayImpact)) return -1;
+          return (
+            (improving
+              ? b.displayImpact - a.displayImpact
+              : a.displayImpact - b.displayImpact) ||
+            a.ticker.localeCompare(b.ticker)
+          );
+        }),
+    [result, improving, isCash],
   );
   const alphabetical = useMemo(
     () =>
@@ -203,13 +217,16 @@ export default function PortfolioScenario(props: Props) {
   const maxImpact = Math.max(
     1,
     ...ordered.map((row: any) =>
-      finite(row.impactPct) ? Math.abs(row.impactPct) : 0,
+      finite(row.displayImpact) ? Math.abs(row.displayImpact) : 0,
     ),
   );
-  const impactLabel = selected?.impactLabel || definition.impactLabel;
+  const impactLabel = isCash
+    ? "Scenario operating cash flow / PP&E purchases (×)"
+    : selected?.impactLabel || definition.impactLabel;
   const lossCount = result.summary.enteredLossCount;
-  const isAssets = scenarioId === "assets",
-    isCash = scenarioId === "cash";
+  const summaryValue = isCash
+    ? result.summary.medianAfterRatio
+    : result.summary.medianImpactPct;
   const metricName = isAssets
     ? "equity"
     : isCash
@@ -249,12 +266,12 @@ export default function PortfolioScenario(props: Props) {
           "Sector",
           "Reporting period",
           "Measure",
-          "Reported USD",
+          "SEC baseline USD",
           "Scenario USD",
           "Change USD",
           "Impact (%)",
           "Impact definition",
-          "Reported ratio",
+          "Baseline ratio",
           "Scenario ratio",
           "Ratio definition",
           "Ratio unit",
@@ -295,10 +312,16 @@ export default function PortfolioScenario(props: Props) {
         [
           "Ticker",
           "Input",
-          "Reported value",
-          "Unit",
-          "Metric period",
-          "Source period",
+          "Model baseline value",
+          "Baseline unit",
+          "Model period",
+          "Baseline formula",
+          "Original SEC source value",
+          "Source unit",
+          "Original source period",
+          "SEC concept",
+          "Accession",
+          "Filed",
           "SEC source",
         ],
         ...ordered.flatMap((row: any) =>
@@ -309,7 +332,17 @@ export default function PortfolioScenario(props: Props) {
               input.value,
               input.unit,
               periodText(input.period),
-              periodText(input.observationPeriod),
+              input.formula || "Reported",
+              source.value,
+              source.unit,
+              periodText({
+                kind: source.start ? "duration" : "instant",
+                start: source.start,
+                end: source.end,
+              }),
+              [source.taxonomy, source.tag].filter(Boolean).join(":"),
+              source.accession,
+              source.filed,
               sourceUrl(source),
             ]),
           ),
@@ -524,23 +557,28 @@ export default function PortfolioScenario(props: Props) {
                       <p>Verified, compatible SEC inputs</p>
                     </div>
                     <div>
-                      <span>Median relative impact</span>
+                      <span>
+                        {isCash
+                          ? "Median cash coverage"
+                          : "Median relative impact"}
+                      </span>
                       <strong
                         className={
-                          finite(result.summary.medianImpactPct) &&
-                          result.summary.medianImpactPct < 0
-                            ? s.negative
-                            : s.positive
+                          finite(summaryValue)
+                            ? (isCash ? summaryValue < 1 : summaryValue < 0)
+                              ? s.negative
+                              : s.positive
+                            : ""
                         }
                       >
-                        {impactNumber(result.summary.medianImpactPct, true)}
-                        {finite(result.summary.medianImpactPct) ? "%" : ""}
+                        {impactNumber(summaryValue, !isCash, isCash ? 2 : 1)}
+                        {finite(summaryValue) ? (isCash ? "×" : "%") : ""}
                       </strong>
                       <p>
                         {isAssets
                           ? "Equity change / reported equity"
                           : isCash
-                            ? "Cash change / magnitude of reported operating cash flow"
+                            ? "Scenario operating cash flow / capital spending"
                             : "Profit change / reported revenue"}
                       </p>
                     </div>
@@ -553,7 +591,7 @@ export default function PortfolioScenario(props: Props) {
                             : "New operating losses"}
                       </span>
                       <strong className={lossCount > 0 ? s.negative : ""}>
-                        {lossCount}
+                        {ordered.length ? lossCount : "—"}
                       </strong>
                       <p>Positive or zero baseline turns negative</p>
                     </div>
@@ -582,7 +620,7 @@ export default function PortfolioScenario(props: Props) {
                             className={s.companyRow}
                             aria-pressed={selected?.cik === row.cik}
                             onClick={() => setCompanyCik(row.cik)}
-                            aria-label={`Inspect scenario for ${row.ticker}: ${impactNumber(row.impactPct, true)} percent relative impact`}
+                            aria-label={`Inspect scenario for ${row.ticker}: ${impactNumber(row.displayImpact, !isCash, isCash ? 2 : 1)} ${isCash ? "times cash coverage" : "percent relative impact"}`}
                           >
                             <span className={s.companyIdentity}>
                               <strong>{row.ticker}</strong>
@@ -590,18 +628,18 @@ export default function PortfolioScenario(props: Props) {
                             </span>
                             <span className={s.barTrack} aria-hidden="true">
                               <span className={s.barZero} />
-                              {finite(row.impactPct) && (
+                              {finite(row.displayImpact) && (
                                 <span
                                   className={
-                                    row.impactPct < 0
+                                    row.displayImpact < 0
                                       ? s.negativeBar
                                       : s.positiveBar
                                   }
                                   style={{
-                                    width: `${(Math.abs(row.impactPct) / maxImpact) * 48}%`,
+                                    width: `${(Math.abs(row.displayImpact) / maxImpact) * 48}%`,
                                     left:
-                                      row.impactPct < 0
-                                        ? `${50 - (Math.abs(row.impactPct) / maxImpact) * 48}%`
+                                      row.displayImpact < 0
+                                        ? `${50 - (Math.abs(row.displayImpact) / maxImpact) * 48}%`
                                         : "50%",
                                   }}
                                 />
@@ -610,15 +648,27 @@ export default function PortfolioScenario(props: Props) {
                             <span className={s.companyValue}>
                               <strong
                                 className={
-                                  row.impactPct < 0
+                                  (
+                                    isCash
+                                      ? row.displayImpact < 1
+                                      : row.displayImpact < 0
+                                  )
                                     ? s.negative
-                                    : row.impactPct > 0
+                                    : row.displayImpact > 0
                                       ? s.positive
                                       : ""
                                 }
                               >
-                                {impactNumber(row.impactPct, true)}
-                                {finite(row.impactPct) ? "%" : ""}
+                                {impactNumber(
+                                  row.displayImpact,
+                                  !isCash,
+                                  isCash ? 2 : 1,
+                                )}
+                                {finite(row.displayImpact)
+                                  ? isCash
+                                    ? "×"
+                                    : "%"
+                                  : ""}
                               </strong>
                               {row.enteredLoss ? (
                                 <span className={s.lossTag}>
@@ -655,9 +705,11 @@ export default function PortfolioScenario(props: Props) {
                         </button>
                       )}
                       <p className={s.chartNote}>
-                        {improving
-                          ? "Largest relative improvements first."
-                          : "Lowest relative outcomes first."}{" "}
+                        {isCash
+                          ? "Lowest cash coverage first. Below 1×, operating cash does not cover PP&E purchases."
+                          : improving
+                            ? "Largest relative improvements first."
+                            : "New negative outcomes first, then relative impact."}{" "}
                         Company figures are not added together; reporting
                         periods can differ.
                       </p>
@@ -724,7 +776,7 @@ export default function PortfolioScenario(props: Props) {
               </div>
               <div className={s.companyStats}>
                 <div>
-                  <span>Reported {metricName}</span>
+                  <span>SEC baseline {metricName}</span>
                   <strong title={impactMoney(selected.baseline, false, true)}>
                     {impactMoney(selected.baseline)}
                   </strong>
@@ -836,19 +888,33 @@ export default function PortfolioScenario(props: Props) {
                       )}
                       <div className={s.sourceLinks}>
                         {input.sources.map((source: any, index: number) => (
-                          <a
-                            href={sourceUrl(source)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title={`${source.tag || "SEC source"}: ${impactMoney(source.value, false, true)} · ${source.start ? `${source.start} to ` : "As of "}${source.end || ""}`}
+                          <div
+                            className={s.sourceItem}
                             key={`${sourceUrl(source)}-${index}`}
                           >
-                            {source.linkKind === "filing-index"
-                              ? source.linkLabel
-                              : source.form || "SEC filing"}
-                            {source.filed ? ` · ${source.filed}` : ""}
-                            <ArrowUpRight size={13} aria-hidden="true" />
-                          </a>
+                            <a
+                              href={sourceUrl(source)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={`${source.tag || "SEC source"}: ${impactMoney(source.value, false, true)} · ${source.start ? `${source.start} to ` : "As of "}${source.end || ""}`}
+                            >
+                              {source.linkKind === "filing-index"
+                                ? source.linkLabel
+                                : source.form || "SEC filing"}
+                              {source.filed ? ` · ${source.filed}` : ""}
+                              <ArrowUpRight size={13} aria-hidden="true" />
+                            </a>
+                            <span>
+                              {impactMoney(source.value, false, true)} ·{" "}
+                              {source.start ? `${source.start} to ` : "As of "}
+                              {source.end}
+                            </span>
+                            <small>
+                              {[source.taxonomy, source.tag]
+                                .filter(Boolean)
+                                .join(":")}
+                            </small>
+                          </div>
                         ))}
                       </div>
                     </article>

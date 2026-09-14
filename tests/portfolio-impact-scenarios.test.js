@@ -525,6 +525,24 @@ test("numeric overflow is excluded and complete allocated coverage does not norm
   assert.equal(result.coverage.modeledCount, 1);
   assert.equal(result.coverage.unavailableCount, 1);
 });
+test("the Unclassified sector selection matches empty and absent issuer sectors", () => {
+  const companies = [company(1), company(2), company(3), company(4)],
+    portfolio = report(companies);
+  portfolio.concentration.issuers[0].sector = "";
+  portfolio.concentration.issuers[1].sector = null;
+  delete portfolio.concentration.issuers[2].sector;
+  portfolio.unresolvedCount = 2;
+  const result = run(
+    companies,
+    { scope: "sector", targetSector: "Unclassified" },
+    portfolio,
+  );
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.rows.length, 3);
+  assert.ok(result.rows.every((row) => row.sector === "Unclassified"));
+  assert.equal(result.coverage.includedCount, 3);
+  assert.equal(result.coverage.unresolvedCount, 2);
+});
 test("real captured demo supplies issuer-linked scenarios and non-finite values never enter summaries", () => {
   const raw = JSON.parse(
     readFileSync(
