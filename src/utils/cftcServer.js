@@ -1268,7 +1268,20 @@ export async function loadCftcHistory({ family = 'tff', code, group, reportDate 
   if (persistence.mode() === 'supabase' && !forceRefresh) {
     const lastGood = await boundedOperation(cacheGet(CFTC_CACHE_NAMESPACE, `history-last-good:${family}:${code}:${group}:${throughDate}:${window}`), callerWaitSignal);
     const candidate = [cachedValid ? cached : null, lastGood].find(envelope => validHistoryEnvelope(envelope, family, code, group, throughDate, window, nowMs) && isPublishedCftcPrimary(envelope) && historyResponseMatchesExpected(envelope.response, expected, family) && cacheAge(envelope, nowMs) >= 0 && cacheAge(envelope, nowMs) < CFTC_STALE_MAX_MS);
-    if (candidate) return presentCftcResponse(candidate.response, { savedAt: candidate.savedAt, cacheStatus: 'stale-last-good', requireCurrent: reportDate === 'latest', forceStale: true, warning: 'The prepared history is awaiting its scheduled revalidation.' });
+    if (candidate) {
+      let newerPreparedSource = false;
+      if (typeof persistence.contractRaw === 'function') {
+        try {
+          const validate = envelope => validateRawHistoryEnvelope(envelope, { family, code, throughDate, count: CFTC_HISTORY_WINDOWS[window], group });
+          const raw = await boundedOperation(persistence.contractRaw({ family, code, throughDate, validate }), callerWaitSignal);
+          newerPreparedSource = validate(raw) && Date.parse(raw.retrievedAt) > Date.parse(candidate.response.retrieved_at);
+        } catch (error) {
+          if (callerWaitSignal.aborted || ['CFTC_REQUEST_CANCELLED', 'CFTC_TIMEOUT'].includes(error?.code)) throw error;
+          // A temporary archive read failure must not remove a usable fallback.
+        }
+      }
+      if (!newerPreparedSource) return presentCftcResponse(candidate.response, { savedAt: candidate.savedAt, cacheStatus: 'stale-last-good', requireCurrent: reportDate === 'latest', forceStale: true, warning: 'The prepared history is awaiting its scheduled revalidation.' });
+    }
   }
   const inflightKey = cacheId;
   if (requestCache.has(inflightKey)) return awaitShared(requestCache.get(inflightKey), callerWaitSignal);

@@ -338,3 +338,97 @@ test('catalog sources without a verifiable immutable descriptor retain the uncac
   assert.equal(backing.calls.filter(item => item.action === 'source').length, 2);
   assert.equal(backing.api.status().catalog_cache.entries, 0);
 });
+
+async function staleHistoryScenario() {
+  const backing = store(), rows = rowsFor(600);
+  await seedMarkets(backing, rows);
+  await prepare(backing.api, rows.slice(0, 8));
+  let upstreamRequests = 0;
+  const options = { family: 'tff', code: 'ABC', group: 'leveraged-funds', window: '5y', persistence: backing.api,
+    cacheGet: async () => null, fetchImpl: async () => { upstreamRequests++; throw new Error('Public CFTC fetch prohibited'); } };
+  const previous = await loadCftcHistory(options);
+  assert.equal(previous.history.length, 8);
+  const key = `history:tff:ABC:leveraged-funds:${throughDate}:5y`;
+  const record = backing.current.get(key);
+  const oldRetrieval = new Date(Date.now() - 30 * 3600_000).toISOString();
+  const oldSave = new Date(Date.now() - 27 * 3600_000).toISOString();
+  record.payload.savedAt = oldSave;
+  record.payload.response.retrieved_at = oldRetrieval;
+  record.payload.response.freshness.retrieved_at = oldRetrieval;
+  record.metadata.revalidatedAt = oldSave;
+  const priorResponse = structuredClone(record.payload.response);
+  backing.calls.length = 0;
+  return { backing, rows, options, record, oldRetrieval, priorResponse, upstreamRequests: () => upstreamRequests };
+}
+
+test('a newer canonical archive rebuilds a stale derived chart using the source original retrieval time', async () => {
+  const scenario = await staleHistoryScenario();
+  await prepare(scenario.backing.api, scenario.rows);
+  const rawRecord = scenario.backing.current.get(cftcContractRawKey(selection));
+  const expectedRetrieval = rawRecord.metadata.originalRetrievedAt;
+  const result = await loadCftcHistory(scenario.options);
+  assert.equal(result.history.length, 261);
+  assert.equal(result.percentile.reason, null);
+  assert.equal(result.freshness.cache_status, 'computed-from-prepared-raw');
+  assert.equal(result.retrieved_at, expectedRetrieval);
+  assert.equal(result.freshness.retrieved_at, expectedRetrieval);
+  assert.notEqual(result.retrieved_at, scenario.oldRetrieval);
+  assert.equal(scenario.upstreamRequests(), 0);
+});
+
+for (const age of ['same', 'older']) test(`${age} canonical raw retrieval keeps the existing stale chart without manufacturing freshness`, async () => {
+  const scenario = await staleHistoryScenario();
+  await prepare(scenario.backing.api, scenario.rows);
+  const rawRecord = scenario.backing.current.get(cftcContractRawKey(selection));
+  rawRecord.metadata.originalRetrievedAt = age === 'same' ? scenario.oldRetrieval : new Date(Date.parse(scenario.oldRetrieval) - 3600_000).toISOString();
+  scenario.backing.calls.length = 0;
+  const result = await loadCftcHistory(scenario.options);
+  assert.equal(result.history.length, 8);
+  assert.deepEqual(result.history, scenario.priorResponse.history);
+  assert.equal(result.status, 'stale');
+  assert.equal(result.freshness.cache_status, 'stale-last-good');
+  assert.equal(result.retrieved_at, scenario.oldRetrieval);
+  assert.equal(scenario.backing.calls.filter(item => item.action === 'publish').length, 0);
+  assert.equal(scenario.upstreamRequests(), 0);
+});
+
+for (const failure of ['unavailable', 'missing', 'invalid']) test(`${failure} canonical raw preserves the usable stale fallback and makes no upstream requests`, async () => {
+  const scenario = await staleHistoryScenario();
+  const persistence = { ...scenario.backing.api, contractRaw: async () => {
+    if (failure === 'unavailable') throw new Error('private archive provider failure');
+    if (failure === 'invalid') return { retrievedAt: new Date().toISOString(), rows: scenario.rows };
+    return null;
+  } };
+  const result = await loadCftcHistory({ ...scenario.options, persistence });
+  assert.equal(result.history.length, 8);
+  assert.equal(result.retrieved_at, scenario.oldRetrieval);
+  assert.equal(result.freshness.cache_status, 'stale-last-good');
+  assert.equal(result.refresh_warning.includes('private archive'), false);
+  assert.equal(scenario.backing.calls.filter(item => item.action === 'publish').length, 0);
+  assert.equal(scenario.upstreamRequests(), 0);
+});
+
+test('caller cancellation during the stale chart archive check cannot become a successful fallback', async () => {
+  const scenario = await staleHistoryScenario(), controller = new AbortController();
+  const persistence = { ...scenario.backing.api, contractRaw: async () => {
+    controller.abort(new Error('caller cancelled'));
+    await new Promise(() => {});
+  } };
+  await assert.rejects(loadCftcHistory({ ...scenario.options, persistence, signal: controller.signal }), error => error.code === 'CFTC_REQUEST_CANCELLED' && error.status === 499);
+  assert.equal(scenario.upstreamRequests(), 0);
+});
+
+test('a fresh derived chart retains its existing TTL even when a newer raw archive exists', async () => {
+  const scenario = await staleHistoryScenario();
+  scenario.record.payload.savedAt = new Date().toISOString();
+  scenario.record.metadata.revalidatedAt = scenario.record.payload.savedAt;
+  await prepare(scenario.backing.api, scenario.rows);
+  let archiveReads = 0;
+  const persistence = { ...scenario.backing.api, contractRaw: async () => { archiveReads++; throw new Error('Fresh chart must not inspect raw archive'); } };
+  const result = await loadCftcHistory({ ...scenario.options, persistence });
+  assert.equal(result.history.length, 8);
+  assert.equal(result.freshness.cache_status, 'prepared');
+  assert.equal(result.retrieved_at, scenario.oldRetrieval);
+  assert.equal(archiveReads, 0);
+  assert.equal(scenario.upstreamRequests(), 0);
+});
