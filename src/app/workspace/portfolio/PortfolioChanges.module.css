@@ -15,7 +15,7 @@
 }
 .root .eyebrow {
   color: var(--hub-accent, #f7c65a);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.14em;
   margin: 0 0 7px;
@@ -33,7 +33,7 @@
 }
 .root p {
   color: var(--hub-muted, #a7b4c7);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.65;
   margin: 6px 0 0;
 }
@@ -59,7 +59,7 @@
   border: 1px solid color-mix(in srgb, var(--hub-accent, #f7c65a) 50%, var(--hub-border, #29364c));
   color: var(--hub-text, #e8edf5);
   background: color-mix(in srgb, var(--hub-accent, #f7c65a) 8%, var(--hub-panel, #101a2b));
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -94,7 +94,7 @@
 }
 .contextLabel {
   color: var(--hub-muted, #a7b4c7);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   text-transform: uppercase;
   letter-spacing: .08em;
@@ -153,13 +153,13 @@
 }
 .summary span {
   color: var(--hub-muted, #a7b4c7);
-  font-size: 11px;
+  font-size: 12px;
 }
 .warning {
   border-left: 2px solid var(--hub-accent, #f7c65a);
   padding: 9px 12px;
   background: color-mix(in srgb, var(--hub-accent, #f7c65a) 5%, transparent);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 .warning p { margin: 0; }
@@ -185,7 +185,7 @@
   padding: 6px 10px;
   color: var(--hub-muted, #a7b4c7);
   background: transparent;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 .sourceTabActive {
@@ -199,7 +199,7 @@
 }
 .compactField span {
   color: var(--hub-muted, #a7b4c7);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
 }
 .compactField select {
@@ -209,7 +209,7 @@
   padding: 7px 30px 7px 10px;
   background: var(--hub-panel, #101a2b);
   color: var(--hub-text, #e8edf5);
-  font-size: 13px;
+  font-size: 14px;
 }
 .iconButton {
   display: inline-flex;
@@ -234,7 +234,7 @@
   gap: 14px;
   min-height: 18px;
   color: var(--hub-muted, #a7b4c7);
-  font-size: 11px;
+  font-size: 12px;
   flex-wrap: wrap;
 }
 .loadingText {
@@ -253,7 +253,7 @@
 .quietWarning,
 .statusMessage {
   margin: -4px 0 0 !important;
-  font-size: 11px !important;
+  font-size: 12px !important;
 }
 .timeline {
   list-style: none;
@@ -307,7 +307,7 @@
 .typeLabel {
   border-radius: 4px;
   padding: 2px 5px;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: .055em;
 }
@@ -328,7 +328,7 @@
 .eventTopline time {
   margin-left: auto;
   color: color-mix(in srgb, var(--hub-muted, #a7b4c7) 75%, transparent);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .eventHeadline {
@@ -340,7 +340,7 @@
 .eventHeadline p {
   max-width: 860px;
   margin-top: 3px;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.55;
 }
 .detailsButton {
@@ -351,7 +351,7 @@
   border: 0;
   background: transparent;
   color: var(--hub-muted, #a7b4c7);
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 0;
 }
 .detailsButton:hover { color: var(--hub-text, #e8edf5); }
@@ -371,17 +371,16 @@
 }
 .quickFacts small {
   color: color-mix(in srgb, var(--hub-muted, #a7b4c7) 78%, transparent);
-  font-size: 9px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .05em;
 }
 .quickFacts strong {
-  max-width: 340px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 560px;
+  overflow-wrap: anywhere;
+  white-space: normal;
   color: var(--hub-muted, #a7b4c7);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
 }
 .detailsPanel {
@@ -403,14 +402,14 @@
 }
 .detailGrid small {
   color: var(--hub-muted, #a7b4c7);
-  font-size: 9px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .055em;
 }
 .detailGrid strong {
   overflow-wrap: anywhere;
   color: var(--hub-text, #e8edf5);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.5;
 }
@@ -420,10 +419,10 @@
   border-top: 1px solid var(--hub-border, #29364c);
 }
 .connectionNote > strong {
-  font-size: 11px;
+  font-size: 12px;
 }
 .connectionNote p {
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 3px;
 }
 .linkRow {
@@ -433,7 +432,7 @@
   flex-wrap: wrap;
   margin-top: 11px;
   color: var(--hub-muted, #a7b4c7);
-  font-size: 10px;
+  font-size: 12px;
 }
 .linkRow a {
   display: inline-flex;
@@ -445,7 +444,7 @@
 .linkRow a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .disclaimer {
   margin-top: 10px !important;
-  font-size: 10px !important;
+  font-size: 12px !important;
 }
 .inspectButton,
 .textButton {
@@ -453,7 +452,7 @@
   padding: 0;
   background: transparent;
   color: var(--hub-accent, #f7c65a);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 .inspectButton { margin-top: 10px; }
@@ -464,7 +463,7 @@
   padding: 8px 12px;
   background: transparent;
   color: var(--hub-muted, #a7b4c7);
-  font-size: 11px;
+  font-size: 12px;
 }
 .showMore:hover { color: var(--hub-text, #e8edf5); }
 .empty {
@@ -488,7 +487,7 @@
 }
 .root .method {
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.6;
 }
 @media (max-width: 760px) {
@@ -519,3 +518,16 @@
   .quickFacts { gap: 8px 14px; }
   .summary > div { min-width: 145px; padding-right: 16px; margin-right: 16px; }
 }
+
+.eventTopline { flex-wrap: wrap; }
+.ticker { overflow-wrap: anywhere; }
+.quickFacts span { flex-wrap: wrap; }
+.companyConnection + .companyConnection { margin-top: 12px; }
+.methodDetails { border-top: 1px solid var(--hub-border, #29364c); padding-top: 14px; }
+.methodDetails summary { cursor: pointer; font-size: 14px; color: var(--hub-muted, #a7b4c7); }
+.methodDetails p { font-size: 13px; max-width: 960px; }
+.sourceTab, .sourceTabActive, .detailsButton, .textButton, .inspectButton, .compactField span { font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .spinning, .pulse { animation: none; } .detailsButton svg { transition: none; } }
+@media (max-width: 760px) { .summary { flex-wrap: wrap; overflow: visible; } .summary > div { min-width: 0; flex: 1 1 140px; margin-right: 12px; } .eventTopline time { margin-left: 0; } }
+
+.sourceExcerpt { margin: 10px 0; border-left: 2px solid var(--hub-border, #29364c); padding: 6px 12px; color: var(--hub-muted, #a7b4c7); font-size: 14px; line-height: 1.6; }

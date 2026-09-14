@@ -15,7 +15,9 @@ import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.
 import {
   portfolioFilingFeed,
   researchPortfolioRows,
+  isCompletePortfolioCheck,
 } from "../../../utils/portfolioClient.js";
+import { advancePortfolioBaseline } from "../../../utils/portfolioChanges.js";
 import {
   PORTFOLIO_REPORTING_BASES,
   PORTFOLIO_REPORTING_OPTIONS,
@@ -51,6 +53,7 @@ const PortfolioResearchDesk = dynamic(
   () => import("../portfolio/PortfolioResearchDesk"),
 );
 const CompanyFocus = dynamic(() => import("../portfolio/CompanyFocus"));
+const PortfolioChanges = dynamic(() => import("../portfolio/PortfolioChanges"));
 
 const METRIC_DEFINITIONS = Object.fromEntries(
   PORTFOLIO_METRIC_CATALOG.map((definition: any) => [
@@ -108,6 +111,8 @@ export default function DemoResults() {
     null,
   );
   const reportingCache = useRef(new Map<string, any>());
+  const comparisonCheckpoints = useRef(new Map<string, any>());
+  const [comparisonBaselines, setComparisonBaselines] = useState<Record<string, any>>({});
   const reportingController = useRef<AbortController | null>(null);
   const lastReportingDemo = useRef<any>(null);
   const [error, setError] = useState("");
@@ -145,6 +150,18 @@ export default function DemoResults() {
           setReportingDemo(next);
           setReportingBasis(next.snapshot.basis);
           reportingCache.current.set(next.snapshot.basis, next);
+          const complete = isCompletePortfolioCheck({
+            companies: next.snapshot.companies,
+            requested: new Set(next.rows.map((row: any) => row.resolution.cik)).size,
+            completed: next.snapshot.companies.length,
+            checkedAt: next.captured_at,
+            cancelled: false,
+          });
+          comparisonCheckpoints.current.set(next.snapshot.basis, {
+            snapshot: next.snapshot,
+            comparisonBaseline: null,
+            lastCheckedAt: complete ? next.captured_at : null,
+          });
           lastReportingDemo.current = next;
         }
       })
@@ -164,10 +181,14 @@ export default function DemoResults() {
 
   useEffect(() => () => reportingController.current?.abort(), []);
 
-  async function changeReportingBasis(basis: string, retry = false) {
+  async function changeReportingBasis(
+    basis: string,
+    refresh = false,
+    retryIncomplete = false,
+  ) {
     if (!demo || !PORTFOLIO_REPORTING_BASES.includes(basis)) return;
     reportingController.current?.abort();
-    const cached = !retry && reportingCache.current.get(basis);
+    const cached = !refresh && reportingCache.current.get(basis);
     setReportingBasis(basis);
     setReportingNotice("");
     setReportingRetryBasis(null);
@@ -184,29 +205,19 @@ export default function DemoResults() {
     }
     const controller = new AbortController();
     reportingController.current = controller;
-    setReportingDemo(null);
+    const previousCapture = lastReportingDemo.current;
+    const sameBasis = previousCapture?.snapshot.basis === basis;
+    setReportingDemo(sameBasis ? previousCapture : null);
     setReportingLoading(true);
     setReportingProgress({ completed: 0, total: 100 });
     const requests: any[] = [];
-    const previousCapture = lastReportingDemo.current;
-    const previous =
-      retry &&
-      reportingRetryBasis === basis &&
-      previousCapture?.snapshot.basis === basis &&
-      previousCapture.snapshot.companies.some(
-        (company: any) =>
-          company.status === "failed" ||
-          ["failed", "stale", "not_checked"].includes(company.refreshStatus) ||
-          ["stale", "unavailable"].includes(company.cache?.status),
-      )
-        ? previousCapture.snapshot.companies
-        : [];
-    if (retry) reportingCache.current.delete(basis);
+    const previous = sameBasis ? previousCapture.snapshot.companies : [];
+    if (refresh) reportingCache.current.delete(basis);
     try {
       const result = await researchPortfolioRows(demo.rows, {
         basis,
         previousCompanies: previous,
-        onlyFailed: previous.length > 0,
+        onlyFailed: retryIncomplete && previous.length > 0,
         signal: controller.signal,
         onProgress: ({ completed, total }: any) => {
           if (reportingController.current === controller)
@@ -248,6 +259,31 @@ export default function DemoResults() {
         ...result,
         requests,
       });
+      const checkpoint = comparisonCheckpoints.current.get(basis);
+      let comparisonBaseline = checkpoint?.comparisonBaseline || null;
+      let comparisonNotice = "";
+      const completeCheck = isCompletePortfolioCheck(result);
+      try {
+        comparisonBaseline = advancePortfolioBaseline(
+          checkpoint,
+          next.snapshot,
+          completeCheck,
+        );
+      } catch {
+        comparisonNotice =
+          " The comparison capture could not be retained; recent filing evidence remains available.";
+      }
+      comparisonCheckpoints.current.set(basis, {
+        snapshot: next.snapshot,
+        comparisonBaseline,
+        lastCheckedAt: completeCheck
+          ? next.captured_at
+          : checkpoint?.lastCheckedAt || null,
+      });
+      setComparisonBaselines((current) => ({
+        ...current,
+        [basis]: comparisonBaseline,
+      }));
       setReportingDemo(next);
       lastReportingDemo.current = next;
       const incomplete = next.snapshot.companies.filter(
@@ -259,12 +295,12 @@ export default function DemoResults() {
       if (!incomplete) {
         reportingCache.current.set(basis, next);
         setReportingNotice(
-          `${portfolioReportingLabel(basis)} evidence is ready. This capture is available for the rest of this visit.`,
+          `${portfolioReportingLabel(basis)} evidence is ready. This capture is available for the rest of this visit.${comparisonNotice}`,
         );
       } else {
         setReportingRetryBasis(basis);
         setReportingNotice(
-          `${portfolioReportingLabel(basis)} results are ready; ${incomplete} ${incomplete === 1 ? "company needs" : "companies need"} another retrieval attempt. Coverage reflects the evidence returned.`,
+          `${portfolioReportingLabel(basis)} results are ready; ${incomplete} ${incomplete === 1 ? "company needs" : "companies need"} another retrieval attempt. Coverage reflects the evidence returned.${comparisonNotice}`,
         );
       }
     } catch (failure) {
@@ -420,7 +456,7 @@ export default function DemoResults() {
       window.location.assign(
         hubDestination("portfolios", {
           portfolioId: portfolio.id,
-          portfolioTab: "analytics",
+          portfolioTab: area === "changes" ? "changes" : "analytics",
           analyticsArea,
         }),
       );
@@ -524,7 +560,7 @@ export default function DemoResults() {
               <span>
                 {reportingLoading
                   ? `Retrieving ${portfolioReportingLabel(reportingBasis).toLowerCase()} evidence…`
-                  : `${portfolioReportingLabel(reportingBasis)} · SEC evidence captured ${day(reportingDemo?.captured_at)}`}
+                  : `${portfolioReportingLabel(reportingBasis)} · ${reportingDemo?.session_capture ? "Research checked" : "SEC evidence captured"} ${day(reportingDemo?.captured_at)}`}
               </span>
             </p>
             {(area !== "analytics" || analyticsArea !== "metrics") && (
@@ -597,7 +633,7 @@ export default function DemoResults() {
               {reportingRetryBasis && (
                 <button
                   onClick={() =>
-                    changeReportingBasis(reportingRetryBasis, true)
+                    changeReportingBasis(reportingRetryBasis, true, true)
                   }
                 >
                   Retry{" "}
@@ -938,6 +974,17 @@ export default function DemoResults() {
                 )}
               </>
             )}
+            {area === "changes" && reportingDemo && (
+              <PortfolioChanges
+                allocation={allocation}
+                baseline={comparisonBaselines[reportingDemo.snapshot.basis] || null}
+                snapshot={reportingDemo.snapshot}
+                rows={rows}
+                onInspectCompany={setFocusedRowId}
+                onRefresh={() => changeReportingBasis(reportingBasis, true)}
+                refreshing={reportingLoading}
+              />
+            )}
             <PortfolioResearchDesk
               rows={rows}
               companies={companies}
@@ -980,8 +1027,8 @@ export default function DemoResults() {
                   {priorities.length
                     ? `Showing ${Math.min(6, priorities.length)} of ${priorities.length} captured review prompts. Open the full demo to inspect company evidence and refresh the portfolio research.`
                     : "No review prompts were raised by these checks at capture time. This does not establish completeness or investment quality."}{" "}
-                  “What changed” starts with this capture and becomes useful
-                  after a subsequent research refresh.
+                  Open “What changed” for recent filing evidence and relevant
+                  CFTC market context. Refresh research to compare SEC captures.
                 </p>
               </>
             )}

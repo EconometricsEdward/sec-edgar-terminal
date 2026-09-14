@@ -556,9 +556,9 @@ export function comparePortfolioResearch(baseline, snapshot, rows = []) {
         )
           add("revision", key, {
             ...evidence,
-            title: `${label}: same-period value changed`,
+            title: `${label}: captured same-period value changed`,
             description:
-              "The metric, period, unit, and captured definition match. This is an observed value revision, not a growth rate or a conclusion about its cause.",
+              "The metric, period, unit, and captured definition match. The value in collected evidence changed between research captures. This does not establish an issuer restatement or a growth rate; inspect both SEC sources to determine the cause.",
             before: `${left.value} ${left.unit}`,
             after: `${right.value} ${right.unit || ""}`,
             beforeValue: left.value,
@@ -571,7 +571,7 @@ export function comparePortfolioResearch(baseline, snapshot, rows = []) {
             ...evidence,
             title: `${label}: source verification needed`,
             description:
-              "A value differs, but at least one observation has no linked SEC source. Inspect the company evidence before treating it as a verified revision.",
+              "A value differs, but at least one observation has no linked SEC source. Inspect the company evidence before treating the observations as a verified value change.",
             before: evidence.beforeSources.length
               ? "Linked source available"
               : "No linked source",
