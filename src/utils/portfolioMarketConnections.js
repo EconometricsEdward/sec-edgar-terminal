@@ -7,6 +7,7 @@ export const MARKET_CATEGORY_LABELS = Object.freeze({
   energy: "Energy",
   metals: "Metals",
   agriculture: "Agriculture",
+  other: "Other markets",
 });
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const unique = (values) => [...new Set(values)];

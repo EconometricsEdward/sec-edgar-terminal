@@ -1,6 +1,6 @@
 import { getOperatingTicker } from './tickerMap.js';
-import { fetchFilingText } from './filingTextParser.js';
-import { secFetch } from './secClient.js';
+import { fetchReaderDocument } from './filingsReader.js';
+import { secResearchJson } from './secResearchData.js';
 import { warmGet, warmSet } from './warmCache.js';
 import { isCftcEnabled } from './cftcFeature.js';
 import { CFTC_LAUNCH_CATALOG, cftcDate } from './cftc.js';
@@ -29,15 +29,23 @@ async function bounded(task, signal) {
   finally { signal.removeEventListener('abort', onAbort); }
 }
 
-async function submissionsJson(file, signal) {
-  if (!/^CIK\d{10}(?:-submissions-\d+)?\.json$/.test(file)) throw error('Unsupported SEC submissions filename.', 'SEC_SOURCE_INVALID', 502);
-  const response = await secFetch(`https://data.sec.gov/submissions/${file}`, {
-    signal, timeoutMs: 10_000, retries: 1, maxBytes: 8 * 1024 * 1024,
-    headers: { 'User-Agent': process.env.SEC_USER_AGENT || 'EDGAR Terminal research@secedgarterminal.com', Accept: 'application/json' },
+/** Reuse the same validated sources as company research and the filing reader.
+ * Prepared-data outages remain fail-closed; only ordinary cache misses use SEC.
+ * Exact immutable document identities allow narrative text to be shared safely.
+ */
+export function createCompanyCftcSources({ readJson = secResearchJson, readDocument = fetchReaderDocument } = {}) {
+  return Object.freeze({
+    async loadSubmissions(file, signal) {
+      if (!/^CIK\d{10}(?:-submissions-\d+)?\.json$/.test(file)) throw error('Unsupported SEC submissions filename.', 'SEC_SOURCE_INVALID', 502);
+      return readJson(`/submissions/${file}`, signal);
+    },
+    async loadFilingText(cik, accession, primaryDoc, { signal } = {}) {
+      return readDocument(cik, { accession, primaryDoc }, { signal });
+    },
   });
-  if (!response.ok) throw error('The SEC submissions source is temporarily unavailable.', 'SEC_SOURCE_UNAVAILABLE');
-  return response.json();
 }
+
+const companySources = createCompanyCftcSources();
 
 function resultBase(selection, now) {
   return {
@@ -50,7 +58,8 @@ function resultBase(selection, now) {
 
 /** Injectable sources make filing-date selection and source outages testable. */
 export async function discoverCompanyCftcContext(selection, {
-  now = new Date(), signal, lookupTicker = getOperatingTicker, loadSubmissions = submissionsJson, loadFilingText = fetchFilingText,
+  now = new Date(), signal, lookupTicker = getOperatingTicker,
+  loadSubmissions = companySources.loadSubmissions, loadFilingText = companySources.loadFilingText,
 } = {}) {
   const checked = parseCompanyCftcRequest(`https://example.test/?ticker=${encodeURIComponent(selection.ticker || '')}${selection.asOf == null ? '' : `&asOf=${encodeURIComponent(selection.asOf)}`}`, now);
   const result = resultBase(checked, now), cutoff = checked.asOf || new Date(now).toISOString().slice(0, 10);
@@ -86,7 +95,7 @@ export async function discoverCompanyCftcContext(selection, {
     }
     const { primaryDoc, ...filing } = filings[0];
     result.filing = filing;
-    const source = await bounded(loadFilingText(cik, filing.accession, primaryDoc), signal);
+    const source = await bounded(loadFilingText(cik, filing.accession, primaryDoc, { signal }), signal);
     if (source?.error || typeof source?.text !== 'string' || !source.text.trim()) throw error('The SEC annual-filing text could not be retrieved. Please retry.', 'SEC_FILING_TEXT_UNAVAILABLE');
     const extracted = extractCompanyCftcLinks(source.text, filing, { companyName: result.companyName });
     result.links = extracted.links;

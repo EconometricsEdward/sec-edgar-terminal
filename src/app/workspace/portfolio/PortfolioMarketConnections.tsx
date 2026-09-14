@@ -33,6 +33,8 @@ const number = (value: unknown, digits = 1) =>
   typeof value === "number" && Number.isFinite(value)
     ? value.toLocaleString("en-US", { maximumFractionDigits: digits })
     : "—";
+const companies = (count: number) => `${count} ${count === 1 ? "company" : "companies"}`;
+const sectors = (count: number) => `${count} ${count === 1 ? "sector" : "sectors"}`;
 const statusText: Record<string, string> = {
   linked: "Source-backed filing link",
   no_match: "No verified passage",
@@ -319,7 +321,7 @@ export default function PortfolioMarketConnections({
                 title={`${entry.count} unique companies; market memberships overlap`}
               >
                 {entry.label}
-                <span>{entry.count} companies</span>
+                <span>{companies(entry.count)}</span>
               </button>
             ))}
         </div>
@@ -374,7 +376,7 @@ export default function PortfolioMarketConnections({
                 className={s.marketRow}
                 aria-pressed={selected?.key === market.key}
                 onClick={() => pickMarket(market.key)}
-                aria-label={`Review ${market.label}: ${market.count} of ${model.coverage.eligible} eligible companies across ${market.sectorCount} sectors${model.basis === "allocation" ? `; ${number(market.allocationPct)} percent of full portfolio allocation in linked companies` : ""}`}
+                aria-label={`Review ${market.label}: ${market.count} of ${model.coverage.eligible} eligible companies across ${sectors(market.sectorCount)}${model.basis === "allocation" ? `; ${number(market.allocationPct)} percent of full portfolio allocation in linked companies` : ""}`}
               >
                 <div className={s.marketLabel}>
                   <strong>{market.label}</strong>
@@ -402,14 +404,14 @@ export default function PortfolioMarketConnections({
                       : market.count}
                     <small>
                       {model.basis === "allocation"
-                        ? `${market.count} companies`
+                        ? companies(market.count)
                         : ` / ${model.coverage.eligible}`}
                     </small>
                   </strong>
                 </div>
                 <div className={s.sectorCount}>
                   <strong>{market.sectorCount}</strong>
-                  <span>sectors</span>
+                  <span>{market.sectorCount === 1 ? "sector" : "sectors"}</span>
                   <ArrowRight size={16} aria-hidden="true" />
                 </div>
               </button>
@@ -507,7 +509,7 @@ export default function PortfolioMarketConnections({
               <p className={s.eyebrow}>FOLLOW THE CONNECTION</p>
               <h4 id={`${id}-market`}>{selected.label}</h4>
               <p>
-                {selected.count} companies · {selected.sectorCount} sectors
+                {companies(selected.count)} · {sectors(selected.sectorCount)}
                 {model.allocationAvailable
                   ? ` · ${number(selected.allocationPct)}% allocation in linked companies`
                   : ""}
