@@ -1,6 +1,7 @@
 import { PORTFOLIO_REPORTING_BASES } from "./portfolioReporting.js";
 /** Browser orchestrator: only public identifiers leave the user's device. */
 export const PORTFOLIO_CLIENT_BATCH_SIZE = 5;
+export const PORTFOLIO_CLIENT_CONCURRENCY = 4;
 const keyFor = (row) => row?.resolution?.cik;
 // API classification is derived from the versioned CIK reference and is rebuilt by
 // views/exports. It can cite fund providers, so keep it outside SEC-only captures.
@@ -131,13 +132,19 @@ export async function researchPortfolioRows(
       checkedAt,
     });
   emit();
-  for (
-    let offset = 0;
-    offset < queue.length;
-    offset += PORTFOLIO_CLIENT_BATCH_SIZE
-  ) {
-    if (signal?.aborted) break;
-    const holdings = queue.slice(offset, offset + PORTFOLIO_CLIENT_BATCH_SIZE);
+
+  const batches = [];
+  for (let offset = 0; offset < queue.length; offset += PORTFOLIO_CLIENT_BATCH_SIZE)
+    batches.push(queue.slice(offset, offset + PORTFOLIO_CLIENT_BATCH_SIZE));
+  // Small refreshes remain serial so cancellation and retry behavior stays predictable.
+  // Large portfolios use a bounded worker pool; the API already serves prepared/cached
+  // issuer data and its per-IP limit safely accommodates four concurrent batches.
+  const workerCount = queue.length >= 20
+    ? Math.min(PORTFOLIO_CLIENT_CONCURRENCY, batches.length)
+    : Math.min(1, batches.length);
+  let nextBatch = 0;
+
+  async function runBatch(holdings) {
     try {
       const response = await fetcher("/api/v1/portfolio-research", {
         method: "POST",
@@ -166,7 +173,7 @@ export async function researchPortfolioRows(
         throw new Error(
           "The research response used a different reporting basis. Retry this batch.",
         );
-      if (signal?.aborted) break;
+      if (signal?.aborted) return false;
       for (const holding of holdings) {
         const company = body.companies.find(
           (entry) => entry.cik === holding.cik,
@@ -197,8 +204,9 @@ export async function researchPortfolioRows(
           });
         }
       }
+      return true;
     } catch (error) {
-      if (signal?.aborted) break;
+      if (signal?.aborted) return false;
       for (const holding of holdings) {
         const previous = results.get(holding.cik);
         results.set(
@@ -213,10 +221,23 @@ export async function researchPortfolioRows(
           ),
         );
       }
+      return true;
     }
-    completed += holdings.length;
-    emit();
   }
+
+  async function worker() {
+    while (!signal?.aborted) {
+      const index = nextBatch++;
+      if (index >= batches.length) return;
+      const holdings = batches[index];
+      const finished = await runBatch(holdings);
+      if (!finished || signal?.aborted) return;
+      completed += holdings.length;
+      emit();
+    }
+  }
+  if (workerCount) await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
   for (const [cik, company] of results) {
     if (company.refreshStatus === "pending")
       results.set(cik, { ...company, refreshStatus: "not_checked" });
