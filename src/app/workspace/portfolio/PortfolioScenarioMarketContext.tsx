@@ -291,8 +291,9 @@ function MarketContext({
                     <desc id={`${id}-chart-description`}>
                       {chart.count} observations from {chart.start} to{" "}
                       {chart.end}. Values are percentages of each report’s total
-                      open interest. The line breaks across missing weeks. Exact
-                      values are available under sources and observations.
+                      open interest. The line breaks across unavailable values or
+                      gaps longer than eight days. Exact values are available
+                      under sources and observations.
                     </desc>
                     <line
                       x1="48"

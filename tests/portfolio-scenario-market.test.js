@@ -4,6 +4,7 @@ import {
   scenarioMarketCandidates,
   scenarioMarketHistory,
 } from "../src/utils/portfolioScenarioMarket.js";
+import { cftcContextChart } from "../src/utils/cftcContextAnalytics.js";
 
 const now = new Date("2026-09-14T12:00:00Z");
 const company = { cik: "0000093410", ticker: "CVX" };
@@ -219,4 +220,35 @@ test("invalid positions and zero open interest never become a valid net-share ob
     scenarioMarketHistory(malformedRaw, candidate, now).current,
     null,
   );
+});
+
+test("official shifted report dates remain continuous without fabricating an exact weekly comparison", () => {
+  const shifted = history();
+  shifted.selected.reportDate = "2025-11-25";
+  shifted.history = ["2025-11-04", "2025-11-10", "2025-11-18", "2025-11-25"].map((reportDate, index) => ({
+    reportDate,
+    long: 70 + index,
+    short: 20,
+    openInterest: 100,
+  }));
+  const result = scenarioMarketHistory(shifted, candidate, new Date("2025-11-26"));
+  assert.equal(result.incomplete, false);
+  assert.equal(result.chart.paths.length, 1);
+  assert.equal(result.chart.dots.length, 4);
+  assert.equal(result.weekly.available, true);
+  assert.equal(cftcContextChart(result.points).paths.length, 2, "other chart callers retain the original seven-day gap policy");
+
+  shifted.selected.reportDate = "2025-11-18";
+  shifted.history = shifted.history.slice(0, 3);
+  const eightDayComparison = scenarioMarketHistory(shifted, candidate, new Date("2025-11-19"));
+  assert.equal(eightDayComparison.incomplete, false);
+  assert.equal(eightDayComparison.chart.paths.length, 1);
+  assert.equal(eightDayComparison.weekly.available, false);
+  assert.equal(eightDayComparison.weekly.priorDate, "2025-11-11");
+  assert.equal(eightDayComparison.openInterestChangePct, null);
+
+  shifted.history[1].long = null;
+  const missingValue = scenarioMarketHistory(shifted, candidate, new Date("2025-11-19"));
+  assert.equal(missingValue.incomplete, true);
+  assert.equal(missingValue.chart.paths.length, 2, "an explicit unavailable observation always breaks the chart");
 });
