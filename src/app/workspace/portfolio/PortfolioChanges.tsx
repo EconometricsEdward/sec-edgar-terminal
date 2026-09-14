@@ -16,8 +16,8 @@ function displayDate(value: string | null | undefined, withTime = false) {
   if (!value || !Number.isFinite(Date.parse(value))) return "Date unavailable";
   // SEC filing and COT report dates are calendar dates, not midnight in the viewer's zone.
   return new Date(value).toLocaleString(undefined, withTime
-    ? { dateStyle: "medium", timeStyle: "short" }
-    : { dateStyle: "medium", timeZone: "UTC" });
+    ? { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }
+    : { dateStyle: "medium", timeZone: "UTC" }) + (withTime ? " UTC" : "");
 }
 function observation(value: string, kind: string) {
   if (kind !== "period") return value;
@@ -122,10 +122,10 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
   const filtered = useMemo(() => allEvents.filter((event: any) => (source === "all" || event.source === source)
     && (selectedCompany === "all" || relatedCompanies(event).some((item) => item.cik === selectedCompany))), [allEvents, source, selectedCompany]);
   const counts = useMemo(() => ({
-    companies: new Set(allEvents.flatMap((event: any) => relatedCompanies(event).map((item) => item.cik || item.ticker))).size,
-    sec: allEvents.filter((event: any) => event.source === "sec").length,
-    cftc: allEvents.filter((event: any) => event.source === "cftc").length,
-  }), [allEvents]);
+    companies: new Set(filtered.flatMap((event: any) => relatedCompanies(event).filter((item) => selectedCompany === "all" || item.cik === selectedCompany).map((item) => item.cik || item.ticker))).size,
+    sec: filtered.filter((event: any) => event.source === "sec").length,
+    cftc: filtered.filter((event: any) => event.source === "cftc").length,
+  }), [filtered, selectedCompany]);
   function toggleDetails(id: string) {
     setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
@@ -171,7 +171,7 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
       <div className={styles.summary} aria-label="Recent change summary">
         <div><strong>{counts.companies}</strong><span>related companies</span></div>
         <div><strong>{counts.sec}</strong><span>SEC updates</span></div>
-        <div><strong>{cftc.loading ? "…" : cftc.error ? "—" : counts.cftc}</strong><span>CFTC market moves</span></div>
+        <div><strong>{cftc.loading ? "…" : (cftc.error || cftc.data?.coverage?.checked === 0 || (!cftc.data?.coverage?.marketsChecked && cftc.data?.coverage?.marketUnavailable > 0)) ? "—" : counts.cftc}</strong><span>CFTC market moves</span></div>
       </div>
       <div className={styles.toolbar}>
         <div className={styles.sourceTabs} aria-label="Data source filter">

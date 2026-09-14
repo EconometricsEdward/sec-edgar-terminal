@@ -82,11 +82,14 @@ function filingCopy(filing) {
   };
   const title = `${form} ${amended ? "amendment" : names[base] || "filing"} submitted`;
   const reportDate = calendarDate(filing.reportDate);
-  const description = `Submitted to the SEC on ${filing.filingDate}.${reportDate ? ` Report date: ${reportDate}.` : ""}${amended
-    ? " An amendment does not by itself establish a financial restatement."
-    : base === "8-K" || base === "6-K"
-      ? "Open the source to review the reported developments; financial impact is not inferred from the form alone."
-      : "Open the source to review the disclosed financial results and risks."}`;
+  const description = [
+    `Submitted to the SEC on ${filing.filingDate}.`,
+    reportDate && `Report date: ${reportDate}.`,
+    amended ? "An amendment does not by itself establish a financial restatement."
+      : base === "8-K" || base === "6-K"
+        ? "Open the source to review the reported developments; financial impact is not inferred from the form alone."
+        : "Open the source to review the disclosed financial results and risks.",
+  ].filter(Boolean).join(" ");
   return { title, description };
 }
 

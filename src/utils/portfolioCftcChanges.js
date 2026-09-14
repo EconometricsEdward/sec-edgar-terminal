@@ -14,6 +14,21 @@ const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const dateValue = (value) => typeof value === "string" && cftcDate(value) === value ? value : "";
 const dayMs = 86400000;
 const marketKey = (candidate) => `${candidate.family}:${candidate.contract}:${candidate.group}`;
+// Only fixed public categories cross the API boundary; provider errors and URLs do not.
+const PUBLIC_FAILURE_CODES = new Set([
+  "CFTC_DISABLED", "COMPANY_NOT_FOUND", "COMPANY_CFTC_BUSY", "COMPANY_CFTC_TIMEOUT",
+  "SEC_USER_AGENT_INVALID", "SEC_RATE_GATE_UNAVAILABLE", "SEC_RATE_GATE_SATURATED",
+  "SEC_UPSTREAM_COOLDOWN", "SEC_UPSTREAM_UNAVAILABLE", "SEC_SOURCE_UNAVAILABLE",
+  "SEC_SOURCE_INVALID", "SEC_FILING_TEXT_UNAVAILABLE", "SEC_CONTEXT_UNAVAILABLE",
+  "CFTC_REPORT_NOT_PREPARED", "CFTC_SOURCE_UNAVAILABLE", "CFTC_REPORT_UNAVAILABLE",
+  "CFTC_TIMEOUT", "CFTC_HISTORY_UNAVAILABLE", "UNSUPPORTED_CONTRACT",
+]);
+function failureCode(value) {
+  if (PUBLIC_FAILURE_CODES.has(value?.code)) return value.code;
+  if (["AbortError", "TimeoutError"].includes(value?.name)) return "REQUEST_INTERRUPTED";
+  return "SOURCE_UNAVAILABLE";
+}
+function countFailure(counts, code) { counts[code] = (counts[code] || 0) + 1; }
 
 function normalizeCompanies(companies) {
   const unique = new Map();
@@ -194,16 +209,21 @@ export async function buildPortfolioCftcChanges(
   const markets = new Map();
   const coverage = {
     totalCompanies: allCompanies.length, requested: requested.length, checked: 0, linked: 0, unavailable: 0,
-    noLink: 0, noFiling: 0, identityMismatch: 0, invalidLinks: 0,
+    noLink: 0, noFiling: 0, identityMismatch: 0, invalidLinks: 0, unavailableReasons: {}, marketUnavailableReasons: {},
     uniqueMarkets: 0, marketsChecked: 0, marketUnavailable: 0, staleMarkets: 0, partialMarkets: 0,
     noComparison: 0, belowThreshold: 0, outsideWindow: 0, futureReports: 0, events: 0,
     limited: allCompanies.length > requested.length, companyLimit: PORTFOLIO_CFTC_COMPANY_LIMIT,
   };
   const discovered = await Promise.allSettled(requested.map(company => contextLimit(async () => {
     const context = await loadContext({ ticker: company.ticker }, { signal });
-    if (!["ready", "no_matches", "no_filing"].includes(context?.status)) { coverage.unavailable += 1; return; }
+    if (!["ready", "no_matches", "no_filing"].includes(context?.status)) {
+      coverage.unavailable += 1; countFailure(coverage.unavailableReasons, failureCode(context)); return;
+    }
     if (!validCik(context.cik) || (company.cik && company.cik !== context.cik)
-      || (context.ticker && context.ticker !== company.ticker)) { coverage.identityMismatch += 1; coverage.unavailable += 1; return; }
+      || (context.ticker && context.ticker !== company.ticker)) {
+      coverage.identityMismatch += 1; coverage.unavailable += 1;
+      countFailure(coverage.unavailableReasons, "ISSUER_IDENTITY_MISMATCH"); return;
+    }
     coverage.checked += 1;
     if (context.status === "no_matches") { coverage.noLink += 1; return; }
     if (context.status === "no_filing") { coverage.noFiling += 1; return; }
@@ -228,12 +248,19 @@ export async function buildPortfolioCftcChanges(
     }
     if (linked) coverage.linked += 1;
   })));
-  coverage.unavailable += discovered.filter(result => result.status === "rejected").length;
+  for (const result of discovered) {
+    if (result.status !== "rejected") continue;
+    coverage.unavailable += 1; countFailure(coverage.unavailableReasons, failureCode(result.reason));
+  }
   coverage.uniqueMarkets = markets.size;
   const events = [];
   for (const market of markets.values()) {
     const result = await market.result;
-    if (result.status !== "fulfilled" || !historyMatches(result.value, market.candidate)) { coverage.marketUnavailable += 1; continue; }
+    if (result.status !== "fulfilled" || !historyMatches(result.value, market.candidate)) {
+      coverage.marketUnavailable += 1;
+      countFailure(coverage.marketUnavailableReasons, result.status === "rejected" ? failureCode(result.reason) : "CFTC_IDENTITY_UNVERIFIED");
+      continue;
+    }
     coverage.marketsChecked += 1;
     const built = marketEvents(market, result.value, { cutoff, today, now });
     events.push(...built.events);

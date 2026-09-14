@@ -296,3 +296,15 @@ test("recent calendar windows include today and exclude the preceding boundary d
   assert.equal(outside.cutoff, "2026-09-09");
   assert.equal(outside.events.length, 0);
 });
+
+
+test("coverage preserves safe failure categories without leaking source exception details", async () => {
+  const unavailable = await build({}, { loadContext: async () => ({ status: "unavailable", code: "SEC_RATE_GATE_UNAVAILABLE", message: "private detail" }) });
+  assert.deepEqual(unavailable.coverage.unavailableReasons, { SEC_RATE_GATE_UNAVAILABLE: 1 });
+  const rejected = await build({}, { loadContext: async () => { throw Object.assign(new Error("private connection string"), { code: "private-token-value" }); } });
+  assert.deepEqual(rejected.coverage.unavailableReasons, { SOURCE_UNAVAILABLE: 1 });
+  assert.ok(!JSON.stringify(rejected).includes("private"));
+  const market = await build({}, { loadHistory: async () => { throw Object.assign(new Error("private detail"), { code: "CFTC_REPORT_NOT_PREPARED" }); } });
+  assert.deepEqual(market.coverage.marketUnavailableReasons, { CFTC_REPORT_NOT_PREPARED: 1 });
+  assert.equal(market.coverage.noLink, 0);
+});
