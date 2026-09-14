@@ -15,7 +15,7 @@ const rowsFor = (count, overrides = {}) => Array.from({ length: count }, (_, ind
   id: `background-${index}`, report_date_as_yyyy_mm_dd: `${prior(index)}T00:00:00.000`, ...overrides }));
 const gate = { run: async task => task(), publishCooldown: async () => true };
 
-function store() {
+function store({ sourceRead = null } = {}) {
   const current = new Map(), lastGood = new Map(), calls = [], generations = new Map();
   let clockOffset = 0, failPublish = false;
   const api = createCftcPersistence({ mode: () => 'supabase', now: () => Date.now() + clockOffset,
@@ -31,10 +31,12 @@ function store() {
     publish: async args => {
       calls.push({ action: 'publish', args });
       if (failPublish || generations.get(args.key) !== args.claim.generation) throw new Error('private provider failure');
-      const record = { payload: structuredClone(args.payload), metadata: { ...args.metadata, generation: args.claim.generation, contentHash: hash(JSON.stringify(args.payload)) }, sourceBytes: Buffer.from(args.source.bytes) };
+      const sourceBytes = Buffer.from(args.source.bytes), sourceHash = hash(sourceBytes);
+      const record = { payload: structuredClone(args.payload), metadata: { ...args.metadata, generation: args.claim.generation, contentHash: hash(JSON.stringify(args.payload)) }, sourceBytes,
+        _source: { objectPath: `production/cftc/source/${sourceHash}.json.gz`, contentHash: sourceHash, rawBytes: sourceBytes.length, storedBytes: sourceBytes.length } };
       current.set(args.key, record); if (args.promoteLastGood) lastGood.set(args.key, record); return record;
     },
-    readSource: async record => { calls.push({ action: 'source' }); return record.sourceBytes; },
+    readSource: async record => { calls.push({ action: 'source' }); return sourceRead ? sourceRead(record) : record.sourceBytes; },
     release: async (_dataset, key) => { calls.push({ action: 'release', key }); return true; },
   });
   return { api, calls, current, lastGood, advance: ms => { clockOffset += ms; }, failPublish: () => { failPublish = true; } };
@@ -191,4 +193,148 @@ test('a non-launch latest/history conflict is rejected without a public source c
   await assert.rejects(loadCftcHistory({ family: 'tff', code: 'ABC', group: 'dealer', window: '5y', persistence: backing.api,
     cacheGet: async () => null, fetchImpl: async () => { requests++; throw new Error('no public upstream'); } }), error => error.code === 'CFTC_REPORT_NOT_PREPARED');
   assert.equal(requests, 0);
+});
+
+function replaceCatalogSource(record, rows, extra = {}) {
+  const source = { schema_version: 'edgar.cftc-source-bundle.v1', rawHistories: [], latestRows: rows, ...extra };
+  const bytes = Buffer.from(JSON.stringify(source)), contentHash = hash(bytes);
+  record.sourceBytes = bytes;
+  record._source = { objectPath: `production/cftc/source/${contentHash}.json.gz`, contentHash, rawBytes: bytes.length, storedBytes: bytes.length };
+}
+
+test('catalog cache reuses only verified immutable rows while rechecking the current head on every call', async () => {
+  const backing = store(); await seedMarkets(backing, rowsFor(1)); backing.calls.length = 0;
+  const first = await backing.api.catalogRaw('tff');
+  const second = await backing.api.catalogRaw('tff');
+  assert.equal(first.rows, second.rows);
+  assert.equal(backing.calls.filter(item => item.action === 'read').length, 2);
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 1);
+  assert.equal(Object.isFrozen(first.rows), true);
+  assert.equal(Object.isFrozen(first.rows[0]), true);
+  assert.throws(() => { first.rows[0].dealer_positions_long_all = '999'; }, TypeError);
+  const record = backing.current.get('markets:tff:latest');
+  const oldSavedAt = record.payload.savedAt;
+  record.payload.savedAt = new Date(Date.now() - 16 * 86400_000).toISOString();
+  record.metadata.revalidatedAt = record.payload.savedAt;
+  assert.equal(await backing.api.catalogRaw('tff'), null, 'expired current heads cannot use a warm catalog');
+  record.payload.savedAt = oldSavedAt; record.metadata.revalidatedAt = oldSavedAt;
+  record.metadata.reportBasis = 'combined';
+  assert.equal(await backing.api.catalogRaw('tff'), null, 'invalid current heads cannot use a warm catalog');
+  record.metadata.reportBasis = 'futures_only';
+  backing.current.delete('markets:tff:latest');
+  assert.equal(await backing.api.catalogRaw('tff'), null, 'a missing current head cannot use a warm catalog');
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 1);
+});
+
+test('concurrent catalog reads coalesce the source download without coalescing current-head checks', async () => {
+  let releaseSource;
+  const sourceReady = new Promise(resolve => { releaseSource = resolve; });
+  const backing = store({ sourceRead: async record => { await sourceReady; return record.sourceBytes; } });
+  await seedMarkets(backing, rowsFor(1)); backing.calls.length = 0;
+  const pending = Array.from({ length: 8 }, () => backing.api.catalogRaw('tff'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(backing.calls.filter(item => item.action === 'read').length, 8);
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 1);
+  assert.equal(backing.api.status().catalog_cache.pending, 1);
+  releaseSource();
+  const results = await Promise.all(pending);
+  assert.equal(results.every(result => result.rows === results[0].rows), true);
+  assert.equal(backing.api.status().catalog_cache.pending, 0);
+});
+
+test('catalog source hash changes invalidate reuse even when snapshot payload metadata is unchanged', async () => {
+  const backing = store(); await seedMarkets(backing, rowsFor(1)); backing.calls.length = 0;
+  const first = await backing.api.catalogRaw('tff');
+  const record = backing.current.get('markets:tff:latest'), originalMetadata = structuredClone(record.metadata);
+  replaceCatalogSource(record, rowsFor(1, { dealer_positions_long_all: '777' }));
+  const revised = await backing.api.catalogRaw('tff');
+  assert.deepEqual(record.metadata, originalMetadata);
+  assert.equal(first.rows[0].dealer_positions_long_all, '100');
+  assert.equal(revised.rows[0].dealer_positions_long_all, '777');
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 2);
+});
+
+test('catalog cache expiry is fixed at admission and reads never extend it or retrieval freshness', async () => {
+  const backing = store(); await seedMarkets(backing, rowsFor(1)); backing.calls.length = 0;
+  const first = await backing.api.catalogRaw('tff');
+  backing.advance(59_000);
+  const hit = await backing.api.catalogRaw('tff');
+  assert.equal(hit.savedAt, first.savedAt);
+  assert.equal(hit.retrievedAt, first.retrievedAt);
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 1);
+  backing.advance(2_000);
+  const refreshed = await backing.api.catalogRaw('tff');
+  assert.equal(refreshed.savedAt, first.savedAt);
+  assert.equal(refreshed.retrievedAt, first.retrievedAt);
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 2);
+});
+
+test('catalog source integrity failures and invalid schemas are never cached, including negative results', async () => {
+  const backing = store(); await seedMarkets(backing, rowsFor(1)); backing.calls.length = 0;
+  const record = backing.current.get('markets:tff:latest'), originalSource = record.sourceBytes;
+  record.sourceBytes = Buffer.from('corrupt source');
+  assert.equal(await backing.api.catalogRaw('tff'), null);
+  assert.equal(backing.api.status().catalog_cache.entries, 0);
+  record.sourceBytes = originalSource;
+  assert.ok(await backing.api.catalogRaw('tff'));
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 2);
+  replaceCatalogSource(record, rowsFor(1), { schema_version: 'untrusted-schema' });
+  assert.equal(await backing.api.catalogRaw('tff'), null);
+  assert.equal(await backing.api.catalogRaw('tff'), null);
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 4);
+  replaceCatalogSource(record, [{ ...rowsFor(1)[0], unknown_nested_field: { value: 'bad' } }]);
+  assert.equal(await backing.api.catalogRaw('tff'), null);
+});
+
+test('catalog retention stays within two entries and one MiB, while oversized catalogs use uncached reads', async () => {
+  const backing = store(); await seedMarkets(backing, rowsFor(1)); backing.calls.length = 0;
+  const record = backing.current.get('markets:tff:latest');
+  const firstBytes = record.sourceBytes, firstSource = { ...record._source };
+  await backing.api.catalogRaw('tff');
+  for (const value of ['200', '300', '400']) {
+    replaceCatalogSource(record, rowsFor(1, { dealer_positions_long_all: value }));
+    await backing.api.catalogRaw('tff');
+    const status = backing.api.status().catalog_cache;
+    assert.equal(status.entries, 2);
+    assert.equal(status.bytes <= 1024 * 1024, true);
+  }
+  record.sourceBytes = firstBytes; record._source = firstSource;
+  await backing.api.catalogRaw('tff');
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 5, 'the oldest source was evicted');
+  replaceCatalogSource(record, rowsFor(1000, { market_and_exchange_names: 'A'.repeat(1024) }));
+  assert.ok(await backing.api.catalogRaw('tff'));
+  assert.ok(await backing.api.catalogRaw('tff'));
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 7, 'oversized decoded catalogs do not enter the cache');
+  const status = backing.api.status().catalog_cache;
+  assert.equal(status.entries <= 2, true);
+  assert.equal(status.bytes <= 1024 * 1024, true);
+});
+
+test('catalog coalescing registry stays bounded during simultaneous distinct source revisions', async () => {
+  let releaseSource;
+  const sourceReady = new Promise(resolve => { releaseSource = resolve; });
+  const backing = store({ sourceRead: async record => { await sourceReady; return record.sourceBytes; } });
+  await seedMarkets(backing, rowsFor(1));
+  const record = backing.current.get('markets:tff:latest'), pending = [];
+  for (const value of ['100', '200', '300']) {
+    replaceCatalogSource(record, rowsFor(1, { dealer_positions_long_all: value }));
+    pending.push(backing.api.catalogRaw('tff'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(backing.api.status().catalog_cache.pending <= 2, true);
+  }
+  assert.equal(backing.api.status().catalog_cache.pending, 2);
+  releaseSource();
+  const results = await Promise.all(pending);
+  assert.deepEqual(results.map(result => result.rows[0].dealer_positions_long_all), ['100', '200', '300']);
+  assert.equal(backing.api.status().catalog_cache.pending, 0);
+  assert.equal(backing.api.status().catalog_cache.entries, 2);
+});
+
+test('catalog sources without a verifiable immutable descriptor retain the uncached read path', async () => {
+  const backing = store(); await seedMarkets(backing, rowsFor(1)); backing.calls.length = 0;
+  delete backing.current.get('markets:tff:latest')._source;
+  assert.ok(await backing.api.catalogRaw('tff'));
+  assert.ok(await backing.api.catalogRaw('tff'));
+  assert.equal(backing.calls.filter(item => item.action === 'source').length, 2);
+  assert.equal(backing.api.status().catalog_cache.entries, 0);
 });

@@ -16,6 +16,8 @@ A bounded source fetch uses at most three pages of 200 rows. It requests suffici
 
 Public history requests read prepared data only in Supabase mode. A missing cache entry can be reconstructed from durable raw history without contacting CFTC. A contract/date that has not been prepared returns an explicit unavailable response. Current multi-year charts do not imply that every historical as-of-date snapshot has been prepared.
 
+Repeated catalog lookups reuse only hash-verified immutable source observations in a small process cache: two entries, 1 MiB of serialized rows in total, a 512 KiB per-entry cap and a fixed 60-second lifetime. Each request still checks the current database head and source age. A changed source hash causes a new verified read even when the displayed market summary is unchanged.
+
 ## Resumable preparation
 
 The existing signed SEC coverage schedule runs SEC work first and gives CFTC preparation only the remaining bounded time. No additional paid scheduler or infrastructure is introduced. The initial preparation gate is disabled by default and is enabled by a database owner only after the first automatic SEC daily cycle is verified complete and the production deployment is ready. Application credentials cannot enable it.

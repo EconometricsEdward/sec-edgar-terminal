@@ -7,6 +7,7 @@ const MAX_AGE_MS = 15 * 86400_000;
 const MAX_SOURCE_BYTES = 12 * 1024 * 1024;
 const MAX_COMPARISONS_PER_HOUR = 8;
 const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
+const CATALOG_CACHE = Object.freeze({ entries: 2, bytes: 1024 * 1024, entryBytes: 512 * 1024, ttlMs: 60_000, pending: 2 });
 
 function persistenceError(code) {
   // Provider exceptions can contain request details; never expose those through public routes.
@@ -21,6 +22,23 @@ function canonical(value) {
 
 function json(value) { return JSON.stringify(canonical(value)); }
 function digest(value) { return createHash('sha256').update(json(value)).digest('hex'); }
+
+function catalogSourceKey(family, source) {
+  const rawBytes = Number(source?.rawBytes), storedBytes = Number(source?.storedBytes);
+  if (!/^[a-f0-9]{64}$/.test(source?.contentHash || '')
+    || typeof source.objectPath !== 'string'
+    || !new RegExp(`^[a-z0-9_-]{1,48}/cftc/source/${source.contentHash}\\.json\\.gz$`).test(source.objectPath)
+    || !Number.isSafeInteger(rawBytes) || rawBytes <= 0 || rawBytes > MAX_SOURCE_BYTES
+    || !Number.isSafeInteger(storedBytes) || storedBytes <= 0 || storedBytes > 6 * 1024 * 1024) return null;
+  return JSON.stringify([family, source.objectPath, source.contentHash, rawBytes, storedBytes]);
+}
+
+function validCatalogSourceRows(rows, family) {
+  const fields = new Set(CFTC_FAMILIES[family].fields);
+  return Array.isArray(rows) && rows.length <= 1000 && rows.every(row => row && typeof row === 'object' && !Array.isArray(row)
+    && Object.entries(row).every(([field, value]) => fields.has(field)
+      && (value == null || typeof value === 'number' && Number.isFinite(value) || typeof value === 'string' && Buffer.byteLength(value) <= 4096)));
+}
 
 export function cftcContractRawKey({ family, code, throughDate }) {
   if (!isCftcFamily(family) || !isCftcContractCode(code) || cftcDate(throughDate) !== throughDate) throw persistenceError('CFTC_DURABLE_VALIDATION_FAILED');
@@ -60,8 +78,54 @@ export function createCftcPersistence({
   now = () => Date.now(),
 } = {}) {
   let comparisonHour = -1, comparisons = 0;
+  // Cache only verified immutable catalog rows. The authorized current head and
+  // its freshness are checked separately on every read, including cache hits.
+  const catalogs = new Map(), pendingCatalogs = new Map();
+  let catalogBytes = 0;
   const counters = { writes: 0, write_failures: 0, read_failures: 0, shadow_matches: 0, shadow_mismatches: 0, shadow_revision_skips: 0 };
   const increment = key => { counters[key] = Math.min(MAX_COUNTER, counters[key] + 1); };
+
+  function removeCatalog(key) {
+    const entry = catalogs.get(key);
+    if (entry) { catalogBytes -= entry.bytes; catalogs.delete(key); }
+  }
+
+  function expireCatalogs() {
+    for (const [key, entry] of catalogs) if (entry.until <= now()) removeCatalog(key);
+  }
+
+  async function catalogRows(record, family) {
+    const descriptor = record._source ? { ...record._source } : null;
+    const key = catalogSourceKey(family, descriptor);
+    expireCatalogs();
+    const cached = key && catalogs.get(key);
+    if (cached) {
+      catalogs.delete(key); catalogs.set(key, cached);
+      return cached.rows;
+    }
+    if (key && pendingCatalogs.has(key)) return pendingCatalogs.get(key);
+    const task = (async () => {
+      const bytes = await readSource(key ? { ...record, _source: descriptor } : record);
+      if (!bytes || bytes.byteLength > MAX_SOURCE_BYTES) return null;
+      if (key && (bytes.byteLength !== Number(descriptor.rawBytes)
+        || createHash('sha256').update(bytes).digest('hex') !== descriptor.contentHash)) return null;
+      const source = JSON.parse(Buffer.from(bytes).toString('utf8'));
+      if (source?.schema_version !== SOURCE_SCHEMA || !validCatalogSourceRows(source.latestRows, family)) return null;
+      const rows = Object.freeze(source.latestRows.map(row => Object.freeze(row)));
+      const rowBytes = Buffer.byteLength(JSON.stringify(rows));
+      if (key && rowBytes <= CATALOG_CACHE.entryBytes) {
+        expireCatalogs(); removeCatalog(key);
+        while (catalogs.size >= CATALOG_CACHE.entries || catalogBytes + rowBytes > CATALOG_CACHE.bytes) removeCatalog(catalogs.keys().next().value);
+        catalogs.set(key, { rows, bytes: rowBytes, until: now() + CATALOG_CACHE.ttlMs });
+        catalogBytes += rowBytes;
+      }
+      return rows;
+    })();
+    const tracked = key && pendingCatalogs.size < CATALOG_CACHE.pending;
+    if (tracked) pendingCatalogs.set(key, task);
+    try { return await task; }
+    finally { if (tracked && pendingCatalogs.get(key) === task) pendingCatalogs.delete(key); }
+  }
 
   async function reserve(key) {
     if (mode() === 'off') return null;
@@ -169,12 +233,10 @@ export function createCftcPersistence({
         || cftcDate(response.report_date) !== response.report_date || response.report_date > new Date(now()).toISOString().slice(0, 10)
         || throughDate && response.report_date !== throughDate
         || age < 0 || age >= MAX_AGE_MS || !Number.isFinite(age)) return null;
-      const bytes = await readSource(record);
-      if (!bytes || bytes.byteLength > MAX_SOURCE_BYTES) return null;
-      const source = JSON.parse(Buffer.from(bytes).toString('utf8'));
-      if (source?.schema_version !== SOURCE_SCHEMA || !Array.isArray(source.latestRows) || source.latestRows.length > 1000) return null;
+      const rows = await catalogRows(record, family);
+      if (!rows) return null;
       return { family, report_basis: CFTC_REPORT_BASIS, report_date: response.report_date,
-        savedAt, retrievedAt: response.retrieved_at, rows: source.latestRows,
+        savedAt, retrievedAt: response.retrieved_at, rows,
         contentHash: record.metadata?.contentHash, generation: record.metadata?.generation };
     } catch { increment('read_failures'); return null; }
   }
@@ -270,7 +332,8 @@ export function createCftcPersistence({
   }
 
   return { mode, reserve, prepared, raw, save, reserveContractRaw, releaseContractRaw, contractRaw, saveContractRaw, catalogRaw, startRefreshJob, completeRefreshJob, checkpointRefreshJob,
-    status: () => ({ mode: mode(), scope: 'current-process', comparison_limit_per_hour: MAX_COMPARISONS_PER_HOUR, ...counters }),
+    status: () => ({ mode: mode(), scope: 'current-process', comparison_limit_per_hour: MAX_COMPARISONS_PER_HOUR, ...counters,
+      catalog_cache: { entries: catalogs.size, bytes: catalogBytes, pending: pendingCatalogs.size, limits: CATALOG_CACHE } }),
   };
 }
 

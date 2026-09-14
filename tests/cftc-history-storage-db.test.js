@@ -38,11 +38,12 @@ async function database() {
     create function cron.schedule(job_name text,job_schedule text,job_command text) returns bigint language plpgsql as $$
       begin insert into cron.job(jobname,schedule,command) values(job_name,job_schedule,job_command)
       on conflict(jobname) do update set schedule=excluded.schedule,command=excluded.command;return 1;end $$;`);
-  for (const name of ['20260913031639_edgar_staged_data_store.sql','20260913073012_edgar_coverage_batch_reads_jobs.sql','20260913171926_edgar_disposable_cache.sql','20260913181102_edgar_fenced_disposable_cache.sql'])
+  for (const name of ['20260913031639_edgar_staged_data_store.sql','20260913073012_edgar_coverage_batch_reads_jobs.sql','20260913085035_edgar_coverage_stable_order.sql','20260913171926_edgar_disposable_cache.sql','20260913181102_edgar_fenced_disposable_cache.sql'])
     await db.exec(await readFile(new URL(`../supabase/migrations/${name}`,import.meta.url),'utf8'));
   const legacy=packed({legacy:true});
   await rpc(db,'edgar_cache_put',[ns,...cacheArgs(legacy,id,'history')]);
   await db.exec(await readFile(new URL('../supabase/migrations/20260914073310_edgar_cftc_history_preparation.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20260914074030_edgar_cftc_preserve_sec_shard_order.sql',import.meta.url),'utf8'));
   return db;
 }
 
@@ -109,6 +110,26 @@ test('CFTC history migration enforces cache budgets, owner-only startup and fenc
     await db.query('update public.edgar_ingestion_jobs set checkpoint=$2 where id=$1',[j,{...checkpoint,cursor:2,prepared:1,limited:1,failures:[{code:'13874A'}]}]);
     status=await rpc(db,'edgar_cftc_history_status',[ns]);
     assert.deepEqual(status.jobs[0].counters,{contracts:2,visited:2,prepared:1,limited:1,failed:1});
+  });
+  await t.test('eligible SEC coverage resumes earlier shard before older-available later shard; cooldown still excludes it',async()=>{
+    const earlierKey='sec-coverage-v1:2026-09-14:28:fixture',laterKey='sec-coverage-v1:2026-09-14:29:fixture';
+    const earlier=await rpc(db,'edgar_enqueue_job',[ns,'sec','sec-coverage-v1:shard:28',earlierKey,{cursor:15},4]);
+    const later=await rpc(db,'edgar_enqueue_job',[ns,'sec','sec-coverage-v1:shard:29',laterKey,{cursor:0},4]);
+    await db.query("update public.edgar_ingestion_jobs set available_at=clock_timestamp()-interval '1 second' where id=$1",[earlier]);
+    await db.query("update public.edgar_ingestion_jobs set available_at=clock_timestamp()-interval '1 hour' where id=$1",[later]);
+    const selected=await rpc(db,'edgar_claim_job_prefix',[ns,'sec',randomUUID(),'sec-coverage-v1:',120]);
+    assert.equal(selected.id,earlier);assert.equal(selected.checkpoint.cursor,15);
+    assert.equal(await rpc(db,'edgar_yield_job',[ns,{...token(selected),id:earlier},{cursor:15},60]),true);
+    const duringCooldown=await rpc(db,'edgar_claim_job_prefix',[ns,'sec',randomUUID(),'sec-coverage-v1:',120]);
+    assert.equal(duringCooldown.id,later);
+  });
+  await t.test('CFTC prefix retains availability FIFO even when lexical shard order differs',async()=>{
+    const lexicallyEarlier=await rpc(db,'edgar_enqueue_job',[ns,'cftc','history-refresh:futures-only:disaggregated:shard:00',`cftc-history-v1:2026-09-08:disaggregated:00:${'b'.repeat(16)}`,{},4]);
+    const olderAvailable=await rpc(db,'edgar_enqueue_job',[ns,'cftc','history-refresh:futures-only:disaggregated:shard:31',`cftc-history-v1:2026-09-08:disaggregated:31:${'b'.repeat(16)}`,{},4]);
+    await db.query("update public.edgar_ingestion_jobs set available_at=clock_timestamp()-interval '1 second' where id=$1",[lexicallyEarlier]);
+    await db.query("update public.edgar_ingestion_jobs set available_at=clock_timestamp()-interval '1 hour' where id=$1",[olderAvailable]);
+    const selected=await rpc(db,'edgar_claim_job_prefix',[ns,'cftc',randomUUID(),'cftc-history-v1:',120]);
+    assert.equal(selected.id,olderAvailable);
   });
   await t.test('raw canonical claims bind one exact destination and preserve generation fencing',async()=>{
     const old=await begin(db);assert.equal(await reserve(db,old),true);assert.equal((await put(db,old,packed())).stored,true);
