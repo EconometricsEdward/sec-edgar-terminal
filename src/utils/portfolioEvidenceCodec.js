@@ -4,16 +4,54 @@ import {
 } from "./portfolioBaselineCodec.js";
 /** Deduplicate repeated public evidence without discarding any metric or source. */
 const ENCODING = "portfolio-evidence-pool-v1";
+const TUPLE_ENCODING = "portfolio-evidence-pool-v2";
 export const PORTFOLIO_DECODED_LIMIT = 32 * 1024 * 1024;
 const byteLength = (value) =>
   new TextEncoder().encode(JSON.stringify(value)).length;
+const SOURCE_TUPLES = "portfolio-source-tuples-v1";
+const MAX_SOURCE_KEYS = 32;
+const sourceKey = key => typeof key === "string" && key.length > 0 && key.length <= 100
+  && !["__proto__", "constructor", "prototype"].includes(key);
+
+/** Source objects repeat the same field names thousands of times in a portfolio. */
+function packSourcePool(pool) {
+  if (!pool.length || pool.some(source => !source || typeof source !== "object" || Array.isArray(source))) return { sourcePool: pool };
+  const keys = [...new Set(pool.flatMap(Object.keys))];
+  if (!keys.length || keys.length > MAX_SOURCE_KEYS || !keys.every(sourceKey)) return { sourcePool: pool };
+  const tuples = pool.map(source => {
+    let mask = 0; const values = [];
+    keys.forEach((key, index) => {
+      if (Object.prototype.hasOwnProperty.call(source, key)) { mask += 2 ** index; values.push(source[key]); }
+    });
+    return [mask, ...values];
+  });
+  const packed = { sourcePoolEncoding: SOURCE_TUPLES, sourceKeys: keys, sourcePool: tuples };
+  return byteLength(packed) < byteLength({ sourcePool: pool }) ? packed : { sourcePool: pool };
+}
+
+function unpackSourcePool(company) {
+  if (!company.sourcePoolEncoding) return company.sourcePool;
+  const keys = company.sourceKeys, pool = company.sourcePool;
+  if (company.sourcePoolEncoding !== SOURCE_TUPLES || !Array.isArray(keys) || !keys.length || keys.length > MAX_SOURCE_KEYS
+    || !keys.every(sourceKey) || new Set(keys).size !== keys.length || !Array.isArray(pool) || pool.length > 2000
+    || byteLength(pool) + byteLength(keys) * pool.length > PORTFOLIO_DECODED_LIMIT)
+    throw new Error("Invalid portfolio source tuples.");
+  return pool.map(tuple => {
+    if (!Array.isArray(tuple) || !Number.isSafeInteger(tuple[0]) || tuple[0] < 0 || tuple[0] >= 2 ** keys.length)
+      throw new Error("Invalid portfolio source tuple.");
+    const selected = keys.filter((_key, index) => Math.floor(tuple[0] / 2 ** index) % 2 === 1);
+    if (tuple.length !== selected.length + 1) throw new Error("Invalid portfolio source tuple.");
+    return Object.fromEntries(selected.map((key, index) => [key, tuple[index + 1]]));
+  });
+}
+
 function checkExpansion(companies) {
   let total = 0;
   for (const company of companies) {
     total += byteLength(company);
     if (company?.evidenceEncoding) {
       const pools = [
-        company.sourcePool,
+        unpackSourcePool(company),
         company.calculationPool,
         company.periodPool,
       ];
@@ -48,7 +86,7 @@ function checkExpansion(companies) {
   }
 }
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-export function packPortfolioCompany(company) {
+export function packPortfolioCompany(company, { compactSources = false } = {}) {
   if (!company?.metrics || company.evidenceEncoding) return company;
   const sourcePool = [],
     calculationPool = [],
@@ -86,10 +124,11 @@ export function packPortfolioCompany(company) {
       ];
     }),
   );
+  const packedSources = compactSources ? packSourcePool(sourcePool) : { sourcePool };
   return {
     ...company,
-    evidenceEncoding: ENCODING,
-    sourcePool,
+    evidenceEncoding: packedSources.sourcePoolEncoding ? TUPLE_ENCODING : ENCODING,
+    ...packedSources,
     calculationPool,
     periodPool,
     metrics,
@@ -98,15 +137,20 @@ export function packPortfolioCompany(company) {
 export function unpackPortfolioCompany(company) {
   if (!company?.evidenceEncoding) return company;
   checkExpansion([company]);
-  if (company.evidenceEncoding !== ENCODING)
+  if (![ENCODING, TUPLE_ENCODING].includes(company.evidenceEncoding)
+    || (company.evidenceEncoding === TUPLE_ENCODING && company.sourcePoolEncoding !== SOURCE_TUPLES)
+    || (company.evidenceEncoding === ENCODING && (company.sourcePoolEncoding || company.sourceKeys)))
     throw new Error("Unsupported portfolio evidence encoding.");
   const {
     evidenceEncoding: _encoding,
-    sourcePool,
+    sourcePool: _sourcePool,
+    sourcePoolEncoding: _sourcePoolEncoding,
+    sourceKeys: _sourceKeys,
     calculationPool,
     periodPool,
     ...rest
   } = company;
+  const sourcePool = unpackSourcePool(company);
   if (
     ![sourcePool, calculationPool, periodPool].every(
       (p) => Array.isArray(p) && p.length <= 2000,
@@ -158,7 +202,7 @@ export const packPortfolioSnapshot = (snapshot) => {
   const templates = [],
     byValue = new Map();
   const companies = (snapshot.companies || [])
-    .map(packPortfolioCompany)
+    .map(company => packPortfolioCompany(company, { compactSources: true }))
     .map((company) => ({
       ...company,
       metrics: Object.fromEntries(
@@ -186,7 +230,7 @@ export const packPortfolioSnapshot = (snapshot) => {
   if (templates.length > 2000)
     return {
       ...snapshot,
-      companies: (snapshot.companies || []).map(packPortfolioCompany),
+      companies: (snapshot.companies || []).map(company => packPortfolioCompany(company, { compactSources: true })),
     };
   return {
     ...snapshot,

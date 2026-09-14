@@ -7,6 +7,7 @@ import { allocationSummary, PORTFOLIO_COLUMNS } from "./portfolioModel.js";
 import { isCompletePortfolioCheck } from "./portfolioClient.js";
 import { createPortfolio, writePortfolio } from "./portfolioStorage.js";
 import { demoAllocationSettings } from "./portfolioDemoAllocation.js";
+import { validatePortfolioDemoUniverse } from "./portfolioDemoUniverse.js";
 import { PORTFOLIO_REPORTING_BASES } from "./portfolioReporting.js";
 
 export const DEMO_INPUT_URL = "/portfolio/portfolio-demo-100.json";
@@ -167,6 +168,15 @@ export function validatePortfolioDemo(value, { session = false } = {}) {
       Date.parse(value.capture_started_at) <= Date.parse(value.captured_at),
     "The capture dates are invalid.",
   );
+  const universe = Object.prototype.hasOwnProperty.call(value, "universe")
+    ? validatePortfolioDemoUniverse(value.universe)
+    : null;
+  if (universe)
+    requireValue(
+      timestamp(universe.source.checkedAt) &&
+        Date.parse(universe.source.checkedAt) <= Date.parse(value.captured_at),
+      "The company selection has an invalid check date or was checked after this capture was created.",
+    );
   requireValue(
     object(value.input) &&
       value.input.schema_version === "edgar.portfolio.v1" &&
@@ -187,7 +197,7 @@ export function validatePortfolioDemo(value, { session = false } = {}) {
         text(value.allocation_example.methodology),
       "Example weights must be explicitly identified as hypothetical.",
     );
-  const tickers = value.input.holdings.map((holding) => {
+  const tickers = value.input.holdings.map((holding, index) => {
     requireValue(
       object(holding) &&
         typeof holding.ticker === "string" &&
@@ -198,6 +208,7 @@ export function validatePortfolioDemo(value, { session = false } = {}) {
       Object.entries(holding).every(
         ([key, cell]) =>
           key === "ticker" ||
+          (universe && key === "cik" && cell === universe.companies[index].cik) ||
           (weighted &&
             key === "weight_pct" &&
             typeof cell === "number" &&
@@ -206,8 +217,14 @@ export function validatePortfolioDemo(value, { session = false } = {}) {
             cell <= 100) ||
           (PORTFOLIO_COLUMNS.includes(key) && cell === ""),
       ),
-      "The example inputs may contain tickers and hypothetical weights, without private writing or other allocations.",
+      "The example inputs may contain tickers, verified selection identities and hypothetical weights, without private writing or other allocations.",
     );
+    if (universe)
+      requireValue(
+        holding.ticker === universe.companies[index].ticker &&
+          holding.cik === universe.companies[index].cik,
+        "The input companies do not match the ranked S&P 500 coverage selection.",
+      );
     if (weighted)
       requireValue(
         typeof holding.weight_pct === "number" && holding.weight_pct > 0,
@@ -252,12 +269,15 @@ export function validatePortfolioDemo(value, { session = false } = {}) {
     requireValue(
       row.input.ticker === tickers[index] &&
         PORTFOLIO_COLUMNS.every(
-          (column) =>
-            column === "ticker" ||
-            (weighted && column === "weight_pct"
-              ? Number(row.input[column]) ===
-                value.input.holdings[index].weight_pct
-              : row.input[column] === ""),
+          (column) => {
+            if (column === "ticker") return true;
+            if (universe && column === "cik")
+              return row.input.cik === universe.companies[index].cik;
+            if (weighted && column === "weight_pct")
+              return Number(row.input[column]) ===
+                value.input.holdings[index].weight_pct;
+            return row.input[column] === "";
+          },
         ),
       "The reviewed rows do not match the tickers and weights in the download.",
     );
@@ -275,6 +295,12 @@ export function validatePortfolioDemo(value, { session = false } = {}) {
           canonicalTicker(row.input.ticker),
       "Every example ticker must retain its verified company identification.",
     );
+    if (universe)
+      requireValue(
+        row.resolution.cik === universe.companies[index].cik &&
+          row.resolution.ticker === universe.companies[index].ticker,
+        "A reviewed company does not match its ranked selection identity.",
+      );
   });
   const rowCiks = new Set(value.rows.map((row) => row.resolution.cik));
   const capturedCiks = new Set(
@@ -286,6 +312,20 @@ export function validatePortfolioDemo(value, { session = false } = {}) {
       [...rowCiks].every((cik) => capturedCiks.has(cik)),
     "The captured companies do not match the reviewed input rows.",
   );
+  if (universe)
+    requireValue(
+      rowCiks.size === 100 &&
+        capturedCiks.size === 100 &&
+        universe.companies.every((member) =>
+          value.snapshot.companies.some(
+            (company) =>
+              company.cik === member.cik &&
+              company.ticker === member.ticker &&
+              company.kind === "company",
+          ),
+        ),
+      "The captured companies do not match all 100 ranked selection identities.",
+    );
   for (const company of value.snapshot.companies) {
     requireValue(
       !company.ticker ||
@@ -393,14 +433,21 @@ export function createDemoPortfolio(demo, options = {}) {
     session: sessionCaptures.has(demo),
   });
   const allocation = demoAllocationSettings(capture, options.allocationBasis);
+  const allocationLabel = {
+    weights: "hypothetical weights",
+    equal: "hypothetical equal weights",
+    none: "company counts",
+  }[allocation.basis];
   const label =
-    allocation.basis === "weights"
-      ? "Hypothetical weighted demo"
-      : allocation.basis === "equal"
-        ? "Hypothetical equal-weight demo"
-        : capture.input.allocation.basis === "weights"
-          ? "Hypothetical demo · company counts"
-          : "100-company demo";
+    capture.universe
+      ? `S&P 500 top 100 · ${allocationLabel}`
+      : allocation.basis === "weights"
+        ? "Hypothetical weighted demo"
+        : allocation.basis === "equal"
+          ? "Hypothetical equal-weight demo"
+          : capture.input.allocation.basis === "weights"
+            ? "Hypothetical demo · company counts"
+            : "100-company demo";
   const complete = isCompletePortfolioCheck({
     companies: capture.snapshot.companies,
     requested: new Set(capture.rows.map((row) => row.resolution.cik)).size,

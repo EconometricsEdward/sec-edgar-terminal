@@ -11,7 +11,6 @@ import {
   Search,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
   Download,
   History,
   type LucideIcon,
@@ -72,7 +71,6 @@ export default function ResearchWorkspace({
       items: [
         ...evidence,
         ["changes", "What changed", History] as const,
-        ...(demo ? [["followups", "Research prompts", Sparkles] as const] : []),
       ],
     },
     ...(!demo

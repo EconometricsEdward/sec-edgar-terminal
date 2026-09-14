@@ -273,36 +273,6 @@
   margin-top: 6px;
   line-height: 1.6;
 }
-.explanation {
-  max-width: 950px;
-}
-.followups {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-.followups article {
-  padding: 22px;
-  border: 1px solid var(--demo-line);
-  border-radius: 10px;
-  background: var(--demo-panel);
-}
-.followups h3 {
-  margin: 12px 0;
-}
-.followups p {
-  font-size: 14px;
-}
-.followups a {
-  display: inline-block;
-  margin-top: 15px;
-  font-size: 12px;
-}
-@media (max-width: 1000px) {
-  .followups {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 @media (max-width: 640px) {
   .page {
     gap: 24px;
@@ -325,9 +295,6 @@
   }
   .filters p {
     padding: 0;
-  }
-  .followups {
-    grid-template-columns: 1fr;
   }
 }
 

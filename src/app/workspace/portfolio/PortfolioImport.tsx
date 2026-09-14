@@ -546,11 +546,11 @@ export default function PortfolioImport({
 
       <aside className={s.demo} aria-labelledby="portfolio-demo-title">
         <div>
-          <h3 id="portfolio-demo-title">Try the hypothetical weighted demo</h3>
+          <h3 id="portfolio-demo-title">Try the S&P 500 top 100 demo</h3>
           <p>
-            Explore 100 companies with example weights totaling 100%. After CSV
-            or Excel import, select supplied weight percentages in Allocation
-            settings.
+            Use the same 100-company list as the preview, with hypothetical
+            weights totaling 100%. After CSV or Excel import, select supplied
+            weight percentages in Allocation settings.
           </p>
         </div>
         <div className={s.inlineLinks}>

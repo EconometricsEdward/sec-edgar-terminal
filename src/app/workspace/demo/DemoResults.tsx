@@ -24,7 +24,6 @@ import {
   portfolioPeriodLabel,
   portfolioReportingLabel,
 } from "../../../utils/portfolioReporting.js";
-import { portfolioReviewPriorities } from "../../../utils/portfolioInsights.js";
 import {
   PORTFOLIO_VIEW_PRESETS,
   availablePortfolioViewPresets,
@@ -35,6 +34,10 @@ import {
   applyPortfolioDemoSnapshot,
   saveDemoPortfolio,
   createDemoPortfolio,
+  DEMO_RESULTS_URL,
+  DEMO_CSV_URL,
+  DEMO_XLSX_URL,
+  DEMO_INPUT_URL,
 } from "../../../utils/portfolioDemo.js";
 import { demoAllocationSettings } from "../../../utils/portfolioDemoAllocation.js";
 import { hubDestination } from "../../../utils/researchHubNavigation.js";
@@ -133,8 +136,9 @@ export default function DemoResults() {
   useEffect(() => {
     const controller = new AbortController();
     setError("");
-    fetch("/portfolio/portfolio-demo-100-results.json", {
+    fetch(DEMO_RESULTS_URL, {
       signal: controller.signal,
+      cache: "no-cache",
     })
       .then(async (response) => {
         if (!response.ok)
@@ -145,6 +149,10 @@ export default function DemoResults() {
         if (raw.length > 8 * 1024 * 1024)
           throw new Error("The example is too large to open safely.");
         const next = validatePortfolioDemo(JSON.parse(raw));
+        if (!next.universe)
+          throw new Error(
+            "The updated S&P 500 demo capture is not available yet. Retry to load the current company list.",
+          );
         if (!controller.signal.aborted) {
           setDemo(next);
           setReportingDemo(next);
@@ -366,16 +374,6 @@ export default function DemoResults() {
       ticker: filing.ticker || tickers.get(filing.cik) || "",
     }));
   }, [rows, companies]);
-  const priorities = useMemo(
-    () =>
-      portfolioReviewPriorities(
-        rows,
-        companies,
-        allocation,
-        reportingDemo ? Date.parse(reportingDemo.captured_at) : 0,
-      ),
-    [rows, companies, allocation, reportingDemo],
-  );
   const availableViews = useMemo(
     () => availablePortfolioViewPresets(rows, companies),
     [rows, companies],
@@ -479,23 +477,24 @@ export default function DemoResults() {
       <header className={s.workspaceHeader}>
         <div>
           <h1 id="demo-results-heading">
-            100-company portfolio <span className={s.demoTag}>Demo</span>
+            S&P 500: top 100 companies <span className={s.demoTag}>Demo</span>
           </h1>
           <p>
-            Explore a portfolio with hypothetical weights and real SEC evidence.
+            One company list across every research view, with SEC evidence and
+            optional hypothetical weights.
           </p>
         </div>
         {demo && (
           <div className={s.headerActions}>
             <WorkspaceMenu label="Download" mobileAlign="start">
               <strong>Example portfolio · fixed hypothetical weights</strong>
-              <a href="/portfolio/portfolio-demo-100.csv" download>
+              <a href={DEMO_CSV_URL} download>
                 CSV spreadsheet ↓
               </a>
-              <a href="/portfolio/portfolio-demo-100.xlsx" download>
+              <a href={DEMO_XLSX_URL} download>
                 Excel workbook ↓
               </a>
-              <a href="/portfolio/portfolio-demo-100.json" download>
+              <a href={DEMO_INPUT_URL} download>
                 JSON portfolio ↓
               </a>
               <small>
@@ -581,6 +580,19 @@ export default function DemoResults() {
             <WorkspaceMenu label="About this demo">
               <strong>A starting point for your research</strong>
               <p>
+                The 100 largest companies by combined holding weight in the
+                stored iShares IVV S&P 500 holdings dated{" "}
+                {demo.universe.source.asOf}. Share classes are combined by SEC
+                company ID; one ticker represents each company.
+              </p>
+              <a
+                href={demo.universe.source.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                iShares IVV holdings source ↗
+              </a>
+              <p>
                 Use the overview for the big picture. Choose a research view to
                 compare companies, review filings or test a scenario.
               </p>
@@ -590,8 +602,8 @@ export default function DemoResults() {
                   : demo.allocation_example.methodology}
               </p>
               <p>
-                Weights affect concentration, coverage and scenarios. Financial
-                ratios describe individual companies.
+                Weights add allocation context. Company impact scenarios and
+                financial ratios work without portfolio weights.
               </p>
               <p>
                 Choose a reporting perspective to retrieve compatible SEC
@@ -992,46 +1004,6 @@ export default function DemoResults() {
               request={disclosureRequest}
               onEvidence={captureSources}
             />
-            {area === "followups" && !reportingLoading && (
-              <>
-                <div className={s.explanation}>
-                  <h3>The next questions are part of the result.</h3>
-                  <p>
-                    These checks were generated from the captured evidence on{" "}
-                    {day(reportingDemo?.captured_at)}. They point to missing
-                    coverage, reporting freshness, recent filings, or negative
-                    reported measures. They are research prompts, not investment
-                    ratings.
-                  </p>
-                  <p>
-                    {weighted
-                      ? "The selected hypothetical weights show how much allocation is affected by evidence gaps. Financial findings remain tied to the captured company facts."
-                      : "This view uses company counts. Switch to hypothetical or equal weights to see how allocation changes the evidence coverage."}
-                  </p>
-                </div>
-                <div className={s.followups}>
-                  {priorities.slice(0, 6).map((item: any) => (
-                    <article key={item.key}>
-                      <span className={s.eyebrow}>{item.kind}</span>
-                      <h3>{item.label}</h3>
-                      <p>{item.reason}</p>
-                      {item.url && (
-                        <a href={item.url} target="_blank" rel="noreferrer">
-                          Verify SEC evidence ↗
-                        </a>
-                      )}
-                    </article>
-                  ))}
-                </div>
-                <p className={s.tableHelp}>
-                  {priorities.length
-                    ? `Showing ${Math.min(6, priorities.length)} of ${priorities.length} captured review prompts. Open the full demo to inspect company evidence and refresh the portfolio research.`
-                    : "No review prompts were raised by these checks at capture time. This does not establish completeness or investment quality."}{" "}
-                  Open “What changed” for recent filing evidence and relevant
-                  CFTC market context. Refresh research to compare SEC captures.
-                </p>
-              </>
-            )}
           </ResearchWorkspace>
           {focusedRowId && rows.find((row: any) => row.id === focusedRowId) && (
             <CompanyFocus
