@@ -24,7 +24,7 @@ export function cftcPositionChange(history, weeks = 1) {
 }
 
 /** Preserve gaps and real time spacing rather than drawing across missing weeks. */
-export function cftcContextChart(points = []) {
+export function cftcContextChart(points = [], { maxGapDays = 7 } = {}) {
   const rows = points.filter(point => /^\d{4}-\d{2}-\d{2}$/.test(point.reportDate || '')).slice().sort((a, b) => a.reportDate.localeCompare(b.reportDate));
   const valid = rows.filter(point => finite(point.netPctOi));
   if (valid.length < 2) return null;
@@ -40,7 +40,7 @@ export function cftcContextChart(points = []) {
   let segment = '', previous = null;
   for (const point of rows) {
     if (!finite(point.netPctOi)) { if (segment) paths.push(segment); segment = ''; previous = null; continue; }
-    if (previous && Date.parse(point.reportDate) - Date.parse(previous) > 7 * 86400000) { if (segment) paths.push(segment); segment = ''; }
+    if (previous && Date.parse(point.reportDate) - Date.parse(previous) > maxGapDays * 86400000) { if (segment) paths.push(segment); segment = ''; }
     const px = x(point.reportDate), py = y(point.netPctOi);
     segment += `${segment ? ' L' : 'M'}${px.toFixed(2)},${py.toFixed(2)}`;
     dots.push({ x: px, y: py, date: point.reportDate, value: point.netPctOi });

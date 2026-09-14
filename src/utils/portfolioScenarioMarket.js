@@ -12,6 +12,11 @@ import {
 } from "./cftcContextAnalytics.js";
 
 const DAY = 86400000;
+// The official calendar lists November 4, 10, 18 and 25, 2025: consecutive
+// published report observations can be six or eight days apart. This tolerance
+// affects chart continuity and coverage; weekly changes still require exactly 7 days.
+// https://www.cftc.gov/MarketReports/CommitmentsofTraders/HistoricalViewable/index.htm
+const SCENARIO_REPORT_GAP_DAYS = 8;
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const date = (value) => typeof value === "string" && cftcDate(value) === value;
 const marketKey = (item) => `${item.family}:${item.contract}:${item.group}`;
@@ -222,7 +227,7 @@ export function scenarioMarketHistory(history, candidate, now = new Date()) {
     (point, index) =>
       index > 0 &&
       Date.parse(point.reportDate) - Date.parse(points[index - 1].reportDate) >
-        7 * DAY,
+        SCENARIO_REPORT_GAP_DAYS * DAY,
   );
   const current = byDate.get(latest) || null;
   const weekly = cftcPositionChange({
@@ -255,7 +260,7 @@ export function scenarioMarketHistory(history, candidate, now = new Date()) {
     reportDate: latest,
     ageDays,
     excluded,
-    chart: cftcContextChart(points),
+    chart: cftcContextChart(points, { maxGapDays: SCENARIO_REPORT_GAP_DAYS }),
     sourceUrl: history.source.url,
     marketPath: `/market?${query}`,
     incomplete:
