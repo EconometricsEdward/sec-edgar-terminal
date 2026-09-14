@@ -196,7 +196,7 @@ export default function PortfolioMarketConnections({
               downloadText(
                 "portfolio-market-connections.csv",
                 csvString(marketConnectionCsvRows(model)),
-                "text/csv;charset=utf-8",
+                "text/csv",
               );
               setNotice(
                 "Exported market connections, scan coverage and original SEC evidence.",
@@ -265,25 +265,25 @@ export default function PortfolioMarketConnections({
         <div>
           <span>Companies with filing links</span>
           <strong>
-            {model.coverage.linked}
+            {model.coverage.checked ? model.coverage.linked : "—"}
             <small> / {model.coverage.eligible}</small>
           </strong>
           <p>Unique SEC issuers, across all markets</p>
         </div>
         <div>
           <span>Markets found</span>
-          <strong>{model.allMarkets.length || (pending ? "—" : "0")}</strong>
+          <strong>{model.coverage.checked ? model.allMarkets.length : "—"}</strong>
           <p>Verified filing passages in the scanned companies</p>
         </div>
         <div>
           <span>Markets spanning sectors</span>
-          <strong>{model.crossSectorMarkets || (pending ? "—" : "0")}</strong>
+          <strong>{model.coverage.checked ? model.crossSectorMarkets : "—"}</strong>
           <p>Connections across two or more classified sectors</p>
         </div>
         {model.allocationAvailable && (
           <div>
             <span>Allocation in linked companies</span>
-            <strong>{number(model.coverage.linkedAllocationPct)}%</strong>
+            <strong>{model.coverage.checked ? `${number(model.coverage.linkedAllocationPct)}%` : "—"}</strong>
             <p>Each company counted once in this total</p>
           </div>
         )}
