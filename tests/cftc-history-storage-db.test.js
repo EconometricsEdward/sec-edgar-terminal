@@ -42,7 +42,7 @@ async function database() {
     await db.exec(await readFile(new URL(`../supabase/migrations/${name}`,import.meta.url),'utf8'));
   const legacy=packed({legacy:true});
   await rpc(db,'edgar_cache_put',[ns,...cacheArgs(legacy,id,'history')]);
-  await db.exec(await readFile(new URL('../supabase/migrations/20260914071303_edgar_cftc_history_preparation.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20260914073310_edgar_cftc_history_preparation.sql',import.meta.url),'utf8'));
   return db;
 }
 
