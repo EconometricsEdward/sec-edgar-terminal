@@ -70,6 +70,7 @@ export const RPC_PARAMETERS = Object.freeze({
   edgar_cache_get: ['p_family', 'p_type', 'p_ids'],
   edgar_cache_put: ['p_family', 'p_type', 'p_id', 'p_gzip_base64', 'p_raw_sha256', 'p_gzip_sha256', 'p_raw_bytes', 'p_ttl_seconds', 'p_if_hash', 'p_expires_at'],
   edgar_cache_status: [],
+  edgar_cftc_history_status: [],
   edgar_cache_maintenance: ['p_action', 'p_owner', 'p_state'],
   edgar_reserve_cache_generation: ['p_dataset', 'p_key', 'p_claim'],
   edgar_cache_put_fenced: ['p_dataset', 'p_key', 'p_claim', 'p_family', 'p_type', 'p_id', 'p_gzip_base64', 'p_raw_sha256', 'p_gzip_sha256', 'p_raw_bytes', 'p_ttl_seconds', 'p_if_hash', 'p_expires_at'],
@@ -109,7 +110,8 @@ function date(value) {
 }
 function validKey(dataset, key, job = false) {
   if (typeof key !== 'string' || key.length > 512) return false;
-  if (job) return (dataset === 'sec' && (key === 'financial-cohort-v1' || /^sec-coverage-v1:shard:(?:[0-2]\d|3[01])$/.test(key))) || (dataset === 'cftc' && key === 'refresh:tff-disaggregated');
+  if (job) return (dataset === 'sec' && (key === 'financial-cohort-v1' || /^sec-coverage-v1:shard:(?:[0-2]\d|3[01])$/.test(key)))
+    || (dataset === 'cftc' && (key === 'refresh:tff-disaggregated' || /^history-refresh:futures-only:(?:tff|disaggregated):shard:(?:[0-2]\d|3[01])$/.test(key)));
   if (dataset === 'sec') return SEC_KEY.test(key);
   if (dataset === 'financial') {
     if (key === 'research-market-overview-v1:latest') return true;
@@ -117,14 +119,20 @@ function validKey(dataset, key, job = false) {
     return !!match && !SOURCE_ONLY.has(match[1]);
   }
   if (dataset !== 'cftc') return false;
+  const raw = /^raw-history-v1:futures-only:(tff|disaggregated):([A-Z0-9+]{3,12}):(\d{4}-\d{2}-\d{2})$/.exec(key);
+  if (raw) return date(raw[3]);
   const parts = key.split(':');
   if (!has(GROUPS, parts[1])) return false;
   if (parts[0] === 'markets' && parts.length === 3) return parts[2] === 'latest' || date(parts[2]);
-  return parts[0] === 'history' && parts.length === 6 && /^[A-Z0-9]{6}$/.test(parts[2])
+  return parts[0] === 'history' && parts.length === 6 && /^[A-Z0-9+]{3,12}$/.test(parts[2])
     && GROUPS[parts[1]].includes(parts[3]) && date(parts[4]) && ['1y', '3y', '5y'].includes(parts[5]);
 }
 function jobKey(dataset, value) {
   if (typeof value !== 'string') return false;
+  if (dataset === 'cftc') {
+    const history = /^cftc-history-v1:(\d{4}-\d{2}-\d{2}):(tff|disaggregated):(?:[0-2]\d|3[01]):[a-f0-9]{16}$/.exec(value);
+    if (history) return date(history[1]);
+  }
   if (dataset === 'sec') {
     const coverage = /^sec-coverage-v1:(\d{4}-\d{2}-\d{2}):(?:[0-2]\d|3[01]):[a-zA-Z0-9_-]{1,64}$/.exec(value);
     if (coverage) return date(coverage[1]);
@@ -279,7 +287,14 @@ function validateRpc(name, params, nowMs) {
     if (!['sec', 'cftc'].includes(params.p_dataset)) reject('dataset_denied', 403);
     if ((name === 'edgar_enqueue_job' || params.p_job_key != null) && !jobKey(params.p_dataset, params.p_job_key)) reject('invalid_job_key');
   }
-  if (name === 'edgar_claim_job_prefix' && (params.p_dataset !== 'sec' || !['sec-financial-cohort-v1:', 'sec-coverage-v1:'].includes(params.p_prefix))) reject('invalid_job_prefix', 403);
+  if (name === 'edgar_claim_job_prefix' && !(params.p_dataset === 'sec' && ['sec-financial-cohort-v1:', 'sec-coverage-v1:'].includes(params.p_prefix)
+    || params.p_dataset === 'cftc' && params.p_prefix === 'cftc-history-v1:')) reject('invalid_job_prefix', 403);
+  if (name === 'edgar_enqueue_job' && params.p_dataset === 'cftc' && params.p_job_key.startsWith('cftc-history-v1:')) {
+    const parts = params.p_job_key.split(':');
+    if (params.p_key !== `history-refresh:futures-only:${parts[2]}:shard:${parts[3]}`) reject('invalid_job_resource', 403);
+  }
+  if (name === 'edgar_enqueue_job' && params.p_dataset === 'cftc' && !params.p_job_key.startsWith('cftc-history-v1:')
+    && params.p_key !== 'refresh:tff-disaggregated') reject('invalid_job_resource', 403);
   if (name === 'edgar_enqueue_coverage_jobs' || name === 'edgar_enqueue_current_coverage_jobs') {
     if (!date(params.p_cycle) || (name === 'edgar_enqueue_coverage_jobs' && (typeof params.p_version !== 'string' || !/^[a-f0-9]{16}$/.test(params.p_version)))) reject('invalid_coverage_cycle');
     if (params.p_shards != null && (!Array.isArray(params.p_shards) || params.p_shards.length < 1 || params.p_shards.length > 32
@@ -297,6 +312,7 @@ function validateRpc(name, params, nowMs) {
   if (name === 'edgar_cache_put_fenced') {
     const binding = disposableCacheFencePolicy(params.p_type, params.p_key, params.p_id);
     if (!binding || binding.dataset !== params.p_dataset) reject('cache_fence_denied', 403);
+    if (params.p_key.startsWith('raw-history-v1:') && params.p_family !== 'cftc-history') reject('cache_fence_denied', 403);
   }
   if (['edgar_cache_get', 'edgar_cache_put', 'edgar_cache_put_fenced'].includes(name)) {
     const ids = name === 'edgar_cache_get' ? params.p_ids : [params.p_id];
@@ -304,7 +320,11 @@ function validateRpc(name, params, nowMs) {
     let policy;
     for (const id of ids) {
       policy = disposableCachePolicy(params.p_type, id);
-      if (!policy || policy.id !== id || policy.family !== params.p_family) reject('cache_resource_denied', 403);
+      // Old production functions can drain after this gateway deploy. Retained
+      // raw/history IDs keep their prior bounded family until those callers end.
+      const legacyCftcFamily = policy?.family === 'cftc-history' && params.p_family === 'history'
+        && params.p_type === 'edgar.cftc-positioning.v1:production';
+      if (!policy || policy.id !== id || policy.family !== params.p_family && !legacyCftcFamily) reject('cache_resource_denied', 403);
     }
     if (name !== 'edgar_cache_get') {
       if (has(params, 'p_expires_at')) timestamp(params.p_expires_at, true);

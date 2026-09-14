@@ -31,12 +31,15 @@ The initial compressed-payload budget is **512 MiB**, divided into independent f
 | --- | ---: | --- |
 | Global snapshots | 64 MiB | Expire old entries; preserve unexpired entries |
 | Company and refresh checkpoints | 96 MiB | Expire old entries; preserve unexpired entries |
-| On-demand research | 256 MiB | Expire old entries, then bounded eviction by approximate recent use |
+| On-demand research | 160 MiB | Expire old entries, then bounded eviction by approximate recent use |
 | Document caches | 64 MiB | Expire old entries, then bounded eviction by approximate recent use |
 | Reference directories and memberships | 16 MiB | Expire old entries; preserve unexpired entries |
-| Cumulative history and CFTC cache records | 16 MiB | Expire old entries; preserve unexpired entries |
+| Cumulative history and CFTC market snapshots | 16 MiB | Expire old entries; preserve unexpired entries |
+| CFTC raw and derived contract histories | 96 MiB | Expire old entries, then bounded eviction by approximate recent use |
 
 These are application payload budgets, not physical database disk ceilings. Postgres tables, indexes, old row versions, WAL and backups have additional costs. Private operational monitoring continues to measure the actual database footprint. Quota accounting and replacement are atomic; an oversized or unadmittable value does not delete useful existing entries. Access popularity is updated at most hourly. A bounded daily SQL job removes expired cache entries.
+
+CFTC contract histories use their own 10,000-row family with a maximum 16-day serving lifetime. A raw-history cache miss can read the corresponding immutable source document; derived trader-group and window results reuse that source. Cache eviction does not delete the historical evidence. Existing CFTC entries in the former shared history family keep their original expiry during rollout; they are not bulk-moved while older deployments could still read them. See [broader CFTC preparation](cftc-history-preparation.md).
 
 Each cache value is limited to 6 MiB compressed and 32 MiB decoded. The larger gateway body limit applies only to the new cache operations; existing durable-source, publication and scheduling capabilities retain their own restrictions. Unknown key types, coordination records and credentials are excluded from the data-cache gateway. Source CIK checks and gzip length/hash checks prevent cross-company or partial results from entering the research path.
 

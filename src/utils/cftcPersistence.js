@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import { beginDatasetWrite, checkpointDataStoreJob, claimDataStoreJob, enqueueDataStoreJob, finishDataStoreJob, getDataStoreMode, publishDataset, readDataset, readDatasetSource } from './dataStore.js';
-import { CFTC_CALCULATION_VERSION, CFTC_FAMILIES, CFTC_REPORT_BASIS, CFTC_SCHEMA_VERSION } from './cftc.js';
+import { beginDatasetWrite, checkpointDataStoreJob, claimDataStoreJob, enqueueDataStoreJob, finishDataStoreJob, getDataStoreMode, publishDataset, readDataset, readDatasetSource, releaseDatasetWrite } from './dataStore.js';
+import { CFTC_CALCULATION_VERSION, CFTC_FAMILIES, CFTC_REPORT_BASIS, CFTC_SCHEMA_VERSION, cftcDate, isCftcContractCode, isCftcFamily } from './cftc.js';
 
 const SOURCE_SCHEMA = 'edgar.cftc-source-bundle.v1';
 const MAX_AGE_MS = 15 * 86400_000;
 const MAX_SOURCE_BYTES = 12 * 1024 * 1024;
 const MAX_COMPARISONS_PER_HOUR = 8;
 const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
+const CATALOG_CACHE = Object.freeze({ entries: 2, bytes: 1024 * 1024, entryBytes: 512 * 1024, ttlMs: 60_000, pending: 2 });
 
 function persistenceError(code) {
   // Provider exceptions can contain request details; never expose those through public routes.
@@ -21,6 +22,28 @@ function canonical(value) {
 
 function json(value) { return JSON.stringify(canonical(value)); }
 function digest(value) { return createHash('sha256').update(json(value)).digest('hex'); }
+
+function catalogSourceKey(family, source) {
+  const rawBytes = Number(source?.rawBytes), storedBytes = Number(source?.storedBytes);
+  if (!/^[a-f0-9]{64}$/.test(source?.contentHash || '')
+    || typeof source.objectPath !== 'string'
+    || !new RegExp(`^[a-z0-9_-]{1,48}/cftc/source/${source.contentHash}\\.json\\.gz$`).test(source.objectPath)
+    || !Number.isSafeInteger(rawBytes) || rawBytes <= 0 || rawBytes > MAX_SOURCE_BYTES
+    || !Number.isSafeInteger(storedBytes) || storedBytes <= 0 || storedBytes > 6 * 1024 * 1024) return null;
+  return JSON.stringify([family, source.objectPath, source.contentHash, rawBytes, storedBytes]);
+}
+
+function validCatalogSourceRows(rows, family) {
+  const fields = new Set(CFTC_FAMILIES[family].fields);
+  return Array.isArray(rows) && rows.length <= 1000 && rows.every(row => row && typeof row === 'object' && !Array.isArray(row)
+    && Object.entries(row).every(([field, value]) => fields.has(field)
+      && (value == null || typeof value === 'number' && Number.isFinite(value) || typeof value === 'string' && Buffer.byteLength(value) <= 4096)));
+}
+
+export function cftcContractRawKey({ family, code, throughDate }) {
+  if (!isCftcFamily(family) || !isCftcContractCode(code) || cftcDate(throughDate) !== throughDate) throw persistenceError('CFTC_DURABLE_VALIDATION_FAILED');
+  return `raw-history-v1:futures-only:${family}:${code}:${throughDate}`;
+}
 
 export function cftcSnapshotIdentity(key, envelope) {
   const { retrieved_at: _retrieved, freshness: _freshness, cache_publication: _publication,
@@ -50,13 +73,59 @@ export function cftcSourceBundle(rawHistories = [], latestRows = []) {
 /** Only the CFTC integration calls this adapter; no generic Redis namespace migration. */
 export function createCftcPersistence({
   mode = () => getDataStoreMode('cftc'), begin = beginDatasetWrite,
-  read = readDataset, publish = publishDataset, readSource = readDatasetSource,
+  read = readDataset, publish = publishDataset, readSource = readDatasetSource, release = releaseDatasetWrite,
   enqueueJob = enqueueDataStoreJob, claimJob = claimDataStoreJob, finishJob = finishDataStoreJob, checkpointJob = checkpointDataStoreJob,
   now = () => Date.now(),
 } = {}) {
   let comparisonHour = -1, comparisons = 0;
+  // Cache only verified immutable catalog rows. The authorized current head and
+  // its freshness are checked separately on every read, including cache hits.
+  const catalogs = new Map(), pendingCatalogs = new Map();
+  let catalogBytes = 0;
   const counters = { writes: 0, write_failures: 0, read_failures: 0, shadow_matches: 0, shadow_mismatches: 0, shadow_revision_skips: 0 };
   const increment = key => { counters[key] = Math.min(MAX_COUNTER, counters[key] + 1); };
+
+  function removeCatalog(key) {
+    const entry = catalogs.get(key);
+    if (entry) { catalogBytes -= entry.bytes; catalogs.delete(key); }
+  }
+
+  function expireCatalogs() {
+    for (const [key, entry] of catalogs) if (entry.until <= now()) removeCatalog(key);
+  }
+
+  async function catalogRows(record, family) {
+    const descriptor = record._source ? { ...record._source } : null;
+    const key = catalogSourceKey(family, descriptor);
+    expireCatalogs();
+    const cached = key && catalogs.get(key);
+    if (cached) {
+      catalogs.delete(key); catalogs.set(key, cached);
+      return cached.rows;
+    }
+    if (key && pendingCatalogs.has(key)) return pendingCatalogs.get(key);
+    const task = (async () => {
+      const bytes = await readSource(key ? { ...record, _source: descriptor } : record);
+      if (!bytes || bytes.byteLength > MAX_SOURCE_BYTES) return null;
+      if (key && (bytes.byteLength !== Number(descriptor.rawBytes)
+        || createHash('sha256').update(bytes).digest('hex') !== descriptor.contentHash)) return null;
+      const source = JSON.parse(Buffer.from(bytes).toString('utf8'));
+      if (source?.schema_version !== SOURCE_SCHEMA || !validCatalogSourceRows(source.latestRows, family)) return null;
+      const rows = Object.freeze(source.latestRows.map(row => Object.freeze(row)));
+      const rowBytes = Buffer.byteLength(JSON.stringify(rows));
+      if (key && rowBytes <= CATALOG_CACHE.entryBytes) {
+        expireCatalogs(); removeCatalog(key);
+        while (catalogs.size >= CATALOG_CACHE.entries || catalogBytes + rowBytes > CATALOG_CACHE.bytes) removeCatalog(catalogs.keys().next().value);
+        catalogs.set(key, { rows, bytes: rowBytes, until: now() + CATALOG_CACHE.ttlMs });
+        catalogBytes += rowBytes;
+      }
+      return rows;
+    })();
+    const tracked = key && pendingCatalogs.size < CATALOG_CACHE.pending;
+    if (tracked) pendingCatalogs.set(key, task);
+    try { return await task; }
+    finally { if (tracked && pendingCatalogs.get(key) === task) pendingCatalogs.delete(key); }
+  }
 
   async function reserve(key) {
     if (mode() === 'off') return null;
@@ -96,6 +165,79 @@ export function createCftcPersistence({
       if (!stable || !times) return null;
       const envelope = { ...stable, savedAt: validatedAt(record, times.savedAt, now()), retrievedAt: times.retrievedAt };
       return validate?.(envelope) ? envelope : null;
+    } catch { increment('read_failures'); return null; }
+  }
+
+  /** One contract archive is shared across participant groups and chart windows. */
+  async function reserveContractRaw(selection) {
+    return reserve(cftcContractRawKey(selection));
+  }
+
+  async function releaseContractRaw(selection, claim) {
+    if (mode() === 'off' || !claim) return false;
+    try { return await release('cftc', cftcContractRawKey(selection), claim); }
+    catch { return false; }
+  }
+
+  async function contractRaw({ family, code, throughDate, validate, pointer = 'current' }) {
+    if (mode() !== 'supabase') return null;
+    try {
+      const record = await read('cftc', cftcContractRawKey({ family, code, throughDate }), { allowStale: true, pointer });
+      if (!record || record.metadata?.reportPeriod !== throughDate || record.metadata?.reportFamily !== family || record.metadata?.reportBasis !== CFTC_REPORT_BASIS || record.metadata?.entityId !== code) return null;
+      const envelope = { ...record.payload, savedAt: validatedAt(record, record.metadata.originalSavedAt, now()), retrievedAt: record.metadata.originalRetrievedAt };
+      return validate?.(envelope) ? envelope : null;
+    } catch { increment('read_failures'); return null; }
+  }
+
+  async function saveContractRaw({ claim, envelope, validate, promoteLastGood = false }) {
+    if (mode() === 'off' || !claim) return null;
+    try {
+      if (!validate?.(envelope) || envelope?.report_basis !== CFTC_REPORT_BASIS) throw persistenceError('CFTC_DURABLE_VALIDATION_FAILED');
+      const { family, code, through_date: throughDate, savedAt, retrievedAt } = envelope;
+      const { savedAt: _savedAt, retrievedAt: _retrievedAt, ...stable } = envelope;
+      const key = cftcContractRawKey({ family, code, throughDate });
+      const bytes = json(stable);
+      if (Buffer.byteLength(bytes) > MAX_SOURCE_BYTES) throw persistenceError('CFTC_DURABLE_SOURCE_TOO_LARGE');
+      const record = await publish({ dataset: 'cftc', key, claim, kind: 'source-document', payload: stable,
+        identityInputs: { key, content: stable }, promoteLastGood,
+        metadata: { sourceUrl: envelope.sourceUrl, sourceId: CFTC_FAMILIES[family].datasetId,
+          entityId: code, reportPeriod: throughDate, fetchedAt: retrievedAt, publishedAt: null,
+          revalidatedAt: savedAt, expiresAt: new Date(Date.parse(savedAt) + 26 * 3600_000).toISOString(),
+          originalSavedAt: savedAt, originalRetrievedAt: retrievedAt,
+          parserVersion: envelope.schema_version, calculationVersion: CFTC_CALCULATION_VERSION,
+          reportBasis: CFTC_REPORT_BASIS, reportFamily: family },
+        source: { bytes, url: envelope.sourceUrl, fetchedAt: retrievedAt, contentType: 'application/json' },
+      });
+      if (!record) throw persistenceError('CFTC_DURABLE_PUBLICATION_FAILED');
+      increment('writes');
+      return record;
+    } catch {
+      increment('write_failures');
+      if (mode() === 'supabase') throw persistenceError('CFTC_DURABLE_PUBLICATION_FAILED');
+      return null;
+    }
+  }
+
+  /** The complete current catalog's source observations, including non-launch contracts. */
+  async function catalogRaw(family, throughDate = null) {
+    if (mode() !== 'supabase' || !isCftcFamily(family)) return null;
+    try {
+      const record = await read('cftc', `markets:${family}:latest`, { allowStale: true });
+      const response = record?.payload?.response;
+      const savedAt = validatedAt(record, record?.payload?.savedAt, now());
+      const age = now() - Date.parse(savedAt);
+      if (!record || response?.report_family !== family || response.report_basis !== CFTC_REPORT_BASIS
+        || response.schema_version !== CFTC_SCHEMA_VERSION || response.calculation_version !== CFTC_CALCULATION_VERSION
+        || record.metadata?.reportFamily !== family || record.metadata?.reportBasis !== CFTC_REPORT_BASIS
+        || record.metadata?.reportPeriod !== response.report_date
+        || cftcDate(response.report_date) !== response.report_date || response.report_date > new Date(now()).toISOString().slice(0, 10)
+        || throughDate && response.report_date !== throughDate
+        || age < 0 || age >= MAX_AGE_MS || !Number.isFinite(age)) return null;
+      const rows = await catalogRows(record, family);
+      if (!rows) return null;
+      return { family, report_basis: CFTC_REPORT_BASIS, report_date: response.report_date,
+        savedAt, retrievedAt: response.retrieved_at, rows,
+        contentHash: record.metadata?.contentHash, generation: record.metadata?.generation };
     } catch { increment('read_failures'); return null; }
   }
 
@@ -189,8 +331,9 @@ export function createCftcPersistence({
     } catch { throw persistenceError('CFTC_DURABLE_JOB_UNAVAILABLE'); }
   }
 
-  return { mode, reserve, prepared, raw, save, startRefreshJob, completeRefreshJob, checkpointRefreshJob,
-    status: () => ({ mode: mode(), scope: 'current-process', comparison_limit_per_hour: MAX_COMPARISONS_PER_HOUR, ...counters }),
+  return { mode, reserve, prepared, raw, save, reserveContractRaw, releaseContractRaw, contractRaw, saveContractRaw, catalogRaw, startRefreshJob, completeRefreshJob, checkpointRefreshJob,
+    status: () => ({ mode: mode(), scope: 'current-process', comparison_limit_per_hour: MAX_COMPARISONS_PER_HOUR, ...counters,
+      catalog_cache: { entries: catalogs.size, bytes: catalogBytes, pending: pendingCatalogs.size, limits: CATALOG_CACHE } }),
   };
 }
 

@@ -5,6 +5,8 @@ import { runSecCoverageJob } from '../../../../utils/secCoverageJobs.js';
 import { maintainSecCoverageMembership } from '../../../../utils/secCoverageMaintenance.js';
 import { maintainRedisCache } from '../../../../utils/redisMaintenance.js';
 import { maintainProviderRetirement } from '../../../../utils/providerRetirementMaintenance.js';
+import { runCftcHistoryPreparation } from '../../../../utils/cftcHistoryPreparation.js';
+import { isCftcEnabled } from '../../../../utils/cftcFeature.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -64,8 +66,23 @@ export async function GET(request) {
         }
       } else providerRetirement = { status: 'deferred', reason: 'research-budget' };
     }
+    // SEC refresh always runs first. CFTC preparation has its own database
+    // enablement gate, fenced jobs and source pacing, and uses only spare time.
+    // A failed CFTC batch must not undo an acknowledged SEC refresh.
+    const cftcPreparationEnabled = isCftcEnabled() && getDataStoreMode('cftc') === 'supabase';
+    let cftcHistoryPreparation = cftcPreparationEnabled
+      ? { status: 'deferred', reason: 'research-budget' } : { status: 'disabled' };
+    if (cftcPreparationEnabled
+      && !controller.signal.aborted && startedAt + 225_000 - Date.now() >= 45_000) {
+      try {
+        cftcHistoryPreparation = await runCftcHistoryPreparation({ signal: controller.signal,
+          deadline: Math.min(startedAt + 225_000, Date.now() + 180_000), maxContracts: 12 });
+      } catch {
+        cftcHistoryPreparation = { status: 'unavailable', code: 'CFTC_HISTORY_PREPARATION_UNAVAILABLE' };
+      }
+    }
     return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', ...result,
-      membership, cacheMaintenance, providerRetirement,
+      membership, cacheMaintenance, providerRetirement, cftcHistoryPreparation,
       started_at: new Date(startedAt).toISOString(), duration_ms: Date.now() - startedAt }, { headers });
   } catch {
     return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', status: 'failed', code: 'SEC_COVERAGE_JOB_FAILED' }, { status: 503, headers });

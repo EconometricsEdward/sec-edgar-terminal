@@ -1,19 +1,20 @@
 /** A bounded operator summary; migration keys and payloads stay private. */
-const families = new Set(['snapshot', 'checkpoint', 'research', 'document', 'reference', 'history']);
+const families = new Set(['snapshot', 'checkpoint', 'research', 'document', 'reference', 'history', 'cftc-history']);
 const numericFields = ['payloadBytes', 'rows', 'maxPayloadBytes', 'maxRows', 'maxTtlSeconds',
   'puts', 'deduplicatedPuts', 'evictedRows', 'expiredRows', 'expiredPendingRows'];
 const number = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const timestamp = value => typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value)) ? value : null;
 
 export function summarizeDisposableCache(value, maintenanceSummary = null) {
-  if (value?.schema !== 1 || !Array.isArray(value.families) || !timestamp(value.observedAt)) {
+  if (value?.schema !== 1 || !Array.isArray(value.families) || value.families.length !== families.size
+    || value.families.some(group => !families.has(group?.family)) || !timestamp(value.observedAt)) {
     return { status: 'unavailable' };
   }
-  const groups = value.families.filter(group => families.has(group?.family)).slice(0, 6).map(group => ({
+  const groups = value.families.map(group => ({
     family: group.family, ...Object.fromEntries(numericFields.map(key => [key, number(group[key])])),
     evictLive: group.evictLive === true, oldestExpiresAt: timestamp(group.oldestExpiresAt),
   }));
-  if (groups.length !== 6 || new Set(groups.map(group => group.family)).size !== 6
+  if (new Set(groups.map(group => group.family)).size !== families.size
     || groups.some(group => numericFields.some(key => group[key] === null))
     || ['payloadBytes', 'rows', 'maxPayloadBytes'].some(key => number(value[key]) === null)) {
     return { status: 'unavailable' };

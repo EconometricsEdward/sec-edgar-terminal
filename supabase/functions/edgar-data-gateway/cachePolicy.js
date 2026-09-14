@@ -9,6 +9,7 @@ export const DISPOSABLE_CACHE_LIMITS = Object.freeze({
 export const DISPOSABLE_CACHE_TTLS = Object.freeze({
   snapshot: 7 * 86400, checkpoint: 14 * 86400, research: 25 * 3600,
   document: 30 * 86400, reference: 90 * 86400, history: 90 * 86400,
+  'cftc-history': 16 * 86400,
 });
 const CIK = '(?!0000000000)[0-9]{10}';
 const TICKER = '[A-Z0-9][A-Z0-9.-]{0,9}';
@@ -76,8 +77,8 @@ export function disposableCachePolicy(type, originalId) {
   else if (type === 'edgar.cftc-positioning.v1:production') {
     if (id === 'REFRESH-CHECKPOINT') family = 'checkpoint';
     else if (re(`MARKETS(?:-LAST-GOOD)?:(?:TFF|DISAGGREGATED):(?:LATEST|${DATE})`).test(id)) family = 'history';
-    else if (re(`RAW-HISTORY:(?:TFF|DISAGGREGATED):[A-Z0-9+]{3,12}:${DATE}`).test(id)) family = 'history';
-    else if (re(`HISTORY(?:-LAST-GOOD)?:(?:TFF|DISAGGREGATED):[A-Z0-9+]{3,12}:(?:DEALER|ASSET-MANAGER|LEVERAGED-FUNDS|OTHER-REPORTABLES|NON-REPORTABLES|PRODUCER-MERCHANT|SWAP-DEALERS|MANAGED-MONEY):${DATE}:(?:1Y|3Y|5Y)`).test(id)) family = 'history';
+    else if (re(`RAW-HISTORY:(?:TFF|DISAGGREGATED):[A-Z0-9+]{3,12}:${DATE}`).test(id)) family = 'cftc-history';
+    else if (re(`HISTORY(?:-LAST-GOOD)?:(?:TFF|DISAGGREGATED):[A-Z0-9+]{3,12}:(?:DEALER|ASSET-MANAGER|LEVERAGED-FUNDS|OTHER-REPORTABLES|NON-REPORTABLES|PRODUCER-MERCHANT|SWAP-DEALERS|MANAGED-MONEY):${DATE}:(?:1Y|3Y|5Y)`).test(id)) family = 'cftc-history';
   }
   return family ? Object.freeze({ family, type, id, maxTtlSeconds: DISPOSABLE_CACHE_TTLS[family], ...(sourceCik ? { sourceCik } : {}) }) : null;
 }
@@ -91,6 +92,11 @@ export function disposableCacheFencePolicy(type, fenceId, originalId = null) {
   if (id !== null && !disposableCachePolicy(type, id)) return null;
   let dataset = null;
   if (type === 'edgar.cftc-positioning.v1:production') {
+    const rawSource = /^raw-history-v1:futures-only:(tff|disaggregated):([A-Z0-9+]{3,12}):(\d{4}-\d{2}-\d{2})$/.exec(fenceId);
+    if (rawSource) {
+      if (id !== null && id !== `RAW-HISTORY:${rawSource[1].toUpperCase()}:${rawSource[2]}:${rawSource[3]}`) return null;
+      return Object.freeze({ dataset: 'cftc', key: fenceId, type, ...(id === null ? {} : { id }) });
+    }
     const market = /^markets:(tff|disaggregated):(latest|\d{4}-\d{2}-\d{2})$/.exec(fenceId);
     const history = /^history:(tff|disaggregated):([A-Z0-9+]{3,12}):([a-z-]{3,32}):(\d{4}-\d{2}-\d{2}):(1y|3y|5y)$/.exec(fenceId);
     const groups = { tff: ['dealer', 'asset-manager', 'leveraged-funds', 'other-reportables', 'non-reportables'],
