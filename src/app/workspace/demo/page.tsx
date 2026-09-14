@@ -3,15 +3,15 @@ import DemoResults from "./DemoResults";
 import s from "./demo.module.css";
 
 export const metadata = buildPageMetadata({
-  title: "Hypothetical Weighted Portfolio Demo",
+  title: "S&P 500 Coverage Portfolio Demo",
   description:
-    "Explore 100 companies with hypothetical weights totaling 100%. Compare concentration, weighted evidence coverage and scenarios using captured SEC research, then make your own copy.",
+    "Explore 100 companies from EDGAR Terminal's active S&P 500 coverage list with hypothetical weights. Compare concentration, evidence coverage, recent SEC research and scenarios, then make your own copy.",
   path: "/workspace/demo",
 });
 
 export default function PortfolioDemoPage() {
   return (
-    <div className={s.page} data-research-workspace>
+    <div className={s.page} data-research-workspace data-demo-universe="sp500-coverage">
       <DemoResults />
     </div>
   );
