@@ -216,6 +216,49 @@
   gap: 24px;
   min-width: 0;
 }
+.concentrationBody {
+  display: grid;
+  gap: 1.5rem;
+  min-width: 0;
+}
+.concentrationBody[hidden] {
+  display: none;
+}
+.concentrationModes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+.concentrationModes button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 42px;
+  padding: 0.65rem 0.95rem;
+  border: 1px solid #324158;
+  border-radius: 9px;
+  background: #111c2b;
+  color: #acbdd0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.concentrationModes button[aria-pressed="true"] {
+  color: #f2cd73;
+  border-color: #a68b48;
+  background: #d9b45513;
+}
+.concentrationModes button span {
+  color: #85c3b5;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  padding-left: 0.35rem;
+}
+.concentrationModes button:focus-visible {
+  outline: 2px solid #f2cd73;
+  outline-offset: 3px;
+}
 .sectionHeading {
   display: flex;
   align-items: flex-start;
