@@ -71,11 +71,8 @@ export default function ResearchWorkspace({
       label: "Evidence",
       items: [
         ...evidence,
-        [
-          demo ? "followups" : "changes",
-          demo ? "Research prompts" : "What changed",
-          demo ? Sparkles : History,
-        ] as const,
+        ["changes", "What changed", History] as const,
+        ...(demo ? [["followups", "Research prompts", Sparkles] as const] : []),
       ],
     },
     ...(!demo

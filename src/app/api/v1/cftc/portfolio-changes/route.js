@@ -7,11 +7,13 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 function invalid(message) {
-  return Object.assign(new Error(message), { status: 400, code: 'INVALID_PORTFOLIO_CFTC_REQUEST' });
+  throw Object.assign(new Error(message), { status: 400, code: 'INVALID_PORTFOLIO_CFTC_REQUEST' });
 }
 
 async function readRequest(request) {
-  const body = await request.json();
+  let body;
+  try { body = await request.json(); }
+  catch { invalid('Use a valid JSON request body.'); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) invalid('Use a JSON request body.');
   if (!Object.keys(body).every(key => ['companies', 'days'].includes(key))) invalid('The request contains an unsupported field.');
   if (!Array.isArray(body.companies) || body.companies.length < 1 || body.companies.length > 100)
