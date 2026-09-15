@@ -27,13 +27,17 @@ export const FUND_WORKSPACE_DEFAULTS = {
   changeScope: "all",
   changeQuery: "",
   board: "",
+  managerCik: "",
+  managerPeriod: "",
+  managerView: "overview",
 };
 export const validFundTicker = (ticker) =>
-  typeof ticker === "string" && /^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(ticker);
+  typeof ticker === "string" && /^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(ticker) && !/^\d+$/.test(ticker);
 const accession = (value) =>
   typeof value === "string" && /^\d{10}-\d{2}-\d{6}$/.test(value);
 const choices = {
-  view: ["discover", "security", "compare", "allocation", "changes", "boards"],
+  view: ["discover", "security", "compare", "allocation", "changes", "boards", "13f"],
+  managerView: ["overview", "holdings", "changes", "filings"],
   category: [
     "All funds",
     "US equity",
@@ -101,11 +105,22 @@ export function normalizeFundWorkspaceSettings(input = {}) {
     /^[A-Za-z0-9_-]{1,100}$/.test(source.board)
       ? source.board
       : "";
+  const cik = typeof source.managerCik === "string" ? source.managerCik.trim() : "";
+  out.managerCik = /^\d{1,10}$/.test(cik) && Number(cik) > 0 ? cik.padStart(10, "0") : "";
+  const period = typeof source.managerPeriod === "string" ? source.managerPeriod : "";
+  out.managerPeriod = out.managerCik && /^\d{4}-(?:03-31|06-30|09-30|12-31)$/.test(period) ? period : "";
+  if (!out.managerCik) out.managerView = "overview";
   return out;
 }
 export function readFundWorkspaceSettings(search) {
   const p = new URLSearchParams(search),
     input = Object.fromEntries(p);
+  if (["view", "managerCik", "managerPeriod", "managerView"].some(key => p.getAll(key).length > 1)) {
+    input.managerCik = "";
+    input.managerPeriod = "";
+    input.managerView = "overview";
+    if (p.getAll("view").length > 1) input.view = "discover";
+  }
   input.query = p.get("q") ?? p.get("query") ?? "";
   input.tickers = (p.get("tickers") || p.get("compare") || "").split(",");
   for (const key of ["reportMap", "allocations"]) {

@@ -350,6 +350,33 @@
   width: 285px;
   flex-shrink: 0;
 }
+.managerResearch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px;
+  margin-bottom: 24px;
+  border: 1px solid var(--filings-line);
+  border-left: 3px solid var(--filings-accent);
+  border-radius: 12px;
+  background: linear-gradient(115deg, var(--filings-soft), var(--filings-panel));
+}
+.managerResearch > div { flex: 1 1 300px; }
+.managerResearch h2 { margin-bottom: 7px; }
+.managerResearch .eyebrow { margin-bottom: 7px !important; }
+.managerResearch > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 15px;
+  border: 1px solid var(--filings-accent);
+  border-radius: 8px;
+  color: var(--filings-accent);
+  font-size: 12px;
+  font-weight: 750;
+}
 .summaryStrip {
   display: grid;
   grid-template-columns: 1.15fr 1.1fr 0.85fr 0.8fr;

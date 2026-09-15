@@ -44,6 +44,7 @@ const FundChanges = dynamic(() => import("./FundChanges"), { loading });
 const FundResearchBoards = dynamic(() => import("./FundResearchBoards"), {
   loading,
 });
+const ThirteenFWorkspace = dynamic(() => import("./ThirteenFWorkspace"), { loading });
 const views = [
   ["discover", "Discover & screen"],
   ["security", "Find a security"],
@@ -256,6 +257,24 @@ export default function FundsWorkspace() {
       `${ticker} added to your comparison selection with the report shown.`,
     );
   }
+  const sourceSwitch = (
+    <nav className={s.sourceSwitch} aria-label="Portfolio reporting source">
+      <button type="button" aria-pressed={settings.view !== "13f"} onClick={() => openView("discover")}>
+        <span>Fund portfolios <small>N-PORT</small></span>
+        <span>Mutual funds & ETFs</span>
+      </button>
+      <button type="button" aria-pressed={settings.view === "13f"} onClick={() => openView("13f")}>
+        <span>Institutional managers <small>13F</small></span>
+        <span>Holdings, concentration & quarterly changes</span>
+      </button>
+    </nav>
+  );
+  if (settings.view === "13f") return (
+    <div className={`${base.page} ${s.workspace}`}>
+      {sourceSwitch}
+      <ThirteenFWorkspace settings={settings} onPatch={patch} />
+    </div>
+  );
   const panels: any = {
     discover: (
       <>
@@ -368,6 +387,7 @@ export default function FundsWorkspace() {
   };
   return (
     <div className={`${base.page} ${s.workspace}`}>
+      {sourceSwitch}
       <header className={s.hero} hidden={settings.view === "security"}>
         <div>
           <p className={s.eyebrow}>

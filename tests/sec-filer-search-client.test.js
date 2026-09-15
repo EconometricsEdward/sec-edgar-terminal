@@ -34,7 +34,8 @@ test("filer results retain separate legal entities and never silently choose a p
   assert.equal(exactFilerMatch(manager.name, [manager], { warning: "Incomplete" }), null);
   const rows = mergeFilerSuggestions([{ ticker: "D1 CAPITAL", type: "topic" }], [manager, offshore]);
   assert.deepEqual(rows.map(row => row.type), ["filer", "filer", "topic"]);
-  assert.equal(rows[0].path, "/filings/0001747057");
+  assert.equal(rows[0].path, "/fund?view=13f&managerCik=0001747057");
+  assert.equal(rows[1].path, "/filings/0001750024");
   assert.equal(rows[0].isFund, undefined);
   const apple = { ticker: "AAPL", cik: "0000320193", name: "Apple Inc.", type: "company" };
   assert.equal(mergeFilerSuggestions([apple], [{ cik: apple.cik, name: apple.name, formTypes: [] }]).length, 1);

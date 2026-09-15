@@ -38,7 +38,7 @@ import { isCftcPositioningPath } from "../utils/marketResearch.js";
 import { MAX_COMPARE_COMPANIES } from "../utils/compareLimits.js";
 import { tickerDirectoryCoverage } from "../utils/tickerMapLoader.js";
 import { useSecFilerSearch } from "../utils/useSecFilerSearch.js";
-import { filerCik, isTickerComparison, mergeFilerSuggestions, exactFilerMatch } from "../utils/secFilerSearch.js";
+import { filerCik, isTickerComparison, mergeFilerSuggestions, exactFilerMatch, hasThirteenFHoldings, secFilerResearchPath } from "../utils/secFilerSearch.js";
 import { DISCLOSURE_TOPIC_SHORTCUTS } from "../utils/searchRouter.js";
 import styles from "./site/GlobalSearch.module.css";
 
@@ -215,7 +215,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
     if (!isCompare && !exactTicker && !explicitTopic && !filerCik(input) && !/^\d+$/.test(input.trim())) {
       setOpen(true);
       const exact = exactFilerMatch(input, filers.results, filers);
-      if (exact) navigate(`/filings/${exact.cik}`, exact.name);
+      if (exact) navigate(secFilerResearchPath(exact), exact.name);
       else if (filers.status === "loading") setError("");
       else if (filers.status === "error") setError("SEC filer-name search is unavailable. Retry it or enter a CIK.");
       else setError(suggestions.some(item => item.type !== "topic")
@@ -424,7 +424,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
                 ? ArrowRight
                 : !input.trim()
                   ? Clock
-                  : item.type === "fund"
+                  : item.type === "fund" || item.type === "filer" && hasThirteenFHoldings(item)
                     ? Wallet
                     : item.type === "topic"
                       ? FileSearch
@@ -438,7 +438,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
                 ? item.label
                 : !input.trim()
                   ? item.path
-                  : item.type === "filer" ? `CIK ${item.cik} · SEC filings${item.formTypes.some(form => /^13F/.test(form)) ? " · 13F reports" : ""}` : item.name;
+                  : item.type === "filer" ? `CIK ${item.cik} · ${hasThirteenFHoldings(item) ? "Explore reported holdings in Funds" : "SEC filings"}` : item.name;
               return (
                 <button
                   id={`${listId}-${index}`}
@@ -461,7 +461,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
                       {item.type === "topic"
                         ? "Topic"
                         : item.type === "filer"
-                          ? "SEC filer"
+                          ? hasThirteenFHoldings(item) ? "13F holdings" : "SEC filer"
                         : item.type === "fund"
                           ? "Fund"
                           : "Company"}

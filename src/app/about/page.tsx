@@ -113,7 +113,9 @@ export default function AboutPage() {
               <Link href="/disclosures">Disclosures</Link> let you find
               documents, inspect relevant language, and compare supported
               periods. <Link href="/fund">Funds</Link> explores historical
-              portfolio snapshots and holdings from public N-PORT reports.
+              portfolio snapshots from public N-PORT reports and{" "}
+              <Link href="/fund?view=13f">13F institutional manager holdings</Link>,
+              with concentration, quarterly position comparisons, and source filings.
             </p>
           </div>
           <div>

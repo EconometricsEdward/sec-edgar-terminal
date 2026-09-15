@@ -46,7 +46,7 @@ const TOOLS = [
   [
     "Funds",
     "/fund",
-    "Inspect reported portfolios, holdings changes, and fund source coverage.",
+    "Explore N-PORT fund portfolios and 13F institutional manager holdings, concentration, and quarterly changes.",
   ],
   [
     "Disclosures",
@@ -142,6 +142,21 @@ export default function HelpPage() {
                   Portfolio as-of date separately from filing and retrieval
                   dates. Reported series assets can cover multiple share
                   classes; holdings are not a live portfolio.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Institutional manager 13F reports</th>
+                <td>
+                  Quarter-end holdings of reportable securities, with source
+                  amendments and separately identified options. Explore them in{" "}
+                  <Link href="/fund?view=13f">13F manager research</Link>.
+                </td>
+                <td>
+                  Reporting period, filing date, amendments, and information-table
+                  coverage. Reported value is not total assets under management.
+                  Cash and short positions are absent; confidential holdings may
+                  be omitted. Quantity changes can reflect corporate actions,
+                  and value changes are not investment returns or cash flows.
                 </td>
               </tr>
               <tr>

@@ -490,6 +490,59 @@
 .hero[hidden] {
   display: none;
 }
+.sourceSwitch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 790px;
+  margin: 0 0 30px;
+  padding: 5px;
+  border: 1px solid var(--fund-line);
+  border-radius: 15px;
+  background: var(--fund-panel);
+}
+.sourceSwitch button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-height: 72px;
+  padding: 13px 18px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fund-muted);
+  cursor: pointer;
+}
+.sourceSwitch button > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fund-text);
+}
+.sourceSwitch button > span:last-child { font-size: 11px; line-height: 1.5; }
+.sourceSwitch small {
+  padding: 2px 5px;
+  border: 1px solid var(--fund-line);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .05em;
+}
+.sourceSwitch button[aria-pressed="true"] {
+  background: var(--fund-raised);
+  border-color: var(--fund-gold);
+}
+.sourceSwitch button[aria-pressed="true"] small { color: var(--fund-gold); }
+.sourceSwitch button:focus-visible { outline: 2px solid var(--fund-gold); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .sourceSwitch { gap: 3px; margin-bottom: 22px; }
+  .sourceSwitch button { padding: 10px; }
+  .sourceSwitch button > span:first-child { flex-wrap: wrap; gap: 5px; font-size: 12px; }
+}
 .securityScope {
   display: flex;
   gap: 8px;

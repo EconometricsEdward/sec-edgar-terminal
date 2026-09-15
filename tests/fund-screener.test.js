@@ -32,6 +32,25 @@ const state = (ticker, assets, top, date = "2026-06-30") => ({
     },
   },
 });
+test("13F manager links retain a separate CIK, reporting period and view without adding fund tickers", () => {
+  const settings = readFundWorkspaceSettings("view=13f&managerCik=1747057&managerPeriod=2026-06-30&managerView=changes");
+  assert.equal(settings.managerCik, "0001747057");
+  assert.equal(settings.managerPeriod, "2026-06-30");
+  assert.equal(settings.managerView, "changes");
+  assert.deepEqual(settings.tickers, []);
+  assert.deepEqual(readFundWorkspaceSettings("view=13f&managerCik=1747057&tickers=1747057,VOO").tickers, ["VOO"]);
+  for (const repeated of ["managerCik=1747057&managerCik=1350694", "managerCik=1747057&managerPeriod=2026-06-30&managerPeriod=2026-03-31", "managerCik=1747057&managerView=holdings&managerView=changes", "view=discover&managerCik=1747057"]) {
+    assert.equal(readFundWorkspaceSettings(`view=13f&${repeated}`).managerCik, "");
+  }
+  assert.deepEqual(readFundWorkspaceSettings(fundWorkspacePath(settings).split("?")[1]), settings);
+  for (const cik of ["0", "12345678901", "AAPL", "../bad"]) {
+    const invalid = normalizeFundWorkspaceSettings({ view: "13f", managerCik: cik, managerPeriod: "2026-06-30", managerView: "changes" });
+    assert.equal(invalid.managerCik, "");
+    assert.equal(invalid.managerPeriod, "");
+    assert.equal(invalid.managerView, "overview");
+  }
+  assert.equal(normalizeFundWorkspaceSettings({ managerCik: "1747057", managerPeriod: "2026-02-31" }).managerPeriod, "");
+});
 test("fund workspace links preserve research context and numeric drafts while excluding private fields", () => {
   const settings = normalizeFundWorkspaceSettings({
     view: "allocation",

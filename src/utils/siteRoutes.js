@@ -76,6 +76,21 @@ export function normalizeCikIdentifier(value) {
     : null;
 }
 
+/** Institutional manager research is a CIK workflow, separate from N-PORT fund tickers. */
+export function managerHoldingsPath(value, { period = "", view = "" } = {}) {
+  const cik = normalizeCikIdentifier(value);
+  if (!cik) return null;
+  const query = new URLSearchParams({ view: "13f", managerCik: cik });
+  if (/^\d{4}-(?:03-31|06-30|09-30|12-31)$/.test(period)) {
+    const date = new Date(`${period}T00:00:00Z`);
+    if (Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === period)
+      query.set("managerPeriod", period);
+  }
+  if (["overview", "holdings", "changes", "filings"].includes(view))
+    query.set("managerView", view);
+  return `/fund?${query}`;
+}
+
 function normalizeTicker(value) {
   if (typeof value !== "string") return null;
   const ticker = value.trim().toUpperCase();
@@ -159,10 +174,23 @@ export function safeInternalPath(value) {
   return `/${match[1]}/${tickers.map((ticker) => ticker.toUpperCase()).join(",")}${url.search}${url.hash}`;
 }
 
-/** @returns {{ticker: string, kind: 'company'|'fund'|'filer'} | null} */
+/** @returns {{ticker: string, kind: 'company'|'fund'|'filer', fundPath?: string} | null} */
 export function entityFromRoute(pathname, searchParams) {
   if (typeof pathname !== "string") return null;
   const path = pathname.replace(/\/$/, "") || "/";
+  if (path === "/fund") {
+    if (queryValue(searchParams, "view") !== "13f") return null;
+    const cik = normalizeCikIdentifier(queryValue(searchParams, "managerCik"));
+    if (!cik) return null;
+    return {
+      ticker: cik,
+      kind: "filer",
+      fundPath: managerHoldingsPath(cik, {
+        period: queryValue(searchParams, "managerPeriod"),
+        view: queryValue(searchParams, "managerView"),
+      }),
+    };
+  }
   const match = path.match(/^\/(analysis|filings|fund)\/([^/]+)$/);
   if (match) {
     let raw;

@@ -3,9 +3,9 @@ import { Suspense } from "react";
 import { buildPageMetadata } from "../../utils/siteMetadata";
 import FundsWorkspace from "./FundsWorkspace";
 export const metadata: Metadata = buildPageMetadata({
-  title: "Mutual Funds & ETFs — Portfolio Research Workspace",
+  title: "Funds & Institutional Managers — N-PORT and 13F Research",
   description:
-    "Screen SEC fund portfolios, find shared securities, compare reporting dates, model fund allocations, track holdings changes, and save research with its source evidence.",
+    "Explore SEC 13F manager holdings and N-PORT fund portfolios. See concentration, compare quarterly reported positions, and follow the source filings behind every snapshot.",
   path: "/fund",
 });
 export default function FundIndexPage() {
