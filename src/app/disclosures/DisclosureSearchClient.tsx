@@ -1046,6 +1046,7 @@ export default function DisclosureSearchClient({
                 Candidate listings require passage verification; search results do not measure how common a disclosure is across all companies.
               </p>
               {index?.query?.notes?.map((note: string) => <p key={note}>{note}</p>)}
+              {index?.coverage?.totalHitsScope && <p>{index.coverage.totalHitsScope}</p>}
               {preparedCoverage && <p>{preparedCoverage.available === false ? "Prepared passages are unavailable for this search. SEC discovery and full filing review remain available." : `Prepared passage coverage: ${preparedCoverage.documentCount ?? preparedCoverage.documents ?? "recent indexed"} documents. ${preparedCoverage.note || "This is a bounded selection, not the complete EDGAR archive."}`}</p>}
               {searchTiming.firstResult != null && <p>First results in {(searchTiming.firstResult / 1000).toFixed(1)} seconds{searchTiming.firstPassage != null ? ` · first matching passage in ${(searchTiming.firstPassage / 1000).toFixed(1)} seconds` : ""}. Times include this browser’s requests.</p>}
               {verified.map((f) => (

@@ -22,7 +22,13 @@ const quality = { reviewed: 4, 'section-unavailable': 4, 'indexed-match': 3, 'fe
 /** Merge retrieval sources without losing original SEC rank or stronger evidence. */
 export function mergeDisclosureSearchFilings(...groups) {
   const merged = new Map();
-  for (const filing of groups.flat()) {
+  const filings = groups.flat();
+  const tickerByCik = new Map();
+  for (const filing of filings) {
+    if (filing.cik && /^[A-Z][A-Z0-9.-]{0,14}$/.test(filing.ticker || ''))
+      tickerByCik.set(String(filing.cik).padStart(10, '0'), filing.ticker);
+  }
+  for (const filing of filings) {
     const id = filingEvidenceId(filing);
     const previous = merged.get(id);
     if (!previous) { merged.set(id, filing); continue; }
@@ -34,5 +40,8 @@ export function mergeDisclosureSearchFilings(...groups) {
       indexScore: previous.indexScore ?? filing.indexScore,
     });
   }
-  return [...merged.values()];
+  return [...merged.values()].map(filing => {
+    const ticker = tickerByCik.get(String(filing.cik || '').padStart(10, '0'));
+    return ticker && (!filing.ticker || /^\d+$/.test(filing.ticker)) ? { ...filing, ticker } : filing;
+  });
 }

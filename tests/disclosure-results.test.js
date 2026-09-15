@@ -92,9 +92,10 @@ test("change filter includes prior passages that no longer satisfy query", () =>
 test("facet counts respect candidate/verified scope and other selections", () => {
   const rows = [
     filing(),
-    filing({ ticker: "BAC", accession: "2", form: "10-Q" }),
+    filing({ ticker: "BAC", cik: "70858", accession: "2", form: "10-Q" }),
     filing({
       ticker: "BAC",
+      cik: "70858",
       accession: "3",
       status: "index-candidate",
       form: "10-Q",
@@ -110,8 +111,8 @@ test("facet counts respect candidate/verified scope and other selections", () =>
     model.facets.company.map(({ value, count }) => [value, count]),
     [
       ["all", 1],
-      ["BAC", 1],
-      ["JPM", 0],
+      ["cik:0000070858", 1],
+      ["cik:0000019617", 0],
     ],
   );
   assert.equal(
@@ -119,6 +120,45 @@ test("facet counts respect candidate/verified scope and other selections", () =>
     1,
   );
   assert.equal(model.facets.form.find((f) => f.value === "10-K").count, 1);
+});
+test("company facets unite ticker and CIK aliases across candidate, prepared and verified results", () => {
+  const rows = [
+    filing({ accession: "sec", ticker: "MSFT", cik: "789019", companyName: "Microsoft Corp", status: "index-candidate" }),
+    filing({ accession: "prepared", ticker: "0000789019", cik: "0000789019", companyName: "MICROSOFT CORP", status: "indexed-match" }),
+    filing({ accession: "verified", ticker: "789019", cik: "0000789019", companyName: "Microsoft Corporation", status: "reviewed" }),
+    filing({ accession: "other", ticker: "AAPL", cik: "320193", companyName: "Apple Inc." }),
+  ];
+  const model = buildDisclosureResults(rows, {}, settings);
+  assert.deepEqual(model.facets.company, [
+    { value: "all", label: "All companies", count: 4 },
+    { value: "cik:0000320193", label: "AAPL", count: 1 },
+    { value: "cik:0000789019", label: "MSFT", count: 3 },
+  ]);
+  const company = model.facets.company.find(facet => facet.label === "MSFT").value;
+  assert.deepEqual(new Set(buildDisclosureResults(rows, { company }, settings).results.map(row => row.accession)), new Set(["sec", "prepared", "verified"]));
+  const filtered = buildDisclosureResults(rows, { company, scope: "verified" }, settings);
+  assert.deepEqual(filtered.results.map(row => row.accession), ["verified"]);
+  assert.equal(filtered.facets.company.find(facet => facet.value === company).count, 1);
+  assert.equal(filtered.facets.scope.find(facet => facet.value === "indexed").count, 1);
+  // Verification can change the presentation ticker without losing selection.
+  const updated = rows.map(row => row.cik === "789019" ? { ...row, ticker: "0000789019", status: "reviewed" } : row);
+  assert.equal(buildDisclosureResults(updated, { company }, settings).results.length, 3);
+  assert.equal(buildDisclosureResults(updated, {}, settings).facets.company.find(facet => facet.value === company).label, "MICROSOFT CORP");
+});
+test("company facets use names or CIK for untickered issuers and keep different CIKs distinct", () => {
+  const rows = [
+    filing({ accession: "named", ticker: "12345", cik: "12345", companyName: "Private Issuer" }),
+    filing({ accession: "cik-only", ticker: "0000067890", cik: "67890", companyName: "" }),
+    filing({ accession: "symbol-only", ticker: "ONLY", cik: "", companyName: "Only Company" }),
+    filing({ accession: "different-cik", ticker: "12345", cik: "54321", companyName: "Different Issuer" }),
+  ];
+  const model = buildDisclosureResults(rows, {}, settings);
+  const facets = new Map(model.facets.company.map(facet => [facet.value, facet]));
+  assert.equal(facets.get("cik:0000012345").label, "Private Issuer");
+  assert.equal(facets.get("cik:0000067890").label, "CIK 0000067890");
+  assert.equal(facets.get("ticker:ONLY").label, "ONLY");
+  assert.equal(facets.get("cik:0000054321").count, 1);
+  assert.equal(buildDisclosureResults(rows, { company: "cik:0000012345" }, settings).results.length, 1);
 });
 test("preview filter only searches loaded preview quotation text", () => {
   const row = filing({

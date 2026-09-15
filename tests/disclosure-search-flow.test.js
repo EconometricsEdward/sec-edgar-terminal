@@ -42,3 +42,14 @@ test('failed full-source fetch does not erase an already verified indexed passag
 test('different documents within one accession remain distinct evidence', () => {
   assert.equal(mergeDisclosureSearchFilings([filing, { ...filing, primaryDoc: 'exhibit.htm' }]).length, 2);
 });
+test('CIK source verification retains a known issuer ticker across prepared and SEC evidence', () => {
+  const results = mergeDisclosureSearchFilings(
+    [{ ...filing, ticker: 'MSFT', status: 'index-candidate' }],
+    [{ ...filing, ticker: '0000789019', status: 'reviewed', matchCount: 3 },
+      { ...filing, primaryDoc: 'exhibit.htm', ticker: '0000789019', status: 'indexed-match' }],
+  );
+  assert.deepEqual(results.map(result => result.ticker), ['MSFT', 'MSFT']);
+  assert.equal(results[0].status, 'reviewed');
+  assert.equal(results[0].matchCount, 3);
+  assert.equal(results[1].primaryDoc, 'exhibit.htm');
+});
