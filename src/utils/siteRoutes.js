@@ -86,7 +86,7 @@ export function managerHoldingsPath(value, { period = "", view = "" } = {}) {
     if (Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === period)
       query.set("managerPeriod", period);
   }
-  if (["overview", "holdings", "changes", "history", "filings"].includes(view))
+  if (["overview", "holdings", "changes", "history", "markets", "filings"].includes(view))
     query.set("managerView", view);
   return `/fund?${query}`;
 }

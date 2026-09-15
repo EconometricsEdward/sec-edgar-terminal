@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { createContext, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { entityFromRoute, managerHoldingsPath, safeInternalPath } from "../src/utils/siteRoutes.js";
+import { readFundWorkspaceSettings, fundWorkspacePath } from "../src/utils/fundWorkspaceSettings.js";
 import { hasThirteenFHoldings, secFilerResearchPath, mergeFilerSuggestions } from "../src/utils/secFilerSearch.js";
 
 const require = createRequire(import.meta.url);
@@ -82,6 +83,16 @@ test("portfolio history deep links retain the manager and selected quarter in na
   const html = renderContext("../src/components/NavTabs.tsx", path);
   assert.match(html, /href="\/fund\?view=13f&amp;managerCik=0001747057&amp;managerPeriod=2026-06-30&amp;managerView=history"/);
   assert.match(html, /href="\/filings\/0001747057"/);
+});
+
+test("market connection deep links retain the 13F manager and report quarter across navigation", () => {
+  const path = managerHoldingsPath("1747057", { period: "2026-06-30", view: "markets" });
+  assert.equal(path, "/fund?view=13f&managerCik=0001747057&managerPeriod=2026-06-30&managerView=markets");
+  const route = new URL(path, "https://secedgarterminal.com");
+  assert.equal(fundWorkspacePath(readFundWorkspaceSettings(route.search)), path);
+  assert.deepEqual(entityFromRoute(route.pathname, route.searchParams), { kind: "filer", ticker: manager.cik, fundPath: path });
+  const html = renderContext("../src/components/NavTabs.tsx", path);
+  assert.match(html, /href="\/fund\?view=13f&amp;managerCik=0001747057&amp;managerPeriod=2026-06-30&amp;managerView=markets"/);
 });
 
 test("the explicit 13F query establishes CIK context without becoming a ticker fund", () => {
