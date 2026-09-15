@@ -23,6 +23,25 @@ export const parseCompanyExposureRequest = parseCompanyCftcRequest;
 const validDate = value => typeof value === 'string' && DATE_PATTERN.test(value) && cftcDate(value) === value;
 const validTime = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
 
+/** Internal callers that already proved an issuer CIK must not round-trip
+ * through a ticker, which can represent a different security or change over
+ * time. The public ticker endpoint keeps its existing request contract. */
+export function normalizeCompanyExposureCikRequest(cikInput, asOf = null, now = new Date()) {
+  const value = String(cikInput ?? '');
+  if (!/^\d{1,10}$/.test(value) || Number(value) <= 0) throw error('Provide a valid SEC issuer CIK.', 'INVALID_CIK', 400);
+  if (asOf !== null && (!validDate(asOf) || asOf < '1994-01-01' || asOf > new Date(now).toISOString().slice(0, 10)))
+    throw error('Use asOf=YYYY-MM-DD between 1994 and today for the SEC filing-date cutoff.', 'INVALID_AS_OF', 400);
+  return { cik: value.padStart(10, '0'), ticker: null, asOf };
+}
+
+function normalizeSelection(selection, now = new Date()) {
+  if (Object.hasOwn(selection, 'cik')) {
+    if (selection.ticker != null) throw error('Use one verified issuer CIK without a ticker alias.', 'INVALID_REQUEST', 400);
+    return normalizeCompanyExposureCikRequest(selection.cik, selection.asOf ?? null, now);
+  }
+  return parseCompanyExposureRequest(`https://example.test/?ticker=${encodeURIComponent(selection.ticker || '')}${selection.asOf == null ? '' : `&asOf=${encodeURIComponent(selection.asOf)}`}`, now);
+}
+
 async function bounded(task, signal) {
   if (!signal) return task;
   if (signal.aborted) { Promise.resolve(task).catch(() => {}); throw error('The SEC source request reached its time limit. Please retry.', 'COMPANY_EXPOSURE_TIMEOUT'); }
@@ -126,19 +145,20 @@ function fillDerived(result, inputs) {
 export async function discoverCompanyExposures(selection, {
   now = new Date(), signal, lookupTicker = getOperatingTicker, loadSubmissions = submissionsJson, loadFilingText = filingText, onSnapshot,
 } = {}) {
-  const checked = parseCompanyExposureRequest(`https://example.test/?ticker=${encodeURIComponent(selection.ticker || '')}${selection.asOf == null ? '' : `&asOf=${encodeURIComponent(selection.asOf)}`}`, now);
+  const checked = normalizeSelection(selection, now);
   const result = initialResult(checked, now), cutoff = checked.asOf || result.checkedAt.slice(0, 10);
   try {
-    const entry = await bounded(lookupTicker(checked.ticker), signal);
+    const entry = checked.cik ? { cik: checked.cik, name: '' } : await bounded(lookupTicker(checked.ticker), signal);
     if (!entry) throw error('No SEC operating company matched that ticker.', 'COMPANY_NOT_FOUND', 404);
     const cik = String(entry.cik).padStart(10, '0');
-    if (!/^\d{10}$/.test(cik)) throw error('The SEC company identifier was invalid.', 'SEC_SOURCE_INVALID', 502);
-    result.cik = cik; result.companyName = String(entry.name || checked.ticker).slice(0, 500);
+    if (!/^\d{10}$/.test(cik) || Number(cik) <= 0) throw error('The SEC company identifier was invalid.', 'SEC_SOURCE_INVALID', 502);
+    result.cik = cik; result.companyName = String(entry.name || checked.ticker || '').slice(0, 500);
     const manifest = await bounded(loadSubmissions(`CIK${cik}.json`, signal), signal);
     if (String(manifest?.cik).padStart(10, '0') !== cik || !Array.isArray(manifest?.filings?.recent?.accessionNumber)) {
       throw error('The SEC manifest did not verify the selected company identity.', 'SEC_SOURCE_IDENTITY_MISMATCH', 502);
     }
     if (typeof manifest.name === 'string' && manifest.name.trim()) result.companyName = manifest.name.slice(0, 500);
+    if (!result.companyName.trim()) throw error('The SEC manifest did not verify the selected issuer name.', 'SEC_SOURCE_IDENTITY_MISMATCH', 502);
     let filings = companyExposureFilings(manifest.filings.recent, cik, cutoff);
     const historyFiles = (Array.isArray(manifest.filings.files) ? manifest.filings.files : [])
       .filter(file => new RegExp(`^CIK${cik}-submissions-\\d+\\.json$`).test(file.name)
@@ -226,7 +246,8 @@ export function restoreCompanyExposureSnapshot(snapshot, selection, now = new Da
   try {
     const currentTime = new Date(now).getTime();
     if (snapshot?.cacheVersion !== COMPANY_EXPOSURE_SCHEMA_VERSION || snapshot.ticker !== selection.ticker || snapshot.asOf !== selection.asOf
-      || !/^\d{10}$/.test(snapshot.cik) || typeof snapshot.companyName !== 'string' || !snapshot.companyName.trim() || snapshot.companyName.length > 500
+      || (selection.cik != null && snapshot.cik !== selection.cik)
+      || !/^\d{10}$/.test(snapshot.cik) || Number(snapshot.cik) <= 0 || typeof snapshot.companyName !== 'string' || !snapshot.companyName.trim() || snapshot.companyName.length > 500
       || !validTime(snapshot.checkedAt) || Date.parse(snapshot.checkedAt) > currentTime
       || !Number.isInteger(snapshot.historyFilesScanned) || snapshot.historyFilesScanned < 0 || snapshot.historyFilesScanned > COMPANY_EXPOSURE_MAX_HISTORY_FILES
       || !Array.isArray(snapshot.sources) || snapshot.sources.length > 2
@@ -266,8 +287,8 @@ function remember(key, value, ttl) {
 
 export async function loadCompanyExposures(selection, { signal } = {}) {
   if (!isCftcEnabled()) throw error('CFTC company exposure research is disabled.', 'CFTC_DISABLED');
-  const checked = parseCompanyExposureRequest(`https://example.test/?ticker=${encodeURIComponent(selection.ticker || '')}${selection.asOf == null ? '' : `&asOf=${encodeURIComponent(selection.asOf)}`}`);
-  const key = `${checked.ticker}:${checked.asOf || 'latest'}`, local = cache.get(key);
+  const checked = normalizeSelection(selection);
+  const key = `${checked.cik ? `cik:${checked.cik}` : checked.ticker}:${checked.asOf || 'latest'}`, local = cache.get(key);
   if (local && local.expires > Date.now()) return local.value;
   if (inFlight.has(key)) return bounded(inFlight.get(key), signal);
   if (inFlight.size >= 24) throw error('Company exposure research is busy. Please retry.', 'COMPANY_EXPOSURE_BUSY');
@@ -290,4 +311,8 @@ export async function loadCompanyExposures(selection, { signal } = {}) {
   inFlight.set(key, task);
   task.finally(() => inFlight.delete(key)).catch(() => {});
   return bounded(task, signal);
+}
+
+export async function loadCompanyExposuresByCik(cik, { asOf = null, signal } = {}) {
+  return loadCompanyExposures(normalizeCompanyExposureCikRequest(cik, asOf), { signal });
 }

@@ -2,7 +2,7 @@
 
 The Funds workspace has two reporting sources. N-PORT identifies a registered fund portfolio and its series/class; Form 13F identifies an institutional investment manager by CIK. These identities and their denominators are kept separate.
 
-Open `/fund?view=13f`, search a legal name or CIK, and select an explicit filer. A manager view can retain `managerCik`, `managerPeriod` (calendar quarter end), and `managerView` (`overview`, `holdings`, `changes`, `history`, or `filings`) in its URL. Global search links verified 13F holdings filers to this workspace, and the Filings page links directly from its latest 13F report.
+Open `/fund?view=13f`, search a legal name or CIK, and select an explicit filer. A manager view can retain `managerCik`, `managerPeriod` (calendar quarter end), and `managerView` (`overview`, `holdings`, `changes`, `history`, `markets`, or `filings`) in its URL. Global search links verified 13F holdings filers to this workspace, and the Filings page links directly from its latest 13F report.
 
 ## Evidence and interpretation
 
@@ -37,10 +37,25 @@ The Portfolio history view loads 4, 8, or 12 calendar quarters ending at the sel
 
 History charts use zero-based axes, separate units, keyboard quarter inspection, and exact-value/source tables. Manager, reporting-quarter, and security identities are checked again before data reaches the chart or company panel.
 
+## Market connections
+
+The Market connections view links actual 13F securities to current issuer disclosures and related CFTC markets. It starts with the 20 largest disclosed positions, reports coverage as it progresses, and lets the user continue, scan all holdings, pause, or retry. A missing match, unverified issuer, missing filing, partial source retrieval, and an unscanned holding remain different states.
+
+`GET /api/fund-13f/market-connections?cik=…&period=…&key=…` verifies the manager, reporting quarter, exact security, and SEC CUSIP-to-issuer proof. It then loads disclosures directly by verified issuer CIK. An inactive or missing trading symbol does not block a valid issuer; a ticker alias never substitutes for CIK identity. The source reader uses the latest eligible complete annual report and at most one newer complete 10-Q, with bounded history search and source-integrity caches shared with company exposure research.
+
+Each market connection belongs to the specific supporting SEC passage. Named benchmarks and related proxies are labeled separately. Generic interest rates, unspecified currency pairs, Brent, regional gas, and other unsupported drivers retain their SEC evidence without an unrelated futures contract. Later qualifying or negative passages remain visible beside earlier connections. Filing selection is current research, not a reconstruction of disclosures available at the historical 13F quarter end.
+
+Associated holdings are deduplicated by security key within each market and across the headline linked total. Multiple business channels and repeated passages do not increase their value. Different share classes, stock, PUT and CALL positions stay separate; option values describe the underlying securities and are never signed as measured positive or negative exposure. Percentages use the full reconciled public information-table value, including unscanned and unresolved positions in the denominator. A partial scan never renormalizes the portfolio. Percentages are withheld when the selected public report is incomplete. Contracts overlap, so market percentages are not additive.
+
+Only the selected CFTC chart is loaded. The contract, report family, trader category, futures-only basis, report date, history window and individual observations are validated by the existing prepared-data client and chart model. The 13F quarter, issuer filing dates and CFTC position observation dates are displayed separately. Aggregate CFTC trader positioning does not establish company futures positions, hedge coverage, economic sensitivity, trader intent or expected returns.
+
+Requests use the existing SEC dispatcher and cached sources. Two browser workers load holding connections progressively; individual responses are bounded to 1 MiB. Request cancellation stops the active scan, and retry preserves completed evidence. No paid provider, new database schema, credential or infrastructure configuration is required.
+
 ## Official references
 
 - [SEC Form 13F frequently asked questions](https://www.sec.gov/divisions/investment/13ffaq)
 - [SEC Form 13F and instructions](https://www.sec.gov/files/form13f.pdf)
 - [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)
+- [CFTC Commitments of Traders reports and methodology](https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm)
 
 These rules apply to the disclosed information tables. They do not imply that SEC staff have verified the filer's assertions.
