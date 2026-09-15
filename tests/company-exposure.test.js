@@ -235,3 +235,55 @@ test('Unicode monetary signs remain attached to the exact source quote rather th
     assert.deepEqual(evidence.amounts, []);
   }
 });
+
+test('product names and entity transactions do not create commodity connections', () => {
+  const examples = [
+    ['Revenue from other products sold directly to users, including Reddit Premium and Reddit Gold, was not material for the periods presented.', 'Reddit, Inc.'],
+    ['Our revenue from Reddit Gold subscriptions increased as more users purchased the digital product.', 'Reddit, Inc.'],
+    ['We sold a portfolio company to Silver Lake Partners and recorded a gain on the sale.', 'Example Company Inc.'],
+    ['We sold our investment in Corn Holdings to another private equity investor during the year.', 'Example Company Inc.'],
+    ['Our Gold Holdings investment was sold to another financial sponsor during the year.', 'Example Company Inc.'],
+    ['Our Gold subscription revenue increased as customers renewed their software plans.', 'Example Company Inc.'],
+  ];
+  for (const [text, companyName] of examples) assert.deepEqual(extract(text, { companyName }).rows, [], text);
+});
+
+test('real metal production, purchases, holdings, and shared production lists retain exact evidence', () => {
+  for (const [text, ids] of [
+    ['We produce gold, silver and copper for sale to third party customers.', ['revenue:gold', 'revenue:silver', 'revenue:copper']],
+    ['We purchase physical gold for use in our manufacturing operations.', ['input-costs:gold']],
+    ['We purchase gold and silver for use in our jewelry production processes.', ['input-costs:gold', 'input-costs:silver']],
+    ['Our copper raw materials are purchased under long term supply agreements.', ['input-costs:copper']],
+    ['We sell gold to our customers under annual sales agreements.', ['revenue:gold']],
+    ['Our Gold Holdings included 500,000 ounces of physical metal at year end.', ['investments:gold']],
+  ]) {
+    const result = extract(text);
+    for (const id of ids) assert.equal(row(result, id)?.evidence[0].text, text, id);
+  }
+});
+
+test('masking brand uses preserves separate genuine commodity references and source wording', () => {
+  const text = 'We sell Gold subscriptions and purchase physical silver for our manufacturing operations.';
+  const result = extract(text);
+  assert.ok(!result.rows.some(item => item.marketId === 'gold'));
+  assert.equal(row(result, 'input-costs:silver')?.evidence[0].text, text);
+  const mixed = 'We sell Gold memberships and purchase physical gold for our manufacturing operations.';
+  const gold = extract(mixed);
+  assert.ok(!row(gold, 'revenue:gold'));
+  assert.equal(row(gold, 'input-costs:gold')?.evidence[0].text, mixed);
+});
+
+test('later explicit metal exposure qualifications survive commodity-context screening', () => {
+  for (const [metal, qualification] of [
+    ['gold', 'We have no material gold exposure following the disposal of our investments.'],
+    ['gold', 'We are not exposed to gold following the disposal of our investment portfolio.'],
+    ['copper', 'We no longer have exposure to copper following the closure of our operations.'],
+    ['copper', 'Our exposure to copper is immaterial following the sale of our holdings.'],
+  ]) {
+    const result = extractCompanyExposureMap([
+      { text: `Our ${metal} holdings are subject to changes in market prices.`, filing: annual, role: 'annual' },
+      { text: qualification, filing: quarterly, role: 'quarterly' },
+    ]);
+    assert.ok(row(result, `investments:${metal}`)?.evidence.some(item => item.text === qualification && item.disclosureDirection === 'qualifying-or-negative'), qualification);
+  }
+});

@@ -45,9 +45,9 @@ const MARKETS = [
   { id: 'diesel', label: 'Diesel / heating oil', type: 'commodity', re: /\b(?:diesel|heating oil|distillates?)\b/i, unavailable: 'This refined product is outside the map’s verified benchmark selection. No crude-oil contract is substituted.' },
   { id: 'gasoline', label: 'Gasoline', type: 'commodity', re: /\bgasoline\b/i, unavailable: 'Gasoline is outside the map’s verified benchmark selection. No crude-oil contract is substituted.' },
   { id: 'electricity', label: 'Electricity', type: 'commodity', re: /\b(?:electricity|electric power)\b/i, unavailable: 'Power exposure depends on location, load, and contract terms. No generic energy futures benchmark is substituted.' },
-  { id: 'gold', label: 'Gold', type: 'commodity', re: /\bgold\b/i, exclude: /\bgold[- ](?:award|medal|member|loyalty|status|standard|sponsor|plan|tier|card)\b/i, code: '088691', named: /\bCOMEX gold\b/i, basis: 'Gold futures provide a benchmark context. Grade, location, delivery terms, and physical or financial holdings may differ.' },
-  { id: 'silver', label: 'Silver', type: 'commodity', re: /\bsilver\b/i, exclude: /\bsilver[- ](?:award|medal|member|loyalty|status|sponsor|plan|tier|card)\b/i, code: '084691', named: /\bCOMEX silver\b/i, basis: 'Silver futures provide benchmark context. Grade, location, delivery terms, and company instruments may differ.' },
-  { id: 'copper', label: 'Copper', type: 'commodity', re: /\bcopper\b/i, exclude: /\bcopper[- ](?:colored|colour|color|tone)\b/i, code: '085692', named: /\bCOMEX copper\b/i, basis: 'COMEX Copper No. 1 provides a U.S. benchmark. Other exchanges, grades, delivery locations, and company pricing terms may differ.' },
+  { id: 'gold', label: 'Gold', type: 'commodity', re: /\bgold\b/i, code: '088691', named: /\bCOMEX gold\b/i, basis: 'Gold futures provide a benchmark context. Grade, location, delivery terms, and physical or financial holdings may differ.' },
+  { id: 'silver', label: 'Silver', type: 'commodity', re: /\bsilver\b/i, code: '084691', named: /\bCOMEX silver\b/i, basis: 'Silver futures provide benchmark context. Grade, location, delivery terms, and company instruments may differ.' },
+  { id: 'copper', label: 'Copper', type: 'commodity', re: /\bcopper\b/i, code: '085692', named: /\bCOMEX copper\b/i, basis: 'COMEX Copper No. 1 provides a U.S. benchmark. Other exchanges, grades, delivery locations, and company pricing terms may differ.' },
   { id: 'soybean-oil', label: 'Soybean oil', type: 'commodity', re: /\bsoybean[- ]oil\b/i, unavailable: 'Soybean oil is not raw soybeans. No soybean contract is substituted for this processing product.' },
   { id: 'soybean-meal', label: 'Soybean meal', type: 'commodity', re: /\bsoybean[- ]meal\b/i, unavailable: 'Soybean meal is not raw soybeans. No soybean contract is substituted for this processing product.' },
   { id: 'soybeans', label: 'Soybeans', type: 'commodity', re: /\bsoybeans?\b(?![- ]+(?:oil|meal)\b)/i, code: '005602', basis: 'Raw soybean futures do not establish processing margins, delivery basis, or the company’s realized price.' },
@@ -91,8 +91,45 @@ function passages(text) {
 function clauses(text) {
   return text.split(/;|,?\s+(?:but|whereas|while|and)\s+(?=(?:we|our|the company|the firm|the bank)\b)/i).map(value => value.trim()).filter(Boolean);
 }
+
+const AMBIGUOUS_METALS = new Set(['gold', 'silver', 'copper', 'platinum']);
+const NON_COMMODITY_MARKER = '\uFFFC';
+const ENTITY_COMMODITIES = ['Gold', 'Silver', 'Copper', 'Platinum', 'Corn', 'Wheat', 'Soybean', 'Soybeans', 'Coffee', 'Cocoa', 'Cotton', 'Cattle', 'Natural Gas', 'Crude Oil', 'Brent', 'Steel', 'Aluminum', 'Nickel', 'Lithium', 'Rice', 'Sugar'];
+const COMMODITY_ENTITY = new RegExp(`\\b(?:${ENTITY_COMMODITIES.flatMap(value => [value, value.toUpperCase()]).join('|')})(?:[ \\t]+[A-Z][A-Za-z0-9&'-]*){0,3}[ \\t]+(?:Inc|INC|Incorporated|INCORPORATED|Corp|CORP|Corporation|CORPORATION|Company|COMPANY|LLC|Ltd|LTD|Limited|LIMITED|Holdings|HOLDINGS|Capital|CAPITAL|Partners|PARTNERS|Management|MANAGEMENT|Bank|BANK|Group|GROUP)\\b`, 'g');
+
+/** Product tiers and entity names can contain a commodity's name. Mask only
+ * that use before removing the issuer name: otherwise "Reddit Gold" becomes
+ * bare "Gold". Original SEC sentences are retained untouched as evidence. */
+function commodityMeaningText(text) {
+  const blank = value => ' '.repeat(value.length - 1) + NON_COMMODITY_MARKER;
+  return text
+    .replace(/\b(?:Reddit|Xbox(?:\s+Live)?)\s+Gold\b/gi, blank)
+    .replace(/\b(?:gold|silver|platinum|copper)[- ](?:awards?|medals?|members?(?:hips?)?|loyalty|status|standard|sponsors?(?:hip)?|plans?|tiers?|cards?|subscriptions?|packages?|badges?|software|CRM|colou?red|colou?r|tones?)\b/gi, blank)
+    .replace(COMMODITY_ENTITY, (value, offset, original) => {
+      // Direct "our Gold Holdings" can still mean owned metal, even when a
+      // heading capitalizes it. An investment in "Gold Holdings" names an entity.
+      if (/^(?:gold|silver|copper|platinum) holdings$/i.test(value)
+        && /\b(?:our|the company['’]s)\s+$/i.test(original.slice(0, offset))
+        && /\b(?:ounces|tonnes|tons|pounds|bullion|bars|physical metal)\b/i.test(original.slice(offset + value.length, offset + value.length + 100))) return value;
+      return blank(value);
+    });
+}
+
+function hasMetalCommodityMeaning(text, metal) {
+  // A bare metal name beside generic revenue, a product sale, or an investment
+  // is insufficient. Require a directly attached physical/market description
+  // or a direct purchase, production, or holding of the named metal.
+  return new RegExp(`\\b${metal}[- ](?:prices?|pricing|production|mines?|mining|ore|metal|bullion|bars?|coins?|holdings?|reserves?|inventor(?:y|ies)|futures?|options?|derivatives?|forwards?|swaps?|purchases?|sales?|extraction|refining|wire|wiring|content|raw[- ]materials?|exposures?|risk)\\b`, 'i').test(text)
+    || new RegExp(`\\b(?:physical|spot|COMEX|refined|unrefined|scrap|precious[- ]metal)\\s+${metal}\\b`, 'i').test(text)
+    || new RegExp(`\\b(?:prices?|production|purchases?|sales?|holdings?|inventor(?:y|ies)|ounces|tonnes|tons|pounds)\\s+of\\s+(?:(?:physical|refined|scrap)\\s+)?${metal}\\b`, 'i').test(text)
+    || new RegExp(`\\b(?:exposures?|exposed|sensitive|sensitivity)\\s+to\\s+(?:(?:physical|spot|refined|scrap)\\s+)?${metal}\\b`, 'i').test(text)
+    || new RegExp(`\\b(?:produce|produces|produced|purchase|purchases|purchased|consume|consumes|consumed|sell|sells|sold|mine|mines|mined|hold|holds|held|use|uses|used)\\s+(?:physical\\s+)?(?:(?:gold|silver|copper|platinum)\\s*(?:,\\s*(?:and\\s+)?|and\\s+)){1,3}${metal}\\b`, 'i').test(text)
+    || new RegExp(`\\b(?:purchas(?:e|es|ed|ing)|buy|buys|bought|sell|sells|sold|use|uses|used|consum(?:e|es|ed|ing)|produc(?:e|es|ed|ing)|min(?:e|es|ed|ing)|hold|holds|held|own|owns|owned)\\s+(?:(?:physical|spot|refined|scrap)\\s+)?${metal}\\b`, 'i').test(text);
+}
+
 function marketMatches(text) {
-  const matches = MARKETS.filter(market => market.re.test(text) && !market.exclude?.test(text) && !market.excludeWhen?.(text));
+  const matches = MARKETS.filter(market => market.re.test(text) && !market.exclude?.test(text) && !market.excludeWhen?.(text)
+    && (!AMBIGUOUS_METALS.has(market.id) || hasMetalCommodityMeaning(text, market.id)));
   return matches.filter(market => !market.excludeIf?.some(id => matches.some(other => other.id === id)));
 }
 function marketChannelText(text, market) {
@@ -103,7 +140,7 @@ function marketChannelText(text, market) {
   return parts.flatMap((part, index) => {
     if (!market.re.test(part)) return [];
     const previous = parts[index - 1];
-    return [previous && !marketMatches(previous).length ? `${previous} ${part}` : part];
+    return [previous && !previous.includes(NON_COMMODITY_MARKER) && !marketMatches(previous).length ? `${previous} ${part}` : part];
   }).join(' ');
 }
 
@@ -205,7 +242,8 @@ export function extractCompanyExposureMap(sources, { companyName = '', ticker = 
       if (CROSS_REFERENCE.test(sentence) || /\b(?:Scope [123]|greenhouse gas|carbon dioxide equivalent|settlements? with|government authorities|legal proceedings|civil penalt(?:y|ies)|pursuing opportunities|opportunities in (?:other )?emerging)\b/i.test(sentence)) continue;
       for (const clause of clauses(sentence)) {
         if ((!SUBJECT.test(clause) && !OWNERSHIP.test(clause) && !issuer?.test(clause)) || THIRD_PARTY.test(clause) || SPECULATION.test(clause)) continue;
-        const economicText = issuer ? clause.replace(new RegExp(issuer.source, 'gi'), '') : clause;
+        const commodityText = commodityMeaningText(clause);
+        const economicText = issuer ? commodityText.replace(new RegExp(issuer.source, 'gi'), '') : commodityText;
         const markets = marketMatches(economicText);
         if (NEGATED.test(clause)) {
           if (markets.length && qualifiers.length < 200) qualifiers.push({ sentence, economicText, markets, filing, role });
@@ -218,7 +256,7 @@ export function extractCompanyExposureMap(sources, { companyName = '', ticker = 
             const row = existing || { id: key, category, categoryLabel: COMPANY_EXPOSURE_CATEGORIES.find(item => item.id === category).label, marketId: market.id, marketLabel: market.label, channelExplanation: CHANNELS[category], reviewStatus: 'evidence-linked', benchmark: benchmarkFor(market, economicText), benchmarkUnavailableReason: market.unavailable || null, evidence: [] };
             const evidenceId = `ev-${idOf(`${ticker}|${filing.accession}|${sentence}`)}`;
             if (row.evidence.some(item => item.id === evidenceId)) continue;
-            const amounts = qualifiedAmounts(clause, sentence, markets.length, category, market);
+            const amounts = qualifiedAmounts(economicText, sentence, markets.length, category, market);
             const score = evidenceScore(sentence, market, category) + (amounts.length ? 3 : 0), sameSource = row.evidence.filter(item => item.accession === filing.accession);
             if (sameSource.length >= 2) {
               const weakest = sameSource.reduce((a, b) => a._score < b._score ? a : b);
