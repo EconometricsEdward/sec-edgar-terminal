@@ -194,6 +194,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
         <label className={styles.srOnly} htmlFor={`${id}-input`}>Search EDGAR Terminal</label>
         <input id={`${id}-input`} ref={inputRef} value={input} role="combobox" aria-keyshortcuts="Control+k Meta+k" maxLength={500} aria-autocomplete="list" aria-expanded={open} aria-controls={open ? listId : undefined} aria-activedescendant={open && highlight >= 0 ? `${listId}-${highlight}` : undefined} aria-describedby={open ? hintId : undefined} aria-haspopup="listbox" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} enterKeyHint="search" placeholder="Search companies, filings, or ask a question…"
           onChange={event => { ensureDirectory(); setInput(event.target.value); setHighlightId(null); setPendingQuery(null); setNotice(""); setOpen(true); }}
+          onClick={() => { setOpen(true); setHighlightId(null); setPendingQuery(null); setRecent(visibleRecent()); }}
           onFocus={() => { ensureDirectory(); if (suppressFocus.current) { suppressFocus.current = false; return; } setOpen(true); setRecent(visibleRecent()); }} />
         {!input && <kbd className={styles.shortcut} aria-hidden="true">⌘ / Ctrl K</kbd>}
         {input && <button type="button" className={styles.iconButton} aria-label="Clear global search" onClick={() => { setInput(""); setPendingQuery(null); setHighlightId(null); setNotice(""); setOpen(true); inputRef.current?.focus(); }}><X size={16} /></button>}
