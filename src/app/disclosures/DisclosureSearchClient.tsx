@@ -55,8 +55,12 @@ import s from "./disclosures.module.css";
 
 async function jsonResponse(response: Response) {
   const data = await response.json();
-  if (!response.ok)
-    throw new Error(data.error || `Request failed (${response.status}).`);
+  if (!response.ok) {
+    const message = data.error || `Request failed (${response.status}).`;
+    throw new Error(/shared SEC request coordination|data gateway|OIDC/i.test(message)
+      ? "SEC search is temporarily unavailable. Please try again shortly."
+      : message);
+  }
   return data;
 }
 async function indexSearch(settings: SearchSettings, signal: AbortSignal, from = 0) {
@@ -401,7 +405,9 @@ export default function DisclosureSearchClient({
       committed = true;
       setActive(next);
       activeRef.current = next;
-      setSettings({ ...next, query: requestedSettings.query, searchStyle: requestedSettings.searchStyle || "exact" });
+      // Inferred filters belong to this result set. Only explicit controls persist
+      // when the user replaces a natural-language question.
+      setSettings({ ...requestedSettings, comparison: requestedSettings.comparison || "none", searchStyle: requestedSettings.searchStyle || "exact" });
       setInterpretation(currentInterpretation);
       setRestoredAt("");
       if (!continuing) {

@@ -52,10 +52,11 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
   const tickerMap = context?.tickerMap;
   const smart = settings.searchStyle !== "exact";
   const deferredQuery = useDeferredValue(settings.query);
-  const currentInterpretation = interpretation?.originalQuery === settings.query ? interpretation : null;
+  const currentInterpretation = interpretation?.originalQuery === settings.query.trim() ? interpretation : null;
   const queryInspection = useMemo(() => inspectDisclosureQuery(settings.query), [settings.query]);
   const builderQuery = useMemo(() => buildAdvancedQuery(builder), [builder]);
-  const materialized = () => currentInterpretation ? { ...settings, ...currentInterpretation.settings, query: currentInterpretation.query, searchStyle: "exact" as const } : settings;
+  const displayedSettings = currentInterpretation ? { ...settings, ...currentInterpretation.settings, mode: settings.mode } : settings;
+  const materialized = () => currentInterpretation ? { ...displayedSettings, query: currentInterpretation.query, searchStyle: "exact" as const } : settings;
   const update = (key: keyof SearchSettings, value: string | number | boolean) => setSettings({ ...(key === "query" || key === "searchStyle" ? settings : materialized()), [key]: value });
   const today = new Date().toISOString().slice(0, 10);
   const canSearch = Boolean(settings.query.trim()) && (smart || queryInspection.valid);
@@ -116,7 +117,7 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
         <label htmlFor="disclosure-search-query" className={s.searchPrompt}>What are you researching?</label>
         <div className={s.searchModes} role="group" aria-label="Search style">
           <button type="button" aria-pressed={smart} onClick={() => update("searchStyle", "smart")}><Sparkles size={13} /> Smart search</button>
-          <button type="button" aria-pressed={!smart} onClick={() => { update("searchStyle", "exact"); setSuggestionsOpen(false); }}>Exact search</button>
+          <button type="button" aria-pressed={!smart} onClick={() => { setSettings({ ...materialized(), searchStyle: "exact" }); setSuggestionsOpen(false); }}>Exact search</button>
         </div>
       </div>
       <div className={s.searchTop}>
@@ -166,7 +167,7 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
       </div>
       <div className={s.searchHelpRow}>
         <p id="disclosure-search-help" className={s.searchHelp}>{smart ? "Use everyday language, company names, dates, or precise phrases." : "Use AND, OR, NOT, parentheses, and quoted phrases. Terms are matched literally."}</p>
-        <span className={s.searchScope}>{settings.tickers ? <><Building2 size={12} /> {settings.tickers}</> : "Across SEC filers"}</span>
+        <span className={s.searchScope}>{displayedSettings.tickers ? <><Building2 size={12} /> {displayedSettings.tickers}</> : "Across SEC filers"}</span>
       </div>
       {!smart && settings.query && !queryInspection.valid && <p role="alert" className={s.queryError}>{queryInspection.error}</p>}
       {(chips.length > 0 || interpreting) && <div className={s.interpretation} aria-live="polite">
@@ -185,21 +186,21 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
         <p className={s.muted}><code>{currentInterpretation.query}</code></p>
         {currentInterpretation.expansions?.map(item => <p className={s.muted} key={item.term}><strong>{item.term}</strong>: {item.alternatives.join(", ")}</p>)}
         {currentInterpretation.warnings?.map(warning => <p className={s.warning} key={warning}>{warning}</p>)}
-        <button type="button" onClick={() => setSettings({ ...settings, ...currentInterpretation.settings, query: currentInterpretation.query, searchStyle: "exact" })}>Edit the exact search</button>
+        <button type="button" onClick={() => setSettings({ ...materialized(), searchStyle: "exact" })}>Edit the exact search</button>
       </details>}
       <div className={s.filterRow}>
-        <label className={s.companyInput}>Company · optional<input aria-label="Companies" placeholder="Any company, or tickers / CIKs" value={settings.tickers} onChange={(e) => update("tickers", e.target.value)} /></label>
-        <label>Filing forms<select value={settings.forms} onChange={(e) => update("forms", e.target.value)}>
+        <label className={s.companyInput}>Company · optional<input aria-label="Companies" placeholder="Any company, or tickers / CIKs" value={displayedSettings.tickers} onChange={(e) => update("tickers", e.target.value)} /></label>
+        <label>Filing forms<select value={displayedSettings.forms} onChange={(e) => update("forms", e.target.value)}>
           <option value="10-K,10-Q,8-K">Annual, quarterly & current reports</option><option value="10-K">Annual · 10-K</option><option value="10-K,10-Q">Annual & quarterly · 10-K / 10-Q</option><option value="10-Q">Quarterly · 10-Q</option><option value="8-K">Current reports · 8-K</option><option value="20-F,40-F">Foreign annual · 20-F / 40-F</option><option value="20-F,40-F,6-K">Foreign issuers</option><option value={BROAD_FORMS}>Broad filings</option>
-          {!["10-K,10-Q,8-K", "10-K", "10-K,10-Q", "10-Q", "8-K", "20-F,40-F", "20-F,40-F,6-K", BROAD_FORMS].includes(settings.forms) && <option value={settings.forms}>{settings.forms}</option>}
+          {!["10-K,10-Q,8-K", "10-K", "10-K,10-Q", "10-Q", "8-K", "20-F,40-F", "20-F,40-F,6-K", BROAD_FORMS].includes(displayedSettings.forms) && <option value={displayedSettings.forms}>{displayedSettings.forms}</option>}
         </select></label>
         <details className={s.filters} ref={filtersRef}>
           <summary><SlidersHorizontal size={15} /> Filters & tools</summary>
           <div className={s.advanced}>
             <div className={s.filterRow}>
-              <label>Company filter<input data-setting="tickers" aria-label="Advanced company filter" placeholder="Tickers or SEC CIKs" value={settings.tickers} onChange={(e) => update("tickers", e.target.value)} /></label>
-              <label>Retrieval mode<select data-setting="mode" value={settings.mode} onChange={(e) => update("mode", e.target.value)}><option value="index">Fast discovery across SEC filings</option><option value="companies">Detailed company review</option></select></label>
-              <label>Filing form filter<input data-setting="forms" value={settings.forms} onChange={(e) => update("forms", e.target.value)} /></label>
+              <label>Company filter<input data-setting="tickers" aria-label="Advanced company filter" placeholder="Tickers or SEC CIKs" value={displayedSettings.tickers} onChange={(e) => update("tickers", e.target.value)} /></label>
+              <label>Retrieval mode<select data-setting="mode" value={displayedSettings.mode} onChange={(e) => update("mode", e.target.value)}><option value="index">Fast discovery across SEC filings</option><option value="companies">Detailed company review</option></select></label>
+              <label>Filing form filter<input data-setting="forms" value={displayedSettings.forms} onChange={(e) => update("forms", e.target.value)} /></label>
             </div>
             <div className={s.filterRow}>
               <label>
@@ -209,7 +210,7 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
                   data-setting="start" aria-label="Filed from"
                   min="2001-01-01"
                   max={today}
-                  value={settings.start}
+                  value={displayedSettings.start}
                   onChange={(e) => update("start", e.target.value)}
                 />
               </label>
@@ -218,16 +219,16 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
                 <input
                   type="date"
                   data-setting="end" aria-label="Filed through"
-                  min={settings.start}
+                  min={displayedSettings.start}
                   max={today}
-                  value={settings.end}
+                  value={displayedSettings.end}
                   onChange={(e) => update("end", e.target.value)}
                 />
               </label>
               <label>
                 Search section
                 <select
-                  data-setting="section" value={settings.section}
+                  data-setting="section" value={displayedSettings.section}
                   onChange={(e) => update("section", e.target.value)}
                 >
                   {SECTION_OPTIONS.map(([id, label]) => (
@@ -240,7 +241,7 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
               <label>
                 Term scope
                 <select
-                  data-setting="scope" value={settings.scope}
+                  data-setting="scope" value={displayedSettings.scope}
                   onChange={(e) => update("scope", e.target.value)}
                 >
                   <option value="paragraph">Same paragraph</option>
@@ -252,7 +253,7 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
               <label>
                 Compare language against
                 <select
-                  value={settings.comparison || "none"}
+                  value={displayedSettings.comparison || "none"}
                   onChange={(e) => update("comparison", e.target.value)}
                 >
                   <option value="annual-season">
@@ -267,7 +268,7 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
               <label>
                 Filings per company
                 <select
-                  value={settings.depth}
+                  value={displayedSettings.depth}
                   onChange={(e) => update("depth", Number(e.target.value))}
                 >
                   {[1, 2, 4, 6, 8, 12].map((n) => (
@@ -281,7 +282,7 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
             <label className={s.check}>
               <input
                 type="checkbox"
-                checked={settings.amendments}
+                checked={displayedSettings.amendments}
                 onChange={(e) => update("amendments", e.target.checked)}
               />{" "}
               Include amendments as separate evidence
@@ -298,7 +299,7 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
               reports use the prior annual period; amendments are identified
               separately. An unavailable comparison stays visibly unavailable.
             </p>
-            <DisclosureQueryCoach query={settings.query} scope={settings.scope} onQueryChange={(query) => setSettings({ ...settings, query, searchStyle: "exact" })} />
+            <DisclosureQueryCoach query={settings.query} scope={displayedSettings.scope} onQueryChange={(query) => setSettings({ ...settings, query, searchStyle: "exact" })} />
             <div className={s.builder}>
               <h3>Build an expression</h3>
               <div className={s.filterRow}>
