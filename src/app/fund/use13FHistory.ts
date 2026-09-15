@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { calendarPeriods13F, project13FHistoryQuarter, summarize13FHistory } from "../../utils/thirteenFHistory.js";
 
 type Slot = { period: string; status: "ready" | "unavailable" | "loading" | "pending"; projection?: any; reason?: string };
@@ -64,7 +64,9 @@ export function use13FHistory(data: any, { count = 8, holdingKey = "" }: { count
   }, [portfolio?.holdings, holdingKey]);
   const requestKey = `${cik}:${period}:${boundedCount}:${keysJson}`;
   const [state, setState] = useState<{ key: string; slots: Slot[] }>({ key: "", slots: [] });
-  const [attempt, setAttempt] = useState({ number: 0, period: "" });
+  const [attempt, setAttempt] = useState<{ number: number; key: string; periods: string[] }>({ number: 0, key: "", periods: [] });
+  const latestState = useRef(state);
+  useEffect(() => { latestState.current = state; }, [state]);
   const seed = useMemo(() => {
     if (!cik || !period || !portfolio) return [];
     return calendarPeriods13F(period, boundedCount).map((quarter: string): Slot => quarter === period ? { period: quarter, status: "ready", projection: project13FHistoryQuarter(portfolio, JSON.parse(keysJson)) } : { period: quarter, status: "pending" });
@@ -74,18 +76,21 @@ export function use13FHistory(data: any, { count = 8, holdingKey = "" }: { count
     let disposed = false;
     const controller = new AbortController();
     const keys = JSON.parse(keysJson);
-    setState(previous => ({ key: requestKey, slots: seed.map(slot => {
+    const previous = latestState.current;
+    const forced = new Set(attempt.key === requestKey ? attempt.periods : []);
+    const initial = seed.map(slot => {
       const old = previous.key === requestKey ? previous.slots.find(item => item.period === slot.period) : null;
-      return slot.period === period ? slot : old?.status === "ready" && (!attempt.number || attempt.period && attempt.period !== slot.period) ? old : slot;
-    }) }));
+      return slot.period === period ? slot : old && !forced.has(slot.period) ? old : slot;
+    });
+    setState({ key: requestKey, slots: initial });
     const update = (slot: Slot) => {
       if (!disposed) setState(previous => previous.key !== requestKey ? previous : { ...previous, slots: previous.slots.map(item => item.period === slot.period ? slot : item) });
     };
-    const queue = seed.filter(slot => slot.period !== period).reverse();
+    const queue = initial.filter(slot => slot.period !== period && ["pending", "loading"].includes(slot.status)).reverse();
     async function worker() {
       while (!disposed && queue.length) {
         const slot = queue.shift()!;
-        const force = attempt.number > 0 && (!attempt.period || attempt.period === slot.period);
+        const force = forced.has(slot.period);
         update({ ...slot, status: "loading" });
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(90000)]);
         try {
@@ -102,6 +107,9 @@ export function use13FHistory(data: any, { count = 8, holdingKey = "" }: { count
   const slots = state.key === requestKey ? state.slots : seed;
   const history = useMemo(() => summarize13FHistory(slots, { ...(cik ? { cik } : {}), maxQuarters: 12 }), [slots, cik]);
   const completed = slots.filter(slot => ["ready", "unavailable"].includes(slot.status)).length;
-  const retry = useCallback((retryPeriod?: string) => setAttempt(previous => ({ number: previous.number + 1, period: retryPeriod || "" })), []);
+  const retry = useCallback((retryPeriod?: string) => {
+    const periods = retryPeriod ? [retryPeriod] : slots.filter(slot => slot.period !== period && (slot.status === "unavailable" || slot.status === "ready" && !slot.projection?.complete)).map(slot => slot.period);
+    if (periods.length) setAttempt(previous => ({ number: previous.number + 1, key: requestKey, periods }));
+  }, [slots, period, requestKey]);
   return { history, loading: completed < slots.length, completed, total: slots.length, retry };
 }
