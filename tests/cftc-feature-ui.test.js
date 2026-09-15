@@ -80,5 +80,6 @@ test('server-derived switch gates canonical routes, tabs, previews, saved views,
   assert.match(homePage, /<HomeResearch cftcEnabled=\{cftcEnabled\} \/>/);
   assert.match(homeResearch, /!isCftcPositioningPath\(item\.href\)/);
   assert.match(layout, /<HeaderSearchWrapper cftcEnabled=\{cftcEnabled\} \/>/);
-  assert.match(globalSearch, /!isCftcPositioningPath\(item\.path\)/);
+  assert.match(globalSearch, /const requiresCftc = path => isCftcPositioningPath\(path\)/);
+  assert.match(globalSearch, /cftcEnabled \|\| !requiresCftc\(item\.path\)/);
 });
