@@ -15,6 +15,7 @@ const CIK = '(?!0000000000)[0-9]{10}';
 const TICKER = '[A-Z0-9][A-Z0-9.-]{0,9}';
 const ACCESSION = '[0-9]{10}-[0-9]{2}-[0-9]{6}';
 const DATE = '[0-9]{4}-[0-9]{2}-[0-9]{2}';
+const QUARTER = '[0-9]{4}-(?:03-31|06-30|09-30|12-31)';
 const BASIS = '(?:ANNUAL|QUARTER|YTD|TTM)';
 const re = pattern => new RegExp(`^(?:${pattern})$`);
 const ticker = re(TICKER), cik = re(CIK), accession = re(ACCESSION);
@@ -74,6 +75,16 @@ export function disposableCachePolicy(type, originalId) {
   else if (type === 'edgar.cftc-fcm.v1:production' && id === 'LATEST') family = 'history';
   else if (type === 'fund-research-v1' && re(`${TICKER}:(?:LATEST|${ACCESSION})(?::[A-F0-9]{16}:(?:[0-9]|1[0-5]))?`).test(id)) family = 'research';
   else if (type === 'global-fund-discovery-v1' && /^SEARCH:[A-F0-9]{24}$/.test(id)) family = 'research';
+  // Parsed public 13F data has separate mutable quarter snapshots and reusable
+  // accession inputs. Readers validate source chains and freshness; retention
+  // alone never establishes that a later amendment has been checked.
+  else if (type === 'edgar.13f-snapshot.v1:production' && re(`${CIK}:(?:LATEST|${QUARTER})`).test(id)) {
+    family = 'research'; sourceCik = id.slice(0, 10);
+  }
+  else if (type === 'edgar.13f-filing.v1:production' && re(`${CIK}:${ACCESSION}:[A-F0-9]{64}`).test(id)) {
+    family = 'document'; sourceCik = id.slice(0, 10);
+  }
+  else if (type === 'edgar.13f-comparison.v1:production' && /^[A-F0-9]{64}$/.test(id)) family = 'research';
   else if (type === 'edgar.cftc-positioning.v1:production') {
     if (id === 'REFRESH-CHECKPOINT') family = 'checkpoint';
     else if (re(`MARKETS(?:-LAST-GOOD)?:(?:TFF|DISAGGREGATED):(?:LATEST|${DATE})`).test(id)) family = 'history';

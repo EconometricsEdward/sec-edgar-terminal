@@ -255,7 +255,11 @@ test('Actual 13F API serves a validated holdings report and private retryable er
     assert.equal(data.portfolio.cik, cik);
     assert.equal(data.portfolio.totalValueUsd, 1500);
     assert.equal(data.portfolio.complete, true);
-    assert.match(response.headers.get('cache-control'), /s-maxage=3600/);
+    assert.match(response.headers.get('cache-control'), /s-maxage=300/);
+    const refreshed = await GET(new Request(`https://example.com/api/fund-13f?cik=${cik}&period=${PERIOD}&refresh=1`));
+    assert.equal(refreshed.status, 200);
+    assert.equal(refreshed.headers.get('cache-control'), 'private, no-store');
+    assert.equal((await refreshed.json()).cache.status, 'source');
     const failure = await GET(new Request(`https://example.com/api/fund-13f?cik=${broken}`));
     assert.equal(failure.status, 502);
     assert.equal(failure.headers.get('cache-control'), 'private, no-store');

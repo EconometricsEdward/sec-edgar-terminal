@@ -62,9 +62,46 @@ test('database failures and invalid grants fail closed without contacting any so
     async owner => ({ ...granted(owner), acquiredAt: 'invalid' }),
     async () => denied(-1),
   ]) {
-    const coordinator = createSecDispatchCoordinator({ acquire, transport: () => assert.fail('No SEC or alternate backend dispatch.') });
+    const coordinator = createSecDispatchCoordinator({ acquire, release: async () => false, transport: () => assert.fail('No SEC or alternate backend dispatch.') });
     await assert.rejects(coordinator.fetch('https://data.sec.gov/example.json', {}), error => error.code === 'SEC_RATE_GATE_UNAVAILABLE' && error.status === 503);
   }
+});
+
+test('a lost acquisition reply releases only its own committed lease before another request', async () => {
+  const gate = databaseGate(), acquire = gate.acquire; let loseReply = true, starts = 0;
+  const coordinator = createSecDispatchCoordinator({ ...gate, acquire: async owner => {
+    const reply = await acquire(owner);
+    if (reply.allowed && loseReply) { loseReply = false; throw new DOMException('Reply deadline', 'TimeoutError'); }
+    return reply;
+  }, transport: async () => { starts++; return Response.json({ ok: true }); } });
+  await assert.rejects(coordinator.fetch('https://data.sec.gov/first.json', {}), { code: 'SEC_RATE_GATE_UNAVAILABLE' });
+  assert.equal(starts, 0);
+  assert.deepEqual(gate.events.map(event => event.event), ['acquire', 'release']);
+  assert.equal(gate.events[0].owner, gate.events[1].owner);
+  assert.equal(gate.events[1].cooldownMs, 0);
+  assert.equal((await coordinator.fetch('https://data.sec.gov/next.json', {})).status, 200);
+  assert.equal(starts, 1);
+});
+
+test('cancelled acquisition cleans up its uncertain owner without using the cancelled signal', async () => {
+  const controller = new AbortController(), events = [];
+  const coordinator = createSecDispatchCoordinator({ acquire: async owner => {
+    events.push(['acquire', owner]); controller.abort(); throw controller.signal.reason;
+  }, release: async (owner, options) => { events.push(['release', owner]); assert.equal(options.signal, undefined); return true; },
+  transport: () => assert.fail('A cancelled acquisition cannot dispatch.') });
+  await assert.rejects(coordinator.fetch('https://data.sec.gov/first.json', {}, controller.signal), { name: 'AbortError' });
+  assert.equal(events.length, 2); assert.equal(events[0][1], events[1][1]);
+});
+
+test('uncertain acquisition cleanup is bounded and cannot turn failure into source permission', async t => {
+  const original = globalThis.setTimeout, timers = [];
+  t.mock.method(globalThis, 'setTimeout', (callback, delay, ...args) => {
+    timers.push(delay); return original(callback, delay === 2000 ? 5 : delay, ...args);
+  });
+  const coordinator = createSecDispatchCoordinator({ acquire: async () => { throw new Error('Lost reply'); },
+    release: () => new Promise(() => {}), transport: () => assert.fail('No fallback permission is allowed.') });
+  await assert.rejects(coordinator.fetch('https://data.sec.gov/first.json', {}), { code: 'SEC_RATE_GATE_UNAVAILABLE' });
+  assert.deepEqual(timers, [2000]);
 });
 
 test('unarmed and ten-minute migration cooldowns do not poll or bypass shared coordination', async () => {

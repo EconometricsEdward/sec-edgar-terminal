@@ -29,15 +29,27 @@ function validateSubmissions(data, path) {
   if (!Array.isArray(recent?.accessionNumber) || !Array.isArray(recent?.form) || !Array.isArray(recent?.filingDate)) throw failure(`SEC returned incomplete ${archived ? 'archived' : 'recent'} filing metadata. Retry this request.`);
   return data;
 }
-async function secJson(path, signal, { missingCik = false } = {}) {
+async function secJson(path, signal, { missingCik = false, refresh = false } = {}) {
   if (!/^CIK\d{10}(?:-submissions-\d+)?\.json$/.test(path)) throw failure('Invalid SEC submissions path.', 400, 'INVALID_ARCHIVE');
   signal?.throwIfAborted();
   const now = Date.now();
   const local = localCache.get(path);
-  if (local?.expiresAt > now) return local.data;
-  const cached = await warmGet('filings-submissions-v1', path);
+  if (!refresh && local?.expiresAt > now) return { data: local.data, observedAt: local.observedAt };
+  const cached = refresh ? null : await warmGet('filings-submissions-v1', path);
   if (cached) {
-    try { return validateSubmissions(cached, path); }
+    try {
+      const data = validateSubmissions(cached, path);
+      const sourceTime = Date.parse(cached._edgarSourceObservedAt);
+      // Legacy cache entries have no source observation timestamp. They remain
+      // usable for filing browsing, but cannot start a new freshness window.
+      const observedAt = Number.isFinite(sourceTime) && sourceTime <= now ? cached._edgarSourceObservedAt : null;
+      const expiresAt = observedAt ? sourceTime + 300000 : now;
+      if (expiresAt > now) {
+        while (localCache.size >= 18) localCache.delete(localCache.keys().next().value);
+        localCache.set(path, { data, observedAt, expiresAt });
+      }
+      return { data, observedAt };
+    }
     catch { /* A bad cache entry must not prevent a fresh SEC retry. */ }
   }
   const response = await secFetch(`https://data.sec.gov/submissions/${path}`, {
@@ -55,10 +67,11 @@ async function secJson(path, signal, { missingCik = false } = {}) {
   try { payload = await response.json(); }
   catch { throw failure('SEC returned an invalid submissions response. Retry this request.'); }
   const data = validateSubmissions(payload, path);
+  const observedAt = new Date(now).toISOString();
   while (localCache.size >= 18) localCache.delete(localCache.keys().next().value);
-  localCache.set(path, { data, expiresAt: now + 300000 });
-  await warmSet('filings-submissions-v1', path, data, 300);
-  return data;
+  localCache.set(path, { data, observedAt, expiresAt: now + 300000 });
+  await warmSet('filings-submissions-v1', path, { ...data, _edgarSourceObservedAt: observedAt }, 300);
+  return { data, observedAt };
 }
 export function normalizeFilingsArchives(files, cik) {
   if (!Array.isArray(files) || !/^\d{10}$/.test(String(cik))) return [];
@@ -71,7 +84,7 @@ export function normalizeFilingsArchives(files, cik) {
   }
   return [...byName.values()].sort((a, b) => b.filingTo.localeCompare(a.filingTo) || b.filingFrom.localeCompare(a.filingFrom) || a.name.localeCompare(b.name));
 }
-export async function loadFilingsCompany(input, { signal } = {}) {
+export async function loadFilingsCompany(input, { signal, refresh = false } = {}) {
   const ticker = normalizeFilingsIdentifier(input);
   if (!ticker) throw failure('Provide a valid company ticker or positive SEC CIK of up to 10 digits.', 400, 'INVALID_IDENTIFIER');
   signal?.throwIfAborted();
@@ -90,7 +103,8 @@ export async function loadFilingsCompany(input, { signal } = {}) {
   }
   const cik = String(identity.cik).padStart(10, '0');
   if (!/^\d{10}$/.test(cik) || Number(cik) <= 0) throw failure('SEC company identity could not be validated. Retry the lookup.');
-  const submissions = await secJson(`CIK${cik}.json`, signal, { missingCik: byCik });
+  const source = await secJson(`CIK${cik}.json`, signal, { missingCik: byCik, refresh });
+  const submissions = source.data;
   if (String(submissions.cik || '').replace(/^0+/, '') !== String(Number(cik))) throw failure('SEC submissions did not match the requested company identity.');
   const recent = submissions.filings?.recent;
   if (!Array.isArray(recent?.accessionNumber) || !Array.isArray(recent?.form) || !Array.isArray(recent?.filingDate)) throw failure('SEC returned incomplete recent filing metadata. Retry this request.');
@@ -108,18 +122,20 @@ export async function loadFilingsCompany(input, { signal } = {}) {
     sic: submissions.sic == null ? '' : String(submissions.sic), sicDescription: submissions.sicDescription || '',
     exchange: Array.isArray(submissions.exchanges) ? [...new Set(submissions.exchanges.filter((e) => typeof e === 'string'))].join(', ') : '',
     filings, archives, omittedRecords, omittedArchives, coverage: { omittedRecords, omittedArchives },
-    observedAt: new Date().toISOString(),
+    observedAt: source.observedAt || new Date(Date.now() - 300000).toISOString(), sourceObservedAt: source.observedAt,
   };
 }
-export async function loadFilingsArchive(ticker, name, { signal } = {}) {
+export async function loadFilingsArchive(ticker, name, { signal, refresh = false } = {}) {
   if (typeof name !== 'string' || !/^CIK\d{10}-submissions-\d+\.json$/.test(name)) throw failure('Provide a valid SEC archive name.', 400, 'INVALID_ARCHIVE');
   const company = await loadFilingsCompany(ticker, { signal });
   if (company.kind === 'fund') throw failure('Open this ticker in the Funds workspace.', 400, 'FUND_TICKER');
   const archive = company.archives.find((item) => item.name === name);
   if (!archive) throw failure('This archive is not listed in the requested company’s SEC submissions manifest.', 400, 'INVALID_ARCHIVE');
-  const recent = await secJson(name, signal);
+  const source = await secJson(name, signal, { refresh });
+  const recent = source.data;
   if (!Array.isArray(recent.accessionNumber) || !Array.isArray(recent.form) || !Array.isArray(recent.filingDate)) throw failure('SEC returned incomplete archived filing metadata. Retry this archive.');
   const filings = normalizeFilingRows(recent, company.cik).map((filing) => ({ ...filing, archive: name }));
   const omittedRecords = Math.max(0, recent.accessionNumber.length - filings.length);
-  return { ticker: company.ticker, cik: company.cik, filings, archive, omittedRecords, coverage: { omittedRecords }, observedAt: new Date().toISOString() };
+  return { ticker: company.ticker, cik: company.cik, filings, archive, omittedRecords, coverage: { omittedRecords },
+    observedAt: source.observedAt || new Date(Date.now() - 300000).toISOString(), sourceObservedAt: source.observedAt };
 }

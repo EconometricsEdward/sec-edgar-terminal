@@ -71,3 +71,17 @@ test('in-flight acquisition propagates caller abort while release remains indepe
   assert.equal(await release.store.releaseSecDispatchPermit(owner), true);
   assert.equal(release.calls[0].signal.aborted, false);
 });
+
+test('dispatch deadline errors distinguish TimeoutError from unrelated transport failure', async () => {
+  for (const [error, expected] of [[new DOMException('Deadline', 'TimeoutError'), 'timeout'],
+    [new TypeError('Network failure'), 'transport_failure']]) {
+    const store = createDataStore({ env, fetchImpl: async () => { throw error; } });
+    await assert.rejects(store.acquireSecDispatchPermit(owner), { code: expected });
+  }
+  const controller = new AbortController();
+  const store = createDataStore({ env, fetchImpl: async () => {
+    controller.abort(new DOMException('Deadline', 'TimeoutError'));
+    throw controller.signal.reason;
+  } });
+  await assert.rejects(store.acquireSecDispatchPermit(owner, { signal: controller.signal }), { code: 'timeout' });
+});

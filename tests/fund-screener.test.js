@@ -61,6 +61,19 @@ test("13F portfolio history URLs round-trip without altering the independent N-P
   assert.deepEqual(restored, settings);
   assert.equal(readFundWorkspaceSettings("view=13f&managerCik=1747057&managerView=history&managerView=holdings").managerCik, "");
 });
+test("13F manager comparison URLs preserve a bounded CIK group and independent aligned quarter", () => {
+  const settings = readFundWorkspaceSettings("view=13f&managerView=compare&managerCompare=1350694,1067983,1350694,1037389,1747057,123&managerComparePeriod=2026-06-30&tickers=VOO,VTI");
+  assert.equal(settings.managerView, "compare");
+  assert.equal(settings.managerCik, "");
+  assert.deepEqual(settings.managerCompare, ["0001350694", "0001067983", "0001037389", "0001747057"]);
+  assert.equal(settings.managerComparePeriod, "2026-06-30");
+  assert.deepEqual(settings.tickers, ["VOO", "VTI"]);
+  assert.deepEqual(readFundWorkspaceSettings(fundWorkspacePath(settings).split("?")[1]), settings);
+  assert.equal(readFundWorkspaceSettings("view=13f&managerView=compare").managerView, "compare");
+  assert.deepEqual(normalizeFundWorkspaceSettings({ managerCompare: ["0", "AAPL", "../bad", "12345678901"] }).managerCompare, []);
+  assert.equal(readFundWorkspaceSettings("view=13f&managerView=compare&managerCompare=123,456&managerCompare=789,111").managerView, "overview");
+  assert.equal(normalizeFundWorkspaceSettings({ managerComparePeriod: "2026-02-31" }).managerComparePeriod, "");
+});
 test("fund workspace links preserve research context and numeric drafts while excluding private fields", () => {
   const settings = normalizeFundWorkspaceSettings({
     view: "allocation",

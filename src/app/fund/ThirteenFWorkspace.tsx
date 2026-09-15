@@ -10,18 +10,20 @@ import { compare13FPortfolios } from "../../utils/thirteenF.js";
 import s from "./ThirteenFWorkspace.module.css";
 
 const ThirteenFHistory = dynamic(() => import("./ThirteenFHistory"), { loading: () => <p role="status">Opening portfolio history…</p> });
+const ThirteenFComparison = dynamic(() => import("./ThirteenFComparison"), { loading: () => <p role="status">Opening manager comparison…</p> });
 const ThirteenFMarketConnections = dynamic(() => import("./ThirteenFMarketConnections"), { loading: () => <p role="status">Opening market connections…</p> });
 const ThirteenFCompanyPanel = dynamic(() => import("./ThirteenFCompanyPanel"), { ssr: false });
 const HoldingActionContext = createContext<((holding: any) => void) | null>(null);
 
 type Holding = { key: string; cusip: string; issuer: string; classTitle: string; putCall: "PUT" | "CALL" | null; quantity: number | null; quantityType: string; valueUsd: number | null; weightPct: number | null; investmentDiscretion?: string; sourceRowCount?: number };
 type Report = { period: string; filingCount: number; latestFiled: string; forms: string[] };
-type Response = { status: "ready" | "unavailable"; manager: { cik: string; name: string; submissionsUrl?: string }; reports: Report[]; selectedPeriod: string | null; portfolio: any; summary: any; coverage: any; observedAt: string };
+type Response = { status: "ready" | "unavailable"; manager: { cik: string; name: string; submissionsUrl?: string }; reports: Report[]; selectedPeriod: string | null; portfolio: any; summary: any; coverage: any; observedAt: string; cache?: { status: string; stale: boolean; checkedAt: string; freshUntil: string; message?: string } };
 type Remote = { key: string; status: "idle" | "loading" | "ready" | "error"; data: Response | null; error: string };
 const cache = new Map<string, { data: Response; expires: number; bytes: number }>();
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const MAX_CACHE_BYTES = 24 * 1024 * 1024;
 const PAGE_SIZE = 25;
+const POPULAR_MANAGERS = ["0001350694", "0001067983", "0001037389", "0001747057"];
 const empty: Remote = { key: "", status: "idle", data: null, error: "" };
 const whole = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const compactMoney = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 2 });
@@ -53,9 +55,15 @@ async function fetchReport(cik: string, period: string, signal: AbortSignal, for
   const key = `${cik}:${period}`;
   const stored = cache.get(key);
   if (!force && stored && stored.expires > Date.now()) return stored.data;
+  if (force) {
+    cache.delete(key);
+    cache.delete(`${cik}:`);
+    if (stored?.data.selectedPeriod) cache.delete(`${cik}:${stored.data.selectedPeriod}`);
+  }
   const query = new URLSearchParams({ cik });
   if (period) query.set("period", period);
-  const response = await fetch(`/api/fund-13f?${query}`, { signal });
+  if (force) query.set("refresh", "1");
+  const response = await fetch(`/api/fund-13f?${query}`, { signal, ...(force ? { cache: "no-store" as const } : {}) });
   const declared = Number(response.headers.get("content-length"));
   if (declared > MAX_RESPONSE_BYTES) throw new Error("This report is too large to open here. Use the SEC filings link to inspect its source tables.");
   const reader = response.body?.getReader();
@@ -79,31 +87,38 @@ async function fetchReport(cik: string, period: string, signal: AbortSignal, for
   try { data = JSON.parse(raw); } catch { throw new Error("The SEC report could not be opened. Please retry."); }
   if (!response.ok) throw new Error(typeof (data as any)?.error === "string" ? (data as any).error : "SEC report data is temporarily unavailable. Please retry.");
   if (!["ready", "unavailable"].includes(data?.status) || data.manager?.cik !== cik || typeof data.manager.name !== "string" || !data.manager.name.trim() || !Array.isArray(data.reports) || data.reports.length > 100 || data.reports.some(report => !report || !/^\d{4}-(03-31|06-30|09-30|12-31)$/.test(report.period) || !Array.isArray(report.forms)) || (period && data.selectedPeriod !== period) || (data.status === "ready" && (!data.portfolio || data.portfolio.cik !== cik || data.portfolio.period !== data.selectedPeriod || !Array.isArray(data.portfolio.filings) || !Array.isArray(data.portfolio.issues) || !Array.isArray(data.portfolio.holdings) || data.portfolio.holdings.length > 20000))) throw new Error("This response could not be verified against the selected manager and reporting period. Please retry.");
-  if (bytes <= MAX_CACHE_BYTES && data.status === "ready" && data.portfolio?.complete && data.coverage?.selectedPeriodComplete) {
-    cache.delete(key);
+  const sourceExpiry = Date.parse(data.cache?.freshUntil || "") || Date.parse(data.observedAt) + 300000;
+  if (bytes <= MAX_CACHE_BYTES && data.status === "ready" && data.portfolio?.complete && data.coverage?.selectedPeriodComplete && !data.cache?.stale && sourceExpiry > Date.now()) {
+    const keys = [...new Set([key, `${cik}:${data.selectedPeriod}`])];
+    for (const cacheKey of keys) {
+    cache.delete(cacheKey);
     let total = [...cache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
-    while (cache.size && (cache.size >= 4 || total + bytes > MAX_CACHE_BYTES)) {
+    while (cache.size && (cache.size >= 8 || total + bytes > MAX_CACHE_BYTES)) {
       const oldest = cache.keys().next().value as string;
       total -= cache.get(oldest)!.bytes;
       cache.delete(oldest);
     }
-    cache.set(key, { data, bytes, expires: Date.now() + 300000 });
+    cache.set(cacheKey, { data, bytes, expires: Math.min(Date.now() + 300000, sourceExpiry) });
+    }
   }
   return data;
 }
 function useReport(cik: string, period: string, enabled: boolean, attempt: number) {
   const key = `${cik}:${period}`;
   const [state, setState] = useState<Remote>(empty);
+  const lastAttempt = useRef(attempt);
   useEffect(() => {
     if (!enabled || !cik) return;
     const controller = new AbortController();
     let disposed = false;
     const deadline = setTimeout(() => controller.abort(), 90000);
-    setState({ key, status: "loading", data: null, error: "" });
-    fetchReport(cik, period, controller.signal, attempt > 0).then(data => {
+    const force = lastAttempt.current !== attempt;
+    lastAttempt.current = attempt;
+    setState(previous => ({ key, status: "loading", data: previous.key === key ? previous.data : null, error: "" }));
+    fetchReport(cik, period, controller.signal, force).then(data => {
       if (!disposed) setState({ key, status: "ready", data, error: "" });
     }).catch(error => {
-      if (!disposed) setState({ key, status: "error", data: null, error: controller.signal.aborted ? "The SEC request took too long. Retry to continue loading this report." : error.message });
+      if (!disposed) setState(previous => ({ key, status: "error", data: previous.key === key ? previous.data : null, error: controller.signal.aborted ? "The SEC request took too long. Retry to continue loading this report." : error.message }));
     }).finally(() => clearTimeout(deadline));
     return () => { disposed = true; clearTimeout(deadline); controller.abort(); };
   }, [cik, period, key, enabled, attempt]);
@@ -167,10 +182,11 @@ function ManagerSearch({ onChoose, compact = false }: { onChoose: (cik: string) 
     </div> : null}
   </div>;
 }
-function Landing({ onChoose }: { onChoose: (cik: string) => void }) {
+function Landing({ onChoose, onCompare }: { onChoose: (cik: string) => void; onCompare: () => void }) {
   return <div className={s.landing}>
     <div className={s.landingHero}><div><span className={s.eyebrow}><Building2 size={15} /> Institutional holdings · SEC Form 13F</span><h1>Follow the holdings.<br /><em>Understand the changes.</em></h1><p className={s.lead}>Explore what an investment manager disclosed, how concentrated its reported positions are, and what changed between quarters.</p></div><div className={s.heroMark} aria-hidden="true"><div className={s.markBars}><i /><i /><i /><i /><i /></div><span>13F</span><small>REPORTED. TRACEABLE.</small></div></div>
     <ManagerSearch onChoose={onChoose} />
+    <button type="button" className={s.compareLaunch} onClick={onCompare}><Network size={24} /><span><strong>Where do leading managers overlap?</strong><small>Compare Bridgewater, Berkshire, Renaissance and D1. Shared holdings, concentration and SEC market connections.</small></span><ArrowRight size={22} /></button>
     <div className={s.examples}><span>Explore a manager</span>{[{ name: "D1 Capital", cik: "0001747057" }, { name: "Bridgewater", cik: "0001350694" }, { name: "Berkshire Hathaway", cik: "0001067983" }, { name: "Renaissance", cik: "0001037389" }].map(manager => <button type="button" key={manager.cik} onClick={() => onChoose(manager.cik)}>{manager.name}<ArrowUpRight size={13} /></button>)}</div>
     <div className={s.featureGrid}><article><span>01</span><Layers3 size={22} /><h3>See the reported portfolio</h3><p>Inspect position sizes, share classes, options, and the weight of the largest disclosed holdings.</p></article><article><span>02</span><RefreshCw size={22} /><h3>Compare quarter to quarter</h3><p>Separate newly reported positions from quantity changes and shifts in reported portfolio share.</p></article><article><span>03</span><ShieldCheck size={22} /><h3>Go back to the evidence</h3><p>Trace every snapshot to its SEC information tables, original filing, and applicable amendments.</p></article></div>
     <div className={s.scopeStrip}><Clock3 size={18} /><p><strong>A reported snapshot, with a reporting delay.</strong> Form 13F generally arrives up to 45 days after quarter end. It covers reportable securities, not a manager’s complete assets, cash, short positions, or investment performance.</p><SecLink href="https://www.sec.gov/divisions/investment/13ffaq">About Form 13F</SecLink></div>
@@ -254,12 +270,12 @@ function Filings({ data, onChoose }: { data: Response; onChoose: (cik: string) =
 export default function ThirteenFWorkspace({ settings, onPatch }: { settings: any; onPatch: (patch: any) => void }) {
   const cik = filerCik(settings.managerCik) || "";
   const period = settings.managerPeriod || "";
-  const view = ["overview", "holdings", "changes", "history", "markets", "filings"].includes(settings.managerView) ? settings.managerView : "overview";
+  const view = ["overview", "holdings", "changes", "history", "markets", "filings", "compare"].includes(settings.managerView) ? settings.managerView : "overview";
   const [attempt, setAttempt] = useState(0);
   const [priorAttempt, setPriorAttempt] = useState(0);
   const [panel, setPanel] = useState<{ anchor: Response; data: Response; holding: Holding } | null>(null);
   const [historyHolding, setHistoryHolding] = useState<{ cik: string; period: string; key: string } | null>(null);
-  const current = useReport(cik, period, !!cik, attempt);
+  const current = useReport(cik, period, !!cik && view !== "compare", attempt);
   const data = current.data;
   const previousPeriod = data?.selectedPeriod ? priorQuarter(data.selectedPeriod) : "";
   const before = useReport(cik, previousPeriod, view === "changes" && current.status === "ready" && !!previousPeriod && data?.portfolio?.comparable === true, priorAttempt);
@@ -278,26 +294,29 @@ export default function ThirteenFWorkspace({ settings, onPatch }: { settings: an
   }
   function chooseManager(managerCik: string) { setPanel(null); onPatch({ managerCik, managerPeriod: "", managerView: "overview" }); }
   function chooseView(managerView: string) { setPanel(null); onPatch({ managerView }); }
-  if (!cik) return <div className={s.workspace}><Landing onChoose={chooseManager} /></div>;
+  function compareManagers() { setPanel(null); onPatch({ managerView: "compare", managerCik: "", managerPeriod: "", managerCompare: cik ? [cik, ...POPULAR_MANAGERS.filter(value => value !== cik)].slice(0, 4) : POPULAR_MANAGERS, managerComparePeriod: period }); }
+  if (view === "compare") return <div className={s.workspace}><div className={s.managerTop}><button type="button" onClick={() => onPatch({ managerCik: "", managerPeriod: "", managerView: "overview" })}><ChevronLeft size={15} />Explore managers</button></div><ThirteenFComparison managerCiks={settings.managerCompare?.length >= 2 ? settings.managerCompare : POPULAR_MANAGERS} period={settings.managerComparePeriod || ""} onChange={patch => onPatch({ ...(patch.managerCiks ? { managerCompare: patch.managerCiks } : {}), ...(patch.period !== undefined ? { managerComparePeriod: patch.period } : {}) })} onOpenManager={(managerCik, managerPeriod) => onPatch({ managerCik, managerPeriod, managerView: "overview" })} /></div>;
+  if (!cik) return <div className={s.workspace}><Landing onChoose={chooseManager} onCompare={compareManagers} /></div>;
   const portfolio = data?.portfolio;
   const report = data?.reports.find(item => item.period === data.selectedPeriod);
   const lag = report?.latestFiled && data?.selectedPeriod ? Math.round((Date.parse(`${report.latestFiled.slice(0, 10)}T00:00:00Z`) - Date.parse(`${data.selectedPeriod}T00:00:00Z`)) / 86400000) : null;
   const hasHoldings = !!portfolio?.holdings?.length;
   const issues = [...new Set<string>([...(portfolio?.issues || []), ...(data?.coverage?.note ? [data.coverage.note] : [])])];
   return <HoldingActionContext.Provider value={openHolding}><div className={s.workspace}>
-    <div className={s.managerTop}><button type="button" onClick={() => onPatch({ managerCik: "", managerPeriod: "", managerView: "overview" })}><ChevronLeft size={15} />Explore managers</button><Link href={`/filings/${cik}`}>All SEC filings<ArrowUpRight size={14} /></Link></div>
+    <div className={s.managerTop}><button type="button" onClick={() => onPatch({ managerCik: "", managerPeriod: "", managerView: "overview" })}><ChevronLeft size={15} />Explore managers</button><button type="button" onClick={compareManagers}><Network size={15} />Compare managers</button><Link href={`/filings/${cik}`}>All SEC filings<ArrowUpRight size={14} /></Link></div>
     <header className={s.managerHeader}><div><span className={s.eyebrow}><Building2 size={15} />Institutional holdings · Form 13F</span><h1>{data?.manager.name || `SEC manager ${cik}`}</h1><div className={s.managerMeta}><span>CIK {cik}</span>{data?.selectedPeriod ? <><span>Snapshot {date(data.selectedPeriod)}</span><span>Latest filing {date(report?.latestFiled)}</span></> : null}</div></div><ManagerSearch compact onChoose={chooseManager} /></header>
-    {current.status === "loading" ? <section className={s.loading} role="status"><RefreshCw className={s.spin} size={26} /><h3>Opening the manager’s SEC reports</h3><p>Checking report history, reading the information tables, and reconciling amendments.</p><div className={s.skeleton}><i /><i /><i /></div><small>Larger managers and historical reports can take longer to load.</small></section> : null}
-    {current.status === "error" ? <section className={s.emptyPanel} role="alert"><h3>The 13F report could not be opened</h3><p>{current.error}</p><button type="button" onClick={() => setAttempt(value => value + 1)}><RefreshCw size={15} />Retry SEC report</button><Link href={`/filings/${cik}`}>Browse this filer’s SEC documents<ArrowUpRight size={14} /></Link></section> : null}
+    {current.status === "loading" && !data ? <section className={s.loading} role="status"><RefreshCw className={s.spin} size={26} /><h3>Opening the manager’s SEC reports</h3><p>Checking the saved snapshot and reconciling available SEC filings.</p><div className={s.skeleton}><i /><i /><i /></div><small>A first visit may take longer while the information table is prepared for reuse.</small></section> : null}
+    {current.status === "error" ? <section className={data ? s.coverageNotice : s.emptyPanel} role="alert"><div><h3>{data ? "Refresh could not finish" : "The 13F report could not be opened"}</h3><p>{current.error}{data ? " The previously loaded snapshot remains visible below." : ""}</p></div><button type="button" onClick={() => setAttempt(value => value + 1)}><RefreshCw size={15} />Retry SEC report</button>{!data ? <Link href={`/filings/${cik}`}>Browse this filer’s SEC documents<ArrowUpRight size={14} /></Link> : null}</section> : null}
+    {data?.cache?.stale ? <div className={s.coverageNotice} role="status"><Clock3 size={17} /><p><strong>Saved snapshot shown.</strong> {data.cache.message || "The latest source check could not complete. This snapshot retains its original retrieval time."}</p></div> : null}
     {data?.status === "unavailable" ? <section className={s.emptyPanel}><FileText size={28} /><h3>No 13F report was found in the loaded history</h3><p>This SEC entity may be a related fund or a different reporting entity. Search for the investment manager’s legal name or open the filer’s documents to investigate.</p>{data.coverage?.note ? <p className={s.caption}>{data.coverage.note}</p> : null}<Link href={`/filings/${cik}`}>Inspect SEC filings<ArrowUpRight size={14} /></Link></section> : null}
     {data?.status === "ready" ? <>
-      <div className={s.reportControls}><label>Reporting quarter<select value={data.selectedPeriod || ""} onChange={event => onPatch({ managerPeriod: event.target.value })}>{data.reports.map(item => <option key={item.period} value={item.period}>{quarter(item.period)} · {date(item.period)}{item.filingCount > 1 ? ` · ${item.filingCount} filings` : ""}</option>)}</select></label><div className={s.reportStatus}><span className={portfolio?.complete ? s.verified : s.partial}>{portfolio?.complete ? <Check size={14} /> : <Clock3 size={14} />}{portfolio?.complete ? "Public table reconciled" : "Coverage needs review"}</span><button type="button" onClick={() => setAttempt(value => value + 1)}><RefreshCw size={14} />Refresh</button></div></div>
+      <div className={s.reportControls}><label>Reporting quarter<select value={data.selectedPeriod || ""} onChange={event => onPatch({ managerPeriod: event.target.value })}>{data.reports.map(item => <option key={item.period} value={item.period}>{quarter(item.period)} · {date(item.period)}{item.filingCount > 1 ? ` · ${item.filingCount} filings` : ""}</option>)}</select></label><div className={s.reportStatus}><span className={portfolio?.complete ? s.verified : s.partial}>{portfolio?.complete ? <Check size={14} /> : <Clock3 size={14} />}{portfolio?.complete ? "Public table reconciled" : "Coverage needs review"}</span><button type="button" disabled={current.status === "loading"} onClick={() => setAttempt(value => value + 1)}><RefreshCw size={14} className={current.status === "loading" ? s.spin : undefined} />{current.status === "loading" ? "Checking filings…" : "Refresh"}</button></div></div>
       {!["history", "markets"].includes(view) && (hasHoldings || portfolio?.complete) ? <div className={s.metrics}><article className={s.featuredMetric}><span>Reported value</span><strong title={finite(portfolio.totalValueUsd) ? exactMoney.format(portfolio.totalValueUsd) : undefined}>{money(portfolio.totalValueUsd)}</strong><small>{portfolio.complete ? "Total disclosed information-table value" : "Total withheld until coverage is verified"}</small></article><article><span>Disclosed positions</span><strong>{number(portfolio.positionCount)}</strong><small>{number(portfolio.entryCount)} source table rows</small></article><article><span>Largest position</span><strong>{percent(data.summary?.largestPosition?.weightPct)}</strong><small>{data.summary?.largestPosition?.issuer || "Share unavailable"}</small></article><article><span>Reporting lag</span><strong>{finite(lag) && lag >= 0 ? <>{number(lag)}<em> days</em></> : "—"}</strong><small>Quarter end to latest filing</small></article></div> : null}
       {!portfolio?.complete || portfolio?.confidentialOmitted || !data.coverage?.selectedPeriodComplete ? <div className={s.coverageNotice} role="status"><ShieldCheck size={17} /><p><strong>{portfolio?.confidentialOmitted ? "Some holdings were omitted under confidential treatment." : "This snapshot has a coverage limitation."}</strong> {portfolio?.complete ? "The public table can be inspected; quarter comparisons may be unavailable." : "Captured rows remain visible. Totals, concentration, and comparisons are shown only when supported by complete evidence."}</p><button type="button" onClick={() => chooseView("filings")}>Review evidence<ArrowRight size={14} /></button></div> : null}
       {issues.length ? <details className={s.evidenceNotes}><summary>{issues.length === 1 ? "Report coverage note" : `${issues.length} report coverage notes`}<ChevronDown size={15} /></summary><ul>{issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></details> : null}
       <nav className={s.tabs} aria-label="13F research views">{[{ key: "overview", label: "Overview", icon: Layers3 }, { key: "holdings", label: "Holdings", icon: Building2 }, { key: "changes", label: "Quarterly changes", icon: RefreshCw }, { key: "history", label: "Portfolio history", icon: ChartNoAxesCombined }, { key: "markets", label: "Market connections", icon: Network }, { key: "filings", label: "Filings & evidence", icon: FileText }].map(tab => <button key={tab.key} type="button" aria-current={view === tab.key ? "page" : undefined} onClick={() => chooseView(tab.key)}><tab.icon size={16} />{tab.label}{tab.key === "holdings" && hasHoldings ? <span>{number(portfolio.positionCount)}</span> : null}</button>)}</nav>
       {view === "markets" ? <ThirteenFMarketConnections key={`${cik}:${data.selectedPeriod}:${data.observedAt}`} data={data} active={true} onInspectCompany={openHolding} /> : view === "filings" ? <Filings data={data} onChoose={chooseManager} /> : view === "history" ? <ThirteenFHistory key={`${cik}:${data.selectedPeriod}`} data={data} onOpenHolding={openHolding} onSelectPeriod={(managerPeriod: string) => onPatch({ managerPeriod })} initialHoldingKey={historyHolding?.cik === cik && historyHolding.period === data.selectedPeriod ? historyHolding.key : undefined} /> : !hasHoldings && view !== "changes" ? <section className={s.emptyPanel}><FileText size={28} /><h3>{portfolio?.complete ? "No reportable holdings were disclosed for this quarter" : String(portfolio?.reportType || "").toUpperCase().includes("NOTICE") ? "This filing is a notice, not a holdings table" : "No verified holdings table is available for this period"}</h3><p>{portfolio?.complete ? "The complete public information table reports zero entries. This does not establish that the manager holds no other assets." : String(portfolio?.reportType || "").toUpperCase().includes("NOTICE") ? "A Form 13F notice can indicate that another manager reports the holdings. Inspect the cover report and included manager references to find the reporting entity." : "The source chain does not currently provide a complete usable holdings table. Review the report coverage notes and SEC documents for the available evidence."}</p>{portfolio?.otherManagers?.length ? <div className={s.noticeManagers}>{portfolio.otherManagers.map((manager: any, index: number) => filerCik(manager.cik) ? <button type="button" key={manager.cik + ":" + index} onClick={() => chooseManager(filerCik(manager.cik)!)}>{manager.name || `CIK ${manager.cik}`}<ArrowRight size={14} /></button> : <span key={index}>{manager.name || "Reporting manager not named"}{manager.fileNumber ? ` · Form 13F file ${manager.fileNumber}` : ""}</span>)}</div> : null}<button type="button" onClick={() => chooseView("filings")}>Inspect filing evidence<ArrowRight size={15} /></button></section> : view === "holdings" ? <Holdings key={`${cik}:${data.selectedPeriod}`} data={data} /> : view === "changes" ? <Changes key={`${cik}:${data.selectedPeriod}`} data={data} before={before} onRetry={() => setPriorAttempt(value => value + 1)} /> : <Overview data={data} onView={chooseView} />}
-      <footer className={s.workspaceFooter}><span><ShieldCheck size={14} />SEC source evidence · Retrieved {date(data.observedAt)}</span><p>13F reports are delayed public disclosures. They exclude many assets and short positions; they do not measure current holdings or investment returns.</p></footer>
+      <footer className={s.workspaceFooter}><span><ShieldCheck size={14} />SEC source evidence · Retrieved {date(data.observedAt)}{data.cache?.checkedAt ? ` · Last checked ${new Date(data.cache.checkedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC` : ""}</span><p>13F reports are delayed public disclosures. They exclude many assets and short positions; they do not measure current holdings or investment returns.</p></footer>
     </> : null}
     {panel && current.status === "ready" && panel.anchor === data ? <ThirteenFCompanyPanel key={`${panel.data.manager.cik}:${panel.data.selectedPeriod}:${panel.holding.key}`} holding={panel.holding} data={panel.data} onClose={() => setPanel(null)} onViewHistory={viewHoldingHistory} /> : null}
   </div></HoldingActionContext.Provider>;

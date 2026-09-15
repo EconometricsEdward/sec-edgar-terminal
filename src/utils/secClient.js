@@ -133,6 +133,17 @@ export function createSecDispatchCoordinator({
     try { return await release(permit.owner, { cooldownMs: Math.max(0, Math.ceil(cooldownMs)) }) === true; }
     catch { return false; } // The fixed server lease remains the release fallback.
   }
+  async function releaseUncertainReservation(owner) {
+    let timer;
+    try {
+      // A lost acquisition reply may still have committed a server lease.
+      // Cleanup uses only our UUID, independently of the cancelled caller, and
+      // never waits for the full five-second lease or grants another permit.
+      await Promise.race([safeRelease({ owner }), new Promise(resolve => {
+        timer = setTimeout(resolve, MAX_GATE_WAIT_MS);
+      })]);
+    } finally { clearTimeout(timer); }
+  }
   function validateReply(value, owner) {
     return value && typeof value.allowed === 'boolean' && typeof value.cooldown === 'boolean'
       && value.leaseMs === START_LOCK_TTL_MS && Number.isSafeInteger(value.waitMs)
@@ -143,12 +154,14 @@ export function createSecDispatchCoordinator({
   async function reserve(signal) {
     signal?.throwIfAborted();
     const owner = uuid(), deadline = now() + MAX_GATE_WAIT_MS;
+    let uncertainReservation = false;
     try {
       while (true) {
         const requestStarted = now(), remaining = deadline - requestStarted;
         if (remaining <= 0) throw new SecRequestError('SEC request coordination is temporarily saturated.', { code: 'SEC_RATE_GATE_SATURATED', status: 503 });
         const timeout = AbortSignal.timeout(Math.max(1, Math.ceil(remaining)));
         const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+        uncertainReservation = true;
         const reply = await acquire(owner, { signal: requestSignal });
         if (!validateReply(reply, owner)) throw new SecRequestError('Shared SEC request coordination returned invalid lease evidence.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });
         if (reply.allowed) {
@@ -156,11 +169,11 @@ export function createSecDispatchCoordinator({
           // from BEFORE the request conservatively includes all network delay.
           const permit = { owner, validUntil: requestStarted + START_LOCK_TTL_MS - START_LOCK_SAFETY_MS };
           if (now() >= permit.validUntil || requestSignal.aborted) {
-            await safeRelease(permit);
             throw new SecRequestError('SEC dispatch permission arrived too late.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });
           }
           return permit;
         }
+        uncertainReservation = false;
         const waitMs = Math.max(1, reply.waitMs), left = deadline - now();
         if (reply.cooldown || left <= 0 || waitMs > left) throw new SecRequestError('SEC request coordination is temporarily saturated.', {
           code: reply.cooldown ? 'SEC_UPSTREAM_COOLDOWN' : 'SEC_RATE_GATE_SATURATED', status: 503,
@@ -168,6 +181,7 @@ export function createSecDispatchCoordinator({
         await wait(Math.min(waitMs, START_LOCK_POLL_MS, left), signal);
       }
     } catch (error) {
+      if (uncertainReservation) await releaseUncertainReservation(owner);
       if (signal?.aborted) throw abortError(signal);
       if (error instanceof SecRequestError) throw error;
       throw new SecRequestError('Shared SEC request coordination failed.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });

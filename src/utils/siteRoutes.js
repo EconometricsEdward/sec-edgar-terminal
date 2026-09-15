@@ -179,7 +179,7 @@ export function entityFromRoute(pathname, searchParams) {
   if (typeof pathname !== "string") return null;
   const path = pathname.replace(/\/$/, "") || "/";
   if (path === "/fund") {
-    if (queryValue(searchParams, "view") !== "13f") return null;
+    if (queryValue(searchParams, "view") !== "13f" || queryValue(searchParams, "managerView") === "compare") return null;
     const cik = normalizeCikIdentifier(queryValue(searchParams, "managerCik"));
     if (!cik) return null;
     return {

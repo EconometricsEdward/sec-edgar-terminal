@@ -153,14 +153,19 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
       if (!bytes.length) return null;
       try { return JSON.parse(bytes.toString('utf8')); } catch { throw new DataStoreError('invalid_response', 502); }
     } catch (error) {
+      // AbortSignal.timeout() rejects with TimeoutError, while an explicit
+      // controller abort commonly uses AbortError. Both are bounded deadline
+      // failures; reporting the former as transport_failure hides queue expiry.
+      const timedOut = controller.signal.aborted || signal?.aborted
+        || error?.name === 'AbortError' || error?.name === 'TimeoutError';
       if (env.VERCEL_ENV === 'production') {
         const operation = /^\/rest\/v1\/rpc\/(edgar_[a-z_]+)$/.exec(path)?.[1]
           || (method === 'GET' ? 'object_read' : 'object_write');
         console.warn('[Durable store] request failed', { operation,
-          code: error instanceof DataStoreError ? error.code : error?.name === 'AbortError' ? 'timeout' : 'transport_failure' });
+          code: error instanceof DataStoreError ? error.code : timedOut ? 'timeout' : 'transport_failure' });
       }
       if (error instanceof DataStoreError) throw error;
-      throw new DataStoreError(error?.name === 'AbortError' ? 'timeout' : 'transport_failure');
+      throw new DataStoreError(timedOut ? 'timeout' : 'transport_failure');
     } finally { clearTimeout(timeout); }
   }
   async function rpc(name, params = {}, { signal } = {}) {

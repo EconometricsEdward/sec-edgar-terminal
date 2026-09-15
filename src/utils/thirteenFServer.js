@@ -2,6 +2,7 @@ import { loadFilingsCompany, loadFilingsArchive } from './filingsResearchServer.
 import { mergeFilings, validFilingDate, validFilingDocument } from './filingsResearch.js';
 import { secFetch } from './secClient.js';
 import { parse13FCover, parse13FInformationTable, reconcile13FTable, assemble13FPeriod, summarize13FPortfolio } from './thirteenF.js';
+import { create13FCache, THIRTEEN_F_FRESH_MS, THIRTEEN_F_STALE_MS } from './thirteenFCache.js';
 
 const FORM = /^13F-(HR|NT)(?:\/A)?$/;
 const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
@@ -71,10 +72,14 @@ async function limitedText(response, maxBytes, budget, signal) {
 export function createThirteenFLoader({
   companyLoader = loadFilingsCompany, archiveLoader = loadFilingsArchive, fetchSec = secFetch,
   now = Date.now, maxCacheBytes = MAX_CACHE_BYTES, maxPending = 6, deadlineMs = 50000,
+  sharedCache = create13FCache({ now }),
 } = {}) {
   const cache = new Map(), pending = new Map();
   let cacheBytes = 0;
   function put(key, data, ttl) {
+    const existing = cache.get(key);
+    if (existing && Date.parse(existing.data.cache?.checkedAt || existing.data.observedAt) > Date.parse(data.cache?.checkedAt || data.observedAt)) return;
+    if (existing?.invalidatedAt && Date.parse(existing.invalidatedAt) > Date.parse(data.cache?.checkedAt || data.observedAt)) return;
     const bytes = encoder.encode(JSON.stringify(data)).length;
     if (bytes > maxCacheBytes) return;
     if (cache.has(key)) { cacheBytes -= cache.get(key).bytes; cache.delete(key); }
@@ -93,6 +98,10 @@ export function createThirteenFLoader({
   }
   async function loadReport(cik, filing, signal, budget, { coverOnly = false } = {}) {
     if (!ACCESSION.test(filing.accession) || !FORM.test(filing.form)) throw failure('The selected SEC filing metadata is invalid. Retry this request.');
+    // SEC accession documents are immutable; amendments have new accessions.
+    // A short-lived report head is rebuilt against current submissions metadata.
+    const prepared = !coverOnly ? await sharedCache.readFiling(cik, filing, signal) : null;
+    if (prepared) return prepared;
     const rootPath = `/Archives/edgar/data/${Number(cik)}/${filing.accession.replaceAll('-', '')}`;
     const root = `https://www.sec.gov${rootPath}`;
     let index;
@@ -132,13 +141,18 @@ export function createThirteenFLoader({
       complete = complete && reconciled.complete;
       if (rows.length > 20000) throw failure('This 13F report exceeds the supported position limit. Open the original SEC information table.', 422, 'REPORT_TOO_LARGE');
     }
-    return { cover, holdings: rows, complete, issues: [...new Set(issues)], filing: {
+    const report = { cover, holdings: rows, complete, issues: [...new Set(issues)], filing: {
       accession: filing.accession, filingDate: filing.filingDate, reportDate: cover.period, form: filing.form,
       primaryUrl, indexUrl: `${root}/${filing.accession}-index.html`, tableUrls,
     } };
+    if (!coverOnly && complete) await sharedCache.writeFiling(cik, filing, report, signal);
+    return report;
   }
   async function build(cik, requestedPeriod, signal) {
-    const company = await companyLoader(cik, { signal });
+    const checkStartedAt = now();
+    // Only cache-head misses reach this path. Refresh mutable submissions
+    // metadata; immutable verified accession documents remain reusable.
+    const company = await companyLoader(cik, { signal, refresh: true });
     if (company.cik !== cik || !company.name || company.kind === 'fund') throw failure('The SEC manager identity could not be verified. Retry this request.');
     let filings = mergeFilings(company.filings).map(filing => ({ ...filing }));
     const archives = company.archives || [], loaded = new Set();
@@ -147,7 +161,7 @@ export function createThirteenFLoader({
     const budget = { bytes: 0 };
     
     async function addArchive(archive) {
-      const history = await archiveLoader(cik, archive.name, { signal });
+      const history = await archiveLoader(cik, archive.name, { signal, refresh: true });
       if (history.cik !== cik || history.archive?.name !== archive.name) throw failure('The archived SEC filings did not match this manager. Retry this request.');
       filings = mergeFilings(filings, history.filings).map(filing => ({ ...filing }));
       omittedRecords += history.omittedRecords || 0;
@@ -199,7 +213,7 @@ export function createThirteenFLoader({
           : 'All SEC submissions archives were checked. Public 13F reports can omit confidential positions and securities outside Form 13F coverage.',
     };
     const base = { manager: { cik, name: company.name, submissionsUrl: company.submissionsUrl || `https://data.sec.gov/submissions/CIK${cik}.json` },
-      reports, selectedPeriod: selectedPeriod || null, coverage, observedAt: new Date(now()).toISOString() };
+      reports, selectedPeriod: selectedPeriod || null, coverage, observedAt: new Date(checkStartedAt).toISOString() };
     if (!selectedPeriod) return { ...base, status: 'unavailable', reason: historyComplete ? 'No Form 13F filings were found in this filer’s SEC submissions history.' : 'No Form 13F filings were found in the SEC history checked. Earlier archives remain available in the filing browser.', portfolio: null, summary: null };
     const selectedFilings = filings.filter(f => FORM.test(f.form) && f.reportDate === selectedPeriod);
     if (!selectedFilings.length) throw failure('This quarter is not present in the SEC 13F history checked. Select an available quarter or open the filing history.', 404, 'PERIOD_NOT_FOUND');
@@ -219,22 +233,80 @@ export function createThirteenFLoader({
     delete summary.holdings;
     return { ...base, status: 'ready', portfolio, summary };
   }
-  return async function loadThirteenF(cikInput, { period: periodInput = '', signal } = {}) {
+  function cacheStatus(data, status, checkedAt, message = null) {
+    return { ...data, cache: { status, stale: status === 'stale', checkedAt,
+      freshUntil: new Date(Date.parse(checkedAt) + THIRTEEN_F_FRESH_MS).toISOString(),
+      ...(status === 'stale' ? { refreshAttemptedAt: new Date(now()).toISOString(), message } : {}) } };
+  }
+  return async function loadThirteenF(cikInput, { period: periodInput = '', signal, refresh = false } = {}) {
     const { cik, period } = normalize13FRequest(cikInput, periodInput);
     signal?.throwIfAborted();
     const key = `${cik}:${period || 'latest'}`;
-    const hit = cache.get(key);
-    if (hit?.expires > now()) { cache.delete(key); cache.set(key, hit); return hit.data; }
-    if (hit) { cache.delete(key); cacheBytes -= hit.bytes; }
-    if (pending.has(key)) return abortable(pending.get(key), signal);
+    const hit = cache.get(key), hitCheckedAt = hit?.data.cache?.checkedAt || hit?.data.observedAt;
+    if (!refresh && hit?.expires > now()) { cache.delete(key); cache.set(key, hit); return cacheStatus(hit.data, 'memory', hitCheckedAt); }
+    let fallback = hit?.data.status === 'ready' && hit.data.portfolio?.complete && now() - Date.parse(hitCheckedAt) <= THIRTEEN_F_STALE_MS ? hit.data : null;
+    // Retain a complete expired snapshot for an explicitly labeled fallback.
+    // A read never advances its original observation/check timestamp.
+    if (hit && !fallback) { cache.delete(key); cacheBytes -= hit.bytes; }
+    const pendingKey = `${key}:${refresh ? 'refresh' : 'read'}`;
+    if (pending.has(pendingKey)) return abortable(pending.get(pendingKey), signal);
     if (pending.size >= maxPending) throw failure('Several 13F reports are already loading. Retry shortly.', 503, 'SEC_13F_BUSY');
     const deadline = AbortSignal.timeout(deadlineMs);
-    const promise = build(cik, period, deadline).then(data => {
-      // Do not retain incomplete source coverage as if a later retry could not improve it.
-      if (data.coverage.selectedPeriodComplete && (!data.portfolio || data.portfolio.complete)) put(key, data, period ? 3600000 : 300000);
-      return data;
-    }).finally(() => pending.delete(key));
-    pending.set(key, promise);
+    const promise = (async () => {
+      const saved = await sharedCache.readSnapshot(cik, period, deadline);
+      if (saved) {
+        if (!fallback || Date.parse(saved.checkedAt) > Date.parse(fallback.cache?.checkedAt || fallback.observedAt)) fallback = cacheStatus(saved.data, 'shared', saved.checkedAt);
+        const age = now() - Date.parse(saved.checkedAt);
+        if (!refresh && age < THIRTEEN_F_FRESH_MS && !saved.invalidatedAt
+          && !(hit?.invalidatedAt && Date.parse(hit.invalidatedAt) >= Date.parse(saved.checkedAt))) {
+          const data = cacheStatus(saved.data, 'shared', saved.checkedAt);
+          put(key, data, THIRTEEN_F_FRESH_MS - age);
+          return data;
+        }
+      }
+      try {
+        const built = await build(cik, period, deadline);
+        // This records the metadata observation before document preparation,
+        // so a slow older build cannot publish a misleading later check time.
+        const data = cacheStatus(built, 'source', built.observedAt);
+        // Do not retain incomplete source coverage as if a later retry could not improve it.
+        if (data.coverage.selectedPeriodComplete && (!data.portfolio || data.portfolio.complete)) {
+          const freshRemaining = Math.max(0, THIRTEEN_F_FRESH_MS - (now() - Date.parse(data.cache.checkedAt)));
+          put(key, data, freshRemaining);
+          if (data.status === 'ready') {
+            const isLatest = data.selectedPeriod === data.reports.map(report => report.period).sort().at(-1);
+            const keys = isLatest ? ['', data.selectedPeriod] : [period];
+            if (isLatest) {
+              put(`${cik}:${data.selectedPeriod}`, data, freshRemaining);
+              put(`${cik}:latest`, data, freshRemaining);
+            }
+            await Promise.allSettled(keys.map(selected => sharedCache.writeSnapshot(data, selected, data.cache.checkedAt, deadline)));
+          }
+        } else {
+          // Newly incomplete source evidence invalidates local freshness of a
+          // prior complete observation, which is retained only for fallback.
+          for (const alias of [key, `${cik}:latest`, `${cik}:${data.selectedPeriod}`]) {
+            const prior = cache.get(alias);
+            const affectedPeriod = alias === `${cik}:latest` ? prior?.data.selectedPeriod <= data.selectedPeriod : prior?.data.selectedPeriod === data.selectedPeriod;
+            if (prior && affectedPeriod && Date.parse(prior.data.cache?.checkedAt || prior.data.observedAt) <= Date.parse(data.cache.checkedAt)) {
+              prior.expires = 0; prior.invalidatedAt = data.cache.checkedAt;
+            }
+          }
+          await Promise.allSettled(['', data.selectedPeriod].map(selected => sharedCache.invalidateSnapshot?.(cik, selected, data.selectedPeriod, data.cache.checkedAt, deadline)));
+        }
+        return data;
+      } catch (error) {
+        // A source outage can use a recent complete observation. Invalid input or
+        // unsupported/incomplete evidence must remain its actual error/result.
+        const sourceFailure = !error.status || error.status >= 500 || error.status === 429;
+        const checkedAt = fallback?.cache?.checkedAt || fallback?.observedAt;
+        if (sourceFailure && fallback && now() - Date.parse(checkedAt) <= THIRTEEN_F_STALE_MS) {
+          return cacheStatus(fallback, 'stale', checkedAt, 'The SEC refresh could not be completed. Showing the last complete report; retry to check for newer filings or amendments.');
+        }
+        throw error;
+      }
+    })().finally(() => pending.delete(pendingKey));
+    pending.set(pendingKey, promise);
     return abortable(promise, signal);
   };
 }
