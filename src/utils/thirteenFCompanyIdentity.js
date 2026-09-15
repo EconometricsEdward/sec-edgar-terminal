@@ -162,7 +162,17 @@ export function parseScheduleIssuer(xml, expected = {}) {
 }
 
 function issuerWords(value) {
-  return tidy(value).normalize('NFKD').replace(/\p{M}/gu, '').toUpperCase().replace(/&/g, ' AND ').replace(/\b(?:INCORPORATED|INC|CORPORATION|CORP|LIMITED|LTD|PLC|COMPANY|CO|N V|N\.V\.|S A|S\.A\.)\b/g, ' ').match(/[A-Z0-9]+/g) || [];
+  const words = tidy(value).normalize('NFKD').replace(/\p{M}/gu, '').toUpperCase()
+    // SEC covers use both "The Coca-Cola Company" and "Coca-Cola Co/The".
+    // Only a boundary article is optional; distinctive name words stay intact.
+    .replace(/^THE\s+/, '').replace(/[,/]\s*THE\s*$/, '')
+    // A possessive apostrophe is often omitted from 13F issuer names (MOODYS).
+    .replace(/([A-Z])['’‘`](?=[A-Z])/g, '$1')
+    .replace(/&/g, ' AND ')
+    .replace(/\b(?:INCORPORATED|INC|CORPORATION|CORP|LIMITED|LTD|PLC|COMPANY|CO|N V|N\.V\.|S A|S\.A\.)\b/g, ' ').match(/[A-Z0-9]+/g) || [];
+  // PETE is the reported petroleum abbreviation, not a spelling prefix.
+  // Never expand it in the distinctive first-word position.
+  return words.map((word, index) => index > 0 && word === 'PETE' ? 'PETROLEUM' : word);
 }
 function issuerNamesAgree(reported, evidence) {
   const left = issuerWords(reported), right = issuerWords(evidence);
