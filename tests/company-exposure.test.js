@@ -187,6 +187,44 @@ test('different commodity actions are not cross-assigned to every market in a se
   assert.ok(row(shared, 'input-costs:natural-gas'));
 });
 
+test('utilities used at production plants are operating inputs, with the exact SEC passage preserved', () => {
+  const text = 'In addition, we and our independent bottlers use a significant amount of electricity, natural gas and other energy sources to operate production plants, bottling plants and distribution facilities.';
+  const result = extract(text, { companyName: 'The Coca-Cola Company', ticker: 'KO' });
+  for (const market of ['electricity', 'natural-gas']) {
+    assert.equal(row(result, `input-costs:${market}`)?.evidence[0].text, text);
+    assert.ok(!row(result, `revenue:${market}`));
+  }
+  assert.equal(row(result, 'input-costs:natural-gas').benchmark.contract, '023651');
+  assert.equal(row(result, 'input-costs:electricity').benchmark, null);
+});
+
+test('operating use preserves genuine commodity production and separate production/sales clauses', () => {
+  assert.ok(row(extract('Our natural gas production facilities supply customers under long term sales agreements.'), 'revenue:natural-gas'));
+  const split = extract('We produce crude oil and use natural gas to power our production plants.');
+  assert.ok(row(split, 'revenue:crude-oil')); assert.ok(row(split, 'input-costs:natural-gas'));
+  assert.ok(!row(split, 'revenue:natural-gas')); assert.ok(!row(split, 'input-costs:crude-oil'));
+  for (const text of [
+    'We use natural gas to operate production facilities and sell natural gas to customers.',
+    'We produce and use natural gas to power our production facilities.',
+  ]) {
+    const result = extract(text);
+    assert.ok(row(result, 'input-costs:natural-gas'), text);
+    assert.ok(row(result, 'revenue:natural-gas'), text);
+  }
+});
+
+test('later denial of operating consumption qualifies the input passage without creating revenue exposure', () => {
+  const older = 'We use natural gas to power our production plants and distribution facilities.';
+  const newer = 'We no longer use natural gas to power our production plants and distribution facilities.';
+  const result = extractCompanyExposureMap([{ text: older, filing: annual, role: 'annual' }, { text: newer, filing: quarterly, role: 'quarterly' }]);
+  const input = row(result, 'input-costs:natural-gas');
+  assert.equal(input.evidence[0].text, newer);
+  assert.equal(input.evidence[0].disclosureDirection, 'qualifying-or-negative');
+  assert.equal(input.evidence[0].benchmark, null);
+  assert.ok(!row(result, 'revenue:natural-gas'));
+  assert.equal(extract(newer).rows.length, 0);
+});
+
 test('physical quantities retain signs, shared scales, ranges, and reporting-period qualifications in quotes only', () => {
   const ambiguous = [
     'We produced 31 million and 29 million barrels of crude oil in 2026 and 2025, respectively.',
