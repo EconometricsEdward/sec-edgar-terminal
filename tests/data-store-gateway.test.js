@@ -6,6 +6,7 @@ import { createLocalJWKSet, exportJWK, generateKeyPair, jwtVerify, SignJWT } fro
 import { assertProductionClaims, createGateway, createJwtVerifier, RPC_PARAMETERS, TRUST } from '../supabase/functions/edgar-data-gateway/handler.js';
 import { APPROVED_SEC_CIKS, COVERAGE_MEMBERSHIP_ID, SUPPORTING_SOURCE_CIKS } from '../supabase/functions/edgar-data-gateway/coverage.js';
 import { SEC_COVERAGE_COHORT, SEC_COVERAGE_MEMBERSHIP_ID, SEC_COVERAGE_UNIVERSE } from '../src/utils/secCoverageUniverse.js';
+import { prepareDisclosureIndexDocument } from '../src/utils/disclosurePassageIndex.js';
 
 const BASE = 'https://vvkihuduqqnxqahhbphs.supabase.co/functions/v1/edgar-data-gateway';
 const URL = 'https://vvkihuduqqnxqahhbphs.supabase.co';
@@ -77,7 +78,7 @@ test('cryptographic verifier accepts valid RS256 and rejects forged, wrong audie
 });
 
 test('only the explicitly reviewed RPC names are supported and namespace is forced', async () => {
-  assert.equal(Object.keys(RPC_PARAMETERS).length, 39);
+  assert.equal(Object.keys(RPC_PARAMETERS).length, 42);
   const { handler, calls } = setup();
   assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: key }))).status, 200);
   assert.equal(calls[0][0], `${URL}/rest/v1/rpc/edgar_get_version`);
@@ -90,6 +91,29 @@ test('only the explicitly reviewed RPC names are supported and namespace is forc
   }
   assert.equal((await handler(rpc('arbitrary_sql', { query: 'drop table' }))).status, 403);
   assert.equal(calls.length, 1);
+});
+
+test('disclosure index accepts bounded public filing records and rejects widened RPC/source/payload scope', async () => {
+  const today = new Date(NOW).toISOString().slice(0, 10);
+  const prepared = prepareDisclosureIndexDocument({ cik: '0000320193', ticker: 'AAPL', companyName: 'Apple Inc.',
+    filing: { accession: '0000320193-26-000001', primaryDoc: 'aapl.htm', form: '10-K', filingDate: today },
+    text: 'The company reported a material weakness and implemented remediation. No customer information was compromised during the reporting period.',
+    sourceRetrievedAt: new Date(NOW).toISOString() });
+  const { handler, calls } = setup();
+  const body = { p_document: prepared.document, p_passages: prepared.passages };
+  assert.equal((await handler(rpc('edgar_disclosure_replace', body))).status, 200);
+  for (const invalid of [
+    { ...body, p_document: { ...prepared.document, sourceUrl: 'https://attacker.example' } },
+    { ...body, p_document: { ...prepared.document, primaryDoc: '../secret.htm' } },
+    { ...body, p_document: { ...prepared.document, parserVersion: 999 } },
+    { ...body, p_passages: Array.from({ length: 181 }, () => prepared.passages[0]) },
+    { ...body, p_sql: 'select 1' },
+  ]) assert.equal((await handler(rpc('edgar_disclosure_replace', invalid))).status, 422);
+  const search = { p_terms: ['material weakness'], p_start: '2024-01-01', p_end: today, p_forms: ['10-K'], p_ciks: [], p_tickers: [], p_section: 'all', p_offset: 0, p_limit: 120, p_parser_version: 1 };
+  assert.equal((await handler(rpc('edgar_disclosure_search', search))).status, 200);
+  assert.equal((await handler(rpc('edgar_disclosure_search', { ...search, p_limit: 10000 }))).status, 422);
+  assert.equal((await handler(rpc('edgar_disclosure_search', { ...search, p_namespace: 'preview' }))).status, 403);
+  assert.equal(calls.length, 2, 'rejected records never reach the database');
 });
 
 test('gateway rejects queries, method changes, encoded paths and arbitrary services', async () => {

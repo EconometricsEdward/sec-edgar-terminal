@@ -8,6 +8,7 @@ import { getDataStoreMode } from '../../../../utils/dataStore.js';
 import { SEC_MIGRATION_COHORT } from '../../../../utils/secDocumentStore.js';
 import { runSecMigrationJob } from '../../../../utils/dataMigrationJob.js';
 import { isSecMigrationScheduleEnabled } from '../../../../utils/dataStoreDeployment.js';
+import { prewarmDisclosureSearch } from '../../../../utils/disclosurePrewarm.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -29,10 +30,11 @@ export async function GET(request) {
       && ['sec', 'financial'].every(dataset => getDataStoreMode(dataset) !== 'off');
     const tickers = migrationScheduled
       ? (await readSecPrewarmTickers()).filter(ticker => !SEC_MIGRATION_COHORT.some(company => company.ticker === ticker)) : undefined;
-    const [marketResult, submissionsResult, migrationResult] = await Promise.allSettled([
+    const [marketResult, submissionsResult, migrationResult, disclosureResult] = await Promise.allSettled([
       loadMarketAtlas({ signal: controller.signal, forceRefresh: true }),
       prewarmSecSubmissions({ signal: controller.signal, deadline, ...(tickers ? { tickers } : {}) }),
       migrationScheduled ? runSecMigrationJob({ signal: controller.signal, deadline: startedAt + 230000, maxCompanies: 2, maxBatches: 2 }) : Promise.resolve(null),
+      prewarmDisclosureSearch({ signal: controller.signal, deadline: startedAt + 60000 }),
     ]);
     if (marketResult.status === 'rejected' && submissionsResult.status === 'rejected') throw new Error(`SEC Market and submissions prewarming failed: ${marketResult.reason?.message || 'Market unavailable'}; ${submissionsResult.reason?.message || 'submissions unavailable'}`);
     const market = marketResult.status === 'fulfilled' ? marketResult.value : null;
@@ -43,6 +45,7 @@ export async function GET(request) {
         && (!migrationScheduled || migrationResult.status === 'fulfilled' && migrationResult.value?.status === 'done') ? 'ready' : 'partial',
       market: market ? { companies: market.companies.length, generated_at: market.generatedAt, cache_status: market.cache?.status || 'current' } : { failed: true, reason: marketResult.reason?.message || 'SEC Market prewarm failed.' },
       submissions,
+      disclosures: disclosureResult.status === 'fulfilled' ? disclosureResult.value : { status: 'unavailable' },
       ...(migrationScheduled ? { migration: migrationResult.status === 'fulfilled' ? migrationResult.value : { status: 'failed', code: 'DURABLE_COHORT_REFRESH_FAILED' } } : {}),
     }, { headers });
   } catch (error) {

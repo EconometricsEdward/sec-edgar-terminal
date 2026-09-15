@@ -3,6 +3,7 @@ import { filingEvidenceId } from "./disclosureNotebook.js";
 export const DISCLOSURE_RESULT_SCOPES = [
   ["evidence", "Matches & candidates"],
   ["verified", "Successfully searched"],
+  ["indexed", "Prepared passage matches"],
   ["candidates", "Unverified candidates"],
   ["gaps", "Coverage gaps"],
   ["all", "Every selected document"],
@@ -49,7 +50,7 @@ export function hasDisclosureChanges(filing) {
 }
 export function disclosureCoverageGap(filing) {
   return (
-    (filing.status !== "reviewed" && filing.status !== "index-candidate") ||
+    !["reviewed", "index-candidate", "indexed-match"].includes(filing.status) ||
     Boolean(filing.comparisonError)
   );
 }
@@ -89,11 +90,12 @@ export function disclosureReviewId(filing, settings) {
 function scoped(filing, scope) {
   if (scope === "all") return true;
   if (scope === "verified") return filing.status === "reviewed";
+  if (scope === "indexed") return filing.status === "indexed-match";
   if (scope === "candidates") return filing.status === "index-candidate";
   if (scope === "gaps") return disclosureCoverageGap(filing);
   return (
     filing.status === "index-candidate" ||
-    (filing.status === "reviewed" &&
+    (["reviewed", "indexed-match"].includes(filing.status) &&
       (filing.matched || hasDisclosureChanges(filing)))
   );
 }
@@ -154,6 +156,30 @@ function relevance(filing) {
         ...disclosureResultPreviews(filing).map((p) => count(p.relevance)),
       );
 }
+function searchRank(filing) {
+  // Reciprocal rank fusion joins two independent retrieval scales using only
+  // their ordinal positions. A match found in both sources receives both votes.
+  return [filing.indexRank, filing.preparedRank].reduce(
+    (score, rank) => score + (Number.isFinite(rank) && rank >= 0 ? 1 / (60 + rank) : 0),
+    0,
+  );
+}
+function discoveryOrder(a, b) {
+  const ar = searchRank(a);
+  const br = searchRank(b);
+  // Search ranks are ordinal positions, not scores. Retaining them while a
+  // candidate is verified avoids comparing unrelated passage and SEC scores.
+  if (ar || br) return br - ar;
+  const candidateA = a.status === "index-candidate";
+  const candidateB = b.status === "index-candidate";
+  if (candidateA && candidateB) {
+    const aScore = Number.isFinite(a.indexScore) ? a.indexScore : -Infinity;
+    const bScore = Number.isFinite(b.indexScore) ? b.indexScore : -Infinity;
+    return bScore - aScore;
+  }
+  if (candidateA !== candidateB) return candidateA ? 1 : -1;
+  return relevance(b) - relevance(a);
+}
 export function sortDisclosureResults(filings, sort = "relevance") {
   return [...filings].sort((a, b) => {
     let difference = 0;
@@ -171,7 +197,7 @@ export function sortDisclosureResults(filings, sort = "relevance") {
       difference = count(b.signals?.concrete) - count(a.signals?.concrete);
     else if (sort === "section")
       difference = count(b.signals?.recognized) - count(a.signals?.recognized);
-    else difference = relevance(b) - relevance(a);
+    else difference = discoveryOrder(a, b);
     return (
       difference ||
       String(b.filingDate || "").localeCompare(a.filingDate || "") ||
@@ -224,6 +250,7 @@ export function buildDisclosureResults(
     },
     summary: {
       verified: results.filter((f) => f.status === "reviewed").length,
+      indexed: results.filter((f) => f.status === "indexed-match").length,
       candidates: results.filter((f) => f.status === "index-candidate").length,
       gaps: results.filter(disclosureCoverageGap).length,
       personallyReviewed: results.filter(
@@ -254,6 +281,10 @@ export function exportDisclosureResultsCsv(
     "reporting_period",
     "sec_url",
     "search_status",
+    "search_result_rank",
+    "prepared_passage_rank",
+    "sec_index_score",
+    "passage_indexed_at",
     "current_query_matched",
     "matching_passages",
     "added_passages",
@@ -286,7 +317,11 @@ export function exportDisclosureResultsCsv(
     f.reportDate,
     f.documentUrl,
     f.status,
-    f.status === "reviewed" ? Boolean(f.matched) : "unknown",
+    f.indexRank ?? "",
+    f.preparedRank ?? "",
+    f.indexScore ?? "",
+    f.indexedAt ?? "",
+    ["reviewed", "indexed-match"].includes(f.status) ? Boolean(f.matched) : "unknown",
     f.status === "reviewed" ? (f.matchCount ?? 0) : "",
     f.additions ?? "",
     f.revisions ?? "",

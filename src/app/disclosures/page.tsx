@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   ...buildPageMetadata({
     title: "SEC Disclosure Research — Search, Compare & Collect Evidence",
     description:
-      "Search SEC disclosures with precise Boolean queries, an integrated filing reader, changes across reports, company-topic comparisons, coverage-aware trends, saved searches, and exportable evidence collections.",
+      "Search SEC disclosures by company, topic, or research question. Find ranked filing passages, inspect original sources, compare wording, and collect evidence.",
     path: "/disclosures",
   }),
 };
@@ -37,12 +37,13 @@ export default async function DisclosuresPage({
     firstParam(params.match) || firstParam(params.matchMode);
 
   const initial: Partial<SearchSettings> = {
-    query: legacyDisclosureQuery(initialQuery || "liquidity", initialMatchMode),
+    query: firstParam(params.style) === "exact" || firstParam(params.keywords)
+      ? legacyDisclosureQuery(initialQuery || "", initialMatchMode)
+      : initialQuery,
+    searchStyle: firstParam(params.style) === "exact" || firstParam(params.keywords) ? "exact" : "smart",
     tickers: initialTickers || initialFocus,
     mode:
-      initialMode === "index" || initialMode === "edgar-index"
-        ? "index"
-        : "companies",
+      initialMode === "companies" ? "companies" : "index",
   };
   for (const key of [
     "start",

@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import {
   disclosureSettings,
   scanDisclosureCompany,
@@ -50,6 +51,7 @@ export async function GET(request) {
   });
   if (!limit.allowed) return rateLimitedResponse(limit);
   try {
+    request.signal?.throwIfAborted();
     const data =
       action === "document"
         ? await readDisclosureDocument(
@@ -58,12 +60,13 @@ export async function GET(request) {
             params.get("document") || "",
             settings,
             page,
-            readerOptions,
+            { ...readerOptions, signal: request.signal, deferIndexWrite: after },
           )
         : await scanDisclosureCompany(
             ticker,
             settings,
             params.get("after") || "",
+            { signal: request.signal, deferIndexWrite: after },
           );
     const bytes = new TextEncoder().encode(JSON.stringify(data));
     const headers = {
@@ -88,8 +91,8 @@ export async function GET(request) {
     );
   } catch (error) {
     return Response.json(
-      { error: error.message || "SEC disclosure review failed." },
-      { status: 502 },
+      { error: request.signal?.aborted ? "Disclosure review cancelled." : error.message || "SEC disclosure review failed." },
+      { status: request.signal?.aborted ? 499 : 502 },
     );
   }
 }
