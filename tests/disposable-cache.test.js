@@ -110,6 +110,42 @@ test('CFTC cache identity supports actual variable-length and plus-sign contract
   assert.equal(disposableCachePolicy('edgar.cftc-positioning.v1:preview-abc', 'raw-history:tff:12460+:2026-09-08'), null);
 });
 
+test('13F cache policy binds managers and filing fingerprints without admitting arbitrary or preview data', () => {
+  const snapshot = 'edgar.13f-snapshot.v1:production', filing = 'edgar.13f-filing.v1:production';
+  const comparison = 'edgar.13f-comparison.v1:production', fingerprint = 'a'.repeat(64);
+  for (const period of ['latest', '2026-03-31', '2026-06-30', '2026-09-30', '2026-12-31']) {
+    const policy = disposableCachePolicy(snapshot, `${cik}:${period}`);
+    assert.equal(policy.family, 'research'); assert.equal(policy.sourceCik, cik);
+    assert.equal(policy.maxTtlSeconds, 25 * 3600);
+  }
+  const input = disposableCachePolicy(filing, `${cik}:${accession}:${fingerprint}`);
+  assert.equal(input.family, 'document'); assert.equal(input.sourceCik, cik);
+  assert.equal(input.maxTtlSeconds, 30 * 86400);
+  assert.equal(disposableCachePolicy(comparison, fingerprint).family, 'research');
+  for (const [type, id] of [
+    [snapshot, '0000000000:latest'], [snapshot, '320193:latest'], [snapshot, `${cik}:2026-06-31`],
+    [snapshot, `${cik}:2026-02-28`], [snapshot, `${cik}:latest:lease`], [snapshot, `${cik}:2026-06-30?refresh=1`],
+    [filing, `${cik}:${accession}:${'g'.repeat(64)}`], [filing, `${cik}:${accession}:${'a'.repeat(63)}`],
+    [filing, `${cik}:https://www.sec.gov/${accession}:${fingerprint}`],
+    [filing.replace(':production', ':preview-123'), `${cik}:${accession}:${fingerprint}`],
+    [snapshot.replace(':production', ':preview-123'), `${cik}:latest`],
+    [comparison.replace(':production', ':preview-123'), fingerprint], [comparison, `${fingerprint}:latest`],
+  ]) assert.equal(disposableCachePolicy(type, id), null, `${type}/${id}`);
+});
+
+test('13F cache writes verify the manager CIK before transmission and preserve freshness metadata', async () => {
+  const type = 'edgar.13f-snapshot.v1:production', id = `${cik}:LATEST`;
+  const payload = { cik, checkedAt: new Date(NOW - 30000).toISOString(), observedAt: new Date(NOW - 60000).toISOString() };
+  const { cache, calls } = setup({ response: params => Response.json({ stored: true, rawSha256: params.p_raw_sha256, expiresAt: new Date(NOW + params.p_ttl_seconds * 1000).toISOString() }) });
+  await assert.rejects(cache.cachePut(type, id, { ...payload, cik: '0001350694' }, 90000), /source_identity_mismatch/);
+  assert.equal(calls.length, 0);
+  assert.equal((await cache.cachePut(type, id, payload, 90000, { ifHash: 'absent' })).stored, true);
+  assert.equal(calls[0].params.p_if_hash, 'absent');
+  const read = setup({ response: () => Response.json([record(id, payload)]) });
+  assert.deepEqual((await read.cache.cacheGet(type, id)).payload, payload);
+  assert.equal(read.calls.length, 1);
+});
+
 test('production-only adapter uses fixed OIDC endpoint and never service credentials', async () => {
   for (const env of [{}, { VERCEL_ENV: 'preview' }, { VERCEL_ENV: 'production', EDGAR_DISPOSABLE_CACHE_MODE: 'off' }]) {
     assert.equal(disposableCacheEnabled(env), false);

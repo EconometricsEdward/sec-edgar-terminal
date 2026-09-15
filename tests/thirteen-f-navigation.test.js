@@ -84,6 +84,12 @@ test("portfolio history deep links retain the manager and selected quarter in na
   assert.match(html, /href="\/fund\?view=13f&amp;managerCik=0001747057&amp;managerPeriod=2026-06-30&amp;managerView=history"/);
   assert.match(html, /href="\/filings\/0001747057"/);
 });
+test("multi-manager comparison does not inherit a single-filer navigation context", () => {
+  const path = "/fund?view=13f&managerView=compare&managerCik=0001747057&managerCompare=0001747057,0001350694";
+  const route = new URL(path, "https://secedgarterminal.com");
+  assert.equal(entityFromRoute(route.pathname, route.searchParams), null);
+  assert.equal(safeInternalPath(path), path);
+});
 
 test("market connection deep links retain the 13F manager and report quarter across navigation", () => {
   const path = managerHoldingsPath("1747057", { period: "2026-06-30", view: "markets" });

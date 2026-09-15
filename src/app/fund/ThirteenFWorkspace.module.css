@@ -52,6 +52,11 @@
 .examples { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: -12px; }
 .examples > span { font-size: 11px; color: var(--fund-muted); margin-right: 5px; }
 .examples button { min-height: 31px; font-size: 11px; border-radius: 100px; background: transparent; padding: 6px 11px; }
+.workspace .compareLaunch { justify-content: flex-start; gap: 18px; width: 100%; padding: 23px 25px; border-color: color-mix(in srgb, var(--fund-green) 35%, var(--fund-line)); background: linear-gradient(110deg, color-mix(in srgb, var(--fund-green) 7%, var(--fund-panel)), var(--fund-panel)); text-align: left; }
+.compareLaunch > svg { color: var(--fund-green); flex-shrink: 0; }
+.compareLaunch > span { display: grid; flex: 1; gap: 7px; }
+.compareLaunch strong { font-size: 18px; letter-spacing: -.02em; }
+.compareLaunch small { color: var(--fund-muted); font-size: 12px; line-height: 1.65; }
 .featureGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 15px; }
 .featureGrid article { position: relative; padding: 27px; background: var(--fund-panel); border: 1px solid var(--fund-line); border-radius: 13px; }
 .featureGrid article > span { position: absolute; right: 23px; top: 23px; font-size: 10px; color: var(--fund-muted); font-variant-numeric: tabular-nums; }

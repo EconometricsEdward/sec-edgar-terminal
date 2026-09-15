@@ -108,6 +108,27 @@ test('Filings archive manifest rejects another issuer, traversal, invalid ranges
     { ...good, name: 'CIK0000000001-submissions-003.json', filingFrom: '2026-12-31' },
   ], '0000000001'), [good]);
 });
+
+test('Explicit filings refresh bypasses cached submissions while ordinary reads preserve source observation time', async () => {
+  const original = globalThis.fetch, cik = '0000958397'; let version = 1, calls = 0;
+  globalThis.fetch = async url => {
+    assert.equal(String(url), `https://data.sec.gov/submissions/CIK${cik}.json`); calls++;
+    return Response.json({ cik, name: `Source revision ${version}`, filings: { recent: rows([filing(version)]), files: [] } });
+  };
+  try {
+    const first = await loadFilingsCompany(cik);
+    version = 2;
+    const cached = await loadFilingsCompany(cik);
+    assert.equal(cached.name, first.name);
+    assert.equal(cached.observedAt, first.observedAt);
+    assert.equal(cached.sourceObservedAt, first.sourceObservedAt);
+    assert.equal(calls, 1);
+    const refreshed = await loadFilingsCompany(cik, { refresh: true });
+    assert.equal(refreshed.name, 'Source revision 2');
+    assert.equal(calls, 2);
+    assert.equal((await loadFilingsCompany(cik)).observedAt, refreshed.observedAt);
+  } finally { globalThis.fetch = original; }
+});
 test('Filings loaders preserve exact issuer, verify archived ownership, distinguish failed lookup and route funds', async () => {
   const originalFetch = globalThis.fetch;
   const requested = [];

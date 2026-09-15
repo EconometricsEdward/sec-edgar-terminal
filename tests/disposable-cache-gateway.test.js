@@ -54,6 +54,26 @@ test('cache key and family policy rejects unknown namespaces, coordination, prev
   assert.equal((await preview(request('edgar_cache_get', good))).status, 401); assert.equal(previewCalls.length, 0);
 });
 
+test('13F cache gateway preserves manager identity, bounded retention and production isolation', async () => {
+  const { gateway, calls } = setup(), cik = '0001350694', fingerprint = 'A'.repeat(64);
+  const records = [
+    { p_family: 'research', p_type: 'edgar.13f-snapshot.v1:production', p_id: `${cik}:2026-06-30`, p_ttl_seconds: 90000 },
+    { p_family: 'document', p_type: 'edgar.13f-filing.v1:production', p_id: `${cik}:0001350694-26-000001:${fingerprint}`, p_ttl_seconds: 30 * 86400 },
+  ];
+  for (const record of records) {
+    assert.equal((await gateway(request('edgar_cache_put', put({ cik }, record)))).status, 200);
+    assert.equal((await gateway(request('edgar_cache_put', put({ cik: '0000320193' }, record)))).status, 422);
+    assert.equal((await gateway(request('edgar_cache_put', put({ cik }, { ...record, p_ttl_seconds: record.p_ttl_seconds + 1 })))).status, 422);
+    assert.equal((await gateway(request('edgar_cache_get', { p_family: record.p_family, p_type: record.p_type.replace(':production', ':preview'), p_ids: [record.p_id] }))).status, 403);
+  }
+  assert.equal(calls.length, 2);
+  const comparison = { p_family: 'research', p_type: 'edgar.13f-comparison.v1:production', p_ids: [fingerprint] };
+  assert.equal((await gateway(request('edgar_cache_get', comparison))).status, 200);
+  const { gateway: preview, calls: previewCalls } = setup({ verifyToken: async () => claims({ environment: 'preview' }) });
+  assert.equal((await preview(request('edgar_cache_get', comparison))).status, 401);
+  assert.equal(previewCalls.length, 0);
+});
+
 test('cache writes require bounded retention, exact compressed/raw hashes and CAS values', async () => {
   const { gateway, calls } = setup();
   const good = put();

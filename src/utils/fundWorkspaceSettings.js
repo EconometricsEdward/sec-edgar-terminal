@@ -30,6 +30,8 @@ export const FUND_WORKSPACE_DEFAULTS = {
   managerCik: "",
   managerPeriod: "",
   managerView: "overview",
+  managerCompare: [],
+  managerComparePeriod: "",
 };
 export const validFundTicker = (ticker) =>
   typeof ticker === "string" && /^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(ticker) && !/^\d+$/.test(ticker);
@@ -37,7 +39,7 @@ const accession = (value) =>
   typeof value === "string" && /^\d{10}-\d{2}-\d{6}$/.test(value);
 const choices = {
   view: ["discover", "security", "compare", "allocation", "changes", "boards", "13f"],
-  managerView: ["overview", "holdings", "changes", "history", "markets", "filings"],
+  managerView: ["overview", "holdings", "changes", "history", "markets", "filings", "compare"],
   category: [
     "All funds",
     "US equity",
@@ -109,20 +111,26 @@ export function normalizeFundWorkspaceSettings(input = {}) {
   out.managerCik = /^\d{1,10}$/.test(cik) && Number(cik) > 0 ? cik.padStart(10, "0") : "";
   const period = typeof source.managerPeriod === "string" ? source.managerPeriod : "";
   out.managerPeriod = out.managerCik && /^\d{4}-(?:03-31|06-30|09-30|12-31)$/.test(period) ? period : "";
-  if (!out.managerCik) out.managerView = "overview";
+  out.managerCompare = [...new Set((Array.isArray(source.managerCompare) ? source.managerCompare : [])
+    .filter(value => typeof value === "string" && /^\d{1,10}$/.test(value.trim()) && Number(value) > 0)
+    .map(value => value.trim().padStart(10, "0")))].slice(0, 4);
+  out.managerComparePeriod = typeof source.managerComparePeriod === "string" && /^\d{4}-(?:03-31|06-30|09-30|12-31)$/.test(source.managerComparePeriod) ? source.managerComparePeriod : "";
+  if (!out.managerCik && out.managerView !== "compare") out.managerView = "overview";
   return out;
 }
 export function readFundWorkspaceSettings(search) {
   const p = new URLSearchParams(search),
     input = Object.fromEntries(p);
-  if (["view", "managerCik", "managerPeriod", "managerView"].some(key => p.getAll(key).length > 1)) {
+  if (["view", "managerCik", "managerPeriod", "managerView", "managerCompare", "managerComparePeriod"].some(key => p.getAll(key).length > 1)) {
     input.managerCik = "";
     input.managerPeriod = "";
     input.managerView = "overview";
+    input.managerComparePeriod = "";
     if (p.getAll("view").length > 1) input.view = "discover";
   }
   input.query = p.get("q") ?? p.get("query") ?? "";
   input.tickers = (p.get("tickers") || p.get("compare") || "").split(",");
+  input.managerCompare = p.getAll("managerCompare").length <= 1 ? (p.get("managerCompare") || "").split(",") : [];
   for (const key of ["reportMap", "allocations"]) {
     try {
       input[key] = JSON.parse(p.get(key) || "{}");
