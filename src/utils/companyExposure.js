@@ -135,20 +135,33 @@ function marketMatches(text) {
 function marketChannelText(text, market) {
   // Keep different verbs attached to their own objects: producing oil and
   // purchasing gas must not become oil procurement plus gas production.
-  const parts = text.split(/,?\s+(?:and|but|while)\s+(?=(?:(?:also|primarily|typically|generally)\s+)?(?:purchas(?:e|es|ed)|buy|buys|bought|produc(?:e|es|ed)|sell|sells|sold|consum(?:e|es|ed)|mine|mines|mined|hold|holds|own|owns)\b)/i);
+  const parts = text.split(/,?\s+(?:and|but|while)\s+(?=(?:(?:also|primarily|typically|generally)\s+)?(?:purchas(?:e|es|ed)|buy|buys|bought|produc(?:e|es|ed)|sell|sells|sold|consum(?:e|es|ed)|use|uses|used|mine|mines|mined|hold|holds|own|owns)\b)/i);
   if (parts.length === 1) return text;
   return parts.flatMap((part, index) => {
     if (!market.re.test(part)) return [];
     const previous = parts[index - 1];
     return [previous && !previous.includes(NON_COMMODITY_MARKER) && !marketMatches(previous).length ? `${previous} ${part}` : part];
-  }).join(' ');
+  }).join('; ');
+}
+
+function operatingCommodityUse(text, market) {
+  let input = false;
+  // "Use gas to operate production plants" consumes gas. Production in the
+  // purpose clause does not establish sales of that input. Keep other actions.
+  const revenueText = text.replace(/\b(?:us(?:e|es|ed|ing)|consum(?:e|es|ed|ing))\s+([^;.!?]{1,300}?)\s+(?:to\s+(?:operate|power|fuel|heat|cool)|(?:in|for)\s+(?:(?:our|the)\s+)?(?:manufacturing|production|bottling|distribution|operations?|facilities))\b[^;.!?]*/gi, (passage, inputs) => {
+    if (!market.re.test(inputs)) return passage;
+    input = true;
+    return ' ';
+  });
+  return { input, revenueText };
 }
 
 function categoriesFor(text, market) {
   text = marketChannelText(text, market);
   if (market.type === 'currency') return CURRENCY_ECONOMIC.test(text) ? ['currencies'] : [];
   if (market.type === 'rate') return [BORROWING.test(text) && 'borrowing', INVESTMENTS.test(text) && 'investments'].filter(Boolean);
-  return [REVENUE.test(text) && 'revenue', INPUT.test(text) && !/\b(?:market[- ]making|with clients|financing arrangements)\b/i.test(text) && 'input-costs', COMMODITY_INVESTMENTS.test(text) && 'investments'].filter(Boolean);
+  const operatingUse = operatingCommodityUse(text, market);
+  return [REVENUE.test(operatingUse.revenueText) && 'revenue', (operatingUse.input || INPUT.test(text)) && !/\b(?:market[- ]making|with clients|financing arrangements)\b/i.test(text) && 'input-costs', COMMODITY_INVESTMENTS.test(text) && 'investments'].filter(Boolean);
 }
 function idOf(text) {
   let hash = 2166136261;
