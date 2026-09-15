@@ -393,11 +393,19 @@ export async function GET(request) {
     // next raw hit so filtered/invalid document pointers never cause repeats.
     const { data, requestUrl } = await fetchSearchPage({ secQuery, forms, startDate, endDate, from, size: limit, signal, ciks: focusTerms.map(f => f.cik) });
     signal.throwIfAborted();
-    const rawHits = Array.isArray(data?.hits?.hits) ? data.hits.hits : [];
+    // EFTS may ignore size and return its default batch. Consume only the
+    // requested raw window so continuation cannot skip the unconsumed hits.
+    const upstreamHits = Array.isArray(data?.hits?.hits) ? data.hits.hits : [];
+    const rawHits = upstreamHits.slice(0, limit);
     const totalHits = totalValue(data);
     const totalRelation = data?.hits?.total?.relation === 'gte' ? 'gte' : 'eq';
     const seen = new Set();
+    const requestedForms = new Set(forms);
+    let excludedFormHits = 0;
     const results = rawHits.map((hit, index) => normalizeHit(hit, from + index + 1, focusTerms)).filter(hit => {
+      // The SEC forms filter can also include amendments implicitly. Only
+      // explicitly requested forms belong in this result set.
+      if (!requestedForms.has(hit.form)) { excludedFormHits++; return false; }
       const key = `${hit.cik}:${hit.accession}:${hit.documentName}`;
       if (!hit.documentUrl || seen.has(key)) return false;
       seen.add(key);
@@ -405,6 +413,9 @@ export async function GET(request) {
     });
     const timedOut = Boolean(data?.timed_out);
     const page = disclosureIndexPageCoverage({ from, limit, rawHits: rawHits.length, totalHits, totalRelation, returnedHits: results.length, timedOut });
+    page.coverage.excludedFormHits = excludedFormHits;
+    page.coverage.upstreamHitsReceived = upstreamHits.length;
+    page.coverage.totalHitsScope = 'SEC index total before exact form filtering; amendments are returned only when explicitly requested.';
     return Response.json({
       scannedAt: new Date().toISOString(), mode: 'edgar-index', cacheBackend: 'sec-index',
       source: { label: 'SEC full-text search index', url: requestUrl, requests: [requestUrl], pagesSearched: 1, pageSize: limit, fallback: null },

@@ -98,3 +98,69 @@ test('cancelled index request never dispatches SEC traffic or falls back to term
     assert.equal(calls, 0);
   } finally { global.fetch = original; }
 });
+
+test('an upstream default batch cannot exceed the requested page size or skip remaining raw hits', async () => {
+  const original = global.fetch, offsets = [];
+  const allHits = Array.from({ length: 123 }, (_, i) => ({
+    _id: `0000999930-26-${String(i + 1).padStart(6, '0')}:report.htm`, _score: 200 - i,
+    _source: { ciks: ['999930'], display_names: ['Size Fixture (CIK 0000999930)'],
+      adsh: `0000999930-26-${String(i + 1).padStart(6, '0')}`, form: '10-K', file_date: '2026-02-02' },
+  }));
+  global.fetch = async input => {
+    const url = new URL(input), from = Number(url.searchParams.get('from'));
+    offsets.push(from);
+    assert.equal(url.searchParams.get('size'), '20');
+    // Reproduce SEC behavior: requested size is ignored, but from is honored.
+    return Response.json({ hits: { total: { value: allHits.length, relation: 'eq' }, hits: allHits.slice(from, from + 100) } });
+  };
+  try {
+    const first = await (await GET(new Request('https://example.test/api/edgar-index-search?expression=liquidity&forms=10-K&limit=20'))).json();
+    assert.equal(first.results.length, 20);
+    assert.equal(first.nextFrom, 20);
+    assert.equal(first.coverage.searchedHits, 20);
+    assert.equal(first.coverage.upstreamHitsReceived, 100);
+    assert.equal(first.results.at(-1).rank, 20);
+    const second = await (await GET(new Request(`https://example.test/api/edgar-index-search?expression=liquidity&forms=10-K&limit=20&from=${first.nextFrom}`))).json();
+    assert.equal(second.results.length, 20);
+    assert.equal(second.results[0].rank, 21);
+    assert.equal(second.results[0].accession, allHits[20]._source.adsh);
+    assert.equal(second.nextFrom, 40);
+    assert.deepEqual(offsets, [0, 20]);
+    assert.equal(new Set([...first.results, ...second.results].map(hit => hit.accession)).size, 40);
+  } finally { global.fetch = original; }
+});
+
+test('implicit SEC amendments are filtered locally without losing their raw cursor positions', async () => {
+  const original = global.fetch;
+  const allHits = Array.from({ length: 29 }, (_, i) => ({
+    _id: `0000999931-26-${String(i + 1).padStart(6, '0')}:report.htm`, _score: 100 - i,
+    _source: { ciks: ['999931'], display_names: ['Amendment Fixture (CIK 0000999931)'],
+      adsh: `0000999931-26-${String(i + 1).padStart(6, '0')}`, form: [3, 24].includes(i) ? '8-K/A' : '8-K', file_date: '2026-02-02' },
+  }));
+  global.fetch = async input => {
+    const from = Number(new URL(input).searchParams.get('from'));
+    return Response.json({ hits: { total: { value: 29, relation: 'eq' }, hits: allHits.slice(from) } });
+  };
+  try {
+    const base = 'https://example.test/api/edgar-index-search?expression=cybersecurity&limit=20&forms=8-K';
+    const first = await (await GET(new Request(base))).json();
+    assert.equal(first.returnedHits, 19);
+    assert.equal(first.nextFrom, 20);
+    assert.equal(first.coverage.excludedFormHits, 1);
+    assert.ok(first.results.every(hit => hit.form === '8-K'));
+    assert.equal(first.results[3].rank, 5);
+    const last = await (await GET(new Request(`${base}&from=${first.nextFrom}`))).json();
+    assert.equal(last.returnedHits, 8);
+    assert.equal(last.hasMore, false);
+    assert.equal(last.nextFrom, null);
+    assert.equal(last.coverage.searchedHits, 9);
+    assert.equal(last.coverage.excludedFormHits, 1);
+    assert.equal(last.results[0].rank, 21);
+    assert.equal(last.results.at(-1).rank, 29);
+    assert.match(last.coverage.totalHitsScope, /before exact form filtering/);
+    const amended = await (await GET(new Request(`${base},8-K%2FA`))).json();
+    assert.equal(amended.returnedHits, 20);
+    assert.equal(amended.coverage.excludedFormHits, 0);
+    assert.ok(amended.results.some(hit => hit.form === '8-K/A'));
+  } finally { global.fetch = original; }
+});

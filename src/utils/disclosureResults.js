@@ -115,6 +115,37 @@ function languageCount(filing, language) {
     : disclosureResultPreviews(filing).filter((p) => p.label === language)
         .length;
 }
+function companyCik(value) {
+  const raw = String(value ?? "").trim().replace(/^CIK\s*/i, "");
+  return /^\d{1,10}$/.test(raw) && Number(raw) > 0
+    ? raw.padStart(10, "0")
+    : "";
+}
+function companyKey(filing) {
+  const cik = companyCik(filing.cik) || companyCik(filing.ticker);
+  if (cik) return `cik:${cik}`;
+  const ticker = String(filing.ticker || "").trim().toUpperCase();
+  if (ticker) return `ticker:${ticker}`;
+  const name = String(filing.companyName || "").trim();
+  return name ? `name:${name.toUpperCase()}` : `filing:${filingEvidenceId(filing)}`;
+}
+function companyFacets(filings) {
+  const groups = new Map();
+  for (const filing of filings) {
+    const value = companyKey(filing);
+    if (!groups.has(value)) groups.set(value, { tickers: new Set(), names: new Set() });
+    const group = groups.get(value);
+    const ticker = String(filing.ticker || "").trim().toUpperCase();
+    if (/^[A-Z][A-Z0-9.-]{0,19}$/.test(ticker) && !companyCik(ticker)) group.tickers.add(ticker);
+    const name = String(filing.companyName || "").trim();
+    if (name) group.names.add(name);
+  }
+  return [...groups].map(([value, group]) => [
+    value,
+    [...group.tickers].sort()[0] || [...group.names].sort()[0] ||
+      (value.startsWith("cik:") ? `CIK ${value.slice(4)}` : "Unidentified issuer"),
+  ]).sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
+}
 function selected(filing, filters, settings, reviewed, changesOnly) {
   if (!scoped(filing, filters.scope)) return false;
   if (
@@ -124,7 +155,7 @@ function selected(filing, filters, settings, reviewed, changesOnly) {
     !hasDisclosureChanges(filing)
   )
     return false;
-  if (filters.company !== "all" && filing.ticker !== filters.company)
+  if (filters.company !== "all" && companyKey(filing) !== filters.company)
     return false;
   if (filters.form !== "all" && filing.form !== filters.form) return false;
   if (!hasChange(filing, filters.change)) return false;
@@ -221,9 +252,7 @@ export function buildDisclosureResults(
       label,
       count: filings.filter((f) => matches(f, { [key]: value })).length,
     }));
-  const companies = [...new Set(filings.map((f) => f.ticker))]
-    .sort()
-    .map((value) => [value, value]);
+  const companies = companyFacets(filings);
   const forms = [...new Set(filings.map((f) => f.form))]
     .sort()
     .map((value) => [value, value]);
