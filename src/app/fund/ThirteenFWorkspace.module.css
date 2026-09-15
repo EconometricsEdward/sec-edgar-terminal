@@ -332,3 +332,8 @@
 .referencedManagers h4 { margin: 0 0 8px; font-size: 14px; }
 .referencedManagers .noticeManagers { justify-content: flex-start; margin-top: 14px; }
 :global(html[data-theme-mode="balanced"]) .workspace .primary { color: #fff; }
+
+.positionName .positionButton { display: inline-flex; align-items: baseline; justify-content: flex-start; gap: 5px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; text-align: left; line-height: inherit; font: inherit; min-height: 0; }
+.positionName .positionButton:hover { background: transparent; color: var(--fund-green); }
+.positionName .positionButton svg { flex: 0 0 auto; opacity: .55; }
+.positionName .positionButton:focus-visible { outline: 2px solid var(--fund-green); outline-offset: 4px; }

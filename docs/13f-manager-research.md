@@ -2,7 +2,7 @@
 
 The Funds workspace has two reporting sources. N-PORT identifies a registered fund portfolio and its series/class; Form 13F identifies an institutional investment manager by CIK. These identities and their denominators are kept separate.
 
-Open `/fund?view=13f`, search a legal name or CIK, and select an explicit filer. A manager view can retain `managerCik`, `managerPeriod` (calendar quarter end), and `managerView` (`overview`, `holdings`, `changes`, or `filings`) in its URL. Global search links verified 13F holdings filers to this workspace, and the Filings page links directly from its latest 13F report.
+Open `/fund?view=13f`, search a legal name or CIK, and select an explicit filer. A manager view can retain `managerCik`, `managerPeriod` (calendar quarter end), and `managerView` (`overview`, `holdings`, `changes`, `history`, or `filings`) in its URL. Global search links verified 13F holdings filers to this workspace, and the Filings page links directly from its latest 13F report.
 
 ## Evidence and interpretation
 
@@ -20,6 +20,22 @@ Open `/fund?view=13f`, search a legal name or CIK, and select an explicit filer.
 `GET /api/fund-13f?cik=0001747057&period=2026-06-30` resolves a manager and selected period; omitting `period` selects the latest available reporting quarter. The endpoint uses the shared SEC transport and its production dispatch coordinator. Preview isolation is preserved.
 
 Requests and responses are bounded, repeated requests coalesce, and a bounded instance cache plus CDN caching reduces repeated source downloads. Partial or failed responses stay retryable. No new database schema, credential, shared-cache namespace, or paid service is introduced.
+
+## Company research and portfolio history
+
+Holding names open a company research drawer from the overview, holdings table, quarterly changes, and history view. The server reopens the actual manager/quarter/security row before resolving a company. For a position absent from the current quarter, the drawer uses the previous quarter that actually disclosed it.
+
+Company identity uses exact CUSIP evidence in structured SEC Schedule 13D/G cover documents, then verifies the issuer CIK against SEC submissions. Search-result reporting-person CIKs and issuer-name guesses are not company identity. Tickers are issuer-level aliases, not a guaranteed symbol for the selected security class. Conflicting, stale, or missing evidence stays unresolved; fund and principal-amount securities are kept separate. Option and depositary-receipt views describe the underlying issuer.
+
+Verified issuers show current annual SEC financial extracts, financial source links, and recent company filings. The company financial cutoff is separate from the historical 13F quarter. Missing or unsupported XBRL concepts remain unavailable. Financial values are not inferred from the manager's reported holding value.
+
+`GET /api/fund-13f/company?cik=…&period=…&key=…` supplies this drawer. Identity evidence is discovered on demand with bounded SEC requests and a bounded cache; no manual CUSIP-to-ticker map is introduced.
+
+The Portfolio history view loads 4, 8, or 12 calendar quarters ending at the selected report. Separate synchronized charts show concentration, disclosed position count, and total reported value. A selected holding adds report share, quantity, and value history, first observation within the loaded window, and repeated changes across comparable adjacent reports.
+
+`GET /api/fund-13f/history?cik=…&period=…&keys=…` returns one compact quarter projection with at most 32 explicitly requested security keys. Two browser workers load these progressively. Full historical holdings tables are not retained in the browser. Failed quarters stay retryable; missing reports and incomplete evidence remain visible gaps. An unrequested position never becomes a zero. Amendments use the currently available public filing sequence for each quarter, not a reconstruction of what was known on quarter end.
+
+History charts use zero-based axes, separate units, keyboard quarter inspection, and exact-value/source tables. Manager, reporting-quarter, and security identities are checked again before data reaches the chart or company panel.
 
 ## Official references
 

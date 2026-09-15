@@ -51,6 +51,16 @@ test("13F manager links retain a separate CIK, reporting period and view without
   }
   assert.equal(normalizeFundWorkspaceSettings({ managerCik: "1747057", managerPeriod: "2026-02-31" }).managerPeriod, "");
 });
+test("13F portfolio history URLs round-trip without altering the independent N-PORT selection", () => {
+  const settings = readFundWorkspaceSettings("view=13f&managerCik=1747057&managerPeriod=2026-06-30&managerView=history&tickers=VOO,VTI");
+  assert.equal(settings.managerView, "history");
+  assert.equal(settings.managerCik, "0001747057");
+  assert.equal(settings.managerPeriod, "2026-06-30");
+  assert.deepEqual(settings.tickers, ["VOO", "VTI"]);
+  const restored = readFundWorkspaceSettings(fundWorkspacePath(settings).split("?")[1]);
+  assert.deepEqual(restored, settings);
+  assert.equal(readFundWorkspaceSettings("view=13f&managerCik=1747057&managerView=history&managerView=holdings").managerCik, "");
+});
 test("fund workspace links preserve research context and numeric drafts while excluding private fields", () => {
   const settings = normalizeFundWorkspaceSettings({
     view: "allocation",
