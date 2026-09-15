@@ -393,6 +393,9 @@ export default function DisclosureSearchClient({
     const controller = new AbortController();
     abortRef.current = controller;
     const startedAt = Date.now();
+    // Show the requested question immediately. A later response must not overwrite
+    // a new draft the user has typed while this search was running.
+    setSettings({ ...requestedSettings, comparison: requestedSettings.comparison || "none", searchStyle: requestedSettings.searchStyle || "exact" });
     setBusy(true);
     setError("");
     setNotice("");
@@ -405,9 +408,8 @@ export default function DisclosureSearchClient({
       committed = true;
       setActive(next);
       activeRef.current = next;
-      // Inferred filters belong to this result set. Only explicit controls persist
-      // when the user replaces a natural-language question.
-      setSettings({ ...requestedSettings, comparison: requestedSettings.comparison || "none", searchStyle: requestedSettings.searchStyle || "exact" });
+      // Inferred filters belong to this result set; editable settings retain
+      // only the explicit controls from the requested question.
       setInterpretation(currentInterpretation);
       setRestoredAt("");
       if (!continuing) {
