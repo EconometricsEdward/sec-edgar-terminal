@@ -1,3 +1,5 @@
+import { managerHoldingsPath } from "./siteRoutes.js";
+
 /** Small browser responses from SEC entity discovery; the complete index stays upstream. */
 export function filerCik(value) {
   const input = String(value || "").trim();
@@ -7,6 +9,18 @@ export function filerCik(value) {
 
 export const normalizedFilerName = value => String(value || "").normalize("NFKD").replace(/\p{M}/gu, "").toUpperCase().replace(/[^\p{L}\p{N}]/gu, "");
 export const filerNameQuery = value => String(value || "").trim().replace(/\s+/g, " ");
+
+/** Notices do not establish that this manager reports a holdings table. */
+export function hasThirteenFHoldings(filer) {
+  return Array.isArray(filer?.formTypes)
+    && filer.formTypes.some(form => form === "13F-HR" || form === "13F-HR/A");
+}
+
+export function secFilerResearchPath(filer) {
+  const cik = filerCik(filer?.cik);
+  if (!cik) return null;
+  return hasThirteenFHoldings(filer) ? managerHoldingsPath(cik) : `/filings/${cik}`;
+}
 
 /** Legal names can contain commas; only ticker-shaped segments imply comparison. */
 export function isTickerComparison(value, tickerMap = null) {
@@ -37,7 +51,7 @@ export function mergeFilerSuggestions(suggestions, filers, limit = 12) {
   const securities = suggestions.filter(item => item.type !== "topic");
   const securityCiks = new Set(securities.map(item => item.cik));
   const extra = filers.filter(item => !securityCiks.has(item.cik)).map(item => ({
-    ...item, type: "filer", ticker: item.cik, path: `/filings/${item.cik}`,
+    ...item, type: "filer", ticker: item.cik, path: secFilerResearchPath(item),
   }));
   return [...securities, ...extra, ...suggestions.filter(item => item.type === "topic")].slice(0, limit);
 }

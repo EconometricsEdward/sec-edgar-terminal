@@ -57,9 +57,10 @@ export default function NavTabs() {
           !fundContext &&
           ["filings", "analysis", "risk", "disclosures"].includes(tool.id);
         const preserveFund = !!entity && fundContext && tool.id === "fund";
+        const preserveManager = entity?.kind === "filer" && !!entity.fundPath && tool.id === "fund";
         const preserveFiler = entity?.kind === "filer" && ["filings", "disclosures"].includes(tool.id);
         const href =
-          preserveCompany || preserveFund || preserveFiler
+          preserveManager ? entity!.fundPath! : preserveCompany || preserveFund || preserveFiler
             ? companyToolPath(tool.id, entity!.ticker) || tool.href
             : tool.href;
         const active = selected === tool.id;
@@ -70,7 +71,7 @@ export default function NavTabs() {
             prefetch={false}
             className={`${styles.navLink} ${active ? styles.navActive : ""}`}
             aria-current={active ? "page" : undefined}
-            title={`${tool.description}${preserveCompany || preserveFund || preserveFiler ? ` · ${preserveFiler ? "CIK " : ""}${entity!.ticker}` : ""}`}
+            title={`${tool.description}${preserveCompany || preserveFund || preserveFiler || preserveManager ? ` · ${preserveFiler || preserveManager ? "CIK " : ""}${entity!.ticker}` : ""}`}
           >
             <Icon size={14} aria-hidden="true" />
             <span>{tool.label}</span>

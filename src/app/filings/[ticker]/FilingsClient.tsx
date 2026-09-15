@@ -34,7 +34,7 @@ import {
 import CompanySearch from "../CompanySearch";
 import { TickerContext } from "../../../contexts/TickerContext";
 import { getItemsInfo } from "../../../utils/formItems.js";
-import { normalizeCikIdentifier } from "../../../utils/siteRoutes.js";
+import { normalizeCikIdentifier, managerHoldingsPath } from "../../../utils/siteRoutes.js";
 import {
   FILINGS_SETTINGS,
   FILING_FAMILIES,
@@ -650,6 +650,18 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
       )}
       {data && !loading && !error && (
         <>
+          {holdingsReport && (
+            <section className={styles.managerResearch} aria-label="13F holdings research">
+              <div>
+                <p className={styles.eyebrow}>Go beyond the filing</p>
+                <h2>Explore this manager’s reported portfolio</h2>
+                <p className={styles.muted}>See reported holdings, concentration and quarter-to-quarter changes with links to the SEC evidence.</p>
+              </div>
+              <Link href={managerHoldingsPath(data.cik)!} prefetch={false}>
+                Explore 13F holdings <ArrowUpRight size={16} aria-hidden="true" />
+              </Link>
+            </section>
+          )}
           <section
             className={styles.summaryStrip}
             aria-label="Loaded filing summary"

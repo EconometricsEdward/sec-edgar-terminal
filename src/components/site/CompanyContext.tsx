@@ -26,14 +26,16 @@ export default function CompanyContext() {
   if (!entity) return null;
 
   const isFiler = entity.kind === "filer";
+  const isManagerResearch = isFiler && !!entity.fundPath;
   const entry = isFiler ? undefined : context?.tickerMap?.[entity.ticker];
   // The route remains authoritative. Map data adds a name only for this exact ticker.
   const isFund = entity.kind === "fund" || entry?.isFund === true;
   const name = entry?.ticker === entity.ticker ? entry.name : "";
   const identityLabel = isFiler ? `CIK ${entity.ticker}` : entity.ticker;
-  const Icon = isFund ? Wallet : Building2;
+  const Icon = isFund || isManagerResearch ? Wallet : Building2;
   const links = isFund
     ? ["fund"]
+    : isManagerResearch ? ["fund", "filings", "disclosures"]
     : isFiler ? ["filings", "disclosures"] : ["filings", "analysis", "risk", "disclosures"];
 
   async function share() {
@@ -63,8 +65,8 @@ export default function CompanyContext() {
         </span>
         <div className={styles.contextText}>
           <div className={styles.contextBreadcrumb}>
-            <Link href={isFund ? "/fund" : isFiler ? "/filings" : "/analysis"} prefetch={false}>
-              {isFund ? "Fund research" : isFiler ? "SEC filer research" : "Company research"}
+            <Link href={isManagerResearch ? "/fund?view=13f" : isFund ? "/fund" : isFiler ? "/filings" : "/analysis"} prefetch={false}>
+              {isManagerResearch ? "13F manager research" : isFund ? "Fund research" : isFiler ? "SEC filer research" : "Company research"}
             </Link>
             <ChevronRight size={12} aria-hidden="true" />
             <strong>{identityLabel}</strong>
@@ -85,7 +87,7 @@ export default function CompanyContext() {
             return (
               <Link
                 key={id}
-                href={companyToolPath(id, entity.ticker)!}
+                href={id === "fund" && entity.fundPath ? entity.fundPath : companyToolPath(id, entity.ticker)!}
                 prefetch={false}
                 aria-current={tool?.id === id ? "page" : undefined}
               >

@@ -63,7 +63,7 @@ const tools = [
     icon: Wallet,
     href: "/fund",
     number: "07",
-    text: "Inspect reported fund holdings, portfolio concentration, overlap, and N-PORT source documents.",
+    text: "Explore N-PORT fund portfolios and 13F manager holdings, concentration, and quarterly changes.",
   },
   {
     title: "Disclosures",
