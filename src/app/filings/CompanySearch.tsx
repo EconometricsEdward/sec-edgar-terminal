@@ -3,7 +3,8 @@ import { useContext, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, ArrowRight } from "lucide-react";
 import { TickerContext } from "../../contexts/TickerContext";
-import { validTicker } from "../../utils/researchWorkspace.js";
+import { filerCik, exactFilerMatch, mergeFilerSuggestions } from "../../utils/secFilerSearch.js";
+import { useSecFilerSearch } from "../../utils/useSecFilerSearch.js";
 import styles from "./filings.module.css";
 export default function CompanySearch({
   compact = false,
@@ -16,7 +17,9 @@ export default function CompanySearch({
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const id = useId();
-  const matches = useMemo(() => {
+  const exactTicker = tickerMap?.[query.trim().toUpperCase()];
+  const filers = useSecFilerSearch(query, !exactTicker && !filerCik(query));
+  const directoryMatches = useMemo(() => {
     const q = query.trim().toUpperCase();
     if (!q || !tickerMap) return [];
     return Object.values(tickerMap)
@@ -26,8 +29,9 @@ export default function CompanySearch({
           Number(b.ticker === q) - Number(a.ticker === q) ||
           a.ticker.localeCompare(b.ticker),
       )
-      .slice(0, 6);
+      .slice(0, 6).map(c => ({ ...c, type: c.isFund ? "fund" : "company" }));
   }, [query, tickerMap]);
+  const matches = useMemo(() => mergeFilerSuggestions(directoryMatches, filers.results), [directoryMatches, filers.results]);
   function open(ticker: string, isFund = false) {
     setQuery("");
     setError("");
@@ -42,21 +46,27 @@ export default function CompanySearch({
           e.preventDefault();
           const ticker = query.trim().toUpperCase();
           const exact = context?.tickerMap?.[ticker];
+          const cik = filerCik(query);
+          const filer = exactFilerMatch(query, filers.results, filers);
+          const exactNames = Object.values(tickerMap || {}).filter(c => c.name.trim().toUpperCase() === ticker);
           if (exact) open(exact.ticker, exact.isFund);
-          else if (validTicker(ticker)) open(ticker);
-          else if (matches.length === 1)
-            open(matches[0].ticker, matches[0].isFund);
-          else setError("Select a matching company or enter its ticker.");
+          else if (exactNames.length === 1) open(exactNames[0].ticker, exactNames[0].isFund);
+          else if (cik) open(cik);
+          else if (/^\d+$/.test(ticker)) setError("Enter a positive SEC CIK with at most 10 digits.");
+          else if (filer) open(filer.cik);
+          else if (filers.status === "loading") setError("");
+          else setError("Select a matching SEC filer, or enter an exact ticker or CIK.");
         }}
       >
         <label htmlFor={id}>
-          {compact ? "Switch company" : "Find company filings"}
+          {compact ? "Switch company or filer" : "Find SEC filings"}
         </label>
         <div className={styles.searchField}>
           <Search size={19} aria-hidden="true" />
           <input
             id={id}
             autoComplete="off"
+            maxLength={160}
             value={query}
             onFocus={() => {
               if (["idle", "error"].includes(context?.directoryStatus || ""))
@@ -66,9 +76,9 @@ export default function CompanySearch({
               setQuery(e.target.value);
               setError("");
             }}
-            placeholder="Ticker or company name"
+            placeholder="Company or manager name, ticker, or CIK"
           />
-          <button type="submit" aria-label="Open company filings">
+          <button type="submit" aria-label="Open SEC filings">
             <ArrowRight size={20} />
           </button>
         </div>
@@ -76,16 +86,20 @@ export default function CompanySearch({
       {query && matches.length > 0 && (
         <ul className={styles.suggestions}>
           {matches.map((m) => (
-            <li key={m.ticker}>
+            <li key={`${m.type}:${m.ticker}`}>
               <button type="button" onClick={() => open(m.ticker, m.isFund)}>
-                <strong>{m.ticker}</strong>
-                <span>{m.name}</span>
-                {m.isFund && <small>Fund</small>}
+                <strong>{m.type === "filer" ? m.name : m.ticker}</strong>
+                <span>{m.type === "filer" ? `CIK ${m.cik}${m.formTypes.some((form: string) => /^13F/.test(form)) ? " · 13F reports" : ""}` : m.name}</span>
+                <small>{m.type === "filer" ? "SEC filer" : m.isFund ? "Fund" : "Company"}</small>
               </button>
             </li>
           ))}
         </ul>
       )}
+      {filers.status === "loading" && <p role="status">Searching SEC filer names…</p>}
+      {(filers.error || filers.warning) && <p role="status">{filers.error || filers.warning} <button type="button" onClick={filers.retry}>Retry filer search</button></p>}
+      {filers.truncated && <p>SEC name results are limited. Refine the legal name or enter a CIK.</p>}
+      {query.trim().length >= 2 && filers.status === "ready" && !matches.length && <p role="status">No matching filer in these results. Try another part of the legal name or its CIK.</p>}
       {error && <p role="alert">{error}</p>}
     </div>
   );

@@ -45,7 +45,7 @@ export default function NavTabs() {
   const context = useContext(TickerContext);
   const fundContext =
     entity?.kind === "fund" ||
-    (!!entity && context?.tickerMap?.[entity.ticker]?.isFund === true);
+    (entity?.kind === "company" && context?.tickerMap?.[entity.ticker]?.isFund === true);
   const selected = activeTool(pathname);
 
   return (
@@ -57,8 +57,9 @@ export default function NavTabs() {
           !fundContext &&
           ["filings", "analysis", "risk", "disclosures"].includes(tool.id);
         const preserveFund = !!entity && fundContext && tool.id === "fund";
+        const preserveFiler = entity?.kind === "filer" && ["filings", "disclosures"].includes(tool.id);
         const href =
-          preserveCompany || preserveFund
+          preserveCompany || preserveFund || preserveFiler
             ? companyToolPath(tool.id, entity!.ticker) || tool.href
             : tool.href;
         const active = selected === tool.id;
@@ -69,7 +70,7 @@ export default function NavTabs() {
             prefetch={false}
             className={`${styles.navLink} ${active ? styles.navActive : ""}`}
             aria-current={active ? "page" : undefined}
-            title={`${tool.description}${preserveCompany || preserveFund ? ` · ${entity!.ticker}` : ""}`}
+            title={`${tool.description}${preserveCompany || preserveFund || preserveFiler ? ` · ${preserveFiler ? "CIK " : ""}${entity!.ticker}` : ""}`}
           >
             <Icon size={14} aria-hidden="true" />
             <span>{tool.label}</span>

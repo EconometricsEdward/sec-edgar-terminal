@@ -7,9 +7,9 @@ import CompanySearch from "./CompanySearch";
 import styles from "./filings.module.css";
 
 export const metadata = buildPageMetadata({
-  title: "SEC Filings Browser — 10-K, 10-Q, 8-K, Form 4",
+  title: "SEC Filings Browser — 13F, 10-K, 10-Q, 8-K & More",
   description:
-    "Search company filings, load older SEC archives, read source documents, compare reports, and build a filing review queue with exportable evidence.",
+    "Find companies and investment managers by name, ticker or CIK. Browse 13F holdings reports and other SEC filings, load older archives, and keep source-linked evidence.",
   path: "/filings",
 });
 
@@ -34,9 +34,9 @@ export default async function FilingsIndexPage({
             <span>Read what matters.</span>
           </h1>
           <p className={styles.lead}>
-            Go from a company’s SEC filing history to the passage behind your
-            research. Search, compare, and keep a clear record of what you’ve
-            reviewed.
+            Find companies and investment managers by name, ticker, or CIK.
+            Explore 13F holdings reports, company disclosures, and earlier
+            filings, then keep a clear record of the evidence you’ve reviewed.
           </p>
           <CompanySearch />
           <p className={styles.muted}>
@@ -51,7 +51,7 @@ export default async function FilingsIndexPage({
               Search,
               "01",
               "Find the right report",
-              "Filter forms, filing dates, and 8-K events. Load older archives with visible coverage.",
+              "Find 13F holdings reports, annual reports, amendments, and other forms. Load older archives with visible coverage.",
             ],
             [
               BookOpen,

@@ -25,14 +25,16 @@ export default function CompanyContext() {
   }, [pathname, params]);
   if (!entity) return null;
 
-  const entry = context?.tickerMap?.[entity.ticker];
+  const isFiler = entity.kind === "filer";
+  const entry = isFiler ? undefined : context?.tickerMap?.[entity.ticker];
   // The route remains authoritative. Map data adds a name only for this exact ticker.
   const isFund = entity.kind === "fund" || entry?.isFund === true;
   const name = entry?.ticker === entity.ticker ? entry.name : "";
+  const identityLabel = isFiler ? `CIK ${entity.ticker}` : entity.ticker;
   const Icon = isFund ? Wallet : Building2;
   const links = isFund
     ? ["fund"]
-    : ["filings", "analysis", "risk", "disclosures"];
+    : isFiler ? ["filings", "disclosures"] : ["filings", "analysis", "risk", "disclosures"];
 
   async function share() {
     const href = window.location.href;
@@ -53,7 +55,7 @@ export default function CompanyContext() {
   return (
     <section
       className={styles.companyContext}
-      aria-label={`${entity.ticker} research context`}
+      aria-label={`${identityLabel} research context`}
     >
       <div className={styles.contextIdentity}>
         <span className={styles.contextIcon}>
@@ -61,11 +63,11 @@ export default function CompanyContext() {
         </span>
         <div className={styles.contextText}>
           <div className={styles.contextBreadcrumb}>
-            <Link href={isFund ? "/fund" : "/analysis"} prefetch={false}>
-              {isFund ? "Fund research" : "Company research"}
+            <Link href={isFund ? "/fund" : isFiler ? "/filings" : "/analysis"} prefetch={false}>
+              {isFund ? "Fund research" : isFiler ? "SEC filer research" : "Company research"}
             </Link>
             <ChevronRight size={12} aria-hidden="true" />
-            <strong>{entity.ticker}</strong>
+            <strong>{identityLabel}</strong>
             {tool && (
               <>
                 <ChevronRight size={12} aria-hidden="true" />
@@ -77,7 +79,7 @@ export default function CompanyContext() {
         </div>
       </div>
       <div className={styles.contextActions}>
-        <nav aria-label={`${entity.ticker} research tools`}>
+        <nav aria-label={`${identityLabel} research tools`}>
           {links.map((id) => {
             const item = SITE_TOOLS.find((value) => value.id === id)!;
             return (
@@ -95,7 +97,7 @@ export default function CompanyContext() {
         <button
           type="button"
           onClick={share}
-          aria-label={`Copy link to this ${entity.ticker} research view`}
+          aria-label={`Copy link to this ${identityLabel} research view`}
         >
           <ArrowUpRight size={13} aria-hidden="true" /> Share view
         </button>
