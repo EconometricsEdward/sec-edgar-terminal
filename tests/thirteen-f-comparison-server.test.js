@@ -212,6 +212,24 @@ test('one report wait timeout leaves successful managers usable within the overa
   } finally { clearTimeout(keepAlive); }
 });
 
+test('expired waits do not start more source jobs when the first two reports continue preparing', async () => {
+  const keepAlive = setTimeout(() => {}, 1000);
+  const started = [];
+  try {
+    // A fixed cache clock deliberately remains before deadlineAt. This verifies
+    // the source-slot guard independently of wall-clock or timer rounding.
+    const load = createThirteenFComparisonLoader({ now: () => NOW, workBudgetMs: 5, reportLoader: async cik => {
+      started.push(cik);
+      return new Promise(() => {}); // Source work ignores reader cancellation.
+    } });
+    const data = await load(CIKS, { period: QUARTER });
+    assert.deepEqual(started, CIKS.slice(0, 2));
+    assert.equal(data.coverage.unavailableManagers, 4);
+    assert.match(data.managers[2].reason, /still being prepared/);
+    assert.match(data.managers[3].reason, /still being prepared/);
+  } finally { clearTimeout(keepAlive); }
+});
+
 test('comparison route rejects duplicate, oversized, unsupported and malformed requests before any source work', async () => {
   for (const query of ['ciks=1', 'ciks=1,1', 'ciks=1,2,3,4,5', 'ciks=1,2&ciks=3,4', 'ciks=1,2&period=2026-02-30', 'ciks=1,2&refresh=0', 'ciks=1,2&refresh=1&refresh=1', 'url=https://sec.gov']) {
     const response = await GET(new Request(`https://example.test/api/fund-13f/compare?${query}`));

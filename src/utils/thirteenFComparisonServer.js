@@ -87,7 +87,7 @@ function selectPeriod(slots, requestedPeriod, now) {
  * start issuer research, CFTC downloads, or historical-quarter scans. */
 export function createThirteenFComparisonLoader({
   reportLoader = loadThirteenF, buildComparison = buildThirteenFComparison,
-  now = Date.now, deadlineMs = 54000, workBudgetMs = 48000, reportTimeoutMs = 24000, maxPending = 4, maxCacheBytes = 4 * 1024 * 1024,
+  now = Date.now, deadlineMs = 54000, workBudgetMs = 48000, reportTimeoutMs = workBudgetMs, maxPending = 4, maxCacheBytes = 4 * 1024 * 1024,
 } = {}) {
   const cache = new Map(), pending = new Map(), generations = new Map();
   let cacheBytes = 0;
@@ -104,18 +104,24 @@ export function createThirteenFComparisonLoader({
   }
   async function build(ciks, period, refresh, signal) {
     const deadlineAt = now() + workBudgetMs;
+    let sourceWaitExpired = false;
     async function load(cik, selectedPeriod) {
       const name = POPULAR_13F_MANAGERS.find(manager => manager.cik === cik)?.name;
+      let reportSignal;
       try {
         const remainingMs = deadlineAt - now();
-        if (remainingMs <= 0) return { cik, name, status: 'unavailable', reason: 'This manager’s report is still being prepared. Retry the comparison to reuse completed reports.' };
-        const reportSignal = AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, Math.floor(Math.min(reportTimeoutMs, remainingMs))))]);
+        if (sourceWaitExpired || remainingMs <= 0) return { cik, name, status: 'unavailable', reason: 'This manager’s report is still being prepared. Retry the comparison to reuse completed reports.' };
+        reportSignal = AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, Math.floor(Math.min(reportTimeoutMs, remainingMs))))]);
         const data = await abortable(reportLoader(cik, { period: selectedPeriod, refresh, signal: reportSignal }), reportSignal);
         if (data?.manager?.cik !== cik || !Array.isArray(data.reports) || data.reports.length > 100 || !['ready', 'unavailable'].includes(data.status)) throw failure('The manager report did not match the comparison request.');
         if (selectedPeriod && data.status === 'ready' && data.selectedPeriod !== selectedPeriod) throw failure('The manager report did not match the selected quarter.');
         return { cik, name: data.manager.name || name, status: data.status, data };
       } catch (error) {
         signal.throwIfAborted();
+        // A cancelled reader only detaches from the coalesced report loader;
+        // its SEC preparation may continue for another reader. Do not start
+        // queued managers or alignment work after relinquishing either slot.
+        if (reportSignal?.aborted) sourceWaitExpired = true;
         return { cik, name, status: 'unavailable', reason: error.name === 'TimeoutError' || error.name === 'AbortError'
           ? 'This manager’s SEC report timed out. Retry the comparison.' : 'This manager’s SEC report could not be loaded. Retry the comparison or open its 13F workspace.' };
       }
