@@ -63,6 +63,49 @@ test('conflicting issuer CIKs and stale historical security evidence remain unre
   assert.equal(resolve([proof({ filingDate: '2027-01-01' })]).code, 'INVALID_EVIDENCE');
 });
 
+// SEC structured cover examples for these reported 13F spelling variants:
+// Coca-Cola Co/The: /data/21344/000210011926000313/xslSCHEDULE_13G_X02/primary_doc.xml
+// Moody's Corporation: /data/1059556/000090266426002468/xslSCHEDULE_13G_X02/primary_doc.xml
+// Occidental Petroleum Corp: /data/797468/000210011926000971/xslSCHEDULE_13G_X02/primary_doc.xml
+const issuerNameCases = [
+  { issuer: 'COCA COLA CO', names: ['Coca-Cola Co/The', 'The Coca-Cola Company'], cik: '0000021344', cusip: '191216100' },
+  { issuer: 'MOODYS CORP', names: ["Moody's Corporation", 'Moody’s Corporation', 'Moody`s Corporation'], cik: '0001059556', cusip: '615369105' },
+  { issuer: 'OCCIDENTAL PETE CORP', names: ['Occidental Petroleum Corp', 'OCCIDENTAL PETROLEUM CORPORATION'], cik: '0000797468', cusip: '674599105' },
+];
+
+test('SEC boundary articles, possessive punctuation and PETE abbreviations corroborate exact issuer proof', () => {
+  for (const item of issuerNameCases) for (const name of item.names) {
+    const parsed = parseScheduleIssuer(xml({ name, cik: item.cik, cusip: item.cusip }), { ...expected, ciks: [item.cik, '0002012383'] });
+    const result = resolve([parsed], { ...holding, issuer: item.issuer, cusip: item.cusip });
+    assert.equal(result.status, 'resolved', `${item.issuer} / ${name}`);
+    assert.equal(result.issuer.cik, item.cik);
+  }
+});
+
+test('issuer spelling normalization never substitutes names for exact CUSIP, unique CIK or compatible share class', () => {
+  for (const item of issuerNameCases) {
+    const position = { ...holding, issuer: item.issuer, cusip: item.cusip };
+    const evidence = proof({ name: item.names[0], cik: item.cik, cusips: [item.cusip] });
+    assert.equal(resolve([], position).code, 'NO_VERIFIED_IDENTITY');
+    assert.equal(resolve([{ ...evidence, cusips: ['565394103'] }], position).code, 'NO_VERIFIED_IDENTITY');
+    assert.equal(resolve([evidence, { ...evidence, cik: '0000000001' }], position).code, 'AMBIGUOUS_IDENTITY');
+    assert.equal(resolve([{ ...evidence, classTitle: 'Class B Common Stock' }], { ...position, classTitle: 'CL A' }).code, 'SECURITY_CLASS_CONFLICT');
+  }
+});
+
+test('normalization preserves other issuer words, corporate distinctions and distinctive first names', () => {
+  const conflicts = [
+    ['COCA COLA CO', 'The Coca-Cola Bottling Company'],
+    ['COCA COLA CO', 'Coca-Cola Europacific Partners'],
+    ['MOODYS CORP', "Moody's Analytics Inc."],
+    ['OCCIDENTAL PETE CORP', 'Occidental Petrochemicals Corporation'],
+    ['OCCIDENTAL PETE CORP', 'Occidental Petroleum Resources Corporation'],
+    ['PETE CORP', 'Petroleum Corporation'],
+    ['THEATER CORP', 'Ater Corporation'],
+  ];
+  for (const [issuer, name] of conflicts) assert.equal(resolve([proof({ name })], { ...holding, issuer }).code, 'ISSUER_NAME_CONFLICT', `${issuer} / ${name}`);
+});
+
 test('options and depositary receipts keep their security semantics; funds and principal do not become operating stocks', () => {
   const option = resolve([proof()], { ...holding, putCall: 'CALL' });
   assert.equal(option.status, 'resolved');
