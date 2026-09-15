@@ -46,6 +46,8 @@ function SparkChart({ points, selectedPeriod, onSelect, label, color, mode, tall
   const x = (index: number) => left + (points.length <= 1 ? plotWidth / 2 : index / (points.length - 1) * plotWidth);
   const y = (value: number) => top + plotHeight - Math.min(maximum, Math.max(0, value)) / maximum * plotHeight;
   const active = Math.max(0, points.findIndex(point => point.period === selectedPeriod));
+  const tickCount = Math.min(4, points.length);
+  const tickIndexes = Array.from({ length: tickCount }, (_, index) => Math.round(index * (points.length - 1) / Math.max(1, tickCount - 1)));
   const path = points.map((point, index) => {
     if (!isNumber(point.value)) return "";
     return `${index > 0 && isNumber(points[index - 1].value) ? "L" : "M"}${x(index).toFixed(2)},${y(point.value).toFixed(2)}`;
@@ -72,7 +74,7 @@ function SparkChart({ points, selectedPeriod, onSelect, label, color, mode, tall
       {points.length ? <line className={s.activeLine} x1={x(active)} x2={x(active)} y1={top} y2={height - bottom} /> : null}
       <path d={path} fill="none" stroke={color} strokeWidth="2.7" strokeLinejoin="round" strokeLinecap="round" />
       {points.map((point, index) => isNumber(point.value) ? <g key={point.period}>{index === active ? <circle cx={x(index)} cy={y(point.value)} r="8" fill={color} opacity=".14" /> : null}<circle cx={x(index)} cy={y(point.value)} r={index === active ? 4.5 : 2.8} fill={index === active ? color : "var(--fund-panel)"} stroke={color} strokeWidth="1.8" /></g> : null)}
-      {points.filter((_, index) => points.length <= 4 || index === 0 || index === points.length - 1 || index % Math.ceil((points.length - 1) / 3) === 0).map(point => <text className={s.axisLabel} key={point.period} x={x(points.findIndex(p => p.period === point.period))} y={height - 10} textAnchor="middle">{quarter(point.period)}</text>)}
+      {tickIndexes.map(index => <text className={s.axisLabel} key={points[index].period} x={x(index)} y={height - 10} textAnchor={points.length === 1 ? "middle" : index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}>{quarter(points[index].period)}</text>)}
     </svg>
     {!points.some(point => isNumber(point.value)) ? <span className={s.chartEmpty}>Waiting for a complete observation</span> : null}
   </div>;
