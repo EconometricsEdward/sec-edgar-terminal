@@ -37,7 +37,7 @@ const accession = (value) =>
   typeof value === "string" && /^\d{10}-\d{2}-\d{6}$/.test(value);
 const choices = {
   view: ["discover", "security", "compare", "allocation", "changes", "boards", "13f"],
-  managerView: ["overview", "holdings", "changes", "filings"],
+  managerView: ["overview", "holdings", "changes", "history", "filings"],
   category: [
     "All funds",
     "US equity",

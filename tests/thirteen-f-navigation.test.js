@@ -74,6 +74,16 @@ test("manager destinations validate the CIK and preserve supported report settin
   }
 });
 
+test("portfolio history deep links retain the manager and selected quarter in navigation", () => {
+  const path = managerHoldingsPath("1747057", { period: "2026-06-30", view: "history" });
+  assert.equal(path, "/fund?view=13f&managerCik=0001747057&managerPeriod=2026-06-30&managerView=history");
+  const route = new URL(path, "https://secedgarterminal.com");
+  assert.deepEqual(entityFromRoute(route.pathname, route.searchParams), { kind: "filer", ticker: manager.cik, fundPath: path });
+  const html = renderContext("../src/components/NavTabs.tsx", path);
+  assert.match(html, /href="\/fund\?view=13f&amp;managerCik=0001747057&amp;managerPeriod=2026-06-30&amp;managerView=history"/);
+  assert.match(html, /href="\/filings\/0001747057"/);
+});
+
 test("the explicit 13F query establishes CIK context without becoming a ticker fund", () => {
   const query = "view=13f&managerCik=1747057&managerPeriod=2026-06-30&managerView=holdings";
   assert.deepEqual(entityFromRoute("/fund", new URLSearchParams(query)), {
