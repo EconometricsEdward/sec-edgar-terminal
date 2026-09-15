@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSecFilerSearch, parseSecFilerQuery, SEC_FILER_RESULT_LIMIT } from '../src/utils/secFilerSearchServer.js';
 import { GET } from '../src/app/api/sec-filers/route.js';
+import { createFilerSearchClient } from '../src/utils/secFilerSearch.js';
 
 const CIK = '0001747057';
 const NAME = 'D1 Capital Partners L.P.';
@@ -216,9 +217,25 @@ test('LRU and pending request bounds prevent arbitrary-query memory growth', asy
 });
 
 test('API rejects invalid, duplicate and unknown parameters without contacting SEC', async () => {
-  for (const query of ['', 'q=D', 'q=D1&q=Capital', 'q=D1&url=https://example.com', 'q=https://example.com']) {
+  for (const query of ['', 'query=D', 'query=D1&query=Capital', 'query=D1&url=https://example.com', 'query=https://example.com', 'q=D1']) {
     const response = await GET(new Request(`https://example.test/api/sec-filers?${query}`));
     assert.equal(response.status, 400);
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
   }
+});
+
+test('browser search reaches the actual API and returns the verified SEC manager identity', async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async url => {
+    const parsed = new URL(url);
+    assert.equal(parsed.hostname, 'efts.sec.gov');
+    calls.push(parsed);
+    return Response.json(parsed.searchParams.has('keysTyped') ? page([hint(CIK, NAME)]) : page([filing()]));
+  });
+  const search = createFilerSearchClient({ fetchImpl: (path) => GET(new Request(`https://example.test${path}`)) });
+  const result = await search('D1 Capital');
+  assert.deepEqual(result.results, [{ cik: CIK, name: NAME, formTypes: ['13F-HR'] }]);
+  assert.equal(result.truncated, false);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(url => url.searchParams.get('keysTyped') === 'D1 Capital' || url.searchParams.get('entityName') === 'D1 Capital'));
 });

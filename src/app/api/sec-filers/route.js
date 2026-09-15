@@ -7,9 +7,9 @@ export const maxDuration = 30;
 export async function GET(request) {
   const params = new URL(request.url).searchParams;
   try {
-    if (params.getAll('q').length !== 1 || [...params.keys()].some(key => key !== 'q'))
-      throw Object.assign(new Error('Provide one filer name or CIK using q.'), { status: 400 });
-    const { query } = parseSecFilerQuery(params.get('q'));
+    if (params.getAll('query').length !== 1 || [...params.keys()].some(key => key !== 'query'))
+      throw Object.assign(new Error('Provide one filer name or CIK using query.'), { status: 400 });
+    const { query } = parseSecFilerQuery(params.get('query'));
     const limit = await checkRateLimit({ key: `rl:sec-filers:${getClientIp(request)}`, windowMs: 60000, max: 40 });
     if (!limit.allowed) return rateLimitedResponse(limit);
     const result = await searchSecFilers(query);
