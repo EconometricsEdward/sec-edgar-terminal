@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { disclosureWordDiff } from "../../utils/disclosureResearch.js";
 import {
-  highlightParts,
   parseDisclosureQuery,
 } from "../../utils/disclosureQuery.js";
 import { passageEvidenceId } from "../../utils/disclosureNotebook.js";
@@ -53,15 +52,8 @@ type ReaderFiling = Filing & {
   requestedPassageFound?: boolean;
 };
 
-export function Highlight({ text, terms }: { text: string; terms: string[] }) {
-  return (
-    <>
-      {highlightParts(text || "", terms).map((p, i) =>
-        p.match ? <mark key={i}>{p.text}</mark> : <span key={i}>{p.text}</span>,
-      )}
-    </>
-  );
-}
+export { Highlight } from "./DisclosureHighlight";
+import { Highlight } from "./DisclosureHighlight";
 
 export default function DisclosureReader({
   filing,
@@ -152,7 +144,7 @@ export default function DisclosureReader({
     const abort = new AbortController();
     const params = queryParams(settings);
     params.set("action", "document");
-    params.set("ticker", filing.ticker || filing.cik);
+    params.set("ticker", filing.cik || filing.ticker);
     params.set("accession", filing.accession);
     params.set("document", filing.primaryDoc);
     params.set("page", String(page));

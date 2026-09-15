@@ -1,22 +1,18 @@
-import { NextResponse } from 'next/server';
 import { buildKeywordDefinitions } from '../../../utils/disclosureKeywords.js';
 import { resolveDisclosureCompany } from '../../../utils/tickerMap.js';
-import { parseDisclosureQuery, quoteTerm } from '../../../utils/disclosureQuery.js';
+import { parseDisclosureQuery } from '../../../utils/disclosureQuery.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
 import { secFetch } from '../../../utils/secClient.js';
+import { compileDisclosureIndexQuery, disclosureIndexPagination, disclosureIndexPageCoverage } from '../../../utils/disclosureIndexSearch.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const SEC_SEARCH_URL = 'https://efts.sec.gov/LATEST/search-index';
 const DEFAULT_USER_AGENT = 'SEC EDGAR Terminal research@secedgarterminal.com';
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 100;
 const DEFAULT_MONTHS = 12;
 const MAX_MONTHS = 120;
 const MAX_FOCUS_TERMS = 5;
-const FOCUS_PAGE_SIZE = 100;
-const MAX_FOCUS_PAGES = 5;
 const DEFAULT_FORMS = ['10-K', '10-Q', '8-K', 'S-1', 'DEF 14A', '20-F', '40-F', 'N-CSR'];
 const ALLOWED_FORMS = new Set([
   '10-K',
@@ -76,11 +72,6 @@ function buildSecQuery(terms, matchMode = 'any') {
   return terms.map(quoteSearchTerm).join(matchMode === 'all' ? ' ' : ' OR ');
 }
 
-function buildFallbackQueries(terms, matchMode) {
-  if (!['any', 'all'].includes(matchMode) || terms.length < 2) return [];
-  return terms.map(quoteSearchTerm);
-}
-
 function buildSearchParams({ secQuery, forms, startDate, endDate, from, size, ciks = [] }) {
   return new URLSearchParams({
     q: secQuery,
@@ -99,20 +90,6 @@ function totalValue(data) {
   if (typeof total === 'number') return total;
   const value = total?.value || 0;
   return Number.isFinite(value) ? value : 0;
-}
-
-function uniqueHits(hits) {
-  const seen = new Set();
-  return hits.filter((hit) => {
-    const key = hitKey(hit);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function hitKey(hit) {
-  return `${hit.accession}:${hit.documentName}:${hit.cik}`;
 }
 
 async function fetchSearchPage({ secQuery, forms, startDate, endDate, from, size, signal, ciks = [] }) {
@@ -170,23 +147,6 @@ function parseFocusTerms(rawFocus) {
     });
 }
 
-function matchesFocus(hit, focusTerms) {
-  if (!focusTerms.length) return true;
-  const tickers = (hit.tickers || []).map((ticker) => String(ticker).toUpperCase());
-  const companyName = String(hit.companyName || '').toLowerCase();
-  const displayName = String(hit.displayName || '').toLowerCase();
-  const cik = String(hit.cik || '').padStart(10, '0');
-
-  return focusTerms.some((focus) => {
-    if (focus.cik && cik === focus.cik) return true;
-    if (focus.ticker && tickers.includes(focus.ticker)) return true;
-    if (focus.lower.length >= 3 && (companyName.includes(focus.lower) || displayName.includes(focus.lower))) {
-      return true;
-    }
-    return false;
-  });
-}
-
 function parseDisplayName(displayName, cik) {
   const fallback = cik ? `CIK ${cik}` : 'Unknown filer';
   if (!displayName) return { companyName: fallback, tickers: [] };
@@ -217,7 +177,9 @@ function documentNameFromHit(hit) {
 }
 
 function buildDocumentUrl(cik, accession, documentName) {
-  if (!cik || !accession || !documentName) return null;
+  if (!/^\d{1,10}$/.test(cik) || !/^\d{10}-\d{2}-\d{6}$/.test(accession)
+    || !/^[\w][\w.\/-]*$/.test(documentName) || documentName.includes('..')
+    || documentName.includes('//')) return null;
   const cikInt = Number.parseInt(cik, 10);
   if (!Number.isFinite(cikInt)) return null;
   return `https://www.sec.gov/Archives/edgar/data/${cikInt}/${accession.replace(/-/g, '')}/${documentName}`;
@@ -237,7 +199,8 @@ function normalizeHit(hit, rank, focusTerms = []) {
 
   return {
     rank,
-    score: hit?._score || 0,
+    secRank: rank,
+    score: Number.isFinite(hit?._score) ? hit._score : null,
     cik,
     requestedTicker: focusTerms.find((f) => f.cik === cik)?.ticker || null,
     companyName: display.companyName,
@@ -381,247 +344,92 @@ export async function GET(request) {
   const url = new URL(request.url);
   const rawQuery = url.searchParams.get('query') || url.searchParams.get('keywords') || '';
   const expression = url.searchParams.get('expression');
-  let advanced;
-  try { advanced = expression ? parseDisclosureQuery(expression) : null; }
-  catch (error) { return NextResponse.json({ error: error.message }, { status: 400 }); }
-  const parsed = advanced ? { terms: advanced.positive, definitions: advanced.positive, rejected: [] } : buildKeywordDefinitions(rawQuery);
-
-  if (parsed.definitions.length === 0) {
-    return NextResponse.json(
-      {
-        error: 'Missing required parameter: query. Enter one or more words or phrases separated by commas.',
-        rejected: parsed.rejected,
-      },
-      { status: 400 },
-    );
-  }
-
-  const limit = parsePositiveInt(url.searchParams.get('limit'), DEFAULT_LIMIT, MAX_LIMIT);
-  const months = parsePositiveInt(url.searchParams.get('months'), DEFAULT_MONTHS, MAX_MONTHS);
-  const forms = parseForms(url.searchParams.get('forms'));
-  const rawFocus = url.searchParams.get('focus') || url.searchParams.get('ticker') || url.searchParams.get('cik') || url.searchParams.get('company') || '';
-  let focusTerms = parseFocusTerms(rawFocus);
-  if (rawFocus.split(',').filter((s) => s.trim()).length > MAX_FOCUS_TERMS) return NextResponse.json({ error: 'Focus the index on at most five companies.' }, { status: 400 });
-  const rate = await checkRateLimit({
-    key: `rl:edgar-index-search:${getClientIp(request)}`,
-    windowMs: 5 * 60_000,
-    max: 60,
-    cost: focusTerms.length ? 10 : 2,
-  });
-  if (!rate.allowed) return rateLimitedResponse(rate);
+  let advanced, parsed, pagination;
   try {
-    focusTerms = await Promise.all(focusTerms.map(async (focus) => {
-      const resolved = await resolveDisclosureCompany(focus.raw);
-      return { ...focus, cik: resolved.cik, ticker: /^\d+$/.test(resolved.ticker) ? null : resolved.ticker };
-    }));
-  } catch (error) { return NextResponse.json({ error: error.message }, { status: 400 }); }
+    if (rawQuery.length > 1000) throw new Error('Keep the query under 1,000 characters.');
+    advanced = expression ? parseDisclosureQuery(expression) : null;
+    parsed = advanced ? { terms: advanced.positive, definitions: advanced.positive, rejected: [] } : buildKeywordDefinitions(rawQuery);
+    if (!parsed.definitions.length) throw new Error('Enter one or more words or phrases.');
+    pagination = disclosureIndexPagination(url.searchParams);
+  } catch (error) { return Response.json({ error: error.message }, { status: 400 }); }
+  const { from, limit } = pagination;
+  const months = parsePositiveInt(url.searchParams.get('months'), DEFAULT_MONTHS, MAX_MONTHS);
+  const rawForms = url.searchParams.get('forms');
+  if (rawForms && rawForms.split(',').some(f => !ALLOWED_FORMS.has(f.trim().toUpperCase())))
+    return Response.json({ error: 'Choose supported SEC filing forms.' }, { status: 400 });
+  const forms = parseForms(rawForms);
+  const rawFocus = url.searchParams.get('focus') || url.searchParams.get('ticker') || url.searchParams.get('cik') || url.searchParams.get('company') || '';
+  if (rawFocus.length > 500 || rawFocus.split(',').filter(s => s.trim()).length > MAX_FOCUS_TERMS)
+    return Response.json({ error: 'Focus the index on at most five companies.' }, { status: 400 });
+  let focusTerms = parseFocusTerms(rawFocus);
   const matchMode = parseMatchMode(url.searchParams.get('match') || url.searchParams.get('matchMode'));
   const startDate = url.searchParams.get('startdt') || isoDate(monthsAgo(months));
-  const endDate = url.searchParams.get('enddt') || isoDate(new Date());
-  if (![startDate, endDate].every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d)) && new Date(d).toISOString().slice(0, 10) === d) || startDate > endDate) return NextResponse.json({ error: 'Provide a valid filing-date range.' }, { status: 400 });
-  // The SEC grammar does not recognize explicit AND or guarantee nested groups.
-  // Discover a superset, then verify the full expression in the filing reader.
-  const secQuery = advanced ? advanced.positive.map(quoteTerm).join(' OR ') : buildSecQuery(parsed.terms, matchMode);
-  const pageSize = focusTerms.length ? FOCUS_PAGE_SIZE : limit;
-  const maxPages = focusTerms.length ? MAX_FOCUS_PAGES : 1;
-
+  const today = isoDate(new Date());
+  const endDate = url.searchParams.get('enddt') || today;
+  if (![startDate, endDate].every(d => /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d)) && new Date(d).toISOString().slice(0, 10) === d) || startDate > endDate || startDate < '2001-01-01' || endDate > today)
+    return Response.json({ error: 'Provide a valid filing-date range between 2001 and today.' }, { status: 400 });
+  const compiled = advanced ? compileDisclosureIndexQuery(advanced) : null;
+  const secQuery = compiled?.secQuery || buildSecQuery(parsed.terms, matchMode);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
-
+  const timeoutId = setTimeout(() => controller.abort(new DOMException('SEC search timed out.', 'TimeoutError')), 25000);
+  const signal = request.signal ? AbortSignal.any([request.signal, controller.signal]) : controller.signal;
+  const startedAt = performance.now();
   try {
-    const normalizedPages = [];
-    const sourceUrls = [];
-    let totalHits = 0;
-    let totalRelation = 'eq';
-    let tookMs = 0;
-    let timedOut = false;
-    let usedFallback = false;
-    let fallbackReason = '';
-    let fallbackQueries = [];
-    const fallbackErrors = [];
-    const allFallbackHitQueries = new Map();
-
-    const runSearchPages = async (activeSecQuery) => {
-      for (let page = 0; page < maxPages; page += 1) {
-        const from = page * pageSize;
-        const { data, requestUrl } = await fetchSearchPage({
-          secQuery: activeSecQuery,
-          forms,
-          startDate,
-          endDate,
-          from,
-          size: pageSize,
-          signal: controller.signal,
-          ciks: focusTerms.map((f) => f.cik),
-        });
-        sourceUrls.push(requestUrl);
-
-        const hits = data?.hits?.hits || [];
-        if (page === 0) {
-          if (usedFallback) {
-            totalHits += totalValue(data);
-            totalRelation = data?.hits?.total?.relation === 'gte' ? 'gte' : totalRelation;
-          } else {
-            totalHits = totalValue(data);
-            totalRelation = data?.hits?.total?.relation || 'eq';
-          }
-        }
-        tookMs += data?.took || 0;
-        timedOut = timedOut || Boolean(data?.timed_out);
-
-        const normalizedPage = hits
-          .map((hit, index) => normalizeHit(hit, from + index + 1, focusTerms))
-          .filter((hit) => hit.documentUrl);
-        normalizedPages.push(...normalizedPage);
-
-        if (usedFallback && matchMode === 'all') {
-          for (const hit of normalizedPage) {
-            const key = hitKey(hit);
-            const querySet = allFallbackHitQueries.get(key) || new Set();
-            querySet.add(activeSecQuery);
-            allFallbackHitQueries.set(key, querySet);
-          }
-        }
-
-        const focusedSoFar = focusTerms.length
-          ? normalizedPages.filter((hit) => matchesFocus(hit, focusTerms))
-          : normalizedPages;
-        if (focusTerms.length && focusedSoFar.length >= limit) break;
-        if (hits.length < pageSize) break;
-        if (!usedFallback && totalHits && from + hits.length >= totalHits) break;
-      }
-    };
-
+    signal.throwIfAborted();
+    const rate = await checkRateLimit({ key: `rl:edgar-index-search:${getClientIp(request)}`, windowMs: 5 * 60_000, max: 60, cost: 2 });
+    if (!rate.allowed) return rateLimitedResponse(rate);
     try {
-      await runSearchPages(secQuery);
-    } catch (err) {
-      fallbackQueries = advanced ? [] : buildFallbackQueries(parsed.terms, matchMode);
-      if (!fallbackQueries.length) throw err;
-
-      normalizedPages.length = 0;
-      sourceUrls.length = 0;
-      totalHits = 0;
-      totalRelation = 'eq';
-      tookMs = 0;
-      timedOut = false;
-      usedFallback = true;
-      fallbackReason = err.message;
-
-      for (const fallbackQuery of fallbackQueries) {
-        try {
-          await runSearchPages(fallbackQuery);
-        } catch (fallbackErr) {
-          fallbackErrors.push({
-            query: fallbackQuery,
-            error: fallbackErr?.message || 'SEC fallback search failed',
-          });
-        }
-      }
-
-      if (fallbackErrors.length === fallbackQueries.length) {
-        throw err;
-      }
-
-      if (matchMode === 'all' && fallbackErrors.length > 0) {
-        throw err;
-      }
-    }
-
-    let normalizedHits = uniqueHits(normalizedPages);
-    if (usedFallback && matchMode === 'all') {
-      normalizedHits = normalizedHits.filter((hit) => (
-        allFallbackHitQueries.get(hitKey(hit))?.size === fallbackQueries.length
-      ));
-    }
-    if (usedFallback) {
-      totalHits = normalizedHits.length;
-      totalRelation = 'gte';
-    }
-    const focusedHits = normalizedHits.filter((hit) => matchesFocus(hit, focusTerms));
-    const analysisHits = focusTerms.length ? focusedHits : normalizedHits;
-    const summary = buildSummary(analysisHits, { focusApplied: focusTerms.length > 0 });
-    const results = focusedHits
-      .slice(0, limit)
-      .map((hit, index) => ({
-        ...hit,
-        secRank: hit.rank,
-        rank: index + 1,
+      focusTerms = await Promise.all(focusTerms.map(async focus => {
+        signal.throwIfAborted();
+        const resolved = await resolveDisclosureCompany(focus.raw);
+        signal.throwIfAborted();
+        return { ...focus, cik: resolved.cik, ticker: /^\d+$/.test(resolved.ticker) ? null : resolved.ticker };
       }));
-
-    return NextResponse.json(
-      {
-        scannedAt: new Date().toISOString(),
-        mode: 'edgar-index',
-        cacheBackend: 'sec-index',
-        source: {
-          label: 'SEC full-text search index',
-          url: sourceUrls[0] || null,
-          requests: sourceUrls,
-          pagesSearched: sourceUrls.length,
-          pageSize,
-          fallback: usedFallback
-            ? {
-                reason: fallbackReason,
-                strategy: matchMode === 'all'
-                  ? 'per-term all-match searches intersected by filing document'
-                  : 'per-term any-match searches merged by filing document',
-                errors: fallbackErrors,
-              }
-            : null,
-        },
-        query: {
-          raw: expression || rawQuery,
-          terms: parsed.terms,
-          rejected: parsed.rejected,
-          secQuery,
-          fallbackSecQueries: usedFallback ? fallbackQueries : [],
-          matchMode,
-          candidateSearch: Boolean(advanced),
-          verification: advanced ? 'Positive-term index candidates. The full Boolean query, paragraph scope, and section filter are verified only when a document is reviewed.' : 'SEC index matches; filing text has not been fetched.',
-        },
-        focus: {
-          raw: rawFocus,
-          terms: focusTerms.map((focus) => focus.raw),
-          applied: focusTerms.length > 0,
-          resolved: focusTerms.map((f) => ({ requested: f.raw, ticker: f.ticker, cik: f.cik })),
-          constrainedAtSource: focusTerms.length > 0,
-          matchedHits: focusTerms.length ? focusedHits.length : null,
-          searchedHits: normalizedHits.length,
-          pagesSearched: sourceUrls.length,
-          maxPages,
-        },
-        dateRange: {
-          start: startDate,
-          end: endDate,
-          months,
-        },
-        forms,
-        totalHits,
-        totalRelation,
-        returnedHits: results.length,
-        tookMs: tookMs || null,
-        timedOut,
-        summary,
-        results,
-        errors: fallbackErrors,
+    } catch (error) {
+      signal.throwIfAborted();
+      return Response.json({ error: error.message }, { status: 400 });
+    }
+    // Exactly one bounded SEC page per request; continuation starts at the
+    // next raw hit so filtered/invalid document pointers never cause repeats.
+    const { data, requestUrl } = await fetchSearchPage({ secQuery, forms, startDate, endDate, from, size: limit, signal, ciks: focusTerms.map(f => f.cik) });
+    signal.throwIfAborted();
+    const rawHits = Array.isArray(data?.hits?.hits) ? data.hits.hits : [];
+    const totalHits = totalValue(data);
+    const totalRelation = data?.hits?.total?.relation === 'gte' ? 'gte' : 'eq';
+    const seen = new Set();
+    const results = rawHits.map((hit, index) => normalizeHit(hit, from + index + 1, focusTerms)).filter(hit => {
+      const key = `${hit.cik}:${hit.accession}:${hit.documentName}`;
+      if (!hit.documentUrl || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const timedOut = Boolean(data?.timed_out);
+    const page = disclosureIndexPageCoverage({ from, limit, rawHits: rawHits.length, totalHits, totalRelation, returnedHits: results.length, timedOut });
+    return Response.json({
+      scannedAt: new Date().toISOString(), mode: 'edgar-index', cacheBackend: 'sec-index',
+      source: { label: 'SEC full-text search index', url: requestUrl, requests: [requestUrl], pagesSearched: 1, pageSize: limit, fallback: null },
+      query: {
+        raw: expression || rawQuery, terms: parsed.terms, rejected: parsed.rejected, secQuery,
+        fallbackSecQueries: [], matchMode, candidateSearch: true,
+        exactPositiveLogic: compiled?.exactPositiveLogic ?? true,
+        exclusionsDeferred: compiled?.exclusionsDeferred ?? false,
+        nestedGroupsDeferred: compiled?.nestedGroupsDeferred ?? false,
+        notes: compiled?.notes || [],
+        verification: compiled?.verification || 'SEC index candidates; filing text has not been verified.',
       },
-      {
-        headers: {
-          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400',
-        },
-      },
-    );
-  } catch (err) {
-    const message = err?.name === 'AbortError'
-      ? 'SEC full-text search timed out'
-      : err?.status
-        ? err.message
-        : `SEC full-text search failed: ${err.message}`;
-    return NextResponse.json(
-      { error: message },
-      { status: err?.status || 502, headers: { 'Cache-Control': 'private, no-store' } },
-    );
-  } finally {
-    clearTimeout(timeoutId);
-  }
+      focus: { raw: rawFocus, terms: focusTerms.map(f => f.raw), applied: focusTerms.length > 0,
+        resolved: focusTerms.map(f => ({ requested: f.raw, ticker: f.ticker, cik: f.cik })),
+        constrainedAtSource: focusTerms.length > 0, matchedHits: focusTerms.length ? results.length : null,
+        searchedHits: rawHits.length, pagesSearched: 1, maxPages: 1 },
+      dateRange: { start: startDate, end: endDate, months }, forms, totalHits, totalRelation,
+      returnedHits: results.length, limit, ...page, tookMs: data?.took || null,
+      elapsedMs: Math.round(performance.now() - startedAt), timedOut,
+      summary: buildSummary(results, { focusApplied: focusTerms.length > 0 }), results, errors: [],
+    }, { headers: { 'Cache-Control': timedOut ? 'private, no-store' : 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400' } });
+  } catch (error) {
+    const cancelled = request.signal?.aborted;
+    const timeout = controller.signal.aborted || error?.name === 'TimeoutError';
+    return Response.json({ error: cancelled ? 'Search cancelled.' : timeout ? 'SEC full-text search timed out. Try a shorter date range.' : error.message || 'SEC full-text search failed.' },
+      { status: cancelled ? 499 : timeout ? 504 : error.status || 502, headers: { 'Cache-Control': 'private, no-store' } });
+  } finally { clearTimeout(timeoutId); }
 }

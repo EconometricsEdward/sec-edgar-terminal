@@ -238,7 +238,7 @@
   border-top: 2px solid var(--disc-accent);
   box-shadow: 0 8px 30px #00000018;
   border-radius: 10px;
-  padding: 16px 18px 10px;
+  padding: 18px 20px 12px;
   margin-bottom: 24px;
 }
 .page[data-research-view="collections"] .searchBox,
@@ -252,7 +252,7 @@
 }
 .searchTop {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
 }
 .queryLabel {
@@ -268,19 +268,223 @@
   align-items: center;
   background: var(--disc-raised);
   border: 1px solid var(--disc-border);
-  border-radius: 7px;
-  padding-left: 12px;
+  border-radius: 9px;
+  padding-left: 16px;
   color: var(--disc-muted);
 }
 .page .queryInput input {
   font-size: 16px;
-  min-height: 45px;
+  min-height: 54px;
   border: 0;
   background: transparent;
+  min-width: 0;
 }
 .searchTop > .primary {
-  min-height: 47px;
+  min-height: 56px;
   padding-inline: 23px;
+}
+.searchModeRow,
+.searchHelpRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.searchModeRow {
+  margin-bottom: 12px;
+}
+.page .searchPrompt {
+  color: var(--disc-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.searchModes {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--disc-border);
+  border-radius: 8px;
+  background: var(--disc-panel);
+}
+.page .searchModes button {
+  border: 0;
+  background: transparent;
+  color: var(--disc-muted);
+  padding: 6px 9px;
+  font-size: 11px;
+}
+.page .searchModes button[aria-pressed="true"] {
+  background: var(--disc-raised);
+  color: var(--disc-accent);
+  box-shadow: 0 1px 4px #0002;
+}
+.queryField {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+.queryInput:focus-within {
+  border-color: var(--disc-accent);
+  box-shadow: 0 0 0 3px #f5c34d0c;
+}
+.queryInput > svg {
+  flex-shrink: 0;
+  color: var(--disc-accent);
+}
+.page .clearQuery {
+  border: 0;
+  background: transparent;
+  flex-shrink: 0;
+  padding: 7px;
+  margin-right: 7px;
+  color: var(--disc-muted);
+}
+.page .searchHelp {
+  color: var(--disc-muted);
+  font-size: 11px;
+  margin: 8px 0 0;
+}
+.searchScope {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--disc-muted);
+  padding-top: 8px;
+  overflow-wrap: anywhere;
+}
+.page .queryError {
+  color: var(--disc-red);
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.page .searchWarning {
+  color: var(--disc-accent);
+  font-size: 11px;
+  margin: 8px 0 0;
+}
+.suggestions {
+  position: absolute;
+  z-index: 40;
+  inset: calc(100% + 6px) 0 auto;
+  background: var(--disc-raised);
+  border: 1px solid var(--disc-border);
+  border-radius: 9px;
+  box-shadow: 0 12px 24px #0003;
+  padding: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.suggestionHeading {
+  display: block;
+  color: var(--disc-muted);
+  font-size: 10px;
+  padding: 3px 9px 7px;
+}
+.suggestions ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.page .suggestions li > button {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
+  border: 1px solid transparent;
+  padding: 9px;
+  gap: 10px;
+}
+.suggestions button > svg {
+  color: var(--disc-muted);
+  flex-shrink: 0;
+}
+.suggestions button > span {
+  display: block;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.suggestions button small {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  margin-top: 3px;
+}
+.suggestions li[aria-selected="true"] > button {
+  border-color: var(--disc-accent);
+  background: var(--disc-panel);
+}
+.interpretation {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.interpretLabel {
+  color: var(--disc-muted);
+  font-size: 10px;
+  margin-right: 3px;
+}
+.filterChip {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--disc-border);
+  border-radius: 6px;
+  max-width: 100%;
+  overflow: hidden;
+}
+.page .filterChip button {
+  border: 0;
+  border-radius: 0;
+  padding: 4px 7px;
+  font-size: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.filterChip button span {
+  color: var(--disc-muted);
+  font-weight: 400;
+}
+.filterChip button:last-child:not(:first-child) {
+  padding-inline: 5px;
+  border-left: 1px solid var(--disc-border);
+}
+.searchInterpretationDetail {
+  margin-top: 7px;
+}
+.page .searchInterpretationDetail summary {
+  font-size: 10px;
+}
+.searchInterpretationDetail[open] {
+  background: var(--disc-panel);
+  border: 1px solid var(--disc-border);
+  border-radius: 7px;
+  padding: 7px 12px;
+}
+.searchExamples {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 13px;
+}
+.searchExamples > span {
+  color: var(--disc-muted);
+  font-size: 10px;
+  margin-right: 3px;
+}
+.page .searchExamples button {
+  color: var(--disc-muted);
+  padding: 4px 7px;
+  font-size: 10px;
+  font-weight: 500;
+  background: transparent;
+  border-color: transparent;
+}
+.page .searchExamples button:hover {
+  color: var(--disc-accent);
+  border-color: var(--disc-border);
 }
 .filterRow {
   display: flex;
@@ -814,7 +1018,7 @@
   overflow: auto;
 }
 .welcome {
-  padding: 40px;
+  padding: 26px 30px;
   background:
     radial-gradient(ellipse at 100% 0, #66c9e215, transparent 60%),
     var(--disc-panel);
@@ -822,9 +1026,9 @@
   border-radius: 12px;
 }
 .welcome h2 {
-  font-size: clamp(27px, 3vw, 37px);
+  font-size: clamp(23px, 3vw, 30px);
   line-height: 1.25;
-  margin: 18px 0;
+  margin: 12px 0;
 }
 .welcome > p {
   max-width: 650px;
@@ -834,7 +1038,31 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 20px;
-  margin: 30px 0;
+  margin: 22px 0 8px;
+}
+.welcomeSteps > button {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 7px;
+  text-align: left;
+  padding: 16px 34px 16px 16px;
+  background: var(--disc-bg);
+  min-width: 0;
+}
+.welcomeSteps > button > svg {
+  position: absolute;
+  right: 13px;
+  top: 17px;
+  color: var(--disc-accent);
+}
+.welcomeSteps > button strong {
+  font-size: 14px;
+}
+.welcomeSteps > button span {
+  font-weight: 400;
+  line-height: 1.7;
 }
 .welcomeSteps > div {
   display: flex;
@@ -993,6 +1221,19 @@
   .queryLabel {
     flex-basis: 100%;
   }
+  .queryField {
+    flex-basis: 100%;
+  }
+  .searchModeRow {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .searchHelpRow {
+    align-items: flex-start;
+  }
+  .searchScope {
+    display: none;
+  }
   .searchTop > .primary {
     flex: 1;
   }
@@ -1031,6 +1272,7 @@
   }
   .welcomeSteps {
     gap: 12px;
+    grid-template-columns: 1fr;
   }
   .welcomeSteps span {
     font-size: 10px;

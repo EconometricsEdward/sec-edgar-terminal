@@ -4,6 +4,7 @@ import { gzipSync, gunzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import { getDataStoreIdentityToken } from './dataStoreIdentity.js';
 import { promisify } from 'node:util';
+import { DISCLOSURE_INDEX_LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument, validDisclosureIndexSearch } from '../../supabase/functions/edgar-data-gateway/disclosurePolicy.js';
 import { DATA_STORE_LIMITS as LIMITS, DATA_STORE_REGISTRY, getDataStoreMode, validateDataStoreSource } from './dataStoreRegistry.js';
 export { DATA_STORE_LIMITS, DATA_STORE_REGISTRY, getDataStoreMode } from './dataStoreRegistry.js';
 
@@ -469,6 +470,18 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   }
   return {
     readDataset, readDatasetManifests, readDatasetBatch, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite,
+    readDisclosureIndexDocument: (identity, { signal } = {}) => {
+      if (!disclosureIndexIdentity(identity) || identity.parserVersion !== DISCLOSURE_INDEX_LIMITS.parserVersion) throw new DataStoreError('invalid_disclosure_identity', 422);
+      return rpc('edgar_disclosure_document', { p_cik: identity.cik, p_accession: identity.accession, p_primary_doc: identity.primaryDoc, p_parser_version: identity.parserVersion }, { signal });
+    },
+    replaceDisclosureIndexDocument: ({ document, passages }, { signal } = {}) => {
+      if (!validDisclosureIndexDocument(document, passages)) throw new DataStoreError('invalid_disclosure_document', 422);
+      return rpc('edgar_disclosure_replace', { p_document: document, p_passages: passages }, { signal });
+    },
+    searchDisclosureIndexCandidates: (settings, { signal } = {}) => {
+      if (!validDisclosureIndexSearch(settings)) throw new DataStoreError('invalid_disclosure_search', 422);
+      return rpc('edgar_disclosure_search', Object.fromEntries(Object.entries(settings).map(([key, value]) => [`p_${key === 'parserVersion' ? 'parser_version' : key}`, value])), { signal });
+    },
     readDatasetVersion: async (dataset, key, identityHash) => {
       checkDataset(dataset, key); if (!enabled(dataset)) return null;
       if (!/^[a-f0-9]{64}$/.test(identityHash || '')) throw new DataStoreError('invalid_version_identity', 422);
@@ -497,4 +510,5 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   };
 }
 const defaultStore = createDataStore();
+export const { readDisclosureIndexDocument, replaceDisclosureIndexDocument, searchDisclosureIndexCandidates } = defaultStore;
 export const { readDataset, readDatasetManifests, readDatasetBatch, readDatasetVersion, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, readDatasetSource, enqueueDataStoreJob, enqueueCoverageJobs, enqueueCurrentCoverageJobs, readCoverageRegistry, beginCoverageMembershipCheck, stageCoverageMembership, activateCoverageMembership, finishCoverageMembershipCheck, readCoverageOperations, captureCoverageOperations, acquireSecDispatchPermit, releaseSecDispatchPermit, publishSecDispatchCooldown, verifyCoverageScheduleSignature, claimDataStoreJob, finishDataStoreJob, yieldDataStoreJob, checkpointDataStoreJob, readDataStoreStatus, readDataStoreCoverageStatus, readCftcHistoryStatus, readFinancialMetrics, exportDataStoreManifests, dataStoreRetentionDryRun, dataStoreOrphanDryRun } = defaultStore;

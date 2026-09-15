@@ -47,6 +47,7 @@ test("result triage distinguishes searched, candidates and fetch/section/baselin
   assert.equal(model.results.length, 3);
   assert.deepEqual(model.summary, {
     verified: 2,
+    indexed: 0,
     candidates: 1,
     gaps: 1,
     personallyReviewed: 0,
@@ -183,6 +184,43 @@ test("sorts tolerate unavailable signals and do not mutate source array", () => 
   for (const sort of ["proximity", "specificity", "section", "added"])
     assert.equal(sortDisclosureResults(rows, sort)[0].accession, "b");
   assert.deepEqual(rows, [a, b]);
+});
+test("SEC relevance is retained as candidates are verified without mixing passage scores", () => {
+  const rows = [
+    filing({ accession: "second", indexRank: 2, signals: { maxRelevance: 9999 } }),
+    filing({ accession: "first", status: "index-candidate", indexRank: 1, indexScore: 0.1, previews: [] }),
+    filing({ accession: "third", status: "index-candidate", indexRank: 3, indexScore: 999 }),
+  ];
+  assert.deepEqual(sortDisclosureResults(rows).map(row => row.accession), ["first", "second", "third"]);
+  assert.deepEqual(sortDisclosureResults(rows.map(row => ({ ...row, status: "reviewed" }))).map(row => row.accession), ["first", "second", "third"]);
+});
+test("prepared and SEC results fuse ordinal positions and reward independently found matches", () => {
+  const rows = [
+    filing({ accession: "sec-only", indexRank: 1, indexScore: 999999 }),
+    filing({ accession: "prepared-only", status: "indexed-match", preparedRank: 2 }),
+    filing({ accession: "both", indexRank: 3, preparedRank: 3 }),
+  ];
+  assert.deepEqual(sortDisclosureResults(rows).map(row => row.accession), ["both", "sec-only", "prepared-only"]);
+});
+test("unranked SEC candidates sort by SEC score without comparing against document relevance", () => {
+  const rows = [
+    filing({ accession: "candidate-low", status: "index-candidate", indexScore: 2 }),
+    filing({ accession: "candidate-high", status: "index-candidate", indexScore: 20 }),
+    filing({ accession: "verified", signals: { maxRelevance: 1 } }),
+  ];
+  assert.deepEqual(sortDisclosureResults(rows).map(row => row.accession), ["verified", "candidate-high", "candidate-low"]);
+});
+test("prepared passages are searchable evidence with distinct coverage and no full-document review claim", () => {
+  const indexed = filing({ accession: "prepared", status: "indexed-match", preparedRank: 1, indexedAt: "2026-09-15T00:00:00Z" });
+  const model = buildDisclosureResults([indexed], {}, settings);
+  assert.equal(model.results.length, 1);
+  assert.equal(model.summary.indexed, 1);
+  assert.equal(model.summary.verified, 0);
+  assert.equal(model.summary.gaps, 0);
+  assert.equal(buildDisclosureResults([indexed], { scope: "verified" }, settings).results.length, 0);
+  assert.equal(buildDisclosureResults([indexed], { scope: "indexed" }, settings).results.length, 1);
+  assert.equal(buildDisclosureResults([indexed], {}, settings, {}, true).results.length, 0);
+  assert.ok(exportDisclosureResultsCsv([indexed], settings).includes("prepared_passage_rank"));
 });
 test("review identity follows exact query scope and complete evidence revision", () => {
   const row = filing();

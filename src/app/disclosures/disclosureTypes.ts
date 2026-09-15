@@ -1,4 +1,5 @@
 export type SearchSettings = {
+  searchStyle?: "smart" | "exact";
   query: string;
   tickers: string;
   mode: "companies" | "index";
@@ -29,6 +30,10 @@ export type Passage = {
   previewTruncated?: boolean;
 };
 export type Filing = {
+  indexRank?: number;
+  indexScore?: number;
+  preparedRank?: number;
+  indexedAt?: string;
   ticker: string;
   cik: string;
   companyName: string;

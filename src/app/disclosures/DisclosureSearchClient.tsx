@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { mapDisclosureWork, mergeDisclosureSearchFilings } from "../../utils/disclosureSearchFlow.js";
 import {
   FileSearch,
   BookmarkPlus,
@@ -23,10 +25,10 @@ import {
   passageEvidenceId,
 } from "../../utils/disclosureNotebook.js";
 import DisclosureQueryBar from "./DisclosureQueryBar";
-import DisclosureReader from "./DisclosureReader";
+const DisclosureReader = dynamic(() => import("./DisclosureReader"));
 import DisclosureResults from "./DisclosureResults";
 import DisclosureCoverageDesk from "./DisclosureCoverageDesk";
-import { DisclosureInbox } from "./DisclosureInbox";
+const DisclosureInbox = dynamic(() => import("./DisclosureInbox").then((module) => module.DisclosureInbox));
 import { parseDisclosureReaderState } from "../../utils/disclosureReaderState.js";
 import {
   DISCLOSURE_SESSION_KEY,
@@ -36,8 +38,9 @@ import {
   makeDisclosureSession,
   readDisclosureSession,
 } from "../../utils/disclosureCoverage.js";
-import { DisclosureMatrix, DisclosureTrends } from "./DisclosureComparisons";
-import { DisclosureCollections } from "./DisclosureLibrary";
+const DisclosureMatrix = dynamic(() => import("./DisclosureComparisons").then((module) => module.DisclosureMatrix));
+const DisclosureTrends = dynamic(() => import("./DisclosureComparisons").then((module) => module.DisclosureTrends));
+const DisclosureCollections = dynamic(() => import("./DisclosureLibrary").then((module) => module.DisclosureCollections));
 import {
   companyInputs,
   queryParams,
@@ -56,7 +59,7 @@ async function jsonResponse(response: Response) {
     throw new Error(data.error || `Request failed (${response.status}).`);
   return data;
 }
-async function indexSearch(settings: SearchSettings, signal: AbortSignal) {
+async function indexSearch(settings: SearchSettings, signal: AbortSignal, from = 0) {
   const forms = settings.amendments
     ? settings.forms
         .split(",")
@@ -69,7 +72,9 @@ async function indexSearch(settings: SearchSettings, signal: AbortSignal) {
     forms,
     startdt: settings.start,
     enddt: settings.end,
-    limit: "50",
+    limit: "20",
+    from: String(from),
+    scope: settings.scope,
   });
   return jsonResponse(
     await fetch(`/api/edgar-index-search?${params}`, { signal }),
@@ -77,7 +82,7 @@ async function indexSearch(settings: SearchSettings, signal: AbortSignal) {
 }
 function indexFiling(hit: any): Filing {
   return {
-    ticker: hit.requestedTicker || hit.cik,
+    ticker: hit.requestedTicker || hit.tickers?.[0] || hit.cik,
     cik: hit.cik,
     companyName: hit.companyName,
     accession: hit.accession,
@@ -87,6 +92,8 @@ function indexFiling(hit: any): Filing {
     primaryDoc: hit.documentName,
     documentUrl: hit.documentUrl,
     status: "index-candidate",
+    indexRank: hit.secRank ?? hit.rank,
+    indexScore: hit.score,
   };
 }
 async function verifyFiling(
@@ -96,13 +103,14 @@ async function verifyFiling(
 ) {
   const params = queryParams(settings);
   params.set("action", "document");
-  params.set("ticker", filing.ticker || filing.cik);
+  params.set("ticker", filing.cik || filing.ticker);
   params.set("accession", filing.accession);
   params.set("document", filing.primaryDoc);
   const data = await jsonResponse(
     await fetch(`/api/disclosure-research?${params}`, { signal }),
   );
   return {
+    ...filing,
     ...data,
     previews: data.previews || data.matches.slice(0, 3),
     matches: undefined,
@@ -116,22 +124,29 @@ export default function DisclosureSearchClient({
 }) {
   const [settings, setSettings] = useState<SearchSettings>(() => ({
     tickers: "",
-    mode: "companies",
-    start: `${new Date().getUTCFullYear() - 5}-01-01`,
+    mode: "index",
+    searchStyle: "smart",
+    start: `${new Date().getUTCFullYear() - 1}-01-01`,
     end: new Date().toISOString().slice(0, 10),
-    forms: "10-K",
+    forms: "10-K,10-Q,8-K",
     section: "all",
     scope: "paragraph",
-    depth: 6,
+    depth: 4,
     amendments: false,
-    comparison: "annual-season",
+    comparison: "none",
     ...initial,
-    query: legacyDisclosureQuery(initial.query || "liquidity"),
+    query: initial.searchStyle === "exact" ? legacyDisclosureQuery(initial.query || "") : initial.query || "",
   }));
   const [active, setActive] = useState<SearchSettings | null>(null);
   const [companies, setCompanies] = useState<CompanyScan[]>([]);
   const [index, setIndex] = useState<any>(null);
   const [verified, setVerified] = useState<Filing[]>([]);
+  const [prepared, setPrepared] = useState<Filing[]>([]);
+  const [preparedCoverage, setPreparedCoverage] = useState<any>(null);
+  const [preparedPage, setPreparedPage] = useState<any>(null);
+  const [interpretation, setInterpretation] = useState<any>(null);
+  const [interpreting, setInterpreting] = useState(false);
+  const [searchTiming, setSearchTiming] = useState<{ firstResult?: number; firstPassage?: number }>({});
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -347,142 +362,163 @@ export default function DisclosureSearchClient({
     },
     [storageReady],
   );
+  const enrichCandidates = async (candidates: Filing[], next: SearchSettings, signal: AbortSignal, startedAt?: number) => {
+    let completed = 0;
+    await mapDisclosureWork(candidates, async (filing: Filing) => {
+      try {
+        const result = await verifyFiling(filing, next, signal);
+        if (signal.aborted) return;
+        setVerified((items) => mergeDisclosureSearchFilings(items, [result]));
+        if (result.matched && startedAt)
+          setSearchTiming((timing) => ({ ...timing, firstPassage: timing.firstPassage ?? Date.now() - startedAt }));
+      } catch (error) {
+        if (signal.aborted) return;
+        setVerified((items) => mergeDisclosureSearchFilings(items, [{ ...filing, status: "fetch-failed", reason: error.message }]));
+      } finally {
+        completed++;
+        if (!signal.aborted) setProgress(`Checking source passages · ${completed} of ${candidates.length} documents. Results are ready to read.`);
+      }
+    }, { concurrency: 2, signal });
+  };
   const run = async (
     requestedSettings: SearchSettings,
-    options: { resume?: boolean; targets?: string[]; after?: string } = {},
+    options: { resume?: boolean; targets?: string[]; after?: string; view?: string } = {},
   ) => {
     if (running.current) return;
-    const next = {
-      ...requestedSettings,
-      comparison: requestedSettings.comparison || "annual-season",
-    };
-    const continuing = Boolean(
-      options.resume &&
-      active &&
-      disclosureSearchIdentity(next) === disclosureSearchIdentity(active),
-    );
-    let inputs = companyInputs(next.tickers);
-    try {
-      parseDisclosureQuery(next.query);
-      if (
-        next.mode === "companies" &&
-        (!inputs.length ||
-          inputs.length > 40 ||
-          inputs.some((t) => !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(t)))
-      )
-        throw new Error(
-          "Enter 1–40 tickers or CIKs, separated by commas. Use index discovery for exact company names.",
-        );
-      if (next.mode === "index" && inputs.length > 5)
-        throw new Error("Focus the index on at most five companies.");
-      if (continuing)
-        inputs =
-          options.targets ||
-          inputs.filter((t) => {
-            const c = companiesRef.current.find(
-              (c) => c.ticker === (aliases[t] || t),
-            );
-            return !c || Boolean(c.error);
-          });
-    } catch (error) {
-      setError(error.message);
-      return;
-    }
-    if (continuing && !inputs.length) {
-      setNotice(
-        "Every requested company has a completed scan. Open coverage actions to retry documents or review older filings.",
-      );
-      return;
-    }
     running.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
+    const startedAt = Date.now();
     setBusy(true);
     setError("");
     setNotice("");
-    setRestoredAt("");
-    setActive(next);
-    activeRef.current = next;
-    setSettings(next);
-    if (!continuing) {
-      setCompanies([]);
-      companiesRef.current = [];
-      setAliases({});
-      setIndex(null);
-      setVerified([]);
-      setReader(null);
-      setTab("evidence");
-    }
-    const params = queryParams(next);
-    params.set("tickers", next.tickers);
-    params.set("mode", next.mode);
-    window.history.replaceState(null, "", `/disclosures?${params}`);
+    let next: SearchSettings = { ...requestedSettings, comparison: requestedSettings.comparison || "none" };
+    let currentInterpretation: any = null;
+    let committed = false;
+    const continuing = Boolean(options.resume && active && disclosureSearchIdentity(next) === disclosureSearchIdentity(active));
+    const commitSearch = () => {
+      if (committed || controller.signal.aborted) return;
+      committed = true;
+      setActive(next);
+      activeRef.current = next;
+      setSettings({ ...next, query: requestedSettings.query, searchStyle: requestedSettings.searchStyle || "exact" });
+      setInterpretation(currentInterpretation);
+      setRestoredAt("");
+      if (!continuing) {
+        setCompanies([]);
+        companiesRef.current = [];
+        setAliases({});
+        setIndex(null);
+        setVerified([]);
+        setPrepared([]);
+        setPreparedCoverage(null);
+        setPreparedPage(null);
+        setReader(null);
+        setTab(options.view || "evidence");
+        setSearchTiming(next.mode === "index" ? { firstResult: Date.now() - startedAt } : {});
+      }
+      const params = queryParams(next);
+      params.set("tickers", next.tickers);
+      params.set("mode", next.mode);
+      params.set("style", "exact");
+      window.history.replaceState(null, "", `/disclosures?${params}`);
+    };
     try {
+      if (!continuing && requestedSettings.searchStyle === "smart") {
+        setInterpreting(true);
+        setProgress("Understanding your company, topic, and filing filters…");
+        const params = queryParams(requestedSettings);
+        params.set("tickers", requestedSettings.tickers);
+        params.set("style", "smart");
+        currentInterpretation = await jsonResponse(await fetch(`/api/disclosure-search/interpret?${params}`, { signal: controller.signal }));
+        if (controller.signal.aborted) return;
+        next = { ...next, ...currentInterpretation.settings, mode: requestedSettings.mode === "companies" ? "companies" : "index", searchStyle: "exact" };
+        setInterpreting(false);
+      }
+      parseDisclosureQuery(next.query);
+      let inputs = companyInputs(next.tickers);
+      if (next.mode === "companies" && (!inputs.length || inputs.length > 40 || inputs.some((t) => t.length > 100)))
+        throw new Error("Choose 1–40 companies for a company sample, or switch to Search all filings.");
+      if (next.mode === "index" && inputs.length > 5)
+        throw new Error("Use up to five companies in a broad search. Company sample supports larger groups.");
+      if (continuing) inputs = options.targets || inputs.filter((ticker) => {
+        const company = companiesRef.current.find((c) => c.ticker === (aliases[ticker] || ticker));
+        return !company || Boolean(company.error);
+      });
       if (next.mode === "index") {
-        setProgress(
-          "Searching the SEC index with resolved company identities…",
-        );
-        setIndex(await indexSearch(next, controller.signal));
-      } else
-        for (let i = 0; i < inputs.length; i++) {
-          if (controller.signal.aborted) break;
-          setProgress(
-            `${i + 1} / ${inputs.length} companies · ${inputs[i]} · ${options.after ? "reviewing older filings" : "reading filings and prior reports"}`,
-          );
+        setProgress(active ? "Finding ranked results. Your previous search stays visible until the new results arrive…" : "Finding relevant SEC filings and prepared passages…");
+        let preparedResults: Filing[] = [];
+        const preparedParams = queryParams(next);
+        preparedParams.set("tickers", next.tickers);
+        const preparedRequest = fetch(`/api/disclosure-search/passages?${preparedParams}`, { signal: controller.signal }).then(jsonResponse);
+        const preparedTask = preparedRequest.then((data) => {
+          if (controller.signal.aborted) return;
+          preparedResults = data.results || [];
+          if (preparedResults.length) commitSearch();
+          if (committed) {
+            setPrepared(preparedResults);
+            setPreparedCoverage(data.coverage);
+            setPreparedPage({ hasMore: data.hasMore, nextOffset: data.nextOffset });
+            if (preparedResults.length) setSearchTiming((timing) => ({ ...timing, firstPassage: timing.firstPassage ?? Date.now() - startedAt }));
+          }
+          return data;
+        }).catch(() => null);
+        try {
+          const data = await indexSearch(next, controller.signal);
+          if (controller.signal.aborted) return;
+          commitSearch();
+          setIndex(data);
+          if (next.comparison !== "none") await preparedTask;
+          const preparedIds = new Set(preparedResults.map(filingEvidenceId));
+          const candidates = mergeDisclosureSearchFilings((data.results || []).map(indexFiling), next.comparison !== "none" ? preparedResults : [])
+            .filter((f: Filing) => next.comparison !== "none" || !preparedIds.has(filingEvidenceId(f))).slice(0, 4);
+          const [, preparedData] = await Promise.all([enrichCandidates(candidates, next, controller.signal, startedAt), preparedTask]);
+          if (controller.signal.aborted) return;
+          if (preparedData) { setPrepared(preparedData.results || []); setPreparedCoverage(preparedData.coverage); setPreparedPage({ hasMore: preparedData.hasMore, nextOffset: preparedData.nextOffset }); }
+        } catch (error) {
+          await preparedTask;
+          if (!controller.signal.aborted) {
+            if (preparedResults.length) setNotice("Prepared passages are available. SEC discovery is temporarily unavailable; the coverage panel shows the indexed scope.");
+            else throw error;
+          }
+        }
+      } else {
+        commitSearch();
+        let completed = 0;
+        await mapDisclosureWork(inputs, async (ticker: string) => {
           try {
-            const request = queryParams(next);
-            request.set("ticker", inputs[i]);
-            if (options.after) request.set("after", options.after);
-            const result = await jsonResponse(
-              await fetch(`/api/disclosure-research?${request}`, {
-                signal: controller.signal,
-              }),
-            );
-            const merged = upsertDisclosureCompany(
-              companiesRef.current,
-              result,
-            );
+            const params = queryParams(next);
+            params.set("ticker", ticker);
+            if (options.after) params.set("after", options.after);
+            const result = await jsonResponse(await fetch(`/api/disclosure-research?${params}`, { signal: controller.signal }));
+            if (controller.signal.aborted) return;
+            setSearchTiming((timing) => ({ ...timing, firstResult: timing.firstResult ?? Date.now() - startedAt, ...((result.filings || []).some((filing: Filing) => filing.matched) ? { firstPassage: timing.firstPassage ?? Date.now() - startedAt } : {}) }));
+            const merged = upsertDisclosureCompany(companiesRef.current, result);
             companiesRef.current = merged;
             setCompanies(merged);
-            const canonical =
-              merged.find((c) => c.cik === result.cik)?.ticker || result.ticker;
-            setAliases((values) => ({ ...values, [inputs[i]]: canonical }));
-            const first = result.filings.find((f: Filing) => f.matched);
-            if (first && !continuing)
-              setReader(
-                (current) =>
-                  current || {
-                    filing: { ...first, ticker: canonical },
-                    settings: next,
-                  },
-              );
+            const canonical = merged.find((c) => c.cik === result.cik)?.ticker || result.ticker;
+            setAliases((values) => ({ ...values, [ticker]: canonical }));
           } catch (error) {
-            if (controller.signal.aborted) break;
-            if (options.after) {
-              setError(
-                `Older filings for ${inputs[i]} could not be reviewed: ${error.message}. Earlier results and the continuation point remain available.`,
-              );
-            } else {
-              const updated = upsertDisclosureCompany(companiesRef.current, {
-                ticker: (continuing && aliases[inputs[i]]) || inputs[i],
-                error: error.message,
-                filings: [],
-              });
+            if (controller.signal.aborted) return;
+            if (options.after) setError(`Older filings for ${ticker} could not be reviewed: ${error.message}. Earlier results remain available.`);
+            else {
+              const updated = upsertDisclosureCompany(companiesRef.current, { ticker: (continuing && aliases[ticker]) || ticker, error: error.message, filings: [] });
               companiesRef.current = updated;
               setCompanies(updated);
             }
+          } finally {
+            completed++;
+            if (!controller.signal.aborted) setProgress(`${completed} of ${inputs.length} companies reviewed · results appear as they finish.`);
           }
-        }
+        }, { concurrency: 2, signal: controller.signal });
+      }
     } catch (error) {
       if (!controller.signal.aborted) setError(error.message);
     } finally {
       running.current = false;
       setBusy(false);
-      setProgress(
-        controller.signal.aborted
-          ? "Stopped. Completed company results remain available. Use Resume in the coverage desk for unfinished companies."
-          : "Review complete. Use the coverage desk to inspect gaps and continue into older filings.",
-      );
+      setInterpreting(false);
+      setProgress(controller.signal.aborted ? "Search stopped. Results already received remain available." : committed ? "Results ready. Open a passage, refine your search, or load more filings." : "");
     }
   };
   const retryDocument = async (filing: Filing) => {
@@ -520,6 +556,15 @@ export default function DisclosureSearchClient({
       );
     }
   };
+  const initialSearchStarted = useRef(false);
+  const runRef = useRef(run);
+  useEffect(() => { runRef.current = run; });
+  useEffect(() => {
+    if (!sessionReady || initialSearchStarted.current) return;
+    initialSearchStarted.current = true;
+    if (initial.query && !activeRef.current && !parseDisclosureReaderState(new URLSearchParams(window.location.search)))
+      void runRef.current(settings);
+  }, [sessionReady, initial.query, settings]);
   const checkSaved = useCallback(
     async (saved: SavedSearch) => {
       if (running.current) return;
@@ -646,15 +691,9 @@ export default function DisclosureSearchClient({
   const filings = companies.flatMap((c) => c.filings);
   const reviewed = filings.filter((f) => f.status === "reviewed");
   const matching = reviewed.filter((f) => f.matched);
-  const allResults: Filing[] =
-    active?.mode === "index"
-      ? (index?.results || []).map(
-          (hit: any) =>
-            verified.find(
-              (f) => filingEvidenceId(f) === filingEvidenceId(indexFiling(hit)),
-            ) || indexFiling(hit),
-        )
-      : filings;
+  const allResults: Filing[] = useMemo(() => active?.mode === "index"
+    ? mergeDisclosureSearchFilings((index?.results || []).map(indexFiling), prepared, verified)
+    : filings, [active?.mode, index, prepared, verified, filings]);
   const unread = notebook.searches.reduce(
     (n, saved) => n + saved.inbox.filter((i) => !i.reviewed).length,
     0,
@@ -735,42 +774,59 @@ export default function DisclosureSearchClient({
     setBusy(true);
     const controller = new AbortController();
     abortRef.current = controller;
-    const candidates = allResults
-      .filter(
-        (f) => f.status === "index-candidate" || f.status === "fetch-failed",
-      )
-      .slice(0, 12);
-    for (let i = 0; i < candidates.length; i++) {
-      const filing = candidates[i];
-      if (controller.signal.aborted) break;
-      setProgress(
-        `Verifying candidate ${i + 1}/${candidates.length} · ${filing.ticker}`,
-      );
-      try {
-        const result = await verifyFiling(filing, active, controller.signal);
-        setVerified((items) => [
-          ...items.filter(
-            (f) => filingEvidenceId(f) !== filingEvidenceId(result),
-          ),
-          result,
-        ]);
-      } catch (error) {
-        if (controller.signal.aborted) break;
-        setVerified((items) => [
-          ...items.filter(
-            (f) => filingEvidenceId(f) !== filingEvidenceId(filing),
-          ),
-          { ...filing, status: "fetch-failed", reason: error.message },
-        ]);
-      }
+    const candidates = allResults.filter((f) => f.status === "index-candidate" || f.status === "fetch-failed" || active.comparison !== "none" && f.status === "indexed-match").slice(0, 8);
+    try { await enrichCandidates(candidates, active, controller.signal); }
+    finally {
+      setBusy(false);
+      running.current = false;
+      setProgress(controller.signal.aborted ? "Verification stopped; completed passages retained." : "Source checks finished. Open any result to read the full evidence.");
     }
-    setBusy(false);
-    running.current = false;
-    setProgress(
-      controller.signal.aborted
-        ? "Verification stopped; completed reviews retained."
-        : "Candidate verification complete. Coverage is limited to the selected index sample.",
-    );
+  };
+  const loadMoreIndex = async () => {
+    if (!active || running.current || index?.nextFrom == null) return;
+    running.current = true;
+    setBusy(true);
+    setError("");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setProgress("Finding the next page of filings…");
+    try {
+      const data = await indexSearch(active, controller.signal, index.nextFrom);
+      if (controller.signal.aborted) return;
+      setIndex((previous) => ({ ...data, results: [...(previous?.results || []), ...(data.results || [])] }));
+      const existingIds = new Set(allResults.map(filingEvidenceId));
+      await enrichCandidates((data.results || []).map(indexFiling).filter((f: Filing) => !existingIds.has(filingEvidenceId(f))).slice(0, 4), active, controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) setError(`Could not load more filings: ${error.message}. Your current results remain available.`);
+    } finally {
+      running.current = false;
+      setBusy(false);
+      setProgress(controller.signal.aborted ? "Stopped. Earlier results retained." : "More filings are ready to read.");
+    }
+  };
+  const loadMorePrepared = async () => {
+    if (!active || running.current || !preparedPage?.hasMore) return;
+    running.current = true;
+    setBusy(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setProgress("Searching additional prepared passages…");
+    try {
+      const params = queryParams(active);
+      params.set("tickers", active.tickers);
+      params.set("offset", String(preparedPage.nextOffset));
+      const data = await jsonResponse(await fetch(`/api/disclosure-search/passages?${params}`, { signal: controller.signal }));
+      if (controller.signal.aborted) return;
+      setPrepared((items) => mergeDisclosureSearchFilings(items, data.results || []));
+      setPreparedCoverage(data.coverage);
+      setPreparedPage({ hasMore: data.hasMore, nextOffset: data.nextOffset });
+    } catch (error) {
+      if (!controller.signal.aborted) setError(`Additional passages could not be loaded: ${error.message}. Current results remain available.`);
+    } finally {
+      running.current = false;
+      setBusy(false);
+      setProgress(controller.signal.aborted ? "Stopped. Earlier results retained." : "Prepared passage search finished.");
+    }
   };
   const setLabel = (id: string, label: string) =>
     changeNotebook((current) => ({
@@ -792,13 +848,9 @@ export default function DisclosureSearchClient({
           <span className={s.eyebrow}>
             <FileSearch size={15} /> SEC disclosure research
           </span>
-          <h1>
-            Find the language.
-            <br className={s.mobileBreak} /> Follow the evidence.
-          </h1>
+        <h1>Search the disclosures.</h1>
           <p>
-            Search, compare, and collect the passages behind your company
-            research.
+            Find what companies say. Read the evidence behind it.
           </p>
         </div>
         <span className={s.sourceBadge}>
@@ -807,9 +859,12 @@ export default function DisclosureSearchClient({
       </header>
       <DisclosureQueryBar
         settings={settings}
-        setSettings={setSettings}
+        setSettings={(next) => { setSettings(next); setInterpretation(null); }}
         onSearch={run}
         busy={busy || Boolean(checking)}
+        interpreting={interpreting}
+        interpretation={interpretation}
+        onApplySuggestion={(query) => { setSettings({ ...settings, query }); setInterpretation(null); }}
         stop={() => abortRef.current?.abort()}
       />
       {(error || storageError) && (
@@ -882,17 +937,17 @@ export default function DisclosureSearchClient({
                   [
                     index?.totalHits ?? "—",
                     "SEC index candidates",
-                    "Positive-term discovery, not full-query verification",
+                    "Matching filing candidates in the SEC index",
                   ],
                   [
-                    verified.filter((f) => f.status === "reviewed").length,
-                    "Documents verified",
-                    `${verified.filter((f) => f.matched).length} satisfy your full query`,
+                    allResults.filter((f) => f.matched).length,
+                    "Filings with passages",
+                    "Original excerpts matching your search",
                   ],
                   [
-                    verified.filter((f) => f.status !== "reviewed").length,
-                    "Coverage gaps",
-                    "Matrix & trends require an unfiltered company sample",
+                    allResults.length,
+                    "Filings loaded",
+                    index?.hasMore ? "More filings available below" : "See search coverage for scope",
                   ],
                 ]
             ).map(([value, label, detail]) => (
@@ -912,7 +967,7 @@ export default function DisclosureSearchClient({
           <div className={s.researchActions}>
             <div className={s.currentQuery}>
               <span className={s.eyebrow}>Current result set</span>
-              <code>{active.query}</code>
+              <code>{interpretation?.originalQuery || active.query}</code>
               <small>
                 {active.forms} · {active.start} to {active.end} ·{" "}
                 {active.section} · {active.scope}
@@ -939,6 +994,7 @@ export default function DisclosureSearchClient({
                     const params = queryParams(active);
                     params.set("tickers", active.tickers);
                     params.set("mode", active.mode);
+                    params.set("style", "exact");
                     await navigator.clipboard.writeText(
                       `${location.origin}/disclosures?${params}`,
                     );
@@ -976,12 +1032,14 @@ export default function DisclosureSearchClient({
             />
           ) : (
             <details className={s.coverage}>
-              <summary>Index candidate coverage</summary>
+              <summary>Search coverage & source checks</summary>
               <p>
-                {index?.returnedHits || 0} candidates returned. Full-query and
-                section filters require document verification; this candidate
-                sample cannot establish disclosure prevalence.
+                {index?.results?.length || 0} SEC candidates loaded. {verified.filter((f) => f.status === "reviewed").length} documents fully checked.
+                Candidate listings require passage verification; search results do not measure how common a disclosure is across all companies.
               </p>
+              {index?.query?.notes?.map((note: string) => <p key={note}>{note}</p>)}
+              {preparedCoverage && <p>{preparedCoverage.available === false ? "Prepared passages are unavailable for this search. SEC discovery and full filing review remain available." : `Prepared passage coverage: ${preparedCoverage.documentCount ?? preparedCoverage.documents ?? "recent indexed"} documents. ${preparedCoverage.note || "This is a bounded selection, not the complete EDGAR archive."}`}</p>}
+              {searchTiming.firstResult != null && <p>First results in {(searchTiming.firstResult / 1000).toFixed(1)} seconds{searchTiming.firstPassage != null ? ` · first matching passage in ${(searchTiming.firstPassage / 1000).toFixed(1)} seconds` : ""}. Times include this browser’s requests.</p>}
               {verified.map((f) => (
                 <p key={filingEvidenceId(f)}>
                   {f.ticker} · {f.form} · {f.filingDate}: {f.status}
@@ -1057,52 +1115,25 @@ export default function DisclosureSearchClient({
           >
             {!active ? (
               <div className={s.welcome}>
-                <span className={s.eyebrow}>
-                  A research desk, built around sources
-                </span>
-                <h2>
-                  Start with a question.
-                  <br />
-                  Leave with the evidence.
-                </h2>
-                <p>
-                  Enter your companies and the language you want to investigate.
-                  Review exact passages, changes across reports, and a
-                  company-by-topic comparison.
-                </p>
+                <span className={s.eyebrow}>Start exploring</span>
+                <h2>What are you researching?</h2>
+                <p>Search a company, a disclosure topic, or a question. Add dates and filing types naturally.</p>
                 <div className={s.welcomeSteps}>
-                  <div>
-                    <b>01</b>
-                    <strong>Find</strong>
-                    <span>Precise queries and clear coverage</span>
-                  </div>
-                  <div>
-                    <b>02</b>
-                    <strong>Compare</strong>
-                    <span>Prior wording and consistent samples</span>
-                  </div>
-                  <div>
-                    <b>03</b>
-                    <strong>Collect</strong>
-                    <span>Source-backed notes and research briefs</span>
-                  </div>
+                  {[
+                    ["Company risks", "Microsoft cybersecurity risks"],
+                    ["Across companies", "Companies mentioning debt covenant breaches"],
+                    ["A specific period", "Apple supply chain risks in filings from 2025"],
+                  ].map(([label, query]) => <button key={query} onClick={() => run({ ...settings, query, tickers: "", mode: "index", searchStyle: "smart" })}>
+                    <strong>{label}</strong><span>{query}</span><ArrowUpRight size={15} />
+                  </button>)}
                 </div>
-                <button
-                  className={s.primary}
-                  onClick={() =>
-                    run({
-                      ...settings,
-                      tickers: "JPM",
-                      query: "liquidity",
-                      forms: "10-K",
-                      mode: "companies",
-                    })
-                  }
-                >
-                  Explore JPM liquidity <ArrowUpRight size={15} />
-                </button>
               </div>
             ) : (
+              <>
+              {tab === "changes" && active.comparison === "none" && <div className={s.notice}>
+                <span>Compare wording with earlier reports to see additions and revisions.</span>
+                <button disabled={busy} onClick={() => run({ ...active, comparison: "annual-season", searchStyle: "exact" }, { view: "changes" })}>Compare earlier wording</button>
+              </div>}
               <DisclosureResults
                 key={disclosureSearchIdentity(active)}
                 filings={allResults}
@@ -1117,6 +1148,20 @@ export default function DisclosureSearchClient({
                 busy={busy || Boolean(checking)}
                 selectedId={reader ? filingEvidenceId(reader.filing) : ""}
               />
+              {active.mode === "index" && index?.hasMore && <button className={s.loadMore} disabled={busy} onClick={loadMoreIndex}>
+                {busy ? "Loading…" : "Load more SEC filings"}
+              </button>}
+              {active.mode === "index" && preparedPage?.hasMore && <button className={s.loadMore} disabled={busy} onClick={loadMorePrepared}>Search more prepared passages</button>}
+              {!busy && !allResults.some((filing) => filing.matched || filing.status === "index-candidate") && <div className={s.coverage}>
+                <strong>Adjust this search</strong>
+                <p>Try a related term, widen the filing dates, or allow words to appear across the document.</p>
+                <div className={s.actions}>
+                  {interpretation?.suggestions?.filter((item: any) => item.kind === "spelling").slice(0, 2).map((item: any) => <button key={item.query} onClick={() => run({ ...settings, query: item.query, searchStyle: "smart" })}>{item.label}</button>)}
+                  {active.scope === "paragraph" && <button onClick={() => run({ ...active, scope: "document", searchStyle: "exact" })}>Search across the document</button>}
+                  <button onClick={() => run({ ...active, start: `${new Date().getUTCFullYear() - 5}-01-01`, searchStyle: "exact" })}>Search the past five years</button>
+                </div>
+              </div>}
+              </>
             )}
           </section>
           {reader && (

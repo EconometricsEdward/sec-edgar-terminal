@@ -1,6 +1,7 @@
 /** Narrow workload gateway. Supabase credentials never leave this function. */
 import { APPROVED_SEC_CIKS, SUPPORTING_SOURCE_CIKS } from './coverage.js';
 import { DISPOSABLE_CACHE_LIMITS as CACHE_LIMITS, disposableCachePolicy, disposableCacheFencePolicy, disposableCacheFenceResource } from './cachePolicy.js';
+import { DISCLOSURE_INDEX_LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument, validDisclosureIndexSearch } from './disclosurePolicy.js';
 export const TRUST = Object.freeze({
   issuer: 'https://oidc.vercel.com/econometricsedwards-projects',
   audience: 'https://vercel.com/econometricsedwards-projects',
@@ -47,6 +48,9 @@ const GROUPS = Object.freeze({
 // Unknown parameters are rejected rather than accidentally reaching a new SQL
 // overload or a future operation with wider privileges.
 export const RPC_PARAMETERS = Object.freeze({
+  edgar_disclosure_document: ['p_cik', 'p_accession', 'p_primary_doc', 'p_parser_version'],
+  edgar_disclosure_replace: ['p_document', 'p_passages'],
+  edgar_disclosure_search: ['p_terms', 'p_start', 'p_end', 'p_forms', 'p_ciks', 'p_tickers', 'p_section', 'p_offset', 'p_limit', 'p_parser_version'],
   edgar_begin_write: ['p_dataset', 'p_key', 'p_owner', 'p_lease_seconds'],
   edgar_get_version: ['p_dataset', 'p_key', 'p_identity', 'p_pointer'],
   edgar_get_manifests: ['p_dataset', 'p_keys'],
@@ -264,6 +268,11 @@ function membershipEvidence(value, snapshot) {
 function validateRpc(name, params, nowMs) {
   knownKeys(params, ['p_namespace', ...RPC_PARAMETERS[name]]);
   if (has(params, 'p_namespace') && params.p_namespace !== NAMESPACE) reject('namespace_denied', 403);
+  if (name === 'edgar_disclosure_document' && (!disclosureIndexIdentity({ cik: params.p_cik, accession: params.p_accession, primaryDoc: params.p_primary_doc })
+    || params.p_parser_version !== DISCLOSURE_INDEX_LIMITS.parserVersion)) reject('invalid_disclosure_identity');
+  if (name === 'edgar_disclosure_replace' && !validDisclosureIndexDocument(params.p_document, params.p_passages, nowMs)) reject('invalid_disclosure_document');
+  if (name === 'edgar_disclosure_search' && !validDisclosureIndexSearch(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'p_namespace')
+    .map(([key, value]) => [key === 'p_parser_version' ? 'parserVersion' : key.slice(2), value])))) reject('invalid_disclosure_search');
   if (RPC_PARAMETERS[name].includes('p_dataset')) {
     if (!['sec', 'cftc', 'financial'].includes(params.p_dataset)) reject('dataset_denied', 403);
     if (RPC_PARAMETERS[name].includes('p_key') && !validKey(params.p_dataset, params.p_key, name === 'edgar_enqueue_job')) reject('resource_denied', 403);
@@ -360,7 +369,7 @@ function validateRpc(name, params, nowMs) {
   if (name === 'edgar_yield_job' && has(params, 'p_delay_seconds') && !integer(params.p_delay_seconds, 1, 86400)) reject('invalid_yield_delay');
   if (name === 'edgar_read_financial_metrics' && !UUID.test(params.p_version || '')) reject();
   if (has(params, 'p_after') && params.p_after !== null && !UUID.test(params.p_after)) reject();
-  if (has(params, 'p_limit') && !integer(params.p_limit, 1, 100)) reject('invalid_limit');
+  if (has(params, 'p_limit') && !integer(params.p_limit, 1, name === 'edgar_disclosure_search' ? DISCLOSURE_INDEX_LIMITS.candidateLimit : 100)) reject('invalid_limit');
   if (name === 'edgar_retention_dry_run' || name === 'edgar_orphan_dry_run') timestamp(params.p_before);
   return { ...params, p_namespace: NAMESPACE };
 }

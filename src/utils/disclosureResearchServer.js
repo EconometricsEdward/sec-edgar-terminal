@@ -11,6 +11,7 @@ import {
 } from "./disclosureResearch.js";
 import { parseDisclosureQuery, QUERY_VERSION } from "./disclosureQuery.js";
 import { secFetch as controlledSecFetch } from "./secClient.js";
+import { readPreparedDisclosureText, indexDisclosureText, DISCLOSURE_INDEX_LIMITS } from "./disclosurePassageIndex.js";
 
 export const DISCLOSURE_FORMS = [
   "10-K",
@@ -29,10 +30,14 @@ export const DISCLOSURE_FORMS = [
 ];
 const textCache = new Map();
 const inflight = new Map();
+// Bound optional legacy-cache refreshes independently of foreground research.
+// SEC dispatch itself remains governed across instances by secClient.
+const legacyIndexRefreshes = new Map();
 const signature = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-async function secFetch(url) {
+async function secFetch(url, signal) {
+  signal?.throwIfAborted();
   const response = await controlledSecFetch(url, {
     headers: {
       "User-Agent":
@@ -40,6 +45,7 @@ async function secFetch(url) {
         "EDGAR Terminal research@secedgarterminal.com",
     },
     timeoutMs: 18000,
+    signal,
   });
   if (!response.ok) throw new Error(`SEC returned HTTP ${response.status}.`);
   return response;
@@ -113,13 +119,21 @@ function rows(recent, cik) {
   });
 }
 
-export async function disclosureCompanyHistory(input, settings) {
+export async function disclosureCompanyHistory(input, settings, options = {}) {
+  const { signal, accession = "" } = options;
+  signal?.throwIfAborted();
   const identity = await resolveDisclosureCompany(input);
+  signal?.throwIfAborted();
   const key = `${identity.cik}:${settings.start}`;
   const cached = await warmGet("disclosure-history-v1", key);
+  signal?.throwIfAborted();
   if (cached) return { ...cached, ticker: identity.ticker };
+  // A standalone passage does not need every historical submissions archive.
+  const recentOnly = options.recentOnly || (accession && settings.comparison === "none");
+  const recentCached = recentOnly ? await warmGet("disclosure-history-v1", `${key}:recent`) : null;
+  if (recentCached && (!accession || recentCached.filings.some(f => f.accession === accession))) return { ...recentCached, ticker: identity.ticker };
   const submissions = await (
-    await secFetch(`https://data.sec.gov/submissions/CIK${identity.cik}.json`)
+    await secFetch(`https://data.sec.gov/submissions/CIK${identity.cik}.json`, signal)
   ).json();
   let filings = rows(submissions.filings?.recent, identity.cik);
   const since = new Date(Date.parse(settings.start) - 410 * 86400000)
@@ -129,14 +143,18 @@ export async function disclosureCompanyHistory(input, settings) {
     .filter((f) => f.filingTo >= since)
     .sort((a, b) => b.filingTo.localeCompare(a.filingTo));
   const issues = [];
-  for (const file of archives.slice(0, 6)) {
+  const targetIsRecent = recentOnly && (!accession || filings.some(f => f.accession === accession));
+  const selectedArchives = targetIsRecent ? [] : archives.slice(0, 6);
+  for (const file of selectedArchives) {
+    signal?.throwIfAborted();
     if (!/^CIK\d{10}-submissions-\d+\.json$/.test(file.name)) continue;
     try {
       const data = await (
-        await secFetch(`https://data.sec.gov/submissions/${file.name}`)
+        await secFetch(`https://data.sec.gov/submissions/${file.name}`, signal)
       ).json();
       filings.push(...rows(data, identity.cik));
     } catch (error) {
+      signal?.throwIfAborted();
       issues.push(
         `History ${file.filingFrom}–${file.filingTo}: ${error.message}`,
       );
@@ -151,39 +169,52 @@ export async function disclosureCompanyHistory(input, settings) {
     ...identity,
     companyName: submissions.name || identity.name,
     filings,
-    historyLimited: archives.length > 6 || issues.length > 0,
+    historyLimited: archives.length > selectedArchives.length || issues.length > 0,
     historyIssues: issues,
-    historyArchivesReviewed: Math.min(archives.length, 6),
+    historyArchivesReviewed: selectedArchives.length,
     historyArchivesAvailable: archives.length,
   };
-  if (!issues.length) await warmSet("disclosure-history-v1", key, result, 300);
+  signal?.throwIfAborted();
+  if (!issues.length) await warmSet("disclosure-history-v1", targetIsRecent ? `${key}:recent` : key, result, 300);
   return result;
 }
 
-async function filingText(cik, filing) {
+function validateDisclosureDocument(document) {
+  if (!/^[\w][\w.\/-]*\.(?:htm|html|txt)$/i.test(document)
+    || document.includes("..") || document.includes("//") || document.length > 240)
+    throw new Error("This document format cannot be reviewed as text.");
+}
+
+async function filingText(cik, filing, signal, { forceRefresh = false } = {}) {
+  signal?.throwIfAborted();
+  validateDisclosureDocument(filing.primaryDoc);
   const key = `${cik}:${filing.accession}:${filing.primaryDoc}`;
-  if (textCache.has(key)) return textCache.get(key);
-  if (inflight.has(key)) return inflight.get(key);
+  if (!forceRefresh && textCache.has(key)) return textCache.get(key);
+  const existing = inflight.get(key);
+  // Never let cancellation of one reader cancel another reader's transport.
+  if (existing && existing.signal === signal && existing.forceRefresh === forceRefresh) return existing.promise;
   const promise = (async () => {
-    const cached = await warmGet("disclosure-text-v1", key);
-    let text;
+    const prepared = forceRefresh ? null : await readPreparedDisclosureText({ cik, filing, signal });
+    signal?.throwIfAborted();
+    const cached = prepared || forceRefresh ? null : await warmGet("disclosure-text-v1", key);
+    let text = prepared?.text;
+    let sourceRetrievedAt = prepared?.sourceRetrievedAt || cached?.sourceRetrievedAt || null;
     if (cached?.gzip) {
       try {
-        text = gunzipSync(Buffer.from(cached.gzip, "base64")).toString("utf8");
+        text = gunzipSync(Buffer.from(cached.gzip, "base64"), { maxOutputLength: 24_000_000 }).toString("utf8");
       } catch {
         /* fetch corrupt cache again */
       }
     }
+    signal?.throwIfAborted();
     if (!text) {
-      if (
-        !/^[\w][\w.\/-]*\.(?:htm|html|txt)$/i.test(filing.primaryDoc) ||
-        filing.primaryDoc.includes("..")
-      )
-        throw new Error("This document format cannot be reviewed as text.");
+      sourceRetrievedAt = new Date().toISOString();
       const response = await secFetch(
         buildFilingUrl(cik, filing.accession, filing.primaryDoc),
+        signal,
       );
       const html = await response.text();
+      signal?.throwIfAborted();
       if (html.length > 24000000)
         throw new Error(
           "Document exceeds the 24 MB text review limit. Open the SEC source.",
@@ -200,25 +231,27 @@ async function filingText(cik, filing) {
       await warmSet(
         "disclosure-text-v1",
         key,
-        { gzip: gzipSync(text).toString("base64") },
+        { gzip: gzipSync(text).toString("base64"), sourceRetrievedAt },
         86400 * 7,
       );
     }
     let total = text.length;
-    for (const value of textCache.values()) total += value.length;
+    for (const value of textCache.values()) total += value.text.length;
     while (textCache.size && (total > 20000000 || textCache.size >= 24)) {
       const first = textCache.keys().next().value;
-      total -= textCache.get(first).length;
+      total -= textCache.get(first).text.length;
       textCache.delete(first);
     }
-    textCache.set(key, text);
-    return text;
+    const entry = { text, sourceRetrievedAt, indexed: Boolean(prepared) };
+    textCache.set(key, entry);
+    return entry;
   })();
-  inflight.set(key, promise);
+  const pending = { promise, signal, forceRefresh };
+  inflight.set(key, pending);
   try {
     return await promise;
   } finally {
-    inflight.delete(key);
+    if (inflight.get(key) === pending) inflight.delete(key);
   }
 }
 
@@ -240,16 +273,97 @@ function compactPassage(p) {
   };
 }
 
+function trustworthySourceTimestamp(entry, filing) {
+  const time = Date.parse(entry?.sourceRetrievedAt);
+  return typeof entry?.sourceRetrievedAt === "string" && Number.isFinite(time)
+    && time >= Date.parse(filing.filingDate) && time <= Date.now() + 60_000;
+}
+
+function deferLegacyIndexRefresh(company, filing, entry, deferIndexWrite) {
+  // Only spend SEC requests on documents the bounded index can retain.
+  const filingTime = Date.parse(filing.filingDate);
+  if (!Number.isFinite(filingTime) || filingTime > Date.now()
+    || filingTime < Date.now() - DISCLOSURE_INDEX_LIMITS.retentionDays * 86400000) return;
+  const key = `${company.cik}:${filing.accession}:${filing.primaryDoc}`;
+  const previous = legacyIndexRefreshes.get(key);
+  if (previous?.pending || previous?.retryAt > Date.now()
+    || [...legacyIndexRefreshes.values()].filter(value => value.pending).length >= 2) return;
+  if (legacyIndexRefreshes.size >= 64) {
+    const oldestSettled = [...legacyIndexRefreshes].find(([, value]) => !value.pending)?.[0];
+    if (oldestSettled) legacyIndexRefreshes.delete(oldestSettled);
+  }
+  const task = { pending: true, retryAt: Date.now() + 300_000 };
+  legacyIndexRefreshes.set(key, task);
+  entry.indexPending = true;
+  try {
+    deferIndexWrite(async () => {
+      let refreshed;
+      const signal = AbortSignal.timeout(30_000);
+      try {
+        // Another completed reader or prewarmer may have supplied real source
+        // metadata while this response was finishing. Reuse it when possible.
+        refreshed = textCache.get(key);
+        if (!trustworthySourceTimestamp(refreshed, filing))
+          refreshed = await filingText(company.cik, filing, signal, { forceRefresh: true });
+        refreshed.indexPending = true;
+        if (!refreshed.indexed) {
+          const result = await indexDisclosureText({ cik: company.cik, ticker: company.ticker,
+            companyName: company.companyName, filing, text: refreshed.text,
+            sourceRetrievedAt: refreshed.sourceRetrievedAt, signal });
+          refreshed.indexed = Boolean(result?.stored);
+        }
+      } catch {
+        // A background outage must not invalidate the retained reader evidence.
+      } finally {
+        entry.indexPending = false;
+        if (refreshed) refreshed.indexPending = false;
+        task.pending = false;
+        task.retryAt = Date.now() + 300_000;
+      }
+    });
+  } catch {
+    entry.indexPending = false;
+    task.pending = false;
+  }
+}
+
 async function inspectFiling(
   company,
   filing,
   settings,
   compare = true,
   baselineAccession = "",
+  signal,
+  deferIndexWrite,
 ) {
-  const text = await filingText(company.cik, filing);
+  signal?.throwIfAborted();
+  const entry = await filingText(company.cik, filing, signal);
+  signal?.throwIfAborted();
+  if (!entry.indexed && !entry.indexPending && !trustworthySourceTimestamp(entry, filing) && deferIndexWrite)
+    deferLegacyIndexRefresh(company, filing, entry, deferIndexWrite);
+  if (!entry.indexed && !entry.indexPending && trustworthySourceTimestamp(entry, filing)) {
+    const persist = async (writeSignal) => {
+      try {
+        const indexed = await indexDisclosureText({ cik: company.cik, ticker: company.ticker,
+          companyName: company.companyName, filing, text: entry.text,
+          sourceRetrievedAt: entry.sourceRetrievedAt, signal: writeSignal });
+        entry.indexed = Boolean(indexed?.stored);
+      } catch {
+        // Optional index preparation must not turn a valid source into a
+        // failed review, including malformed or unexpectedly large metadata.
+        writeSignal?.throwIfAborted();
+      } finally { entry.indexPending = false; }
+    };
+    if (deferIndexWrite) {
+      entry.indexPending = true;
+      // The host keeps this bounded cache write alive after the response. It
+      // never delays verified passages or starts another SEC download.
+      deferIndexWrite(() => persist());
+    } else await persist(signal);
+    signal?.throwIfAborted();
+  }
   const analysis = analyzeDisclosure(
-    text,
+    entry.text,
     filing.form,
     settings.parsed,
     settings,
@@ -257,7 +371,7 @@ async function inspectFiling(
   const pair = selectDisclosureBaseline(
     filing,
     company.filings,
-    settings.comparison,
+    compare ? settings.comparison : "none",
     baselineAccession,
   );
   let removed = [];
@@ -265,9 +379,9 @@ async function inspectFiling(
   let comparisonError = "";
   if (compare && pair.prior && analysis.status === "reviewed") {
     try {
-      const priorText = await filingText(company.cik, pair.prior);
+      const priorText = await filingText(company.cik, pair.prior, signal);
       const prior = analyzeDisclosure(
-        priorText,
+        priorText.text,
         pair.prior.form,
         settings.parsed,
         settings,
@@ -289,6 +403,7 @@ async function inspectFiling(
         };
       }
     } catch (error) {
+      signal?.throwIfAborted();
       comparisonError = `Prior document was not reviewed: ${error.message}`;
     }
   }
@@ -392,8 +507,10 @@ export function disclosureFilingBatch(filings, settings, after = "") {
   };
 }
 
-export async function scanDisclosureCompany(input, settings, after = "") {
-  const company = await disclosureCompanyHistory(input, settings);
+export async function scanDisclosureCompany(input, settings, after = "", options = {}) {
+  const { signal } = options;
+  signal?.throwIfAborted();
+  const company = await disclosureCompanyHistory(input, settings, { signal });
   const batch = disclosureFilingBatch(company.filings, settings, after);
   const selected = batch.selected;
   const key = signature({
@@ -404,6 +521,7 @@ export async function scanDisclosureCompany(input, settings, after = "") {
     filings: selected.map((f) => f.accession),
   });
   const cached = await warmGet("disclosure-scan-v1", key);
+  signal?.throwIfAborted();
   if (cached)
     return {
       ...cached,
@@ -419,29 +537,31 @@ export async function scanDisclosureCompany(input, settings, after = "") {
       checkedAt: new Date().toISOString(),
       cached: true,
     };
-  const filings = [];
-  for (const filing of selected) {
-    try {
-      const result = await inspectFiling(company, filing, settings);
-      filings.push({
-        ...result,
-        matches: undefined,
-        previews: result.matches.slice(0, 3).map(compactPassage),
-      });
-    } catch (error) {
-      filings.push({
-        ...filing,
-        ticker: company.ticker,
-        cik: company.cik,
-        companyName: company.companyName,
-        status: "fetch-failed",
-        matched: false,
-        reason: error.message,
-        previews: [],
-        topics: {},
-      });
+  // Keep filing order stable while at most two inspections progress. The
+  // shared secClient dispatch gate still governs every SEC request start.
+  const filings = new Array(selected.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < selected.length) {
+      signal?.throwIfAborted();
+      const index = next++;
+      const filing = selected[index];
+      try {
+        const result = await inspectFiling(company, filing, settings, true, "", signal, options.deferIndexWrite);
+        filings[index] = { ...result, matches: undefined, previews: result.matches.slice(0, 3).map(compactPassage) };
+      } catch (error) {
+        signal?.throwIfAborted();
+        filings[index] = { ...filing, ticker: company.ticker, cik: company.cik,
+          companyName: company.companyName, status: "fetch-failed", matched: false,
+          reason: error.message, previews: [], topics: {} };
+      }
     }
-  }
+  };
+  const workers = Array.from({ length: Math.min(2, selected.length) }, worker);
+  const completed = await Promise.allSettled(workers);
+  const failed = completed.find(result => result.status === "rejected");
+  if (failed) throw failed.reason;
+  signal?.throwIfAborted();
   const reviewed = filings.filter((f) => f.status === "reviewed");
   const matching = reviewed.filter((f) => f.matched);
   const result = {
@@ -471,6 +591,38 @@ export async function scanDisclosureCompany(input, settings, after = "") {
   return result;
 }
 
+/** Incrementally prepare recent primary filings without running a pretend query. */
+export async function prewarmDisclosureCompany(input, { signal, maxDocuments = 2 } = {}) {
+  if (!Number.isInteger(maxDocuments) || maxDocuments < 1 || maxDocuments > 2)
+    throw new Error("Prepare one or two recent filings per company.");
+  signal?.throwIfAborted();
+  const end = new Date().toISOString().slice(0, 10);
+  const start = new Date(Date.now() - 2 * 365 * 86400000).toISOString().slice(0, 10);
+  const settings = { start, end, comparison: "none", forms: ["10-K", "10-Q", "8-K"], depth: maxDocuments, amendments: false };
+  const company = await disclosureCompanyHistory(input, settings, { signal, recentOnly: true });
+  const selected = disclosureFilingBatch(company.filings, settings).selected;
+  const result = { cik: company.cik, selected: selected.length, indexed: 0, skipped: 0, failed: 0 };
+  for (const filing of selected) {
+    signal?.throwIfAborted();
+    try {
+      let entry = await filingText(company.cik, filing, signal);
+      if (!trustworthySourceTimestamp(entry, filing)) {
+        // Legacy text remains usable for readers. Scheduled indexing requires
+        // a real source fetch, not a freshly invented timestamp on old text.
+        entry = await filingText(company.cik, filing, signal, { forceRefresh: true });
+      }
+      if (entry.indexed) { result.skipped++; continue; }
+      if (!entry.sourceRetrievedAt) { result.skipped++; continue; }
+      const write = await indexDisclosureText({ cik: company.cik, ticker: company.ticker,
+        companyName: company.companyName, filing, text: entry.text,
+        sourceRetrievedAt: entry.sourceRetrievedAt, signal });
+      entry.indexed = Boolean(write?.stored);
+      if (entry.indexed) result.indexed++; else result.skipped++;
+    } catch { signal?.throwIfAborted(); result.failed++; }
+  }
+  return result;
+}
+
 export async function readDisclosureDocument(
   input,
   accession,
@@ -481,7 +633,9 @@ export async function readDisclosureDocument(
 ) {
   if (!/^\d{10}-\d{2}-\d{6}$/.test(accession))
     throw new Error("Invalid SEC accession.");
-  const company = await disclosureCompanyHistory(input, settings);
+  options.signal?.throwIfAborted();
+  if (document) validateDisclosureDocument(document);
+  const company = await disclosureCompanyHistory(input, settings, { signal: options.signal, accession });
   const filing = company.filings.find((f) => f.accession === accession);
   if (!filing)
     throw new Error(
@@ -507,6 +661,8 @@ export async function readDisclosureDocument(
     settings,
     !exhibit,
     options.baselineAccession || "",
+    options.signal,
+    options.deferIndexWrite,
   );
   if (exhibit)
     result.pair = {
