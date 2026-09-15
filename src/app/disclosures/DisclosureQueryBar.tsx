@@ -53,7 +53,8 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
   const smart = settings.searchStyle !== "exact";
   const deferredQuery = useDeferredValue(settings.query);
   const currentInterpretation = interpretation?.originalQuery === settings.query.trim() ? interpretation : null;
-  const queryInspection = useMemo(() => inspectDisclosureQuery(settings.query), [settings.query]);
+  const expression = currentInterpretation?.query || settings.query;
+  const queryInspection = useMemo(() => inspectDisclosureQuery(expression), [expression]);
   const builderQuery = useMemo(() => buildAdvancedQuery(builder), [builder]);
   const displayedSettings = currentInterpretation ? { ...settings, ...currentInterpretation.settings, mode: settings.mode } : settings;
   const materialized = () => currentInterpretation ? { ...displayedSettings, query: currentInterpretation.query, searchStyle: "exact" as const } : settings;
@@ -299,7 +300,7 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
               reports use the prior annual period; amendments are identified
               separately. An unavailable comparison stays visibly unavailable.
             </p>
-            <DisclosureQueryCoach query={settings.query} scope={displayedSettings.scope} onQueryChange={(query) => setSettings({ ...settings, query, searchStyle: "exact" })} />
+            <DisclosureQueryCoach query={expression} scope={displayedSettings.scope} onQueryChange={(query) => setSettings({ ...materialized(), query, searchStyle: "exact" })} />
             <div className={s.builder}>
               <h3>Build an expression</h3>
               <div className={s.filterRow}>
@@ -339,8 +340,8 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
                   onClick={() => {
                     try {
                       parseDisclosureQuery(builderQuery);
-                      setPreviousQuery(settings.query);
-                      setSettings({ ...settings, query: builderQuery, searchStyle: "exact" });
+                      setPreviousQuery(expression);
+                      setSettings({ ...materialized(), query: builderQuery, searchStyle: "exact" });
                       setBuilderError("");
                     } catch (error) {
                       setBuilderError(error.message);
@@ -354,10 +355,10 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
                   disabled={!builderQuery.trim() || !queryInspection.valid}
                   onClick={() => {
                     try {
-                      const combined = `(${settings.query}) AND (${builderQuery})`;
+                      const combined = `(${expression}) AND (${builderQuery})`;
                       parseDisclosureQuery(combined);
-                      setPreviousQuery(settings.query);
-                      setSettings({ ...settings, query: combined, searchStyle: "exact" });
+                      setPreviousQuery(expression);
+                      setSettings({ ...materialized(), query: combined, searchStyle: "exact" });
                       setBuilderError("");
                     } catch (error) {
                       setBuilderError(error.message);
