@@ -6,6 +6,7 @@ import {
   entityFromRoute,
   companyToolPath,
   activeTool,
+  normalizeCikIdentifier,
 } from "../src/utils/siteRoutes.js";
 
 test("saved routes preserve research settings and canonical company symbols", () => {
@@ -94,7 +95,7 @@ test("company identity follows the exact route and never picks a peer or a stale
     assert.equal(entityFromRoute(path, null), null);
 });
 
-test("query-derived issuer context matches page precedence and excludes groups and CIKs", () => {
+test("query-derived issuer context matches page precedence and excludes ambiguous groups", () => {
   assert.deepEqual(
     entityFromRoute("/risk", new URLSearchParams("ticker=JPM&symbol=BAC")),
     { ticker: "JPM", kind: "company" },
@@ -114,8 +115,6 @@ test("query-derived issuer context matches page precedence and excludes groups a
     "tickers=JPM,BAC",
     "tickers=JPM%20BAC",
     "tickers=JPM&tickers=BAC",
-    "cik=0000019617",
-    "company=0000019617",
     "company=JPMorgan%20Chase",
   ])
     assert.equal(
@@ -123,6 +122,39 @@ test("query-derived issuer context matches page precedence and excludes groups a
       null,
       query,
     );
+});
+
+test("CIK filing routes retain filer identity without creating stock research links", () => {
+  assert.equal(normalizeCikIdentifier("1747057"), "0001747057");
+  for (const invalid of ["0000000000", "12345678901", "D1", "-1", "1.2", null]) {
+    assert.equal(normalizeCikIdentifier(invalid), null);
+  }
+  assert.deepEqual(entityFromRoute("/filings/1747057", null), {
+    ticker: "0001747057", kind: "filer",
+  });
+  assert.equal(safeInternalPath("/filings/1747057?family=ownership#results"), "/filings/0001747057?family=ownership#results");
+  assert.equal(companyToolPath("filings", "1747057"), "/filings/0001747057");
+  assert.equal(companyToolPath("disclosures", "1747057"), "/disclosures?tickers=0001747057&mode=companies");
+  for (const tool of ["analysis", "risk", "fund", "compare"]) {
+    assert.equal(companyToolPath(tool, "0001747057"), null);
+    assert.equal(entityFromRoute(`/${tool}/0001747057`, null), null);
+    assert.equal(safeInternalPath(`/${tool}/0001747057`), null);
+  }
+  for (const invalid of ["/filings/0000000000", "/filings/12345678901", "/compare/JPM,0001747057"]) {
+    assert.equal(safeInternalPath(invalid), null);
+    assert.equal(entityFromRoute(invalid, null), null);
+  }
+});
+
+test("disclosure CIK context stays explicit even for a listed company", () => {
+  for (const key of ["tickers", "focus", "ticker", "cik", "company"]) {
+    assert.deepEqual(entityFromRoute("/disclosures", new URLSearchParams(`${key}=19617`)), {
+      ticker: "0000019617", kind: "filer",
+    });
+  }
+  assert.equal(entityFromRoute("/risk", new URLSearchParams("ticker=0000019617")), null);
+  assert.equal(entityFromRoute("/disclosures", new URLSearchParams("cik=19617&cik=1747057")), null);
+  assert.equal(entityFromRoute("/disclosures", new URLSearchParams("tickers=JPM,BAC&cik=1747057")), null);
 });
 
 test("company tool links retain the requested ticker and do not manufacture peer groups", () => {

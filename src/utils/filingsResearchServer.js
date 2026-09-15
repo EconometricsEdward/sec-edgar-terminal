@@ -6,6 +6,12 @@ import { secFetch } from './secClient.js';
 
 export const FILINGS_VERSION = 'filings-v1';
 const localCache = new Map();
+/** Numeric inputs identify an SEC filer, never an invented trading symbol. */
+export function normalizeFilingsIdentifier(input) {
+  const value = String(input ?? '').trim().toUpperCase();
+  if (/^\d+$/.test(value)) return /^\d{1,10}$/.test(value) && Number(value) > 0 ? value.padStart(10, '0') : '';
+  return validTicker(value) ? value : '';
+}
 function failure(message, status = 502, code = 'SEC_UNAVAILABLE') {
   return Object.assign(new Error(message), { status, code });
 }
@@ -15,6 +21,7 @@ function validateSubmissions(data, path) {
   if (!archived) {
     const cik = path.slice(3, 13);
     if (String(data.cik || '').replace(/^0+/, '') !== String(Number(cik))) throw failure('SEC submissions did not match the requested company identity.');
+    if (typeof data.name !== 'string' || !data.name.trim()) throw failure('SEC returned an incomplete filer identity. Retry this request.');
     // An absent/malformed manifest is unknown history, never an empty archive list.
     if (!Array.isArray(data.filings?.files)) throw failure('SEC returned an incomplete archive manifest. Retry this request.');
   }
@@ -22,7 +29,7 @@ function validateSubmissions(data, path) {
   if (!Array.isArray(recent?.accessionNumber) || !Array.isArray(recent?.form) || !Array.isArray(recent?.filingDate)) throw failure(`SEC returned incomplete ${archived ? 'archived' : 'recent'} filing metadata. Retry this request.`);
   return data;
 }
-async function secJson(path, signal) {
+async function secJson(path, signal, { missingCik = false } = {}) {
   if (!/^CIK\d{10}(?:-submissions-\d+)?\.json$/.test(path)) throw failure('Invalid SEC submissions path.', 400, 'INVALID_ARCHIVE');
   signal?.throwIfAborted();
   const now = Date.now();
@@ -39,9 +46,15 @@ async function secJson(path, signal) {
     timeoutMs: 15000,
     cache: 'no-store',
   });
-  if (!response.ok) throw failure(`SEC submissions are temporarily unavailable (HTTP ${response.status}). Retry this request.`);
+  if (!response.ok) {
+    if (missingCik && response.status === 404) throw failure(`No SEC submissions were found for CIK ${path.slice(3, 13)}. Check the CIK and try again.`, 404, 'UNKNOWN_CIK');
+    throw failure(`SEC submissions are temporarily unavailable (HTTP ${response.status}). Retry this request.`);
+  }
   // Validate before caching, so a transient malformed response can be retried.
-  const data = validateSubmissions(await response.json(), path);
+  let payload;
+  try { payload = await response.json(); }
+  catch { throw failure('SEC returned an invalid submissions response. Retry this request.'); }
+  const data = validateSubmissions(payload, path);
   while (localCache.size >= 18) localCache.delete(localCache.keys().next().value);
   localCache.set(path, { data, expiresAt: now + 300000 });
   await warmSet('filings-submissions-v1', path, data, 300);
@@ -59,22 +72,25 @@ export function normalizeFilingsArchives(files, cik) {
   return [...byName.values()].sort((a, b) => b.filingTo.localeCompare(a.filingTo) || b.filingFrom.localeCompare(a.filingFrom) || a.name.localeCompare(b.name));
 }
 export async function loadFilingsCompany(input, { signal } = {}) {
-  const ticker = String(input || '').trim().toUpperCase();
-  if (!validTicker(ticker)) throw failure('Provide a valid company ticker.', 400, 'INVALID_TICKER');
+  const ticker = normalizeFilingsIdentifier(input);
+  if (!ticker) throw failure('Provide a valid company ticker or positive SEC CIK of up to 10 digits.', 400, 'INVALID_IDENTIFIER');
   signal?.throwIfAborted();
-  let identity;
-  try { identity = await getOperatingTicker(ticker); }
-  catch { throw failure('The SEC company directory is temporarily unavailable. Retry the lookup.'); }
-  if (!identity) {
-    let fund;
-    try { fund = await getFundTicker(ticker); }
-    catch { throw failure('The SEC fund directory is temporarily unavailable. Retry the lookup.'); }
-    if (fund) return { ticker, ...fund, kind: 'fund', name: ticker, filings: [], archives: [], redirect: `/fund/${encodeURIComponent(ticker)}`, observedAt: new Date().toISOString() };
-    throw failure(`No SEC company or fund matched the exact ticker ${ticker}.`, 404, 'UNKNOWN_TICKER');
+  const byCik = /^\d{10}$/.test(ticker);
+  let identity = byCik ? { cik: ticker } : null;
+  if (!byCik) {
+    try { identity = await getOperatingTicker(ticker); }
+    catch { throw failure('The SEC company directory is temporarily unavailable. Retry the lookup.'); }
+    if (!identity) {
+      let fund;
+      try { fund = await getFundTicker(ticker); }
+      catch { throw failure('The SEC fund directory is temporarily unavailable. Retry the lookup.'); }
+      if (fund) return { ticker, ...fund, kind: 'fund', name: ticker, filings: [], archives: [], redirect: `/fund/${encodeURIComponent(ticker)}`, observedAt: new Date().toISOString() };
+      throw failure(`No SEC company or fund matched the exact ticker ${ticker}. Search by filer name or enter its SEC CIK.`, 404, 'UNKNOWN_TICKER');
+    }
   }
   const cik = String(identity.cik).padStart(10, '0');
   if (!/^\d{10}$/.test(cik) || Number(cik) <= 0) throw failure('SEC company identity could not be validated. Retry the lookup.');
-  const submissions = await secJson(`CIK${cik}.json`, signal);
+  const submissions = await secJson(`CIK${cik}.json`, signal, { missingCik: byCik });
   if (String(submissions.cik || '').replace(/^0+/, '') !== String(Number(cik))) throw failure('SEC submissions did not match the requested company identity.');
   const recent = submissions.filings?.recent;
   if (!Array.isArray(recent?.accessionNumber) || !Array.isArray(recent?.form) || !Array.isArray(recent?.filingDate)) throw failure('SEC returned incomplete recent filing metadata. Retry this request.');
@@ -83,7 +99,12 @@ export async function loadFilingsCompany(input, { signal } = {}) {
   const omittedRecords = Math.max(0, recent.accessionNumber.length - filings.length);
   const omittedArchives = Array.isArray(submissions.filings?.files) ? Math.max(0, submissions.filings.files.length - archives.length) : 0;
   return {
-    ticker, cik, kind: 'operating', name: submissions.name || identity.name,
+    // Keep the requested route identity even if this CIK has trading symbols.
+    // Share classes belong to one issuer; the first symbol is not a substitute.
+    ticker, cik, kind: byCik ? 'filer' : 'operating', name: submissions.name.trim(),
+    identityType: byCik ? 'cik' : 'ticker',
+    tickers: Array.isArray(submissions.tickers) ? [...new Set(submissions.tickers.filter((value) => typeof value === 'string' && validTicker(value) && !/^\d+$/.test(value)))] : [],
+    submissionsUrl: `https://data.sec.gov/submissions/CIK${cik}.json`,
     sic: submissions.sic == null ? '' : String(submissions.sic), sicDescription: submissions.sicDescription || '',
     exchange: Array.isArray(submissions.exchanges) ? [...new Set(submissions.exchanges.filter((e) => typeof e === 'string'))].join(', ') : '',
     filings, archives, omittedRecords, omittedArchives, coverage: { omittedRecords, omittedArchives },

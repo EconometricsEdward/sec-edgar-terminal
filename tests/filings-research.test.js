@@ -5,7 +5,8 @@ import {
   normalizeFilingsSettings, readFilingsSettings, filingPath, filterFilings,
   summarizeFilingMonths, summarizeFilingFamilies, selectFilingBaseline,
 } from '../src/utils/filingsResearch.js';
-import { loadFilingsCompany, loadFilingsArchive, normalizeFilingsArchives } from '../src/utils/filingsResearchServer.js';
+import { loadFilingsCompany, loadFilingsArchive, normalizeFilingsArchives, normalizeFilingsIdentifier } from '../src/utils/filingsResearchServer.js';
+import { GET as getFilingsResearch } from '../src/app/api/filings-research/route.js';
 
 const acc = (n, year = '26') => `0000000001-${year}-${String(n).padStart(6, '0')}`;
 const filing = (n, form = '10-Q', filed = '2026-08-05', report = '2026-06-30', extra = {}) => ({
@@ -156,5 +157,116 @@ test('Filings loaders preserve exact issuer, verify archived ownership, distingu
     await assert.rejects(loadFilingsCompany('BAD'), /incomplete archive manifest/);
     incompleteManifest = false;
     assert.equal((await loadFilingsCompany('BAD')).name, 'Retried issuer', 'Malformed responses are not cached and cannot poison a retry');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Filings CIK input has one canonical identity and rejects malformed numeric identifiers before fetching', async () => {
+  assert.equal(normalizeFilingsIdentifier(' 1747057 '), '0001747057');
+  assert.equal(normalizeFilingsIdentifier('0001747057'), '0001747057');
+  assert.equal(normalizeFilingsIdentifier('brk-b'), 'BRK-B');
+  for (const value of ['', '0', '0000000000', '12345678901', '../1747057', 'D1 Capital', '1747057/']) {
+    await assert.rejects(loadFilingsCompany(value), (error) => error.status === 400 && error.code === 'INVALID_IDENTIFIER');
+    const response = await getFilingsResearch(new Request(`https://example.com/api/filings-research?ticker=${encodeURIComponent(value)}`));
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+  }
+});
+
+test('Non-ticker CIK lookup retrieves 13F filings and verified archives without a company or fund directory', async () => {
+  const originalFetch = globalThis.fetch;
+  const requested = [];
+  const cik = '0001747057';
+  const archive = { name: `CIK${cik}-submissions-001.json`, filingFrom: '2018-01-01', filingTo: '2024-12-31', filingCount: 1 };
+  const recent = rows([
+    filing(101, '13F-HR', '2026-08-14', '2026-06-30', { primaryDoc: 'xslForm13F_X02/primary_doc.xml' }),
+    filing(102, '13F-HR/A', '2026-08-15', '2026-06-30'),
+    filing(103, '13F-NT', '2026-05-14', '2026-03-31'),
+  ]);
+  globalThis.fetch = async (url) => {
+    requested.push(String(url));
+    if (String(url) === `https://data.sec.gov/submissions/CIK${cik}.json`) return Response.json({
+      cik: 1747057, name: 'D1 Capital Partners L.P.', tickers: [], exchanges: [], filings: { recent, files: [archive] },
+    });
+    if (String(url) === `https://data.sec.gov/submissions/${archive.name}`) return Response.json(rows([
+      filing(100, '13F-HR', '2024-11-14', '2024-09-30'),
+    ]));
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  try {
+    const response = await getFilingsResearch(new Request('https://example.com/api/filings-research?ticker=1747057'));
+    assert.equal(response.status, 200);
+    const manager = await response.json();
+    assert.equal(manager.ticker, cik, 'The compatibility field is the canonical route CIK, never a made-up ticker');
+    assert.equal(manager.cik, cik);
+    assert.equal(manager.kind, 'filer');
+    assert.equal(manager.identityType, 'cik');
+    assert.equal(manager.name, 'D1 Capital Partners L.P.');
+    assert.deepEqual(manager.tickers, []);
+    assert.equal(manager.redirect, undefined, 'A 13F manager must not be classified as a ticker fund');
+    assert.equal(manager.submissionsUrl, `https://data.sec.gov/submissions/CIK${cik}.json`);
+    assert.deepEqual(manager.filings.map((f) => f.form), ['13F-HR/A', '13F-HR', '13F-NT']);
+    assert.ok(manager.filings.every((f) => f.family === 'ownership'));
+    assert.equal(filterFilings(manager.filings, { form: '13F-HR' }).length, 1);
+    assert.equal(filterFilings(manager.filings, { family: 'ownership', amendments: 'only' }).length, 1);
+    assert.match(manager.filings[1].documentUrl, /^https:\/\/www.sec.gov\/Archives\/edgar\/data\/1747057\//);
+    const older = await loadFilingsArchive(cik, archive.name);
+    assert.equal(older.ticker, cik);
+    assert.equal(older.filings[0].form, '13F-HR');
+    assert.equal(older.filings[0].archive, archive.name);
+    await assert.rejects(loadFilingsArchive(cik, 'CIK0001747058-submissions-001.json'), (error) => error.code === 'INVALID_ARCHIVE');
+    assert.deepEqual(requested, [manager.submissionsUrl, `https://data.sec.gov/submissions/${archive.name}`]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('CIK requests preserve issuer identity even when SEC reports multiple trading symbols', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    assert.equal(String(url), 'https://data.sec.gov/submissions/CIK0001747058.json');
+    return Response.json({ cik: '1747058', name: 'Multiple share classes', tickers: ['CLASS-A', 'CLASS-B', 'CLASS-A'], filings: { recent: rows([]), files: [] } });
+  };
+  try {
+    const company = await loadFilingsCompany('1747058');
+    assert.equal(company.ticker, '0001747058');
+    assert.equal(company.kind, 'filer');
+    assert.deepEqual(company.tickers, ['CLASS-A', 'CLASS-B']);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Unknown CIK is distinct from SEC outages and malformed identities never poison a retry', async () => {
+  const originalFetch = globalThis.fetch;
+  const cik = '0001747099';
+  let mode = 'missing';
+  const requests = [];
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    assert.equal(String(url), `https://data.sec.gov/submissions/CIK${cik}.json`);
+    if (mode === 'missing') return new Response('not found', { status: 404 });
+    if (mode === 'outage') return new Response('blocked', { status: 403 });
+    if (mode === 'invalid-json') return new Response('not JSON');
+    if (mode === 'array') return Response.json([]);
+    return Response.json({
+      cik: mode === 'mismatch' ? '1747000' : '1747099',
+      ...(mode === 'nameless' ? {} : { name: 'Recovered SEC filer' }),
+      filings: { recent: rows([]), ...(mode === 'manifest' ? {} : { files: [] }) },
+    });
+  };
+  try {
+    const missing = await getFilingsResearch(new Request(`https://example.com/api/filings-research?ticker=${cik}`));
+    assert.equal(missing.status, 404);
+    assert.equal((await missing.json()).code, 'UNKNOWN_CIK');
+    assert.equal(missing.headers.get('cache-control'), 'private, no-store');
+    for (mode of ['outage', 'invalid-json', 'array', 'mismatch', 'nameless', 'manifest']) {
+      const response = await getFilingsResearch(new Request(`https://example.com/api/filings-research?ticker=${cik}`));
+      assert.equal(response.status, 502, mode);
+      assert.equal((await response.json()).code, 'SEC_UNAVAILABLE', mode);
+      assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    }
+    mode = 'valid';
+    const recovered = await loadFilingsCompany(cik);
+    assert.equal(recovered.name, 'Recovered SEC filer');
+    assert.equal(recovered.filings.length, 0);
+    assert.equal(requests.length, 8, 'Every failed response remains retryable, including a previous 404');
+    assert.equal((await loadFilingsCompany(cik)).name, recovered.name);
+    assert.equal(requests.length, 8, 'Only verified SEC submissions are cached');
   } finally { globalThis.fetch = originalFetch; }
 });

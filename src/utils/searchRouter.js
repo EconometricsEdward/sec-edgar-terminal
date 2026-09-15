@@ -15,6 +15,7 @@
 import { safeInternalPath } from "./siteRoutes.js";
 import { MAX_COMPARE_COMPANIES } from "./compareLimits.js";
 import { migrateMarketPath } from "./marketResearch.js";
+import { filerCik, isTickerComparison } from "./secFilerSearch.js";
 
 export const DISCLOSURE_TOPIC_LABELS = {
   AI: "artificial intelligence",
@@ -184,6 +185,9 @@ export function routeSearch(query, tickerMap) {
 
   const raw = query.trim();
   const normalized = raw.toUpperCase();
+  const cik = filerCik(raw);
+  if (cik) return { path: `/filings/${cik}` };
+  if (/^\d+$/.test(raw)) return { error: "Enter a positive SEC CIK with at most 10 digits." };
 
   // Explicit topic searches remain available when the SEC directory is down.
   const explicitTopic = raw.match(/^(?:topic|disclosures?):\s*(.+)$/i);
@@ -191,7 +195,7 @@ export function routeSearch(query, tickerMap) {
   const directoryReady = tickerMap && Object.keys(tickerMap).length > 0;
 
   // --- Comma-separated: compare mode ---
-  if (normalized.includes(",")) {
+  if (isTickerComparison(normalized, tickerMap)) {
     if (!directoryReady)
       return {
         error:
@@ -327,7 +331,8 @@ function scoreTicker(ticker, name, query) {
  * @returns {{suggestions: Array, active: string, completed: Array, prefix: string}}
  */
 export function getSuggestions(query, tickerMap, limit = 10) {
-  const parsed = parseActiveSegment(query);
+  const isCompareMode = isTickerComparison(query, tickerMap);
+  const parsed = isCompareMode ? parseActiveSegment(query) : { prefix: "", active: String(query || "").trim().toUpperCase(), completed: [] };
   const { active, completed } = parsed;
 
   if (!active || active.length === 0) {
@@ -336,7 +341,6 @@ export function getSuggestions(query, tickerMap, limit = 10) {
 
   const results = [];
   const excludeSet = new Set(completed);
-  const isCompareMode = query.includes(",");
 
   // Topic suggestions (only when not in compare mode)
   if (!isCompareMode) {

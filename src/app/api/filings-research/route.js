@@ -1,19 +1,18 @@
-import { loadFilingsArchive, loadFilingsCompany } from '../../../utils/filingsResearchServer.js';
+import { loadFilingsArchive, loadFilingsCompany, normalizeFilingsIdentifier } from '../../../utils/filingsResearchServer.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
-import { validTicker } from '../../../utils/researchWorkspace.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 export async function GET(request) {
   const params = new URL(request.url).searchParams;
-  const ticker = (params.get('ticker') || '').trim().toUpperCase();
+  const ticker = normalizeFilingsIdentifier(params.get('ticker'));
   const archive = params.get('archive') || '';
   const headers = {
     'Cache-Control': archive
       ? 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400, stale-if-error=604800'
       : 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400',
   };
-  if (!validTicker(ticker) || archive && !/^CIK\d{10}-submissions-\d+\.json$/.test(archive)) return Response.json({ error: 'Provide a valid ticker and SEC archive name.', code: 'INVALID_REQUEST' }, { status: 400, headers: { 'Cache-Control': 'private, no-store' } });
+  if (!ticker || archive && !/^CIK\d{10}-submissions-\d+\.json$/.test(archive)) return Response.json({ error: 'Provide a valid ticker or positive SEC CIK, and a valid SEC archive name when requesting history.', code: 'INVALID_REQUEST' }, { status: 400, headers: { 'Cache-Control': 'private, no-store' } });
   const limit = await checkRateLimit({ key: `rl:filings-research:${getClientIp(request)}`, windowMs: 60000, max: 60 });
   if (!limit.allowed) {
     const response = rateLimitedResponse(limit);

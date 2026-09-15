@@ -67,6 +67,15 @@ export const SITE_TOOLS = Object.freeze([
 const TICKER = /^[A-Z0-9][A-Z0-9.-]{0,14}$/;
 const LANDINGS = new Set([...SITE_TOOLS.map((tool) => tool.href), "/about"]);
 
+/** A CIK identifies an SEC filer; it must never become a stock ticker. */
+export function normalizeCikIdentifier(value) {
+  if (typeof value !== "string") return null;
+  const cik = value.trim();
+  return /^\d{1,10}$/.test(cik) && Number(cik) > 0
+    ? cik.padStart(10, "0")
+    : null;
+}
+
 function normalizeTicker(value) {
   if (typeof value !== "string") return null;
   const ticker = value.trim().toUpperCase();
@@ -126,6 +135,12 @@ export function safeInternalPath(value) {
   if (LANDINGS.has(path)) return `${path}${url.search}${url.hash}`;
   const match = path.match(/^\/(analysis|filings|fund|compare)\/([^/]+)$/);
   if (!match) return null;
+  if (/^\d+$/.test(match[2])) {
+    const cik = normalizeCikIdentifier(match[2]);
+    return match[1] === "filings" && cik
+      ? `/filings/${cik}${url.search}${url.hash}`
+      : null;
+  }
   const tickers = match[2].split(",");
   if (match[1] === "compare") {
     if (
@@ -137,14 +152,14 @@ export function safeInternalPath(value) {
   } else if (tickers.length !== 1) return null;
   if (
     tickers.some(
-      (ticker) => !normalizeTicker(ticker) || ticker.trim() !== ticker,
+      (ticker) => !normalizeTicker(ticker) || /^\d+$/.test(ticker) || ticker.trim() !== ticker,
     )
   )
     return null;
   return `/${match[1]}/${tickers.map((ticker) => ticker.toUpperCase()).join(",")}${url.search}${url.hash}`;
 }
 
-/** @returns {{ticker: string, kind: 'company'|'fund'} | null} */
+/** @returns {{ticker: string, kind: 'company'|'fund'|'filer'} | null} */
 export function entityFromRoute(pathname, searchParams) {
   if (typeof pathname !== "string") return null;
   const path = pathname.replace(/\/$/, "") || "/";
@@ -156,6 +171,10 @@ export function entityFromRoute(pathname, searchParams) {
     } catch {
       return null;
     }
+    if (/^\d+$/.test(raw.trim())) {
+      const cik = normalizeCikIdentifier(raw);
+      return match[1] === "filings" && cik ? { ticker: cik, kind: "filer" } : null;
+    }
     const ticker = normalizeTicker(raw);
     return ticker
       ? { ticker, kind: match[1] === "fund" ? "fund" : "company" }
@@ -165,7 +184,7 @@ export function entityFromRoute(pathname, searchParams) {
   const keys =
     path === "/risk"
       ? ["ticker", "symbol"]
-      : ["tickers", "focus", "ticker", "company"];
+      : ["tickers", "focus", "ticker", "cik", "company"];
   if (
     typeof searchParams?.getAll === "function" &&
     keys.some((key) => searchParams.getAll(key).length > 1)
@@ -174,13 +193,24 @@ export function entityFromRoute(pathname, searchParams) {
   const present = keys.filter((key) => queryValue(searchParams, key));
   if (!present.length) return null;
   const raw = queryValue(searchParams, present[0]);
+  if (/^\d+$/.test(raw.trim())) {
+    const cik = normalizeCikIdentifier(raw);
+    return path === "/disclosures" && cik ? { ticker: cik, kind: "filer" } : null;
+  }
   const ticker = normalizeTicker(raw);
-  // CIKs and names are accepted by disclosure search, but are not ticker identity.
+  // Free-form names do not establish a unique issuer identity.
   if (!ticker || /^\d+$/.test(ticker)) return null;
   return { ticker, kind: "company" };
 }
 
 export function companyToolPath(tool, value) {
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const cik = normalizeCikIdentifier(value);
+    if (!cik) return null;
+    if (tool === "filings") return `/filings/${cik}`;
+    if (tool === "disclosures") return `/disclosures?tickers=${cik}&mode=companies`;
+    return null;
+  }
   const ticker = normalizeTicker(value);
   if (!ticker) return null;
   if (tool === "analysis" || tool === "filings" || tool === "fund")

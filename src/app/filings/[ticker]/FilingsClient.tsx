@@ -34,6 +34,7 @@ import {
 import CompanySearch from "../CompanySearch";
 import { TickerContext } from "../../../contexts/TickerContext";
 import { getItemsInfo } from "../../../utils/formItems.js";
+import { normalizeCikIdentifier } from "../../../utils/siteRoutes.js";
 import {
   FILINGS_SETTINGS,
   FILING_FAMILIES,
@@ -86,6 +87,10 @@ const FORM_TITLES: Record<string, string> = {
   "424B2": "Prospectus supplement",
   "424B3": "Prospectus supplement",
   "424B5": "Prospectus supplement",
+  "13F-HR": "Institutional investment manager holdings report",
+  "13F-HR/A": "Amended institutional holdings report",
+  "13F-NT": "Institutional holdings notice — reported by another manager",
+  "13F-NT/A": "Amended institutional holdings notice",
 };
 const formatDate = (value: string) => value || "Not supplied";
 function download(name: string, content: string, type: string) {
@@ -104,6 +109,7 @@ function errorText(error: any) {
 
 export default function FilingsClient({ ticker }: { ticker: string }) {
   const router = useRouter();
+  const isFiler = !!normalizeCikIdentifier(ticker);
   const context = useContext(TickerContext);
   const setTicker = context?.setTicker;
   const setCompany = context?.setCompany;
@@ -224,14 +230,16 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
           return;
         }
         setData(result);
-        setTicker?.(ticker);
-        setCompany?.({
-          name: result.name,
-          cik: result.cik,
-          sic: result.sicDescription,
-          sicNumber: result.sic,
-          exchanges: result.exchange,
-        });
+        if (!isFiler && result.kind !== "filer") {
+          setTicker?.(ticker);
+          setCompany?.({
+            name: result.name,
+            cik: result.cik,
+            sic: result.sicDescription,
+            sicNumber: result.sic,
+            exchanges: result.exchange,
+          });
+        }
       } catch (e) {
         if (!controller.signal.aborted) setError(errorText(e));
       } finally {
@@ -243,7 +251,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
       controller.abort();
       archiveAbort.current?.abort();
     };
-  }, [ticker, refresh, router, setTicker, setCompany]);
+  }, [ticker, isFiler, refresh, router, setTicker, setCompany]);
   useEffect(() => {
     if (!ready) return;
     const path = filingPath(ticker, settings);
@@ -318,6 +326,14 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
     [filings],
   );
   const archives = data?.archives || [];
+  const holdingsReport = isFiler
+    ? filings.find((filing: any) => /^13F-HR(?:\/A)?$/.test(filing.form))
+    : null;
+  const annualReport = filings.find((filing: any) =>
+    ["10-K", "20-F", "40-F"].includes(filing.form),
+  );
+  const featuredReport = holdingsReport || annualReport || (isFiler ? filings[0] : null);
+  const featuredFamily = holdingsReport ? "ownership" : annualReport || !isFiler ? "annual" : "all";
   const loadedCount = Object.keys(loadedArchives).length;
   const remaining = archives.filter((a: any) => !loadedArchives[a.name]);
   const coverage = useMemo(
@@ -603,12 +619,12 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
             <Link href="/filings">EDGAR / Filings</Link>
           </p>
           <h1>
-            <span>{ticker}</span> {data?.name || "Filing research workspace"}
+            <span>{isFiler ? `CIK ${ticker}` : ticker}</span> {data?.name || "Filing research workspace"}
           </h1>
           <p className={styles.muted}>
             {data
               ? `CIK ${data.cik} · ${data.exchange || "SEC registrant"}${data.sicDescription ? ` · ${data.sicDescription}` : ""}`
-              : "Resolving company identity and the SEC filing index."}
+              : "Resolving SEC filer identity and the filing index."}
           </p>
         </div>
         <CompanySearch compact />
@@ -648,7 +664,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
             <button
               onClick={() =>
                 changeSettings({
-                  family: "annual",
+                  family: featuredFamily,
                   form: "all",
                   status: "all",
                   start: "",
@@ -660,14 +676,12 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                 })
               }
             >
-              <span>Latest annual report</span>
+              <span>{holdingsReport ? "Latest 13F holdings report" : annualReport || !isFiler ? "Latest annual report" : "Latest SEC filing"}</span>
               <strong>
-                {filings.find((f: any) =>
-                  ["10-K", "20-F", "40-F"].includes(f.form),
-                )?.filingDate || "Not in loaded history"}
+                {featuredReport?.filingDate || "Not in loaded history"}
               </strong>
               <small>
-                Show annual filings <ArrowUpRight size={12} />
+                {holdingsReport ? "Show ownership filings" : annualReport || !isFiler ? "Show annual filings" : "Show all filings"} <ArrowUpRight size={12} />
               </small>
             </button>
             <button onClick={() => changeSettings({ view: "notebook" })}>
@@ -1084,7 +1098,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                       <h2>
                         {settings.view === "timeline"
                           ? "Filing timeline"
-                          : "Company filings"}{" "}
+                          : isFiler ? "SEC filer documents" : "Company filings"}{" "}
                         <span>{filtered.length.toLocaleString()}</span>
                       </h2>
                       <p>
@@ -1192,7 +1206,8 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                                   className={styles.filingTitle}
                                   onClick={() => openFiling(filing)}
                                 >
-                                  {filing.primaryDescription ||
+                                  {(/^13F-(HR|NT)(?:\/A)?$/.test(filing.form) && FORM_TITLES[filing.form]) ||
+                                    filing.primaryDescription ||
                                     FORM_TITLES[form] ||
                                     `${filing.form} filing`}
                                 </button>

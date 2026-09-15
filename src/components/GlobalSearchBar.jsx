@@ -37,6 +37,9 @@ import { safeInternalPath } from "../utils/siteRoutes.js";
 import { isCftcPositioningPath } from "../utils/marketResearch.js";
 import { MAX_COMPARE_COMPANIES } from "../utils/compareLimits.js";
 import { tickerDirectoryCoverage } from "../utils/tickerMapLoader.js";
+import { useSecFilerSearch } from "../utils/useSecFilerSearch.js";
+import { filerCik, isTickerComparison, mergeFilerSuggestions, exactFilerMatch } from "../utils/secFilerSearch.js";
+import { DISCLOSURE_TOPIC_SHORTCUTS } from "../utils/searchRouter.js";
 import styles from "./site/GlobalSearch.module.css";
 
 export default function GlobalSearchBar({ cftcEnabled = true }) {
@@ -61,12 +64,17 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
   const id = useId();
   const listId = `${id}-results`;
   const hintId = `${id}-hint`;
-  const isCompare = input.includes(",");
+  const isCompare = isTickerComparison(input, tickerMap);
   const directoryCoverage = tickerDirectoryCoverage(tickerMap);
-  const { suggestions, completed } = useMemo(
+  const { suggestions: directorySuggestions, completed } = useMemo(
     () => getSuggestions(input, tickerMap, 7),
     [input, tickerMap],
   );
+  const exactTicker = tickerMap?.[input.trim().toUpperCase()];
+  const explicitTopic = /^(?:topic|disclosures?):\s*/i.test(input.trim()) || DISCLOSURE_TOPIC_SHORTCUTS.has(input.trim().toUpperCase());
+  const filers = useSecFilerSearch(input, open && !destination && !isCompare && !exactTicker && !explicitTopic && !filerCik(input));
+  const suggestions = useMemo(() => mergeFilerSuggestions(directorySuggestions, filers.results), [directorySuggestions, filers.results]);
+  const suggestionIdentities = suggestions.map(item => `${item.type}:${item.cik || item.ticker}`).join("|");
   const items = destination
     ? destination.options
     : input.trim()
@@ -123,7 +131,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
   }, [close]);
   useEffect(() => {
     setHighlight(-1);
-  }, [input, destination]);
+  }, [input, destination, suggestionIdentities]);
 
   const navigate = (path, query = input) => {
     const target = safeInternalPath(path);
@@ -161,7 +169,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
       return;
     }
     if (isCompare) {
-      if (item.isFund || item.type === "topic") {
+      if (item.isFund || item.type === "topic" || item.type === "filer") {
         setError("Choose a public company for company comparison.");
         return;
       }
@@ -176,7 +184,8 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
       inputRef.current?.focus();
       return;
     }
-    if (item.type === "topic")
+    if (item.type === "filer") navigate(item.path, item.name);
+    else if (item.type === "topic")
       navigate(disclosureSearchPath(disclosureTopicTerm(item.ticker)), input);
     else decide(item.ticker);
   };
@@ -199,13 +208,19 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
       choose(items[highlight]);
       return;
     }
-    if (
-      !isCompare &&
-      !tickerMap?.[input.trim().toUpperCase()] &&
-      suggestions[0]?.type !== "topic" &&
-      suggestions[0]?.score >= 2000
-    ) {
-      choose(suggestions[0]);
+    if (decision.disambiguate) {
+      decide(input);
+      return;
+    }
+    if (!isCompare && !exactTicker && !explicitTopic && !filerCik(input) && !/^\d+$/.test(input.trim())) {
+      setOpen(true);
+      const exact = exactFilerMatch(input, filers.results, filers);
+      if (exact) navigate(`/filings/${exact.cik}`, exact.name);
+      else if (filers.status === "loading") setError("");
+      else if (filers.status === "error") setError("SEC filer-name search is unavailable. Retry it or enter a CIK.");
+      else setError(suggestions.some(item => item.type !== "topic")
+        ? "Select the company or SEC filer you want to research."
+        : "No matching filer is available in these results. Refine the name, enter a CIK, or choose disclosure search.");
       return;
     }
     decide(input);
@@ -246,7 +261,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
       ? "Recent research"
       : isCompare
         ? `Company comparison · ${completed.length}/${MAX_COMPARE_COMPANIES} selected`
-        : "Companies, funds and disclosure topics";
+        : "Companies, SEC filers and disclosure topics";
   return (
     <div
       className={styles.search}
@@ -259,7 +274,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
       <div className={styles.field}>
         <Search size={17} aria-hidden="true" />
         <label className={styles.srOnly} htmlFor={`${id}-input`}>
-          Search companies, funds, or disclosure topics
+          Search companies, SEC filers, funds, or disclosure topics
         </label>
         <input
           id={`${id}-input`}
@@ -280,7 +295,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
           aria-haspopup="listbox"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Company, ticker or disclosure topic"
+          placeholder="Company, manager, ticker, CIK or topic"
           onChange={(event) => {
             ensureDirectory();
             setInput(event.target.value);
@@ -391,6 +406,13 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
               )}
             </div>
           )}
+          {filers.status === "loading" && <p className={styles.directory} role="status">Searching SEC filer names…</p>}
+          {(filers.error || filers.warning) && (
+            <div className={styles.directory} role="status">
+              <span>{filers.error || filers.warning}</span>
+              <button type="button" className={styles.textButton} onClick={filers.retry}>Retry filer search</button>
+            </div>
+          )}
           <div
             id={listId}
             role="listbox"
@@ -411,12 +433,12 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
                 ? item.shortLabel
                 : !input.trim()
                   ? item.query
-                  : item.ticker;
+                  : item.type === "filer" ? item.name : item.ticker;
               const description = destination
                 ? item.label
                 : !input.trim()
                   ? item.path
-                  : item.name;
+                  : item.type === "filer" ? `CIK ${item.cik} · SEC filings${item.formTypes.some(form => /^13F/.test(form)) ? " · 13F reports" : ""}` : item.name;
               return (
                 <button
                   id={`${listId}-${index}`}
@@ -438,6 +460,8 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
                     <em>
                       {item.type === "topic"
                         ? "Topic"
+                        : item.type === "filer"
+                          ? "SEC filer"
                         : item.type === "fund"
                           ? "Fund"
                           : "Company"}
@@ -451,10 +475,11 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
           {!items.length && (
             <p className={styles.empty}>
               {input.trim()
-                ? "No matching company or fund. You can search the words in SEC disclosures."
+                ? "No matching company or filer in these results. Refine the name or enter its CIK."
                 : "Start with a company, a fund, or a question. Recent searches stay in this browser."}
             </p>
           )}
+          {filers.truncated && <p className={styles.empty}>SEC name results are limited. Refine the legal name or use a CIK.</p>}
           {!destination && input.trim() && !isCompare && (
             <button
               type="button"
@@ -473,7 +498,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
           <p id={hintId} className={styles.hint}>
             {destination
               ? "Choose the tool to open for this exact company."
-              : "Use commas to compare companies: AAPL, MSFT. Topic: liquidity searches disclosures directly."}
+              : "Search a manager by name or CIK to open its filings. Use AAPL, MSFT to compare companies; Topic: liquidity searches disclosure text."}
             <span>↑ ↓ select · Enter open · Esc close · Tab move</span>
             {directoryCoverage?.omittedSymbols > 0 && (
               <span>
