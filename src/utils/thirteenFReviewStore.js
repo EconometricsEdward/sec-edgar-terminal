@@ -64,7 +64,7 @@ export function createThirteenFReviewStore({ env = process.env, fetchImpl = (...
         'Content-Type': 'application/json', 'x-region': 'us-east-1' }, body, signal: requestSignal, redirect: 'error', cache: 'no-store' });
       const value = await boundedJson(response, requestSignal);
       if (!response.ok) {
-        const code = value?.code === '40001' ? 'stale_generation' : value?.code === 'fund_review_capacity' ? 'fund_review_capacity' : `http_${response.status}`;
+        const code = ['40001', 'review_revision_changed'].includes(value?.code) ? 'stale_generation' : value?.code === 'fund_review_capacity' ? 'fund_review_capacity' : `http_${response.status}`;
         throw new ThirteenFReviewStoreError(code, code === 'fund_review_capacity' ? 429 : code === 'stale_generation' ? 409 : response.status);
       }
       return value;

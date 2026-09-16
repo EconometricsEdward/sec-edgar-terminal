@@ -26,6 +26,7 @@ test('durable reviews enforce shared progress, exact report identity, fencing, r
   const db = new PGlite();
   await db.exec('create role anon nologin;create role authenticated nologin;create role service_role nologin bypassrls;grant usage on schema public to service_role;');
   await db.exec(await readFile(new URL('../supabase/migrations/20260916175154_shared_fund_market_reviews.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20260916181554_fund_review_revision_conflicts.sql',import.meta.url),'utf8'));
   const reset = () => db.exec('truncate edgar_private.fund_review_jobs,edgar_private.fund_review_results,edgar_private.fund_review_daily_budget cascade');
   try {
     await t.test('private rows and RPCs reject browser roles', async () => {
@@ -61,10 +62,10 @@ test('durable reviews enforce shared progress, exact report identity, fencing, r
       await reset();await call(db,'enqueue',[report(),hash]);const c=await call(db,'claim',[randomUUID(),90]);
       await assert.rejects(save(db,c,1,result(holding(1)),summary(holding(1))),/identity_mismatch/);
       const changed={...holding(),weightPct:99};await assert.rejects(save(db,c,1,result(changed),summary(changed)),/identity_mismatch/);
-      await assert.rejects(read(db,{hash:'B'.repeat(64)}),{code:'40001'});
-      await assert.rejects(call(db,'result',[cik,period,'B'.repeat(64),holding().key]),{code:'40001'});
+      await assert.rejects(read(db,{hash:'B'.repeat(64)}),{code:'PT409'});
+      await assert.rejects(call(db,'result',[cik,period,'B'.repeat(64),holding().key]),{code:'PT409'});
       const r=report({cache:{checkedAt:new Date(Date.now()-10000).toISOString()}});
-      await assert.rejects(call(db,'enqueue',[r,'B'.repeat(64)]),{code:'40001'});
+      await assert.rejects(call(db,'enqueue',[r,'B'.repeat(64)]),{code:'PT409'});
     });
     await t.test('amendment replaces frozen report and invalidates active worker', async () => {
       await reset();const r=report({cache:{checkedAt:new Date(Date.now()-5000).toISOString()}});await call(db,'enqueue',[r,hash]);
