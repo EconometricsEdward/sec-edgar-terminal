@@ -11,7 +11,7 @@ export const revalidate = 60;
 export const maxDuration = 15;
 export const metadata = buildPageMetadata({
   title: "What Changed — S&P 500 Top 100 Research Demo",
-  description: "Recent SEC-linked CFTC market changes for the Research Hub’s 100-company demo, with company coverage, observation dates, calculations and original sources.",
+  description: "Recent SEC-linked CFTC market changes for the 100-company portfolio demo, with company coverage, observation dates, calculations and original sources.",
   path: "/workspace/demo/changes",
 });
 
@@ -68,7 +68,7 @@ export default async function DemoChangesPage() {
   return (
     <article className={s.page}>
       <header className={s.header}>
-        <Link href="/workspace/demo?portfolioTab=changes" prefetch={false} className={s.back}>← Interactive Research Hub demo</Link>
+        <Link href="/workspace/demo?portfolioTab=changes" prefetch={false} className={s.back}>← Interactive portfolio demo</Link>
         <p className={s.eyebrow}>Public research brief · 100-company demo</p>
         <h1>What changed?</h1>
         <p className={s.lead}>Recent changes in futures-market positioning, connected to companies through SEC filing evidence.</p>
@@ -81,7 +81,7 @@ export default async function DemoChangesPage() {
       </header>
 
       <div className={s.scope}>
-        <p><strong>CFTC market context, linked by SEC evidence.</strong> These are aggregate futures positions, not the companies’ own trades or measured exposures. The interactive Hub also contains SEC filing changes and comparisons with your saved research.</p>
+        <p><strong>CFTC market context, linked by SEC evidence.</strong> These are aggregate futures positions, not the companies’ own trades or measured exposures. Portfolio Research also contains SEC filing changes and comparisons with your saved research.</p>
         <p>The company list uses the 100 largest issuers in the demo’s stored IVV holdings, dated <time dateTime={universe.source.asOf}>{date(universe.source.asOf)}</time>. It is a dated S&amp;P 500 coverage proxy, not a live index-membership claim.</p>
       </div>
 
@@ -157,7 +157,7 @@ export default async function DemoChangesPage() {
           <summary>Company-by-company coverage · {checked} of {total} checks completed</summary>
           <div className={s.tableWrap}>
             <table>
-              <caption>The same source-dated company list used across the Research Hub demo.</caption>
+              <caption>The same source-dated company list used across the portfolio demo.</caption>
               <thead><tr><th scope="col">Company</th><th scope="col">Connection check</th><th scope="col">Checked</th><th scope="col">SEC research</th></tr></thead>
               <tbody>{universe.companies.map(company => {
                 const check = checks.get(company.ticker);

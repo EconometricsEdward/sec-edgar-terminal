@@ -54,9 +54,9 @@ const TOOLS = [
     "Search filing language, read passages, and assemble evidence.",
   ],
   [
-    "Research Hub",
+    "Portfolio",
     "/workspace",
-    "Resume saved portfolios, compare companies, and explore SEC evidence.",
+    "Upload a portfolio, open saved portfolios, or explore the demo and SEC evidence.",
   ],
 ];
 

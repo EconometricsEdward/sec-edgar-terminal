@@ -191,7 +191,7 @@ export default function RootLayout({
                 </div>
                 <nav aria-label="Footer navigation">
                   <Link href="/workspace" prefetch={false}>
-                    Research Hub
+                    Portfolio
                   </Link>
                   <Link href="/help" prefetch={false}>
                     Research guide

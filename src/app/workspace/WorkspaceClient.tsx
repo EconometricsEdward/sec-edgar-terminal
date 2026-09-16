@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import HubOverview from "./HubOverview";
 import { useEffect, useRef, useState } from "react";
 import styles from "./workspace.module.css";
 import {
@@ -13,9 +14,6 @@ const PortfolioResearch = dynamic(
   () => import("./portfolio/PortfolioResearch"),
   { loading: () => <p role="status">Opening Portfolio Research…</p> },
 );
-const HubOverview = dynamic(() => import("./HubOverview"), {
-  loading: () => <p role="status">Opening your research overview…</p>,
-});
 
 export default function WorkspaceClient() {
   const [hubView, setHubView] = useState("overview");
@@ -85,8 +83,8 @@ export default function WorkspaceClient() {
       }}
     >
       <div className={styles.heading}>
-        <h1>Research Hub</h1>
-        <nav className={styles.hubTabs} aria-label="Research Hub sections">
+        <h1>Portfolio</h1>
+        <nav className={styles.hubTabs} aria-label="Portfolio sections">
           {HUB_VIEWS.map(([view, label]) => (
             <button
               key={view}
@@ -100,7 +98,7 @@ export default function WorkspaceClient() {
         </nav>
       </div>
       <div hidden={hubView !== "overview"}>
-        <HubOverview onNavigate={navigate} />
+        {hubView === "overview" && <HubOverview onNavigate={navigate} />}
       </div>
       <div hidden={hubView !== "portfolios"}>
         {portfolioVisited && (
