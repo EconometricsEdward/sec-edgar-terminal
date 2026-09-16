@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { create13FCache, THIRTEEN_F_SNAPSHOT_TYPE, THIRTEEN_F_FILING_TYPE, THIRTEEN_F_FRESH_MS, THIRTEEN_F_STALE_MS,
   valid13FSnapshot, valid13FFiling, thirteenFFilingCacheKey } from '../src/utils/thirteenFCache.js';
 import { createThirteenFLoader } from '../src/utils/thirteenFServer.js';
+import { summarize13FPortfolio } from '../src/utils/thirteenF.js';
 import { GET } from '../src/app/api/fund-13f/route.js';
 
 const CIK = '0001747057', PERIOD = '2026-06-30', START = Date.parse('2026-09-15T03:00:00Z');
@@ -26,7 +27,7 @@ function fixture() {
   const read = async (type, id) => { reads.push([type, id]); return records.get(`${type}:${id}`) || null; };
   const write = async (type, id, payload, ttl, options) => {
     const key = `${type}:${id}`, old = records.get(key);
-    if (options.ifHash === 'absent' ? old : old?.rawSha256 !== options.ifHash) return { stored: false, reason: 'conflict' };
+    if (options.ifHash === 'absent' ? old : old?.rawSha256 !== options.ifHash) return { stored: false, reason: 'compare_failed' };
     records.set(key, { payload: structuredClone(payload), rawSha256: hash(payload), expiresAt: options.expiresAt || new Date(clock + ttl * 1000).toISOString() }); writes.push({ type, id, ttl, options });
     return { stored: true };
   };
@@ -37,7 +38,7 @@ function fixture() {
   };
   const cache = () => create13FCache({ enabled: () => true, read, write, now });
   const loader = () => createThirteenFLoader({ now, sharedCache: cache(), companyLoader, fetchSec: transport(requests) });
-  return { loader, cache, records, writes, reads, requests, now, companyCalls: () => companyCalls,
+  return { loader, cache, records, writes, reads, requests, now, read, write, companyCalls: () => companyCalls,
     advance: ms => { clock += ms; }, fail: () => { failSource = true; }, amend: () => { amended = true; } };
 }
 
@@ -92,7 +93,7 @@ test('A failed refresh keeps a clearly stale complete snapshot without renewing 
 
 test('Shared report validation rejects identity, future checks, totals, duplicate holdings and altered source chains', async () => {
   const f = fixture(); await f.loader()(CIK);
-  const source = f.records.get(`${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`).payload;
+  const source = await f.cache().readSnapshot(CIK, '');
   assert.equal(valid13FSnapshot(source, CIK, '', f.now()), true);
   for (const mutate of [
     value => { value.cik = '0000000099'; },
@@ -213,4 +214,128 @@ test('13F API accepts only one exact refresh flag and does not treat arbitrary c
     const response = await GET(new Request(`https://example.com/api/fund-13f?cik=${CIK}&${query}`));
     assert.equal(response.status, 400); assert.equal(response.headers.get('cache-control'), 'private, no-store');
   }
+});
+
+
+test('Latest retains a compact pointer while both aliases return all 997 positions from one complete quarter body', async () => {
+  const f = fixture(), data = structuredClone(await f.loader()(CIK));
+  f.records.clear(); f.writes.length = 0;
+  const row = data.portfolio.holdings[0];
+  data.portfolio.holdings = Array.from({ length: 997 }, (_, i) => {
+    const cusip = String(i).padStart(9, '0');
+    return { ...row, cusip, key: `${cusip}|SECURITY|SH` };
+  });
+  data.portfolio.totalValueUsd = 997000;
+  data.portfolio.positionCount = data.portfolio.entryCount = 997;
+  data.portfolio.holdings.forEach(holding => { holding.weightPct = holding.valueUsd / data.portfolio.totalValueUsd * 100; });
+  data.summary = summarize13FPortfolio(data.portfolio); delete data.summary.holdings;
+  const store = f.cache();
+  assert.deepEqual(await Promise.all([
+    store.writeSnapshot(data, '', data.cache.checkedAt), store.writeSnapshot(data, PERIOD, data.cache.checkedAt),
+  ]), [true, true]);
+  const snapshots = [...f.records].filter(([key]) => key.startsWith(`${THIRTEEN_F_SNAPSHOT_TYPE}:`));
+  assert.equal(snapshots.length, 2);
+  const pointer = f.records.get(`${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`).payload;
+  assert.equal(pointer.data, undefined);
+  assert.equal(pointer.selectedPeriod, PERIOD);
+  assert.ok(Buffer.byteLength(JSON.stringify(pointer)) < 600);
+  assert.equal(snapshots.filter(([, record]) => record.payload.data?.portfolio?.holdings).length, 1);
+  for (const period of ['', PERIOD]) {
+    const restored = await store.readSnapshot(CIK, period);
+    assert.equal(restored.data.portfolio.holdings.length, 997);
+    assert.deepEqual(restored.data, data);
+  }
+  assert.equal(f.writes.length, 2, 'Hydration reads do not write or renew either record');
+});
+
+test('Legacy full latest snapshots remain readable and migrate only after a valid source check', async () => {
+  const f = fixture(); await f.loader()(CIK);
+  const source = structuredClone(await f.cache().readSnapshot(CIK, ''));
+  const key = `${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`;
+  const legacy = { ...f.records.get(key), payload: source, rawSha256: hash(source) };
+  f.records.set(key, legacy);
+  const writes = f.writes.length;
+  assert.deepEqual(await f.cache().readSnapshot(CIK, ''), source);
+  assert.equal(f.writes.length, writes);
+  f.advance(1000);
+  await f.loader()(CIK, { refresh: true });
+  assert.equal(f.records.get(key).payload.schemaVersion, 'edgar.13f-latest-pointer.v1');
+  assert.equal(f.records.get(key).payload.data, undefined);
+  assert.equal((await f.cache().readSnapshot(CIK, '')).checkedAt, new Date(f.now()).toISOString());
+});
+
+test('Latest pointers reject absent, altered, mismatched and expired quarter bodies without fetching sources', async () => {
+  const f = fixture(); await f.loader()(CIK);
+  const pointerKey = `${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`, bodyKey = `${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:${PERIOD}`;
+  const originalPointer = structuredClone(f.records.get(pointerKey)), originalBody = structuredClone(f.records.get(bodyKey));
+  const store = f.cache(), writes = f.writes.length, requests = f.requests.length;
+  for (const mutate of [
+    () => { f.records.delete(bodyKey); },
+    () => { f.records.get(pointerKey).payload.dataHash = '0'.repeat(64); },
+    () => { f.records.get(pointerKey).payload.sourceChainHash = '0'.repeat(64); },
+    () => { f.records.get(pointerKey).payload.selectedPeriod = '2026-03-31'; },
+    () => { f.records.get(pointerKey).payload.cik = '0000000001'; },
+    () => { f.records.get(pointerKey).payload.checkedAt = new Date(f.now() + 1).toISOString(); },
+    () => { f.records.get(bodyKey).payload.data.manager.name = 'Altered manager'; },
+    () => { f.records.get(bodyKey).payload.data.portfolio.totalValueUsd++; },
+  ]) {
+    f.records.set(pointerKey, structuredClone(originalPointer)); f.records.set(bodyKey, structuredClone(originalBody));
+    mutate();
+    assert.equal(await store.readSnapshot(CIK, ''), null);
+  }
+  f.records.set(pointerKey, originalPointer); f.records.set(bodyKey, originalBody);
+  f.advance(THIRTEEN_F_STALE_MS + 1);
+  assert.equal(await store.readSnapshot(CIK, ''), null);
+  assert.equal(f.writes.length, writes);
+  assert.equal(f.requests.length, requests);
+});
+
+test('Failed body persistence never publishes a latest pointer or replaces a legacy fallback', async () => {
+  const f = fixture(), data = await f.loader()(CIK);
+  const latestKey = `${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`, bodyKey = `${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:${PERIOD}`;
+  const legacy = await f.cache().readSnapshot(CIK, '');
+  f.records.set(latestKey, { ...f.records.get(latestKey), payload: legacy, rawSha256: hash(legacy) });
+  f.records.delete(bodyKey);
+  const writes = f.writes.length;
+  const store = create13FCache({ enabled: () => true, now: f.now, read: f.read,
+    write: async (type, id, ...args) => id === `${CIK}:${PERIOD}` ? { stored: false, reason: 'capacity' } : f.write(type, id, ...args),
+  });
+  assert.equal(await store.writeSnapshot(data, '', data.cache.checkedAt), false);
+  assert.deepEqual(await store.readSnapshot(CIK, ''), legacy);
+  assert.equal(f.writes.length, writes);
+  f.records.delete(latestKey);
+  assert.equal(await store.writeSnapshot(data, '', data.cache.checkedAt), false);
+  assert.equal(await store.readSnapshot(CIK, ''), null);
+});
+
+test('Independent workers accept only an identical CAS winner before publishing the latest pointer', async () => {
+  const f = fixture(), data = await f.loader()(CIK);
+  f.records.clear(); f.writes.length = 0;
+  let bodyReads = 0, release;
+  const barrier = new Promise(resolve => { release = resolve; });
+  const read = async (type, id) => {
+    if (id === `${CIK}:${PERIOD}` && bodyReads < 2) {
+      bodyReads++;
+      if (bodyReads === 2) release();
+      await barrier; return null;
+    }
+    return f.read(type, id);
+  };
+  const caches = [0, 1].map(() => create13FCache({ enabled: () => true, now: f.now, read, write: f.write }));
+  assert.deepEqual(await Promise.all(caches.map(store => store.writeSnapshot(data, '', data.cache.checkedAt))), [true, true]);
+  assert.equal(f.writes.filter(row => row.id === `${CIK}:${PERIOD}`).length, 1);
+  assert.equal(f.writes.filter(row => row.id === `${CIK}:LATEST`).length, 1);
+  assert.deepEqual((await caches[0].readSnapshot(CIK, '')).data, data);
+});
+
+test('Quarter invalidation reaches latest hydration even when its separate alias invalidation did not persist', async () => {
+  const f = fixture(), first = await f.loader()(CIK), store = f.cache();
+  f.advance(1000);
+  const invalidatedAt = new Date(f.now()).toISOString();
+  assert.equal(await store.invalidateSnapshot(CIK, PERIOD, PERIOD, invalidatedAt), true);
+  assert.equal(f.records.get(`${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`).payload.invalidatedAt, undefined);
+  const restored = await store.readSnapshot(CIK, '');
+  assert.equal(restored.invalidatedAt, invalidatedAt);
+  assert.equal(restored.checkedAt, first.cache.checkedAt);
+  assert.equal(await store.writeSnapshot(first, '', first.cache.checkedAt), false);
 });

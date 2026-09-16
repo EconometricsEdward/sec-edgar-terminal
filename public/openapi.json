@@ -3,7 +3,7 @@
   "info": {
     "title": "EDGAR Terminal Public Research APIs",
     "version": "2.0.0",
-    "description": "Read-only SEC Fundamental Lab and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal."
+    "description": "Read-only SEC Fundamental Lab, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal."
   },
   "servers": [{ "url": "https://secedgarterminal.com" }],
   "tags": [
@@ -16,11 +16,63 @@
       "description": "Official futures-only COT reports, with TFF and Disaggregated taxonomies kept separate."
     },
     {
+      "name": "Fund research",
+      "description": "Compact, source-linked summaries read only from prepared N-PORT and Form 13F portfolios."
+    },
+    {
       "name": "Retired",
       "description": "Legacy third-party price-dependent contracts that now return 410 Gone."
     }
   ],
   "paths": {
+    "/api/v1/funds/{ticker}": {
+      "get": {
+        "tags": ["Fund research"],
+        "operationId": "readPublicFundSummary",
+        "summary": "Read a prepared N-PORT fund summary",
+        "description": "Cache-only read with up to ten positions, source dates, coverage and SEC links. Never fetches SEC documents or starts a refresh. Omit accession for the prepared latest report; an explicit accession pins one filing and excludes later amendments. Missing prepared data does not establish that no filing exists. Unknown, duplicate or empty query parameters are rejected.",
+        "parameters": [
+          { "name": "ticker", "in": "path", "required": true, "description": "Fund ticker, normalized to uppercase.", "schema": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]{0,14}$" } },
+          { "name": "accession", "in": "query", "required": false, "description": "Exact SEC filing accession.", "schema": { "type": "string", "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prepared summary; stale may be true. N-PORT weights retain the full net-assets denominator and may be negative or unavailable.",
+            "headers": { "Cache-Control": { "schema": { "type": "string", "const": "public, max-age=0, s-maxage=60, stale-while-revalidate=60" } } },
+            "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/PublicFundSummary" }, { "properties": { "status": { "const": "ready" }, "kind": { "const": "nport" } } }] } } }
+          },
+          "400": {
+            "description": "Invalid fund ticker, accession or query parameters; private, no-store.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "503": { "$ref": "#/components/responses/PublicFundUnavailable" }
+        }
+      }
+    },
+    "/api/v1/managers/{cik}": {
+      "get": {
+        "tags": ["Fund research"],
+        "operationId": "readPublicManagerSummary",
+        "summary": "Read a prepared Form 13F manager summary",
+        "description": "Cache-only read of a complete prepared quarter with up to ten positions, coverage, dates and SEC filing sources. Never fetches SEC documents or starts a refresh. Omit period for the prepared latest quarter. Weights use all reported 13F holdings value, not assets under management or net assets. Unknown, duplicate or empty query parameters are rejected.",
+        "parameters": [
+          { "name": "cik", "in": "path", "required": true, "description": "Nonzero manager CIK, normalized to ten digits.", "schema": { "type": "string", "pattern": "^(?!0+$)[0-9]{1,10}$" } },
+          { "name": "period", "in": "query", "required": false, "description": "A non-future calendar quarter end with year greater than zero.", "schema": { "type": "string", "format": "date", "pattern": "^[0-9]{4}-(03-31|06-30|09-30|12-31)$" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete prepared quarter; stale may be true, including when newer evidence is incomplete. Options and confidential omissions remain explicit.",
+            "headers": { "Cache-Control": { "schema": { "type": "string", "const": "public, max-age=0, s-maxage=60, stale-while-revalidate=60" } } },
+            "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/PublicFundSummary" }, { "properties": { "status": { "const": "ready" }, "kind": { "const": "13f" } } }] } } }
+          },
+          "400": {
+            "description": "Invalid manager CIK, reporting quarter or query parameters; private, no-store.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "503": { "$ref": "#/components/responses/PublicFundUnavailable" }
+        }
+      }
+    },
     "/api/v2/factor-universe": {
       "get": {
         "tags": ["SEC fundamentals"],
@@ -277,6 +329,70 @@
       "SchemaLink": { "schema": { "type": "string" } }
     },
     "schemas": {
+      "PublicFundSummary": {
+        "type": "object",
+        "description": "At most ten displayed holdings with the original full-portfolio denominator. Missing numbers are null, not zero. Unavailable responses can omit summary fields and do not establish that no SEC filing exists.",
+        "required": ["kind", "status"],
+        "properties": {
+          "schemaVersion": { "const": "edgar.public-fund-summary.v1" },
+          "kind": { "enum": ["nport", "13f"] },
+          "status": { "enum": ["ready", "unavailable"] },
+          "ticker": { "type": "string" },
+          "cik": { "type": "string", "pattern": "^[0-9]{10}$" },
+          "name": { "type": "string" },
+          "seriesId": { "type": ["string", "null"] },
+          "classId": { "type": ["string", "null"] },
+          "accession": { "type": "string", "pattern": "^[0-9]{10}-[0-9]{2}-[0-9]{6}$" },
+          "valueLabel": { "enum": ["Net assets", "Reported 13F holdings value"] },
+          "totalValueUsd": { "type": ["number", "null"] },
+          "valueBasis": { "type": ["string", "null"], "description": "N-PORT net-assets provenance: reported, assets less liabilities, or unavailable." },
+          "reportDate": { "type": "string", "format": "date" },
+          "filingDate": { "type": "string", "format": "date" },
+          "retrievedAt": { "type": "string", "format": "date-time" },
+          "checkedAt": { "type": ["string", "null"], "format": "date-time" },
+          "freshUntil": { "type": ["string", "null"], "format": "date-time" },
+          "stale": { "type": "boolean", "description": "Ready evidence can be stale. False on unavailable responses is not a freshness claim." },
+          "positionCount": { "type": "integer", "minimum": 0, "description": "Full prepared portfolio position count, including positions outside the displayed top ten." },
+          "valuedCount": { "type": "integer", "minimum": 0, "description": "N-PORT positions with known USD values." },
+          "weightCount": { "type": "integer", "minimum": 0, "description": "N-PORT positions with known net-asset weights." },
+          "top10WeightPct": { "type": ["number", "null"] },
+          "weightBasis": { "type": "string", "description": "N-PORT net assets or all reported 13F holdings value; never rescaled to displayed positions." },
+          "confidentialOmitted": { "type": "boolean", "description": "13F report explicitly omits confidential holdings." },
+          "comparable": { "type": "boolean", "description": "13F report permits complete portfolio comparisons under its disclosed coverage." },
+          "topHoldings": {
+            "type": "array", "maxItems": 10,
+            "items": {
+              "type": "object", "required": ["name", "identifier", "valueUsd", "weightPct"],
+              "properties": {
+                "name": { "type": "string" },
+                "identifier": { "type": "string", "description": "N-PORT ISIN, CUSIP or ticker when available; 13F CUSIP. May be empty for N-PORT." },
+                "valueUsd": { "type": ["number", "null"] },
+                "weightPct": { "type": ["number", "null"] },
+                "weightSource": { "enum": ["reported", "calculated", "unavailable"] },
+                "assetCategory": { "type": "string" },
+                "payoffProfile": { "type": "string" },
+                "putCall": { "enum": ["PUT", "CALL", null] },
+                "quantityType": { "enum": ["SH", "PRN"] }
+              },
+              "additionalProperties": false
+            }
+          },
+          "sources": {
+            "type": "array", "maxItems": 32,
+            "items": { "type": "object", "required": ["label", "url"], "properties": { "label": { "type": "string" }, "url": { "type": "string", "format": "uri" } }, "additionalProperties": false }
+          },
+          "limitations": { "type": "array", "items": { "type": "string" } },
+          "interactiveUrl": { "type": "string", "format": "uri-reference" },
+          "summaryUrl": { "type": "string", "format": "uri-reference" },
+          "reason": { "type": "string" },
+          "code": { "type": "string" }
+        },
+        "allOf": [
+          { "if": { "properties": { "status": { "const": "ready" } } }, "then": { "required": ["schemaVersion", "name", "valueLabel", "totalValueUsd", "reportDate", "filingDate", "retrievedAt", "checkedAt", "freshUntil", "stale", "positionCount", "top10WeightPct", "weightBasis", "topHoldings", "sources", "limitations", "interactiveUrl", "summaryUrl"] }, "else": { "required": ["reason"] } },
+          { "if": { "properties": { "kind": { "const": "nport" } } }, "then": { "required": ["ticker"] }, "else": { "required": ["cik"] } }
+        ],
+        "additionalProperties": false
+      },
       "ApiError": {
         "type": "object",
         "required": ["error", "code"],
@@ -355,6 +471,14 @@
       }
     },
     "responses": {
+      "PublicFundUnavailable": {
+        "description": "No validated prepared summary is available, or its cache cannot be read. This does not establish that no filing exists and never starts SEC acquisition. Open the interactive research tool to request preparation.",
+        "headers": {
+          "Cache-Control": { "schema": { "type": "string", "const": "private, no-store" } },
+          "Retry-After": { "schema": { "type": "integer", "const": 60 } }
+        },
+        "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/PublicFundSummary" }, { "properties": { "status": { "const": "unavailable" } } }] } } }
+      },
       "BadRequest": {
         "description": "Invalid or ambiguous query",
         "headers": { "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" } },

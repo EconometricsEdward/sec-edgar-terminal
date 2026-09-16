@@ -41,6 +41,13 @@ const researchServing = /^RESEARCH-(COMPARE|PORTFOLIO)-V1:(?:COMPARE-V2|ANALYSIS
 export function disposableCachePolicy(type, originalId) {
   if (typeof type !== 'string' || typeof originalId !== 'string' || !originalId.length || originalId.length > 1024) return null;
   const id = originalId.toUpperCase();
+  // One immutable N-PORT accession body and one compact latest reference.
+  // Retention is separate from the loader's one-hour source freshness check.
+  if (type === 'edgar.nport-prepared.v1:production') {
+    const match = re(`([A-Z0-9][A-Z0-9.-]{0,14}):(LATEST|${ACCESSION})`).exec(id);
+    return match ? Object.freeze({ family: 'document', type, id,
+      maxTtlSeconds: 30 * 86400, maxRawBytes: match[2] === 'LATEST' ? 4096 : 24 * 1024 * 1024 }) : null;
+  }
   if (type === PORTFOLIO_PREPARED_CACHE_TYPE) {
     if (['DEMO-CURRENT', 'DEMO-PREVIOUS'].includes(id)) return Object.freeze({ family: 'checkpoint', type, id,
       maxTtlSeconds: 14 * 86400, maxRawBytes: PORTFOLIO_PREPARED_LIMITS.snapshotBytes });

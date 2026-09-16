@@ -9,6 +9,7 @@ EDGAR Terminal is a free, source-linked research application for SEC filings, co
 - [Fundamental Lab methodology](https://secedgarterminal.com/market/factors): definitions, eligibility rules, formulas and limitations for the SEC-only universe diagnostics.
 - [Research Hub](https://secedgarterminal.com/workspace): portfolio-level company, concentration, financial-profile, screener, scenario and SEC evidence tools.
 - [Demo: What changed](https://secedgarterminal.com/workspace/demo/changes): server-rendered, dated SEC-linked CFTC market changes for the same 100-company demo universe used throughout the Research Hub. Includes company checks, incomplete/stale coverage and original-source links; candidate market connections are not measured issuer exposures. Prepared results may not yet be available.
+- [Funds & institutional managers](https://secedgarterminal.com/fund): links to server-rendered, source-dated fund and manager research briefs. Fund reports use `/fund/{ticker}` (optional `?accession=`); manager reports use `/fund/manager/{CIK}` (optional `?period=YYYY-MM-DD`). Briefs show prepared holdings, reporting coverage and freshness without requiring JavaScript. The interactive workspaces provide full holdings, comparisons and research tools.
 - [Filings](https://secedgarterminal.com/filings), [Analysis](https://secedgarterminal.com/analysis), [Risk](https://secedgarterminal.com/risk), [Compare](https://secedgarterminal.com/compare), [Funds](https://secedgarterminal.com/fund), and [Disclosures](https://secedgarterminal.com/disclosures).
 
 ## Active public data APIs
@@ -18,6 +19,8 @@ EDGAR Terminal is a free, source-linked research application for SEC filings, co
 - `GET /api/v1/cftc/history?family=...&contract=...&group=...&date=...&window=1y|3y|5y` — bounded single-contract history. Schema: `/schemas/cftc-history-v1.schema.json`.
 - `GET /api/v1/cftc/status` — cache-only family-level readiness for prepared CFTC snapshots. It recomputes cache age and report currency without contacting the upstream CFTC service.
 - `GET /api/v1/cftc/portfolio-changes/demo?days=30` — read-only prepared public demo changes; accepts 1–90 days. It never starts SEC/CFTC acquisition. Preserve companyChecks, marketChecks, preparation status, coverage, observation dates and source evidence. HTTP 503 means prepared research is unavailable or disabled, not that no changes occurred.
+- `GET /api/v1/funds/{ticker}?accession=...` — read-only prepared N-PORT summary, bounded to ten largest positions plus SEC sources. An optional exact accession selects a historical filing; it never silently substitutes the latest report. Does not start SEC acquisition. HTTP 503 means prepared coverage is unavailable.
+- `GET /api/v1/managers/{CIK}?period=YYYY-MM-DD` — read-only prepared 13F manager summary, bounded to ten largest positions plus SEC sources. The optional period must be a completed calendar quarter. Does not start SEC acquisition. HTTP 503 means prepared coverage is unavailable.
 - [OpenAPI document](https://secedgarterminal.com/openapi.json).
 
 All active data endpoints are read-only. The factor-universe and CFTC markets/history endpoints are rate limited; the CFTC status endpoint is cache-only and never contacts the upstream service. Preserve response nulls, coverage counts, report dates, retrieval times, schema/calculation versions, stale or partial status, source URLs and formulas.
@@ -61,6 +64,7 @@ These endpoints depended on retired third-party security-price acquisition and d
 
 ## Interpretation and provenance
 
+- N-PORT net assets and 13F reportable holdings value are different measures. A manager’s 13F value is not total assets under management, an individual fund’s net asset value, a complete portfolio or investment performance. Preserve option labels, security identifiers, missing values, reporting dates, amendments, confidential omissions and coverage limitations.
 - A reporting period, filing date, CFTC report date, source retrieval time and application calculation time are different clocks.
 - Aggregates describe the covered sample and expose their own eligible counts. A missing result is not evidence that an event, exposure or filing does not exist.
 - Verify consequential figures and passages against the linked SEC or CFTC source.

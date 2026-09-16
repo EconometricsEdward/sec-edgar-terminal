@@ -21,6 +21,14 @@ Open `/fund?view=13f`, search a legal name or CIK, and select an explicit filer.
 
 Requests and responses are bounded, repeated requests coalesce, and a bounded instance cache plus CDN caching reduces repeated source downloads. Partial or failed responses stay retryable. No new database schema, credential, shared-cache namespace, or paid service is introduced.
 
+## Prepared cache and public summaries
+
+The production cache stores one complete 13F holdings body per manager and reporting quarter. A compact `LATEST` pointer binds that body to its source-chain hash, data hash and original check time. Latest and exact-quarter readers receive the same complete holdings; no positions are truncated for storage. Parsed accession inputs remain reusable for amendment checks. Existing full latest snapshots remain readable until a normal successful refresh replaces them. Freshness remains five minutes, with explicitly stale complete fallback limited to 24 hours. Discovering an incomplete newer quarter invalidates latest independently of the older exact quarter, and reads never extend retention or publish data.
+
+Public research HTML is available at `/fund/{ticker}` and `/fund/manager/{cik}`. The corresponding read-only endpoints, `GET /api/v1/funds/{ticker}?accession=…` and `GET /api/v1/managers/{cik}?period=…`, project prepared portfolios into compact summaries with at most ten positions, reporting/filing/check dates, coverage, freshness and original SEC links. Omit the selector for prepared latest data; an N-PORT accession pins one filing, while a 13F quarter retains its assembled public amendment chain. The full net-assets or reported-13F-value denominator remains in every weight; top-ten display never rescales it. N-PORT missing, zero and negative figures and 13F options and confidential omissions remain distinct.
+
+Public summary reads do not fetch SEC documents, initiate preparation or save another holdings copy. Missing prepared data returns HTTP 503 with a 60-second retry hint and does not mean that no filing exists; the interactive workspace can prepare the selected research. Valid prepared summaries return HTTP 200 with an explicit `stale` flag and a 60-second shared cache lifetime. Invalid or ambiguous selectors return HTTP 400. The response contract is documented in `/openapi.json`.
+
 ## Company research and portfolio history
 
 Holding names open a company research drawer from the overview, holdings table, quarterly changes, and history view. The server reopens the actual manager/quarter/security row before resolving a company. For a position absent from the current quarter, the drawer uses the previous quarter that actually disclosed it.
