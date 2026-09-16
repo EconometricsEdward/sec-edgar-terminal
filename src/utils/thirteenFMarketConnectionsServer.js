@@ -109,11 +109,9 @@ export function createThirteenFMarketConnectionsLoader({
     signal.throwIfAborted();
     return signal;
   }
-  const load = async (cikInput, { period: periodInput, key: keyInput, signal: callerSignal, skipPrepared = false } = {}) => {
-    const { cik, period, key } = normalize13FMarketConnectionsRequest(cikInput, periodInput, keyInput);
+  async function fromReport(report, keyInput, { signal: callerSignal, skipPrepared = false } = {}) {
+    const { cik, period, key } = normalize13FMarketConnectionsRequest(report?.manager?.cik, report?.selectedPeriod, keyInput);
     const signal = requestSignal(callerSignal);
-    const report = await portfolioLoader(cik, { period, signal });
-    signal.throwIfAborted();
     const [holding] = verifiedHoldings(report, cik, period, [key]);
     const [prepared] = skipPrepared ? [null] : await preparedCache.getMany(report, [holding], { signal, verify: verifyPrepared });
     if (prepared) return prepared;
@@ -143,7 +141,19 @@ export function createThirteenFMarketConnectionsLoader({
       throw fail('The SEC disclosure extract exceeds the supported response size. Open the source reports for this issuer.', 502, 'DISCLOSURE_RESPONSE_TOO_LARGE');
     await preparedCache.put(report, holding, result, { signal, verify: verifyPrepared });
     return result;
+  }
+  const load = async (cikInput, { period: periodInput, key: keyInput, signal: callerSignal, skipPrepared = false } = {}) => {
+    const { cik, period, key } = normalize13FMarketConnectionsRequest(cikInput, periodInput, keyInput);
+    const signal = requestSignal(callerSignal);
+    const report = await portfolioLoader(cik, { period, signal });
+    signal.throwIfAborted();
+    verifiedHoldings(report, cik, period, [key]);
+    return fromReport(report, key, { signal, skipPrepared });
   };
+  // Background work has already frozen and revalidated this manager report.
+  // Every holding still passes the same exact security and source checks, while
+  // a batch avoids downloading and decoding the entire portfolio per holding.
+  load.fromReport = fromReport;
   load.prepared = async (cikInput, { period: periodInput, keys: keysInput, signal: callerSignal } = {}) => {
     const { cik, period, keys } = normalize13FMarketConnectionsBatchRequest(cikInput, periodInput, keysInput);
     const signal = requestSignal(callerSignal);

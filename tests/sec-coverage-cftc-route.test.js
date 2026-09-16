@@ -32,6 +32,11 @@ async function fixture() {
     if (scenario.fail) throw new Error('private provider request detail');
     return scenario.result || { status: 'progress', prepared: 3, limited: 1 };
   } });
+  dependency('src/utils/thirteenFReviewWorker.js', { runThirteenFReviewWorker: async options => {
+    calls.push(['review', options]);
+    if (scenario.reviewFail) throw new Error('private shared review error');
+    return { status: 'progress', processed: 4 };
+  } });
   dependency('src/utils/portfolioCftcPreparation.js', { runPortfolioCftcPreparation: async options => {
     calls.push(['demo', options]);
     if (scenario.demoFail) throw new Error('private preparation detail');
@@ -53,14 +58,17 @@ async function fixture() {
     return body;
   }
   const completed = await run();
-  assert.deepEqual(calls.map(([name]) => name), ['sec', 'cache', 'cftc', 'demo']);
-  assert.equal(calls[3][1].deadline, START + 45_000);
-  assert.notEqual(calls[3][1].signal, calls[0][1].signal);
+  assert.deepEqual(calls.map(([name]) => name), ['review', 'sec', 'cache', 'cftc', 'demo']);
+  assert.equal(calls[4][1].deadline, START + 45_000);
+  assert.notEqual(calls[4][1].signal, calls[1][1].signal);
+  assert.equal(calls[0][1].deadline, START + 75_000);
+  assert.notEqual(calls[0][1].signal, calls[1][1].signal);
+  assert.equal(completed.thirteenFReview.processed, 4);
   assert.equal(completed.portfolioCftcPreparation.completedCompanies, 6);
   assert.equal(completed.cftcHistoryPreparation.prepared, 3);
-  assert.equal(calls[2][1].maxContracts, 12);
-  assert.equal(calls[2][1].deadline, START + 180_000);
-  assert.equal(calls[2][1].signal, calls[0][1].signal);
+  assert.equal(calls[3][1].maxContracts, 12);
+  assert.equal(calls[3][1].deadline, START + 180_000);
+  assert.equal(calls[3][1].signal, calls[1][1].signal);
   await run({ authMs: 12_000, researchMs: 230_000 });
   assert.equal(calls.find(([name]) => name === 'sec')[1].deadline, START + 12_000 + 225_000,
     'signature verification must not shorten the existing SEC research budget');
@@ -89,8 +97,11 @@ async function fixture() {
   const secFailure = await GET(new Request('https://secedgarterminal.com/api/cron/sec-coverage'));
   assert.equal(secFailure.status, 503);
   assert.equal((await secFailure.json()).portfolioCftcPreparation.completedCompanies, 6);
-  assert.deepEqual(calls.map(([name]) => name), ['sec', 'demo']);
-  assert.equal(calls[1][1].deadline, START + 275_000);
+  assert.deepEqual(calls.map(([name]) => name), ['review', 'sec', 'demo']);
+  assert.equal(calls[2][1].deadline, START + 275_000);
+  const reviewFailure = await run({ reviewFail: true });
+  assert.deepEqual(reviewFailure.thirteenFReview, { status: 'unavailable', code: 'THIRTEEN_F_REVIEW_UNAVAILABLE' });
+  assert.equal(reviewFailure.portfolioCftcPreparation.completedCompanies, 6);
   mock.restoreAll();
 }
 

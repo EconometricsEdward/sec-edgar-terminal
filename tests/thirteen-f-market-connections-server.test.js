@@ -298,7 +298,7 @@ test('partial filing retrieval preserves the actual successful passages and iden
 test('no-match, no-filing and unavailable scans remain different from issuer resolution failures', async () => {
   const noMatches = await load({ exposureLoader: async () => discovery({ loadFilingText: async () => ({ text: 'Our consolidated financial statements follow the applicable accounting principles and conventions.' }) }) });
   assert.equal(noMatches.status, 'ready'); assert.equal(noMatches.discovery.status, 'no_matches'); assert.equal(noMatches.discovery.rows.length, 0);
-  const noFiling = await load({ exposureLoader: async () => discovery({ loadSubmissions: async () => ({ cik: ISSUER_CIK, name: 'Maplebear Inc.', filings: { recent: { accessionNumber: [] }, files: [] } }) }) });
+  const noFiling = await load({ exposureLoader: async () => discovery({ loadSubmissions: async () => ({ cik: ISSUER_CIK, name: 'Maplebear Inc.', filings: { recent: { accessionNumber: [], form: [], filingDate: [], reportDate: [], primaryDocument: [] }, files: [] } }) }) });
   assert.equal(noFiling.status, 'ready'); assert.equal(noFiling.discovery.status, 'no_filing');
   const unavailable = await load({ exposureLoader: async () => discovery({ loadFilingText: async () => { throw new Error('Transport failure'); } }) });
   assert.equal(unavailable.status, 'unavailable'); assert.equal(unavailable.discovery.status, 'unavailable');

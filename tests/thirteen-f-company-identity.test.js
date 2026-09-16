@@ -376,3 +376,92 @@ test('slow or failing optional shared reads and writes retain a bounded SEC fall
   const store = sharedEvidenceStore();
   assert.equal((await freshIdentityLoader({ ...store, readEvidence: async () => { throw new Error('cache outage'); }, writeEvidence: async () => { throw new Error('cache outage'); } })(holding)).status, 'resolved');
 });
+
+function deferredIdentityResponse() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+test('aborting the sole issuer consumer cancels its SEC request and permits a fresh retry', async () => {
+  const started = deferredIdentityResponse(), controller = new AbortController();
+  let searches = 0, sourceSignal;
+  const loader = createThirteenFCompanyIdentityLoader({ now: () => NOW, cacheEnabled: () => false,
+    fetchSec: async (_url, { signal }) => {
+      searches++;
+      if (searches > 1) return response(search([]));
+      sourceSignal = signal; started.resolve();
+      return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    }, companyLoader: async () => { throw new Error('An unmatched issuer cannot load company data'); },
+  });
+  const request = loader(holding, { signal: controller.signal });
+  const rejected = assert.rejects(request, { name: 'AbortError' });
+  await started.promise; controller.abort(); await rejected;
+  assert.equal(sourceSignal.aborted, true);
+  assert.equal((await loader(holding)).status, 'unresolved');
+  assert.equal(searches, 2);
+});
+
+test('one cancelled consumer does not abort shared issuer evidence needed by another', async () => {
+  const started = deferredIdentityResponse(), waiting = deferredIdentityResponse();
+  const firstController = new AbortController(), survivorController = new AbortController();
+  let sourceSignal, searches = 0;
+  const loader = createThirteenFCompanyIdentityLoader({ now: () => NOW, cacheEnabled: () => false,
+    fetchSec: async (_url, { signal }) => { searches++; sourceSignal = signal; started.resolve(); return waiting.promise; },
+    companyLoader: async () => { throw new Error('An unmatched issuer cannot load company data'); },
+  });
+  const first = loader(holding, { signal: firstController.signal });
+  const rejected = assert.rejects(first, { name: 'AbortError' });
+  await started.promise;
+  const survivor = loader({ ...holding, putCall: 'PUT' }, { signal: survivorController.signal });
+  firstController.abort(); await rejected;
+  assert.equal(sourceSignal.aborted, false);
+  waiting.resolve(response(search([])));
+  assert.equal((await survivor).status, 'unresolved');
+  assert.equal(searches, 1);
+});
+
+test('late cleanup from aborted issuer work cannot delete a newer shared retry or publish stale evidence', async () => {
+  const started = [deferredIdentityResponse(), deferredIdentityResponse()];
+  const waiting = [deferredIdentityResponse(), deferredIdentityResponse()];
+  const controller = new AbortController();
+  let searches = 0;
+  const loader = createThirteenFCompanyIdentityLoader({ now: () => NOW, cacheEnabled: () => false,
+    fetchSec: async () => {
+      const index = searches++;
+      assert.ok(index < 2, 'a concurrent visitor must join the newer retry');
+      started[index].resolve(); return waiting[index].promise;
+    }, companyLoader: async () => { throw new Error('An unmatched issuer cannot load company data'); },
+  });
+  const first = loader(holding, { signal: controller.signal });
+  const rejected = assert.rejects(first, { name: 'AbortError' });
+  await started[0].promise; controller.abort(); await rejected;
+  const second = loader(holding);
+  await started[1].promise;
+  // Simulate a transport that acknowledges cancellation late. The newer entry
+  // must survive its cleanup, and the abandoned empty search cannot be cached.
+  waiting[0].resolve(response(search([])));
+  await new Promise(resolve => setImmediate(resolve));
+  const third = loader(holding);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(searches, 2);
+  waiting[1].resolve(response(search([], 7)));
+  const results = await Promise.all([second, third]);
+  assert.ok(results.every(result => result.coverage.indexedMatches === 7));
+});
+
+test('last-consumer cancellation during shared-cache lookup cannot start a SEC fallback', async () => {
+  const started = deferredIdentityResponse(), controller = new AbortController();
+  let sources = 0, cacheSignal;
+  const loader = createThirteenFCompanyIdentityLoader({ now: () => NOW, cacheEnabled: () => true,
+    readEvidence: async (_type, _cusip, { signal }) => {
+      cacheSignal = signal; started.resolve();
+      return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    }, fetchSec: async () => { sources++; return response(search([])); },
+  });
+  const request = loader(holding, { signal: controller.signal });
+  const rejected = assert.rejects(request, { name: 'AbortError' });
+  await started.promise; controller.abort(); await rejected;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cacheSignal.aborted, true); assert.equal(sources, 0);
+});
