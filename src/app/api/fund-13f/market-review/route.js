@@ -1,14 +1,17 @@
 import { after } from 'next/server';
 import { createThirteenFReviewApi } from '../../../../utils/thirteenFReviewApi.js';
-import { runThirteenFReviewWorker } from '../../../../utils/thirteenFReviewWorker.js';
+import { drainThirteenFReviews } from '../../../../utils/thirteenFReviewDrain.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 150;
-const handlers = createThirteenFReviewApi({ schedule: () => after(async () => {
+const handlers = createThirteenFReviewApi({ schedule: ({ deadline } = {}) => after(async () => {
   // The response and visitor lifecycle do not own this work. The existing
   // signed scheduler resumes any unfinished batch from durable checkpoints.
-  try { await runThirteenFReviewWorker({ signal: AbortSignal.timeout(75000), deadline: Date.now() + 75000 }); }
+  try {
+    const result = await drainThirteenFReviews({ deadline });
+    console.info('Shared 13F review kickoff:', JSON.stringify(result));
+  }
   catch { console.warn('Shared 13F review kickoff deferred to the scheduler.'); }
-}) });
+}), scheduleInitialChart: task => after(task) });
 export const GET = handlers.GET;
 export const POST = handlers.POST;

@@ -8,7 +8,7 @@ import { maintainProviderRetirement } from '../../../../utils/providerRetirement
 import { runCftcHistoryPreparation } from '../../../../utils/cftcHistoryPreparation.js';
 import { isCftcEnabled } from '../../../../utils/cftcFeature.js';
 import { runPortfolioCftcPreparation } from '../../../../utils/portfolioCftcPreparation.js';
-import { runThirteenFReviewWorker } from '../../../../utils/thirteenFReviewWorker.js';
+import { drainThirteenFReviews } from '../../../../utils/thirteenFReviewDrain.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -32,12 +32,12 @@ export async function GET(request) {
   }
   const startedAt = Date.now();
   // The durable manager queue has its own global lease, daily SQL budget and
-  // two-worker SEC pacing. Its independent bounded task shares this invocation;
+  // two-request SEC pacing. Its independent bounded task shares this invocation;
   // it cannot steal the demo's continuation or depend on a visitor staying open.
-  const reviewBudget = Math.min(75_000, requestStartedAt + 275_000 - startedAt);
+  const reviewBudget = Math.min(140_000, requestStartedAt + 275_000 - startedAt);
   const reviewTask = isCftcEnabled() && getDataStoreMode('cftc') === 'supabase'
     && getDataStoreMode('sec') === 'supabase' && !request.signal.aborted && reviewBudget >= 10_000
-    ? runThirteenFReviewWorker({
+    ? drainThirteenFReviews({
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(reviewBudget)]),
       deadline: startedAt + reviewBudget,
     }).catch(() => ({ status: 'unavailable', code: 'THIRTEEN_F_REVIEW_UNAVAILABLE' }))

@@ -80,7 +80,8 @@ function errorResponse(error) {
 /** GET only reads published progress. Only the bounded POST can enqueue work;
  * no caller controls source URLs, holdings, report revision or worker budgets. */
 export function createThirteenFReviewApi({ store = thirteenFReviewStore, portfolioLoader = loadThirteenF,
-  rateLimit = checkRateLimit, enabled = isCftcEnabled, schedule = () => {}, initialChart = loadThirteenFInitialChart } = {}) {
+  rateLimit = checkRateLimit, enabled = isCftcEnabled, schedule = () => {}, initialChart = loadThirteenFInitialChart,
+  scheduleInitialChart = () => {}, now = Date.now } = {}) {
   async function gate(request, write) {
     if (!enabled()) return Response.json({ error: 'CFTC market research is disabled.', code: 'CFTC_DISABLED' }, { status: 503, headers: PRIVATE });
     const limit = await rateLimit({ key: `rl:fund-13f-shared-review:${write ? 'write' : 'read'}:${getClientIp(request)}`, windowMs: 60000, max: write ? 4 : 120 });
@@ -105,8 +106,15 @@ export function createThirteenFReviewApi({ store = thirteenFReviewStore, portfol
         if (params.key && !data) return Response.json({ error: 'This holding has no saved evidence yet.', code: 'REVIEW_RESULT_PENDING' }, { status: 404, headers: PRIVATE });
         const chartStarted = performance.now();
         if (params.view === 'snapshot' && data?.markets?.[0]) {
-          const chart = await initialChart(data.markets[0], options).catch(() => null);
-          if (chart) data = { ...data, initialChart: chart };
+          // Never hold saved research behind another storage round trip. An
+          // already validated chart can be bundled; cache-only warming runs
+          // after the response and never requests upstream CFTC/SEC sources.
+          try {
+            const market = data.markets[0];
+            const chart = initialChart.peek?.(market) || null;
+            if (chart) data = { ...data, initialChart: chart };
+            else scheduleInitialChart(() => initialChart(market).catch(() => null));
+          } catch { /* Optional enrichment must not hide the saved publication. */ }
         }
         const body = JSON.stringify(data || { job: null });
         const headers = { ...(data?.job || params.key ? params.view === 'snapshot' ? SNAPSHOT : PUBLIC : PRIVATE),
@@ -118,6 +126,9 @@ export function createThirteenFReviewApi({ store = thirteenFReviewStore, portfol
       } catch (error) { return errorResponse(error); }
     },
     async POST(request) {
+      // Preparation and its post-response queue drain share the route's finite
+      // execution allowance; loading a cold report cannot reset that clock.
+      const deadline = now() + 140000;
       try {
         if (new URL(request.url).search) throw invalid('Send the manager and quarter in the request body.');
         const origin = request.headers.get('origin');
@@ -132,7 +143,7 @@ export function createThirteenFReviewApi({ store = thirteenFReviewStore, portfol
         if (report.manager.cik !== params.cik || report.selectedPeriod !== params.period) throw invalid('The requested manager report is unavailable.');
         const job = await store.enqueue(report, hashThirteenFReviewReport(report), { signal, timeoutMs: 10000 });
         if (!job) throw Object.assign(new Error('Shared review storage did not acknowledge the job.'), { code: 'REVIEW_NOT_SAVED' });
-        schedule();
+        schedule({ job, deadline });
         return Response.json({ schemaVersion: THIRTEEN_F_REVIEW_SCHEMA, job }, { status: 202, headers: PRIVATE });
       } catch (error) { return errorResponse(error); }
     },

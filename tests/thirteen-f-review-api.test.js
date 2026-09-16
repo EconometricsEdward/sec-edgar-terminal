@@ -52,7 +52,7 @@ test('compact snapshot opens the latest saved quarter without loading the manage
   const chart = { report_family: 'tff', selection: { contract: '099741' } };
   const saved = { job: { cik: CIK, period: PERIOD, total: 5696 }, publicationVersion: '17', markets: [market], rows: [] };
   const endpoint = api({ store: { snapshot: async params => { received = params; return saved; } },
-    initialChart: async value => { assert.equal(value, market); return chart; } });
+    initialChart: Object.assign(async () => forbidden(), { peek: value => { assert.equal(value, market); return chart; } }) });
   const response = await endpoint.GET(new Request(`${BASE}?cik=${CIK}&view=snapshot&version=17`));
   assert.equal(response.status, 200);
   assert.deepEqual(received, { cik: CIK, period: null, view: 'snapshot' });
@@ -71,9 +71,24 @@ test('progress uses only the small progress record and supports an unchanged 304
 
 test('an unavailable initial chart cannot hide saved connections or trigger fallback source work', async () => {
   const saved = { job: { cik: CIK, period: PERIOD }, publicationVersion: '18', markets: [{ key: 'saved' }], rows: [] };
-  const response = await api({ store: { snapshot: async () => saved }, initialChart: async () => { throw new Error('Chart unavailable'); } })
+  const response = await api({ store: { snapshot: async () => saved }, initialChart: Object.assign(async () => null, { peek: () => { throw new Error('Chart unavailable'); } }) })
     .GET(get('view=snapshot'));
   assert.equal(response.status, 200); assert.deepEqual(await response.json(), saved);
+});
+
+test('snapshot delivery never waits for a slow prepared chart read', async () => {
+  const market = { family: 'tff', contract: '099741', group: 'leveraged-funds' };
+  const saved = { job: { cik: CIK, period: PERIOD }, publicationVersion: '19', markets: [market], rows: [] };
+  let reads = 0, task, finish;
+  const initialChart = Object.assign(async value => {
+    reads++; assert.equal(value, market);
+    return new Promise(resolve => { finish = resolve; });
+  }, { peek: () => null });
+  const response = await api({ store: { snapshot: async () => saved }, initialChart,
+    scheduleInitialChart: next => { task = next; } }).GET(get('view=snapshot'));
+  assert.equal(reads, 0); assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), saved);
+  const warming = task(); assert.equal(reads, 1); finish(null); await warming;
 });
 
 test('compact views reject ambiguous selectors and cannot accept caller-defined source work', async () => {
@@ -124,10 +139,11 @@ test('GET rejects duplicate selectors, unknown fields, malformed keys and unboun
 
 test('POST loads the complete server-owned report and schedules only after its shared job is acknowledged', async () => {
   const order = [], source = report(), job = { reportHash: hashThirteenFReviewReport(source), total: 75, reviewed: 0 };
-  let rate;
-  const endpoint = api({ rateLimit: async options => { rate = options; return { allowed: true }; },
+  let rate, clock = 1000;
+  const endpoint = api({ now: () => clock, rateLimit: async options => { rate = options; return { allowed: true }; },
     portfolioLoader: async (cik, options) => {
       order.push('load'); assert.equal(cik, CIK); assert.equal(options.period, PERIOD);
+      clock += 55000;
       assert.ok(options.signal instanceof AbortSignal); assert.equal(options.delivery, undefined);
       return source;
     },
@@ -135,7 +151,7 @@ test('POST loads the complete server-owned report and schedules only after its s
       order.push('save'); assert.equal(frozen.portfolio.holdings.length, 75); assert.equal(frozen.portfolio.positionCount, 75);
       assert.equal(hash, job.reportHash); assert.equal(options.timeoutMs, 10000); assert.ok(options.signal instanceof AbortSignal);
       return job;
-    } }, schedule: () => { order.push('schedule'); },
+    } }, schedule: options => { order.push('schedule'); assert.equal(options.job, job); assert.equal(options.deadline, 141000); },
   });
   const response = await endpoint.POST(post({ cik: '1747057', period: PERIOD }));
   assert.equal(response.status, 202); assert.deepEqual(order, ['load', 'save', 'schedule']);
