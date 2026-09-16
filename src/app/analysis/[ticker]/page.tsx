@@ -41,9 +41,9 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   const choice = await selection(props);
   if (!choice) return { title: "Analysis selection unavailable", robots: { index: false } };
   const { selected, custom } = choice;
-  // For HTML-only research agents, blocking metadata holds the initial shell
-  // until this same request-memoized brief is ready. Otherwise the root loading
-  // boundary can place financial text in a hidden, JS-completed stream chunk.
+  // HTML-only research agents receive metadata and the same request-memoized
+  // brief together. Analysis has no ancestor loading boundary, so the brief
+  // remains visible HTML while the interactive workspace can stream separately.
   await Promise.all([
     loadSecCoverageRegistry(),
     readSummary(selected.ticker, selected.basis, selected.end, selected.asOf).catch(() => null),
