@@ -1,4 +1,3 @@
-import Link from "next/link";
 import base from "./analysis.module.css";
 import s from "./AnalysisResearchBrief.module.css";
 
@@ -23,7 +22,7 @@ export default function AnalysisResearchBrief({ summary, selection, hidden = fal
     className={`${base.page} ${s.brief}`} aria-labelledby="analysis-brief-title">
     <div className={s.header}><div><p className={base.eyebrow}>SEC financial research · {selection.ticker}</p>
       <h2 id="analysis-brief-title">{summary.name || selection.ticker} — financial highlights</h2></div>
-      <nav aria-label="Financial summary links"><a href="#analysis-workspace">Full analysis workspace</a><a href={jsonUrl}>Compact JSON</a><Link href={`/filings/${selection.ticker}`} prefetch={false}>Company filings</Link></nav></div>
+      <nav aria-label="Financial summary links"><a href="#analysis-workspace">Full analysis workspace</a><a href={jsonUrl}>Compact JSON</a><a href={`/filings/${selection.ticker}`}>Company filings</a></nav></div>
     {summary.status === "ready" ? <>
       <p><strong>{basisNames[summary.basis]}</strong> · {summary.period?.start ? `${summary.period.start} → ` : "Period ending "}<time dateTime={summary.period?.end}>{summary.period?.end}</time>
         {summary.period?.fiscalYear ? ` · Fiscal ${summary.period.fiscalYear} ${summary.period.fiscalPeriod || ""}` : ""}. Balance-sheet inputs are point-in-time values.</p>
