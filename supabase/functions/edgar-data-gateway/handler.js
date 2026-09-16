@@ -570,15 +570,16 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       if (!upstream.ok) {
         // Preserve the SQL fencing marker used by the adapter; all other
         // upstream messages are discarded so credentials cannot reach callers.
-        let code, cacheOverflow = false, reviewCapacity = false;
+        let code, cacheOverflow = false, reviewCapacity = false, reviewRevisionChanged = false;
         try {
           const error = JSON.parse(decoder.decode(await boundedBytes(upstream, RPC_BYTES, controller.signal)));
           code = error.code;
           reviewCapacity = fundReviewOperation && error.code === '54000' && error.message === 'fund_review_capacity';
+          reviewRevisionChanged = fundReviewOperation && error.code === 'PT409' && error.message === 'stale_fund_review_report';
           cacheOverflow = rpcMatch?.[1] === 'edgar_cache_get' && error.code === '22023' && error.message === 'cache_response_too_large';
         } catch { /* sanitized below */ }
         const status = integer(upstream.status, 400, 599) ? upstream.status : 502;
-        return json({ code: reviewCapacity ? 'fund_review_capacity' : cacheOverflow ? 'cache_response_too_large' : code === '40001' ? '40001' : 'upstream_failure' }, status);
+        return json({ code: reviewRevisionChanged ? 'review_revision_changed' : reviewCapacity ? 'fund_review_capacity' : cacheOverflow ? 'cache_response_too_large' : code === '40001' ? '40001' : 'upstream_failure' }, reviewRevisionChanged ? 409 : status);
       }
       const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
       return result(bytes, upstream.status, raw ? 'application/gzip' : 'application/json');

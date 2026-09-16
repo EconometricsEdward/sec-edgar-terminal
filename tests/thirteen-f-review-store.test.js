@@ -50,10 +50,24 @@ test('review operations have isolated transport bounds; generic RPC bounds stay 
   assert.equal(calls.length,2);
 });
 test('gateway sanitizes upstream diagnostics while exposing only fixed capacity and fencing codes',async()=>{
-  for(const [error,code] of [[{code:'54000',message:'fund_review_capacity'},'fund_review_capacity'],
+  for(const [error,code,status=400] of [[{code:'54000',message:'fund_review_capacity'},'fund_review_capacity'],
+    [{code:'PT409',message:'stale_fund_review_report'},'review_revision_changed',409],
+    [{code:'PT409',message:'private diagnostic'},'upstream_failure'],
     [{code:'40001',message:'private diagnostic'},'40001'],[{code:'54000',message:'private secret'},'upstream_failure']]) {
     const {handle}=gateway({response:()=>Response.json(error,{status:400})});
-    assert.deepEqual(await (await handle(request('edgar_fund_review_save',params))).json(),{code});
+    const response=await handle(request('edgar_fund_review_save',params));
+    assert.equal(response.status,status);assert.deepEqual(await response.json(),{code});
+  }
+});
+test('all permanent report revision conflicts return HTTP409 after one upstream call',async()=>{
+  const {handle,calls}=gateway({response:()=>Response.json({code:'PT409',message:'stale_fund_review_report',details:'private context'},{status:409})});
+  for(const [name,body] of [['enqueue',{p_report:report,p_report_hash:hash}],
+    ['read',{p_cik:cik,p_period:period,p_report_hash:hash}],
+    ['result',{p_cik:cik,p_period:period,p_report_hash:hash,p_key:h.key}]]) {
+    const before=calls.length;
+    const response=await handle(request(`edgar_fund_review_${name}`,body));
+    assert.equal(response.status,409);assert.deepEqual(await response.json(),{code:'review_revision_changed'});
+    assert.equal(calls.length,before+1,'gateway performs one request and never retries a permanent conflict');
   }
 });
 test('preview workloads cannot invoke review operations',async()=>{
@@ -79,8 +93,8 @@ test('adapter rejects disabled environments, unverified claims, wrong result ide
 test('adapter aborts stalled identity acquisition and maps capacity and report generation errors',async()=>{
   const store=createThirteenFReviewStore({env:{VERCEL_ENV:'production'},identityTokenImpl:()=>new Promise(()=>{})});
   await assert.rejects(store.claim({owner},{timeoutMs:20}),{code:'timeout'});
-  for(const [code,status] of [['fund_review_capacity',429],['40001',409]]) {
+  for(const [code,status] of [['fund_review_capacity',429],['40001',409],['review_revision_changed',409]]) {
     const s=createThirteenFReviewStore({env:{VERCEL_ENV:'production'},now:()=>now,identityTokenImpl:async()=>'fixture.identity.token',fetchImpl:async()=>Response.json({code},{status:400})});
-    await assert.rejects(s.claim({owner}),{status});
+    await assert.rejects(s.claim({owner}),{status,code:code==='fund_review_capacity'?'fund_review_capacity':'stale_generation'});
   }
 });
