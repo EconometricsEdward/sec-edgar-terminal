@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -22,7 +22,6 @@ import {
 } from "../../utils/fundBoards.js";
 import { useFundShelf } from "./fundUi";
 import useFundSnapshots from "./useFundSnapshots";
-import FundScreener from "./FundScreener";
 import base from "./fund.module.css";
 import s from "./FundWorkspace.module.css";
 const loading = () => (
@@ -30,6 +29,7 @@ const loading = () => (
     Opening this fund research tool…
   </p>
 );
+const FundScreener = dynamic(() => import("./FundScreener"), { loading });
 const FundComparison = dynamic(() => import("./FundComparison"), { loading });
 const FundSecurityFinder = dynamic(() => import("./FundSecurityFinder"), {
   loading,
@@ -579,7 +579,8 @@ export default function FundsWorkspace() {
       {views.map(
         ([view]) =>
           (visited.includes(view) || view === settings.view) && (
-            <div key={view} hidden={settings.view !== view} className={s.panel}>
+            <Activity key={view} mode={settings.view === view ? "visible" : "hidden"}>
+            <div className={s.panel}>
               {panels[view] || (
                 <section className={s.empty}>
                   <h2>
@@ -597,6 +598,7 @@ export default function FundsWorkspace() {
                 </section>
               )}
             </div>
+            </Activity>
           ),
       )}
     </div>

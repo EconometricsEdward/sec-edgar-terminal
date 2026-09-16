@@ -1,0 +1,13 @@
+# Popular Funds preparation
+
+The existing authenticated daily `/api/cron/prewarm` invocation at 04:00 UTC now includes the four public institutional managers and all twelve tickers in `FUND_CATALOG`. The cron schedule, production-only authorization, and shared-cache availability gate are unchanged. This does not add another scheduler or a paid service.
+
+The Funds branch runs for at most 150 seconds with two workers. It rotates the leading manager and three N-PORT funds daily, giving every selection front-of-queue priority within four days when slow sources prevent completion. It does not start a source load with less than 60 seconds left: the shared loaders own a 50-second deadline, and preparation reserves time to verify the persisted result. Work that cannot fit is explicitly skipped and remains eligible on a later daily run. Daily preparation is a target, not a promise that every selection is current.
+
+Preparation first reads the existing validated shared report. A current source check skips acquisition entirely. Due requests use the ordinary loaders, which reuse immutable parsed filings and coordinate same-process requests; the worker never forces a new load over a current result. Reports, amendment handling, and freshness rules remain owned by the shared N-PORT and 13F loaders. There are no precomputed manager-pair combinations, per-visitor copies, or new raw source archives.
+
+After acquisition, a separate shared reader confirms publication. A successful result held only in process memory is reported as `unpersisted`, not ready. The cron response includes a bounded `funds` result with counts and selection-level statuses: `current`, `refreshed`, `stale`, `unpersisted`, `unavailable`, `failed`, and `skipped`. Top-level readiness requires the Funds branch to be ready. An unavailable prepared portfolio does not establish that a filing does not exist; some catalog fund structures may lack public N-PORT coverage. Such selections remain visible as unavailable instead of manufacturing portfolio data.
+
+Public HTML and summary API reads still perform no SEC acquisition or preparation. A report can remain available with an honest stale label between scheduled checks or during source failures. Interactive readers retain their usual ability to check a due selection. The preparation response records the original source-check time, never a newly invented date for retained data.
+
+Focused tests cover cohort rotation, current-report skips, two-worker concurrency, no forced acquisition, stale or invalidated evidence, publication failures, unavailable sources, deadline admission, cancellation, and existing cron authorization boundaries.

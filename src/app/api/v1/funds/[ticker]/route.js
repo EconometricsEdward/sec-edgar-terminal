@@ -1,5 +1,6 @@
 import { readPublicFundSummary } from '../../../../../utils/fundPublicResearch.js';
 import { publicFundSelection } from '../../../../../utils/fundPublicSelectors.js';
+import { publicFundResponse } from '../../../../../utils/fundPublicResponse.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 15;
@@ -13,6 +14,6 @@ export async function GET(request, { params }) {
   let summary;
   try { summary = await readPublicFundSummary(selected.ticker, selected.accession, { signal: request.signal }); } catch { /* fail closed to missing prepared research */ }
   if (!summary || summary.status !== 'ready') return Response.json(summary || { kind: 'nport', status: 'unavailable', ticker: selected.ticker, code: 'FUND_NOT_PREPARED', reason: 'A verified prepared report is not available. This request does not start SEC acquisition.' }, { status: 503, headers: { ...privateHeaders, 'Retry-After': '60' } });
-  return Response.json(summary, { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=60', 'Access-Control-Allow-Origin': '*' } });
+  return publicFundResponse(request, summary);
 }
 export function OPTIONS() { return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' } }); }

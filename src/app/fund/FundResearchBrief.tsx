@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SITE_URL } from "../../utils/siteMetadata";
+import { publicPortfolioStructuredData, serializeResearchJsonLd } from "../../utils/fundPublicMetadata.js";
 import base from "./fund.module.css";
 import s from "./FundResearchBrief.module.css";
 
@@ -42,14 +44,18 @@ function safeSource(value: string) {
   try { const url = new URL(value); return url.protocol === "https:" && ["www.sec.gov", "sec.gov", "data.sec.gov"].includes(url.hostname) ? url.href : null; } catch { return null; }
 }
 
-export default function FundResearchBrief({ summary, standalone = false, jsonUrl }: { summary: PublicFundSummary; standalone?: boolean; jsonUrl: string }) {
+export default function FundResearchBrief({ summary, standalone = false, jsonUrl, canonicalPath }: { summary: PublicFundSummary; standalone?: boolean; jsonUrl: string; canonicalPath: string }) {
   const ready = summary.status === "ready";
   const nport = summary.kind === "nport";
   const title = nport ? `${summary.ticker} · ${summary.name}` : summary.name;
   const holdings = summary.topHoldings.slice(0, 10);
   const Heading = standalone ? "h1" : "h2";
+  const structuredData = publicPortfolioStructuredData(summary, {
+    pageUrl: `${SITE_URL}${canonicalPath}`, jsonUrl: `${SITE_URL}${jsonUrl}`, siteUrl: SITE_URL,
+  });
   return (
     <section className={`${base.page} ${s.brief}`} aria-label="Public portfolio research brief">
+      <script id="reported-portfolio-data" type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeResearchJsonLd(structuredData) }} />
       <header className={s.header}>
         <div><p className={s.eyebrow}>{nport ? "N-PORT fund portfolio" : "13F institutional manager"} · Research brief</p><Heading>{title}</Heading></div>
         <div className={s.actions}>

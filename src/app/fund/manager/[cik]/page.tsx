@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { unstable_cache } from "next/cache";
-import { buildPageMetadata } from "../../../../utils/siteMetadata";
+import { buildPageMetadata, SITE_URL } from "../../../../utils/siteMetadata";
 import { PUBLIC_FUND_MANAGERS, publicManagerSelection } from "../../../../utils/fundPublicSelectors.js";
 import { readPublicManagerSummary } from "../../../../utils/fundPublicResearch.js";
 import FundResearchBrief, { type PublicFundSummary } from "../../FundResearchBrief";
@@ -11,14 +12,15 @@ import s from "../../FundResearchBrief.module.css";
 
 export const runtime = "nodejs";
 export const maxDuration = 15;
-const readSummary = unstable_cache(
+// Metadata and visible research share one read, including temporary misses.
+const readSummary = cache(unstable_cache(
   async (cik: string, period: string) => {
     const summary = await readPublicManagerSummary(cik, period) as PublicFundSummary | null;
     if (summary?.status !== "ready") throw new Error("Manager summary is not prepared");
     return summary;
   },
   ["public-13f-manager-summary-v1"], { revalidate: 60 },
-);
+));
 type Props = { params: Promise<{ cik: string }>; searchParams: Promise<{ [key: string]: string | string[] | undefined }> };
 async function selection({ params, searchParams }: Props) {
   const [{ cik }, query] = await Promise.all([params, searchParams]);
@@ -32,10 +34,14 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   const summary = await readSummary(cik, period).catch(() => null);
   const known = PUBLIC_FUND_MANAGERS.find(manager => manager.cik === cik);
   const name = summary?.name || known?.name || `SEC manager ${cik}`;
-  return { ...buildPageMetadata({ title: `${name} — Reported 13F Holdings & Sources`,
-    description: `Dated public 13F holdings, concentration and original SEC source filings for ${name}. Includes reporting coverage and freshness.`,
+  const reportDate = summary?.reportDate;
+  const metadata = buildPageMetadata({ title: `${name} — Reported 13F Holdings${reportDate ? `, ${reportDate}` : " & Sources"}`,
+    description: `${name} SEC Form 13F holdings${reportDate ? ` as of ${reportDate}` : ""}: disclosed positions, concentration and original filing sources. Reported holdings value is not total assets under management.`,
     path: `/fund/manager/${cik}${period ? `?period=${period}` : ""}`,
-  }), ...((period || !known) && summary?.status !== "ready" ? { robots: { index: false } } : {}) };
+  });
+  return { ...metadata,
+    alternates: { ...metadata.alternates, types: { "application/json": `${SITE_URL}/api/v1/managers/${cik}${period ? `?period=${period}` : ""}` } },
+    ...((period || !known) && summary?.status !== "ready" ? { robots: { index: false } } : {}) };
 }
 export default async function ManagerResearchPage(props: Props) {
   const selected = await selection(props);
@@ -53,6 +59,6 @@ export default async function ManagerResearchPage(props: Props) {
   };
   return <div className={base.page}>
     <Link href="/fund" prefetch={false} className={s.back}>← Funds & institutional managers</Link>
-    <FundResearchBrief summary={summary} standalone jsonUrl={`/api/v1/managers/${cik}${period ? `?period=${period}` : ""}`} />
+    <FundResearchBrief summary={summary} standalone canonicalPath={`/fund/manager/${cik}${period ? `?period=${period}` : ""}`} jsonUrl={`/api/v1/managers/${cik}${period ? `?period=${period}` : ""}`} />
   </div>;
 }

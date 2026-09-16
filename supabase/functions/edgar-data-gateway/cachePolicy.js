@@ -48,6 +48,14 @@ export function disposableCachePolicy(type, originalId) {
     return match ? Object.freeze({ family: 'document', type, id,
       maxTtlSeconds: 30 * 86400, maxRawBytes: match[2] === 'LATEST' ? 4096 : 24 * 1024 * 1024 }) : null;
   }
+  // Prepared 13F reports retain their original source-check time for seven
+  // days. The existing snapshot quota bounds storage; retention is not freshness.
+  // Legacy v1 research entries remain read-compatible until their normal expiry.
+  if (type === 'edgar.13f-snapshot.v2:production') {
+    const match = re(`(${CIK}):(LATEST|${QUARTER})`).exec(id);
+    return match ? Object.freeze({ family: 'snapshot', type, id, sourceCik: match[1],
+      maxTtlSeconds: 7 * 86400, maxRawBytes: match[2] === 'LATEST' ? 16 * 1024 : 24 * 1024 * 1024 }) : null;
+  }
   if (type === PORTFOLIO_PREPARED_CACHE_TYPE) {
     if (['DEMO-CURRENT', 'DEMO-PREVIOUS'].includes(id)) return Object.freeze({ family: 'checkpoint', type, id,
       maxTtlSeconds: 14 * 86400, maxRawBytes: PORTFOLIO_PREPARED_LIMITS.snapshotBytes });
