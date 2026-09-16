@@ -31,7 +31,8 @@ export function thirteenFMarketConnectionsExpiresAt(result, now = Date.now()) {
     || discovery.retryable === true || discovery.coverage?.searchComplete !== true
     || discovery.coverage?.filingsFailed > 0 || !Array.isArray(discovery.sources)
     || discovery.sources.some(source => source.status !== 'ready'))) return null;
-  const timestamps = [result.observedAt, result.identity?.observedAt, ...(discovery ? [discovery.checkedAt] : [])].map(Date.parse);
+  const timestamps = [result.observedAt, result.identity?.observedAt,
+    ...(result.identity?.companyObservedAt ? [result.identity.companyObservedAt] : []), ...(discovery ? [discovery.checkedAt] : [])].map(Date.parse);
   if (timestamps.some(value => !Number.isFinite(value) || value > now + 1000)) return null;
   const ttl = result.status === 'unresolved' ? 60000 : discovery.status === 'no_filing' ? 15 * 60000 : discovery.status === 'no_matches' ? 3600000 : 6 * 3600000;
   const expires = Math.min(...timestamps) + ttl;

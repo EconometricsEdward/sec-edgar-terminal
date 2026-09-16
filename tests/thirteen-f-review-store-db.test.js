@@ -6,7 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 const ns = 'production', cik = '0002012383', period = '2025-12-31', hash = 'A'.repeat(64);
 const signatures = { enqueue: ['text','jsonb','text'], claim: ['text','uuid','integer'], work: ['text','jsonb','integer'],
   save: ['text','jsonb','integer','jsonb','jsonb','integer'], release: ['text','jsonb'], read: ['text','text','date','text','text','text','text','integer','integer'],
-  result: ['text','text','date','text','text'] };
+  result: ['text','text','date','text','text'], snapshot: ['text','text','date'], progress: ['text','text','date'], save_batch: ['text','jsonb','jsonb'] };
 const holding = (i = 0) => ({ key: `${String(i + 1).padStart(9,'0')}|SECURITY|SH`, cusip: String(i + 1).padStart(9,'0'), issuer: `Company ${i}`,
   classTitle: 'COM', putCall: null, quantity: 10, quantityType: 'SH', valueUsd: 100, weightPct: 50 });
 const report = (overrides = {}) => ({ manager: { cik, name: 'Fixture manager' }, selectedPeriod: period, observedAt: new Date().toISOString(),
@@ -27,6 +27,7 @@ test('durable reviews enforce shared progress, exact report identity, fencing, r
   await db.exec('create role anon nologin;create role authenticated nologin;create role service_role nologin bypassrls;grant usage on schema public to service_role;');
   await db.exec(await readFile(new URL('../supabase/migrations/20260916175154_shared_fund_market_reviews.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../supabase/migrations/20260916181554_fund_review_revision_conflicts.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20260916183951_fund_review_prepared_snapshots.sql',import.meta.url),'utf8'));
   const reset = () => db.exec('truncate edgar_private.fund_review_jobs,edgar_private.fund_review_results,edgar_private.fund_review_daily_budget cascade');
   try {
     await t.test('private rows and RPCs reject browser roles', async () => {
@@ -144,6 +145,88 @@ test('durable reviews enforce shared progress, exact report identity, fencing, r
       assert.equal((await read(db)).coverage.available,0);
       assert.equal((await db.query('select attempts from edgar_private.fund_review_daily_budget')).rows[0].attempts,0);
       await db.exec('drop trigger fund_review_test_slow on edgar_private.fund_review_results;drop function edgar_private.fund_review_slow_write();drop sequence edgar_private.fund_review_test_write');
+    });
+    await t.test('saved publication changes only on release and progress stays compact', async () => {
+      await reset();await call(db,'enqueue',[report(),hash]);
+      const first=await call(db,'snapshot',[cik,null]);assert.equal(first.publicationVersion,'1');assert.equal(first.page.limit,50);assert.equal(first.coverage.available,0);
+      const c=await call(db,'claim',[randomUUID(),90]);assert.equal(c.attemptsRemaining,6000);await save(db,c,1);
+      const progress=await call(db,'progress',[cik,null]);assert.deepEqual(Object.keys(progress).sort(),['job','publicationVersion','publishedAt']);
+      assert.equal(progress.job.reviewed,1);assert.equal(progress.publicationVersion,'1');
+      assert.equal((await call(db,'snapshot',[cik,period])).coverage.available,0,'saved publication is unchanged until release');
+      await call(db,'release',[claimToken(c)]);
+      const published=await call(db,'snapshot',[cik,null]);assert.equal(published.publicationVersion,'2');assert.equal(published.coverage.available,1);
+      assert.equal((await read(db)).publicationVersion,'2');assert.equal(published.job.denominatorUsd,200);assert.equal(published.report.complete,true);
+      assert.deepEqual(published.reports,[{period,latestFiled:null}]);
+    });
+    await t.test('prepared snapshot and progress do not read frozen holdings or aggregate evidence', async () => {
+      await reset();await call(db,'enqueue',[report(),hash]);
+      const columns=(await db.query("select attname from pg_attribute where attrelid='edgar_private.fund_review_jobs'::regclass and attnum>0 and not attisdropped and attname<>'report'")).rows.map(r=>r.attname);
+      assert.ok(columns.every(c=>/^[a-z_]+$/.test(c)));
+      await db.exec(`revoke select on edgar_private.fund_review_jobs,edgar_private.fund_review_results from service_role;grant select (${columns.join(',')}) on edgar_private.fund_review_jobs to service_role`);
+      try {
+        assert.equal((await call(db,'snapshot',[cik,null])).job.cik,cik);
+        assert.equal((await call(db,'progress',[cik,period])).job.cik,cik);
+        await assert.rejects(read(db),/permission denied/);
+      } finally { await db.exec('grant select on edgar_private.fund_review_jobs,edgar_private.fund_review_results to service_role'); }
+    });
+    await t.test('latest snapshot selects the latest saved quarter and legacy jobs keep a read-only fallback', async () => {
+      await reset();await call(db,'enqueue',[report(),hash]);
+      const newer=report();newer.selectedPeriod='2026-03-31';newer.portfolio.period=newer.selectedPeriod;
+      await call(db,'enqueue',[newer,'B'.repeat(64)]);
+      assert.equal((await call(db,'snapshot',[cik,null])).job.period,'2026-03-31');
+      assert.equal((await call(db,'snapshot',[cik,period])).job.period,period);
+      await db.exec('update edgar_private.fund_review_jobs set publication=null,publication_version=0,published_at=null');
+      const fallback=await call(db,'snapshot',[cik,period]);assert.equal(fallback.rows.length,2);assert.equal(fallback.publicationVersion,'0');
+      assert.equal((await db.query('select count(*)::integer n from edgar_private.fund_review_jobs where publication is not null')).rows[0].n,0,'fallback never writes');
+      assert.equal(await call(db,'progress',['0000000001',null]),null);
+    });
+    await t.test('report amendments atomically replace the publication and increment its version', async () => {
+      await reset();await call(db,'enqueue',[report({cache:{checkedAt:new Date(Date.now()-10000).toISOString()}}),hash]);
+      const c=await call(db,'claim',[randomUUID(),90]);await save(db,c,1);await call(db,'release',[claimToken(c)]);
+      const before=await call(db,'snapshot',[cik,null]);
+      await call(db,'enqueue',[report(),'B'.repeat(64)]);const after=await call(db,'snapshot',[cik,null]);
+      assert.equal(after.job.reportHash,'B'.repeat(64));assert.equal(after.coverage.available,0);assert.ok(BigInt(after.publicationVersion)>BigInt(before.publicationVersion));
+    });
+    await t.test('bounded work cursor skips deferred cold rows without losing their future eligibility', async () => {
+      await reset();const r=report();r.portfolio.holdings=Array.from({length:120},(_,i)=>holding(i));r.portfolio.positionCount=120;r.portfolio.totalValueUsd=12000;
+      await call(db,'enqueue',[r,hash]);const c=await call(db,'claim',[randomUUID(),90]);
+      const work=after=>role(db,'service_role',async()=>(await db.query('select public.edgar_fund_review_work($1,$2::jsonb,100,$3::integer) value',[ns,claimToken(c),after])).rows[0].value);
+      assert.equal((await work(0)).length,100);assert.equal((await work(100))[0].ordinal,101);assert.equal((await work(0))[0].ordinal,1);
+      await assert.rejects(work(20001),/invalid_fund_review_work/);
+    });
+    await t.test('batch save is atomic, idempotent and retains the shared daily cap', async () => {
+      await reset();await call(db,'enqueue',[report(),hash]);const c=await call(db,'claim',[randomUUID(),90]);
+      const entries=[1,2].map(ordinal=>({ordinal,result:result(holding(ordinal-1)),summary:summary(holding(ordinal-1)),retrySeconds:0}));
+      const bad=[entries[0],{...entries[1],result:result(holding())}];
+      await assert.rejects(call(db,'save_batch',[claimToken(c),bad]),/identity_mismatch/);
+      assert.equal((await read(db)).coverage.available,0);assert.equal((await db.query('select attempts from edgar_private.fund_review_daily_budget')).rows[0].attempts,0);
+      await db.exec('update edgar_private.fund_review_daily_budget set attempts=5999');
+      assert.equal(await call(db,'save_batch',[claimToken(c),entries]),false);assert.equal((await read(db)).coverage.available,0);
+      assert.equal((await db.query('select attempts from edgar_private.fund_review_daily_budget')).rows[0].attempts,5999);
+      await db.exec('update edgar_private.fund_review_daily_budget set attempts=0');
+      assert.equal(await call(db,'save_batch',[claimToken(c),entries]),true);assert.equal(await call(db,'save_batch',[claimToken(c),entries]),true);
+      assert.equal((await db.query('select attempts from edgar_private.fund_review_daily_budget')).rows[0].attempts,2);
+      assert.equal((await read(db)).coverage.available,2);await call(db,'release',[claimToken(c)]);
+      assert.equal((await call(db,'snapshot',[cik,null])).job.status,'complete');
+      assert.equal(await call(db,'save_batch',[claimToken(c),entries]),false,'released lease cannot publish a batch');
+    });
+    await t.test('failed publication preserves the previous publication and saved checkpoints', async () => {
+      await reset();await call(db,'enqueue',[report(),hash]);const first=await call(db,'snapshot',[cik,null]);
+      const c=await call(db,'claim',[randomUUID(),90]);await save(db,c,1);
+      await db.exec('alter table edgar_private.fund_review_jobs add constraint fixture_publication_guard check(publication_version<=1)');
+      await assert.rejects(call(db,'release',[claimToken(c)]),/fixture_publication_guard/);
+      const unchanged=await call(db,'snapshot',[cik,null]);assert.equal(unchanged.publicationVersion,first.publicationVersion);assert.equal(unchanged.coverage.available,0);
+      assert.equal((await read(db)).coverage.available,1,'durable saved evidence survives failed publication');
+      await db.exec('alter table edgar_private.fund_review_jobs drop constraint fixture_publication_guard');
+      assert.equal(await call(db,'release',[claimToken(c)]),true);assert.equal((await call(db,'snapshot',[cik,null])).coverage.available,1);
+    });
+    await t.test('summary citations are optional, bounded and tied to the verified issuer', async () => {
+      await reset();await call(db,'enqueue',[report(),hash]);const c=await call(db,'claim',[randomUUID(),90]);
+      const src={accession:'0000000001-25-000001',form:'10-K',filed:'2025-12-30',reportDate:'2025-09-30',url:'https://www.sec.gov/Archives/edgar/data/1/000000000125000001/report.htm'};
+      const sum={...summary(holding(),'linked'),issuer:{cik:'0000000001'},sources:[src]};
+      await assert.rejects(save(db,c,1,result(),{...sum,sources:[{...src,url:src.url.replace('/data/1/','/data/2/')}]}),/invalid_fund_review_sources/);
+      assert.equal(await save(db,c,1,result(),sum),true);await call(db,'release',[claimToken(c)]);
+      assert.deepEqual((await call(db,'snapshot',[cik,null])).rows[0].sources,[src]);
     });
     await t.test('admission is finite and only inactive completed jobs can be evicted', async () => {
       await reset();

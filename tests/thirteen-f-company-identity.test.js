@@ -2,7 +2,8 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { normalizeHoldingCompanyRequest, parseScheduleIssuer, resolveHoldingCompanyEvidence } from '../src/utils/thirteenFCompanyIdentity.js';
-import { createThirteenFCompanyIdentityLoader, THIRTEEN_F_ISSUER_EVIDENCE_CACHE_TYPE } from '../src/utils/thirteenFCompanyIdentityServer.js';
+import { createThirteenFCompanyIdentityLoader, THIRTEEN_F_ISSUER_EVIDENCE_CACHE_TYPE, THIRTEEN_F_ISSUER_PROOF_CACHE_TYPE, THIRTEEN_F_ISSUER_COMPANY_CACHE_TYPE } from '../src/utils/thirteenFCompanyIdentityServer.js';
+import { createDisposableCache, disposableCachePolicy } from '../src/utils/disposableCache.js';
 
 const NOW = Date.parse('2026-09-15T12:00:00Z');
 const holding = { issuer: 'MAPLEBEAR INC', classTitle: 'COM', cusip: '565394103', quantityType: 'SH', putCall: null };
@@ -464,4 +465,224 @@ test('last-consumer cancellation during shared-cache lookup cannot start a SEC f
   await started.promise; controller.abort(); await rejected;
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(cacheSignal.aborted, true); assert.equal(sources, 0);
+});
+
+function durableIdentityStore() {
+  const entries = new Map(), writes = [], reads = [];
+  return { entries, writes, reads, cacheEnabled: () => true,
+    readEvidence: async (type, id, options) => {
+      options.signal.throwIfAborted(); reads.push({ type, id });
+      const value = entries.get(`${type}:${id}`);
+      return value ? { payload: structuredClone(value) } : null;
+    },
+    writeEvidence: async (type, id, value, ttl, options) => {
+      options.signal.throwIfAborted();
+      assert.ok([THIRTEEN_F_ISSUER_EVIDENCE_CACHE_TYPE, THIRTEEN_F_ISSUER_PROOF_CACHE_TYPE, THIRTEEN_F_ISSUER_COMPANY_CACHE_TYPE].includes(type));
+      assert.ok(ttl > 0 && ttl <= (type === THIRTEEN_F_ISSUER_PROOF_CACHE_TYPE ? 30 * 86400 : 6 * 3600));
+      assert.equal(options.expiresAt, value.expiresAt);
+      entries.set(`${type}:${id}`, structuredClone(value)); writes.push({ type, id, value: structuredClone(value) });
+      return { stored: true };
+    },
+  };
+}
+const resortKeys = value => Array.isArray(value) ? value.map(resortKeys) : value && typeof value === 'object'
+  ? Object.fromEntries(Object.keys(value).reverse().map(key => [key, resortKeys(value[key])])) : value;
+const stableRecord = value => Array.isArray(value) ? value.map(stableRecord) : value && typeof value === 'object'
+  ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stableRecord(value[key])])) : value;
+function resignRecord(value) {
+  const record = Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'integrity'));
+  value.integrity = createHash('sha256').update(JSON.stringify(stableRecord(record))).digest('hex');
+  return value;
+}
+
+test('prepared identities reuse exact current evidence and submissions assertions across cold loaders without source calls', async () => {
+  const store = durableIdentityStore();
+  const sourceObservedAt = new Date(NOW - 120000).toISOString();
+  const first = await freshIdentityLoader({ ...store, companyLoader: async () => ({ ...company, sourceObservedAt }) })(holding);
+  assert.equal(store.writes.filter(write => write.type === THIRTEEN_F_ISSUER_PROOF_CACHE_TYPE).length, 1);
+  assert.equal(store.writes.filter(write => write.type === THIRTEEN_F_ISSUER_COMPANY_CACHE_TYPE).length, 1);
+  for (const [key, value] of store.entries) if (!key.startsWith(THIRTEEN_F_ISSUER_EVIDENCE_CACHE_TYPE)) store.entries.set(key, resortKeys(value));
+  let sources = 0;
+  const loader = freshIdentityLoader({ ...store, now: () => NOW + 3600000,
+    fetchSec: async () => { sources++; throw new Error('prepared path cannot retrieve SEC evidence'); },
+    companyLoader: async () => { sources++; throw new Error('prepared path cannot verify company again'); },
+  });
+  const result = await loader.prepared(holding, { period: '2026-06-30' });
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.observedAt, first.observedAt);
+  assert.equal(result.evidence[0].retrievedAt, new Date(NOW).toISOString());
+  assert.equal(result.companyObservedAt, sourceObservedAt);
+  assert.equal((await loader({ ...holding, putCall: 'CALL' })).securityType, 'option');
+  assert.equal((await loader.prepared({ ...holding, issuer: 'UNRELATED INC' })).code, 'ISSUER_NAME_CONFLICT');
+  assert.equal((await loader.prepared({ ...holding, classTitle: 'PREFERRED STOCK' })).code, 'SECURITY_CLASS_CONFLICT');
+  assert.equal(sources, 0);
+  assert.equal(store.writes.length, 3, 'reads do not renew observation or retention dates');
+});
+
+test('issuer company assertions meet the production cache policy source identity contract', async () => {
+  const store = durableIdentityStore();
+  await freshIdentityLoader(store)(holding);
+  const entry = store.writes.find(write => write.type === THIRTEEN_F_ISSUER_COMPANY_CACHE_TYPE);
+  const policy = disposableCachePolicy(entry.type, entry.id);
+  assert.equal(policy.sourceCik, company.cik);
+  assert.equal(entry.value.cik, policy.sourceCik);
+  assert.equal(entry.value.company.cik, policy.sourceCik);
+  let writes = 0;
+  const cache = createDisposableCache({ env: { VERCEL_ENV: 'production' }, now: () => NOW,
+    identityTokenImpl: async () => 'fixture.identity.token',
+    fetchImpl: async (_url, options) => {
+      const params = JSON.parse(options.body); writes++;
+      return Response.json({ stored: true, rawSha256: params.p_raw_sha256, expiresAt: params.p_expires_at });
+    },
+  });
+  assert.equal((await cache.cachePut(entry.type, entry.id, entry.value, 21600, { expiresAt: entry.value.expiresAt })).stored, true);
+  assert.equal(writes, 1, 'real cache writer reaches the gateway only after checking the payload CIK');
+  const bad = structuredClone(entry.value); delete bad.cik;
+  store.entries.set(`${entry.type}:${entry.id}`, resignRecord(bad));
+  assert.equal(await freshIdentityLoader(store).prepared(holding), null, 'missing top-level issuer identity is never prepared');
+});
+
+test('a six-hour issuer recheck searches current metadata but reuses unchanged immutable source proof', async () => {
+  const store = durableIdentityStore();
+  await freshIdentityLoader(store)(holding);
+  const current = NOW + 6 * 3600000 + 1;
+  let searches = 0, documents = 0, companies = 0;
+  const loader = freshIdentityLoader({ ...store, now: () => current,
+    fetchSec: async url => { if (url.includes('search-index')) { searches++; return response(search([hit()])); } documents++; return response(xml()); },
+    companyLoader: async () => { companies++; return company; },
+  });
+  assert.equal(await loader.prepared(holding), null, 'durable proof is not a fresh search or company assertion');
+  const result = await loader(holding);
+  assert.equal(result.observedAt, new Date(current).toISOString());
+  assert.equal(result.evidence[0].retrievedAt, new Date(NOW).toISOString());
+  assert.equal(searches, 1); assert.equal(documents, 0); assert.equal(companies, 1);
+  assert.equal(store.writes.filter(write => write.type === THIRTEEN_F_ISSUER_PROOF_CACHE_TYPE).length, 1, 'proof expiry is not renewed by reuse');
+});
+
+test('newly selected issuer documents must be verified despite older retained proof', async () => {
+  const store = durableIdentityStore();
+  await freshIdentityLoader(store)(holding);
+  const urls = [];
+  const loader = freshIdentityLoader({ ...store, now: () => NOW + 7 * 3600000,
+    fetchSec: async url => { urls.push(url); return url.includes('search-index')
+      ? response(search([hit({ accession: '0002012383-26-001751' })])) : response('busy', 503); },
+  });
+  await assert.rejects(loader(holding), /could not be verified/);
+  assert.equal(urls.length, 2);
+  assert.match(urls[1], /000201238326001751\/primary_doc.xml$/);
+  assert.equal(await loader.prepared(holding), null, 'failed current checks cannot make old proof current');
+});
+
+test('immutable issuer proof is bound to current indexed CIK metadata and cannot establish a different issuer', async () => {
+  for (const change of ['metadata', 'proof']) {
+    const store = durableIdentityStore();
+    await freshIdentityLoader(store)(holding);
+    const proofKey = [...store.entries.keys()].find(key => key.startsWith(THIRTEEN_F_ISSUER_PROOF_CACHE_TYPE));
+    if (change === 'proof') {
+      const bad = store.entries.get(proofKey); bad.evidence.cik = '0000000001'; resignRecord(bad);
+    }
+    let documents = 0;
+    const loader = freshIdentityLoader({ ...store, now: () => NOW + 7 * 3600000,
+      fetchSec: async url => { if (url.includes('search-index')) return response(search([hit(change === 'metadata' ? { ciks: [...expected.ciks, '0000000001'] } : {})]));
+        documents++; return response(xml()); },
+    });
+    const result = await loader(holding);
+    assert.equal(result.issuer.cik, company.cik); assert.equal(documents, 1, change);
+  }
+});
+
+test('expired immutable issuer proof is downloaded again without extending its original retention', async () => {
+  const store = durableIdentityStore();
+  await freshIdentityLoader(store)(holding);
+  const current = NOW + 30 * 86400000 + 1;
+  let documents = 0;
+  const loader = freshIdentityLoader({ ...store, now: () => current,
+    fetchSec: async url => { if (url.includes('search-index')) return response(search([hit()])); documents++; return response(xml()); },
+  });
+  assert.equal((await loader(holding)).evidence[0].retrievedAt, new Date(current).toISOString());
+  assert.equal(documents, 1);
+});
+
+test('prepared identity misses never fetch or verify sources, including missing or invalid current company assertions', async () => {
+  for (const mode of ['cold', 'missing_company', 'wrong_company', 'old_company', 'outage']) {
+    const store = durableIdentityStore();
+    if (mode !== 'cold') await freshIdentityLoader(store)(holding);
+    const key = `${THIRTEEN_F_ISSUER_COMPANY_CACHE_TYPE}:${company.cik}`;
+    if (mode === 'missing_company') store.entries.delete(key);
+    if (mode === 'wrong_company') { const bad = store.entries.get(key); bad.company.cik = '0002012383'; resignRecord(bad); }
+    if (mode === 'old_company') { const bad = store.entries.get(key); bad.observedAt = new Date(NOW - 7 * 3600000).toISOString(); bad.expiresAt = new Date(NOW - 3600000).toISOString(); resignRecord(bad); }
+    let sources = 0;
+    const loader = freshIdentityLoader({ ...store,
+      ...(mode === 'outage' ? { readEvidence: async () => { throw new Error('storage outage'); } } : {}),
+      fetchSec: async () => { sources++; throw new Error('source call not allowed'); },
+      companyLoader: async () => { sources++; throw new Error('company call not allowed'); },
+    });
+    assert.equal(await loader.prepared(holding), null, mode);
+    assert.equal(sources, 0, mode);
+  }
+});
+
+test('classification-only preparation avoids shared-cache reads and identifies funds and principal without SEC requests', async () => {
+  const loader = freshIdentityLoader({ cacheEnabled: () => true,
+    readEvidence: async () => { throw new Error('must not read storage'); },
+    fetchSec: async () => { throw new Error('must not call SEC'); }, companyLoader: async () => { throw new Error('must not call company loader'); },
+  });
+  assert.equal((await loader.prepared({ ...holding, issuer: 'ISHARES TRUST', classTitle: 'CORE ETF' }, { classificationOnly: true })).code, 'FUND_SECURITY');
+  assert.equal((await loader.prepared({ ...holding, quantityType: 'PRN' }, { classificationOnly: true })).code, 'PRINCIPAL_SECURITY');
+  assert.equal(await loader.prepared(holding, { classificationOnly: true }), null);
+  await assert.rejects(loader.prepared({ ...holding, cusip: '../secret' }, { classificationOnly: true }), { status: 400 });
+});
+
+test('last-consumer cancellation stops a prepared company-cache read without starting company verification', async () => {
+  const store = durableIdentityStore();
+  await freshIdentityLoader(store)(holding);
+  const started = deferredIdentityResponse(), controller = new AbortController();
+  let companies = 0, sourceSignal;
+  const loader = freshIdentityLoader({ ...store,
+    readCompany: async (_type, _id, { signal }) => { sourceSignal = signal; started.resolve(); return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })); },
+    companyLoader: async () => { companies++; return company; },
+  });
+  const request = loader(holding, { signal: controller.signal });
+  const rejected = assert.rejects(request, { name: 'AbortError' });
+  await started.promise; controller.abort(); await rejected;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sourceSignal.aborted, true); assert.equal(companies, 0);
+});
+
+test('company assertion requests share verification while preserving surviving consumers on cancellation', async () => {
+  const started = deferredIdentityResponse(), waiting = deferredIdentityResponse(), controller = new AbortController();
+  let companies = 0, sourceSignal;
+  const loader = freshIdentityLoader({ cacheEnabled: () => false,
+    companyLoader: async (_cik, { signal }) => { companies++; sourceSignal = signal; started.resolve(); return waiting.promise; },
+  });
+  const first = loader(holding, { signal: controller.signal });
+  const rejected = assert.rejects(first, { name: 'AbortError' });
+  await started.promise;
+  const survivor = loader({ ...holding, putCall: 'PUT' });
+  await new Promise(resolve => setImmediate(resolve));
+  controller.abort(); await rejected;
+  assert.equal(sourceSignal.aborted, false);
+  waiting.resolve(company);
+  assert.equal((await survivor).status, 'resolved'); assert.equal(companies, 1);
+});
+
+test('late cancelled company verification cannot replace a newer assertion or delete its in-flight request', async () => {
+  const started = [deferredIdentityResponse(), deferredIdentityResponse()];
+  const waiting = [deferredIdentityResponse(), deferredIdentityResponse()], controller = new AbortController();
+  let calls = 0;
+  const loader = freshIdentityLoader({ cacheEnabled: () => false,
+    companyLoader: async () => { const index = calls++; assert.ok(index < 2); started[index].resolve(); return waiting[index].promise; },
+  });
+  const first = loader(holding, { signal: controller.signal });
+  const rejected = assert.rejects(first, { name: 'AbortError' });
+  await started[0].promise; controller.abort(); await rejected;
+  const second = loader(holding); await started[1].promise;
+  waiting[0].resolve({ ...company, name: 'Old company assertion' });
+  await new Promise(resolve => setImmediate(resolve));
+  const third = loader(holding); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 2);
+  waiting[1].resolve({ ...company, name: 'Current company assertion' });
+  const results = await Promise.all([second, third]);
+  assert.ok(results.every(result => result.issuer.name === 'Current company assertion'));
+  assert.equal((await loader.prepared(holding)).issuer.name, 'Current company assertion');
 });

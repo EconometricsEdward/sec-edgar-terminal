@@ -9,7 +9,7 @@ import ThirteenFSharedMarketReview from "./ThirteenFSharedMarketReview";
 import s from "./ThirteenFMarketConnections.module.css";
 
 const MarketPositioning = dynamic(() => import("./ThirteenFMarketPositioning"));
-type Props = { data: any; active: boolean; onInspectCompany: (holding: any) => void };
+type Props = { data?: any; cik?: string; period?: string; active: boolean; onSnapshot?: (snapshot: any) => void; onInspectCompany: (holding: any, report?: any) => void };
 const EMPTY_MEMBERS: any[] = [];
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const number = (value: unknown) => finite(value) ? value.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—";
@@ -137,7 +137,7 @@ function ThirteenFMarketPreview({ data, active, onInspectCompany }: Props) {
 }
 
 export default function ThirteenFMarketConnections(props: Props) {
-  return <ThirteenFSharedMarketReview key={`${props.data?.manager?.cik}:${props.data?.selectedPeriod}`} data={props.data} active={props.active} onInspectCompany={props.onInspectCompany}
+  return <ThirteenFSharedMarketReview key={`${props.cik || props.data?.manager?.cik}:${props.period ?? props.data?.selectedPeriod ?? ""}`} data={props.data} cik={props.cik} period={props.period} active={props.active} onSnapshot={props.onSnapshot} onInspectCompany={props.onInspectCompany}
     preview={enabled => <ThirteenFMarketPreview {...props} active={enabled} />}
-    evidence={(member, market) => <HoldingEvidence member={member} market={market} onInspectCompany={props.onInspectCompany} />} />;
+    evidence={(member, market, report) => <HoldingEvidence member={member} market={market} onInspectCompany={holding => props.onInspectCompany(holding, report)} />} />;
 }

@@ -118,6 +118,8 @@ test('bounded result summaries retain only verified holding identities and suppo
   assert.deepEqual(summary.markets.map(market => market.key), ['tff:134741:leveraged-funds']);
   assert.equal(summary.markets[0].members, undefined);
   assert.equal(summary.discovery, undefined); assert.equal(summary.identityEvidence, undefined);
+  assert.deepEqual(summary.sources, [{ url: source.discovery.sources[0].url, accession: '0000001234-26-000001',
+    form: '10-K', filed: '2026-02-20', reportDate: '2025-12-31' }]);
 });
 
 test('result summaries reject changed holdings, issuer proof, SEC passages and future checks', () => {
@@ -158,5 +160,25 @@ test('every completed status stays distinguishable from a retryable synthetic so
   }
   const summary = summarizeThirteenFReviewResult(frozen, failed);
   assert.equal(summary.checked, false); assert.equal(summary.issuer, null); assert.deepEqual(summary.markets, []);
+  assert.deepEqual(summary.sources, []);
   assert.throws(() => summarizeThirteenFReviewResult(frozen, { ...failed, retryable: false }), { code: 'INVALID_REVIEW_REPORT' });
+});
+
+test('published summary source links bind even a no-match report to the verified issuer and original filing dates', () => {
+  const frozen = prepareThirteenFReviewReport(report()), holding = frozen.portfolio.holdings[0];
+  const noMatch = result(holding, 'Our business includes services to companies in many industries throughout the year.');
+  const summary = summarizeThirteenFReviewResult(frozen, noMatch);
+  assert.equal(summary.sources.length, 1); assert.equal(summary.sources[0].filed, '2026-02-20');
+  assert.equal(summary.sources[0].reportDate, '2025-12-31');
+  for (const mutate of [
+    value => { value.discovery.sources[0].url = 'https://www.sec.gov/Archives/edgar/data/9999/000000123426000001/report.htm'; },
+    value => { value.discovery.sources[0].url += '?redirect=other'; },
+    value => { value.discovery.sources[0].filed = '2026-02-30'; },
+    value => { value.discovery.sources[0].reportDate = '2026-03-31'; },
+  ]) {
+    const changed = structuredClone(noMatch); mutate(changed);
+    assert.throws(() => summarizeThirteenFReviewResult(frozen, changed), { code: 'INVALID_REVIEW_REPORT' });
+  }
+  noMatch.discovery.sources[0].status = 'unavailable';
+  assert.deepEqual(summarizeThirteenFReviewResult(frozen, noMatch).sources, []);
 });

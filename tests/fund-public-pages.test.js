@@ -37,6 +37,7 @@ function fixture(result = null, fail = false) {
         readPublicManagerSummary: async (...args) => { calls.push(['manager', ...args]); if (fail) throw new Error('private credentials'); return result; },
       };
       if (name.endsWith('/FundResearchBrief')) return compile('brief');
+      if (name.endsWith('/ManagerMarketResearch')) return function MarketResearch() { return null; };
       if (name.endsWith('/FundClient')) return function Client(props) { return createElement('div', { 'data-client-ticker': props.urlTicker, 'data-client-accession': props.selectedAccession }); };
       if (name.endsWith('/FundsWorkspace')) return function Workspace() { return createElement('div', { 'data-workspace': 'preserved' }); };
       if (name.endsWith('.css')) return new Proxy({}, { get: (_target, key) => key === '__esModule' ? false : String(key) });

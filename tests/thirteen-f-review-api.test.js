@@ -25,7 +25,7 @@ const post = (body = { cik: CIK, period: PERIOD }, options = {}) => new Request(
 const forbidden = async () => { assert.fail('This request must not perform source, worker or unrelated store operations.'); };
 function api(overrides = {}) {
   return createThirteenFReviewApi({ enabled: () => true, rateLimit: async () => ({ allowed: true }),
-    portfolioLoader: forbidden, schedule: forbidden,
+    portfolioLoader: forbidden, schedule: forbidden, initialChart: forbidden,
     store: { read: forbidden, result: forbidden, enqueue: forbidden }, ...overrides });
 }
 
@@ -44,6 +44,43 @@ test('progress GET only reads saved review pages, with bounded filters and a pin
   assert.match(response.headers.get('cache-control'), /s-maxage=5/);
   assert.equal(response.headers.get('x-schema-version'), THIRTEEN_F_REVIEW_SCHEMA);
   assert.equal(rate.max, 120); assert.match(rate.key, /:read:/);
+});
+
+test('compact snapshot opens the latest saved quarter without loading the manager report', async () => {
+  let received;
+  const market = { family: 'tff', contract: '099741', group: 'leveraged-funds' };
+  const chart = { report_family: 'tff', selection: { contract: '099741' } };
+  const saved = { job: { cik: CIK, period: PERIOD, total: 5696 }, publicationVersion: '17', markets: [market], rows: [] };
+  const endpoint = api({ store: { snapshot: async params => { received = params; return saved; } },
+    initialChart: async value => { assert.equal(value, market); return chart; } });
+  const response = await endpoint.GET(new Request(`${BASE}?cik=${CIK}&view=snapshot&version=17`));
+  assert.equal(response.status, 200);
+  assert.deepEqual(received, { cik: CIK, period: null, view: 'snapshot' });
+  assert.deepEqual(await response.json(), { ...saved, initialChart: chart });
+  assert.match(response.headers.get('cache-control'), /s-maxage=60/);
+});
+
+test('progress uses only the small progress record and supports an unchanged 304', async () => {
+  const saved = { job: { cik: CIK, period: PERIOD, reviewed: 102, total: 5696 }, publicationVersion: '17' };
+  const endpoint = api({ store: { progress: async params => { assert.equal(params.view, 'progress'); return saved; } } });
+  const response = await endpoint.GET(get('view=progress'));
+  assert.deepEqual(await response.json(), saved);
+  const unchanged = await endpoint.GET(get('view=progress', { headers: { 'If-None-Match': response.headers.get('etag') } }));
+  assert.equal(unchanged.status, 304); assert.equal(await unchanged.text(), '');
+});
+
+test('an unavailable initial chart cannot hide saved connections or trigger fallback source work', async () => {
+  const saved = { job: { cik: CIK, period: PERIOD }, publicationVersion: '18', markets: [{ key: 'saved' }], rows: [] };
+  const response = await api({ store: { snapshot: async () => saved }, initialChart: async () => { throw new Error('Chart unavailable'); } })
+    .GET(get('view=snapshot'));
+  assert.equal(response.status, 200); assert.deepEqual(await response.json(), saved);
+});
+
+test('compact views reject ambiguous selectors and cannot accept caller-defined source work', async () => {
+  for (const suffix of ['view=unknown', 'view=snapshot&view=progress', 'view=snapshot&key=abc', 'view=progress&offset=1',
+    'view=snapshot&reportHash=' + HASH, 'view=progress&version=2', 'view=snapshot&version=', 'view=snapshot&version=bad%2Fpath', 'version=2']) {
+    assert.equal((await api({ rateLimit: forbidden }).GET(get(suffix))).status, 400, suffix);
+  }
 });
 
 test('GET defaults to fifty rows and an absent job does not create or schedule research', async () => {

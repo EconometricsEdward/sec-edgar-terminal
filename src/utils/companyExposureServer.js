@@ -10,6 +10,7 @@ import { isCftcEnabled } from './cftcFeature.js';
 import { cftcDate } from './cftc.js';
 import { parseCompanyCftcRequest } from './companyCftc.js';
 import { COMPANY_EXPOSURE_SCHEMA_VERSION, COMPANY_EXPOSURE_MAX_TEXT, COMPANY_EXPOSURE_LIMITATIONS, extractCompanyExposureMap } from './companyExposure.js';
+import { companyExposureRevisionCache } from './companyExposureRevisionCache.js';
 
 export const COMPANY_EXPOSURE_CACHE_NAMESPACE = `edgar.company-exposure-sources.v1:${cacheDeploymentScope()}`;
 export const COMPANY_EXPOSURE_MAX_HISTORY_FILES = 2;
@@ -120,8 +121,8 @@ function initialResult(selection, now) {
   };
 }
 
-function fillDerived(result, inputs) {
-  const extracted = extractCompanyExposureMap(inputs, { companyName: result.companyName, ticker: result.ticker });
+function fillDerived(result, inputs, prepared = null) {
+  const extracted = prepared || extractCompanyExposureMap(inputs, { companyName: result.companyName, ticker: result.ticker });
   result.rows = extracted.rows;
   Object.assign(result.coverage, extracted.coverage);
   result.coverage.filingsScanned = inputs.length;
@@ -144,10 +145,35 @@ function fillDerived(result, inputs) {
   return result;
 }
 
+async function fillPreparedDerived(result, inputs, rawSources, { signal, revisionCache }) {
+  signal?.throwIfAborted();
+  const cached = inputs.length ? await revisionCache.extraction(result, rawSources, { signal }) : null;
+  const extracted = cached?.extracted || extractCompanyExposureMap(inputs, { companyName: result.companyName, ticker: result.ticker });
+  if (cached) result.generatedAt = cached.generatedAt;
+  fillDerived(result, inputs, extracted);
+  if (!cached && inputs.length) await revisionCache.saveExtraction(result, rawSources, extracted, { signal });
+  signal?.throwIfAborted();
+  return result;
+}
+
+function encodedSource(source, cik, input) {
+  const text = input.text.slice(0, COMPANY_EXPOSURE_MAX_TEXT + 1);
+  return { ...source, gzip: gzipSync(text).toString('base64'), digest: binding(source, cik, text) };
+}
+
+function decodeDocumentSource(raw, selection, cik, companyName, now) {
+  if (!raw) return null;
+  const snapshot = { cacheVersion: COMPANY_EXPOSURE_SCHEMA_VERSION, ticker: selection.ticker, asOf: selection.asOf,
+    cik, companyName, checkedAt: new Date(now).toISOString(), historyFilesScanned: 0, sources: [raw] };
+  snapshot.integrity = snapshotIntegrity(snapshot);
+  return decodeCompanyExposureSnapshot(snapshot, selection, now);
+}
+
 /** Injectable transport verifies source selection, partial outages and date limits
  * without fixtures becoming an alternate runtime data source. */
 export async function discoverCompanyExposures(selection, {
   now = new Date(), signal, lookupTicker = getOperatingTicker, loadSubmissions = submissionsJson, loadFilingText = filingText, onSnapshot, previousSnapshot,
+  revisionCache = companyExposureRevisionCache,
 } = {}) {
   const checked = normalizeSelection(selection, now);
   const result = initialResult(checked, now), cutoff = checked.asOf || result.checkedAt.slice(0, 10);
@@ -198,7 +224,14 @@ export async function discoverCompanyExposures(selection, {
         // check as a new download. Partial history remains explicitly partial.
         const reusable = previous?.sources.find(item => sameFiling(item, { ...filing, role }));
         const input = reusable && previous.inputs.find(item => item.role === role && sameFiling({ ...item.filing, role }, source));
-        if (previous?.cik === cik && reusable && input) return { source: { ...reusable }, input };
+        if (previous?.cik === cik && reusable && input) {
+          const raw = previousSnapshot.sources.find(item => sameFiling(item, source));
+          await revisionCache.saveDocument(cik, raw, { signal });
+          return { source: { ...reusable }, input, raw };
+        }
+        const raw = await revisionCache.document(cik, source, { signal });
+        const saved = decodeDocumentSource(raw, checked, cik, result.companyName, now);
+        if (saved) return { source: saved.sources[0], input: saved.inputs[0], raw };
         const loaded = await bounded(loadFilingText(cik, filing, { signal }), signal);
         if (loaded?.error || typeof loaded?.text !== 'string' || loaded.text.trim().length < 30) {
           throw error('The eligible SEC filing did not return usable narrative text.', 'SEC_FILING_TEXT_UNAVAILABLE');
@@ -209,7 +242,9 @@ export async function discoverCompanyExposures(selection, {
         if (!validTime(retrievedAt)) throw error('The SEC source retrieval timestamp could not be verified.', 'SEC_SOURCE_INVALID', 502);
         source.status = 'ready'; source.retrievedAt = retrievedAt;
         source.textCharactersRetrieved = loaded.text.length;
-        return { source, input: { text: loaded.text, filing, role } };
+        const nextInput = { text: loaded.text, filing, role }, nextRaw = encodedSource(source, cik, nextInput);
+        await revisionCache.saveDocument(cik, nextRaw, { signal });
+        return { source, input: nextInput, raw: nextRaw };
       } catch (cause) {
         source.code = cause.code || 'SEC_FILING_TEXT_UNAVAILABLE';
         source.message = 'This eligible report could not be read. Its missing passages have not been replaced with an older report.';
@@ -218,8 +253,9 @@ export async function discoverCompanyExposures(selection, {
     }));
     result.sources = outcomes.map(item => item.source);
     const inputs = outcomes.map(item => item.input).filter(Boolean);
-    fillDerived(result, inputs);
-    if (['ready', 'no_matches', 'no_filing'].includes(result.status)) onSnapshot?.(encodeCompanyExposureSnapshot(result, inputs));
+    const rawSources = outcomes.map(item => item.raw).filter(Boolean);
+    await fillPreparedDerived(result, inputs, rawSources, { signal, revisionCache });
+    if (['ready', 'no_matches', 'no_filing'].includes(result.status)) onSnapshot?.(encodeCompanyExposureSnapshot(result, inputs, rawSources));
     return result;
   } catch (cause) {
     if (cause.status === 404) throw cause;
@@ -241,15 +277,16 @@ function snapshotIntegrity(snapshot) {
 
 /** Persist source text, not classifications or exposure amounts. A cache hit
  * reruns the current extraction engine and recreates all derived fields. */
-export function encodeCompanyExposureSnapshot(result, inputs) {
+export function encodeCompanyExposureSnapshot(result, inputs, rawSources = []) {
   const snapshot = {
     cacheVersion: COMPANY_EXPOSURE_SCHEMA_VERSION, ticker: result.ticker, asOf: result.asOf,
     cik: result.cik, companyName: result.companyName, checkedAt: result.checkedAt,
     historyFilesScanned: result.coverage.historyFilesScanned,
     sources: result.sources.map(source => {
+      const prepared = rawSources.find(item => sameFiling(item, source));
+      if (prepared) return prepared;
       const input = inputs.find(item => item.filing.accession === source.accession && item.role === source.role);
-      const text = input.text.slice(0, COMPANY_EXPOSURE_MAX_TEXT + 1);
-      return { ...source, gzip: gzipSync(text).toString('base64'), digest: binding(source, result.cik, text) };
+      return encodedSource(source, result.cik, input);
     }),
   };
   return { ...snapshot, integrity: snapshotIntegrity(snapshot) };
@@ -302,7 +339,7 @@ function ttlFor(result) { return result.status === 'ready' ? 6 * 3600 : result.s
  * continues to hold only verified sources, so cold processes rerun extraction. */
 export function createCompanyExposureLoader({ read = warmGet, write = warmSet,
   discover = discoverCompanyExposures, enabled = isCftcEnabled, now = Date.now,
-  cacheBytes = MAX_LOCAL_CACHE_BYTES,
+  cacheBytes = MAX_LOCAL_CACHE_BYTES, revisionCache = companyExposureRevisionCache,
 } = {}) {
   const cache = new Map(), inFlight = new Map();
   let usedBytes = 0;
@@ -336,7 +373,19 @@ export function createCompanyExposureLoader({ read = warmGet, write = warmSet,
     signal?.addEventListener('abort', release, { once: true });
     return bounded(entry.task, signal).finally(release);
   };
-  return async function load(selection, { signal } = {}) {
+  async function restoreFresh(stored, checked, signal) {
+    const age = now() - Date.parse(stored?.checkedAt);
+    if (age < 0 || !(age < 6 * 3600 * 1000)) return null;
+    const decoded = decodeCompanyExposureSnapshot(stored, checked, now());
+    if (!decoded) return null;
+    const result = initialResult(checked, stored.checkedAt);
+    result.companyName = stored.companyName; result.cik = stored.cik; result.sources = decoded.sources;
+    result.generatedAt = new Date(now()).toISOString();
+    result.coverage.historyFilesScanned = stored.historyFilesScanned; result.coverage.filingsEligible = decoded.sources.length;
+    const restored = await fillPreparedDerived(result, decoded.inputs, stored.sources, { signal, revisionCache });
+    return Date.parse(restored.checkedAt) + ttlFor(restored) * 1000 > now() ? restored : null;
+  }
+  const load = async function load(selection, { signal } = {}) {
     if (!enabled()) throw error('CFTC company exposure research is disabled.', 'CFTC_DISABLED');
     const checked = normalizeSelection(selection, now());
     if (signal?.aborted) throw error('The SEC source request reached its time limit. Please retry.', 'COMPANY_EXPOSURE_TIMEOUT');
@@ -358,13 +407,12 @@ export function createCompanyExposureLoader({ read = warmGet, write = warmSet,
       assertActive();
       // Freshness and source retention are separate: a due manifest check can
       // reuse unchanged filing text for up to the research cache's 25h cap.
-      const age = now() - Date.parse(stored?.checkedAt);
-      const restored = age >= 0 && age < 6 * 3600 * 1000 ? restoreCompanyExposureSnapshot(stored, checked, now()) : null;
-      if (restored && Date.parse(restored.checkedAt) + ttlFor(restored) * 1000 > now()) {
+      const restored = await restoreFresh(stored, checked, taskSignal);
+      if (restored) {
         remember(key, restored); return restored;
       }
       let snapshot;
-      const value = await bounded(discover(checked, { now: new Date(now()), signal: taskSignal, previousSnapshot: stored,
+      const value = await bounded(discover(checked, { now: new Date(now()), signal: taskSignal, previousSnapshot: stored, revisionCache,
         onSnapshot: prepared => { if (!taskSignal.aborted) snapshot = prepared; } }), taskSignal);
       assertActive();
       if (snapshot && ['ready', 'no_matches', 'no_filing'].includes(value.status) && !value.retryable && value.coverage.searchComplete) {
@@ -384,6 +432,21 @@ export function createCompanyExposureLoader({ read = warmGet, write = warmSet,
     }).catch(() => {});
     return subscribe(key, entry, signal);
   };
+  // Cache-only reads may regenerate the current extraction from verified text,
+  // but never contact SEC or advance the original manifest-check timestamp.
+  load.prepared = async (selection, { signal } = {}) => {
+    if (!enabled()) return null;
+    signal?.throwIfAborted();
+    const checked = normalizeSelection(selection, now());
+    const key = `${checked.cik ? `cik:${checked.cik}` : checked.ticker}:${checked.asOf || 'latest'}`, local = cache.get(key);
+    if (local?.expires > now()) return local.value;
+    const stored = await bounded(read(COMPANY_EXPOSURE_CACHE_NAMESPACE, key), signal);
+    const restored = await restoreFresh(stored, checked, signal);
+    signal?.throwIfAborted();
+    if (restored) remember(key, restored);
+    return restored;
+  };
+  return load;
 }
 
 export const loadCompanyExposures = createCompanyExposureLoader();
@@ -391,3 +454,5 @@ export const loadCompanyExposures = createCompanyExposureLoader();
 export async function loadCompanyExposuresByCik(cik, { asOf = null, signal } = {}) {
   return loadCompanyExposures(normalizeCompanyExposureCikRequest(cik, asOf), { signal });
 }
+loadCompanyExposuresByCik.prepared = (cik, { asOf = null, signal } = {}) =>
+  loadCompanyExposures.prepared(normalizeCompanyExposureCikRequest(cik, asOf), { signal });
