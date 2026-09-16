@@ -9,10 +9,13 @@ export const metadata = buildPageMetadata({
   path: "/workspace/demo",
 });
 
-export default function PortfolioDemoPage() {
+export default async function PortfolioDemoPage({ searchParams }: {
+  searchParams: Promise<{ portfolioTab?: string | string[] }>;
+}) {
+  const query = await searchParams;
   return (
     <div className={s.page} data-research-workspace data-demo-universe="sp500-coverage">
-      <DemoResults />
+      <DemoResults initialArea={query.portfolioTab === "changes" ? "changes" : "analytics"} />
     </div>
   );
 }

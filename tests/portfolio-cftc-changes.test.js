@@ -201,6 +201,8 @@ test("future and old reports are excluded, while recent stale source context is 
   ]) });
   assert.equal(future.events.length, 0);
   assert.equal(future.coverage.futureReports, 1);
+  assert.equal(future.marketChecks[0].status, "unavailable");
+  assert.equal(future.coverage.marketUnavailable, 1);
   const old = await build({}, { loadHistory: async () => history(markets.crude, [
     { reportDate: "2026-07-01", long: 140000, short: 125000, openInterest: 1000000 },
     { reportDate: "2026-07-08", long: 150000, short: 120000, openInterest: 1000000 },
@@ -252,6 +254,58 @@ test("aborted portfolio discovery does not start source work or claim companies 
   const result = await build({}, { signal: controller.signal, loadContext: async () => assert.fail("aborted source load") });
   assert.equal(result.coverage.unavailable, 1);
   assert.equal(result.coverage.noLink, 0);
+  assert.equal(result.companyChecks[0].status, "unavailable");
+  assert.deepEqual(result.companyChecks[0].marketKeys, []);
+});
+
+test("prepared readers cover all 100 with exact company outcomes and shared market checks", async () => {
+  const companies = Array.from({ length: 100 }, (_, index) => ({ ticker: `P${index}`, cik: String(index + 1).padStart(10, "0") }));
+  let marketReads = 0;
+  const result = await build({ companies }, {
+    companyLimit: 100,
+    loadContext: async ({ ticker }) => {
+      const issuer = companies.find(item => item.ticker === ticker);
+      if (ticker === "P98") return context({ issuer, status: "no_matches" });
+      if (ticker === "P99") throw Object.assign(new Error("private source detail"), { code: "SEC_UPSTREAM_UNAVAILABLE" });
+      return context({ issuer });
+    },
+    loadHistory: async () => { marketReads += 1; return history(); },
+  });
+  assert.equal(result.companyChecks.length, 100);
+  assert.equal(result.coverage.requested, 100);
+  assert.equal(result.coverage.limited, false);
+  assert.equal(result.coverage.checked, 99);
+  assert.equal(result.coverage.linked, 98);
+  assert.equal(result.coverage.noLink, 1);
+  assert.equal(result.coverage.unavailable, 1);
+  assert.equal(result.companyChecks[98].status, "no_matches");
+  assert.equal(result.companyChecks[99].code, "SEC_UPSTREAM_UNAVAILABLE");
+  assert.deepEqual(result.companyChecks[0].marketKeys, ["disaggregated:067651:managed-money"]);
+  assert.equal(result.marketChecks.length, 1);
+  assert.equal(result.marketChecks[0].status, "ready");
+  assert.equal(marketReads, 1);
+  assert.equal(result.events[0].relatedCompanies.length, 98);
+  assert.doesNotMatch(JSON.stringify(result), /private source detail/);
+  await assert.rejects(build({}, { companyLimit: 101 }), /processing bound/);
+});
+
+test("market outcomes retain failed and no-event markets so progressive batches can deduplicate coverage", async () => {
+  const result = await build({}, {
+    loadContext: async () => context({ links: [markets.crude, markets.gas] }),
+    loadHistory: async ({ code }) => {
+      if (code === markets.gas.contract) throw Object.assign(new Error("unprepared"), { code: "CFTC_REPORT_NOT_PREPARED" });
+      return history(markets.crude, [
+        { reportDate: "2026-09-01", long: 100, short: 50, openInterest: 10000 },
+        { reportDate: "2026-09-08", long: 100, short: 50, openInterest: 10000 },
+      ]);
+    },
+  });
+  assert.equal(result.events.length, 0);
+  assert.equal(result.marketChecks.length, 2);
+  assert.equal(result.marketChecks[0].belowThreshold, 1);
+  assert.equal(result.marketChecks[1].status, "unavailable");
+  assert.equal(result.marketChecks[1].code, "CFTC_REPORT_NOT_PREPARED");
+  assert.equal(result.companyChecks[0].marketKeys.length, 2);
 });
 
 test("portfolio route rejects malformed JSON and invalid fields with HTTP 400 before source discovery", async () => {

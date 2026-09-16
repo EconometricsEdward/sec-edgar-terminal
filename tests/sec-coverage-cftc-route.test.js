@@ -9,11 +9,14 @@ async function fixture() {
   const dependency = (name, namedExports) => mock.module(new URL(name, root).href, { namedExports });
   dependency('src/utils/dataStore.js', { getDataStoreMode: dataset => dataset === 'cftc' ? scenario.mode || 'supabase' : 'supabase' });
   dependency('src/utils/dataStoreDeployment.js', { isSecCoverageScheduleEnabled: () => true });
-  dependency('src/utils/secCoverageScheduleAuth.js', { authorizeSecCoverageSchedule: async () => true });
+  dependency('src/utils/secCoverageScheduleAuth.js', { authorizeSecCoverageSchedule: async () => {
+    time += scenario.authMs || 0; return true;
+  } });
   dependency('src/utils/cftcFeature.js', { isCftcEnabled: () => scenario.enabled !== false });
   dependency('src/utils/secCoverageMaintenance.js', { maintainSecCoverageMembership: async () => ({ status: 'current' }) });
   dependency('src/utils/secCoverageJobs.js', { runSecCoverageJob: async options => {
     calls.push(['sec', options]); time += scenario.researchMs || 0;
+    if (scenario.secFail) throw new Error('private SEC detail');
     return { status: 'done', processed: 6, coverage: { succeeded: 6 } };
   } });
   dependency('src/utils/redisMaintenance.js', { maintainRedisCache: async options => {
@@ -28,6 +31,11 @@ async function fixture() {
     calls.push(['cftc', options]);
     if (scenario.fail) throw new Error('private provider request detail');
     return scenario.result || { status: 'progress', prepared: 3, limited: 1 };
+  } });
+  dependency('src/utils/portfolioCftcPreparation.js', { runPortfolioCftcPreparation: async options => {
+    calls.push(['demo', options]);
+    if (scenario.demoFail) throw new Error('private preparation detail');
+    return { status: 'progress', completedCompanies: 6 };
   } });
   mock.method(Date, 'now', () => time);
   mock.method(globalThis, 'setTimeout', fn => { abort = fn; return 0; });
@@ -45,11 +53,19 @@ async function fixture() {
     return body;
   }
   const completed = await run();
-  assert.deepEqual(calls.map(([name]) => name), ['sec', 'cache', 'cftc']);
+  assert.deepEqual(calls.map(([name]) => name), ['sec', 'cache', 'cftc', 'demo']);
+  assert.equal(calls[3][1].deadline, START + 45_000);
+  assert.notEqual(calls[3][1].signal, calls[0][1].signal);
+  assert.equal(completed.portfolioCftcPreparation.completedCompanies, 6);
   assert.equal(completed.cftcHistoryPreparation.prepared, 3);
   assert.equal(calls[2][1].maxContracts, 12);
   assert.equal(calls[2][1].deadline, START + 180_000);
   assert.equal(calls[2][1].signal, calls[0][1].signal);
+  await run({ authMs: 12_000, researchMs: 230_000 });
+  assert.equal(calls.find(([name]) => name === 'sec')[1].deadline, START + 12_000 + 225_000,
+    'signature verification must not shorten the existing SEC research budget');
+  assert.equal(calls.find(([name]) => name === 'demo')[1].deadline, START + 275_000,
+    'the continuation deadline includes authorization time within the HTTP request budget');
   await run({ researchMs: 175_000, cacheMs: 5000 });
   assert.equal(calls.find(([name]) => name === 'cftc')[1].deadline, START + 225_000);
   for (const value of [{ researchMs: 175_000, cacheMs: 5001 }, { researchMs: 200_000 }, { abort: true }]) {
@@ -67,6 +83,14 @@ async function fixture() {
   const failed = await run({ fail: true });
   assert.deepEqual(failed.cftcHistoryPreparation, { status: 'unavailable', code: 'CFTC_HISTORY_PREPARATION_UNAVAILABLE' });
   assert.equal(JSON.stringify(failed).includes('private provider'), false);
+  const failedDemo = await run({ demoFail: true });
+  assert.deepEqual(failedDemo.portfolioCftcPreparation, { status: 'unavailable', code: 'PORTFOLIO_CFTC_PREPARATION_UNAVAILABLE' });
+  scenario = { secFail: true, researchMs: 230_000 }; time = START; calls = [];
+  const secFailure = await GET(new Request('https://secedgarterminal.com/api/cron/sec-coverage'));
+  assert.equal(secFailure.status, 503);
+  assert.equal((await secFailure.json()).portfolioCftcPreparation.completedCompanies, 6);
+  assert.deepEqual(calls.map(([name]) => name), ['sec', 'demo']);
+  assert.equal(calls[1][1].deadline, START + 275_000);
   mock.restoreAll();
 }
 

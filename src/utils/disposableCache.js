@@ -166,7 +166,7 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
     if (expiresAt !== null && Date.parse(expiresAt) <= now()) return { stored: false, reason: 'expired' };
     let raw; try { const text = JSON.stringify(payload); if (typeof text !== 'string') throw new Error(); raw = Buffer.from(text); }
     catch { throw new DisposableCacheError('invalid_json', 422); }
-    if (raw.length < 1 || raw.length > LIMITS.rawBytes) throw new DisposableCacheError('raw_too_large', 413);
+    if (raw.length < 1 || raw.length > Math.min(LIMITS.rawBytes, p.maxRawBytes ?? Infinity)) throw new DisposableCacheError('raw_too_large', 413);
     if (p.sourceCik && String(payload?.cik || '').padStart(10, '0') !== p.sourceCik) throw new DisposableCacheError('source_identity_mismatch', 422);
     const compressed = await zip(raw, { level: 6 });
     if (compressed.length > LIMITS.gzipBytes) throw new DisposableCacheError('compressed_too_large', 413);

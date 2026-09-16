@@ -8,6 +8,7 @@ EDGAR Terminal is a free, source-linked research application for SEC filings, co
 - [CFTC Positioning](https://secedgarterminal.com/market?tab=positioning): separate futures-market context from official futures-only COT reports.
 - [Fundamental Lab methodology](https://secedgarterminal.com/market/factors): definitions, eligibility rules, formulas and limitations for the SEC-only universe diagnostics.
 - [Research Hub](https://secedgarterminal.com/workspace): portfolio-level company, concentration, financial-profile, screener, scenario and SEC evidence tools.
+- [Demo: What changed](https://secedgarterminal.com/workspace/demo/changes): server-rendered, dated SEC-linked CFTC market changes for the same 100-company demo universe used throughout the Research Hub. Includes company checks, incomplete/stale coverage and original-source links; candidate market connections are not measured issuer exposures. Prepared results may not yet be available.
 - [Filings](https://secedgarterminal.com/filings), [Analysis](https://secedgarterminal.com/analysis), [Risk](https://secedgarterminal.com/risk), [Compare](https://secedgarterminal.com/compare), [Funds](https://secedgarterminal.com/fund), and [Disclosures](https://secedgarterminal.com/disclosures).
 
 ## Active public data APIs
@@ -16,6 +17,7 @@ EDGAR Terminal is a free, source-linked research application for SEC filings, co
 - `GET /api/v1/cftc/markets?family=tff|disaggregated&date=latest|YYYY-MM-DD` — validated family catalog plus the curated launch-market snapshot. Schema: `/schemas/cftc-markets-v1.schema.json`.
 - `GET /api/v1/cftc/history?family=...&contract=...&group=...&date=...&window=1y|3y|5y` — bounded single-contract history. Schema: `/schemas/cftc-history-v1.schema.json`.
 - `GET /api/v1/cftc/status` — cache-only family-level readiness for prepared CFTC snapshots. It recomputes cache age and report currency without contacting the upstream CFTC service.
+- `GET /api/v1/cftc/portfolio-changes/demo?days=30` — read-only prepared public demo changes; accepts 1–90 days. It never starts SEC/CFTC acquisition. Preserve companyChecks, marketChecks, preparation status, coverage, observation dates and source evidence. HTTP 503 means prepared research is unavailable or disabled, not that no changes occurred.
 - [OpenAPI document](https://secedgarterminal.com/openapi.json).
 
 All active data endpoints are read-only. The factor-universe and CFTC markets/history endpoints are rate limited; the CFTC status endpoint is cache-only and never contacts the upstream service. Preserve response nulls, coverage counts, report dates, retrieval times, schema/calculation versions, stale or partial status, source URLs and formulas.

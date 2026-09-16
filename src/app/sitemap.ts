@@ -20,6 +20,7 @@ const MAIN_PAGES: Array<
   ["/disclosures", "weekly", 0.8],
   ["/workspace", "weekly", 0.8],
   ["/workspace/demo", "monthly", 0.6],
+  ["/workspace/demo/changes", "daily", 0.75],
   ["/workspace/portfolio-guide", "monthly", 0.7],
 ];
 

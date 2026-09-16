@@ -90,7 +90,7 @@ function present(point: any) {
   return `${point.value.toLocaleString("en-US", { maximumFractionDigits: 2 })}${point.unit === "%" ? "%" : point.unit && point.unit !== "ratio" ? ` ${point.unit}` : ""}`;
 }
 
-export default function DemoResults() {
+export default function DemoResults({ initialArea = "analytics" }: { initialArea?: "analytics" | "changes" }) {
   const [sourceEvidence, setSourceEvidence] = useState<any>({});
   const [disclosureRequest, setDisclosureRequest] = useState<any>(null);
   const captureSources = useCallback(
@@ -122,7 +122,7 @@ export default function DemoResults() {
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [area, setArea] = useState("analytics");
+  const [area, setArea] = useState<string>(initialArea);
   const [allocationBasis, setAllocationBasis] = useState("example");
   const [analyticsArea, setAnalyticsArea] = useState("overview");
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
