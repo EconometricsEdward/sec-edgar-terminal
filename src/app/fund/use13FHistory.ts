@@ -1,56 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { calendarPeriods13F, project13FHistoryQuarter, summarize13FHistory } from "../../utils/thirteenFHistory.js";
+import { create13FHistoryClient, historyClientSlot, settled13FHistorySlot } from "../../utils/thirteenFHistoryClient.js";
 
-type Slot = { period: string; status: "ready" | "unavailable" | "loading" | "pending"; projection?: any; reason?: string };
-const cache = new Map<string, { data: any; bytes: number; expires: number }>();
-const MAX_BYTES = 512 * 1024;
-const CACHE_BYTES = 8 * 1024 * 1024;
-
-async function fetchQuarter(cik: string, period: string, keys: string[], signal: AbortSignal, force: boolean) {
-  const query = new URLSearchParams({ cik, period, keys: JSON.stringify(keys) });
-  const cacheKey = query.toString();
-  const cached = cache.get(cacheKey);
-  if (!force && cached && cached.expires > Date.now()) return cached.data;
-  const response = await fetch(`/api/fund-13f/history?${query}`, { signal, ...(force ? { cache: "no-cache" as RequestCache } : {}) });
-  if (Number(response.headers.get("content-length")) > MAX_BYTES) throw new Error("This history response exceeded the supported size.");
-  const reader = response.body?.getReader();
-  let raw = "", bytes = 0;
-  if (reader) {
-    const decoder = new TextDecoder();
-    try {
-      for (;;) {
-        const part = await reader.read();
-        if (part.done) break;
-        bytes += part.value.byteLength;
-        if (bytes > MAX_BYTES) { await reader.cancel(); throw new Error("This history response exceeded the supported size."); }
-        raw += decoder.decode(part.value, { stream: true });
-      }
-      raw += decoder.decode();
-    } finally { reader.releaseLock(); }
-  } else { raw = await response.text(); bytes = raw.length * 2; }
-  signal.throwIfAborted();
-  if (bytes > MAX_BYTES) throw new Error("This history response exceeded the supported size.");
-  let data: any;
-  try { data = JSON.parse(raw); } catch { throw new Error("This SEC quarter could not be opened. Retry to fill the gap."); }
-  if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "This SEC quarter is temporarily unavailable.");
-  const projection = data.projection;
-  if (data.manager?.cik !== cik || data.selectedPeriod !== period || !["ready", "unavailable"].includes(data.status) || data.status === "ready" && (projection?.cik !== cik || projection?.period !== period || !Array.isArray(projection?.trackedKeys) || keys.some(key => !projection.trackedKeys.includes(key)) || !projection?.positions || !Array.isArray(projection?.filings))) throw new Error("The response did not match this manager, quarter, and selected securities.");
-  // Validate every tracked observation before it can enter state. A malformed
-  // response should create a retryable gap, not throw during the next render.
-  if (data.status === "ready") summarize13FHistory([{ period, status: "ready", projection }], { cik });
-  if (data.status === "ready" && projection.complete && data.coverage?.selectedPeriodComplete) {
-    cache.delete(cacheKey);
-    let total = [...cache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
-    while (cache.size && (cache.size >= 48 || total + bytes > CACHE_BYTES)) {
-      const oldest = cache.keys().next().value!;
-      total -= cache.get(oldest)!.bytes; cache.delete(oldest);
-    }
-    cache.set(cacheKey, { data, bytes, expires: Date.now() + 300000 });
-  }
-  return data;
-}
+type Slot = { period: string; status: "ready" | "unavailable" | "loading" | "pending"; projection?: any; reason?: string; requestStatus?: "ready" | "unavailable" | "loading" | "pending"; detailReason?: string };
+const client = create13FHistoryClient();
 
 /** Load compact quarter projections progressively; never retain full multi-quarter portfolios. */
 export function use13FHistory(data: any, { count = 8, holdingKey = "" }: { count?: number; holdingKey?: string } = {}) {
@@ -58,46 +13,46 @@ export function use13FHistory(data: any, { count = 8, holdingKey = "" }: { count
   const period = data?.selectedPeriod || "";
   const portfolio = data?.portfolio;
   const boundedCount = [4, 8, 12].includes(count) ? count : 8;
-  const keysJson = useMemo(() => {
-    const top = [...(portfolio?.holdings || [])].sort((a: any, b: any) => (b.valueUsd || 0) - (a.valueUsd || 0)).slice(0, 31).map((row: any) => row.key);
-    return JSON.stringify([...new Set<string>([...top, ...(holdingKey ? [holdingKey] : [])])].sort());
-  }, [portfolio?.holdings, holdingKey]);
+  // Aggregate metrics are included independently of tracked securities. Request
+  // only the position being explored, not 31 unrelated positions on every click.
+  const trackedKey = holdingKey || portfolio?.holdings?.[0]?.key || "";
+  const keysJson = JSON.stringify(trackedKey ? [trackedKey] : []);
   const requestKey = `${cik}:${period}:${boundedCount}:${keysJson}`;
   const [state, setState] = useState<{ key: string; slots: Slot[] }>({ key: "", slots: [] });
   const [attempt, setAttempt] = useState<{ number: number; key: string; periods: string[] }>({ number: 0, key: "", periods: [] });
-  const latestState = useRef(state);
-  useEffect(() => { latestState.current = state; }, [state]);
-  const seed = useMemo(() => {
+  const seed: Slot[] = useMemo(() => {
     if (!cik || !period || !portfolio) return [];
-    return calendarPeriods13F(period, boundedCount).map((quarter: string): Slot => quarter === period ? { period: quarter, status: "ready", projection: project13FHistoryQuarter(portfolio, JSON.parse(keysJson)) } : { period: quarter, status: "pending" });
-  }, [cik, period, boundedCount, portfolio, keysJson]);
+    const keys = JSON.parse(keysJson);
+    return calendarPeriods13F(period, boundedCount).map((quarter: string): Slot => quarter === period
+      ? { period: quarter, status: "ready", requestStatus: "ready", projection: { ...project13FHistoryQuarter(portfolio, keys), observedAt: data?.observedAt || null, checkedAt: data?.cache?.checkedAt || data?.observedAt || null, stale: data?.cache?.stale === true } }
+      : historyClientSlot(client, cik, quarter, keys) as Slot);
+  }, [cik, period, boundedCount, portfolio, keysJson, data?.observedAt, data?.cache?.checkedAt, data?.cache?.stale]);
   useEffect(() => {
     if (!seed.length) return;
     let disposed = false;
     const controller = new AbortController();
     const keys = JSON.parse(keysJson);
-    const previous = latestState.current;
     const forced = new Set(attempt.key === requestKey ? attempt.periods : []);
-    const initial = seed.map(slot => {
-      const old = previous.key === requestKey ? previous.slots.find(item => item.period === slot.period) : null;
-      return slot.period === period ? slot : old && !forced.has(slot.period) ? old : slot;
-    });
+    const initial: Slot[] = seed.map(slot => slot.period === period ? slot : historyClientSlot(client, cik, slot.period, keys, { force: forced.has(slot.period) }) as Slot);
     setState({ key: requestKey, slots: initial });
     const update = (slot: Slot) => {
       if (!disposed) setState(previous => previous.key !== requestKey ? previous : { ...previous, slots: previous.slots.map(item => item.period === slot.period ? slot : item) });
     };
-    const queue = initial.filter(slot => slot.period !== period && ["pending", "loading"].includes(slot.status)).reverse();
+    const queue = initial.filter(slot => slot.period !== period && ["pending", "loading"].includes(slot.requestStatus || slot.status)).reverse();
     async function worker() {
       while (!disposed && queue.length) {
         const slot = queue.shift()!;
-        const force = forced.has(slot.period);
-        update({ ...slot, status: "loading" });
-        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(90000)]);
+        update({ ...slot, ...(slot.status === "ready" ? {} : { status: "loading" as const }), requestStatus: "loading" });
         try {
-          const response = await fetchQuarter(cik, slot.period, keys, signal, force);
-          update(response.status === "ready" ? { period: slot.period, status: "ready", projection: response.projection } : { period: slot.period, status: "unavailable", reason: response.reason || "No usable 13F holdings report was found for this quarter." });
-        } catch (error: any) {
-          if (!disposed) update({ period: slot.period, status: "unavailable", reason: signal.aborted ? "This quarter timed out. Retry to fill the gap." : error.message });
+          const result = await client.fetchQuarter(cik, slot.period, keys, controller.signal, forced.has(slot.period));
+          if (disposed) return;
+          update(settled13FHistorySlot(client, cik, slot.period, result, slot) as Slot);
+        } catch {
+          // Individual subscriptions may be canceled while another consumer of
+          // this exact manager/quarter/security continues. Never paint that abort
+          // as a missing SEC report, or update a newly selected manager.
+          if (disposed || controller.signal.aborted) return;
+          update(slot.status === "ready" ? { ...slot, requestStatus: "unavailable", detailReason: "This position could not be loaded. Retry to fill the gap." } : { period: slot.period, status: "unavailable", requestStatus: "unavailable", reason: "This quarter could not be loaded. Retry to fill the gap." });
         }
       }
     }
@@ -107,9 +62,12 @@ export function use13FHistory(data: any, { count = 8, holdingKey = "" }: { count
   const slots = state.key === requestKey ? state.slots : seed;
   const history = useMemo(() => summarize13FHistory(slots, { ...(cik ? { cik } : {}), maxQuarters: 12 }), [slots, cik]);
   const completed = slots.filter(slot => ["ready", "unavailable"].includes(slot.status)).length;
+  const positionCompleted = slots.filter(slot => ["ready", "unavailable"].includes(slot.requestStatus || slot.status)).length;
+  const positionLoading = !!trackedKey && positionCompleted < slots.length;
+  const positionErrors = slots.filter(slot => slot.detailReason).map(slot => ({ period: slot.period, reason: slot.detailReason }));
   const retry = useCallback((retryPeriod?: string) => {
-    const periods = retryPeriod ? [retryPeriod] : slots.filter(slot => slot.period !== period && (slot.status === "unavailable" || slot.status === "ready" && !slot.projection?.complete)).map(slot => slot.period);
+    const periods = retryPeriod ? slots.filter(slot => slot.period === retryPeriod && slot.period !== period).map(slot => slot.period) : slots.filter(slot => slot.period !== period && (slot.requestStatus === "unavailable" || slot.status === "unavailable" || slot.status === "ready" && !slot.projection?.complete)).map(slot => slot.period);
     if (periods.length) setAttempt(previous => ({ number: previous.number + 1, key: requestKey, periods }));
   }, [slots, period, requestKey]);
-  return { history, loading: completed < slots.length, completed, total: slots.length, retry };
+  return { history, loading: completed < slots.length, positionLoading, positionErrors, positionCompleted, completed, total: slots.length, retry };
 }
