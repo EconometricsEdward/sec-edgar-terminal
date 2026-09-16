@@ -188,17 +188,19 @@
   :global(html:not([data-reading-motion="full"])) .root .card::before { transition: none; }
 }
 @media (max-width: 1000px) {
+  .viewTabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .viewTabs button { flex-direction: column; gap: 8px; text-align: center; }
   .viewDetail { grid-template-columns: 56px minmax(0, 1fr); gap: 18px; }
   .viewIcon { width: 56px; height: 56px; }
   .viewFeatures { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 0; border: 0; }
 }
 @media (max-width: 700px) {
-  .viewTabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .viewPanel { padding: 20px; }
 }
-@media (max-width: 400px) {
+@media (max-width: 600px) {
   .viewTabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 400px) {
   .viewDetail { grid-template-columns: minmax(0, 1fr); }
   .viewIcon { display: none; }
   .viewFeatures { grid-column: 1; }
