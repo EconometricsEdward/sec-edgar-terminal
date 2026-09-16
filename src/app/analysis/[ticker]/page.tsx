@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { cache } from "react";
+import { cache, Suspense } from "react";
 import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
 import AnalysisWorkspace from "./AnalysisWorkspace";
@@ -77,8 +77,10 @@ export default async function AnalysisTickerPage(props: Props) {
       sameAs: [`https://www.sec.gov/edgar/browse/?CIK=${company.cik}`],
     }).replace(/</g, "\\u003c") }} />}
     <AnalysisResearchBrief summary={summary} selection={selected} hidden={settings.baseline !== "year"} />
+    <Suspense fallback={<p role="status">Opening the financial analysis workspace…</p>}>
     <AnalysisWorkspace urlTicker={selected.ticker} preloadedCik={company?.cik || ("cik" in summary ? summary.cik : null)}
       preloadedCompanyName={company?.name || summary.name || null} preloadedSicDescription={null}
       initialSettings={settings} cftcEnabled={isCftcEnabled()} />
+    </Suspense>
   </>;
 }
