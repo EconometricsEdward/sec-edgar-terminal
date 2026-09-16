@@ -13,6 +13,7 @@ import { COMPANY_EXPOSURE_SCHEMA_VERSION, COMPANY_EXPOSURE_MAX_TEXT, COMPANY_EXP
 
 export const COMPANY_EXPOSURE_CACHE_NAMESPACE = `edgar.company-exposure-sources.v1:${cacheDeploymentScope()}`;
 export const COMPANY_EXPOSURE_MAX_HISTORY_FILES = 2;
+export const COMPANY_EXPOSURE_SOURCE_RETENTION_SECONDS = 25 * 3600;
 const MAX_DOCUMENT_BYTES = 24_000_000, LOAD_BUDGET_MS = 45_000;
 const MAX_LOCAL_CACHE_BYTES = 16 * 1024 * 1024;
 const ANNUAL_FORMS = new Set(['10-K', '20-F', '40-F']);
@@ -22,6 +23,9 @@ const error = (message, code, status = 503) => Object.assign(new Error(message),
 export const parseCompanyExposureRequest = parseCompanyCftcRequest;
 const validDate = value => typeof value === 'string' && DATE_PATTERN.test(value) && cftcDate(value) === value;
 const validTime = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
+const completeManifestRows = rows => Array.isArray(rows?.accessionNumber)
+  && ['form', 'filingDate', 'reportDate', 'primaryDocument'].every(key => Array.isArray(rows[key]) && rows[key].length === rows.accessionNumber.length);
+const sameFiling = (a, b) => ['role', 'form', 'filed', 'reportDate', 'accession', 'primaryDoc', 'url'].every(key => a[key] === b[key]);
 
 /** Internal callers that already proved an issuer CIK must not round-trip
  * through a ticker, which can represent a different security or change over
@@ -143,10 +147,13 @@ function fillDerived(result, inputs) {
 /** Injectable transport verifies source selection, partial outages and date limits
  * without fixtures becoming an alternate runtime data source. */
 export async function discoverCompanyExposures(selection, {
-  now = new Date(), signal, lookupTicker = getOperatingTicker, loadSubmissions = submissionsJson, loadFilingText = filingText, onSnapshot,
+  now = new Date(), signal, lookupTicker = getOperatingTicker, loadSubmissions = submissionsJson, loadFilingText = filingText, onSnapshot, previousSnapshot,
 } = {}) {
   const checked = normalizeSelection(selection, now);
   const result = initialResult(checked, now), cutoff = checked.asOf || result.checkedAt.slice(0, 10);
+  const previousAge = new Date(now).getTime() - Date.parse(previousSnapshot?.checkedAt);
+  const previous = previousAge >= 0 && previousAge < COMPANY_EXPOSURE_SOURCE_RETENTION_SECONDS * 1000
+    ? decodeCompanyExposureSnapshot(previousSnapshot, checked, now) : null;
   try {
     const entry = checked.cik ? { cik: checked.cik, name: '' } : await bounded(lookupTicker(checked.ticker), signal);
     if (!entry) throw error('No SEC operating company matched that ticker.', 'COMPANY_NOT_FOUND', 404);
@@ -154,7 +161,7 @@ export async function discoverCompanyExposures(selection, {
     if (!/^\d{10}$/.test(cik) || Number(cik) <= 0) throw error('The SEC company identifier was invalid.', 'SEC_SOURCE_INVALID', 502);
     result.cik = cik; result.companyName = String(entry.name || checked.ticker || '').slice(0, 500);
     const manifest = await bounded(loadSubmissions(`CIK${cik}.json`, signal), signal);
-    if (String(manifest?.cik).padStart(10, '0') !== cik || !Array.isArray(manifest?.filings?.recent?.accessionNumber)) {
+    if (String(manifest?.cik).padStart(10, '0') !== cik || !completeManifestRows(manifest?.filings?.recent)) {
       throw error('The SEC manifest did not verify the selected company identity.', 'SEC_SOURCE_IDENTITY_MISMATCH', 502);
     }
     if (typeof manifest.name === 'string' && manifest.name.trim()) result.companyName = manifest.name.slice(0, 500);
@@ -174,7 +181,7 @@ export async function discoverCompanyExposures(selection, {
       result.coverage.historyFilesScanned += 1;
       try {
         const historic = await bounded(loadSubmissions(file.name, signal), signal);
-        if (!Array.isArray(historic?.accessionNumber)) throw error('The SEC history manifest was not readable.', 'SEC_HISTORY_INVALID', 502);
+        if (!completeManifestRows(historic)) throw error('The SEC history manifest was not readable.', 'SEC_HISTORY_INVALID', 502);
         filings = filings.concat(companyExposureFilings(historic, cik, cutoff));
       } catch (cause) {
         result.coverage.searchComplete = false;
@@ -186,6 +193,12 @@ export async function discoverCompanyExposures(selection, {
     const outcomes = await Promise.all(selected.map(async ({ role, ...filing }) => {
       const source = { ...filing, role, status: 'unavailable', retrievedAt: null };
       try {
+        // Immutable document identity must still appear in the current issuer
+        // manifest. Reuse its verified text without presenting the metadata
+        // check as a new download. Partial history remains explicitly partial.
+        const reusable = previous?.sources.find(item => sameFiling(item, { ...filing, role }));
+        const input = reusable && previous.inputs.find(item => item.role === role && sameFiling({ ...item.filing, role }, source));
+        if (previous?.cik === cik && reusable && input) return { source: { ...reusable }, input };
         const loaded = await bounded(loadFilingText(cik, filing, { signal }), signal);
         if (loaded?.error || typeof loaded?.text !== 'string' || loaded.text.trim().length < 30) {
           throw error('The eligible SEC filing did not return usable narrative text.', 'SEC_FILING_TEXT_UNAVAILABLE');
@@ -242,7 +255,7 @@ export function encodeCompanyExposureSnapshot(result, inputs) {
   return { ...snapshot, integrity: snapshotIntegrity(snapshot) };
 }
 
-export function restoreCompanyExposureSnapshot(snapshot, selection, now = new Date()) {
+function decodeCompanyExposureSnapshot(snapshot, selection, now = new Date()) {
   try {
     const currentTime = new Date(now).getTime();
     if (snapshot?.cacheVersion !== COMPANY_EXPOSURE_SCHEMA_VERSION || snapshot.ticker !== selection.ticker || snapshot.asOf !== selection.asOf
@@ -257,7 +270,7 @@ export function restoreCompanyExposureSnapshot(snapshot, selection, now = new Da
     for (const raw of snapshot.sources) {
       if (!['annual', 'quarterly'].includes(raw.role) || seenRoles.has(raw.role) || raw.status !== 'ready'
         || (raw.role === 'annual' ? !ANNUAL_FORMS.has(raw.form) : raw.form !== '10-Q')
-        || !validTime(raw.retrievedAt) || Date.parse(raw.retrievedAt) < Date.parse(snapshot.checkedAt) || Date.parse(raw.retrievedAt) > currentTime
+        || !validTime(raw.retrievedAt) || Date.parse(raw.retrievedAt) < Date.parse(raw.filed) || Date.parse(raw.retrievedAt) > currentTime
         || !Number.isInteger(raw.textCharactersRetrieved) || raw.textCharactersRetrieved < 30 || raw.textCharactersRetrieved > MAX_DOCUMENT_BYTES
         || typeof raw.gzip !== 'string' || raw.gzip.length > 3_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw.gzip) || !/^[a-f\d]{64}$/.test(raw.digest)) return null;
       const validated = companyExposureFilings({ accessionNumber: [raw.accession], form: [raw.form], filingDate: [raw.filed], reportDate: [raw.reportDate], primaryDocument: [raw.primaryDoc] }, snapshot.cik, cutoff)[0];
@@ -269,12 +282,19 @@ export function restoreCompanyExposureSnapshot(snapshot, selection, now = new Da
     }
     const selected = selectCompanyExposureFilings(sources);
     if (selected.length !== sources.length || selected.some((filing, i) => filing.accession !== sources[i].accession || filing.role !== sources[i].role)) return null;
-    const result = initialResult(selection, snapshot.checkedAt);
-    result.companyName = snapshot.companyName; result.cik = snapshot.cik; result.sources = sources;
-    result.generatedAt = new Date(now).toISOString();
-    result.coverage.historyFilesScanned = snapshot.historyFilesScanned; result.coverage.filingsEligible = sources.length;
-    return fillDerived(result, inputs);
+    return { cik: snapshot.cik, sources, inputs };
   } catch { return null; }
+}
+
+export function restoreCompanyExposureSnapshot(snapshot, selection, now = new Date()) {
+  const decoded = decodeCompanyExposureSnapshot(snapshot, selection, now);
+  if (!decoded) return null;
+  const { sources, inputs } = decoded;
+  const result = initialResult(selection, snapshot.checkedAt);
+  result.companyName = snapshot.companyName; result.cik = snapshot.cik; result.sources = sources;
+  result.generatedAt = new Date(now).toISOString();
+  result.coverage.historyFilesScanned = snapshot.historyFilesScanned; result.coverage.filingsEligible = sources.length;
+  return fillDerived(result, inputs);
 }
 
 function ttlFor(result) { return result.status === 'ready' ? 6 * 3600 : result.status === 'no_matches' ? 3600 : 900; }
@@ -299,6 +319,23 @@ export function createCompanyExposureLoader({ read = warmGet, write = warmSet,
     while (cache.size && (cache.size >= 80 || usedBytes + bytes > cacheBytes)) forget(cache.keys().next().value);
     cache.set(key, { value, expires, bytes }); usedBytes += bytes;
   };
+  const subscribe = (key, entry, signal) => {
+    entry.subscribers++;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true; signal?.removeEventListener('abort', release);
+      entry.subscribers--;
+      if (!entry.settled && !entry.subscribers) {
+        // Another visitor may still need this shared research. Abort SEC work
+        // only when its last consumer leaves, and allow a fresh retry at once.
+        if (inFlight.get(key) === entry) inFlight.delete(key);
+        entry.controller.abort();
+      }
+    };
+    signal?.addEventListener('abort', release, { once: true });
+    return bounded(entry.task, signal).finally(release);
+  };
   return async function load(selection, { signal } = {}) {
     if (!enabled()) throw error('CFTC company exposure research is disabled.', 'CFTC_DISABLED');
     const checked = normalizeSelection(selection, now());
@@ -309,29 +346,43 @@ export function createCompanyExposureLoader({ read = warmGet, write = warmSet,
       return local.value;
     }
     forget(key);
-    if (inFlight.has(key)) return bounded(inFlight.get(key), signal);
+    if (inFlight.has(key)) return subscribe(key, inFlight.get(key), signal);
     if (inFlight.size >= 24) throw error('Company exposure research is busy. Please retry.', 'COMPANY_EXPOSURE_BUSY');
-    const task = (async () => {
-      const stored = await read(COMPANY_EXPOSURE_CACHE_NAMESPACE, key);
-      // Expired source text need not be decompressed or scanned before refresh.
+    const entry = { controller: new AbortController(), subscribers: 0, settled: false, task: null };
+    const taskSignal = AbortSignal.any([entry.controller.signal, AbortSignal.timeout(LOAD_BUDGET_MS)]);
+    const assertActive = () => {
+      if (taskSignal.aborted) throw error('The SEC source request reached its time limit. Please retry.', 'COMPANY_EXPOSURE_TIMEOUT');
+    };
+    entry.task = (async () => {
+      const stored = await bounded(read(COMPANY_EXPOSURE_CACHE_NAMESPACE, key), taskSignal);
+      assertActive();
+      // Freshness and source retention are separate: a due manifest check can
+      // reuse unchanged filing text for up to the research cache's 25h cap.
       const age = now() - Date.parse(stored?.checkedAt);
       const restored = age >= 0 && age < 6 * 3600 * 1000 ? restoreCompanyExposureSnapshot(stored, checked, now()) : null;
       if (restored && Date.parse(restored.checkedAt) + ttlFor(restored) * 1000 > now()) {
         remember(key, restored); return restored;
       }
       let snapshot;
-      const value = await discover(checked, { now: new Date(now()), signal: AbortSignal.timeout(LOAD_BUDGET_MS), onSnapshot: prepared => { snapshot = prepared; } });
+      const value = await bounded(discover(checked, { now: new Date(now()), signal: taskSignal, previousSnapshot: stored,
+        onSnapshot: prepared => { if (!taskSignal.aborted) snapshot = prepared; } }), taskSignal);
+      assertActive();
       if (snapshot && ['ready', 'no_matches', 'no_filing'].includes(value.status) && !value.retryable && value.coverage.searchComplete) {
         // Cache age starts at the manifest check, not the end of a slow fetch.
-        const ttl = Math.floor((Date.parse(value.checkedAt) + ttlFor(value) * 1000 - now()) / 1000);
+        const ttl = Math.floor((Date.parse(value.checkedAt) + COMPANY_EXPOSURE_SOURCE_RETENTION_SECONDS * 1000 - now()) / 1000);
+        if (ttl > 0) await bounded(write(COMPANY_EXPOSURE_CACHE_NAMESPACE, key, snapshot, ttl), taskSignal);
+        assertActive();
         remember(key, value);
-        if (ttl > 0) await write(COMPANY_EXPOSURE_CACHE_NAMESPACE, key, snapshot, ttl);
       }
       return value;
     })();
-    inFlight.set(key, task);
-    task.finally(() => inFlight.delete(key)).catch(() => {});
-    return bounded(task, signal);
+    inFlight.set(key, entry);
+    entry.task.finally(() => {
+      entry.settled = true;
+      // A cancelled task may finish after a replacement has already started.
+      if (inFlight.get(key) === entry) inFlight.delete(key);
+    }).catch(() => {});
+    return subscribe(key, entry, signal);
   };
 }
 

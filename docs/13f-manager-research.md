@@ -19,7 +19,7 @@ Open `/fund?view=13f`, search a legal name or CIK, and select an explicit filer.
 
 `GET /api/fund-13f?cik=0001747057&period=2026-06-30` resolves a manager and selected period; omitting `period` selects the latest available reporting quarter. The endpoint uses the shared SEC transport and its production dispatch coordinator. Preview isolation is preserved.
 
-Requests and responses are bounded, repeated requests coalesce, and a bounded instance cache plus CDN caching reduces repeated source downloads. Partial or failed responses stay retryable. Prepared reports and evidence use the existing private Supabase cache; no new database schema, credential or paid service is required.
+Requests and responses are bounded, repeated requests coalesce, and a bounded instance cache plus CDN caching reduces repeated source downloads. Partial or failed responses stay retryable. Prepared reports and short-lived evidence use the existing private Supabase cache. Full shared market reviews add bounded private job/result tables using the same production workload identity; no new credential or paid service is required.
 
 The four featured managers are examples and a small scheduled preparation cohort, not an access list. Any positive SEC CIK can retrieve its current public 13F reports on demand; a successful complete report enters the same shared cache and public-summary path. Name discovery searches SEC filer metadata, prefers holdings reporters over notice-only entities when name relevance ties, and labels notices separately. A notice's referenced managers can be opened directly without treating its absent holdings as a zero portfolio.
 
@@ -80,6 +80,10 @@ Associated holdings are deduplicated by security key within each market and acro
 Only the selected CFTC chart is loaded. The contract, report family, trader category, futures-only basis, report date, history window and individual observations are validated by the existing prepared-data client and chart model. The 13F quarter, issuer filing dates and CFTC position observation dates are displayed separately. Aggregate CFTC trader positioning does not establish company futures positions, hedge coverage, economic sensitivity, trader intent or expected returns.
 
 Requests use the existing SEC dispatcher and cached sources. Two browser workers load missing holding connections progressively; individual responses are bounded to 1 MiB and prepared batches to 2 MiB. Request cancellation stops the active scan, and retry preserves completed evidence. The gateway explicitly admits the two bounded evidence namespaces while retaining production workload authentication.
+
+## Full shared market reviews
+
+The Market connections tab can review every holding in a saved manager-quarter job. Results appear progressively, continue through the existing scheduler after the visitor leaves, and remain available for later visitors. See [Shared full 13F market reviews](shared-fund-market-reviews.md) for statuses, refresh behavior, API, quotas and operations.
 
 ## Official references
 

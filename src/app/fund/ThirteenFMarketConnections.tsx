@@ -5,6 +5,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronLeft, ChevronRight, FileText, Link2, Pause, Play, RefreshCw, Search } from "lucide-react";
 import { THIRTEEN_F_MARKET_CATEGORIES } from "../../utils/thirteenFMarketConnections.js";
 import { use13FMarketConnections } from "./use13FMarketConnections";
+import ThirteenFSharedMarketReview from "./ThirteenFSharedMarketReview";
 import s from "./ThirteenFMarketConnections.module.css";
 
 const MarketPositioning = dynamic(() => import("./ThirteenFMarketPositioning"));
@@ -96,7 +97,7 @@ function Coverage({ model, remote, onInspectCompany }: { model: any; remote: Ret
   </details>;
 }
 
-export default function ThirteenFMarketConnections({ data, active, onInspectCompany }: Props) {
+function ThirteenFMarketPreview({ data, active, onInspectCompany }: Props) {
   const id = useId();
   const remote = use13FMarketConnections(data, active);
   const model: any = remote.model;
@@ -120,7 +121,7 @@ export default function ThirteenFMarketConnections({ data, active, onInspectComp
     <div className={s.overview} aria-label="Market connection coverage"><div><span>Related CFTC markets</span><strong>{number(markets.length)}</strong></div><div><span>Holdings with market links</span><strong>{number(coverage.linked)}<small> / {number(coverage.total)}</small></strong></div><div><span>Associated disclosed value</span><strong>{percent(coverage.linkedSharePct)}</strong></div><p>These percentages describe associated holdings’ share of disclosed value. They do not measure economic exposure.</p></div>
     <div className={s.scan}>
       <div className={s.scanProgress}><div role="status" aria-live="polite">{remote.pending ? <RefreshCw size={13} className={s.spin} /> : remote.paused ? <Pause size={13} /> : <Check size={13} />}<span>{remote.pending ? "Reviewing SEC disclosures" : remote.paused ? "Review paused" : "SEC review"}<strong>{number(remote.completed)} of {number(remote.limit)} selected holdings reviewed · {number(coverage.total)} in report</strong></span></div><progress value={Math.min(100, Math.max(0, remote.progress || 0))} max={100} aria-label="Progress through the selected holdings" /></div>
-      <div className={s.scanActions}>{remote.pending ? <button type="button" onClick={remote.pause}><Pause size={12} />Pause</button> : remote.paused && !remote.blocked ? <button type="button" onClick={remote.resume}><Play size={12} />Resume</button> : null}{!remote.pending && !remote.blocked && remote.limit < coverage.total ? <button type="button" className={s.continue} onClick={remote.scanNext}>Check next {Math.min(20, coverage.total - remote.limit)}<ArrowRight size={13} /></button> : null}{!remote.pending && !remote.blocked && remote.limit < coverage.total ? <button type="button" onClick={remote.startAll}>Check all remaining</button> : null}{!remote.pending && !remote.blocked && (retryable > 0 || remote.error) ? <button type="button" onClick={() => remote.retry()}><RefreshCw size={12} />Retry incomplete</button> : null}{!remote.pending && !remote.blocked && coverage.attempted > 0 ? <button type="button" onClick={remote.refresh} aria-label="Refresh selected SEC disclosure reviews"><RefreshCw size={12} />Refresh</button> : null}</div>
+      <div className={s.scanActions}>{remote.pending ? <button type="button" onClick={remote.pause}><Pause size={12} />Pause</button> : remote.paused && !remote.blocked ? <button type="button" onClick={remote.resume}><Play size={12} />Resume</button> : null}{!remote.pending && !remote.blocked && remote.limit < coverage.total ? <button type="button" className={s.continue} onClick={remote.scanNext}>Check next {Math.min(20, coverage.total - remote.limit)}<ArrowRight size={13} /></button> : null}{!remote.pending && !remote.blocked && (retryable > 0 || remote.error) ? <button type="button" onClick={() => remote.retry()}><RefreshCw size={12} />Retry incomplete</button> : null}{!remote.pending && !remote.blocked && coverage.attempted > 0 ? <button type="button" onClick={remote.refresh} aria-label="Refresh selected SEC disclosure reviews"><RefreshCw size={12} />Refresh</button> : null}</div>
     </div>
     <p className={s.scopeDates}>Reviewed in order of reported value{finite(coverage.checkedSharePct) ? ` · Holdings with filing reviews represent ${percent(coverage.checkedSharePct)} of disclosed value` : ""} · Company evidence: latest eligible annual filing and newer 10-Q · CFTC: latest available weekly positions. Company evidence and market observations may postdate the 13F snapshot.</p>
     {remote.error && <p className={s.notice} role="alert">{remote.error}</p>}
@@ -133,4 +134,10 @@ export default function ThirteenFMarketConnections({ data, active, onInspectComp
     <Coverage model={model} remote={remote} onInspectCompany={onInspectCompany} />
     <details className={s.methodology}><summary>How to read these connections<ChevronDown size={14} /></summary><div><p>The link starts with a verified SEC issuer identity for the holding’s exact CUSIP. A relevant business passage in the latest eligible annual filing or a newer 10-Q supports each displayed connection. Named references and related proxies are labeled separately; qualifying or negative passages remain alongside supporting evidence.</p><p>A market’s associated value is the sum of its unique disclosed holdings, divided by the full reconciled 13F value. The overview counts each linked holding once across all markets. Security classes and option types remain distinct. Percentages are not rescaled to the checked holdings.</p><p>13F option values describe the underlying securities, not premiums or delta. Puts are not subtracted from other holdings. Reported values do not measure hedges, revenue at risk, financial sensitivity, or the manager’s complete portfolio.</p><p>The filing scan is bounded and may miss other relevant passages. A proxy does not establish exposure to the exact contract’s grade, geography, currency, or maturity. CFTC reports describe aggregate futures markets; they do not reveal a particular manager’s or company’s positions.</p></div></details>
   </div>;
+}
+
+export default function ThirteenFMarketConnections(props: Props) {
+  return <ThirteenFSharedMarketReview key={`${props.data?.manager?.cik}:${props.data?.selectedPeriod}`} data={props.data} active={props.active} onInspectCompany={props.onInspectCompany}
+    preview={enabled => <ThirteenFMarketPreview {...props} active={enabled} />}
+    evidence={(member, market) => <HoldingEvidence member={member} market={market} onInspectCompany={props.onInspectCompany} />} />;
 }

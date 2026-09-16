@@ -171,6 +171,21 @@
 .empty > p { max-width: 520px; color: var(--fund-muted); font-size: 11px; line-height: 1.9; }
 .emptySearch { padding: 20px 8px; color: var(--fund-muted); font-size: 10px; line-height: 1.8; }
 .connections button:disabled { opacity: .45; }
+.sharedStart { display: flex; align-items: center; justify-content: space-between; gap: 20px; border: 1px solid color-mix(in srgb, var(--fund-green) 25%, var(--fund-line)); background: color-mix(in srgb, var(--fund-green) 5%, var(--fund-panel)); border-radius: 10px; padding: 18px 20px; }
+.sharedStart > div { min-width: 0; }
+.sharedStart strong { display: block; font-size: 12px; font-weight: 600; color: var(--fund-text); }
+.sharedStart p { margin: 6px 0 0; color: var(--fund-muted); font-size: 10px; line-height: 1.85; max-width: 780px; }
+.connections .sharedStart button { flex-shrink: 0; min-height: 35px; font-size: 10px; color: var(--fund-green); background: color-mix(in srgb, var(--fund-green) 8%, var(--fund-panel)); border-color: color-mix(in srgb, var(--fund-green) 30%, var(--fund-line)); }
+.sharedChartFooter { padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-top: 1px solid var(--fund-line); }
+.sharedChartFooter p { font-size: 9px; color: var(--fund-muted); line-height: 1.85; max-width: 470px; }
+.connections .sharedChartFooter button { background: transparent; font-size: 10px; color: var(--fund-green); flex-shrink: 0; }
+.coverageTable tr[data-selected="true"] { background: color-mix(in srgb, var(--fund-green) 5%, transparent); }
+.coverageTable .staleEvidence { color: var(--fund-gold); }
+.sharedEvidenceDates { padding: 0 24px 18px; color: var(--fund-muted); font-size: 10px; line-height: 1.85; }
+.sharedEvidenceTitle { padding: 17px 20px; border-top: 1px solid var(--fund-line); background: color-mix(in srgb, var(--fund-green) 4%, var(--fund-panel)); }
+.sharedEvidenceTitle h5 { font-size: 13px; font-weight: 600; margin: 0 0 5px; }
+.sharedEvidenceTitle p { color: var(--fund-muted); font-size: 9px; line-height: 1.8; }
+.sharedEvidenceTitle + .evidence { border-left: 0; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .spin { animation: spin 1.5s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -192,6 +207,10 @@
   .otherDrivers .evidence { border-top: 0; border-left: 1px solid var(--fund-line); }
 }
 @media (max-width: 850px) {
+  .sharedStart { align-items: flex-start; flex-direction: column; gap: 13px; }
+  .sharedChartFooter { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .coverageControls { flex-wrap: wrap; }
+  .coverageControls .search { flex-basis: 100%; max-width: none; }
   .marketGrid { grid-template-columns: 1fr; }
   .marketList { display: flex; max-height: 305px; gap: 8px; overflow-x: auto; }
   .category { min-width: 180px; flex: 1; }

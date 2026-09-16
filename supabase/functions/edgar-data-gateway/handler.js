@@ -1,4 +1,5 @@
 /** Narrow workload gateway. Supabase credentials never leave this function. */
+import { FUND_REVIEW_LIMITS, FUND_REVIEW_RPC_PARAMETERS, validFundReviewRpc } from './fundReviewPolicy.js';
 import { APPROVED_SEC_CIKS, SUPPORTING_SOURCE_CIKS } from './coverage.js';
 import { DISPOSABLE_CACHE_LIMITS as CACHE_LIMITS, disposableCachePolicy, disposableCacheFencePolicy, disposableCacheFenceResource } from './cachePolicy.js';
 import { DISCLOSURE_INDEX_LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument, validDisclosureIndexSearch } from './disclosurePolicy.js';
@@ -48,6 +49,7 @@ const GROUPS = Object.freeze({
 // Unknown parameters are rejected rather than accidentally reaching a new SQL
 // overload or a future operation with wider privileges.
 export const RPC_PARAMETERS = Object.freeze({
+  ...FUND_REVIEW_RPC_PARAMETERS,
   edgar_disclosure_document: ['p_cik', 'p_accession', 'p_primary_doc', 'p_parser_version'],
   edgar_disclosure_replace: ['p_document', 'p_passages'],
   edgar_disclosure_search: ['p_terms', 'p_start', 'p_end', 'p_forms', 'p_ciks', 'p_tickers', 'p_section', 'p_offset', 'p_limit', 'p_parser_version'],
@@ -268,6 +270,10 @@ function membershipEvidence(value, snapshot) {
 function validateRpc(name, params, nowMs) {
   knownKeys(params, ['p_namespace', ...RPC_PARAMETERS[name]]);
   if (has(params, 'p_namespace') && params.p_namespace !== NAMESPACE) reject('namespace_denied', 403);
+  if (has(FUND_REVIEW_RPC_PARAMETERS, name)) {
+    if (!validFundReviewRpc(name, params, nowMs)) reject('invalid_fund_review_request');
+    return { ...params, p_namespace: NAMESPACE };
+  }
   if (name === 'edgar_disclosure_document' && (!disclosureIndexIdentity({ cik: params.p_cik, accession: params.p_accession, primaryDoc: params.p_primary_doc })
     || params.p_parser_version !== DISCLOSURE_INDEX_LIMITS.parserVersion)) reject('invalid_disclosure_identity');
   if (name === 'edgar_disclosure_replace' && !validDisclosureIndexDocument(params.p_document, params.p_passages, nowMs)) reject('invalid_disclosure_document');
@@ -525,15 +531,16 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       // Evidence verification is the only larger operation. Ordinary reads keep
       // their original timeout, and injected shorter test/operator limits win.
       const secDispatchOperation = ['edgar_acquire_sec_dispatch', 'edgar_release_sec_dispatch', 'edgar_publish_sec_cooldown'].includes(rpcMatch?.[1]);
+      const fundReviewOperation = has(FUND_REVIEW_RPC_PARAMETERS, rpcMatch?.[1]);
       const cacheDataOperation = ['edgar_cache_get', 'edgar_cache_put', 'edgar_cache_put_fenced'].includes(rpcMatch?.[1]);
       const operationTimeout = secDispatchOperation ? Math.min(timeoutMs, 1500)
         : rpcMatch?.[1] === 'edgar_stage_membership' && timeoutMs === 5500 ? 15000
-          : cacheDataOperation && timeoutMs === 5500 ? 9000 : timeoutMs;
+          : fundReviewOperation && timeoutMs === 5500 ? 10000 : cacheDataOperation && timeoutMs === 5500 ? 9000 : timeoutMs;
       timer = setTimeout(() => controller.abort(), operationTimeout);
       if (rpcMatch && has(RPC_PARAMETERS, rpcMatch[1])) {
         if (request.method !== 'POST') reject('method_denied', 405);
         if (request.headers.get('content-type')?.split(';', 1)[0].trim() !== 'application/json') reject('content_type_denied', 415);
-        const bytes = await boundedBytes(request, cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
+        const bytes = await boundedBytes(request, fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
         let parsed; try { parsed = JSON.parse(decoder.decode(bytes)); } catch { reject('invalid_json', 400); }
         const params = validateRpc(rpcMatch[1], parsed, now());
         if (rpcMatch[1] === 'edgar_stage_membership') await verifyMembershipEvidence(params, controller.signal);
@@ -563,16 +570,17 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       if (!upstream.ok) {
         // Preserve the SQL fencing marker used by the adapter; all other
         // upstream messages are discarded so credentials cannot reach callers.
-        let code, cacheOverflow = false;
+        let code, cacheOverflow = false, reviewCapacity = false;
         try {
           const error = JSON.parse(decoder.decode(await boundedBytes(upstream, RPC_BYTES, controller.signal)));
           code = error.code;
+          reviewCapacity = fundReviewOperation && error.code === '54000' && error.message === 'fund_review_capacity';
           cacheOverflow = rpcMatch?.[1] === 'edgar_cache_get' && error.code === '22023' && error.message === 'cache_response_too_large';
         } catch { /* sanitized below */ }
         const status = integer(upstream.status, 400, 599) ? upstream.status : 502;
-        return json({ code: cacheOverflow ? 'cache_response_too_large' : code === '40001' ? '40001' : 'upstream_failure' }, status);
+        return json({ code: reviewCapacity ? 'fund_review_capacity' : cacheOverflow ? 'cache_response_too_large' : code === '40001' ? '40001' : 'upstream_failure' }, status);
       }
-      const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
+      const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
       return result(bytes, upstream.status, raw ? 'application/gzip' : 'application/json');
     } catch (error) {
       if (error instanceof GatewayError) return json({ code: error.code }, error.status);

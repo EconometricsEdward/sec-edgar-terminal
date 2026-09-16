@@ -201,6 +201,104 @@ test('compressed source cache preserves the extraction limit and visible truncat
   assert.equal(restored.sources[0].textCharactersRetrieved, text.length);
 });
 
+test('due metadata refresh reuses exact source text while preserving its original retrieval dates', async () => {
+  let snapshot, refreshedSnapshot, checks = 0;
+  const original = await discoverCompanyExposures(selection, setup(undefined, { onSnapshot: value => { snapshot = value; } }));
+  const later = new Date(now.getTime() + 24 * 3600 * 1000);
+  const refreshed = await discoverCompanyExposures(selection, setup(undefined, {
+    now: later, previousSnapshot: snapshot,
+    loadSubmissions: async () => { checks++; return { cik, name: 'Example Company', filings: { recent: rows([annual, quarterly]), files: [] } }; },
+    loadFilingText: async () => { assert.fail('Unchanged bound SEC documents must not be downloaded again.'); },
+    onSnapshot: value => { refreshedSnapshot = value; },
+  }));
+  assert.equal(checks, 1); assert.equal(refreshed.status, 'ready');
+  assert.equal(refreshed.checkedAt, later.toISOString());
+  assert.deepEqual(refreshed.sources, original.sources);
+  assert.deepEqual(refreshed.rows, original.rows);
+  assert.ok(refreshedSnapshot);
+  const restored = restoreCompanyExposureSnapshot(refreshedSnapshot, selection, later);
+  assert.ok(restored); assert.deepEqual(restored.sources, original.sources);
+  assert.equal(restored.checkedAt, later.toISOString());
+});
+
+test('new quarter downloads only the changed document and never replaces a failed newer source with old evidence', async () => {
+  let snapshot;
+  const oldQuarter = { ...quarterly, filed: '2026-05-01', reportDate: '2026-03-31', accession: '0000950170-26-000003', primaryDoc: 'old-quarter.htm' };
+  await discoverCompanyExposures(selection, setup([annual, oldQuarter], { onSnapshot: value => { snapshot = value; } }));
+  for (const failQuarter of [false, true]) {
+    const downloaded = [];
+    const refreshed = await discoverCompanyExposures(selection, setup([annual, quarterly], {
+      now: new Date(now.getTime() + 7 * 3600 * 1000), previousSnapshot: snapshot,
+      loadFilingText: async (_cik, filing) => {
+        downloaded.push(filing.form);
+        if (failQuarter) throw new Error('New quarter is temporarily unavailable.');
+        return { text: 'We no longer have copper production revenue or exposure to copper prices.' };
+      },
+    }));
+    assert.deepEqual(downloaded, ['10-Q']);
+    assert.equal(refreshed.sources[0].retrievedAt, now.toISOString());
+    assert.equal(refreshed.sources[1].reportDate, quarterly.reportDate);
+    assert.equal(refreshed.status, failQuarter ? 'partial' : 'ready');
+    assert.equal(refreshed.sources[1].status, failQuarter ? 'unavailable' : 'ready');
+    assert.ok(refreshed.rows.every(row => row.evidence.every(evidence => evidence.reportDate !== oldQuarter.reportDate)));
+  }
+});
+
+test('source reuse cannot turn an unavailable or structurally incomplete manifest into a successful refresh', async () => {
+  let snapshot;
+  await discoverCompanyExposures(selection, setup(undefined, { onSnapshot: value => { snapshot = value; } }));
+  for (const unavailable of [false, true]) {
+    let nextSnapshot;
+    const refreshed = await discoverCompanyExposures(selection, setup(undefined, {
+      now: new Date(now.getTime() + 7 * 3600 * 1000), previousSnapshot: snapshot,
+      loadSubmissions: async () => {
+        if (unavailable) throw new Error('SEC manifest unavailable.');
+        const recent = rows([annual, quarterly]); recent.form.pop();
+        return { cik, name: 'Example Company', filings: { recent, files: [] } };
+      },
+      loadFilingText: async () => { assert.fail('No complete manifest selected a source.'); },
+      onSnapshot: value => { nextSnapshot = value; },
+    }));
+    assert.equal(refreshed.status, 'unavailable'); assert.equal(refreshed.retryable, true);
+    assert.equal(refreshed.coverage.searchComplete, false); assert.equal(refreshed.rows.length, 0);
+    assert.equal(nextSnapshot, undefined);
+  }
+});
+
+test('a corrupted or expired source snapshot cannot be used to avoid retrieving selected documents', async () => {
+  let snapshot;
+  await discoverCompanyExposures(selection, setup([annual], { onSnapshot: value => { snapshot = value; } }));
+  for (const corrupt of [false, true]) {
+    let downloads = 0;
+    const previousSnapshot = structuredClone(snapshot);
+    if (corrupt) previousSnapshot.sources[0].retrievedAt = '2026-09-12T12:00:00Z';
+    const refreshed = await discoverCompanyExposures(selection, setup([annual], {
+      now: new Date(now.getTime() + (corrupt ? 7 : 25) * 3600 * 1000), previousSnapshot,
+      loadFilingText: async () => { downloads++; return { text: positive }; },
+    }));
+    assert.equal(downloads, 1); assert.equal(refreshed.status, 'ready');
+  }
+});
+
+test('unchecked relevant history remains partial even when selected source text can be reused', async () => {
+  let snapshot, nextSnapshot;
+  await discoverCompanyExposures(selection, setup(undefined, { onSnapshot: value => { snapshot = value; } }));
+  const refreshed = await discoverCompanyExposures(selection, setup(undefined, {
+    now: new Date(now.getTime() + 7 * 3600 * 1000), previousSnapshot: snapshot,
+    loadSubmissions: async file => {
+      if (file.includes('-submissions-')) throw new Error('Archive unavailable.');
+      return { cik, name: 'Example Company', filings: { recent: rows([annual, quarterly]), files: [
+        { name: `CIK${cik}-submissions-001.json`, filingFrom: '2026-01-01', filingTo: '2026-09-13' },
+      ] } };
+    },
+    loadFilingText: async () => { assert.fail('Selected documents already have verified text.'); },
+    onSnapshot: value => { nextSnapshot = value; },
+  }));
+  assert.equal(refreshed.status, 'partial'); assert.equal(refreshed.coverage.searchComplete, false);
+  assert.equal(refreshed.coverage.historyFailures.length, 1); assert.ok(refreshed.rows.length);
+  assert.equal(nextSnapshot, undefined);
+});
+
 test('a cancelled source request reports a bounded failure and does not hang discovery', async () => {
   const controller = new AbortController(); controller.abort();
   const result = await discoverCompanyExposures(selection, setup([], { signal: controller.signal }));

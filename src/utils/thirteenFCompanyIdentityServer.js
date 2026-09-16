@@ -180,14 +180,43 @@ export function createThirteenFCompanyIdentityLoader({ fetchSec = secFetch, comp
       documentsChecked: page.rows.length, matchingDocuments: evidence.length, bounded: page.truncated,
       note: SEARCH_NOTE } };
   }
+  function consumeEvidence(cusip, entry, signal) {
+    entry.consumers++;
+    return new Promise((resolve, reject) => {
+      let finished = false;
+      const finish = (success, value) => {
+        if (finished) return;
+        finished = true;
+        signal?.removeEventListener('abort', abort);
+        entry.consumers--;
+        if (!entry.settled && entry.consumers === 0) {
+          // Remove immediately so a new caller can retry while an old aborted
+          // transport finishes unwinding. Its finally cannot remove this retry.
+          if (pending.get(cusip) === entry) pending.delete(cusip);
+          entry.controller.abort(new DOMException('No issuer research consumers remain.', 'AbortError'));
+        }
+        if (success) resolve(value); else reject(value);
+      };
+      const abort = () => finish(false, signal.reason || new DOMException('Request aborted.', 'AbortError'));
+      entry.task.then(value => finish(true, value), error => finish(false, error));
+      if (signal?.aborted) abort();
+      else signal?.addEventListener('abort', abort, { once: true });
+    });
+  }
   async function evidenceFor(cusip, signal) {
+    signal?.throwIfAborted();
     const previous = cache.get(cusip);
     if (previous?.expires > now()) { cache.delete(cusip); cache.set(cusip, previous); return previous.data; }
     cache.delete(cusip);
-    if (pending.has(cusip)) return abortable(pending.get(cusip), signal);
+    if (pending.has(cusip)) return consumeEvidence(cusip, pending.get(cusip), signal);
     if (pending.size >= maxPending) throw fail('Several issuer lookups are loading. Retry shortly.', 503, 'SEC_IDENTITY_BUSY');
-    const deadline = AbortSignal.timeout(deadlineMs);
-    const task = (async () => {
+    const controller = new AbortController();
+    const deadline = AbortSignal.any([controller.signal, AbortSignal.timeout(deadlineMs)]);
+    const entry = { controller, consumers: 0, settled: false, task: null };
+    // Start on the next microtask so the first consumer is registered before
+    // any shared cache or SEC request can begin.
+    entry.task = Promise.resolve().then(async () => {
+      deadline.throwIfAborted();
       if (cacheEnabled() && CACHE_CUSIP.test(cusip)) {
         try {
           const stored = await sharedOperation(options => readEvidence(THIRTEEN_F_ISSUER_EVIDENCE_CACHE_TYPE, cusip, options), deadline);
@@ -199,21 +228,27 @@ export function createThirteenFCompanyIdentityLoader({ fetchSec = secFetch, comp
           }
         } catch { /* Cold or unavailable storage retains bounded SEC discovery. */ }
       }
+      deadline.throwIfAborted();
       const data = await discover(cusip, deadline);
       return { data, expires: Date.parse(data.observedAt) + (data.evidence.length ? maxAgeMs : Math.min(maxAgeMs, 60000)) };
-    })().then(({ data, expires }) => {
+    }).then(({ data, expires }) => {
+      deadline.throwIfAborted();
       cache.set(cusip, { data, expires });
       while (cache.size > maxEntries) cache.delete(cache.keys().next().value);
       return data;
-    }).finally(() => pending.delete(cusip));
-    pending.set(cusip, task);
-    return abortable(task, signal);
+    }).finally(() => {
+      entry.settled = true;
+      if (pending.get(cusip) === entry) pending.delete(cusip);
+    });
+    pending.set(cusip, entry);
+    return consumeEvidence(cusip, entry, signal);
   }
   return async function loadThirteenFCompanyIdentity(holding, { period = '', signal } = {}) {
     signal?.throwIfAborted();
     const request = normalizeHoldingCompanyRequest(holding, { period });
     if (['fund', 'principal'].includes(request.securityType)) return { ...resolveHoldingCompanyEvidence(holding, [], { period, now: now() }), observedAt: new Date(now()).toISOString(), coverage: { documentsChecked: 0, bounded: false } };
     const found = await evidenceFor(request.cusip, signal);
+    signal?.throwIfAborted();
     const result = resolveHoldingCompanyEvidence(holding, found.evidence, { period, now: now() });
     if (result.status !== 'resolved') return { ...result, observedAt: found.observedAt, coverage: found.coverage };
     const company = await companyLoader(result.issuer.cik, { signal });

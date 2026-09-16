@@ -8,6 +8,7 @@ import { maintainProviderRetirement } from '../../../../utils/providerRetirement
 import { runCftcHistoryPreparation } from '../../../../utils/cftcHistoryPreparation.js';
 import { isCftcEnabled } from '../../../../utils/cftcFeature.js';
 import { runPortfolioCftcPreparation } from '../../../../utils/portfolioCftcPreparation.js';
+import { runThirteenFReviewWorker } from '../../../../utils/thirteenFReviewWorker.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -30,6 +31,17 @@ export async function GET(request) {
     return Response.json({ status: 'disabled' }, { headers });
   }
   const startedAt = Date.now();
+  // The durable manager queue has its own global lease, daily SQL budget and
+  // two-worker SEC pacing. Its independent bounded task shares this invocation;
+  // it cannot steal the demo's continuation or depend on a visitor staying open.
+  const reviewBudget = Math.min(75_000, requestStartedAt + 275_000 - startedAt);
+  const reviewTask = isCftcEnabled() && getDataStoreMode('cftc') === 'supabase'
+    && getDataStoreMode('sec') === 'supabase' && !request.signal.aborted && reviewBudget >= 10_000
+    ? runThirteenFReviewWorker({
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(reviewBudget)]),
+      deadline: startedAt + reviewBudget,
+    }).catch(() => ({ status: 'unavailable', code: 'THIRTEEN_F_REVIEW_UNAVAILABLE' }))
+    : Promise.resolve({ status: 'disabled' });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 230_000);
   let responseBody, responseStatus = 200;
@@ -109,5 +121,6 @@ export async function GET(request) {
       } catch { portfolioCftcPreparation = { status: 'unavailable', code: 'PORTFOLIO_CFTC_PREPARATION_UNAVAILABLE' }; }
     }
   }
-  return Response.json({ ...responseBody, portfolioCftcPreparation, duration_ms: Date.now() - startedAt }, { status: responseStatus, headers });
+  const thirteenFReview = await reviewTask;
+  return Response.json({ ...responseBody, portfolioCftcPreparation, thirteenFReview, duration_ms: Date.now() - startedAt }, { status: responseStatus, headers });
 }
