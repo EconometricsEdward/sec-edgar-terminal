@@ -19,7 +19,7 @@ Open `/fund?view=13f`, search a legal name or CIK, and select an explicit filer.
 
 `GET /api/fund-13f?cik=0001747057&period=2026-06-30` resolves a manager and selected period; omitting `period` selects the latest available reporting quarter. The endpoint uses the shared SEC transport and its production dispatch coordinator. Preview isolation is preserved.
 
-Requests and responses are bounded, repeated requests coalesce, and a bounded instance cache plus CDN caching reduces repeated source downloads. Partial or failed responses stay retryable. No new database schema, credential, shared-cache namespace, or paid service is introduced.
+Requests and responses are bounded, repeated requests coalesce, and a bounded instance cache plus CDN caching reduces repeated source downloads. Partial or failed responses stay retryable. Prepared reports and evidence use the existing private Supabase cache; no new database schema, credential or paid service is required.
 
 The four featured managers are examples and a small scheduled preparation cohort, not an access list. Any positive SEC CIK can retrieve its current public 13F reports on demand; a successful complete report enters the same shared cache and public-summary path. Name discovery searches SEC filer metadata, prefers holdings reporters over notice-only entities when name relevance ties, and labels notices separately. A notice's referenced managers can be opened directly without treating its absent holdings as a zero portfolio.
 
@@ -63,7 +63,15 @@ History charts use zero-based axes, separate units, keyboard quarter inspection,
 
 The Market connections view links actual 13F securities to current issuer disclosures and related CFTC markets. It starts with the 20 largest disclosed positions, reports coverage as it progresses, and lets the user continue, scan all holdings, pause, or retry. A missing match, unverified issuer, missing filing, partial source retrieval, and an unscanned holding remain different states.
 
+The progress counter and bar describe the selected review scope, initially 20 holdings. The full report count and the share of disclosed value covered by filing reviews remain visible separately. A large report does not automatically start thousands of SEC requests.
+
 `GET /api/fund-13f/market-connections?cik=…&period=…&key=…` verifies the manager, reporting quarter, exact security, and SEC CUSIP-to-issuer proof. It then loads disclosures directly by verified issuer CIK. An inactive or missing trading symbol does not block a valid issuer; a ticker alias never substitutes for CIK identity. The source reader uses the latest eligible complete annual report and at most one newer complete 10-Q, with bounded history search and source-integrity caches shared with company exposure research.
+
+Adding `prepared=1` and up to 20 repeated `key` parameters reads completed connections together. This path loads the selected manager report once and checks the shared cache; it performs no issuer or disclosure discovery. Each prepared result is bound to the current exact security, reported value and quantity, portfolio denominator, coverage and source chain. An amendment that changes those inputs prevents reuse. The browser validates the returned subset, displays it immediately, and queues only missing reviews. A failed or timed-out prepared lookup falls back to ordinary bounded requests.
+
+Completed connections use `edgar.13f-market-connections.v1:production` in the existing research cache, with a 1 MiB record limit and at most six hours of freshness measured from the oldest underlying check. No-match, missing-filing and unresolved results have shorter lifetimes. Incomplete research is not retained as a completed review. Exact-CUSIP ownership-cover evidence is separately reusable across managers under `edgar.13f-issuer-evidence.v1:production`, limited to 128 KiB and six hours from its original observation. Every holding still passes its own issuer-name/security checks; failed or conflicting discovery does not become persisted issuer proof.
+
+The source-text cache accepts verified CIK selections as well as ticker selections, so Funds disclosures use Supabase across server instances. Its derived in-process cache is bounded to 16 MiB and retains the original manifest-check expiry. Reads do not renew source freshness. These caches fill on demand and share existing storage quotas; they add no scheduler or paid cache service. Refresh reloads the selected reviews through the current source freshness policy and does not force-download every SEC document.
 
 Each market connection belongs to the specific supporting SEC passage. Named benchmarks and related proxies are labeled separately. Generic interest rates, unspecified currency pairs, Brent, regional gas, and other unsupported drivers retain their SEC evidence without an unrelated futures contract. Later qualifying or negative passages remain visible beside earlier connections. Filing selection is current research, not a reconstruction of disclosures available at the historical 13F quarter end.
 
@@ -71,7 +79,7 @@ Associated holdings are deduplicated by security key within each market and acro
 
 Only the selected CFTC chart is loaded. The contract, report family, trader category, futures-only basis, report date, history window and individual observations are validated by the existing prepared-data client and chart model. The 13F quarter, issuer filing dates and CFTC position observation dates are displayed separately. Aggregate CFTC trader positioning does not establish company futures positions, hedge coverage, economic sensitivity, trader intent or expected returns.
 
-Requests use the existing SEC dispatcher and cached sources. Two browser workers load holding connections progressively; individual responses are bounded to 1 MiB. Request cancellation stops the active scan, and retry preserves completed evidence. No paid provider, new database schema, credential or infrastructure configuration is required.
+Requests use the existing SEC dispatcher and cached sources. Two browser workers load missing holding connections progressively; individual responses are bounded to 1 MiB and prepared batches to 2 MiB. Request cancellation stops the active scan, and retry preserves completed evidence. The gateway explicitly admits the two bounded evidence namespaces while retaining production workload authentication.
 
 ## Official references
 

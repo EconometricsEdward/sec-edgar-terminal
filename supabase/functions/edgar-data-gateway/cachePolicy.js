@@ -41,6 +41,17 @@ const researchServing = /^RESEARCH-(COMPARE|PORTFOLIO)-V1:(?:COMPARE-V2|ANALYSIS
 export function disposableCachePolicy(type, originalId) {
   if (typeof type !== 'string' || typeof originalId !== 'string' || !originalId.length || originalId.length > 1024) return null;
   const id = originalId.toUpperCase();
+  // Public issuer proof and completed market reviews share the existing
+  // research quota. Readers preserve the original source-check timestamps.
+  if (type === 'edgar.13f-issuer-evidence.v1:production') {
+    return /^(?!000000000)[A-Z0-9*@#]{9}$/.test(id) ? Object.freeze({ family: 'research', type, id,
+      maxTtlSeconds: 6 * 3600, maxRawBytes: 128 * 1024 }) : null;
+  }
+  if (type === 'edgar.13f-market-connections.v1:production') {
+    const match = re(`(${CIK}):${QUARTER}:[A-F0-9]{64}`).exec(id);
+    return match ? Object.freeze({ family: 'research', type, id, sourceCik: match[1],
+      maxTtlSeconds: 6 * 3600, maxRawBytes: 1024 * 1024 }) : null;
+  }
   // One immutable N-PORT accession body and one compact latest reference.
   // Retention is separate from the loader's one-hour source freshness check.
   if (type === 'edgar.nport-prepared.v1:production') {
@@ -98,6 +109,7 @@ export function disposableCachePolicy(type, originalId) {
   else if (type === 'scanner-results-v2' && re(`${TICKER}:(?:SCAN|KW:[A-F0-9]{64})`).test(id)) family = 'research';
   else if (type === 'scanner-invalidations-v1' && re(`${TICKER}:(?:SCAN|KW:[A-F0-9]{64})`).test(id)) family = 'reference';
   else if (type === 'filing-changes' && re(`FILING-DIFF-V3-CONTEXT-V2:${CIK}:${ACCESSION}:${ACCESSION}`).test(id)) family = 'document';
+  else if (type === 'edgar.company-exposure-sources.v1:production' && re(`CIK:${CIK}:(?:LATEST|${DATE})`).test(id)) { family = 'research'; sourceCik = id.slice(4, 14); }
   else if (['edgar.company-exposure-sources.v1:production', 'edgar.company-cftc-context.v1:production'].includes(type) && re(`${TICKER}:(?:LATEST|${DATE})`).test(id)) family = 'research';
   else if (type === 'edgar.cftc-fcm.v1:production' && id === 'LATEST') family = 'history';
   else if (type === 'fund-research-v1' && re(`${TICKER}:(?:LATEST|${ACCESSION})(?::[A-F0-9]{16}:(?:[0-9]|1[0-5]))?`).test(id)) family = 'research';
