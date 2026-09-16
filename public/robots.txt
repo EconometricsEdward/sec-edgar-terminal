@@ -7,6 +7,7 @@ Disallow: /api/
 Allow: /api/v1/cftc/portfolio-changes/demo
 Allow: /api/v1/funds/
 Allow: /api/v1/managers/
+Allow: /api/v1/analysis/
 
 # Sitemap location
 Sitemap: https://secedgarterminal.com/sitemap.xml

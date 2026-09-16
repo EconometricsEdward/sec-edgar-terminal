@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "../utils/siteMetadata";
 import { PUBLIC_FUND_MANAGERS } from "../utils/fundPublicSelectors.js";
+import { getActiveSecCoverageCompanies, loadSecCoverageRegistry } from "../utils/secCoverageRegistry.js";
+export const revalidate = 3600;
 
 type SitemapEntry = MetadataRoute.Sitemap[number];
 type ChangeFrequency = NonNullable<SitemapEntry["changeFrequency"]>;
@@ -79,12 +81,14 @@ function sitemapEntry(
   };
 }
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  await loadSecCoverageRegistry();
+  const analysisTickers = [...new Set([...FEATURED_ANALYSIS_TICKERS, ...getActiveSecCoverageCompanies().map(company => company.ticker)])];
   return [
     ...MAIN_PAGES.map(([path, changeFrequency, priority]) =>
       sitemapEntry(path, changeFrequency, priority),
     ),
-    ...FEATURED_ANALYSIS_TICKERS.map((ticker) =>
+    ...analysisTickers.map((ticker) =>
       sitemapEntry(`/analysis/${ticker}`, "weekly", 0.9),
     ),
     ...FEATURED_FILING_TICKERS.map((ticker) =>

@@ -112,7 +112,10 @@ export async function readPreparedAnalysis({ ticker, basis = 'annual', asOf = ''
   };
   let cached = null;
   try {
-    cached = await hotRead(hotNamespace, legacyKey(canonicalTicker, basis));
+    // Only the original four issuers have mirrors. Every other prepared issuer
+    // goes directly to its versioned snapshot instead of paying for a known miss.
+    cached = pilotTickers.has(canonicalTicker)
+      ? await hotRead(hotNamespace, legacyKey(canonicalTicker, basis)) : null;
     if (cached?.gzip) cached = { metadata: structuredClone(cached.metadata), stale: cached.stale,
       ...payloadCache.decode(cached.gzip) };
   } catch { cached = null; /* Durable read is bounded and contains no provider fetch. */ }

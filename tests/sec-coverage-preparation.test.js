@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gzipSync } from 'node:zlib';
 import {
   SEC_MIGRATION_COHORT, SEC_PREPARED_COHORT, getSecPreparedCompany,
   isSecPreparedReadEnabled, secDocumentIdentity, readPreparedSecDocument, refreshSecDocument,
@@ -108,13 +107,9 @@ test('alias responses preserve the requested security while all financial storag
   assert.deepEqual(JSON.parse(first.serializedPayload), first.payload);
   assert.equal(envelope.payload.ticker, 'GOOGL');
   assert.equal(keys.filter(key => key.includes(`CIK${cik}`)).length, 2);
-  assert.equal(keys.filter(key => key.includes(':GOOGL:')).length, 2);
-  const hot = await readPreparedAnalysis({ ticker: 'GOOG' }, { ...options,
-    hotRead: async () => ({ gzip: gzipSync(JSON.stringify(payload)).toString('base64'), metadata }), read: rejectNetwork,
-  });
-  assert.equal(hot.payload.ticker, 'GOOG');
-  assert.equal(hot.cacheSource, 'warm-prepared');
-  assert.equal(JSON.parse(hot.serializedPayload).ticker, 'GOOG');
+  assert.equal(keys.filter(key => key.includes(':GOOGL:')).length, 0);
+  assert.equal(first.cacheSource, 'supabase-prepared');
+  assert.equal(second.cacheSource, 'supabase-prepared');
 });
 
 test('one broad company refresh supplies two canonical documents to all financial and research views', async () => {

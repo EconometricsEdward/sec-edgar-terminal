@@ -3,7 +3,7 @@
   "info": {
     "title": "EDGAR Terminal Public Research APIs",
     "version": "2.0.0",
-    "description": "Read-only SEC Fundamental Lab, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal."
+    "description": "Read-only company financial highlights, SEC Fundamental Lab, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal."
   },
   "servers": [{ "url": "https://secedgarterminal.com" }],
   "tags": [
@@ -25,6 +25,77 @@
     }
   ],
   "paths": {
+    "/api/v1/analysis/{ticker}": {
+      "get": {
+        "tags": [
+          "SEC fundamentals"
+        ],
+        "operationId": "readPublicAnalysis",
+        "summary": "Read concise prepared company financial research",
+        "description": "Cache-only projection of six business-specific financial metrics with current/prior values, exact periods, units, calculated-versus-reported labels, source contexts and SEC filing links. Never fetches SEC data or writes a new financial history. Annual is the default. An older end selects latest-filed values for that reporting period, not a historical information set. Filing-cutoff asOf requests return 503 because historical vintages are not prepared by this endpoint. Unknown, duplicate and empty query fields are rejected. Missing data never means zero.",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]{0,14}$"
+            }
+          },
+          {
+            "name": "basis",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "annual",
+                "quarter",
+                "ytd",
+                "ttm"
+              ],
+              "default": "annual"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "Exact available reporting-period end, no later than today; omit for latest.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})$"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "description": "Filing cutoff. Valid dates return 503 without substituting current-vintage figures.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prepared financial highlights. Source freshness and calculation time are separate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAnalysisSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, duplicate, empty or unknown selector."
+          },
+          "503": {
+            "description": "Prepared research, period or vintage unavailable. Retry-After: 60; no-store."
+          }
+        }
+      }
+    },
     "/api/v1/funds/{ticker}": {
       "get": {
         "tags": ["Fund research"],
@@ -329,6 +400,209 @@
       "SchemaLink": { "schema": { "type": "string" } }
     },
     "schemas": {
+      "PublicAnalysisSummary": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "status",
+          "ticker",
+          "basis",
+          "period",
+          "metrics",
+          "sourceCatalog",
+          "coverage",
+          "stale",
+          "checkedAt"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "edgar.public-analysis.v1"
+          },
+          "calculationVersion": {
+            "type": "string"
+          },
+          "status": {
+            "const": "ready"
+          },
+          "ticker": {
+            "type": "string"
+          },
+          "cik": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "basis": {
+            "enum": [
+              "annual",
+              "quarter",
+              "ytd",
+              "ttm"
+            ]
+          },
+          "asOf": {
+            "const": ""
+          },
+          "selectedEnd": {
+            "type": "string"
+          },
+          "period": {
+            "type": "object",
+            "description": "kind, start, end, fiscalYear and fiscalPeriod of the selected reporting period."
+          },
+          "comparisonPeriod": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "checkedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "retrievedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "calculatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "freshUntil": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "metrics": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "required": [
+                "key",
+                "label",
+                "unit",
+                "value",
+                "classification",
+                "sourceIds",
+                "previous",
+                "change"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "Unscaled USD, percent (%), USD/shares, shares, ratio, days or count."
+                },
+                "value": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "classification": {
+                  "enum": [
+                    "reported",
+                    "calculated",
+                    "unavailable"
+                  ]
+                },
+                "formula": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "observationPeriod": {
+                  "type": "object",
+                  "description": "Instant or duration context for this metric."
+                },
+                "sourceIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "description": "Indexes in this response's sourceCatalog."
+                },
+                "calculations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "previous": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "Prior comparable value with its own classification, formula, sourceIds and calculations."
+                },
+                "change": {
+                  "type": "object",
+                  "description": "Compatible year-over-year delta; percent-valued deltas are percentage points. Growth needs a positive prior base."
+                }
+              }
+            }
+          },
+          "sourceCatalog": {
+            "type": "array",
+            "maxItems": 96,
+            "items": {
+              "type": "object",
+              "required": [
+                "taxonomy",
+                "tag",
+                "unit",
+                "start",
+                "end",
+                "value",
+                "accession",
+                "filed",
+                "url",
+                "revised"
+              ],
+              "description": "Exact SEC XBRL input context, source value, accession and SEC archive URL; revision flag does not imply error."
+            }
+          },
+          "coverage": {
+            "type": "object",
+            "description": "Displayed, available, reported, calculated and comparable metric counts, source count and prepared history periods."
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summaryUrl": {
+            "type": "string"
+          },
+          "interactiveUrl": {
+            "type": "string"
+          }
+        }
+      },
       "PublicFundSummary": {
         "type": "object",
         "description": "At most ten displayed holdings with the original full-portfolio denominator. Missing numbers are null, not zero. Unavailable responses can omit summary fields and do not establish that no SEC filing exists.",
