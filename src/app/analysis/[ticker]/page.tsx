@@ -41,7 +41,13 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   const choice = await selection(props);
   if (!choice) return { title: "Analysis selection unavailable", robots: { index: false } };
   const { selected, custom } = choice;
-  await loadSecCoverageRegistry();
+  // For HTML-only research agents, blocking metadata holds the initial shell
+  // until this same request-memoized brief is ready. Otherwise the root loading
+  // boundary can place financial text in a hidden, JS-completed stream chunk.
+  await Promise.all([
+    loadSecCoverageRegistry(),
+    readSummary(selected.ticker, selected.basis, selected.end, selected.asOf).catch(() => null),
+  ]);
   const company = getActiveSecCoverageCompany(selected.ticker);
   const path = `/analysis/${selected.ticker}${selected.basis !== "annual" ? `?basis=${selected.basis}` : ""}` as `/${string}`;
   return { ...buildPageMetadata({

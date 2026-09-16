@@ -24,6 +24,8 @@ The public brief is rendered for the URL's financial selectors. If a user change
 
 The directory and sitemap use the coverage identity registry, without loading every company's financial payload. Directory links disable automatic prefetch. `robots.txt` admits only the compact Analysis API prefix alongside the existing public APIs; general internal API crawling remains disallowed. `llms.txt` and OpenAPI document selectors, provenance and limitations. Historical/custom workspace URLs use noindex to reduce query crawl expansion.
 
+Next's HTML-limited metadata agents include the existing default list plus OpenAI and Anthropic research agents. Analysis metadata awaits the same request-memoized summary used by the page, so these agents receive visible financial HTML instead of a hidden streamed completion requiring JavaScript. Ordinary browser metadata streaming remains enabled. When upgrading Next, review its default bot list alongside this explicit extension.
+
 ## Observed baseline, 2026-09-16
 
 The storage audit found 2,004 current views (501 issuers × four bases). Existing compression reduced approximately 2.26 GB of decoded financial results to 127.1 MB, primarily in File Storage. These are existing storage figures, not savings newly produced by this change. No schema migration, evidence deletion, paid capacity increase or retention-policy change is required.

@@ -203,3 +203,11 @@ test('Analysis public JSON rejects acquisition and personal flags, preserves sel
   execFileSync(process.execPath, ['--experimental-test-module-mocks', '--input-type=module', '-e', `await (${routeFixture.toString()})();`, new URL('../', import.meta.url).href],
     { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'pipe'] });
 });
+
+test('HTML-only research agents wait for metadata while ordinary browsers retain streaming', async () => {
+  const { default: config } = await import('../next.config.mjs');
+  for (const agent of ['GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'ClaudeBot', 'Claude-SearchBot', 'Claude-User', 'Bingbot', 'Twitterbot', 'Slackbot']) {
+    assert.equal(config.htmlLimitedBots.test(agent), true, agent);
+  }
+  assert.equal(config.htmlLimitedBots.test('Mozilla/5.0 Chrome/140.0 Safari/537.36'), false);
+});
