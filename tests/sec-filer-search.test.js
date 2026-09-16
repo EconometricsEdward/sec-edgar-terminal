@@ -48,7 +48,9 @@ test('uses actual SEC name parameters and root forms without document text or am
   assert.equal(second.get('forms'), '13F-HR,13F-NT');
   assert.equal(second.get('q'), null);
   assert.equal(second.get('dateRange'), 'all');
-  assert.ok(calls.every(call => call.options.maxBytes === 2 * 1024 * 1024 && call.options.timeoutMs === 8000));
+  assert.ok(calls.every(call => call.options.maxBytes === 2 * 1024 * 1024 && call.options.timeoutMs === 8000 && call.options.retries === 1));
+  assert.ok(calls[0].options.signal instanceof AbortSignal);
+  assert.equal(calls[0].options.signal, calls[1].options.signal);
   assert.deepEqual(result.results, [{ cik: CIK, name: NAME, formTypes: ['13F-HR'] }]);
   assert.equal(result.source.fetchedAt, new Date(NOW).toISOString());
   assert.equal(result.truncated, false);
@@ -84,6 +86,60 @@ test('single-CIK 13F amendments and notices retain actual form types without ass
   const result = await search('D1 Capital');
   assert.deepEqual(result.results[0].formTypes, ['13F-HR/A', '13F-NT', '13F-NT/A']);
   assert.equal(Object.hasOwn(result.results[0], 'isFund'), false);
+});
+
+test('arbitrary holdings reporters rank ahead of related notices without overriding a more precise legal-name match', async () => {
+  const rows = [
+    filing({ ciks: ['0001336476'], names: ['Pershing Square GP, LLC  (CIK 0001336476)'], form: '13F-NT' }),
+    filing({ ciks: ['0001336528'], names: ['Pershing Square Capital Management, L.P.  (CIK 0001336528)'], form: '13F-HR/A' }),
+    filing({ ciks: ['0002026053'], names: ['PERSHING SQUARE INC.  (CIK 0002026053)'], form: '13F-HR' }),
+  ];
+  const search = createSecFilerSearch({ fetchSec: async url => Response.json(new URL(url).searchParams.has('keysTyped')
+    ? page([hint('1275323', 'PERSHING SQUARE L P')]) : page(rows)) });
+  const result = await search('Pershing Square');
+  assert.deepEqual(result.results.map(item => item.cik), ['0002026053', '0001336528', '0001336476', '0001275323']);
+  const exact = createSecFilerSearch({ fetchSec: async url => Response.json(new URL(url).searchParams.has('keysTyped')
+    ? page([hint('100', 'Example Capital')])
+    : page([filing({ ciks: ['0000000200'], names: ['Example Capital Management LLC  (CIK 0000000200)'] })])) });
+  assert.equal((await exact('Example Capital')).results[0].cik, '0000000100');
+});
+
+test('all discovery stages share a 25-second deadline and preserve verified results after it expires', async (t) => {
+  const controller = new AbortController(), signals = [];
+  t.mock.method(AbortSignal, 'timeout', milliseconds => {
+    assert.equal(milliseconds, 25000);
+    return controller.signal;
+  });
+  const search = createSecFilerSearch({ fetchSec: async (url, options) => {
+    signals.push(options.signal);
+    if (new URL(url).searchParams.has('keysTyped')) throw new Error('Temporary suggestion failure');
+    controller.abort(new DOMException('Search deadline', 'TimeoutError'));
+    return Response.json(page([filing({ ciks: ['0001167483'], names: ['TIGER GLOBAL MANAGEMENT LLC  (CIK 0001167483)'] })]));
+  } });
+  const result = await search('Tiger Global');
+  assert.equal(signals.length, 2, 'expired deadline prevents an extra broader source request');
+  assert.ok(signals.every(signal => signal === controller.signal));
+  assert.equal(result.results[0].cik, '0001167483');
+  assert.match(result.warning, /incomplete/);
+});
+
+test('a transient SEC response is retried once through the shared transport', async (t) => {
+  let hints = 0, managerCalls = 0;
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input);
+    if (url.searchParams.has('keysTyped')) {
+      hints++;
+      if (hints === 1) return new Response(null, { status: 502 });
+      return Response.json(page([hint('1167483', 'TIGER GLOBAL MANAGEMENT LLC')]));
+    }
+    managerCalls++;
+    return Response.json(page([filing({ ciks: ['0001167483'], names: ['TIGER GLOBAL MANAGEMENT LLC  (CIK 0001167483)'] })]));
+  });
+  const result = await createSecFilerSearch()('Tiger Global');
+  assert.equal(hints, 2);
+  assert.equal(managerCalls, 1);
+  assert.equal(result.results[0].cik, '0001167483');
+  assert.equal(result.warning, undefined);
 });
 
 test('matches displayed CIK to the filing identity, not array position or another named filer', async () => {

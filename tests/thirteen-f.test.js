@@ -60,6 +60,32 @@ test('XML parser rejects DTD, entity expansion, malformed structure, and duplica
   assert.throws(() => parse13FCover('x'.repeat(24 * 1024 * 1024 + 1), { filingDate: '2026-08-14' }), /oversized/);
 });
 
+test('malformed or mismatched 13F evidence has a non-transient document error', () => {
+  const cover = parseCover();
+  for (const parse of [
+    () => parse13FCover('<edgarSubmission><broken>', { filingDate: '2026-08-14' }),
+    () => parseCover({}, { cik: '123' }),
+    () => parseCover({}, { period: '2026-03-31' }),
+    () => parse13FInformationTable('<informationTable><broken>', cover),
+    () => parse13FInformationTable(tableXml([{ cusip: 'invalid' }]), cover),
+  ]) {
+    assert.throws(parse, { status: 422, code: 'INVALID_13F_DOCUMENT', message: /^Invalid SEC 13F: / });
+  }
+});
+
+test('SEC presentation stylesheet instructions are ignored only before the document root', () => {
+  const cover = parseCover();
+  const stylesheet = '<?xml-stylesheet type="text/xsl" href="https://example.invalid/never-fetch.xsl"?>';
+  assert.deepEqual(parse13FInformationTable(`<?xml version="1.0"?>\n${stylesheet}\n${tableXml()}`, cover), parse13FInformationTable(tableXml(), cover));
+  assert.deepEqual(parse13FCover(coverXml().replace('?>', `?>\n${stylesheet}\n`), { filingDate: '2026-08-14' }), cover);
+  for (const xml of [
+    `<?other instruction?>${tableXml()}`,
+    tableXml().replace('<infoTable>', `<infoTable>${stylesheet}`),
+    `${tableXml()}${stylesheet}`,
+    '<?xml-stylesheet unterminated',
+  ]) assert.throws(() => parse13FInformationTable(xml, cover), { code: 'INVALID_13F_DOCUMENT' });
+});
+
 test('information tables preserve leading-zero CUSIPs and option/quantity identities', () => {
   const rows = [{ value: 10 }, { putCall: 'Put', value: 20 }, { putCall: 'Call', value: 30 }, { quantityType: 'PRN', value: 40 }];
   const portfolio = assemble13FPeriod([report(rows)]);

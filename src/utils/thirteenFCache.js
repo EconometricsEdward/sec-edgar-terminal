@@ -34,7 +34,7 @@ function validHolding(row) {
     && [null, 'PUT', 'CALL'].includes(row.putCall) && ['SH', 'PRN'].includes(row.quantityType)
     && row.key === [row.cusip, row.putCall || 'SECURITY', row.quantityType].join('|')
     && number(row.quantity) && Number.isSafeInteger(row.valueUsd) && row.valueUsd >= 0
-    && Number.isSafeInteger(row.sourceRowCount) && row.sourceRowCount >= 1 && row.sourceRowCount <= 20000
+    && Number.isSafeInteger(row.sourceRowCount) && row.sourceRowCount >= 1 && row.sourceRowCount <= 100000
     && typeof row.investmentDiscretion === 'string' && row.investmentDiscretion.split(', ').every(value => ['SOLE', 'DFND', 'OTR'].includes(value))
     && row.votingAuthority && ['sole', 'shared', 'none'].every(key => number(row.votingAuthority[key]));
 }
@@ -61,6 +61,7 @@ function validPortfolio(data, cik, period) {
     || !p.holdings.every(validHolding) || new Set(p.holdings.map(row => row.key)).size !== p.holdings.length) return false;
   const total = p.holdings.reduce((sum, row) => sum + row.valueUsd, 0);
   if (total !== p.totalValueUsd || !Number.isSafeInteger(total)
+    || !Number.isSafeInteger(p.entryCount) || p.entryCount > 100000
     || p.entryCount !== p.holdings.reduce((sum, row) => sum + row.sourceRowCount, 0)
     || p.holdings.some(row => p.totalValueUsd > 0 ? row.weightPct !== row.valueUsd / p.totalValueUsd * 100 : row.weightPct !== null)) return false;
   if (!Array.isArray(data.reports) || !data.reports.length || data.reports.length > 41
@@ -114,7 +115,7 @@ export function valid13FFiling(value, cik, filing, now = Date.now()) {
       && report.filing.form === filing.form && report.filing.filingDate === filing.filingDate
       && report.filing.primaryUrl.endsWith(`/${filing.primaryDoc.split('/').pop()}`)
       && report.complete === true && Array.isArray(report.issues) && report.issues.length === 0
-      && Array.isArray(report.holdings) && report.holdings.length <= 20000 && report.holdings.every(validHolding)
+      && Array.isArray(report.holdings) && report.holdings.length <= 100000 && report.holdings.every(validHolding)
       && reconcile13FTable(report.holdings, cover).complete;
   } catch { return false; }
 }

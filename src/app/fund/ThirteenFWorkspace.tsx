@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ArrowDownToLine, ArrowRight, ArrowUpRight, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, ChartNoAxesCombined, FileText, Layers3, Network, RefreshCw, Search, ShieldCheck, X } from "lucide-react";
 import { useSecFilerSearch } from "../../utils/useSecFilerSearch.js";
-import { exactFilerMatch, filerCik } from "../../utils/secFilerSearch.js";
+import { exactFilerMatch, filerCik, hasThirteenFHoldings } from "../../utils/secFilerSearch.js";
 import { compare13FPortfolios } from "../../utils/thirteenF.js";
 import { select13FHoldings, project13FDelivery, valid13FDelivery } from "../../utils/thirteenFDelivery.js";
 import s from "./ThirteenFWorkspace.module.css";
@@ -185,12 +185,13 @@ function ManagerSearch({ onChoose, compact = false }: { onChoose: (cik: string) 
       <label htmlFor={compact ? "manager-search-compact" : "manager-search"}>{compact ? "Change manager" : "Find an institutional investment manager"}</label>
       <div className={s.searchField}><Search size={19} aria-hidden="true" /><input ref={input} id={compact ? "manager-search-compact" : "manager-search"} type="search" value={query} maxLength={160} placeholder="Manager name or CIK · e.g. D1 Capital" autoComplete="off" onFocus={() => setOpen(true)} onChange={event => { setQuery(event.target.value); setOpen(true); setMessage(""); }} onKeyDown={event => { if (event.key === "Escape") setOpen(false); }} /><button type="submit" className={s.primary}>Explore<ArrowRight size={16} aria-hidden="true" /></button></div>
     </form>
+    {!compact ? <p className={s.searchMessage}>Search any SEC reporting manager by legal name or CIK. The featured managers below are examples.</p> : null}
     {message ? <p className={s.searchMessage} role="status">{message}</p> : null}
     {open && query.trim().length >= 2 && !cik ? <div className={s.results}>
       <div className={s.resultsHeading}><span>SEC legal entities</span><button type="button" aria-label="Close manager results" onClick={() => { input.current?.focus(); setOpen(false); }}><X size={15} /></button></div>
       {search.status === "loading" ? <p role="status"><RefreshCw className={s.spin} size={15} />Searching SEC filer records…</p> : null}
       {search.status === "error" ? <div className={s.searchError} role="alert"><p>{search.error}</p><button type="button" onClick={search.retry}>Retry search</button></div> : null}
-      {search.results.length ? <ul>{search.results.map((result: any) => <li key={result.cik}><button type="button" onClick={() => choose(result.cik)}><div><strong>{result.name}</strong><span>CIK {result.cik}</span></div><span className={s.resultBadge}>{result.formTypes?.some((form: string) => form.startsWith("13F")) ? "13F filer" : "SEC filer"}<ArrowRight size={14} /></span></button></li>)}</ul> : null}
+      {search.results.length ? <ul>{search.results.map((result: any) => <li key={result.cik}><button type="button" onClick={() => choose(result.cik)}><div><strong>{result.name}</strong><span>CIK {result.cik}</span></div><span className={s.resultBadge}>{hasThirteenFHoldings(result) ? "13F holdings" : result.formTypes?.some((form: string) => form.startsWith("13F-NT")) ? "13F notice" : "SEC filer"}<ArrowRight size={14} /></span></button></li>)}</ul> : null}
       {search.status === "ready" && !search.results.length ? <p>No matching entity was returned. Try its full legal name or CIK.</p> : null}
       {search.warning ? <p role="status">{search.warning} <button type="button" onClick={search.retry}>Retry</button></p> : null}
       {search.truncated ? <p>SEC name results are limited. Refine the legal name or use a CIK.</p> : null}

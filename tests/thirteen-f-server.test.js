@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createThirteenFLoader, normalize13FRequest } from '../src/utils/thirteenFServer.js';
-import { THIRTEEN_F_FRESH_MS } from '../src/utils/thirteenFCache.js';
+import { create13FCache, THIRTEEN_F_FRESH_MS } from '../src/utils/thirteenFCache.js';
+import { createHash } from 'node:crypto';
 import { GET } from '../src/app/api/fund-13f/route.js';
 
 const CIK = '0001747057';
@@ -86,6 +87,123 @@ test('An unverified archived manager identity is rejected before holding documen
   const load = loader({ companyLoader: async () => company([filing()], [a]), archiveLoader: async () => ({ cik: '0000000099', archive: a, filings: [] }), fetchSec: fixtureTransport({ requests }) });
   await assert.rejects(load(CIK), /did not match this manager/);
   assert.equal(requests.length, 0);
+});
+
+test('A current report does not depend on unrelated older SEC archives', async () => {
+  let archiveCalls = 0;
+  const data = await loader({
+    companyLoader: async () => company([filing()], [archive(1, '2025-12-31')]),
+    archiveLoader: async () => { archiveCalls++; throw new Error('Old archive unavailable'); },
+  })(CIK);
+  assert.equal(archiveCalls, 0);
+  assert.equal(data.portfolio.complete, true);
+  assert.equal(data.coverage.selectedPeriodComplete, true);
+  assert.equal(data.coverage.historyComplete, false);
+  assert.equal(data.coverage.archivesRemaining, 1);
+});
+
+test('A manager without recent 13F filings is discovered in verified archives without requiring older history', async () => {
+  const current = archive(1), old = archive(2, '2025-12-31'), calls = [];
+  const data = await loader({
+    companyLoader: async () => company([], [current, old]),
+    archiveLoader: async (_cik, name) => {
+      calls.push(name);
+      if (name === old.name) throw new Error('Unrelated archive must not be read');
+      return { cik: CIK, archive: current, filings: [filing()], omittedRecords: 0 };
+    },
+  })(CIK);
+  assert.deepEqual(calls, [current.name]);
+  assert.equal(data.selectedPeriod, PERIOD);
+  assert.equal(data.portfolio.complete, true);
+});
+
+test('Relevant historical evidence cannot be silently skipped when its archive is unavailable', async () => {
+  await assert.rejects(loader({
+    companyLoader: async () => company([filing()], [archive(1)]),
+    archiveLoader: async () => { throw new Error('Relevant archive unavailable'); },
+  })(CIK), /Relevant archive unavailable/);
+});
+
+test('Any manager detects amendments on refresh and a new quarter after its snapshot expires', async () => {
+  const cik = '0001167483', previous = '2026-03-31';
+  const first = filing(1, previous, '13F-HR', { filingDate: '2026-05-15' });
+  const amended = filing(2, previous, '13F-HR/A', { filingDate: '2026-05-20' });
+  const latest = filing(3);
+  let stage = 0, clock = Date.parse('2026-09-01T00:00:00Z'), checks = 0;
+  const transport = fixtureTransport();
+  const load = loader({ now: () => clock,
+    companyLoader: async (requested, options) => {
+      assert.equal(requested, cik); assert.equal(options.refresh, true); checks++;
+      return company(stage === 0 ? [first] : stage === 1 ? [amended, first] : [latest, amended, first], [], { cik, name: 'Independent reporting manager' });
+    },
+    fetchSec: async (url, options) => {
+      assert.equal(options.retries, 1);
+      if (!url.endsWith('/primary_doc.xml')) return transport(url);
+      const selected = [first, amended, latest].find(row => url.includes(row.accession.replaceAll('-', '')));
+      return new Response(cover({ cik, period: selected.reportDate, form: selected.form, amendmentType: 'RESTATEMENT' }));
+    },
+  });
+  const initial = await load(cik);
+  assert.equal(initial.selectedPeriod, previous);
+  stage = 1; clock += 1000;
+  assert.equal((await load(cik)).portfolio.filings.length, 1);
+  assert.equal(checks, 1, 'fresh snapshots avoid repeated source checks');
+  const revised = await load(cik, { refresh: true });
+  assert.equal(revised.portfolio.filings.length, 2);
+  assert.equal(revised.portfolio.complete, true);
+  stage = 2; clock += THIRTEEN_F_FRESH_MS + 1;
+  const next = await load(cik);
+  assert.equal(next.selectedPeriod, PERIOD);
+  assert.equal(next.portfolio.filings[0].accession, latest.accession);
+  assert.equal(next.cache.stale, false);
+  assert.equal(checks, 3);
+});
+
+test('Invalid new 13F evidence is rejected instead of becoming an outage fallback', async () => {
+  let broken = false;
+  const transport = fixtureTransport();
+  const load = loader({
+    companyLoader: async () => company([filing(broken ? 2 : 1)]),
+    fetchSec: async url => broken && url.endsWith('/primary_doc.xml') ? new Response('<broken>') : transport(url),
+  });
+  assert.equal((await load(CIK)).portfolio.complete, true);
+  broken = true;
+  await assert.rejects(load(CIK, { refresh: true }), { status: 422, code: 'INVALID_13F_DOCUMENT' });
+});
+
+test('Transport size limits are reported as unsupported evidence, not transient outages', async () => {
+  await assert.rejects(loader({ fetchSec: async () => {
+    throw Object.assign(new Error('Transport limit'), { status: 502, code: 'SEC_RESPONSE_TOO_LARGE' });
+  } })(CIK), { status: 422, code: 'DOCUMENT_TOO_LARGE' });
+});
+
+test('A large source table preserves every repeated manager row and survives a cold shared-cache read', async () => {
+  const entries = 40000, records = new Map(), requests = [];
+  const xml = table(infoRow().repeat(entries));
+  assert.ok(Buffer.byteLength(xml) > 12 * 1024 * 1024, 'Exercise the previous document size ceiling');
+  const shared = () => create13FCache({ enabled: () => true,
+    read: async (type, id) => records.get(`${type}:${id}`) || null,
+    write: async (type, id, payload, ttl) => {
+      records.set(`${type}:${id}`, { payload, rawSha256: createHash('sha256').update(JSON.stringify(payload)).digest('hex'), expiresAt: new Date(Date.now() + ttl * 1000).toISOString() });
+      return { stored: true };
+    },
+  });
+  const first = await loader({ sharedCache: shared(), fetchSec: fixtureTransport({ requests, documents: {
+    'primary_doc.xml': cover({ entries, total: entries * 1500 }),
+    'unpredictable-holdings-name.xml': xml,
+  } }) })(CIK);
+  assert.equal(first.portfolio.complete, true);
+  assert.equal(first.portfolio.entryCount, entries);
+  assert.equal(first.portfolio.positionCount, 1);
+  assert.equal(first.portfolio.holdings[0].sourceRowCount, entries);
+  assert.equal(first.portfolio.totalValueUsd, entries * 1500);
+  const cached = shared();
+  assert.equal((await cached.readFiling(CIK, filing())).holdings.length, entries);
+  const restored = await loader({ sharedCache: cached, companyLoader: async () => { throw new Error('Source must not run for a prepared report'); } })(CIK);
+  assert.equal(restored.cache.status, 'shared');
+  assert.equal(restored.portfolio.entryCount, entries);
+  assert.equal(restored.portfolio.totalValueUsd, first.portfolio.totalValueUsd);
+  assert.equal((await cached.readPublicSummary(CIK)).publicSummary.positionCount, 1);
 });
 
 test('Remaining relevant archives make coverage incomplete and disable a definitive quarter comparison', async () => {
