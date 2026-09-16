@@ -5,6 +5,7 @@ import { CFTC_FRESH_MS, CFTC_PUBLIC_RESPONSE_MAX_BYTES, CFTC_RAW_HISTORY_SCHEMA_
 import { CFTC_FAMILIES, CFTC_LAUNCH_CATALOG } from '../src/utils/cftc.js';
 import { createCftcOutboundGate } from '../src/utils/cftcTransport.js';
 import { loadCftcHistory } from '../src/utils/cftcServer.js';
+import { createThirteenFInitialChartLoader } from '../src/utils/thirteenFInitialChart.js';
 
 const fixture=name=>JSON.parse(readFileSync(new URL(`./fixtures/${name}`,import.meta.url),'utf8'))[0];
 const priorDay=(date,days)=>{const value=new Date(`${date}T00:00:00.000Z`);value.setUTCDate(value.getUTCDate()-days);return value.toISOString().slice(0,10);};
@@ -299,6 +300,19 @@ test('prepared-only chart reads serve the saved chart and never compute or crawl
   const options = { family, code, group, window: '1y', preparedOnly: true, persistence: { mode: () => 'off' },
     cacheGet: async (_namespace, key) => values.get(key) || null, fetchImpl: async () => assert.fail('Saved chart reads cannot fetch upstream sources') };
   assert.equal((await loadCftcHistory(options)).retrieved_at, retrievedAt);
+  const canonicalReads = [], forbidden = async () => { assert.fail('Initial charts cannot probe hot storage, acquire a writer, or fetch source data.'); };
+  const canonical = { mode: () => 'supabase', reserve: forbidden, save: forbidden, contractRaw: forbidden,
+    prepared: async (key, { validate }) => {
+      canonicalReads.push(key); const value = values.get(key);
+      return value && validate(value) ? value : null;
+    },
+  };
+  const initialChart = createThirteenFInitialChartLoader({ persistence: canonical, cacheGet: forbidden,
+    load: parameters => loadCftcHistory({ ...parameters, fetchImpl: forbidden }) });
+  const bundled = await initialChart({ family, contract: code, group });
+  assert.equal(bundled?.retrieved_at, retrievedAt);
+  assert.equal(bundled.selection.report_date, reportDate);
+  assert.deepEqual(canonicalReads, ['markets:tff:latest', `history:tff:${code}:${group}:${reportDate}:1y`]);
   values.delete(`history:tff:${code}:${group}:${reportDate}:1y`);
   await assert.rejects(loadCftcHistory(options), error => error.code === 'CFTC_REPORT_NOT_PREPARED');
 });

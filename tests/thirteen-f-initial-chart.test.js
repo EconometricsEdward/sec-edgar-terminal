@@ -27,3 +27,27 @@ test('chart identity mismatches, oversized responses and missing publications st
     assert.equal(await loader(market), null);
   }
 });
+
+test('canonical prepared chart reads skip optional hot probes without increasing the summary deadline', async () => {
+  const persistence = { mode: () => 'supabase' };
+  const loader = createThirteenFInitialChartLoader({ persistence,
+    cacheGet: async () => { assert.fail('The optional hot cache cannot precede canonical chart reads.'); },
+    load: async options => {
+      assert.strictEqual(options.persistence, persistence); assert.equal(options.preparedOnly, true);
+      assert.equal(options.deadlineMs, 1000); assert.equal(await options.cacheGet('ignored', 'ignored'), null);
+      return chart;
+    },
+  });
+  assert.deepEqual(await loader(market), chart);
+});
+
+test('noncanonical modes preserve the injected prepared cache reader', async () => {
+  for (const mode of ['off', 'shadow']) {
+    const cacheGet = async () => ({ preserved: mode }), persistence = { mode: () => mode };
+    const loader = createThirteenFInitialChartLoader({ persistence, cacheGet, load: async options => {
+      assert.strictEqual(options.cacheGet, cacheGet); assert.strictEqual(options.persistence, persistence);
+      return chart;
+    } });
+    assert.deepEqual(await loader(market), chart);
+  }
+});

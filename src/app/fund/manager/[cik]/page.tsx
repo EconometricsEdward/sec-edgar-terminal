@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { cache, Suspense } from "react";
+import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { unstable_cache } from "next/cache";
@@ -7,7 +7,7 @@ import { buildPageMetadata, SITE_URL } from "../../../../utils/siteMetadata";
 import { PUBLIC_FUND_MANAGERS, publicManagerSelection } from "../../../../utils/fundPublicSelectors.js";
 import { readPublicManagerSummary } from "../../../../utils/fundPublicResearch.js";
 import FundResearchBrief, { type PublicFundSummary } from "../../FundResearchBrief";
-import ManagerMarketResearch from "../../ManagerMarketResearch";
+import { ManagerMarketResearchContent, readManagerMarketResearch } from "../../ManagerMarketResearch";
 import base from "../../fund.module.css";
 import s from "../../FundResearchBrief.module.css";
 
@@ -48,7 +48,12 @@ export default async function ManagerResearchPage(props: Props) {
   const selected = await selection(props);
   if (!selected) notFound();
   const { cik, period } = selected;
-  const result = await readSummary(cik, period).catch(() => null);
+  // Resolve saved research before rendering so the HTML is readable without
+  // React's streamed Suspense reveal script. Both reads run concurrently.
+  const [result, marketResearch] = await Promise.all([
+    readSummary(cik, period).catch(() => null),
+    readManagerMarketResearch(cik, period),
+  ]);
   const summary: PublicFundSummary = result || {
     kind: "13f", status: "unavailable", cik,
     name: PUBLIC_FUND_MANAGERS.find(manager => manager.cik === cik)?.name || `SEC manager ${cik}`,
@@ -61,6 +66,6 @@ export default async function ManagerResearchPage(props: Props) {
   return <div className={base.page}>
     <Link href="/fund" prefetch={false} className={s.back}>← Funds & institutional managers</Link>
     <FundResearchBrief summary={summary} standalone canonicalPath={`/fund/manager/${cik}${period ? `?period=${period}` : ""}`} jsonUrl={`/api/v1/managers/${cik}${period ? `?period=${period}` : ""}`} />
-    <Suspense fallback={null}><ManagerMarketResearch cik={cik} period={period} briefPeriod={summary.reportDate} /></Suspense>
+    {marketResearch && <ManagerMarketResearchContent model={marketResearch} briefPeriod={summary.reportDate} />}
   </div>;
 }
