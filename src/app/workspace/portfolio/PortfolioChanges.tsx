@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ChevronDown, Download, ExternalLink, FileText, RefreshCw } from "lucide-react";
 import { comparePortfolioResearch } from "../../../utils/portfolioChanges.js";
 import { buildPortfolioRecentSecEvents, isPortfolioRecentDate } from "../../../utils/portfolioRecentChanges.js";
+import { loadPortfolioCftcChanges } from "../../../utils/portfolioCftcChangesClient.js";
 import { downloadText } from "../../../utils/download.js";
 import styles from "./PortfolioChanges.module.css";
 
@@ -46,7 +47,7 @@ type Props = {
   baseline: any; allocation?: any; snapshot: any; rows: any[];
   onInspectCompany: (rowId: string) => void; onRefresh?: () => void; refreshing?: boolean;
 };
-type CftcState = { loading: boolean; data: any | null; error: string };
+type CftcState = { key: string; loading: boolean; data: any | null; error: string; retryAt?: number };
 
 export default function PortfolioChanges({ baseline, allocation, snapshot, rows, onInspectCompany, onRefresh, refreshing = false }: Props) {
   const comparison = useMemo(() => comparePortfolioResearch(baseline, snapshot, rows), [baseline, snapshot, rows]);
@@ -58,7 +59,8 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
   const [exportMessage, setExportMessage] = useState("");
   const [retry, setRetry] = useState(0);
   const [now, setNow] = useState(() => Date.now());
-  const [cftc, setCftc] = useState<CftcState>({ loading: true, data: null, error: "" });
+  const [cftcState, setCftc] = useState<CftcState>({ key: "", loading: true, data: null, error: "" });
+  const retainedCftc = useRef<{ key: string; data: any; retry: number }>({ key: "", data: null, retry: 0 });
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
@@ -78,38 +80,44 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
     return [...unique.values()];
   }, [rows]);
   const selectedCompany = companies.some((item) => item.cik === company) ? company : "all";
-  // Send identifiers only. The service bounds work to 24 issuers and reports the full denominator.
-  // A selected company comes first, including companies outside the initial priority scan.
-  const requestCompanies = useMemo(() => {
-    const changed = new Set((comparison.changes || []).map((change: any) => change.cik));
-    const ordered = [...companies].sort((a, b) => Number(changed.has(b.cik)) - Number(changed.has(a.cik)));
-    const selectedIndex = ordered.findIndex((item) => item.cik === selectedCompany);
-    // Filtering an already-scanned issuer must not repeat the entire discovery request.
-    if (selectedIndex >= 24) ordered.unshift(...ordered.splice(selectedIndex, 1));
-    return ordered.map(({ ticker, cik, rowId }) => ({ ticker, cik, rowId }));
-  }, [companies, comparison.changes, selectedCompany]);
+  // A company/window filter is local: it must not restart the full portfolio's research.
+  const requestCompanies = useMemo(() => [...companies].sort((a, b) => a.cik.localeCompare(b.cik))
+    .map(({ ticker, cik, rowId }) => ({ ticker, cik, rowId })), [companies]);
   const requestKey = JSON.stringify(requestCompanies);
   const captureKey = snapshot?.generated_at || "";
+  // Never briefly render another portfolio's results before its effect runs.
+  const cftc = cftcState.key === requestKey ? cftcState : { loading: true, data: null, error: "", retryAt: 0 };
   useEffect(() => {
     const identifiers = JSON.parse(requestKey);
+    const previous = retainedCftc.current.key === requestKey ? retainedCftc.current.data : null;
+    const retryOnly = retry !== retainedCftc.current.retry;
+    retainedCftc.current = { key: requestKey, data: previous, retry };
     if (!identifiers.length || refreshing) {
-      setCftc({ loading: false, data: null, error: "" });
+      setCftc({ key: requestKey, loading: false, data: previous, error: "" });
       return;
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error("The CFTC request timed out. Retry market context.")), 58_000);
     let active = true;
-    setCftc({ loading: true, data: null, error: "" });
-    fetch("/api/v1/cftc/portfolio-changes", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ companies: identifiers, days: 60 }), signal: controller.signal,
-    }).then(async (response) => {
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "CFTC market context is unavailable.");
-      return body;
-    }).then((data) => { if (active) setCftc({ loading: false, data, error: "" }); })
-      .catch((error) => { if (active) setCftc({ loading: false, data: null, error: error instanceof Error ? error.message : "CFTC market context is unavailable." }); })
-      .finally(() => clearTimeout(timer));
+    setCftc({ key: requestKey, loading: true, data: previous, error: "" });
+    // Deferring the start also avoids a duplicate request during development Strict Mode remounts.
+    const timer = setTimeout(() => {
+      loadPortfolioCftcChanges(identifiers, {
+        signal: controller.signal, previous, retryOnly,
+        onUpdate: (data: any) => {
+          if (!active) return;
+          retainedCftc.current = { key: requestKey, data, retry };
+          setCftc({ key: requestKey, loading: true, data, error: "" });
+        },
+      }).then((data) => {
+        if (!active) return;
+        retainedCftc.current = { key: requestKey, data, retry };
+        setCftc({ key: requestKey, loading: false, data, error: "" });
+      }).catch((error) => {
+        if (!active) return;
+        setCftc({ key: requestKey, loading: false, data: retainedCftc.current.data,
+          error: error instanceof Error ? error.message : "CFTC market context is unavailable.", retryAt: error?.retryAt || 0 });
+      });
+    }, 0);
     return () => { active = false; clearTimeout(timer); controller.abort(); };
   }, [requestKey, captureKey, retry, currentDay, refreshing]);
 
@@ -147,6 +155,8 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
     setExportMessage(`Exported ${filtered.length} recent update${filtered.length === 1 ? "" : "s"}.`);
   }
   const coverage = cftc.data?.coverage;
+  const preparation = cftc.data?.preparation;
+  const retryBlocked = cftc.loading || !!(cftc.retryAt && cftc.retryAt > now);
   const staleCapture = snapshot?.generated_at && String(snapshot.generated_at).slice(0, 10) < currentDay;
 
   return (
@@ -171,7 +181,7 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
       <div className={styles.summary} aria-label="Recent change summary">
         <div><strong>{counts.companies}</strong><span>related companies</span></div>
         <div><strong>{counts.sec}</strong><span>SEC updates</span></div>
-        <div><strong>{cftc.loading ? "…" : (cftc.error || cftc.data?.coverage?.checked === 0 || (!cftc.data?.coverage?.marketsChecked && cftc.data?.coverage?.marketUnavailable > 0)) ? "—" : counts.cftc}</strong><span>CFTC market moves</span></div>
+        <div><strong>{cftc.loading && !cftc.data ? "…" : (!cftc.data || cftc.data?.coverage?.checked === 0 || (!cftc.data?.coverage?.marketsChecked && cftc.data?.coverage?.marketUnavailable > 0)) ? "—" : counts.cftc}</strong><span>CFTC market moves</span></div>
       </div>
       <div className={styles.toolbar}>
         <div className={styles.sourceTabs} aria-label="Data source filter">
@@ -189,11 +199,13 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
       </div>
       <div className={styles.feedMeta} aria-live="polite">
         <span>{filtered.length} update{filtered.length === 1 ? "" : "s"}</span>
-        {cftc.loading && <span className={styles.loadingText}>Checking related CFTC markets…</span>}
-        {coverage && <span>CFTC: {coverage.checked} of {coverage.totalCompanies ?? companies.length} issuers checked{coverage.limited ? ` · scan limited to ${coverage.companyLimit}; choose a company to prioritize it` : ""}.</span>}
+        {cftc.loading && <span className={styles.loadingText}>{cftc.data ? "Updating CFTC coverage…" : "Loading CFTC coverage…"}</span>}
+        {coverage && <span>CFTC: {coverage.checked} of {coverage.totalCompanies ?? companies.length} companies checked{coverage.pending > 0 ? ` · ${coverage.pending} pending` : ""}{coverage.unavailable > 0 ? ` · ${coverage.unavailable} need retry` : ""}.</span>}
+        {preparation?.checkedAt && <span>Prepared {displayDate(preparation.checkedAt, true)}</span>}
       </div>
-      {cftc.error && <p className={styles.warning} role="status">CFTC context is unavailable: {cftc.error} <button type="button" className={styles.textButton} onClick={() => setRetry((value) => value + 1)}>Retry market context</button></p>}
-      {coverage && (coverage.unavailable > 0 || coverage.marketUnavailable > 0 || coverage.staleMarkets > 0) && <p className={styles.quietWarning} role="status">CFTC coverage is incomplete: {coverage.unavailable} company checks unavailable, {coverage.marketUnavailable || 0} market requests unavailable{coverage.staleMarkets ? `, ${coverage.staleMarkets} markets have older source data` : ""}. Missing data does not mean no change. <button type="button" className={styles.textButton} onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
+      {cftc.error && <p className={styles.warning} role="status">CFTC update could not finish: {cftc.error}{cftc.data ? " Available results remain visible." : ""} {cftc.retryAt && cftc.retryAt > now ? `Try again after ${displayDate(new Date(cftc.retryAt).toISOString(), true)}.` : ""} <button type="button" className={styles.textButton} disabled={retryBlocked} onClick={() => setRetry((value) => value + 1)}>Retry unfinished checks</button></p>}
+      {preparation?.status === "stale" && <p className={styles.quietWarning} role="status">Showing the last prepared CFTC results while background updates catch up. Check report dates before interpreting market moves.</p>}
+      {coverage && (coverage.unavailable > 0 || coverage.marketUnavailable > 0 || coverage.staleMarkets > 0 || coverage.partialMarkets > 0) && <p className={styles.quietWarning} role="status">CFTC coverage is incomplete: {coverage.unavailable} company checks unavailable, {coverage.marketUnavailable || 0} markets unavailable{coverage.staleMarkets ? `, ${coverage.staleMarkets} markets have older source data` : ""}{coverage.partialMarkets ? `, ${coverage.partialMarkets} markets have incomplete history` : ""}. Missing data does not mean no change. <button type="button" className={styles.textButton} disabled={retryBlocked} onClick={() => setRetry((value) => value + 1)}>{preparation ? "Check prepared updates" : "Retry unfinished checks"}</button></p>}
       {exportMessage && <p className={styles.statusMessage} role="status">{exportMessage}</p>}
       {!filtered.length ? <div className={styles.empty}>
         <div className={styles.emptyIcon}>{source === "cftc" ? <Activity size={20} aria-hidden="true" /> : <FileText size={20} aria-hidden="true" />}</div>
@@ -282,8 +294,9 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
         {recentSec.warnings.map((warning: string) => <p key={warning}>{warning}</p>)}
         {recentSec.coverageEvents.length > 0 && <p>{recentSec.coverageEvents.length} evidence-coverage changes are excluded from the activity count.</p>}
         <p>CFTC shows one event per market, trader category and report, with related companies grouped together. A weekly move qualifies when net positioning as a share of open interest changes by at least 1 percentage point, or total open interest changes by at least 5%. These are display thresholds, not statistical significance or measured company impact. Net equals longs minus shorts; each date uses its own open-interest denominator.</p>
-        <p>Connections come from candidate SEC annual-filing passages and need review. CFTC scans up to 24 priority issuers and requires observations exactly one week apart. Changing the window filters the loaded results without another market-data request.</p>
+        <p>Connections come from candidate SEC annual-filing passages and need review. Prepared demo results are shared across visitors and updated in the background. Other companies are checked in successive batches of up to 24, with unfinished checks reported above. Weekly comparisons require observations exactly one week apart. Company and window filters use the loaded results without another market-data request.</p>
         {coverage && <p>{coverage.noLink || 0} issuers had no supported market connection; {coverage.noFiling || 0} had no eligible annual filing; {coverage.noComparison || 0} observations lacked a comparable prior week; {coverage.identityMismatch || 0} identity mismatches were excluded.</p>}
+        <p><Link href="/workspace/demo/changes" className={styles.textButton}>Read the public 100-company changes summary</Link> for dated findings, coverage, and source links.</p>
       </details>
     </section>
   );

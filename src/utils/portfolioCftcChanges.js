@@ -196,42 +196,58 @@ function marketEvents(market, history, { cutoff, today, now }) {
  */
 export async function buildPortfolioCftcChanges(
   { companies = [], days = 30 } = {},
-  { signal, now = new Date(), loadContext = loadCompanyCftcContext, loadHistory = loadCftcHistory } = {},
+  { signal, now = new Date(), loadContext = loadCompanyCftcContext, loadHistory = loadCftcHistory,
+    companyLimit = PORTFOLIO_CFTC_COMPANY_LIMIT } = {},
 ) {
+  // Only trusted prepared readers increase this dependency-injected bound.
+  // Public request bodies cannot override the live discovery work budget.
+  if (!Number.isSafeInteger(companyLimit) || companyLimit < 1 || companyLimit > 100)
+    throw new Error("Invalid company processing bound.");
   now = new Date(now);
   const allCompanies = normalizeCompanies(companies);
-  const requested = allCompanies.slice(0, PORTFOLIO_CFTC_COMPANY_LIMIT);
+  const requested = allCompanies.slice(0, companyLimit);
   const today = now.toISOString().slice(0, 10);
   const windowDays = Math.max(1, Math.min(90, Math.floor(Number(days) || 30)));
   const cutoff = new Date(Date.parse(`${today}T00:00:00Z`) - (windowDays - 1) * dayMs).toISOString().slice(0, 10);
   const contextLimit = limiter(PORTFOLIO_CFTC_CONCURRENCY, signal);
   const historyLimit = limiter(PORTFOLIO_CFTC_CONCURRENCY, signal);
   const markets = new Map();
+  const companyChecks = new Array(requested.length);
+  const marketChecks = [];
   const coverage = {
     totalCompanies: allCompanies.length, requested: requested.length, checked: 0, linked: 0, unavailable: 0,
     noLink: 0, noFiling: 0, identityMismatch: 0, invalidLinks: 0, unavailableReasons: {}, marketUnavailableReasons: {},
     uniqueMarkets: 0, marketsChecked: 0, marketUnavailable: 0, staleMarkets: 0, partialMarkets: 0,
     noComparison: 0, belowThreshold: 0, outsideWindow: 0, futureReports: 0, events: 0,
-    limited: allCompanies.length > requested.length, companyLimit: PORTFOLIO_CFTC_COMPANY_LIMIT,
+    limited: allCompanies.length > requested.length, companyLimit,
   };
-  const discovered = await Promise.allSettled(requested.map(company => contextLimit(async () => {
+  const discovered = await Promise.allSettled(requested.map((company, index) => contextLimit(async () => {
     const context = await loadContext({ ticker: company.ticker }, { signal });
+    const check = { ticker: company.ticker, cik: company.cik || "", status: "unavailable",
+      marketKeys: [], checkedAt: null, invalidLinks: 0 };
+    companyChecks[index] = check;
     if (!["ready", "no_matches", "no_filing"].includes(context?.status)) {
-      coverage.unavailable += 1; countFailure(coverage.unavailableReasons, failureCode(context)); return;
+      check.code = failureCode(context);
+      coverage.unavailable += 1; countFailure(coverage.unavailableReasons, check.code); return;
     }
     if (!validCik(context.cik) || (company.cik && company.cik !== context.cik)
       || (context.ticker && context.ticker !== company.ticker)) {
       coverage.identityMismatch += 1; coverage.unavailable += 1;
+      check.code = "ISSUER_IDENTITY_MISMATCH";
       countFailure(coverage.unavailableReasons, "ISSUER_IDENTITY_MISMATCH"); return;
     }
+    check.cik = context.cik;
+    check.checkedAt = typeof context.generatedAt === "string" && Number.isFinite(Date.parse(context.generatedAt))
+      && Date.parse(context.generatedAt) <= now.getTime() ? context.generatedAt : null;
     coverage.checked += 1;
-    if (context.status === "no_matches") { coverage.noLink += 1; return; }
-    if (context.status === "no_filing") { coverage.noFiling += 1; return; }
+    if (context.status === "no_matches") { check.status = "no_matches"; coverage.noLink += 1; return; }
+    if (context.status === "no_filing") { check.status = "no_filing"; coverage.noFiling += 1; return; }
     let linked = false;
     for (const candidate of Array.isArray(context.links) ? context.links.slice(0, 8) : []) {
       const evidence = candidateEvidence(candidate, context.cik, today);
-      if (!evidence) { coverage.invalidLinks += 1; continue; }
+      if (!evidence) { coverage.invalidLinks += 1; check.invalidLinks += 1; continue; }
       const key = marketKey(candidate);
+      if (!check.marketKeys.includes(key)) check.marketKeys.push(key);
       if (!markets.has(key)) {
         markets.set(key, {
           candidate, relatedCompanies: [],
@@ -246,23 +262,46 @@ export async function buildPortfolioCftcChanges(
       }
       linked = true;
     }
-    if (linked) coverage.linked += 1;
+    if (linked) { check.status = "linked"; coverage.linked += 1; }
+    else {
+      // Rejected evidence is an incomplete check, never a successful no-match.
+      check.code = "SEC_SOURCE_INVALID";
+      coverage.checked -= 1; coverage.unavailable += 1;
+      countFailure(coverage.unavailableReasons, check.code);
+    }
   })));
-  for (const result of discovered) {
+  for (const [index, result] of discovered.entries()) {
     if (result.status !== "rejected") continue;
-    coverage.unavailable += 1; countFailure(coverage.unavailableReasons, failureCode(result.reason));
+    const code = failureCode(result.reason);
+    companyChecks[index] = { ticker: requested[index].ticker, cik: requested[index].cik,
+      status: "unavailable", marketKeys: [], checkedAt: null, invalidLinks: 0, code };
+    coverage.unavailable += 1; countFailure(coverage.unavailableReasons, code);
   }
   coverage.uniqueMarkets = markets.size;
   const events = [];
   for (const market of markets.values()) {
     const result = await market.result;
+    const check = { key: marketKey(market.candidate), family: market.candidate.family,
+      contract: market.candidate.contract, group: market.candidate.group,
+      status: "unavailable", stale: false, partial: false,
+      noComparison: 0, belowThreshold: 0, outsideWindow: 0, futureReports: 0 };
+    marketChecks.push(check);
     if (result.status !== "fulfilled" || !historyMatches(result.value, market.candidate)) {
       coverage.marketUnavailable += 1;
-      countFailure(coverage.marketUnavailableReasons, result.status === "rejected" ? failureCode(result.reason) : "CFTC_IDENTITY_UNVERIFIED");
+      check.code = result.status === "rejected" ? failureCode(result.reason) : "CFTC_IDENTITY_UNVERIFIED";
+      countFailure(coverage.marketUnavailableReasons, check.code);
       continue;
     }
     coverage.marketsChecked += 1;
     const built = marketEvents(market, result.value, { cutoff, today, now });
+    check.stale = Boolean(built.stale); check.partial = Boolean(built.partial);
+    check.status = check.stale ? "stale" : check.partial ? "partial" : "ready";
+    for (const key of ["noComparison", "belowThreshold", "outsideWindow", "futureReports"]) check[key] = built[key];
+    if (result.value.selected.reportDate > today) {
+      check.status = "unavailable"; check.code = "CFTC_FUTURE_REPORT";
+      coverage.marketsChecked -= 1; coverage.marketUnavailable += 1;
+      countFailure(coverage.marketUnavailableReasons, check.code);
+    }
     events.push(...built.events);
     for (const key of ["noComparison", "belowThreshold", "outsideWindow", "futureReports"]) coverage[key] += built[key];
     if (built.stale) coverage.staleMarkets += 1;
@@ -272,6 +311,7 @@ export async function buildPortfolioCftcChanges(
   coverage.events = events.length;
   return {
     schemaVersion: PORTFOLIO_CFTC_CHANGES_VERSION, generatedAt: now.toISOString(), cutoff, events, coverage,
+    companyChecks, marketChecks,
     thresholds: PORTFOLIO_CFTC_THRESHOLDS,
     methodology: "Show a weekly change when absolute net share of total open interest moves at least 1 percentage point, or total contract open interest changes at least 5%. These are display thresholds, not statistical significance tests. Compare observations exactly seven calendar days apart; missing weeks are not substituted. Report dates are position observation dates, not verified publication dates.",
     limitation: "CFTC events are aggregate futures positioning for markets linked by candidate SEC filing passages. They do not represent the company’s own futures position, hedge size, cash flow, or a price forecast. Only the latest accessible annual SEC filing is scanned for each checked company; a candidate is not a measured or confirmed exposure.",

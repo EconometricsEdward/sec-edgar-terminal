@@ -67,7 +67,8 @@
   border-color: var(--hub-accent, #f7c65a);
 }
 .refreshButton:disabled,
-.iconButton:disabled {
+.iconButton:disabled,
+.textButton:disabled {
   opacity: .56;
   cursor: wait;
 }

@@ -1,5 +1,6 @@
 import { isCftcEnabled } from '../../../../../utils/cftcFeature.js';
 import { buildPortfolioCftcChanges, PORTFOLIO_CFTC_CHANGES_VERSION, PORTFOLIO_CFTC_COMPANY_LIMIT } from '../../../../../utils/portfolioCftcChanges.js';
+import { readPreparedPortfolioCftcChanges } from '../../../../../utils/portfolioCftcPreparation.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse, rateLimitHeaders } from '../../../../../utils/rateLimit.js';
 
 export const runtime = 'nodejs';
@@ -41,7 +42,11 @@ export async function POST(request) {
   try {
     const input = await readRequest(request);
     const deadline = AbortSignal.any([request.signal, AbortSignal.timeout(52_000)]);
-    const result = await buildPortfolioCftcChanges(input, { signal: deadline });
+    // A prepared demo read does no SEC/CFTC discovery. Keep the bounded live path for other portfolios.
+    let result = null;
+    try { result = await readPreparedPortfolioCftcChanges(input, { signal: deadline }); }
+    catch { if (deadline.aborted) throw deadline.reason; }
+    if (!result) result = await buildPortfolioCftcChanges(input, { signal: deadline });
     return Response.json(result, {
       headers: {
         ...rateLimitHeaders(limit),

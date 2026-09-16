@@ -1,3 +1,5 @@
+import { PORTFOLIO_DEMO_CIKS, PORTFOLIO_PREPARED_CACHE_TYPE, PORTFOLIO_PREPARED_LIMITS } from './portfolioDemoPolicy.js';
+
 /** Reviewed, reproducible public data only. Shared by the Node adapter and gateway.
  * TTL is retention, not source freshness: readers retain their existing age checks.
  * Coordination, auth, user content, arbitrary URLs and preview keys are excluded.
@@ -18,6 +20,7 @@ const DATE = '[0-9]{4}-[0-9]{2}-[0-9]{2}';
 const QUARTER = '[0-9]{4}-(?:03-31|06-30|09-30|12-31)';
 const BASIS = '(?:ANNUAL|QUARTER|YTD|TTM)';
 const re = pattern => new RegExp(`^(?:${pattern})$`);
+const portfolioDemoCiks = new Set(PORTFOLIO_DEMO_CIKS);
 const ticker = re(TICKER), cik = re(CIK), accession = re(ACCESSION);
 const atlas = /^(?:ATLAS|ATLAS-LAST-GOOD)$/;
 const snapshotTypes = new Set(['market-v2', 'market-research-v3', 'market-overview-v1', 'quant-atlas-v1', 'quant-atlas-v2:production']);
@@ -38,6 +41,15 @@ const researchServing = /^RESEARCH-(COMPARE|PORTFOLIO)-V1:(?:COMPARE-V2|ANALYSIS
 export function disposableCachePolicy(type, originalId) {
   if (typeof type !== 'string' || typeof originalId !== 'string' || !originalId.length || originalId.length > 1024) return null;
   const id = originalId.toUpperCase();
+  if (type === PORTFOLIO_PREPARED_CACHE_TYPE) {
+    if (['DEMO-CURRENT', 'DEMO-PREVIOUS'].includes(id)) return Object.freeze({ family: 'checkpoint', type, id,
+      maxTtlSeconds: 14 * 86400, maxRawBytes: PORTFOLIO_PREPARED_LIMITS.snapshotBytes });
+    if (id === 'DEMO-STATE') return Object.freeze({ family: 'checkpoint', type, id,
+      maxTtlSeconds: 14 * 86400, maxRawBytes: PORTFOLIO_PREPARED_LIMITS.stateBytes });
+    if (/^CIK[0-9]{10}$/.test(id) && portfolioDemoCiks.has(id.slice(3))) return Object.freeze({ family: 'checkpoint', type, id,
+      maxTtlSeconds: 14 * 86400, maxRawBytes: PORTFOLIO_PREPARED_LIMITS.contextBytes, sourceCik: id.slice(3) });
+    return null;
+  }
   let family = null, sourceCik = null;
   if (snapshotTypes.has(type) && atlas.test(id)) family = 'snapshot';
   else if (['market-v2', 'market-research-v3'].includes(type) && id === 'OBSERVATIONS') family = 'history';

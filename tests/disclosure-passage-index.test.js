@@ -65,6 +65,8 @@ test('exact Boolean verification rejects FTS false positives and document-wide e
 test('tracked SQL verifies service-only access, exact document replacement, stale writes, search filters and quotas', async () => {
   const db = new PGlite();
   try {
+    // Fixtures use ISO UTC dates; PGlite's bundled default timezone can be behind UTC.
+    await db.exec("set timezone='UTC';");
     await db.exec('create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; grant usage on schema public to service_role;');
     await db.exec(await readFile(new URL('../supabase/migrations/20260915070149_edgar_disclosure_passage_index.sql', import.meta.url), 'utf8'));
     const call = async (query, params = []) => (await db.query(query, params)).rows[0]?.value;

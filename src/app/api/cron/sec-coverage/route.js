@@ -7,6 +7,7 @@ import { maintainRedisCache } from '../../../../utils/redisMaintenance.js';
 import { maintainProviderRetirement } from '../../../../utils/providerRetirementMaintenance.js';
 import { runCftcHistoryPreparation } from '../../../../utils/cftcHistoryPreparation.js';
 import { isCftcEnabled } from '../../../../utils/cftcFeature.js';
+import { runPortfolioCftcPreparation } from '../../../../utils/portfolioCftcPreparation.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -14,6 +15,7 @@ export const dynamic = 'force-dynamic';
 
 /** Only the configured scheduler can enqueue coverage work. */
 export async function GET(request) {
+  const requestStartedAt = Date.now();
   const headers = { 'Cache-Control': 'private, no-store' };
   if (!await authorizeSecCoverageSchedule(request)) return Response.json({ error: 'Unauthorized' }, { status: 401, headers });
   if (process.env.VERCEL_ENV !== 'production') return Response.json({ error: 'Coverage scheduling requires production.' }, { status: 403, headers });
@@ -30,6 +32,7 @@ export async function GET(request) {
   const startedAt = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 230_000);
+  let responseBody, responseStatus = 200;
   try {
     const membership = await maintainSecCoverageMembership({ signal: controller.signal,
       deadline: startedAt + 125_000 });
@@ -81,10 +84,30 @@ export async function GET(request) {
         cftcHistoryPreparation = { status: 'unavailable', code: 'CFTC_HISTORY_PREPARATION_UNAVAILABLE' };
       }
     }
-    return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', ...result,
+    responseBody = { schema_version: 'edgar.sec-coverage-job.v1', ...result,
       membership, cacheMaintenance, providerRetirement, cftcHistoryPreparation,
-      started_at: new Date(startedAt).toISOString(), duration_ms: Date.now() - startedAt }, { headers });
+      started_at: new Date(startedAt).toISOString() };
   } catch {
-    return Response.json({ schema_version: 'edgar.sec-coverage-job.v1', status: 'failed', code: 'SEC_COVERAGE_JOB_FAILED' }, { status: 503, headers });
+    responseStatus = 503;
+    responseBody = { schema_version: 'edgar.sec-coverage-job.v1', status: 'failed', code: 'SEC_COVERAGE_JOB_FAILED' };
   } finally { clearTimeout(timer); }
+  // Preserve the existing 225-second SEC/CFTC research budget. The demo gets its
+  // own bounded continuation even when SEC failed or consumed its entire budget.
+  // Include signature verification time in the signed scheduler's 280-second
+  // HTTP timeout while preserving the existing research budget after authorization.
+  let portfolioCftcPreparation = { status: 'disabled' };
+  const preparationDeadline = Math.min(requestStartedAt + 275_000, Date.now() + 45_000);
+  const preparationBudget = preparationDeadline - Date.now();
+  if (isCftcEnabled() && getDataStoreMode('cftc') === 'supabase') {
+    portfolioCftcPreparation = { status: 'deferred', reason: 'request-budget' };
+    if (!request.signal.aborted && preparationBudget >= 10_000) {
+      try {
+        portfolioCftcPreparation = await runPortfolioCftcPreparation({
+          signal: AbortSignal.any([request.signal, AbortSignal.timeout(preparationBudget)]),
+          deadline: preparationDeadline, maxCompanies: 6,
+        });
+      } catch { portfolioCftcPreparation = { status: 'unavailable', code: 'PORTFOLIO_CFTC_PREPARATION_UNAVAILABLE' }; }
+    }
+  }
+  return Response.json({ ...responseBody, portfolioCftcPreparation, duration_ms: Date.now() - startedAt }, { status: responseStatus, headers });
 }

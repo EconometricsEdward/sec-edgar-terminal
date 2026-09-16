@@ -4,6 +4,7 @@
 User-agent: *
 Allow: /
 Disallow: /api/
+Allow: /api/v1/cftc/portfolio-changes/demo
 
 # Sitemap location
 Sitemap: https://secedgarterminal.com/sitemap.xml

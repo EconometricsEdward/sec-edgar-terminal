@@ -338,7 +338,7 @@ function validateRpc(name, params, nowMs) {
     if (name !== 'edgar_cache_get') {
       if (has(params, 'p_expires_at')) timestamp(params.p_expires_at, true);
       if (!HASH.test(params.p_raw_sha256 || '') || !HASH.test(params.p_gzip_sha256 || '')
-        || !integer(params.p_raw_bytes, 1, CACHE_LIMITS.rawBytes) || !integer(params.p_ttl_seconds, 1, policy.maxTtlSeconds)
+        || !integer(params.p_raw_bytes, 1, Math.min(CACHE_LIMITS.rawBytes, policy.maxRawBytes ?? Infinity)) || !integer(params.p_ttl_seconds, 1, policy.maxTtlSeconds)
         || typeof params.p_gzip_base64 !== 'string' || !params.p_gzip_base64.length
         || params.p_gzip_base64.length > Math.ceil(CACHE_LIMITS.gzipBytes / 3) * 4
         || params.p_gzip_base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(params.p_gzip_base64)

@@ -89,6 +89,19 @@ test('cache writes require bounded retention, exact compressed/raw hashes and CA
   assert.equal(calls[0].params.p_if_hash, 'a'.repeat(64));
 });
 
+test('prepared demo gateway admits only fixed records and enforces per-record raw limits and issuer identity', async () => {
+  const { gateway, calls } = setup();
+  const type = 'edgar.portfolio-cftc-prepared.v1:production';
+  const base = { p_family: 'checkpoint', p_type: type, p_ttl_seconds: 14 * 86400 };
+  assert.equal((await gateway(request('edgar_cache_put', put({ cik: '0000320193', context: {} }, { ...base, p_id: 'CIK0000320193' })))).status, 200);
+  assert.equal((await gateway(request('edgar_cache_put', put({ cik: '0000019617' }, { ...base, p_id: 'CIK0000320193' })))).status, 422);
+  assert.equal((await gateway(request('edgar_cache_put', put({ cik: '0000000001' }, { ...base, p_id: 'CIK0000000001' })))).status, 403);
+  assert.equal((await gateway(request('edgar_cache_put', put({ data: 'x'.repeat(16 * 1024) }, { ...base, p_id: 'DEMO-STATE' })))).status, 422);
+  assert.equal((await gateway(request('edgar_cache_put', put({ cik: '0000320193', data: 'x'.repeat(48 * 1024) }, { ...base, p_id: 'CIK0000320193' })))).status, 422);
+  assert.equal((await gateway(request('edgar_cache_put', put({ data: 'x'.repeat(2 * 1024 * 1024) }, { ...base, p_id: 'DEMO-CURRENT' })))).status, 422);
+  assert.equal(calls.length, 1);
+});
+
 test('only cache data RPCs receive 9 MiB transport bounds; decoded bombs and generic enlargement fail', async () => {
   const payload = { data: randomBytes(600000).toString('base64') };
   const { gateway, calls } = setup({ response: () => Response.json(payload) });
