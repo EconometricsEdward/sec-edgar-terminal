@@ -15,6 +15,7 @@ export const SEC_FILER_SEARCH_URL = 'https://efts.sec.gov/LATEST/search-index';
 export const SEC_FILER_RESULT_LIMIT = 12;
 const FORM_13F = /^13F-(?:HR|NT)(?:\/A)?$/;
 const MAX_BYTES = 2 * 1024 * 1024;
+const SEARCH_DEADLINE_MS = 25000;
 const WARNING = 'Some SEC name sources could not be checked. Results may be incomplete. Retry or enter the filer’s CIK.';
 const normalizedCik = value => /^\d{1,10}$/.test(String(value)) && Number(value) > 0 ? String(value).padStart(10, '0') : null;
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -111,17 +112,21 @@ function mergedResults(pages, query) {
     if (nameAffinity(incoming.name, query) < nameAffinity(current.name, query)) current.name = incoming.name;
     current.formTypes = [...new Set([...current.formTypes, ...incoming.formTypes])].sort();
   }
+  // A notice identifies a related manager but does not supply a holdings
+  // table. Prefer actual holdings reporters when legal-name relevance ties.
+  const reportRank = filer => filer.formTypes.some(form => /^13F-HR(?:\/A)?$/.test(form)) ? 0 : filer.formTypes.length ? 1 : 2;
   return [...byCik.values()].sort((a, b) =>
     nameAffinity(a.name, query) - nameAffinity(b.name, query)
-    || Number(b.formTypes.length > 0) - Number(a.formTypes.length > 0)
+    || reportRank(a) - reportRank(b)
     || a.name.length - b.name.length || a.name.localeCompare(b.name) || a.cik.localeCompare(b.cik));
 }
 
 /** Small bounded per-instance query cache; no unreviewed shared-cache namespace. */
 export function createSecFilerSearch({ fetchSec = secFetch, now = Date.now, ttlMs = 5 * 60000, maxEntries = 200, maxPending = 24 } = {}) {
   const cache = new Map(), pending = new Map();
-  async function fetchJson(url) {
-    const response = await fetchSec(url, { headers: { Accept: 'application/json' }, timeoutMs: 8000, retries: 0, maxBytes: MAX_BYTES });
+  async function fetchJson(url, signal) {
+    signal.throwIfAborted();
+    const response = await fetchSec(url, { headers: { Accept: 'application/json' }, signal, timeoutMs: 8000, retries: 1, maxBytes: MAX_BYTES });
     if (!response.ok) {
       if (response.status === 404) throw error('No public SEC filing record was found for this CIK.', 404);
       throw error('SEC filer search is temporarily unavailable. Please retry or enter a CIK.', [403, 429, 503].includes(response.status) ? 503 : 502);
@@ -130,9 +135,13 @@ export function createSecFilerSearch({ fetchSec = secFetch, now = Date.now, ttlM
   }
   async function discover({ query, cik }) {
     const fetchedAt = new Date(now()).toISOString();
+    // Both source stages share one deadline, so a transient SEC retry cannot
+    // extend discovery beyond the API's 30-second function budget. The shared
+    // SEC transport still owns retry delays and provider cooldown handling.
+    const signal = AbortSignal.timeout(SEARCH_DEADLINE_MS);
     if (cik) {
       const url = `https://data.sec.gov/submissions/CIK${cik}.json`;
-      const payload = await fetchJson(url), name = cleanName(payload?.name);
+      const payload = await fetchJson(url, signal), name = cleanName(payload?.name);
       if (normalizedCik(payload?.cik) !== cik || !name || !Array.isArray(payload?.filings?.recent?.form))
         throw error('The SEC response did not match the requested filer identity. Please retry.');
       return { query, results: [{ cik, name, formTypes: [...new Set(payload.filings.recent.form.filter(form => typeof form === 'string' && FORM_13F.test(form)))].sort() }],
@@ -141,8 +150,8 @@ export function createSecFilerSearch({ fetchSec = secFetch, now = Date.now, ttlM
     const hintUrl = `${SEC_FILER_SEARCH_URL}?${new URLSearchParams({ keysTyped: query })}`;
     const managerUrl = `${SEC_FILER_SEARCH_URL}?${new URLSearchParams({ entityName: query, forms: '13F-HR,13F-NT', dateRange: 'all', from: '0' })}`;
     const attempts = await Promise.allSettled([
-      fetchJson(hintUrl).then(payload => hintResults(payload, query)),
-      fetchJson(managerUrl).then(payload => filingResults(payload, query, true)),
+      fetchJson(hintUrl, signal).then(payload => hintResults(payload, query)),
+      fetchJson(managerUrl, signal).then(payload => filingResults(payload, query, true)),
     ]);
     const urls = [hintUrl, managerUrl], pages = [], failures = [];
     for (const attempt of attempts) {
@@ -155,7 +164,7 @@ export function createSecFilerSearch({ fetchSec = secFetch, now = Date.now, ttlM
     if (!hints || hints.truncated || !pages.some(page => page.results.length)) {
       const url = `${SEC_FILER_SEARCH_URL}?${new URLSearchParams({ entityName: query, dateRange: 'all', from: '0' })}`;
       urls.push(url);
-      try { pages.push(filingResults(await fetchJson(url), query, false)); } catch (failure) { failures.push(failure); }
+      try { pages.push(filingResults(await fetchJson(url, signal), query, false)); } catch (failure) { failures.push(failure); }
     }
     const results = mergedResults(pages, query);
     if (failures.length && !results.length) throw failures[0];

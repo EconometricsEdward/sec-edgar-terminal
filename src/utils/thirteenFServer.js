@@ -9,7 +9,10 @@ const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
 const MAX_ARCHIVES = 8;
 const MAX_PERIODS = 40;
 const MAX_PERIOD_FILINGS = 16;
-const MAX_XML_BYTES = 12 * 1024 * 1024;
+// Match the bounded XML parser. Large filers can repeat the same security
+// across included managers, so source rows are not distinct portfolio positions.
+const MAX_XML_BYTES = 24 * 1024 * 1024;
+const MAX_SOURCE_ROWS = 100000;
 const MAX_REQUEST_BYTES = 40 * 1024 * 1024;
 const MAX_CACHE_BYTES = 20 * 1024 * 1024;
 const encoder = new TextEncoder();
@@ -93,8 +96,15 @@ export function createThirteenFLoader({
   }
   async function fetchDocument(url, signal, budget, maxBytes = MAX_XML_BYTES) {
     signal.throwIfAborted();
-    const response = await fetchSec(url, { signal, timeoutMs: 15000, retries: 0, maxBytes, cache: 'no-store', headers: { Accept: 'application/json, application/xml, text/xml, text/plain;q=0.9' } });
-    return limitedText(response, maxBytes, budget, signal);
+    try {
+      // Cold managers have no complete fallback yet. One transport retry can
+      // recover a transient failure without bypassing SEC pacing or the job deadline.
+      const response = await fetchSec(url, { signal, timeoutMs: 15000, retries: 1, maxBytes, cache: 'no-store', headers: { Accept: 'application/json, application/xml, text/xml, text/plain;q=0.9' } });
+      return await limitedText(response, maxBytes, budget, signal);
+    } catch (error) {
+      if (error.code === 'SEC_RESPONSE_TOO_LARGE') throw failure('This SEC document exceeds the supported size. Open the original SEC filing.', 422, 'DOCUMENT_TOO_LARGE');
+      throw error;
+    }
   }
   async function loadReport(cik, filing, signal, budget, { coverOnly = false } = {}) {
     if (!ACCESSION.test(filing.accession) || !FORM.test(filing.form)) throw failure('The selected SEC filing metadata is invalid. Retry this request.');
@@ -139,7 +149,7 @@ export function createThirteenFLoader({
       const reconciled = reconcile13FTable(rows, cover);
       issues.push(...reconciled.issues);
       complete = complete && reconciled.complete;
-      if (rows.length > 20000) throw failure('This 13F report exceeds the supported position limit. Open the original SEC information table.', 422, 'REPORT_TOO_LARGE');
+      if (rows.length > MAX_SOURCE_ROWS) throw failure('This 13F report exceeds the supported source-row limit. Open the original SEC information table.', 422, 'REPORT_TOO_LARGE');
     }
     const report = { cover, holdings: rows, complete, issues: [...new Set(issues)], filing: {
       accession: filing.accession, filingDate: filing.filingDate, reportDate: cover.period, form: filing.form,
@@ -167,17 +177,15 @@ export function createThirteenFLoader({
       omittedRecords += history.omittedRecords || 0;
       loaded.add(archive.name);
     }
-    // Recent submissions usually contain years of 13F reports. Extend short histories
-    // with at most two verified archives before choosing the latest report period.
-    for (const archive of archives.slice(0, 2)) {
-      if (periodRows(filings).length >= 8 && filings.some(f => FORM.test(f.form))) break;
-      await addArchive(archive);
-    }
     let selectedPeriod = requestedPeriod || periodRows(filings)[0]?.period || '';
-    const needed = archives.filter(archive => !loaded.has(archive.name) && (!selectedPeriod || archive.filingTo >= selectedPeriod));
-    for (const archive of needed) {
+    // A healthy current report must not depend on fetching unrelated old history.
+    // If recent submissions contain no 13F period, walk the verified manifest
+    // until a period is found, then retain every archive that can affect it.
+    for (const archive of archives) {
       if (loaded.size >= MAX_ARCHIVES) break;
+      if (selectedPeriod && archive.filingTo < selectedPeriod) continue;
       await addArchive(archive);
+      selectedPeriod = requestedPeriod || periodRows(filings)[0]?.period || '';
     }
     // Missing report dates are not silently discarded: inspect their verified cover.
     const undated = filings.filter(f => FORM.test(f.form) && !validFilingDate(f.reportDate) && (!selectedPeriod || f.filingDate >= selectedPeriod));
@@ -226,7 +234,7 @@ export function createThirteenFLoader({
     }
     const portfolio = assemble13FPeriod(documents);
     if (!portfolio || portfolio.cik !== cik || portfolio.period !== selectedPeriod) throw failure('The assembled 13F portfolio did not match the requested manager and quarter. Retry this request.');
-    if (portfolio.holdings.length > 20000 || portfolio.entryCount > 20000) throw failure('This assembled quarter exceeds the supported position limit. Open the original SEC information tables.', 422, 'REPORT_TOO_LARGE');
+    if (portfolio.holdings.length > 20000 || portfolio.entryCount > MAX_SOURCE_ROWS) throw failure('This assembled quarter exceeds the supported position or source-row limit. Open the original SEC information tables.', 422, 'REPORT_TOO_LARGE');
     const summary = summarize13FPortfolio(portfolio);
     // Rows already include reported-value weights in portfolio; avoid duplicating
     // the entire holdings table in every response and cache entry.

@@ -7,7 +7,9 @@ const FORMS = new Set(['13F-HR', '13F-HR/A', '13F-NT', '13F-NT/A']);
 const REPORT_TYPES = new Set(['13F HOLDINGS REPORT', '13F COMBINATION REPORT', '13F NOTICE']);
 const unique = (values) => [...new Set(values.filter(Boolean))];
 const tidy = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
-const invalid = (message) => { throw new Error(`Invalid SEC 13F: ${message}`); };
+// Invalid source evidence is not a temporary SEC transport failure. Keep the
+// distinction so callers cannot replace a rejected filing with a stale report.
+const invalid = (message) => { throw Object.assign(new Error(`Invalid SEC 13F: ${message}`), { status: 422, code: 'INVALID_13F_DOCUMENT' }); };
 const knownNumber = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
 function decodeXml(value) {
@@ -56,7 +58,12 @@ function parseXml(input) {
     }
     if (xml.startsWith('<?', cursor)) {
       const end = xml.indexOf('?>', cursor + 2);
-      if (end < 0 || cursor !== 0 || !/^<\?xml\s/i.test(xml.slice(cursor, end))) invalid('unsupported XML processing instruction');
+      const instruction = xml.slice(cursor, end);
+      const declaration = cursor === 0 && /^<\?xml\s/i.test(instruction);
+      // SEC files can include a presentation stylesheet before their root.
+      // Ignore it as metadata; never fetch or execute its href or stylesheet.
+      const stylesheet = stack.length === 1 && document.children.length === 0 && /^<\?xml-stylesheet\s/.test(instruction);
+      if (end < 0 || (!declaration && !stylesheet)) invalid('unsupported XML processing instruction');
       cursor = end + 2;
       continue;
     }

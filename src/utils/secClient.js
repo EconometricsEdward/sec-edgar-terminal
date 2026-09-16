@@ -405,7 +405,16 @@ export async function secFetch(input, options = {}) {
       return response;
     } catch (error) {
       if (signal?.aborted) throw abortError(signal);
-      if (error instanceof SecRequestError) throw error;
+      if (error instanceof SecRequestError) {
+        // A brief coordination outage may recover, but never dispatch without
+        // a new verified grant. The next requestOnce re-enters the same gate.
+        // Provider cooldowns and validation/security failures remain terminal.
+        const retryCoordination = ['GET', 'HEAD'].includes(String(fetchOptions.method || 'GET').toUpperCase())
+          && ['SEC_RATE_GATE_UNAVAILABLE', 'SEC_RATE_GATE_SATURATED'].includes(error.code);
+        if (!retryCoordination || attempt >= retries) throw error;
+        await delay(retryDelay(null, attempt), signal);
+        continue;
+      }
       lastError = error;
       if (attempt >= retries) break;
       await delay(retryDelay(null, attempt), signal);
