@@ -1,6 +1,6 @@
-import styles from "./help/help.module.css";
+import styles from "../../app/help/help.module.css";
 
-export default function Loading() {
+export default function ResearchPageLoading() {
   return (
     <div className={styles.page}>
       <section
