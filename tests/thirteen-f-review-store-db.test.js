@@ -104,6 +104,23 @@ test('durable reviews enforce shared progress, exact report identity, fencing, r
       await db.exec('update edgar_private.fund_review_daily_budget set reserved_seconds=0,attempts=6000');
       assert.equal(await call(db,'claim',[randomUUID(),90]),null);
     });
+    await t.test('a manager queued during an active lease receives the next claim, then service rotates fairly', async () => {
+      await reset();
+      await call(db,'enqueue',[report(),hash]);
+      const first = await call(db,'claim',[randomUUID(),90]);
+      const newCik = '0001067983', nextReport = report();
+      nextReport.manager = { cik: newCik, name: 'Newly requested manager' };
+      nextReport.portfolio.cik = newCik;
+      await call(db,'enqueue',[nextReport, 'B'.repeat(64)]);
+      assert.equal(await call(db,'claim',[randomUUID(),90]),null,'the new request cannot overlap the active SEC worker');
+      await call(db,'release',[claimToken(first)]);
+      const second = await call(db,'claim',[randomUUID(),90]);
+      assert.equal(second.cik,newCik,'a newly requested manager precedes previously served work');
+      await call(db,'release',[claimToken(second)]);
+      const third = await call(db,'claim',[randomUUID(),90]);
+      assert.equal(third.cik,cik,'unfinished managers rotate by last service rather than portfolio size');
+      await call(db,'release',[claimToken(third)]);
+    });
     await t.test('work does not dispatch beyond the remaining daily attempt allowance', async () => {
       await reset();await call(db,'enqueue',[report(),hash]);const c=await call(db,'claim',[randomUUID(),90]);
       await db.exec('update edgar_private.fund_review_daily_budget set attempts=5999');

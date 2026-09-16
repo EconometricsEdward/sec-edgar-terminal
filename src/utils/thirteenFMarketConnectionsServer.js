@@ -161,38 +161,51 @@ export function createThirteenFMarketConnectionsLoader({
   load.fromReport = fromReport;
   /** Bulk cache-only work has a separate path from live SEC discovery. Exact
    * report/holding checks still run, and misses remain null rather than guessed. */
-  load.preparedFromReport = async (report, keys, { signal: callerSignal, classificationOnly = false } = {}) => {
+  load.preparedFromReport = async (report, keys, { signal: callerSignal, classificationOnly = false, onResult } = {}) => {
     if (!Array.isArray(keys) || !keys.length || keys.length > 100 || new Set(keys).size !== keys.length)
       throw fail('Use between one and one hundred distinct saved-report holding keys.', 400, 'INVALID_REQUEST');
     const requests = keys.map(key => normalize13FMarketConnectionsRequest(report?.manager?.cik, report?.selectedPeriod, key));
     const { cik, period } = requests[0], signal = requestSignal(callerSignal);
     const holdings = verifiedHoldings(report, cik, period, keys), results = holdings.map(() => null);
+    // Preserve each verified hit as it finishes. A slow or malformed sibling
+    // must not discard reusable research when the worker's cache budget ends.
+    function publish(index, result) {
+      signal.throwIfAborted();
+      results[index] = result;
+      onResult?.(index, result);
+    }
     // Deterministic exclusions are fast even when shared storage is unavailable.
     for (let index = 0; index < holdings.length; index++) {
-      const identity = await identityLoader.prepared?.(holdings[index], { period, signal, classificationOnly: true });
-      if (identity) results[index] = compose(report, holdings[index], identity);
+      try {
+        const identity = await identityLoader.prepared?.(holdings[index], { period, signal, classificationOnly: true });
+        if (identity) publish(index, compose(report, holdings[index], identity));
+      } catch { signal.throwIfAborted(); }
     }
     if (classificationOnly) return results;
     const missing = holdings.flatMap((holding, index) => results[index] ? [] : [{ holding, index }]);
     const batches = [];
     for (let offset = 0; offset < missing.length; offset += 25) batches.push(missing.slice(offset, offset + 25));
     await Promise.all(batches.map(async batch => {
-      const cached = await preparedCache.getMany(report, batch.map(item => item.holding), { signal, verify: verifyPrepared });
-      batch.forEach((item, index) => { if (cached[index]) results[item.index] = cached[index]; });
+      try {
+        const cached = await preparedCache.getMany(report, batch.map(item => item.holding), { signal, verify: verifyPrepared });
+        batch.forEach((item, index) => { if (cached[index]) publish(item.index, cached[index]); });
+      } catch { signal.throwIfAborted(); }
     }));
     const disclosures = new Map(), queue = missing.filter(item => !results[item.index]);
     await Promise.all(Array.from({ length: Math.min(8, queue.length) }, async () => {
       while (queue.length) {
         signal.throwIfAborted();
         const { holding, index } = queue.shift();
-        const identity = await identityLoader.prepared?.(holding, { period, signal });
-        if (!identity) continue;
-        verifiedIdentity(identity, holding);
-        if (identity.status === 'unresolved') { results[index] = compose(report, holding, identity); continue; }
-        const issuerCik = identity.issuer.cik;
-        if (!disclosures.has(issuerCik)) disclosures.set(issuerCik, Promise.resolve(exposureLoader.prepared?.(issuerCik, { signal })));
-        const discovery = await disclosures.get(issuerCik);
-        if (discovery) results[index] = compose(report, holding, identity, discovery);
+        try {
+          const identity = await identityLoader.prepared?.(holding, { period, signal });
+          if (!identity) continue;
+          verifiedIdentity(identity, holding);
+          if (identity.status === 'unresolved') { publish(index, compose(report, holding, identity)); continue; }
+          const issuerCik = identity.issuer.cik;
+          if (!disclosures.has(issuerCik)) disclosures.set(issuerCik, Promise.resolve().then(() => exposureLoader.prepared?.(issuerCik, { signal })));
+          const discovery = await disclosures.get(issuerCik);
+          if (discovery) publish(index, compose(report, holding, identity, discovery));
+        } catch { signal.throwIfAborted(); }
       }
     }));
     signal.throwIfAborted();

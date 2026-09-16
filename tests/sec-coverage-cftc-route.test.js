@@ -32,7 +32,7 @@ async function fixture() {
     if (scenario.fail) throw new Error('private provider request detail');
     return scenario.result || { status: 'progress', prepared: 3, limited: 1 };
   } });
-  dependency('src/utils/thirteenFReviewWorker.js', { runThirteenFReviewWorker: async options => {
+  dependency('src/utils/thirteenFReviewDrain.js', { drainThirteenFReviews: async options => {
     calls.push(['review', options]);
     if (scenario.reviewFail) throw new Error('private shared review error');
     return { status: 'progress', processed: 4 };
@@ -61,7 +61,7 @@ async function fixture() {
   assert.deepEqual(calls.map(([name]) => name), ['review', 'sec', 'cache', 'cftc', 'demo']);
   assert.equal(calls[4][1].deadline, START + 45_000);
   assert.notEqual(calls[4][1].signal, calls[1][1].signal);
-  assert.equal(calls[0][1].deadline, START + 75_000);
+  assert.equal(calls[0][1].deadline, START + 140_000);
   assert.notEqual(calls[0][1].signal, calls[1][1].signal);
   assert.equal(completed.thirteenFReview.processed, 4);
   assert.equal(completed.portfolioCftcPreparation.completedCompanies, 6);

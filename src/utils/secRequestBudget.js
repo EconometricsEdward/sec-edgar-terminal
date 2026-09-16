@@ -6,7 +6,11 @@ const context = new AsyncLocalStorage();
 export function runWithSecRequestBudget(limit, callback) {
   if (!Number.isSafeInteger(limit) || limit < 0 || limit > 1000 || typeof callback !== 'function')
     throw new TypeError('Invalid SEC request budget.');
-  const budget = { limit, used: 0, parent: context.getStore() || null };
+  const parent = context.getStore() || null;
+  // Nested workers must see their effective remaining allowance. Otherwise a
+  // parent limit can look like a source outage to a child with a larger limit.
+  for (let ancestor = parent; ancestor; ancestor = ancestor.parent) limit = Math.min(limit, Math.max(0, ancestor.limit - ancestor.used));
+  const budget = { limit, used: 0, parent };
   return context.run(budget, () => callback(budget));
 }
 export function takeSecRequestBudget() {

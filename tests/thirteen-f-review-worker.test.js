@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createThirteenFReviewWorker, THIRTEEN_F_REVIEW_WORKER_LIMITS } from '../src/utils/thirteenFReviewWorker.js';
 import { prepareThirteenFReviewReport, hashThirteenFReviewReport } from '../src/utils/thirteenFSharedReview.js';
-import { takeSecRequestBudget } from '../src/utils/secRequestBudget.js';
+import { takeSecRequestBudget, runWithSecRequestBudget } from '../src/utils/secRequestBudget.js';
 import { createThirteenFMarketConnectionsLoader } from '../src/utils/thirteenFMarketConnectionsServer.js';
+import { extractCompanyExposureMap } from '../src/utils/companyExposure.js';
 
 const CIK = '0001747057', PERIOD = '2026-06-30', NOW = Date.parse('2026-09-15T12:00:00Z');
 function report(count = 4) {
@@ -20,6 +21,19 @@ function unresolved(report, key) {
   return { schemaVersion: 'edgar.13f-market-connections.v1', status: 'unresolved', manager: report.manager,
     selectedPeriod: report.selectedPeriod, holding, observedAt: new Date(NOW).toISOString(), retryable: false,
     identity: { status: 'unresolved', cusip: holding.cusip, observedAt: new Date(NOW).toISOString(), reason: 'No verified issuer proof was found.' }, discovery: null };
+}
+function checked(report, key) {
+  const value = unresolved(report, key), cik = '0000001234', checkedAt = new Date(NOW).toISOString();
+  const filing = { accession: '0000001234-26-000001', form: '10-K', filed: '2026-02-20', reportDate: '2025-12-31',
+    url: 'https://www.sec.gov/Archives/edgar/data/1234/000000123426000001/report.htm' };
+  const extracted = extractCompanyExposureMap([{ text: 'Our borrowings accrue interest based on SOFR and expose us to changing funding costs.', filing, role: 'annual' }], { companyName: value.holding.issuer });
+  return { ...value, status: 'ready', identity: { status: 'resolved', cusip: value.holding.cusip,
+    issuer: { cik, name: value.holding.issuer, kind: 'company', tickers: [] },
+    evidence: [{ cik, cusips: [value.holding.cusip], form: 'SCHEDULE 13G', filingDate: '2026-03-01',
+      url: 'https://www.sec.gov/Archives/edgar/data/1234/000000123426000002/primary_doc.xml' }] },
+    discovery: { schemaVersion: 'edgar.company-exposure-map.v1', cik, ticker: null, asOf: null, status: 'ready',
+      checkedAt, generatedAt: checkedAt, sources: [{ ...filing, role: 'annual', status: 'ready', retrievedAt: checkedAt }],
+      rows: extracted.rows, coverage: { ...extracted.coverage, searchComplete: true } } };
 }
 function fixture(count = 4, overrides = {}) {
   const frozen = prepareThirteenFReviewReport(report(count)), events = [], saved = new Map();
@@ -97,6 +111,7 @@ test('caller cancellation still checkpoints the attempt and releases with an ind
   } });
   const result = await f.create()({ signal: controller.signal });
   assert.equal(result.status, 'deferred'); assert.equal(result.processed, 1);
+  assert.equal(result.reason, 'request-budget');
   assert.equal(f.saved.get(1).summary.status, 'unavailable');
   assert.deepEqual(f.events.find(([kind]) => kind === 'save').slice(1), [1, false]);
   assert.deepEqual(f.events.at(-1), ['release', false]);
@@ -148,7 +163,10 @@ test('an unchanged source check does not restart review, but a mismatched quarte
 
 test('corrupt work identity cannot attach a result to another ordinal', async () => {
   const f = fixture(2, { store: { work: async () => [{ ordinal: 1, attempts: 0, holding: report(2).portfolio.holdings[1] }] } });
-  assert.equal((await f.create()()).code, 'REVIEW_WORK_INVALID');
+  const result = await f.create()();
+  assert.equal(result.code, 'REVIEW_WORK_INVALID');
+  assert.equal(result.cik, CIK); assert.equal(result.period, PERIOD);
+  assert.equal(result.owner, undefined); assert.equal(result.reportHash, undefined);
   assert.equal(f.events.some(([kind]) => kind === 'connection'), false); assert.equal(f.saved.size, 0);
 });
 
@@ -185,6 +203,7 @@ test('SEC rate cooldown stops new sources and preserves the advertised retry del
   } });
   const result = await f.create()();
   assert.equal(result.status, 'deferred'); assert.ok(calls <= 2); assert.equal(result.processed, calls);
+  assert.equal(result.reason, 'source-cooldown');
   assert.ok([...f.saved.values()].every(entry => entry.retrySeconds === 3600));
 });
 
@@ -198,6 +217,79 @@ test('prepared holdings drain several pages and publish in bounded batches witho
   assert.equal(f.portfolioCalls(), 1); assert.equal(sources, 0);
   assert.ok(f.events.filter(([kind]) => kind === 'saveBatch').every(([, count]) => count <= 50));
   assert.equal(f.saved.size, 240);
+});
+
+test('a new job publishes its first checked cached findings before cold research and resumes on the next claim', async () => {
+  const f = fixture(3, { preparedLoader: async (value, keys, { classificationOnly }) =>
+    keys.map(key => !classificationOnly && key === value.portfolio.holdings[0].key ? checked(value, key) : null) });
+  f.claim.reviewed = 0;
+  const first = await f.create()();
+  assert.equal(first.status, 'progress'); assert.equal(first.reason, 'initial-publication');
+  assert.equal(first.processed, 1); assert.equal(first.coldStarted, 0);
+  assert.equal(first.cik, CIK); assert.equal(first.period, PERIOD);
+  assert.equal(f.saved.get(1).summary.checked, true); assert.ok(f.saved.get(1).summary.markets.length > 0);
+  assert.equal(f.events.some(([kind]) => kind === 'connection'), false);
+  assert.deepEqual(f.events.at(-1), ['release', false], 'publication release occurs before the worker returns');
+  f.claim.reviewed = 1;
+  const second = await f.create()();
+  assert.equal(second.processed, 2); assert.equal(second.coldStarted, 2); assert.equal(f.saved.size, 3);
+});
+
+test('existing jobs and unsupported-only initial results continue their cold research window', async () => {
+  for (const [reviewed, resultFor] of [[2, checked], [0, unresolved]]) {
+    const f = fixture(3, { preparedLoader: async (value, keys, { classificationOnly }) =>
+      keys.map(key => !classificationOnly && key === value.portfolio.holdings[0].key ? resultFor(value, key) : null) });
+    f.claim.reviewed = reviewed;
+    const result = await f.create()();
+    assert.equal(result.reason, undefined); assert.equal(result.processed, 3); assert.equal(result.coldStarted, 2);
+  }
+});
+
+test('an exhausted parent SEC budget still publishes prepared research without cold attempts', async () => {
+  const f = fixture(3, { preparedLoader: async (value, keys, { classificationOnly }) =>
+    keys.map(key => !classificationOnly && key === value.portfolio.holdings[0].key ? checked(value, key) : null),
+  connectionLoader: async () => { assert.fail('A zero source allowance must not start cold research.'); } });
+  const result = await runWithSecRequestBudget(0, () => f.create()());
+  assert.equal(result.prepared, 1); assert.equal(result.processed, 1); assert.equal(result.coldStarted, 0);
+  assert.equal(result.sourceRequests, 0); assert.equal(f.saved.size, 1); assert.equal(f.saved.get(1).summary.checked, true);
+  assert.equal(f.saved.get(1).attempts, 1); assert.equal(f.saved.get(1).retrySeconds, 0);
+});
+
+test('a cache batch timeout preserves completed hits and only researches the remaining holdings', async () => {
+  const cold = [];
+  const f = fixture(3, { preparedLoader: async (value, keys, { classificationOnly, onResult }) => {
+    if (classificationOnly) return keys.map(() => null);
+    onResult(0, unresolved(value, keys[0]));
+    throw new DOMException('A different issuer cache lookup timed out.', 'TimeoutError');
+  }, connectionLoader: async (value, key) => { cold.push(key); return unresolved(value, key); } });
+  const result = await f.create()();
+  assert.equal(result.prepared, 1); assert.equal(result.processed, 3); assert.equal(result.coldStarted, 2);
+  assert.deepEqual(cold, f.frozen.portfolio.holdings.slice(1).map(value => value.key));
+  assert.equal(f.saved.get(1).attempts, 1);
+});
+
+test('incrementally completed prepared entries retain exact holding checks after a sibling failure', async () => {
+  const f = fixture(2, { preparedLoader: async (value, keys, { classificationOnly, onResult }) => {
+    if (classificationOnly) return keys.map(() => null);
+    onResult(0, unresolved(value, keys[1]));
+    onResult(-1, unresolved(value, keys[0]));
+    throw new Error('cache unavailable');
+  } });
+  const result = await f.create()();
+  assert.equal(result.prepared, 0); assert.equal(result.coldStarted, 2);
+  assert.equal(f.saved.get(1).result.holding.key, f.frozen.portfolio.holdings[0].key);
+});
+
+test('caller cancellation checkpoints completed prepared results without starting source work', async () => {
+  const controller = new AbortController();
+  const f = fixture(3, { preparedLoader: async (value, keys, { classificationOnly, onResult }) => {
+    if (classificationOnly) return keys.map(() => null);
+    onResult(0, unresolved(value, keys[0])); controller.abort();
+    throw controller.signal.reason;
+  }, connectionLoader: async () => { assert.fail('Cancelled prepared work must not start SEC research.'); } });
+  const result = await f.create()({ signal: controller.signal });
+  assert.equal(result.prepared, 1); assert.equal(result.processed, 1); assert.equal(result.coldStarted, 0);
+  assert.deepEqual(f.events.at(-1), ['release', false]);
 });
 
 test('deterministic classifications publish before prepared-cache reads and skip the cold allowance', async () => {

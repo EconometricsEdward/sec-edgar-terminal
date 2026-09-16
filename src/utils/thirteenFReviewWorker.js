@@ -51,7 +51,7 @@ export function createThirteenFReviewWorker({ store = thirteenFReviewStore,
       // cancellation never discards a completed database checkpoint.
       const signal = callerSignal ? AbortSignal.any([callerSignal, AbortSignal.timeout(Math.max(1, stopAt - startedAt - LIMITS.releaseMs))])
         : AbortSignal.timeout(Math.max(1, stopAt - startedAt - LIMITS.releaseMs));
-      let claim, processed = 0, retrying = 0, coldStarted = 0, preparedCount = 0, scanned = 0, fenced = false, sourceBlocked = false;
+      let claim, processed = 0, retrying = 0, coldStarted = 0, preparedCount = 0, preparedChecked = 0, scanned = 0, fenced = false, sourceBlocked = false;
       try {
         claim = await store.claim({ owner: owner(), leaseSeconds: LIMITS.leaseSeconds }, { signal });
         if (!claim) return { status: 'idle', processed: 0 };
@@ -102,14 +102,22 @@ export function createThirteenFReviewWorker({ store = thirteenFReviewStore,
             if (saved !== true) { fenced = true; return; }
             processed += batch.length;
             retrying += batch.filter(entry => entry.retrySeconds).length;
-            if (fast) preparedCount += batch.length;
+            if (fast) {
+              preparedCount += batch.length;
+              preparedChecked += batch.filter(entry => entry.summary.checked === true).length;
+            }
           }
         }
         async function preparedEntries(rows, classificationOnly) {
           if (!rows.length || signal.aborted || !roomForSave()) return { ready: [], misses: rows };
           const budget = Math.min(LIMITS.preparedMs, stopAt - now() - LIMITS.saveMs - LIMITS.releaseMs);
           const lookupSignal = AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, budget))]);
-          let values, abort;
+          const completed = rows.map(() => null);
+          let values, abort, accepting = true;
+          const onResult = (index, value) => {
+            if (accepting && !lookupSignal.aborted && Number.isSafeInteger(index) && index >= 0 && index < rows.length)
+              completed[index] = value;
+          };
           try {
             const interrupted = new Promise((_, reject) => {
               abort = () => reject(lookupSignal.reason);
@@ -118,10 +126,10 @@ export function createThirteenFReviewWorker({ store = thirteenFReviewStore,
             // This lane is provably source-free, even if a future cache helper
             // accidentally tries to fall through to SEC retrieval.
             values = await Promise.race([runWithSecRequestBudget(0, () => preparedLoader(report, rows.map(row => row.holding.key),
-              { signal: lookupSignal, classificationOnly })), interrupted]);
-          } catch { return { ready: [], misses: rows }; }
-          finally { lookupSignal.removeEventListener('abort', abort); }
-          if (!Array.isArray(values) || values.length !== rows.length) return { ready: [], misses: rows };
+              { signal: lookupSignal, classificationOnly, onResult })), interrupted]);
+          } catch { /* Already verified hits still checkpoint if another lookup times out. */ }
+          finally { accepting = false; lookupSignal.removeEventListener('abort', abort); }
+          if (!Array.isArray(values) || values.length !== rows.length) values = completed;
           const ready = [], misses = [];
           rows.forEach((row, index) => {
             try {
@@ -171,6 +179,14 @@ export function createThirteenFReviewWorker({ store = thirteenFReviewStore,
           await saveEntries(prepared.ready, true);
           if (!fenced) for (const ordinal of ordinals) outstanding.delete(ordinal);
         }
+        // Releasing publishes the saved snapshot. A first useful cache hit
+        // should appear before this job spends its remaining minute on misses.
+        // Unsupported-security classifications alone do not trigger this yield.
+        if (!fenced && claim.reviewed === 0 && preparedChecked > 0) {
+          return { status: 'progress', reason: 'initial-publication', processed, retrying,
+            prepared: preparedCount, coldStarted, scanned, sourceRequests: sourceAllowance.used,
+            cik: claim.cik, period: claim.period };
+        }
         const coldRows = [...outstanding.values()];
         const coldLimit = Math.min(LIMITS.coldHoldings, maxHoldings - processed);
         let cursor = 0;
@@ -210,10 +226,13 @@ export function createThirteenFReviewWorker({ store = thirteenFReviewStore,
         if (rejected) throw rejected.reason;
         return { status: fenced ? 'lease-lost' : sourceBlocked || signal.aborted ? 'deferred' : processed ? 'progress' : 'waiting',
           processed, retrying, prepared: preparedCount, coldStarted, scanned, sourceRequests: sourceAllowance.used,
-          ...(sourceAllowance.used >= sourceAllowance.limit ? { reason: 'source-budget' } : {}),
+          ...(sourceAllowance.used >= sourceAllowance.limit ? { reason: 'source-budget' }
+            : sourceBlocked ? { reason: 'source-cooldown' } : signal.aborted ? { reason: 'request-budget' } : {}),
           cik: claim.cik, period: claim.period };
       } catch (error) {
-        return { status: 'deferred', code: safeCode(error), processed, retrying, prepared: preparedCount, coldStarted, scanned, sourceRequests: sourceAllowance.used };
+        return { status: 'deferred', code: safeCode(error), processed, retrying, prepared: preparedCount, coldStarted, scanned, sourceRequests: sourceAllowance.used,
+          ...(signal.aborted ? { reason: 'request-budget' } : {}),
+          ...(claim ? { cik: claim.cik, period: claim.period } : {}) };
       } finally {
         if (claim) {
           // Finite database leases recover even if this best-effort release fails.

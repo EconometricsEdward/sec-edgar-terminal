@@ -65,6 +65,54 @@ test('bulk prepared review reuses current issuer research across securities and 
   assert.equal(results[2].identity.observedAt, identity().observedAt);
 });
 
+test('one invalid prepared identity does not discard another holding’s verified research', async () => {
+  const bad = { ...holding, key: '123456789|SECURITY|SH', cusip: '123456789' };
+  const source = report(); source.portfolio.holdings = [bad, holding];
+  const current = await discovery(), published = [];
+  const never = async () => { assert.fail('Prepared review must not perform SEC research.'); };
+  const identityLoader = Object.assign(never, { prepared: async (_value, { classificationOnly }) => classificationOnly ? null : identity() });
+  const instance = loader({ identityLoader, exposureLoader: Object.assign(async () => never(), { prepared: async () => current }),
+    preparedCache: { getMany: async (_report, rows) => rows.map(() => null), put: never } });
+  const results = await instance.preparedFromReport(source, [bad.key, KEY], { onResult: (index, result) => published.push([index, result]) });
+  assert.equal(results[0], null); assert.equal(results[1].holding.key, KEY);
+  assert.deepEqual(published.map(([index, value]) => [index, value.holding.key]), [[1, KEY]]);
+});
+
+test('prepared research publishes a finished holding before a stalled sibling is cancelled', async () => {
+  const slow = { ...holding, key: '123456789|SECURITY|SH', cusip: '123456789' };
+  const source = report(); source.portfolio.holdings = [slow, holding];
+  const current = await discovery(), controller = new AbortController(), published = [];
+  const never = async () => { assert.fail('Prepared review must not perform SEC research.'); };
+  const identityLoader = Object.assign(never, { prepared: async (value, { classificationOnly, signal }) => {
+    if (classificationOnly) return null;
+    if (value.cusip === slow.cusip) return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    return identity();
+  } });
+  const instance = loader({ identityLoader, exposureLoader: Object.assign(async () => never(), { prepared: async () => current }),
+    preparedCache: { getMany: async (_report, rows) => rows.map(() => null), put: never } });
+  await assert.rejects(instance.preparedFromReport(source, [slow.key, KEY], { signal: controller.signal, onResult: (index, result) => {
+    published.push([index, result]); controller.abort();
+  } }), { name: 'AbortError' });
+  assert.deepEqual(published.map(([index, value]) => [index, value.holding.key]), [[1, KEY]]);
+  assert.equal(published[0][1].discovery.checkedAt, current.checkedAt);
+});
+
+test('another manager and quarter reuse issuer research with their own holding identity and denominator', async () => {
+  const source = report(); source.manager.cik = source.portfolio.cik = '0001067983';
+  source.selectedPeriod = source.portfolio.period = '2026-03-31';
+  source.portfolio.totalValueUsd = 100000;
+  source.portfolio.holdings = [{ ...holding, valueUsd: 30000, weightPct: 30, quantity: 600 }];
+  const current = await discovery();
+  const never = async () => { assert.fail('Prepared cross-manager reuse must not request SEC sources.'); };
+  const instance = loader({ identityLoader: Object.assign(never, { prepared: async (_holding, { classificationOnly }) => classificationOnly ? null : identity() }),
+    exposureLoader: Object.assign(async () => never(), { prepared: async () => current }),
+    preparedCache: { getMany: async (_report, rows) => rows.map(() => null), put: never } });
+  const [result] = await instance.preparedFromReport(source, [KEY]);
+  assert.equal(result.manager.cik, '0001067983'); assert.equal(result.selectedPeriod, '2026-03-31');
+  assert.equal(result.holding.valueUsd, 30000); assert.equal(result.holding.weightPct, 30); assert.equal(result.holding.quantity, 600);
+  assert.equal(result.identity.observedAt, identity().observedAt); assert.equal(result.discovery.checkedAt, current.checkedAt);
+});
+
 test('prepared report reads consume completed per-holding cache entries without resolving a miss', async () => {
   const shared = sharedCacheFixture(), first = await load({ preparedCache: shared.create() });
   const source = report(), other = { ...holding, key: `${holding.cusip}|CALL|SH`, putCall: 'CALL' };

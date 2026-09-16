@@ -40,6 +40,7 @@ test('nested source-free work cannot bypass or consume its parent allowance', as
     await runWithSecRequestBudget(0, async child => { assert.equal(takeSecRequestBudget(), false); assert.equal(child.used, 0); });
     assert.equal(parent.used, 1);
     await runWithSecRequestBudget(4, async child => {
+      assert.equal(child.limit, 1, 'a nested worker can identify exhaustion of the enclosing allowance');
       assert.equal(takeSecRequestBudget(), true); assert.equal(takeSecRequestBudget(), false); assert.equal(child.used, 1);
     });
     assert.equal(parent.used, 2);
