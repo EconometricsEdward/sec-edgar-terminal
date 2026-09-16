@@ -5,6 +5,8 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Allow: /api/v1/cftc/portfolio-changes/demo
+Allow: /api/v1/funds/
+Allow: /api/v1/managers/
 
 # Sitemap location
 Sitemap: https://secedgarterminal.com/sitemap.xml

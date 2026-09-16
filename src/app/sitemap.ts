@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "../utils/siteMetadata";
+import { PUBLIC_FUND_MANAGERS } from "../utils/fundPublicSelectors.js";
 
 type SitemapEntry = MetadataRoute.Sitemap[number];
 type ChangeFrequency = NonNullable<SitemapEntry["changeFrequency"]>;
@@ -91,6 +92,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ),
     ...FEATURED_FUNDS.map((ticker) =>
       sitemapEntry(`/fund/${ticker}`, "weekly", 0.8),
+    ),
+    ...PUBLIC_FUND_MANAGERS.map((manager) =>
+      sitemapEntry(`/fund/manager/${manager.cik}`, "weekly", 0.8),
     ),
     ...FEATURED_COMPARISONS.map((tickers) =>
       sitemapEntry(`/compare/${tickers}`, "weekly", 0.8),

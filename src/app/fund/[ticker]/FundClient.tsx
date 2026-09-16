@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -23,8 +23,9 @@ import {
 import type { Exposure, Fund, Holding } from "../fundTypes";
 import s from "../fund.module.css";
 const assetLabels: Record<string, string> = ASSET_LABELS;
-export default function FundClient({ urlTicker }: { urlTicker: string }) {
+export default function FundClient({ urlTicker, selectedAccession = "", preparedSummaryReady = false }: { urlTicker: string; selectedAccession?: string; preparedSummaryReady?: boolean }) {
   const params = useSearchParams();
+  const router = useRouter();
   const [tab, setTab] = useState(
     ["overview", "holdings", "sources", "notebook"].includes(
       params.get("tab") || "",
@@ -32,7 +33,7 @@ export default function FundClient({ urlTicker }: { urlTicker: string }) {
       ? params.get("tab")!
       : "overview",
   );
-  const [accession, setAccession] = useState(params.get("accession") || "");
+  const [accession, setAccession] = useState(selectedAccession);
   const [query, setQuery] = useState(params.get("q") || ""),
     [draftQuery, setDraftQuery] = useState(params.get("q") || "");
   const [asset, setAsset] = useState(params.get("asset") || ""),
@@ -52,6 +53,16 @@ export default function FundClient({ urlTicker }: { urlTicker: string }) {
     [notesReady, setNotesReady] = useState(false);
   const shelf = useFundShelf();
   const evidenceRef = useRef<HTMLElement>(null);
+  const previousAccession = useRef(selectedAccession);
+  const briefRefreshes = useRef(new Set<string>());
+  // Report navigation updates both the server research brief and this workspace.
+  // Keep this component mounted so notes and research controls survive the change.
+  useEffect(() => {
+    if (previousAccession.current === selectedAccession) return;
+    previousAccession.current = selectedAccession;
+    setAccession(selectedAccession);
+    setPage(1);
+  }, [selectedAccession]);
   useEffect(() => {
     if (detail) evidenceRef.current?.focus();
   }, [detail]);
@@ -95,6 +106,18 @@ export default function FundClient({ urlTicker }: { urlTicker: string }) {
     return () => controller.abort();
   }, [apiQuery, retry]);
   useEffect(() => {
+    if (preparedSummaryReady || loading || error || data?.status !== "ready" || data.ticker !== urlTicker
+      || accession !== selectedAccession || accession && data.accession !== accession) return;
+    const key = `${urlTicker}:${accession || "latest"}`;
+    if (briefRefreshes.current.has(key)) return;
+    // The successful API response has already prepared this report. Refresh only
+    // server HTML once; this does not remount the workspace or fetch SEC again.
+    briefRefreshes.current.add(key);
+    while (briefRefreshes.current.size > 24) briefRefreshes.current.delete(briefRefreshes.current.values().next().value!);
+    router.refresh();
+  }, [preparedSummaryReady, loading, error, data, urlTicker, accession, selectedAccession, router]);
+  useEffect(() => {
+    if (accession !== selectedAccession) return;
     const p = new URLSearchParams(apiQuery);
     p.delete("ticker");
     p.delete("v");
@@ -112,7 +135,7 @@ export default function FundClient({ urlTicker }: { urlTicker: string }) {
       "",
       `/fund/${urlTicker}${p.size ? `?${p}` : ""}`,
     );
-  }, [apiQuery, tab, urlTicker]);
+  }, [apiQuery, tab, urlTicker, accession, selectedAccession]);
   useEffect(() => {
     try {
       setNotes(localStorage.getItem(`edgar-fund-notes:${urlTicker}`) || "");
@@ -314,8 +337,13 @@ export default function FundClient({ urlTicker }: { urlTicker: string }) {
                 aria-label="Portfolio report"
                 value={accession || data.accession}
                 onChange={(e) => {
-                  setAccession(e.target.value);
-                  setPage(1);
+                  const query = new URLSearchParams(apiQuery);
+                  query.delete("ticker");
+                  query.delete("v");
+                  query.delete("page");
+                  query.set("accession", e.target.value);
+                  if (tab !== "overview") query.set("tab", tab);
+                  router.replace(`/fund/${urlTicker}?${query}`, { scroll: false });
                 }}
               >
                 {data.reports.map((r) => (
