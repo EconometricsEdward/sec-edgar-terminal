@@ -57,13 +57,13 @@ export default function FundResearchBrief({ summary, standalone = false, jsonUrl
           <a href={jsonUrl}>Structured summary (JSON)</a>
         </div>
       </header>
-      <p className={s.scope}>{nport ? "A source-dated fund portfolio reported to the SEC. Holdings, net assets and portfolio weights refer to the reporting period below." : "Manager-level public holdings reported to the SEC. The reported value is not the manager’s complete assets under management or an individual fund’s net asset value."}</p>
+      <p className={s.scope}>{nport ? "A source-dated fund portfolio reported to the SEC. Holdings and net assets cover all share classes in the reported series, not only this ticker’s share class. Portfolio weights refer to the reporting period below." : "Manager-level public holdings reported to the SEC. The reported value is not the manager’s complete assets under management or an individual fund’s net asset value."}</p>
       {ready ? <>
         <dl className={s.metrics}>
           <div><dt>Portfolio as of</dt><dd><SourceDate value={summary.reportDate} /></dd></div>
           <div><dt>{summary.valueLabel}</dt><dd>{money(summary.totalValueUsd)}</dd></div>
           <div><dt>Disclosed positions</dt><dd>{count(summary.positionCount)}</dd></div>
-          <div><dt>Top 10 weight</dt><dd>{percent(summary.top10WeightPct)}</dd></div>
+          <div><dt>{nport ? "Top 10 positive weights" : "Top 10 weight"}</dt><dd>{percent(summary.top10WeightPct)}</dd></div>
         </dl>
         <div className={s.freshness} data-research-status={summary.stale ? "stale" : "ready"}>
           <strong>{summary.stale ? "Refresh due" : "Prepared report"}</strong>

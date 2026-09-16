@@ -68,6 +68,7 @@ export function createPublicFundReaders({ readFund = readPreparedFund,
       sources: sources([{ label: `${data.form} filing · ${data.filingDate}`, url: data.filingUrl },
         { label: 'Original N-PORT portfolio XML', url: data.sourceUrl }, { label: 'SEC fund filing history', url: data.secUrl }]),
       limitations: ['Historical reported portfolio, not current holdings or investment performance.',
+        'Net assets and holdings cover all share classes in the reported SEC series, not only the selected ticker’s share class.',
         `${holdings.length} reported positions; ${data.summary?.valuedCount ?? 0} have USD values and ${data.summary?.weightCount ?? 0} have known net-asset weights. Missing figures are not zero.`,
         `Net assets: ${data.fundInfo?.netAssetsSource || 'unavailable'}. Weights can be reported or calculated from value divided by net assets; negative positions and derivatives are retained.`,
         ...(accession ? ['This summary is pinned to the selected accession; it does not incorporate later filings or amendments.'] : [])] };
