@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   ChartNoAxesCombined,
@@ -44,6 +44,11 @@ import {
   readAnalysisSettings,
 } from "../../../utils/analysisNotebook.js";
 import { downloadText } from "../../../utils/download.js";
+import {
+  analysisBriefMatches,
+  analysisBrowserCacheKey,
+  createAnalysisBrowserCache,
+} from "../../../utils/analysisBrowserCache.js";
 import styles from "../analysis.module.css";
 const AnalysisChart = dynamic(() => import("../AnalysisChart"), {
   loading: () => <p role="status">Loading chart…</p>,
@@ -160,7 +165,9 @@ export default function AnalysisWorkspace(props: any) {
 function Workspace(props: any) {
   const ticker = props.urlTicker.toUpperCase();
   const cftcEnabled = props.cftcEnabled === true;
-  const [settings, setSettings] = useState<any>({ ...ANALYSIS_SETTINGS });
+  const [settings, setSettings] = useState<any>(() =>
+    normalizeAnalysisSettings(props.initialSettings || ANALYSIS_SETTINGS),
+  );
   const [hydrated, setHydrated] = useState(false);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState("");
@@ -181,7 +188,8 @@ function Workspace(props: any) {
   const root = useRef<HTMLDivElement>(null);
   const controls = useRef<HTMLDivElement>(null);
   const evidenceTrigger = useRef<HTMLElement | null>(null);
-  const cache = useRef(new Map<string, any>());
+  const cache = useRef(createAnalysisBrowserCache());
+  const previousRetry = useRef(retry);
   const workspace = useWorkspace();
   const saved = workspace.data.companies[ticker];
   const notebook = useAnalysisNotes({
@@ -213,15 +221,40 @@ function Workspace(props: any) {
         window.history.replaceState(null, "", path);
     }
   }, [hydrated, ticker, settings]);
+  useLayoutEffect(() => {
+    if (!hydrated) return;
+    const brief = document.getElementById("analysis-public-brief");
+    if (brief)
+      brief.hidden = !analysisBriefMatches(brief.dataset, ticker, {
+        basis: settings.basis,
+        end: settings.end,
+        asOf: settings.asOf,
+        baseline: settings.baseline,
+      });
+  }, [
+    hydrated,
+    ticker,
+    settings.basis,
+    settings.end,
+    settings.asOf,
+    settings.baseline,
+  ]);
   useEffect(() => {
     if (!hydrated) return;
     const controller = new AbortController();
     let live = true;
-    const id = `${ticker}:${settings.basis}:${settings.asOf}:${retry}`;
+    const id = analysisBrowserCacheKey(ticker, {
+      basis: settings.basis,
+      asOf: settings.asOf,
+    });
+    const cached = cache.current.get(id, {
+      bypass: previousRetry.current !== retry,
+    });
+    previousRetry.current = retry;
     setSelection(null);
     setError("");
-    if (cache.current.has(id)) {
-      setData(cache.current.get(id));
+    if (cached) {
+      setData(unpackAnalysisCompany(cached));
       setLoading(false);
       return () => controller.abort();
     }
@@ -237,12 +270,12 @@ function Workspace(props: any) {
           throw new Error(
             result.error || "Financial data could not be retrieved.",
           );
-        return unpackAnalysisCompany(result);
+        return result;
       })
       .then((result) => {
         if (live) {
           cache.current.set(id, result);
-          setData(result);
+          setData(unpackAnalysisCompany(result));
         }
       })
       .catch((e) => {

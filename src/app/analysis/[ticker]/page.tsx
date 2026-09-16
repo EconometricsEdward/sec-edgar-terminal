@@ -1,228 +1,84 @@
 import type { Metadata } from "next";
 import { cache } from "react";
-import AnalysisClient from "./AnalysisWorkspace";
+import { unstable_cache } from "next/cache";
+import { notFound } from "next/navigation";
+import AnalysisWorkspace from "./AnalysisWorkspace";
+import AnalysisResearchBrief from "../AnalysisResearchBrief";
 import { buildPageMetadata } from "../../../utils/siteMetadata";
-import { getOperatingTicker } from "../../../utils/tickerMap.js";
 import { isCftcEnabled } from "../../../utils/cftcFeature.js";
+import { publicAnalysisSelection, readPublicAnalysis } from "../../../utils/analysisPublicResearch.js";
+import { readAnalysisSettings } from "../../../utils/analysisNotebook.js";
+import { getActiveSecCoverageCompany, loadSecCoverageRegistry } from "../../../utils/secCoverageRegistry.js";
 
-// ============================================================================
-// Route configuration
-//
-// The server now resolves only lightweight ticker metadata for SEO and first
-// paint. Financial statements are compacted by /api/analysis-research on the server,
-// which avoids writing large SEC submissions JSON into the Next.js Data Cache.
-// ============================================================================
-export const revalidate = 3600;
+export const runtime = "nodejs";
+export const maxDuration = 30;
 
-// ============================================================================
-// Types
-// ============================================================================
-interface PageProps {
-  params: Promise<{ ticker: string }>;
-}
-
-interface CompanyMeta {
-  ticker: string;
-  cik: string;
-  name: string;
-  sicDescription: string | null;
-  exchange: string | null;
-}
-
-// ============================================================================
-// Server-side ticker → lightweight company metadata
-//
-// We intentionally use SEC's company_tickers.json only. It gives us the CIK and
-// company title needed for metadata, JSON-LD, and the initial page shell without
-// fetching the much larger /submissions/CIK*.json payload server-side.
-// ============================================================================
-const getCompanyMeta = cache(async (ticker: string): Promise<CompanyMeta | null> => {
-  try {
-    const upper = ticker.toUpperCase();
-    const entry = await getOperatingTicker(upper);
-    return entry
-      ? {
-          ticker: upper,
-          cik: String(entry.cik).padStart(10, "0"),
-          name: entry.name || upper,
-          sicDescription: null,
-          exchange: null,
-        }
-      : null;
-  } catch (err) {
-    console.error("[analysis/[ticker]] ticker-map fetch failed:", err);
-    return null;
-  }
+// Only current selections enter the Next cache: one concise result per issuer
+// and basis. Personal tool settings and historical dates never create entries.
+const readLatest = unstable_cache(async (ticker: string, basis: string) => {
+  const result = await readPublicAnalysis({ ticker, basis, end: "", asOf: "" });
+  if (result.status !== "ready") throw new Error("Analysis summary is not prepared");
+  return result;
+}, ["public-analysis-summary-v1"], { revalidate: 60 });
+const readSummary = cache(async (ticker: string, basis: string, end: string, asOf: string) => {
+  if (end || asOf) return readPublicAnalysis({ ticker, basis, end, asOf });
+  return readLatest(ticker, basis).catch(() => null);
 });
-
-// ============================================================================
-// generateMetadata — the SEO payoff. Per-page title/description/canonical
-// renders server-side so Googlebot sees correct metadata before any JS runs.
-// ============================================================================
-export async function generateMetadata({
-  params,
-}: PageProps): Promise<Metadata> {
-  const { ticker } = await params;
-  const upper = ticker.toUpperCase();
-  const meta = await getCompanyMeta(upper);
-
-  if (!meta) {
-    return buildPageMetadata({
-      title: `${upper} — Financial Analysis`,
-      description: `Financial analysis for ticker ${upper}.`,
-      path: `/analysis/${upper}`,
-    });
-  }
-
-  const title = `${meta.name} (${upper}) — Financial Analysis & Ratios`;
-  const description = `Analyze ${meta.name} (${upper}) with SEC financial statements, growth and seasonality, profit bridges, cash quality, funding analysis, custom ratios, and transparent scenarios. Compare source evidence and export a financial research brief.`;
-
-  return buildPageMetadata({
-    title,
-    description,
-    path: `/analysis/${upper}`,
-  });
+interface Props {
+  params: Promise<{ ticker: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
-
-// ============================================================================
-// JSON-LD Schema.org markup
-//
-// Adds structured-data block describing the company so Google can render
-// rich SERP results. It uses lightweight ticker metadata only; the full SEC
-// submissions and XBRL payloads still load through the app's SEC proxy.
-// ============================================================================
-function buildJsonLd(meta: CompanyMeta): object {
-  return {
-    "@context": "https://schema.org",
-    "@type": "Corporation",
-    name: meta.name,
-    tickerSymbol: meta.ticker,
-    identifier: {
-      "@type": "PropertyValue",
-      propertyID: "SEC CIK",
-      value: meta.cik,
-    },
-    ...(meta.sicDescription && { industry: meta.sicDescription }),
-    url: `https://secedgarterminal.com/analysis/${meta.ticker}`,
-    sameAs: [
-      `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${meta.cik}`,
-    ],
-    subjectOf: {
-      "@type": "WebPage",
-      "@id": `https://secedgarterminal.com/analysis/${meta.ticker}`,
-      name: `${meta.name} Financial Analysis`,
-      description: `SEC XBRL financial data and analysis for ${meta.name}`,
-    },
-  };
+async function selection({ params, searchParams }: Props) {
+  const [{ ticker }, query] = await Promise.all([params, searchParams]);
+  if (["basis", "end", "asOf"].some(key => Array.isArray(query[key]))) return null;
+  const selected = publicAnalysisSelection({ ticker, basis: query.basis || "annual", end: query.end || "", asOf: query.asOf || "" });
+  if (!selected) return null;
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (typeof value === "string") search.set(key, value);
+  return { selected, settings: readAnalysisSettings(search), custom: Object.keys(query).some(key => key !== "basis") };
 }
-
-function CompanyIdentityShell({ meta }: { meta: CompanyMeta }) {
-  return (
-    <>
-      <style>{`
-        #analysis-client-shell > .border-2.border-dashed {
-          display: none;
-        }
-
-        body:has(#analysis-workspace) #analysis-server-intro {
-          display: none;
-        }
-      `}</style>
-
-      <section
-        id="analysis-server-intro"
-        className="professional-card mb-6 overflow-hidden p-5 sm:p-6 lg:p-8"
-      >
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <div className="eyebrow">Company analysis workspace</div>
-            <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-4xl">
-              {meta.name}
-            </h1>
-            <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-              <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1.5 text-amber-200">
-                {meta.ticker}
-              </span>
-              <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">
-                CIK {meta.cik}
-              </span>
-              {meta.sicDescription && (
-                <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5">
-                  {meta.sicDescription}
-                </span>
-              )}
-            </div>
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-400">
-              Preparing financial statements, analytical tools, and the source
-              filings behind the numbers.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <a
-              href={`https://www.sec.gov/edgar/browse/?CIK=${meta.cik}`}
-              target="_blank"
-              rel="noreferrer"
-              className="secondary-button"
-            >
-              SEC source
-            </a>
-            <a href={`/filings/${meta.ticker}`} className="primary-button">
-              Browse filings
-            </a>
-          </div>
-        </div>
-      </section>
-    </>
-  );
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const choice = await selection(props);
+  if (!choice) return { title: "Analysis selection unavailable", robots: { index: false } };
+  const { selected, custom } = choice;
+  // For HTML-only research agents, blocking metadata holds the initial shell
+  // until this same request-memoized brief is ready. Otherwise the root loading
+  // boundary can place financial text in a hidden, JS-completed stream chunk.
+  await Promise.all([
+    loadSecCoverageRegistry(),
+    readSummary(selected.ticker, selected.basis, selected.end, selected.asOf).catch(() => null),
+  ]);
+  const company = getActiveSecCoverageCompany(selected.ticker);
+  const path = `/analysis/${selected.ticker}${selected.basis !== "annual" ? `?basis=${selected.basis}` : ""}` as `/${string}`;
+  return { ...buildPageMetadata({
+    title: `${company?.name || selected.ticker} (${selected.ticker}) — Financial Analysis & SEC Sources`,
+    description: "Read dated SEC financial highlights, reported and calculated metrics, comparable prior periods and original filings. Explore the complete financial analysis workspace.",
+    path,
+  }), ...(!company || custom ? { robots: { index: false, follow: true } } : {}) };
 }
-
-// ============================================================================
-// Page component — server-rendered shell + client island
-//
-// We pass the resolved ticker and CIK as props rather than re-fetching
-// client-side. This shaves one network round-trip off the client load and
-// guarantees the client and server agree on the company identity.
-// ============================================================================
-export default async function AnalysisTickerPage({ params }: PageProps) {
-  const { ticker } = await params;
-  const upper = ticker.toUpperCase();
-  const meta = await getCompanyMeta(upper);
-  const cftcEnabled = isCftcEnabled();
-
-  // If the ticker doesn't resolve at all, render the client with no preload
-  // and let it surface its own "not found" error message. This keeps error
-  // UX consistent with the old client-side behavior.
-  if (!meta) {
-    return (
-      <AnalysisClient
-        urlTicker={upper}
-        preloadedCik={null}
-        preloadedCompanyName={null}
-        preloadedSicDescription={null}
-        cftcEnabled={cftcEnabled}
-      />
-    );
-  }
-
-  const jsonLd = buildJsonLd(meta);
-
-  return (
-    <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
-      <CompanyIdentityShell meta={meta} />
-      <div id="analysis-client-shell">
-        <AnalysisClient
-          urlTicker={upper}
-          preloadedCik={meta.cik}
-          preloadedCompanyName={meta.name}
-          preloadedSicDescription={meta.sicDescription}
-          cftcEnabled={cftcEnabled}
-        />
-      </div>
-    </>
-  );
+export default async function AnalysisTickerPage(props: Props) {
+  const choice = await selection(props);
+  if (!choice) notFound();
+  const { selected, settings } = choice;
+  const [result] = await Promise.all([
+    readSummary(selected.ticker, selected.basis, selected.end, selected.asOf).catch(() => null),
+    loadSecCoverageRegistry(),
+  ]);
+  const company = getActiveSecCoverageCompany(selected.ticker);
+  const summary = result || { status: "not-prepared", ticker: selected.ticker, name: company?.name || selected.ticker,
+    basis: selected.basis, asOf: selected.asOf, selectedEnd: selected.end,
+    reason: "A verified financial summary is temporarily unavailable. The full workspace can still load research.",
+    metrics: [], sourceCatalog: [], limitations: [] };
+  return <>
+    {company && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+      "@context": "https://schema.org", "@type": "Corporation", name: company.name, tickerSymbol: selected.ticker,
+      identifier: { "@type": "PropertyValue", propertyID: "SEC CIK", value: company.cik },
+      url: `https://secedgarterminal.com/analysis/${selected.ticker}`,
+      sameAs: [`https://www.sec.gov/edgar/browse/?CIK=${company.cik}`],
+    }).replace(/</g, "\\u003c") }} />}
+    <AnalysisResearchBrief summary={summary} selection={selected} hidden={settings.baseline !== "year"} />
+    <AnalysisWorkspace urlTicker={selected.ticker} preloadedCik={company?.cik || ("cik" in summary ? summary.cik : null)}
+      preloadedCompanyName={company?.name || summary.name || null} preloadedSicDescription={null}
+      initialSettings={settings} cftcEnabled={isCftcEnabled()} />
+  </>;
 }

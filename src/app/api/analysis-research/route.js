@@ -1,14 +1,7 @@
-import { gzipSync, gunzipSync } from "node:zlib";
 import { NextResponse } from "next/server";
-import { loadResearchCompany } from "../../../utils/secResearchData.js";
 import { validTicker } from "../../../utils/researchWorkspace.js";
-import {
-  buildAnalysisCompany,
-  packAnalysisCompany,
-  ANALYSIS_VERSION,
-} from "../../../utils/analysisResearch.js";
-import { warmGet, warmSet } from "../../../utils/warmCache.js";
-import { readPreparedAnalysis, sampleFinancialShadow } from "../../../utils/preparedFinancialData.js";
+import { readPreparedAnalysis } from "../../../utils/preparedFinancialData.js";
+import { loadInteractiveAnalysis } from "../../../utils/analysisResearchServer.js";
 import { preparedDataHeaders, preparedCacheControl } from "../../../utils/secDocumentStore.js";
 import {
   checkRateLimit,
@@ -52,35 +45,9 @@ export async function GET(request) {
     if (prepared) return new NextResponse(prepared.serializedPayload || JSON.stringify(prepared.payload), {
       headers: { "Content-Type": "application/json", "Cache-Control": preparedCacheControl(prepared), ...preparedDataHeaders(prepared, prepared.cacheSource) },
     });
-    const id = `${ANALYSIS_VERSION}:${ticker}:${basis}:${asOf}`;
-    const cached = await warmGet("analysis-research", id);
-    if (typeof cached?.gzip === 'string' && cached.gzip.length <= 8 * 1024 * 1024) {
-      try {
-        return NextResponse.json(
-          JSON.parse(
-            gunzipSync(Buffer.from(cached.gzip, "base64"), { maxOutputLength: 32 * 1024 * 1024 }).toString("utf8"),
-          ),
-          { headers: { "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": "warm" } },
-        );
-      } catch {
-        /* A corrupt cache entry falls through to public SEC data. */
-      }
-    }
-    const company = await loadResearchCompany(ticker, {
-      signal: AbortSignal.timeout(25000),
-    });
-    const result = packAnalysisCompany(
-      buildAnalysisCompany(company, { basis, asOf }),
-    );
-    await sampleFinancialShadow(company, result);
-    await warmSet(
-      "analysis-research",
-      id,
-      { gzip: gzipSync(JSON.stringify(result)).toString("base64") },
-      300,
-    );
-    return NextResponse.json(result, {
-      headers: { "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": "upstream" },
+    const result = await loadInteractiveAnalysis({ ticker, basis, asOf }, request.signal);
+    return new NextResponse(result.serializedPayload, {
+      headers: { "Content-Type": "application/json", "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": result.cacheSource },
     });
   } catch (error) {
     return NextResponse.json(

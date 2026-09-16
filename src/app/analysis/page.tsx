@@ -4,14 +4,20 @@ import { buildPageMetadata } from "../../utils/siteMetadata";
 import CompanySearch from "./CompanySearch";
 import { isCftcEnabled } from "../../utils/cftcFeature.js";
 import styles from "./analysis.module.css";
+import briefStyles from "./AnalysisResearchBrief.module.css";
+import { getActiveSecCoverageCompanies, loadSecCoverageRegistry } from "../../utils/secCoverageRegistry.js";
+export const revalidate = 3600;
 export const metadata = buildPageMetadata({
   title: "Financial Analysis — SEC XBRL Data",
   description:
     "Explain financial movements, examine growth and cash quality, test scenarios, build custom ratios, and compose source-linked research briefs from SEC filings.",
   path: "/analysis",
 });
-export default function AnalysisIndexPage() {
+export default async function AnalysisIndexPage() {
   const cftcEnabled = isCftcEnabled();
+  await loadSecCoverageRegistry();
+  const companies = getActiveSecCoverageCompanies();
+  const sectors = [...new Set<string>(companies.map(company => String(company.sector)))].sort();
   return (
     <div className={styles.page}>
       <section className={styles.landing}>
@@ -120,6 +126,11 @@ export default function AnalysisIndexPage() {
           </div>
         </section>
       )}
+      <section className={`${styles.panel} ${briefStyles.directory}`} aria-labelledby="analysis-directory-title">
+        <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Company research directory</p><h2 id="analysis-directory-title">Financial highlights and the SEC evidence.</h2></div></div>
+        <p className={styles.muted}>Browse companies in the prepared research universe. Each company page provides dated financial highlights and original SEC sources, followed by the full analysis workspace. Annual, standalone quarter, year-to-date and trailing-twelve-month views remain separate. Coverage and source freshness are shown with each result.</p>
+        {sectors.map(sector => <details key={sector}><summary>{sector}</summary><ul>{companies.filter(company => company.sector === sector).sort((a, b) => a.name.localeCompare(b.name)).map(company => <li key={company.cik}><Link href={`/analysis/${company.ticker}`} prefetch={false}><strong>{company.ticker}</strong> · {company.name}</Link></li>)}</ul></details>)}
+      </section>
     </div>
   );
 }

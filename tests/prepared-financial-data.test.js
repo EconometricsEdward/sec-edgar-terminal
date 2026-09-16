@@ -59,6 +59,21 @@ test('prepared reader uses compact snapshot through Redis failure, never loads S
   await assert.rejects(readPreparedAnalysis({ ticker: 'AAPL' }, { mode: 'supabase', hotRead: async () => null, read: async () => null }), (error) => error.status === 503);
 });
 
+test('broad prepared issuers skip a guaranteed warm-cache miss and retain their complete durable result', async () => {
+  const payload = { ...packAnalysisCompany(buildAnalysisCompany(company, { basis: 'annual' })), ticker: 'NVDA', cik: '0001045810' };
+  let hotReads = 0, durableReads = 0;
+  const value = await readPreparedAnalysis({ ticker: 'NVDA' }, {
+    mode: 'supabase', readEnabled: () => true, loadRegistry: async () => null,
+    hotRead: async () => { hotReads++; return null; },
+    read: async (dataset, key) => {
+      durableReads++; assert.equal(dataset, 'financial'); assert.ok(key.includes('CIK0001045810:annual:latest'));
+      return { payload, metadata };
+    },
+  });
+  assert.equal(hotReads, 0); assert.equal(durableReads, 1);
+  assert.equal(value.cacheSource, 'supabase-prepared'); assert.deepEqual(value.payload, payload);
+});
+
 test('financial off/shadow, unmigrated companies and arbitrary historical cutoffs preserve bounded legacy route', async () => {
   const noRead = async () => { throw new Error('should not read'); };
   for (const [settings, mode] of [[{ ticker: 'AAPL' }, 'off'], [{ ticker: 'AAPL' }, 'shadow'], [{ ticker: 'UNKNOWN' }, 'supabase'], [{ ticker: 'AAPL', asOf: '2025-01-01' }, 'supabase']]) {
