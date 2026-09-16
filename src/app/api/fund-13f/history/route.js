@@ -14,7 +14,7 @@ export async function GET(request) {
     if (!limit.allowed) { const response = rateLimitedResponse(limit); response.headers.set('Cache-Control', 'private, no-store'); return response; }
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(55000)]);
     const data = await load13FHistoryQuarter(query.cik, { ...query, signal });
-    return Response.json(data, { headers: { 'Cache-Control': data.status === 'ready' && data.projection?.complete && data.coverage?.selectedPeriodComplete ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600' : 'private, no-store' } });
+    return Response.json(data, { headers: { 'Cache-Control': data.status === 'ready' && data.projection?.complete && data.coverage?.selectedPeriodComplete && !data.cache?.stale ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600' : 'private, no-store' } });
   } catch (error) {
     const status = Number.isInteger(error.status) && error.status >= 400 && error.status < 600 ? error.status : 502;
     return Response.json({ error: status === 400 ? error.message : error.code === 'PERIOD_NOT_FOUND' ? 'No public 13F report was found for this quarter in the SEC history checked.' : 'This SEC quarter could not be loaded. Retry it to fill the gap.', code: typeof error.code === 'string' ? error.code : 'SEC_13F_HISTORY_UNAVAILABLE' }, { status, headers: { 'Cache-Control': 'private, no-store' } });

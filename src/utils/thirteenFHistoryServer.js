@@ -19,8 +19,13 @@ export function create13FHistoryLoader({ loadReport = loadThirteenF } = {}) {
       throw Object.assign(new Error('The historical report did not match the selected manager and quarter.'), { status: 502 });
     }
     return { status: data.status, manager: data.manager, selectedPeriod: data.selectedPeriod,
-      projection: data.status === 'ready' ? project13FHistoryQuarter(data.portfolio, request.keys) : null,
-      coverage: data.coverage, observedAt: data.observedAt, reason: data.reason || null };
+      projection: data.status === 'ready' ? {
+        ...project13FHistoryQuarter(data.portfolio, request.keys),
+        observedAt: data.observedAt,
+        checkedAt: data.cache?.checkedAt || data.observedAt,
+        stale: data.cache?.stale === true,
+      } : null,
+      coverage: data.coverage, observedAt: data.observedAt, cache: data.cache, reason: data.reason || null };
   };
 }
 

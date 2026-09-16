@@ -109,6 +109,18 @@ test('a verified unavailable result remains unavailable without an invented hold
   assert.deepEqual(result.coverage, source.coverage);
 });
 
+test('history preserves source dates and a stale fallback instead of presenting a new observation', async () => {
+  const source = report({ cache: { status: 'stale', stale: true, checkedAt: '2026-09-15T16:00:00.000Z', freshUntil: '2026-09-15T17:00:00.000Z' } });
+  const result = await create13FHistoryLoader({ loadReport: async () => source })(CIK, { period: PERIOD, keys: [KEY] });
+  assert.equal(result.projection.observedAt, source.observedAt);
+  assert.equal(result.projection.checkedAt, source.cache.checkedAt);
+  assert.equal(result.projection.stale, true);
+  assert.deepEqual(result.cache, source.cache);
+  const withoutCache = await create13FHistoryLoader({ loadReport: async () => report() })(CIK, { period: PERIOD, keys: [KEY] });
+  assert.equal(withoutCache.projection.checkedAt, report().observedAt);
+  assert.equal(withoutCache.projection.stale, false);
+});
+
 test('history API rejects duplicate, unknown and malformed query parameters with private errors', async () => {
   const valid = new URLSearchParams({ cik: CIK, period: PERIOD, keys: keysJson }).toString();
   const original = globalThis.fetch;

@@ -2,7 +2,7 @@
 .heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; }
 .eyebrow { display: flex; align-items: center; gap: 7px; color: var(--fund-gold); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .11em; }
 .history .heading h3 { font-size: clamp(22px, 2.6vw, 30px); letter-spacing: -.035em; font-weight: 680; line-height: 1.25; margin: 8px 0 !important; }
-.heading p { font-size: 12px; line-height: 1.7; color: var(--fund-muted); }
+.heading p { font-size: 13px; line-height: 1.7; color: var(--fund-muted); }
 .windowControl, .metricToggle, .smallToggle { display: inline-flex; align-items: center; padding: 3px; gap: 3px; border: 1px solid var(--fund-line); border-radius: 8px; background: var(--fund-bg); flex-shrink: 0; }
 .history .windowControl button, .history .metricToggle button, .history .smallToggle button { padding: 7px 11px; border: 0; min-height: 30px; background: transparent; border-radius: 5px; white-space: nowrap; color: var(--fund-muted); font-size: 10px; }
 .history .windowControl button[aria-pressed="true"], .history .metricToggle button[aria-pressed="true"], .history .smallToggle button[aria-pressed="true"] { background: var(--fund-raised); color: var(--fund-gold); box-shadow: 0 1px 4px #0001; }
@@ -14,37 +14,54 @@
 .progressRow progress::-webkit-progress-value { background: var(--fund-green); }
 .history .progressRow > button { font-size: 10px; min-height: 27px; padding: 5px 8px; border: 0; background: transparent; }
 .subtle { color: var(--fund-muted); }
+.headerTools { display: grid; justify-items: end; gap: 10px; flex-shrink: 0; }
+.history .exportLink { display: inline-flex; align-items: center; gap: 6px; color: var(--fund-muted); font-size: 11px; text-decoration: none; padding: 4px 2px; }
+.history .exportLink:hover { color: var(--fund-text); }
 .chartGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.chartCard { min-width: 0; border: 1px solid var(--fund-line); border-radius: 12px; background: var(--fund-panel); padding: 19px 19px 6px; }
+.chartCard { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--fund-line); border-radius: 12px; background: var(--fund-panel); padding: 20px 20px 10px; }
 .chartHeading { display: flex; align-items: center; justify-content: space-between; min-height: 33px; gap: 8px; }
-.chartHeading > span:first-child { color: var(--fund-muted); font-size: 11px; }
+.chartHeading > span:first-child { color: var(--fund-text); font-weight: 550; font-size: 12px; }
 .history .smallToggle { border: 0; padding: 2px; }
 .history .smallToggle button { font-size: 9px; min-height: 24px; padding: 4px 7px; }
 .unitTag { color: var(--fund-muted); font-size: 9px; background: var(--fund-raised); padding: 4px 6px; border-radius: 4px; }
 .chartValue { display: block; font-size: clamp(27px, 3.1vw, 39px); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.055em; line-height: 1.25; margin: 10px 0 4px; }
-.chartValueNote { color: var(--fund-muted); font-size: 9px; line-height: 1.55; }
-.chart { position: relative; width: calc(100% + 14px); margin: 14px -7px 0; border-radius: 5px; outline-offset: 3px; scroll-margin-top: 150px; }
+.chartValueNote { color: var(--fund-muted); font-size: 11px; line-height: 1.65; min-height: 36px; }
+.delta, .deltaUnavailable { min-height: 45px; margin-top: 10px; font-size: 11px; line-height: 1.7; color: var(--fund-muted); }
+.delta { display: flex; align-content: flex-start; align-items: baseline; flex-wrap: wrap; gap: 1px 5px; }
+.delta strong { font-weight: 550; color: var(--fund-text); font-variant-numeric: tabular-nums; }
+.delta > span:last-child { flex-basis: 100%; }
+.deltaUnavailable { display: block; }
+.chart { position: relative; width: calc(100% + 14px); margin: auto -7px 0; border-radius: 5px; outline-offset: 3px; scroll-margin-top: 150px; }
 .chart:focus-visible { outline: 2px solid var(--fund-gold); }
 .chart > svg { display: block; width: 100%; height: auto; overflow: visible; }
 .gridLine { stroke: var(--fund-line); stroke-width: 1; stroke-dasharray: 3 5; }
 .activeLine { stroke: var(--fund-muted); stroke-opacity: .3; stroke-width: 1; stroke-dasharray: 4 4; }
 .axisLabel { fill: var(--fund-muted); font-size: 13px; font-family: inherit; font-variant-numeric: tabular-nums; }
-.chartCard .axisLabel { font-size: 19px; }
+.chartCard .axisLabel { font-size: 13px; }
 .chartEmpty { position: absolute; inset: 20% 5% 25% 12%; display: grid; place-items: center; color: var(--fund-muted); font-size: 10px; text-align: center; }
-.inspection { margin-top: -3px; padding: 13px 17px; border: 1px solid var(--fund-line); border-radius: 10px; background: color-mix(in srgb, var(--fund-panel) 60%, var(--fund-bg)); }
-.quarterRail { display: flex; align-items: center; gap: 5px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--fund-line) transparent; }
-.history .quarterRail button { flex: 1 0 auto; min-height: 31px; padding: 6px 9px; border-color: transparent; font-size: 9px; background: transparent; color: var(--fund-muted); }
+.inspection { margin-top: -3px; padding: 18px 20px 10px; border: 1px solid var(--fund-line); border-radius: 10px; background: color-mix(in srgb, var(--fund-panel) 60%, var(--fund-bg)); }
+.quarterRail { display: flex; align-items: center; gap: 5px; overflow-x: auto; padding: 14px 0 2px; margin-top: 15px; border-top: 1px solid var(--fund-line); scrollbar-width: thin; scrollbar-color: var(--fund-line) transparent; }
+.history .quarterRail button { flex: 1 0 auto; min-height: 35px; padding: 7px 10px; border-color: transparent; font-size: 10px; background: transparent; color: var(--fund-muted); }
 .history .quarterRail button[aria-pressed="true"] { background: var(--fund-raised); color: var(--fund-text); border-color: var(--fund-line); }
+.history .quarterRail button[data-preview="true"] { color: var(--fund-gold); border-color: var(--fund-line); }
 .quarterRail i { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .readyDot { background: var(--fund-green); }
 .missingDot { border: 1px solid var(--fund-muted); }
-.inspectedDetail { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--fund-line) 60%, transparent); }
-.inspectedDetail > span { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 15px; font-size: 10px; }
-.inspectedDetail strong { font-weight: 600; }
+.inspectedDetail { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.inspectedDetail > div { display: grid; gap: 6px; }
+.inspectedDetail .inspectedLabel { color: var(--fund-muted); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+.inspectedDetail > div > strong { font-size: 23px; letter-spacing: -.035em; font-weight: 650; }
+.inspectedDetail > div > span:last-child { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 15px; color: var(--fund-muted); font-size: 10px; }
 .complete, .pending { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; line-height: 1.6; }
 .complete { color: var(--fund-green); }
 .pending { color: var(--fund-muted); }
 .history .inspectedDetail > button { background: transparent; border: 0; min-height: 29px; padding: 4px 0 4px 8px; font-size: 10px; white-space: nowrap; }
+.gapDot { fill: var(--fund-panel); stroke: var(--fund-muted); stroke-width: 1; }
+.chartGuidance { display: grid; gap: 5px; color: var(--fund-muted); font-size: 11px; line-height: 1.7; margin-top: -3px; }
+.coverageNotice { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 15px 19px; border: 1px dashed var(--fund-line); border-radius: 10px; }
+.coverageNotice strong { font-size: 12px; font-weight: 550; }
+.coverageNotice p { font-size: 11px; color: var(--fund-muted); line-height: 1.7; margin-top: 5px; }
+.history .coverageNotice button { flex-shrink: 0; font-size: 11px; background: transparent; }
 .caption { color: var(--fund-muted); font-size: 11px; line-height: 1.8; }
 .positionPanel { min-width: 0; padding: 25px; background: var(--fund-panel); border: 1px solid var(--fund-line); border-radius: 13px; margin-top: 5px; }
 .panelHeading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -58,6 +75,17 @@
 .history .searchLabel input { border: 0; background: transparent; min-width: 0; width: 100%; padding: 10px 10px 10px 0; margin: 0; min-height: 39px; font-size: 11px; }
 .history .selectLabel select { width: 100%; min-width: 0; min-height: 41px; font-size: 11px; background: var(--fund-bg); }
 .searchNote { margin-top: 8px !important; color: var(--fund-muted); font-size: 10px; line-height: 1.7; }
+.quickPicks { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-top: 15px; }
+.quickPicks > span { font-size: 10px; color: var(--fund-muted); margin-right: 2px; }
+.history .quickPicks button { display: block; max-width: 165px; min-height: 29px; padding: 5px 9px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; background: transparent; color: var(--fund-muted); font-size: 10px; border-radius: 6px; }
+.history .quickPicks button[aria-pressed="true"] { color: var(--fund-green); background: color-mix(in srgb, var(--fund-green) 7%, transparent); border-color: color-mix(in srgb, var(--fund-green) 32%, var(--fund-line)); }
+.freshness { color: var(--fund-muted); font-size: 10px; line-height: 1.6; font-weight: 400; }
+.positionError { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 16px; padding: 12px 15px; border: 1px dashed var(--fund-line); border-radius: 8px; color: var(--fund-muted); font-size: 11px; line-height: 1.7; }
+.history .positionError button { font-size: 10px; flex-shrink: 0; background: transparent; }
+.positionProgress { display: flex; align-items: center; gap: 7px; margin-top: 17px; font-size: 11px; color: var(--fund-muted); }
+.positionChange { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 13px; padding: 13px 15px; margin-top: 12px; border-radius: 8px; background: color-mix(in srgb, var(--fund-bg) 45%, transparent); color: var(--fund-muted); font-size: 11px; line-height: 1.7; }
+.positionChange > span:first-child { flex-basis: 100%; font-size: 10px; }
+.positionChange strong { font-weight: 550; color: var(--fund-text); font-variant-numeric: tabular-nums; }
 .positionTitle { display: flex; align-items: center; justify-content: space-between; gap: 22px; border-top: 1px solid var(--fund-line); padding-top: 24px; margin-top: 24px; }
 .positionTitle > div:first-child { min-width: 0; }
 .positionTitle h4 { margin: 0 0 6px; font-size: 17px; font-weight: 650; letter-spacing: -.02em; line-height: 1.4; overflow-wrap: anywhere; }
@@ -111,25 +139,26 @@
 @keyframes rotate { to { transform: rotate(360deg); } }
 @media (max-width: 1150px) {
   .chartGrid { gap: 10px; }
-  .chartCard { padding: 15px 13px 5px; }
+  .chartCard { padding: 16px 14px 8px; }
   .chartHeading { align-items: flex-start; }
-  .chartHeading > span:first-child { font-size: 10px; padding-top: 4px; }
+  .chartHeading > span:first-child { font-size: 11px; padding-top: 4px; }
   .history .smallToggle button { padding: 4px 5px; }
-  .chartValueNote { font-size: 8px; }
-  .axisLabel { font-size: 15px; }
+  .chartValueNote { font-size: 10px; }
+  .delta, .deltaUnavailable { font-size: 10px; }
   .positionChartWrap { grid-template-columns: minmax(140px, .5fr) minmax(0, 1.5fr); }
 }
 @media (max-width: 850px) {
   .heading { align-items: flex-start; flex-direction: column; gap: 15px; }
+  .headerTools { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
   .chartGrid { grid-template-columns: 1fr; gap: 12px; }
-  .chartCard { display: grid; grid-template-columns: minmax(125px, .6fr) minmax(0, 1.4fr); grid-template-rows: 35px auto auto; align-content: center; gap: 0 20px; padding: 17px; }
+  .chartCard { display: grid; grid-template-columns: minmax(160px, .75fr) minmax(0, 1.25fr); grid-template-rows: 35px auto auto 1fr; align-content: center; gap: 0 20px; padding: 20px; }
   .chartCard .chartHeading { grid-column: 1; grid-row: 1; }
-  .chartCard .chartValue { grid-column: 1; grid-row: 2; margin-top: 5px; font-size: 34px; }
-  .chartCard .chartValueNote { grid-column: 1; grid-row: 3; font-size: 9px; }
-  .chartCard .chart { grid-column: 2; grid-row: 1 / 4; align-self: center; margin-top: 0; }
+  .chartCard .chartValue { grid-column: 1; grid-row: 2; margin-top: 5px; font-size: 36px; }
+  .chartCard .chartValueNote { grid-column: 1; grid-row: 3; font-size: 11px; }
+  .chartCard .delta, .chartCard .deltaUnavailable { grid-column: 1; grid-row: 4; font-size: 11px; }
+  .chartCard .chart { grid-column: 2; grid-row: 1 / 5; align-self: center; margin-top: 0; }
   .chartHeading { flex-wrap: wrap; gap: 0 6px; }
-  .history .smallToggle button { min-height: 21px; padding: 3px 5px; }
-  .axisLabel { font-size: 13px; }
+  .history .smallToggle button { min-height: 24px; padding: 3px 5px; }
   .positionTitle { align-items: flex-start; flex-direction: column; gap: 17px; }
   .positionStats { grid-template-columns: 1fr 1fr; gap: 18px; }
   .positionStats article:last-child { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--fund-line); padding: 15px 0 0; }
@@ -138,41 +167,48 @@
 }
 @media (max-width: 560px) {
   .history { gap: 15px; }
-  .heading p { font-size: 11px; }
-  .progressRow { align-items: flex-start; }
+  .heading p { font-size: 12px; }
+  .headerTools { flex-wrap: wrap; gap: 8px; }
+  .progressRow { align-items: flex-start; gap: 10px; }
   .progressRow .subtle { display: none; }
   .progressRow > div { line-height: 1.7; align-items: flex-start; }
   .progressRow > div > svg { margin-top: 2px; }
-  .chartCard { gap: 0 8px; padding: 14px; grid-template-columns: 1fr; grid-template-rows: auto; }
+  .history .progressRow > button { flex-shrink: 0; font-size: 9px; padding-right: 0; }
+  .chartCard { gap: 0 8px; padding: 18px; grid-template-columns: 1fr; grid-template-rows: auto; }
   .chartCard .chartHeading { grid-column: 1; grid-row: 1; align-items: center; }
   .chartCard .chartValue { grid-column: 1; grid-row: 2; }
-  .chartCard .chartValueNote { grid-column: 1; grid-row: 3; }
-  .chartCard .chart { grid-column: 1; grid-row: 4; margin-top: 10px; }
-  .chartCard .chartValue { font-size: 29px; }
-  .chartCard .chartValueNote { font-size: 8px; }
-  .chartHeading > span:first-child { font-size: 9px; }
-  .chartCard .axisLabel { font-size: 19px; }
+  .chartCard .chartValueNote { grid-column: 1; grid-row: 3; min-height: 0; }
+  .chartCard .delta, .chartCard .deltaUnavailable { grid-column: 1; grid-row: 4; min-height: 0; margin-top: 8px; }
+  .delta > span:last-child { flex-basis: auto; }
+  .chartCard .chart { grid-column: 1; grid-row: 5; margin-top: 14px; }
+  .chartCard .chartValue { font-size: 36px; }
+  .chartHeading > span:first-child { font-size: 12px; }
   .chartCard .unitTag { display: none; }
-  .history .smallToggle button { font-size: 8px; padding: 3px; }
-  .inspection { padding: 10px 12px; }
+  .inspection { padding: 16px 15px 10px; }
   .inspectedDetail { align-items: flex-start; gap: 8px; }
-  .inspectedDetail > span { gap: 5px; display: grid; }
-  .history .inspectedDetail > button { font-size: 9px; }
-  .complete, .pending { font-size: 9px; }
-  .caption { font-size: 10px; }
-  .positionPanel { padding: 18px 15px; }
+  .inspectedDetail > div > span:last-child { gap: 5px; display: grid; }
+  .history .inspectedDetail > button { font-size: 10px; margin-top: 14px; }
+  .complete, .pending { font-size: 10px; }
+  .caption, .chartGuidance { font-size: 10px; }
+  .coverageNotice { flex-direction: column; align-items: flex-start; gap: 10px; padding: 15px; }
+  .positionPanel { padding: 20px 16px; }
   .panelHeading { flex-wrap: wrap; gap: 14px; }
-  .history .panelHeading h3 { font-size: 17px; }
-  .positionTitle h4 { font-size: 15px; }
+  .history .panelHeading h3 { font-size: 18px; }
+  .quickPicks > span { flex-basis: 100%; }
+  .history .quickPicks button { max-width: 145px; }
+  .positionTitle h4 { font-size: 16px; }
   .positionChartWrap { grid-template-columns: 1fr; gap: 6px; }
   .positionReadout { gap: 5px; margin-top: 8px; }
   .positionReadout > strong { font-size: 34px; }
-  .tallChart .axisLabel { font-size: 14px; }
+  .tallChart .axisLabel { font-size: 18px; }
+  .positionError { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .positionChange { padding: 12px; gap: 4px; }
+  .positionChange > strong { flex-basis: 100%; }
   .positionStats { gap: 15px; padding: 15px 0; }
   .positionStats article + article { padding-left: 15px; }
   .positionStats article:last-child { padding-left: 0; }
   .positionStats article > strong { font-size: 18px; }
-  .positionStats article > span, .positionStats small { font-size: 9px; }
+  .positionStats article > span, .positionStats small { font-size: 10px; }
   .detail summary { padding: 13px; font-size: 10px; gap: 10px; }
   .detail summary > span:last-child { font-size: 9px; }
   .tableScroll { padding: 0 12px; }
