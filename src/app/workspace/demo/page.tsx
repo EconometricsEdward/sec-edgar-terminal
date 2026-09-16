@@ -5,7 +5,7 @@ import s from "./demo.module.css";
 export const metadata = buildPageMetadata({
   title: "S&P 500 Top 100 Company Research Demo",
   description:
-    "Explore the top 100 unique companies by combined weight in the stored S&P 500 holdings. Every Research Hub view uses the same company list, with SEC evidence and optional hypothetical weights.",
+    "Explore the top 100 unique companies by combined weight in the stored S&P 500 holdings. Every demo view uses the same company list, with SEC evidence and optional hypothetical weights.",
   path: "/workspace/demo",
 });
 

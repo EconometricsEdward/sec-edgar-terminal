@@ -67,7 +67,7 @@ export default function HomeResearch({ cftcEnabled = true }: { cftcEnabled?: boo
           <h2 id="resume-title">Pick up where you left off.</h2>
         </div>
         <Link href="/workspace">
-          Research Hub <ArrowUpRight size={15} />
+          Portfolio <ArrowUpRight size={15} />
         </Link>
       </div>
       <div className={styles.resumeGrid}>

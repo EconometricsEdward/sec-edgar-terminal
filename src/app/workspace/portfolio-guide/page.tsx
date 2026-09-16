@@ -73,7 +73,7 @@ export default function PortfolioGuidePage() {
   return (
     <article className={styles.page}>
       <header>
-        <Link href="/workspace">← Research Hub</Link>
+        <Link href="/workspace">← Portfolio</Link>
         <p className={styles.eyebrow}>Portfolio Research · Format version 1</p>
         <h1>A company list, ready for research.</h1>
         <p>
@@ -292,31 +292,18 @@ export default function PortfolioGuidePage() {
       </section>
 
       <section id="hub-comparisons">
-        <h2>Choose a question and compare saved portfolios</h2>
+        <h2>Start with your portfolio or explore the demo</h2>
         <p>
-          The Research Hub overview links directly to concentration, financial
-          profiles, screening and evidence coverage for your last active
-          portfolio. Filter saved portfolios by name, research status or
-          coverage, and search saved evidence by type or recency. Analysis-area
-          links reopen the selected tool; your research data and private notes
-          remain in this browser.
+          Portfolio Overview offers two choices: add a custom portfolio or view
+          the demo. Choose “Add custom portfolio” to upload a CSV, Excel or JSON
+          file, or paste a list of tickers. Templates are available if you need a
+          starting point.
         </p>
         <p>
-          Choose “Compare saved portfolios” to inspect two local snapshots side
-          by side. Company overlap counts share classes once and does not look
-          through funds. Allocation overlap adds the smaller saved weight for
-          each shared company; both portfolios require complete, resolved
-          allocations totaling 100%. Explicit normalization remains labeled.
-          Missing weights are never assumed to be zero.
-        </p>
-        <p>
-          Whole-list financial medians describe their own covered samples.
-          Matched differences require the same company, metric definition, unit,
-          accounting basis and full reporting period. A difference for the same
-          period may be a revision; it is not later growth. Exclusion reasons
-          and snapshot dates remain visible. Export the comparison as JSON with
-          your selected measure, company filter, all results and matched SEC
-          links.
+          Open saved portfolios from Overview or use the portfolio selector in
+          Portfolio Research to resume your work. Your saved portfolios and
+          private notes remain in this browser. The demo is a separate example
+          that lets you explore the research tools before adding your own list.
         </p>
       </section>
 

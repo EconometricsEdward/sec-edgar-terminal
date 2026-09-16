@@ -143,8 +143,9 @@ export default function AboutPage() {
         </div>
         <p>
           No account is required. Saved research and preferences use browser
-          storage; they do not automatically synchronize across devices. The
-          Research Hub provides portfolio overview and research tools.
+          storage; they do not automatically synchronize across devices.
+          Portfolio lets you upload holdings or explore a demo, then research
+          companies and concentration.
           Keep an export before clearing site data.
         </p>
         <p>

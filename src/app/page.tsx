@@ -98,7 +98,7 @@ export default function HomePage() {
               Find a filing <ArrowUpRight size={17} />
             </Link>
             <Link className={styles.secondary} href="/workspace">
-              Open your Research Hub <ArrowUpRight size={17} />
+              Open your Portfolio <ArrowUpRight size={17} />
             </Link>
           </div>
           <p className={styles.trust}>
