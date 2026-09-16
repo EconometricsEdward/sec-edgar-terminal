@@ -61,9 +61,9 @@ History charts use zero-based axes, separate units, keyboard quarter inspection,
 
 ## Market connections
 
-The Market connections view links actual 13F securities to current issuer disclosures and related CFTC markets. It starts with the 20 largest disclosed positions, reports coverage as it progresses, and lets the user continue, scan all holdings, pause, or retry. A missing match, unverified issuer, missing filing, partial source retrieval, and an unscanned holding remain different states.
+The Market connections view links actual 13F securities to current issuer disclosures and related CFTC markets. It opens the saved manager-quarter publication directly without first downloading the complete holdings report. A full shared review continues through the scheduler, while users explore already-published connections. A missing match, unverified issuer, missing filing, partial source retrieval, and an unscanned holding remain different states.
 
-The progress counter and bar describe the selected review scope, initially 20 holdings. The full report count and the share of disclosed value covered by filing reviews remain visible separately. A large report does not automatically start thousands of SEC requests.
+The progress counter and bar describe the full shared report review. The share of disclosed value covered by filing reviews remains visible separately. An optional preview is limited to complete small reports; a ten-position manager summary is never presented as complete research coverage. A large report does not automatically start thousands of SEC requests.
 
 `GET /api/fund-13f/market-connections?cik=…&period=…&key=…` verifies the manager, reporting quarter, exact security, and SEC CUSIP-to-issuer proof. It then loads disclosures directly by verified issuer CIK. An inactive or missing trading symbol does not block a valid issuer; a ticker alias never substitutes for CIK identity. The source reader uses the latest eligible complete annual report and at most one newer complete 10-Q, with bounded history search and source-integrity caches shared with company exposure research.
 

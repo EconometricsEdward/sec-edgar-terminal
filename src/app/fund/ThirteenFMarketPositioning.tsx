@@ -6,32 +6,36 @@ import { clearPreparedCftc, fetchPreparedCftc } from "../../utils/cftcClient.js"
 import { scenarioMarketHistory } from "../../utils/portfolioScenarioMarket.js";
 import s from "./ThirteenFMarketPositioning.module.css";
 
-type Props = { market: any; active: boolean };
+type Props = { market: any; active: boolean; initialData?: any };
 type Request = { path: string; status: "loading" | "ready" | "error"; data: any };
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const number = (value: unknown, digits = 0, signed = false) => finite(value) ? value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits, signDisplay: signed ? "exceptZero" : "auto" }) : "—";
 const percent = (value: unknown, digits = 1) => finite(value) ? `${number(value, digits)}%` : "—";
 
 /** Only the selected market mounts a request and an interactive chart. */
-export default function ThirteenFMarketPositioning({ market, active }: Props) {
+export default function ThirteenFMarketPositioning({ market, active, initialData }: Props) {
   if (!active || !market) return null;
-  return <Positioning key={`${market.family}:${market.contract}:${market.group}`} market={market} />;
+  return <Positioning key={`${market.family}:${market.contract}:${market.group}`} market={market} initialData={initialData} />;
 }
 
-function Positioning({ market }: { market: any }) {
+function Positioning({ market, initialData }: { market: any; initialData?: any }) {
   const id = useId();
   const path = `/api/v1/cftc/history?${new URLSearchParams({ family: market.family, contract: market.contract, group: market.group, window: "1y", date: "latest" })}`;
-  const [request, setRequest] = useState<Request>({ path, status: "loading", data: null });
+  // The snapshot may carry only its first chart. Validate the complete market
+  // selection before reusing it for a selected market or skipping a request.
+  const prepared = useMemo(() => initialData?.selection?.history_window === "1y" && scenarioMarketHistory(initialData, market) ? initialData : null, [initialData, market]);
+  const [request, setRequest] = useState<Request>(() => ({ path, status: prepared ? "ready" : "loading", data: prepared }));
   const [retry, setRetry] = useState(0);
   const [inspectedDate, setInspectedDate] = useState("");
   const [focused, setFocused] = useState(false);
   useEffect(() => {
+    if (prepared && !retry) { setRequest({ path, status: "ready", data: prepared }); return; }
     const controller = new AbortController();
     fetchPreparedCftc(path, { signal: controller.signal, timeoutMs: 46_000 })
       .then(data => { if (!controller.signal.aborted) setRequest({ path, status: "ready", data }); })
       .catch(() => { if (!controller.signal.aborted) setRequest({ path, status: "error", data: null }); });
     return () => controller.abort();
-  }, [path, retry]);
+  }, [path, retry, prepared]);
   const raw = request.path === path ? request.data : null;
   const history: any = useMemo(() => raw?.selection?.history_window === "1y" ? scenarioMarketHistory(raw, market) : null, [raw, market]);
   const pending = request.path !== path || request.status === "loading";

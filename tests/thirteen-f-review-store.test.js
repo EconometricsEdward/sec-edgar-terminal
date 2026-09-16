@@ -98,3 +98,48 @@ test('adapter aborts stalled identity acquisition and maps capacity and report g
     await assert.rejects(s.claim({owner}),{status,code:code==='fund_review_capacity'?'fund_review_capacity':'stale_generation'});
   }
 });
+
+test('prepared read endpoints admit latest only for snapshots and progress',async()=>{
+  const {handle,calls}=gateway();
+  for(const operation of ['snapshot','progress']) {
+    assert.equal((await handle(request(`edgar_fund_review_${operation}`,{p_cik:cik,p_period:null}))).status,200);
+    assert.equal((await handle(request(`edgar_fund_review_${operation}`,{p_cik:cik,p_period:period}))).status,200);
+    assert.equal((await handle(request(`edgar_fund_review_${operation}`,{p_cik:cik,p_period:null,p_query:'arbitrary'}))).status,422);
+  }
+  assert.equal((await handle(request('edgar_fund_review_read',{p_cik:cik,p_period:null}))).status,422);
+  assert.equal(calls.length,4);
+});
+test('cached batches and ordinal cursors retain exact worker fences and limits',async()=>{
+  const {handle,calls}=gateway(), entry={ordinal:1,result,summary,retrySeconds:0};
+  assert.equal((await handle(request('edgar_fund_review_work',{p_claim:claim,p_limit:100,p_after_ordinal:400}))).status,200);
+  assert.equal((await handle(request('edgar_fund_review_work',{p_claim:claim,p_limit:101,p_after_ordinal:0}))).status,422);
+  assert.equal((await handle(request('edgar_fund_review_work',{p_claim:claim,p_limit:100,p_after_ordinal:20001}))).status,422);
+  assert.equal((await handle(request('edgar_fund_review_save_batch',{p_claim:claim,p_results:[entry]}))).status,200);
+  for(const entries of [[],[entry,entry],Array(51).fill(entry),[{...entry,arbitrary:true}],[{...entry,retrySeconds:undefined}],
+    [{...entry,result:{...result,holding:{...h,valueUsd:999}}}]])
+    assert.equal((await handle(request('edgar_fund_review_save_batch',{p_claim:claim,p_results:entries}))).status,422);
+  assert.equal(calls.length,2);
+});
+test('lightweight citation links must match the summary issuer and filing accession',()=>{
+  const source={url:'https://www.sec.gov/Archives/edgar/data/1/000000000125000001/report.htm',accession:'0000000001-25-000001',form:'10-K',filed:'2025-12-30',reportDate:'2025-09-30'};
+  const linked={...summary,issuer:{cik:'0000000001'},sources:[source]};
+  assert.equal(validFundReviewRpc('edgar_fund_review_save',{...params,p_summary:linked},now),true);
+  for(const sources of [[{...source,url:source.url.replace('/data/1/','/data/2/')}],[{...source,url:`${source.url}?key=secret`}],
+    [{...source,url:'https://attacker.example/report.htm'}],Array(4).fill(source),[{...source,reportDate:'2025-12-31'}]])
+    assert.equal(validFundReviewRpc('edgar_fund_review_save',{...params,p_summary:{...linked,sources}},now),false);
+});
+test('adapter returns bounded prepared snapshots and tiny progress with string versions',async()=>{
+  const calls=[],job={cik,period,reportHash:hash},publishedAt=new Date(now).toISOString();
+  const store=createThirteenFReviewStore({env:{VERCEL_ENV:'production'},now:()=>now,rpc:async(name,body)=>{
+    calls.push({name,body});
+    if(name==='edgar_fund_review_save_batch')return true;
+    if(name==='edgar_fund_review_work')return [];
+    if(name==='edgar_fund_review_snapshot')return {job,report:{cik,period},coverage:{},markets:[],rows:[],page:{},publicationVersion:'2',publishedAt};
+    return {job,publicationVersion:'2',publishedAt};
+  }});
+  assert.equal((await store.snapshot({cik,period:null})).publicationVersion,'2');
+  assert.deepEqual(Object.keys(await store.progress({cik})).sort(),['job','publicationVersion','publishedAt']);
+  assert.equal(await store.saveBatch(claim,{results:[{ordinal:1,result,summary,retrySeconds:0}]}),true);
+  assert.deepEqual(await store.work(claim,{limit:100,afterOrdinal:500}),[]);
+  assert.equal(calls[0].body.p_period,null);assert.equal(calls[1].body.p_period,null);assert.equal(calls[3].body.p_after_ordinal,500);
+});

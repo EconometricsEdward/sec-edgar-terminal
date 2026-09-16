@@ -167,6 +167,25 @@ test('market review caches admit bounded proof and exact CIK disclosure keys onl
   ]) assert.equal(disposableCachePolicy(type, key), null, `${type}/${key}`);
 });
 
+test('durable source revisions have exact source keys and bounded retention separate from current issuer checks', () => {
+  const fingerprint = 'A'.repeat(64), entries = [
+    ['edgar.13f-issuer-proof.v1:production', fingerprint, 'document', 30 * 86400, 128 * 1024],
+    ['edgar.13f-issuer-company.v1:production', cik, 'research', 21600, 32 * 1024],
+    ['edgar.company-exposure-document.v1:production', `${cik}:${accession}:${fingerprint}`, 'document', 30 * 86400, 8 * 1024 * 1024],
+    ['edgar.company-exposure-revision.v1:production', `${cik}:${fingerprint}`, 'document', 30 * 86400, 1024 * 1024],
+  ];
+  for (const [type, id, family, ttl, bytes] of entries) {
+    const policy = disposableCachePolicy(type, id);
+    assert.equal(policy.family, family); assert.equal(policy.maxTtlSeconds, ttl); assert.equal(policy.maxRawBytes, bytes);
+    assert.equal(disposableCachePolicy(type.replace('production', 'preview'), id), null);
+    assert.equal(disposableCachePolicy(type, id + ':latest'), null);
+    assert.equal(disposableCachePolicy(type, 'https://www.sec.gov/Archives/filing.xml'), null);
+  }
+  assert.equal(disposableCachePolicy(entries[1][0], '0000000000'), null);
+  assert.equal(disposableCachePolicy(entries[2][0], `0000000000:${accession}:${fingerprint}`), null);
+  assert.equal(disposableCachePolicy(entries[2][0], `${cik}:${accession}:not-a-digest`), null);
+});
+
 test('production-only adapter uses fixed OIDC endpoint and never service credentials', async () => {
   for (const env of [{}, { VERCEL_ENV: 'preview' }, { VERCEL_ENV: 'production', EDGAR_DISPOSABLE_CACHE_MODE: 'off' }]) {
     assert.equal(disposableCacheEnabled(env), false);

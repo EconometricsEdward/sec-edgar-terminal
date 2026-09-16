@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { CFTC_FRESH_MS, CFTC_PUBLIC_RESPONSE_MAX_BYTES, CFTC_RAW_HISTORY_SCHEMA_VERSION, CFTC_REFRESH_CHECKPOINT_VERSION, CFTC_REFRESH_RESUME_MS, assertCftcPublicResponseSize, buildCftcHistoryResponse, buildCftcMarketsSnapshot, cftcHistoryResponseCacheStatus, cftcPublicDateBounds, cftcPublicationStatus, cftcResourceUrl, fetchCftcContractHistory, fetchCftcLatestRows, fetchCftcResource, hasCftcPublicationFailure, isCftcPublicReportDate, isDurableCftcTwin, isPublishedCftcPrimary, loadCftcMarkets, parseCftcRetryAfter, presentCftcResponse, publishPreparedResponse, readCftcCacheStatus, validCftcRefreshCheckpoint, validHistoryResponse, validMarketsResponse, validateRawHistoryEnvelope } from '../src/utils/cftcServer.js';
 import { CFTC_FAMILIES, CFTC_LAUNCH_CATALOG } from '../src/utils/cftc.js';
 import { createCftcOutboundGate } from '../src/utils/cftcTransport.js';
+import { loadCftcHistory } from '../src/utils/cftcServer.js';
 
 const fixture=name=>JSON.parse(readFileSync(new URL(`./fixtures/${name}`,import.meta.url),'utf8'))[0];
 const priorDay=(date,days)=>{const value=new Date(`${date}T00:00:00.000Z`);value.setUTCDate(value.getUTCDate()-days);return value.toISOString().slice(0,10);};
@@ -279,6 +280,27 @@ test('prepared-only historical market reads cannot amplify into source history c
   let upstreamCalls=0;
   await assert.rejects(loadCftcMarkets({family:'tff',reportDate:'2026-09-08',preparedOnly:true,fetchImpl:async()=>{upstreamCalls++;return Response.json([]);}}),error=>error.code==='CFTC_REPORT_NOT_PREPARED'&&error.status===404);
   assert.equal(upstreamCalls,0);
+});
+
+test('prepared-only chart reads serve the saved chart and never compute or crawl a missing one', async () => {
+  const family = 'tff', code = '13874A', group = 'leveraged-funds', now = Date.now();
+  const reportDate = new Date(now - 86400000).toISOString().slice(0, 10);
+  const retrievedAt = new Date(now - 2000).toISOString(), savedAt = new Date(now - 1000).toISOString();
+  const raw = fixture('cftc-tff-gpe5-46if-v1.json');
+  const codes = CFTC_LAUNCH_CATALOG.filter(item => item.family === family).map(item => item.code);
+  const latestRaw = codes.map((item, index) => ({ ...raw, id: `latest-${index}`, cftc_contract_market_code: item, report_date_as_yyyy_mm_dd: `${reportDate}T00:00:00.000` }));
+  const historyRaw = codes.flatMap((item, n) => Array.from({ length: 261 }, (_, i) => ({ ...raw, id: `history-${n}-${i}`, cftc_contract_market_code: item, report_date_as_yyyy_mm_dd: `${priorDay(reportDate, i * 7)}T00:00:00.000` })));
+  const publish = response => ({ savedAt, response: cftcPublicationStatus(response, { cacheRequired: true, primaryPersisted: true, lastGoodPersisted: true, rawHistoryExpected: 0, rawHistoryPersisted: 0 }) });
+  const markets = publish(buildCftcMarketsSnapshot({ family, reportDate, latestRaw, historyRaw, retrievedAt, sourceUrl: latestSourceUrl(family, reportDate), historySourceUrl: launchSourceUrl(family, reportDate) }));
+  const selected = latestRaw.find(row => row.cftc_contract_market_code === code);
+  const rows = Array.from({ length: 53 }, (_, i) => ({ ...selected, id: i === 0 ? selected.id : `week-${i}`, report_date_as_yyyy_mm_dd: `${priorDay(reportDate, i * 7)}T00:00:00.000` }));
+  const history = publish(buildCftcHistoryResponse({ family, code, group, throughDate: reportDate, window: '1y', rawRows: rows, retrievedAt, sourceUrl: contractSourceUrl(family, code, reportDate) }));
+  const values = new Map([['markets:tff:latest', markets], [`history:tff:${code}:${group}:${reportDate}:1y`, history]]);
+  const options = { family, code, group, window: '1y', preparedOnly: true, persistence: { mode: () => 'off' },
+    cacheGet: async (_namespace, key) => values.get(key) || null, fetchImpl: async () => assert.fail('Saved chart reads cannot fetch upstream sources') };
+  assert.equal((await loadCftcHistory(options)).retrieved_at, retrievedAt);
+  values.delete(`history:tff:${code}:${group}:${reportDate}:1y`);
+  await assert.rejects(loadCftcHistory(options), error => error.code === 'CFTC_REPORT_NOT_PREPARED');
 });
 
 test('prepared-only explicit-date reads reject a provisional latest primary and use its durable twin',async()=>{

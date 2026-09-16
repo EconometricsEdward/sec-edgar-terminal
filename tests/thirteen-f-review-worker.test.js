@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createThirteenFReviewWorker, THIRTEEN_F_REVIEW_WORKER_LIMITS } from '../src/utils/thirteenFReviewWorker.js';
 import { prepareThirteenFReviewReport, hashThirteenFReviewReport } from '../src/utils/thirteenFSharedReview.js';
+import { takeSecRequestBudget } from '../src/utils/secRequestBudget.js';
 import { createThirteenFMarketConnectionsLoader } from '../src/utils/thirteenFMarketConnectionsServer.js';
 
 const CIK = '0001747057', PERIOD = '2026-06-30', NOW = Date.parse('2026-09-15T12:00:00Z');
@@ -27,21 +28,26 @@ function fixture(count = 4, overrides = {}) {
     generation: '1', owner: 'fixture-owner', leaseUntil: new Date(NOW + 90000).toISOString(), cycle: 1, report: frozen };
   const store = {
     async claim(input, options) { events.push(['claim', input, options]); return structuredClone(claim); },
-    async work(_claim, { limit }) {
+    async work(_claim, { limit, afterOrdinal = 0 }) {
       events.push(['work', limit]);
       return frozen.portfolio.holdings.map((holding, index) => ({ ordinal: index + 1, holding, attempts: saved.get(index + 1)?.attempts || 0 }))
-        .filter(row => !saved.has(row.ordinal) || saved.get(row.ordinal).retrySeconds).slice(0, limit);
+        .filter(row => row.ordinal > afterOrdinal && (!saved.has(row.ordinal) || saved.get(row.ordinal).retrySeconds)).slice(0, limit);
     },
     async save(_claim, entry) {
       events.push(['save', entry.ordinal, entry.signal.aborted]);
       saved.set(entry.ordinal, { ...entry, attempts: (saved.get(entry.ordinal)?.attempts || 0) + 1 });
       return true;
     },
+    async saveBatch(_claim, { results, signal }) {
+      events.push(['saveBatch', results.length, signal.aborted]);
+      for (const entry of results) saved.set(entry.ordinal, { ...entry, attempts: (saved.get(entry.ordinal)?.attempts || 0) + 1 });
+      return true;
+    },
     async release(_claim, options) { events.push(['release', options.signal.aborted]); return true; },
     async enqueue(value, hash) { events.push(['enqueue', value, hash]); return { reportHash: hash }; },
     ...overrides.store,
   };
-  const options = { store, enabled: () => true, owner: () => 'fixture-owner', now: () => NOW,
+  const options = { preparedLoader: async (_report, keys) => keys.map(() => null), store, enabled: () => true, owner: () => 'fixture-owner', now: () => NOW,
     portfolioLoader: async (cik, args) => { calls++; events.push(['portfolio', cik, args.period]); return current; },
     connectionLoader: async (value, key) => { events.push(['connection', key]); return unresolved(value, key); },
     ...overrides, store };
@@ -51,8 +57,8 @@ function fixture(count = 4, overrides = {}) {
 
 test('full review resumes across independent invocations, checkpoints every holding and loads a report once per batch', async () => {
   const f = fixture(24);
-  assert.equal((await f.create()()).processed, 12);
-  assert.equal((await f.create()()).processed, 12);
+  assert.equal((await f.create()({ maxHoldings: 12 })).processed, 12);
+  assert.equal((await f.create()({ maxHoldings: 12 })).processed, 12);
   assert.equal(f.saved.size, 24);
   assert.equal(f.portfolioCalls(), 2);
   assert.equal(f.events.filter(([kind]) => kind === 'release').length, 2);
@@ -153,7 +159,7 @@ test('disabled, exhausted request budgets and empty queues perform no source wor
   assert.equal((await f.create()({ deadline: NOW + 9999 })).reason, 'request-budget'); assert.equal(f.events.length, 0);
   const empty = fixture(1, { store: { claim: async () => null } });
   assert.equal((await empty.create()()).status, 'idle'); assert.equal(empty.portfolioCalls(), 0);
-  await assert.rejects(f.create()({ maxHoldings: THIRTEEN_F_REVIEW_WORKER_LIMITS.batch + 1 }), { code: 'INVALID_REVIEW_BUDGET' });
+  await assert.rejects(f.create()({ maxHoldings: THIRTEEN_F_REVIEW_WORKER_LIMITS.maxHoldings + 1 }), { code: 'INVALID_REVIEW_BUDGET' });
 });
 
 test('frozen-report connection helper preserves holding checks without fetching a portfolio per holding', async () => {
@@ -180,4 +186,105 @@ test('SEC rate cooldown stops new sources and preserves the advertised retry del
   const result = await f.create()();
   assert.equal(result.status, 'deferred'); assert.ok(calls <= 2); assert.equal(result.processed, calls);
   assert.ok([...f.saved.values()].every(entry => entry.retrySeconds === 3600));
+});
+
+
+test('prepared holdings drain several pages and publish in bounded batches without cold research', async () => {
+  let sources = 0;
+  const f = fixture(240, { preparedLoader: async (value, keys, { classificationOnly }) => classificationOnly ? keys.map(() => null) : keys.map(key => unresolved(value, key)),
+    connectionLoader: async () => { sources++; throw new Error('Cached work must not become live research'); } });
+  const result = await f.create()();
+  assert.equal(result.processed, 240); assert.equal(result.prepared, 240); assert.equal(result.coldStarted, 0);
+  assert.equal(f.portfolioCalls(), 1); assert.equal(sources, 0);
+  assert.ok(f.events.filter(([kind]) => kind === 'saveBatch').every(([, count]) => count <= 50));
+  assert.equal(f.saved.size, 240);
+});
+
+test('deterministic classifications publish before prepared-cache reads and skip the cold allowance', async () => {
+  let classifiedPublished = false;
+  const f = fixture(180, { preparedLoader: async (value, keys, { classificationOnly }) => {
+    if (!classificationOnly) { classifiedPublished = f.saved.size > 0; return keys.map(() => null); }
+    return keys.map(key => Number(key.slice(0, 9)) % 2 === 0 ? unresolved(value, key) : null);
+  } });
+  const result = await f.create()();
+  assert.equal(classifiedPublished, true); assert.equal(result.prepared, 90);
+  assert.equal(result.coldStarted, THIRTEEN_F_REVIEW_WORKER_LIMITS.coldHoldings);
+  assert.equal(result.processed, 150);
+  assert.ok([...f.saved.values()].some(entry => entry.result.holding.cusip === '000000180'), 'later prepared rows are not blocked by unattempted cold rows');
+});
+
+test('cold lookup ceiling and actual source allowance remain separate from prepared throughput', async () => {
+  let actual = 0;
+  const f = fixture(160, { preparedLoader: async (value, keys, { classificationOnly }) => classificationOnly ? keys.map(() => null)
+    : keys.map(key => Number(key.slice(0, 9)) > 100 ? unresolved(value, key) : null),
+    connectionLoader: async (value, key) => {
+      for (let i = 0; i < 5; i++) {
+        if (!takeSecRequestBudget()) throw Object.assign(new Error('allowance used'), { code: 'SEC_REQUEST_BUDGET_EXHAUSTED', status: 429 });
+        actual++;
+      }
+      return unresolved(value, key);
+    } });
+  const result = await f.create()();
+  assert.equal(actual, THIRTEEN_F_REVIEW_WORKER_LIMITS.sourceRequests);
+  assert.equal(result.sourceRequests, actual); assert.equal(result.prepared, 60);
+  assert.ok(result.coldStarted < THIRTEEN_F_REVIEW_WORKER_LIMITS.coldHoldings);
+  assert.ok([...f.saved.values()].some(entry => entry.result.holding.cusip === '000000160'), 'later saved evidence still publishes when the SEC allowance is exhausted');
+});
+
+test('source-free prepared helper cannot consume an SEC request even accidentally', async () => {
+  let allowed;
+  const f = fixture(1, { preparedLoader: async (_value, keys) => {
+    allowed = takeSecRequestBudget(); return keys.map(() => null);
+  } });
+  const result = await f.create()();
+  assert.equal(allowed, false); assert.equal(result.sourceRequests, 0);
+});
+
+test('adaptive work stops at its time budget and does not start another report load', async () => {
+  let time = NOW;
+  const f = fixture(300, { now: () => time, preparedLoader: async (value, keys, { classificationOnly }) => {
+    if (classificationOnly) return keys.map(() => null);
+    time += 30_000;
+    return keys.map(key => unresolved(value, key));
+  } });
+  const result = await f.create()();
+  assert.ok(result.processed > 12 && result.processed < 300); assert.equal(f.portfolioCalls(), 1);
+  assert.ok(time - NOW <= THIRTEEN_F_REVIEW_WORKER_LIMITS.invocationMs + 30_000);
+});
+
+test('a rejected prepared batch counts no progress and stops further pages', async () => {
+  const f = fixture(120, { preparedLoader: async (value, keys) => keys.map(key => unresolved(value, key)),
+    store: { saveBatch: async () => false } });
+  const result = await f.create()();
+  assert.equal(result.status, 'lease-lost'); assert.equal(result.processed, 0);
+  assert.equal(f.events.filter(([kind]) => kind === 'work').length, 1);
+});
+
+
+test('exhausting the invocation request allowance leaves the holding pending without spending a retry', async () => {
+  const f = fixture(3, { connectionLoader: async () => {
+    while (takeSecRequestBudget()) { /* Simulate many bounded source attempts. */ }
+    throw Object.assign(new Error('local work allowance'), { code: 'SEC_REQUEST_BUDGET_EXHAUSTED', status: 429 });
+  } });
+  const result = await f.create()();
+  assert.equal(result.status, 'deferred'); assert.equal(result.reason, 'source-budget');
+  assert.equal(result.processed, 0); assert.equal(result.retrying, 0); assert.equal(f.saved.size, 0);
+});
+
+test('a lower source layer wrapping allowance exhaustion cannot publish a false unavailable status', async () => {
+  const f = fixture(1, { connectionLoader: async (value, key) => {
+    while (takeSecRequestBudget()) { /* Simulate the nested source loader. */ }
+    return { ...unresolved(value, key), status: 'unavailable', retryable: true, identity: null,
+      message: 'Source unavailable' };
+  } });
+  const result = await f.create()();
+  assert.equal(result.processed, 0); assert.equal(f.saved.size, 0); assert.equal(result.reason, 'source-budget');
+});
+
+test('multiple work pages cannot exceed the remaining daily attempt allowance', async () => {
+  let calls = 0;
+  const f = fixture(40, { connectionLoader: async (value, key) => { calls++; return unresolved(value, key); } });
+  f.claim.attemptsRemaining = 1;
+  const result = await f.create()();
+  assert.equal(result.processed, 1); assert.equal(calls, 1); assert.equal(f.saved.size, 1);
 });

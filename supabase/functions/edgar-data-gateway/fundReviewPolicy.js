@@ -1,10 +1,13 @@
 /** Fixed production worker contract. No arbitrary SQL, dataset or storage key. */
 export const FUND_REVIEW_LIMITS = Object.freeze({ rpcBytes: 10 * 1024 * 1024, reportBytes: 8 * 1024 * 1024,
-  resultBytes: 1024 * 1024, summaryBytes: 64 * 1024, holdings: 20000, markets: 40 });
+  resultBytes: 1024 * 1024, summaryBytes: 64 * 1024, holdings: 20000, markets: 40, workBatch: 100, saveBatch: 50, batchBytes: 8 * 1024 * 1024 });
 export const FUND_REVIEW_RPC_PARAMETERS = Object.freeze({
   edgar_fund_review_enqueue: ['p_report', 'p_report_hash'],
   edgar_fund_review_claim: ['p_owner', 'p_lease_seconds'],
-  edgar_fund_review_work: ['p_claim', 'p_limit'],
+  edgar_fund_review_work: ['p_claim', 'p_limit', 'p_after_ordinal'],
+  edgar_fund_review_save_batch: ['p_claim', 'p_results'],
+  edgar_fund_review_snapshot: ['p_cik', 'p_period'],
+  edgar_fund_review_progress: ['p_cik', 'p_period'],
   edgar_fund_review_save: ['p_claim', 'p_ordinal', 'p_result', 'p_summary', 'p_retry_seconds'],
   edgar_fund_review_release: ['p_claim'],
   edgar_fund_review_read: ['p_cik', 'p_period', 'p_report_hash', 'p_market', 'p_status', 'p_query', 'p_offset', 'p_limit'],
@@ -36,7 +39,7 @@ function claim(value) {
       && BigInt(value.generation) <= 9223372036854775807n);
 }
 function summary(value, now) {
-  return keys(value, ['holding', 'status', 'issuer', 'message', 'checkedAt', 'markets', 'checked', 'partial', 'disclosureOnly', 'retryable'])
+  return keys(value, ['holding', 'status', 'issuer', 'message', 'checkedAt', 'markets', 'checked', 'partial', 'disclosureOnly', 'retryable', 'sources'])
     && holding(value.holding) && STATUSES.includes(value.status) && text(value.message, 2000)
     && timestamp(value.checkedAt, now) && (value.issuer === null || object(value.issuer) && CIK.test(value.issuer.cik || ''))
     && ['checked', 'partial', 'disclosureOnly', 'retryable'].every(key => typeof value[key] === 'boolean')
@@ -47,6 +50,15 @@ function summary(value, now) {
       && m.group === (m.family === 'tff' ? 'leveraged-funds' : 'managed-money') && m.key === `${m.family}:${m.contract}:${m.group}`
       && text(m.label, 200) && text(m.groupLabel, 100) && ['rates', 'currencies', 'energy', 'metals', 'agriculture', 'other'].includes(m.category)
       && ['named-reference', 'proxy'].includes(m.fit) && text(m.basisLimit, 1200))
+    && (value.sources === undefined || Array.isArray(value.sources) && value.sources.length <= 3 && value.sources.every(source => {
+      if (!keys(source, ['url', 'accession', 'form', 'filed', 'reportDate']) || !/^\d{10}-\d{2}-\d{6}$/.test(source.accession || '')
+        || !['10-K', '10-Q', '20-F', '40-F'].includes(source.form) || !CIK.test(value.issuer?.cik || '')
+        || typeof source.url !== 'string' || source.url.length > 2048) return false;
+      const prefix = `https://www.sec.gov/Archives/edgar/data/${Number(value.issuer.cik)}/${source.accession.replaceAll('-', '')}/`;
+      const validDate = date => /^\d{4}-\d{2}-\d{2}$/.test(date || '') && Number.isFinite(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date;
+      return source.url.startsWith(prefix) && /^[A-Za-z0-9][A-Za-z0-9._-]*\.(htm|html|txt)$/i.test(source.url.slice(prefix.length))
+        && validDate(source.filed) && validDate(source.reportDate) && source.reportDate <= source.filed && source.filed <= value.checkedAt.slice(0, 10);
+    }))
     && bytes(value) <= FUND_REVIEW_LIMITS.summaryBytes;
 }
 export function validFundReviewRpc(name, params, now = Date.now()) {
@@ -63,8 +75,12 @@ export function validFundReviewRpc(name, params, now = Date.now()) {
       && bytes(r) <= FUND_REVIEW_LIMITS.reportBytes;
   }
   if (name === 'edgar_fund_review_claim') return UUID.test(params.p_owner || '') && int(params.p_lease_seconds, 5, 90);
-  if (['edgar_fund_review_work', 'edgar_fund_review_save', 'edgar_fund_review_release'].includes(name) && !claim(params.p_claim)) return false;
-  if (name === 'edgar_fund_review_work') return int(params.p_limit, 1, 12);
+  if (['edgar_fund_review_work', 'edgar_fund_review_save', 'edgar_fund_review_save_batch', 'edgar_fund_review_release'].includes(name) && !claim(params.p_claim)) return false;
+  if (name === 'edgar_fund_review_work') return int(params.p_limit, 1, FUND_REVIEW_LIMITS.workBatch) && int(params.p_after_ordinal ?? 0, 0, FUND_REVIEW_LIMITS.holdings);
+  if (name === 'edgar_fund_review_save_batch') return Array.isArray(params.p_results) && int(params.p_results.length, 1, FUND_REVIEW_LIMITS.saveBatch)
+    && bytes(params.p_results) <= FUND_REVIEW_LIMITS.batchBytes && new Set(params.p_results.map(row => row?.ordinal)).size === params.p_results.length
+    && params.p_results.every(row => keys(row, ['ordinal', 'result', 'summary', 'retrySeconds'])
+      && validFundReviewRpc('edgar_fund_review_save', { p_claim: params.p_claim, p_ordinal: row.ordinal, p_result: row.result, p_summary: row.summary, p_retry_seconds: row.retrySeconds }, now));
   if (name === 'edgar_fund_review_release') return true;
   if (name === 'edgar_fund_review_save') {
     const r = params.p_result;
@@ -74,6 +90,8 @@ export function validFundReviewRpc(name, params, now = Date.now()) {
       && bytes(r) <= FUND_REVIEW_LIMITS.resultBytes && summary(params.p_summary, now)
       && ['key', 'cusip', 'issuer', 'classTitle', 'putCall', 'quantity', 'quantityType', 'valueUsd', 'weightPct'].every(key => (r.holding[key] ?? null) === (params.p_summary.holding[key] ?? null));
   }
+  if (['edgar_fund_review_snapshot', 'edgar_fund_review_progress'].includes(name))
+    return CIK.test(params.p_cik || '') && (params.p_period == null || quarter(params.p_period));
   if (!CIK.test(params.p_cik || '') || !quarter(params.p_period)) return false;
   if (name === 'edgar_fund_review_result') return HASH.test(params.p_report_hash || '') && KEY.test(params.p_key || '');
   return (params.p_report_hash == null || HASH.test(params.p_report_hash))

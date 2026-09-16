@@ -1,0 +1,32 @@
+.section { border: 1px solid var(--fund-line); border-radius: 14px; background: var(--fund-panel); padding: 22px 24px; margin: 22px 0; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.header h2 { font-size: clamp(20px, 2vw, 26px); line-height: 1.25; margin-top: 5px; letter-spacing: -.4px; }
+.header a { flex-shrink: 0; color: var(--fund-gold); font-size: 12px; font-weight: 650; }
+.eyebrow { color: var(--fund-gold); font-size: 11px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; }
+.scope, .note, .freshness, .sources > p, .coverage { color: var(--fund-muted); font-size: 12px; line-height: 1.65; margin-top: 12px; }
+.scope { font-size: 13px; max-width: 950px; }
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin: 22px 0 16px; }
+.metrics dt { font-size: 11px; color: var(--fund-muted); }
+.metrics dd { margin: 5px 0 0; font-size: clamp(17px, 1.7vw, 21px); font-weight: 650; font-variant-numeric: tabular-nums; }
+.metrics small { font-size: 11px; color: var(--fund-muted); font-weight: 400; }
+.freshness strong { color: var(--fund-gold); }
+.tableWrap { margin-top: 20px; overflow-x: auto; }
+.tableWrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tableWrap caption { text-align: left; font-size: 12px; line-height: 1.6; color: var(--fund-muted); padding-bottom: 10px; }
+.tableWrap th, .tableWrap td { padding: 11px 12px; border-bottom: 1px solid var(--fund-line); text-align: left; }
+.tableWrap thead th { color: var(--fund-muted); font-weight: 500; }
+.tableWrap td, .tableWrap thead th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.sources { margin-top: 25px; }
+.sources h3 { font-size: 15px; }
+.exampleGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin-top: 15px; }
+.exampleGrid h4 { font-size: 13px; }
+.exampleGrid p, .exampleGrid small, .exampleGrid li { font-size: 11px; line-height: 1.6; color: var(--fund-muted); }
+.exampleGrid p { margin-top: 4px; }
+.exampleGrid ul { padding-left: 15px; margin: 9px 0; }
+.exampleGrid li { margin: 8px 0; }
+.exampleGrid li span { display: block; }
+.exampleGrid a, .coverage a { color: var(--fund-gold); text-decoration: underline; text-underline-offset: 3px; }
+.coverage { padding-top: 15px; border-top: 1px solid var(--fund-line); margin-top: 22px; }
+.coverage summary { width: fit-content; font-weight: 650; color: var(--fund-text); cursor: pointer; }
+.coverage p { margin-top: 8px; }
+@media (max-width: 760px) { .section { padding: 18px; } .header { flex-direction: column; gap: 12px; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .exampleGrid { grid-template-columns: 1fr; gap: 16px; } }

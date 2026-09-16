@@ -7,6 +7,7 @@
  * honors Retry-After, and applies bounded retries/timeouts.
  */
 
+import { takeSecRequestBudget } from './secRequestBudget.js';
 import { acquireSecDispatchPermit, releaseSecDispatchPermit, publishSecDispatchCooldown } from './dataStore.js';
 
 const SEC_HOSTS = new Set(['data.sec.gov', 'www.sec.gov', 'efts.sec.gov']);
@@ -199,6 +200,7 @@ export function createSecDispatchCoordinator({
       signal?.throwIfAborted(); init.signal?.throwIfAborted();
       // No asynchronous work is permitted between this check and dispatch.
       if (now() >= permit.validUntil) throw new SecRequestError('SEC dispatch permission expired before use.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });
+      if (!takeSecRequestBudget()) throw new SecRequestError('The research task reached its SEC request allowance.', { code: 'SEC_REQUEST_BUDGET_EXHAUSTED', status: 429 });
       request = transport(input, init);
     } catch (error) { await safeRelease(permit); throw error; }
     const outcome = Promise.resolve(request).then(response => ({ response }), error => ({ error }));
@@ -243,6 +245,8 @@ async function publishResponseCooldown(response) {
 async function pacedFetch(input, init, signal) {
   if (DEPLOYED_RUNTIME) return dispatchCoordinator.fetch(input, init, signal);
   await localPermit(signal);
+  signal?.throwIfAborted();
+  if (!takeSecRequestBudget()) throw new SecRequestError('The research task reached its SEC request allowance.', { code: 'SEC_REQUEST_BUDGET_EXHAUSTED', status: 429 });
   return fetch(input, init);
 }
 

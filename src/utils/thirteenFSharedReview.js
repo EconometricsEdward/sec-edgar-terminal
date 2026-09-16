@@ -74,6 +74,19 @@ export function summarizeThirteenFReviewResult(report, result) {
     throw fail('The review result contains unverified evidence.');
   const model = buildThirteenFMarketConnections({ ...report, portfolio: { ...report.portfolio, holdings: [holding] } }, [result]);
   const position = model.positions[0];
+  const sources = [], seenSources = new Set();
+  const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  for (const source of valid && position.issuer ? result.discovery?.sources || [] : []) {
+    if (source.status !== 'ready') continue;
+    const prefix = `https://www.sec.gov/Archives/edgar/data/${Number(position.issuer.cik)}/${String(source.accession).replaceAll('-', '')}/`;
+    if (!/^\d{10}-\d{2}-\d{6}$/.test(source.accession || '') || !['10-K', '10-Q', '20-F', '40-F'].includes(source.form)
+      || typeof source.url !== 'string' || !source.url.startsWith(prefix)
+      || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:htm|html|txt)$/i.test(source.url.slice(prefix.length))
+      || !validDate(source.filed) || !validDate(source.reportDate) || source.reportDate > source.filed || source.filed > checkedAt.slice(0, 10))
+      throw fail('The review source does not match its verified issuer and filing dates.');
+    if (!seenSources.has(source.url)) { seenSources.add(source.url); sources.push(pick(source, ['url', 'accession', 'form', 'filed', 'reportDate'])); }
+  }
   return {
     holding: pick(holding, FIELDS), status: position.status, issuer: position.issuer,
     message: String(position.message || '').slice(0, 1500), checkedAt,
@@ -81,5 +94,6 @@ export function summarizeThirteenFReviewResult(report, result) {
     checked: model.coverage.checked === 1, partial: model.coverage.partial === 1,
     disclosureOnly: model.coverage.disclosureOnly === 1,
     retryable: result.retryable === true || position.status === 'unavailable' || position.status === 'partial',
+    sources: sources.sort((a, b) => b.filed.localeCompare(a.filed)).slice(0, 3),
   };
 }

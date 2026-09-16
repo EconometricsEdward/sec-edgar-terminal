@@ -89,8 +89,8 @@ export function createThirteenFReviewStore({ env = process.env, fetchImpl = (...
       throw new ThirteenFReviewStoreError('invalid_claim', 502);
     return value;
   }
-  async function work(claim, { limit = 12, ...options } = {}) {
-    const value = await rpc('edgar_fund_review_work', { p_claim: token(claim), p_limit: limit }, options);
+  async function work(claim, { limit = 12, afterOrdinal = 0, ...options } = {}) {
+    const value = await rpc('edgar_fund_review_work', { p_claim: token(claim), p_limit: limit, p_after_ordinal: afterOrdinal }, options);
     if (!Array.isArray(value) || value.length > limit || value.some(row => !Number.isSafeInteger(row?.ordinal) || row.ordinal < 1
       || row.ordinal > FUND_REVIEW_LIMITS.holdings || !object(row.holding) || !Number.isSafeInteger(row.attempts) || row.attempts < 0 || row.attempts > 3)
       || new Set(value.map(row => row.ordinal)).size !== value.length) throw new ThirteenFReviewStoreError('invalid_work', 502);
@@ -102,6 +102,24 @@ export function createThirteenFReviewStore({ env = process.env, fetchImpl = (...
     if (typeof value !== 'boolean') throw new ThirteenFReviewStoreError('invalid_acknowledgement', 502);
     return value;
   }
+  async function saveBatch(claim, { results, ...options }) {
+    const value = await rpc('edgar_fund_review_save_batch', { p_claim: token(claim), p_results: results }, options);
+    if (typeof value !== 'boolean') throw new ThirteenFReviewStoreError('invalid_acknowledgement', 502);
+    return value;
+  }
+  async function saved(name, { cik, period = null }, options) {
+    const value = await rpc(name, { p_cik: cik, p_period: period }, options);
+    if (value === null) return null;
+    if (!object(value) || value.job?.cik !== cik || period !== null && value.job?.period !== period
+      || typeof value.publicationVersion !== 'string' || !/^\d{1,19}$/.test(value.publicationVersion)
+      || value.publishedAt !== null && !Number.isFinite(Date.parse(value.publishedAt))
+      || name === 'edgar_fund_review_snapshot' && (!Array.isArray(value.rows) || value.rows.length > 50
+        || !Array.isArray(value.markets) || !object(value.coverage) || !object(value.report) || !object(value.page)))
+      throw new ThirteenFReviewStoreError('invalid_read', 502);
+    return value;
+  }
+  const snapshot = (selection, options) => saved('edgar_fund_review_snapshot', selection, options);
+  const progress = (selection, options) => saved('edgar_fund_review_progress', selection, options);
   async function release(claim, options) {
     const value = await rpc('edgar_fund_review_release', { p_claim: token(claim) }, options);
     if (typeof value !== 'boolean') throw new ThirteenFReviewStoreError('invalid_acknowledgement', 502);
@@ -121,6 +139,6 @@ export function createThirteenFReviewStore({ env = process.env, fetchImpl = (...
       throw new ThirteenFReviewStoreError('invalid_result', 502);
     return value;
   }
-  return { enabled, enqueue, claim, work, save, release, read, result };
+  return { enabled, enqueue, claim, work, save, saveBatch, release, read, result, snapshot, progress };
 }
 export const thirteenFReviewStore = createThirteenFReviewStore();

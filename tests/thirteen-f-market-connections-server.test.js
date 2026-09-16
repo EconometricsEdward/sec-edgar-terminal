@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createThirteenFMarketConnectionsLoader, normalize13FMarketConnectionsRequest, THIRTEEN_F_MARKET_CONNECTIONS_BATCH_MAX_BYTES } from '../src/utils/thirteenFMarketConnectionsServer.js';
 import { createThirteenFMarketConnectionsCache, thirteenFMarketConnectionsCacheId, thirteenFMarketConnectionsExpiresAt } from '../src/utils/thirteenFMarketConnectionsCache.js';
 import { discoverCompanyExposures } from '../src/utils/companyExposureServer.js';
+import { createThirteenFCompanyIdentityLoader } from '../src/utils/thirteenFCompanyIdentityServer.js';
 import { GET } from '../src/app/api/fund-13f/market-connections/route.js';
 
 const CIK = '0001747057', ISSUER_CIK = '0001579091', PERIOD = '2026-06-30', KEY = '565394103|SECURITY|SH';
@@ -27,6 +28,71 @@ async function discovery(options = {}) {
 }
 const loader = options => createThirteenFMarketConnectionsLoader({ portfolioLoader: async () => report(), identityLoader: async () => identity(), exposureLoader: async () => discovery(), now: () => NOW, ...options });
 const load = options => loader(options)(CIK, { period: PERIOD, key: KEY });
+
+test('bulk classification reviews deterministic fund and principal securities without cache or SEC requests', async () => {
+  const fund = { ...holding, issuer: 'ISHARES ETF TRUST', key: '123456789|SECURITY|SH', cusip: '123456789' };
+  const principal = { ...holding, key: `${holding.cusip}|SECURITY|PRN`, quantityType: 'PRN' };
+  const source = report(); source.portfolio.holdings = [fund, holding, principal];
+  const never = async () => { assert.fail('Classification-only review must not request SEC or cache data.'); };
+  const identityLoader = createThirteenFCompanyIdentityLoader({ fetchSec: never, companyLoader: never, readEvidence: never, now: () => NOW });
+  const instance = loader({ portfolioLoader: never, identityLoader, exposureLoader: never,
+    preparedCache: { getMany: never, put: never } });
+  const results = await instance.preparedFromReport(source, [fund.key, holding.key, principal.key], { classificationOnly: true });
+  assert.deepEqual(results.map(value => value?.status || null), ['unresolved', null, 'unresolved']);
+  assert.equal(results[0].identity.code, 'FUND_SECURITY');
+  assert.equal(results[2].identity.code, 'PRINCIPAL_SECURITY');
+  assert.ok(results.filter(Boolean).every(value => value.discovery === null && value.retryable === false));
+});
+
+test('bulk prepared review reuses current issuer research across securities and preserves cache misses without SEC work', async () => {
+  const call = { ...holding, key: `${holding.cusip}|CALL|SH`, putCall: 'CALL' };
+  const missing = { ...holding, key: '123456789|SECURITY|SH', cusip: '123456789' };
+  const source = report(); source.portfolio.holdings = [holding, call, missing];
+  let disclosureReads = 0, cacheReads = 0;
+  const never = async () => { assert.fail('Prepared-only review must not start source work or per-holding cache writes.'); };
+  const identityLoader = Object.assign(never, { prepared: async (value, { classificationOnly }) =>
+    classificationOnly || value.cusip === missing.cusip ? null : identity() });
+  const currentDisclosure = await discovery();
+  const exposureLoader = Object.assign(async () => { assert.fail('No live SEC disclosure work is permitted.'); }, {
+    prepared: async issuer => { disclosureReads++; assert.equal(issuer, ISSUER_CIK); return currentDisclosure; },
+  });
+  const instance = loader({ portfolioLoader: never, identityLoader, exposureLoader,
+    preparedCache: { getMany: async (_report, rows) => { cacheReads++; return rows.map(() => null); }, put: never } });
+  const results = await instance.preparedFromReport(source, [call.key, missing.key, holding.key]);
+  assert.equal(results[0].holding.key, call.key); assert.equal(results[1], null); assert.equal(results[2].holding.key, holding.key);
+  assert.equal(disclosureReads, 1); assert.equal(cacheReads, 1);
+  assert.equal(results[0].discovery.checkedAt, currentDisclosure.checkedAt);
+  assert.equal(results[2].identity.observedAt, identity().observedAt);
+});
+
+test('prepared report reads consume completed per-holding cache entries without resolving a miss', async () => {
+  const shared = sharedCacheFixture(), first = await load({ preparedCache: shared.create() });
+  const source = report(), other = { ...holding, key: `${holding.cusip}|CALL|SH`, putCall: 'CALL' };
+  source.portfolio.holdings = [holding, other]; source.portfolio.positionCount = 1;
+  const never = async () => { assert.fail('Cache-only batch started live research.'); };
+  const instance = loader({ portfolioLoader: never, identityLoader: never, exposureLoader: never, preparedCache: shared.create() });
+  const results = await instance.preparedFromReport(source, [other.key, holding.key]);
+  assert.deepEqual(results, [null, first]); assert.equal(shared.writes.length, 1);
+  assert.deepEqual(await instance.fromReportPrepared(source, holding.key), first);
+});
+
+test('prepared report batches reject invalid identities, duplicate keys and oversized work before cache reads', async () => {
+  const never = async () => { assert.fail('Invalid prepared work reached storage or SEC.'); };
+  const instance = loader({ preparedCache: { getMany: never, put: never }, identityLoader: never, exposureLoader: never });
+  for (const keys of [[], [KEY, KEY], Array.from({ length: 101 }, (_, index) => `${String(index).padStart(9, '0')}|SECURITY|SH`)])
+    await assert.rejects(instance.preparedFromReport(report(), keys), { code: 'INVALID_REQUEST' });
+  const wrong = report(); wrong.portfolio.cik = '0000000001';
+  await assert.rejects(instance.preparedFromReport(wrong, [KEY]), { code: 'REPORT_IDENTITY_MISMATCH' });
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(instance.preparedFromReport(report(), [KEY], { signal: controller.signal }), { name: 'AbortError' });
+});
+
+test('prepared connection expiry also respects the original issuer-company submissions check', async () => {
+  const result = await load();
+  result.identity.companyObservedAt = new Date(NOW - 5 * 3600000).toISOString();
+  assert.equal(thirteenFMarketConnectionsExpiresAt(result, NOW), NOW + 3600000);
+  assert.equal(thirteenFMarketConnectionsExpiresAt(result, NOW + 3600000), null);
+});
 
 test('13F market requests require an exact holding and quarter; the route rejects caller-supplied issuer identities', async () => {
   assert.deepEqual(normalize13FMarketConnectionsRequest('1747057', PERIOD, KEY), { cik: CIK, period: PERIOD, key: KEY });

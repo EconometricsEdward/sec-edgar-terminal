@@ -41,6 +41,27 @@ const researchServing = /^RESEARCH-(COMPARE|PORTFOLIO)-V1:(?:COMPARE-V2|ANALYSIS
 export function disposableCachePolicy(type, originalId) {
   if (typeof type !== 'string' || typeof originalId !== 'string' || !originalId.length || originalId.length > 1024) return null;
   const id = originalId.toUpperCase();
+  // Immutable filing proof/text and engine-versioned extraction revisions use
+  // the existing 30-day document quota. Current identity/manifest checks retain
+  // their separate, shorter freshness windows.
+  if (type === 'edgar.13f-issuer-proof.v1:production') {
+    return /^[A-F0-9]{64}$/.test(id) ? Object.freeze({ family: 'document', type, id,
+      maxTtlSeconds: 30 * 86400, maxRawBytes: 128 * 1024 }) : null;
+  }
+  if (type === 'edgar.13f-issuer-company.v1:production') {
+    return cik.test(id) ? Object.freeze({ family: 'research', type, id, sourceCik: id,
+      maxTtlSeconds: 6 * 3600, maxRawBytes: 32 * 1024 }) : null;
+  }
+  if (type === 'edgar.company-exposure-document.v1:production') {
+    const match = re(`(${CIK}):${ACCESSION}:[A-F0-9]{64}`).exec(id);
+    return match ? Object.freeze({ family: 'document', type, id, sourceCik: match[1],
+      maxTtlSeconds: 30 * 86400, maxRawBytes: 8 * 1024 * 1024 }) : null;
+  }
+  if (type === 'edgar.company-exposure-revision.v1:production') {
+    const match = re(`(${CIK}):[A-F0-9]{64}`).exec(id);
+    return match ? Object.freeze({ family: 'document', type, id, sourceCik: match[1],
+      maxTtlSeconds: 30 * 86400, maxRawBytes: 1024 * 1024 }) : null;
+  }
   // Public issuer proof and completed market reviews share the existing
   // research quota. Readers preserve the original source-check timestamps.
   if (type === 'edgar.13f-issuer-evidence.v1:production') {

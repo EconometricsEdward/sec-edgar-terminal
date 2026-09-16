@@ -109,14 +109,8 @@ export function createThirteenFMarketConnectionsLoader({
     signal.throwIfAborted();
     return signal;
   }
-  async function fromReport(report, keyInput, { signal: callerSignal, skipPrepared = false } = {}) {
-    const { cik, period, key } = normalize13FMarketConnectionsRequest(report?.manager?.cik, report?.selectedPeriod, keyInput);
-    const signal = requestSignal(callerSignal);
-    const [holding] = verifiedHoldings(report, cik, period, [key]);
-    const [prepared] = skipPrepared ? [null] : await preparedCache.getMany(report, [holding], { signal, verify: verifyPrepared });
-    if (prepared) return prepared;
-    const identity = await identityLoader(holding, { period, signal });
-    signal.throwIfAborted();
+  function compose(report, holding, identity, discovery = null) {
+    const cik = String(report.manager.cik).padStart(10, '0'), period = report.selectedPeriod;
     verifiedIdentity(identity, holding);
     const result = {
       schemaVersion: THIRTEEN_F_MARKET_CONNECTIONS_SCHEMA_VERSION, status: identity.status === 'resolved' ? 'ready' : 'unresolved',
@@ -128,17 +122,28 @@ export function createThirteenFMarketConnectionsLoader({
     };
     if (identity.status === 'unresolved') {
       result.message = text(identity.reason, 1500) || 'No verified SEC issuer connection is available for this security.';
-      await preparedCache.put(report, holding, result, { signal, verify: verifyPrepared });
       return result;
     }
     const issuerCik = identity.issuer?.cik;
-    result.discovery = verifiedDiscovery(await exposureLoader(issuerCik, { signal }), issuerCik);
-    signal.throwIfAborted();
+    result.discovery = verifiedDiscovery(discovery, issuerCik);
     if (result.discovery.status === 'unavailable') result.status = 'unavailable';
     result.retryable = result.discovery.retryable === true;
     if (result.discovery.message) result.message = text(result.discovery.message, 1500);
     if (Buffer.byteLength(JSON.stringify(result), 'utf8') > THIRTEEN_F_MARKET_CONNECTIONS_MAX_BYTES)
       throw fail('The SEC disclosure extract exceeds the supported response size. Open the source reports for this issuer.', 502, 'DISCLOSURE_RESPONSE_TOO_LARGE');
+    return result;
+  }
+  async function fromReport(report, keyInput, { signal: callerSignal, skipPrepared = false } = {}) {
+    const { cik, period, key } = normalize13FMarketConnectionsRequest(report?.manager?.cik, report?.selectedPeriod, keyInput);
+    const signal = requestSignal(callerSignal);
+    const [holding] = verifiedHoldings(report, cik, period, [key]);
+    const [prepared] = skipPrepared ? [null] : await preparedCache.getMany(report, [holding], { signal, verify: verifyPrepared });
+    if (prepared) return prepared;
+    const identity = await identityLoader(holding, { period, signal });
+    signal.throwIfAborted(); verifiedIdentity(identity, holding);
+    const discovery = identity.status === 'resolved' ? await exposureLoader(identity.issuer.cik, { signal }) : null;
+    signal.throwIfAborted();
+    const result = compose(report, holding, identity, discovery);
     await preparedCache.put(report, holding, result, { signal, verify: verifyPrepared });
     return result;
   }
@@ -154,6 +159,46 @@ export function createThirteenFMarketConnectionsLoader({
   // Every holding still passes the same exact security and source checks, while
   // a batch avoids downloading and decoding the entire portfolio per holding.
   load.fromReport = fromReport;
+  /** Bulk cache-only work has a separate path from live SEC discovery. Exact
+   * report/holding checks still run, and misses remain null rather than guessed. */
+  load.preparedFromReport = async (report, keys, { signal: callerSignal, classificationOnly = false } = {}) => {
+    if (!Array.isArray(keys) || !keys.length || keys.length > 100 || new Set(keys).size !== keys.length)
+      throw fail('Use between one and one hundred distinct saved-report holding keys.', 400, 'INVALID_REQUEST');
+    const requests = keys.map(key => normalize13FMarketConnectionsRequest(report?.manager?.cik, report?.selectedPeriod, key));
+    const { cik, period } = requests[0], signal = requestSignal(callerSignal);
+    const holdings = verifiedHoldings(report, cik, period, keys), results = holdings.map(() => null);
+    // Deterministic exclusions are fast even when shared storage is unavailable.
+    for (let index = 0; index < holdings.length; index++) {
+      const identity = await identityLoader.prepared?.(holdings[index], { period, signal, classificationOnly: true });
+      if (identity) results[index] = compose(report, holdings[index], identity);
+    }
+    if (classificationOnly) return results;
+    const missing = holdings.flatMap((holding, index) => results[index] ? [] : [{ holding, index }]);
+    const batches = [];
+    for (let offset = 0; offset < missing.length; offset += 25) batches.push(missing.slice(offset, offset + 25));
+    await Promise.all(batches.map(async batch => {
+      const cached = await preparedCache.getMany(report, batch.map(item => item.holding), { signal, verify: verifyPrepared });
+      batch.forEach((item, index) => { if (cached[index]) results[item.index] = cached[index]; });
+    }));
+    const disclosures = new Map(), queue = missing.filter(item => !results[item.index]);
+    await Promise.all(Array.from({ length: Math.min(8, queue.length) }, async () => {
+      while (queue.length) {
+        signal.throwIfAborted();
+        const { holding, index } = queue.shift();
+        const identity = await identityLoader.prepared?.(holding, { period, signal });
+        if (!identity) continue;
+        verifiedIdentity(identity, holding);
+        if (identity.status === 'unresolved') { results[index] = compose(report, holding, identity); continue; }
+        const issuerCik = identity.issuer.cik;
+        if (!disclosures.has(issuerCik)) disclosures.set(issuerCik, Promise.resolve(exposureLoader.prepared?.(issuerCik, { signal })));
+        const discovery = await disclosures.get(issuerCik);
+        if (discovery) results[index] = compose(report, holding, identity, discovery);
+      }
+    }));
+    signal.throwIfAborted();
+    return results;
+  };
+  load.fromReportPrepared = async (report, key, options = {}) => (await load.preparedFromReport(report, [key], options))[0];
   load.prepared = async (cikInput, { period: periodInput, keys: keysInput, signal: callerSignal } = {}) => {
     const { cik, period, keys } = normalize13FMarketConnectionsBatchRequest(cikInput, periodInput, keysInput);
     const signal = requestSignal(callerSignal);
