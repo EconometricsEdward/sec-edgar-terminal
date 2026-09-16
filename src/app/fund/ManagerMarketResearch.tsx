@@ -48,8 +48,12 @@ export function ManagerMarketResearchContent({ model, briefPeriod = "" }: { mode
   </section>;
 }
 
-export default async function ManagerMarketResearch({ cik, period = "", briefPeriod = "" }: { cik: string; period?: string; briefPeriod?: string }) {
+export async function readManagerMarketResearch(cik: string, period = "") {
   if (!isCftcEnabled()) return null;
-  const model = await readPublication(cik, period).catch(() => null);
+  return readPublication(cik, period).catch(() => null);
+}
+
+export default async function ManagerMarketResearch({ cik, period = "", briefPeriod = "" }: { cik: string; period?: string; briefPeriod?: string }) {
+  const model = await readManagerMarketResearch(cik, period);
   return model ? <ManagerMarketResearchContent model={model} briefPeriod={briefPeriod} /> : null;
 }

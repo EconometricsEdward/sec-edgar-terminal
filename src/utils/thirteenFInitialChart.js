@@ -1,8 +1,11 @@
 import { loadCftcHistory } from './cftcServer.js';
+import { cftcPersistence } from './cftcPersistence.js';
 
 /** An optional chart must never turn opening saved research into a source job. */
 export function createThirteenFInitialChartLoader({ load = loadCftcHistory, now = Date.now,
-  budgetMs = 1000, maxEntries = 24, maxBytes = 192 * 1024 } = {}) {
+  budgetMs = 1000, maxEntries = 24, maxBytes = 192 * 1024,
+  persistence = cftcPersistence, cacheGet,
+} = {}) {
   const cache = new Map();
   return async function initialChart(market, { signal } = {}) {
     if (!market || !['tff', 'disaggregated'].includes(market.family)
@@ -19,6 +22,10 @@ export function createThirteenFInitialChartLoader({ load = loadCftcHistory, now 
     try {
       const value = await Promise.race([deadline, load({ family: market.family, code: market.contract,
         group: market.group, reportDate: 'latest', window: '1y', preparedOnly: true,
+        // The one-second optional bundle cannot afford a disposable-cache probe
+        // before each authoritative read. Preserve the same catalog/date/raw
+        // observation checks in loadCftcHistory; only skip that optional probe.
+        persistence, ...(persistence.mode() === 'supabase' ? { cacheGet: async () => null } : cacheGet ? { cacheGet } : {}),
         signal: combined, deadlineMs: budgetMs }).catch(() => null)]);
       if (combined.aborted || !value || value.report_family !== market.family
         || value.selection?.contract !== market.contract || value.selection?.group !== market.group

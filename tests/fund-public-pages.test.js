@@ -17,8 +17,9 @@ const files = {
   manager: '../src/app/fund/manager/[cik]/page.tsx',
   directory: '../src/app/fund/page.tsx',
 };
-function fixture(result = null, fail = false) {
+function fixture(result = null, fail = false, marketModel = null) {
   const calls = [];
+  const reviewCalls = [];
   function compile(kind) {
     const source = readFileSync(new URL(files[kind], import.meta.url), 'utf8');
     const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
@@ -37,7 +38,11 @@ function fixture(result = null, fail = false) {
         readPublicManagerSummary: async (...args) => { calls.push(['manager', ...args]); if (fail) throw new Error('private credentials'); return result; },
       };
       if (name.endsWith('/FundResearchBrief')) return compile('brief');
-      if (name.endsWith('/ManagerMarketResearch')) return function MarketResearch() { return null; };
+      if (name.endsWith('/ManagerMarketResearch')) return {
+        readManagerMarketResearch: async (...args) => { reviewCalls.push(args); return marketModel; },
+        ManagerMarketResearchContent: ({ model }) => createElement('section', { 'data-publication-version': model.publicationVersion },
+          `${model.coverage.checked} / ${model.coverage.total} holdings reviewed`),
+      };
       if (name.endsWith('/FundClient')) return function Client(props) { return createElement('div', { 'data-client-ticker': props.urlTicker, 'data-client-accession': props.selectedAccession }); };
       if (name.endsWith('/FundsWorkspace')) return function Workspace() { return createElement('div', { 'data-workspace': 'preserved' }); };
       if (name.endsWith('.css')) return new Proxy({}, { get: (_target, key) => key === '__esModule' ? false : String(key) });
@@ -45,7 +50,7 @@ function fixture(result = null, fail = false) {
     }, testModule, testModule.exports);
     return testModule.exports;
   }
-  return { compile, calls };
+  return { compile, calls, reviewCalls };
 }
 const props = (key, value, query = {}) => ({ params: Promise.resolve({ [key]: value }), searchParams: Promise.resolve(query) });
 function summary(kind = 'nport') {
@@ -120,6 +125,15 @@ test('manager brief keeps quarter selection, option identity, completeness limit
   const dataset = schema['@graph'].find(item => item['@type'] === 'Dataset');
   assert.match(dataset.description, /not total assets under management/);
   assert.equal(dataset.variableMeasured[2].unitText, 'percent of reconciled public 13F holdings value');
+});
+
+test('manager saved research is resolved into visible HTML without a streamed reveal boundary', async () => {
+  const f = fixture(summary('13f'), false, { publicationVersion: '2', coverage: { checked: 48, total: 5696 } });
+  const html = renderToStaticMarkup(await f.compile('manager').default(props('cik', '2012383', { period: '2026-06-30' })));
+  assert.deepEqual(f.reviewCalls, [['0002012383', '2026-06-30']]);
+  assert.match(html, /data-publication-version="2"/);
+  assert.match(html, /48 \/ 5696 holdings reviewed/);
+  assert.doesNotMatch(html, /<template|<div hidden|B:\d|S:\d/);
 });
 
 test('unprepared historical or unknown selections are not indexed, and malformed selectors never read storage', async () => {
