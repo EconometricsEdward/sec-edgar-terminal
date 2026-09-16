@@ -86,6 +86,28 @@ test('compact 13F publication bounds do not admit holdings-sized heads or arbitr
   assert.equal(calls.length, 0);
 });
 
+test('prepared market proof gateway enforces size, TTL, manager identity and exact CIK source keys', async () => {
+  const { gateway, calls } = setup(), cik = '0002012383';
+  const proof = { p_family: 'research', p_type: 'edgar.13f-issuer-evidence.v1:production', p_id: '037833100', p_ttl_seconds: 21600 };
+  const review = { ...proof, p_type: 'edgar.13f-market-connections.v1:production', p_id: `${cik}:2026-06-30:${'A'.repeat(64)}` };
+  assert.equal((await gateway(request('edgar_cache_put', put({ cusip: '037833100' }, proof)))).status, 200);
+  assert.equal((await gateway(request('edgar_cache_put', put({ cik }, review)))).status, 200);
+  assert.equal((await gateway(request('edgar_cache_put', put({ cik: '0000320193' }, review)))).status, 422);
+  for (const record of [proof, review]) {
+    assert.equal((await gateway(request('edgar_cache_put', put({ cik }, { ...record, p_ttl_seconds: 21601 })))).status, 422);
+    assert.equal((await gateway(request('edgar_cache_get', { p_family: record.p_family, p_type: record.p_type.replace('production', 'preview'), p_ids: [record.p_id] }))).status, 403);
+  }
+  assert.equal((await gateway(request('edgar_cache_put', put({ value: 'x'.repeat(128 * 1024) }, proof)))).status, 422);
+  assert.equal((await gateway(request('edgar_cache_put', put({ cik, value: 'x'.repeat(1024 * 1024) }, review)))).status, 422);
+  const sources = { p_family: 'research', p_type: 'edgar.company-exposure-sources.v1:production', p_ids: ['CIK:0000320193:LATEST'] };
+  assert.equal((await gateway(request('edgar_cache_get', sources))).status, 200);
+  assert.equal((await gateway(request('edgar_cache_get', { ...sources, p_ids: ['CIK:0000000000:LATEST'] }))).status, 403);
+  assert.equal((await gateway(request('edgar_cache_put', put({ cik: '0000000099' }, {
+    p_family: sources.p_family, p_type: sources.p_type, p_id: sources.p_ids[0], p_ttl_seconds: 3600,
+  })))).status, 422);
+  assert.equal(calls.length, 3);
+});
+
 test('cache writes require bounded retention, exact compressed/raw hashes and CAS values', async () => {
   const { gateway, calls } = setup();
   const good = put();

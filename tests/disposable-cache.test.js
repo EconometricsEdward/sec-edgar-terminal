@@ -146,6 +146,27 @@ test('13F cache writes verify the manager CIK before transmission and preserve f
   assert.equal(read.calls.length, 1);
 });
 
+test('market review caches admit bounded proof and exact CIK disclosure keys only in production', () => {
+  const proof = 'edgar.13f-issuer-evidence.v1:production';
+  const review = 'edgar.13f-market-connections.v1:production';
+  const sources = 'edgar.company-exposure-sources.v1:production';
+  const id = `${cik}:2026-06-30:${'a'.repeat(64)}`;
+  assert.equal(disposableCachePolicy(proof, '037833100').maxRawBytes, 128 * 1024);
+  assert.equal(disposableCachePolicy(proof, '037833100').maxTtlSeconds, 21600);
+  assert.equal(disposableCachePolicy(review, id).sourceCik, cik);
+  assert.equal(disposableCachePolicy(review, id).maxRawBytes, 1024 * 1024);
+  assert.equal(disposableCachePolicy(review, id).maxTtlSeconds, 21600);
+  for (const suffix of ['latest', '2026-09-16'])
+    assert.equal(disposableCachePolicy(sources, `cik:${cik}:${suffix}`).family, 'research');
+  for (const [type, key] of [
+    [proof, '037833100:latest'], [proof, '03783310'], [proof, '000000000'], [proof, 'https://x'],
+    [review, id.replace(cik, '0000000000')], [review, id.replace('06-30', '06-29')], [review, id + ':refresh'],
+    [sources, 'cik:320193:latest'], [sources, 'cik:0000000000:latest'], [sources, `cik:${cik}:latest?refresh=1`],
+    ['edgar.company-cftc-context.v1:production', `cik:${cik}:latest`],
+    [proof.replace('production', 'preview'), '037833100'], [review.replace('production', 'preview'), id],
+  ]) assert.equal(disposableCachePolicy(type, key), null, `${type}/${key}`);
+});
+
 test('production-only adapter uses fixed OIDC endpoint and never service credentials', async () => {
   for (const env of [{}, { VERCEL_ENV: 'preview' }, { VERCEL_ENV: 'production', EDGAR_DISPOSABLE_CACHE_MODE: 'off' }]) {
     assert.equal(disposableCacheEnabled(env), false);

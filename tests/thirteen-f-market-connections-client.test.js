@@ -12,7 +12,7 @@ function report(count = 1) {
 }
 function result(item = holding(), overrides = {}) {
   return { schemaVersion: 'edgar.13f-market-connections.v1', manager: { cik: CIK }, selectedPeriod: PERIOD, holding: item, status: 'ready', observedAt: new Date().toISOString(),
-    identity: { status: 'resolved', cusip: item.cusip, issuer: { cik: ISSUER, kind: 'company', name: 'Fixture Company' }, evidence: [{ cik: ISSUER, cusips: [item.cusip], url: 'https://www.sec.gov/Archives/edgar/data/1579091/000157909126000001/primary_doc.xml' }] },
+    identity: { status: 'resolved', cusip: item.cusip, observedAt: new Date().toISOString(), issuer: { cik: ISSUER, kind: 'company', name: 'Fixture Company' }, evidence: [{ cik: ISSUER, cusips: [item.cusip], url: 'https://www.sec.gov/Archives/edgar/data/1579091/000157909126000001/primary_doc.xml' }] },
     discovery: { schemaVersion: 'edgar.company-exposure-map.v1', cik: ISSUER, status: 'no_matches', checkedAt: new Date().toISOString(), sources: [], rows: [], coverage: { searchComplete: true } }, ...overrides };
 }
 const request = (item = holding(), extra = {}) => ({ cik: CIK, period: PERIOD, holding: item, signal: new AbortController().signal, ...extra });
@@ -197,4 +197,256 @@ test('Active evidence has an explicit memory ceiling that preserves completed re
   assert.equal(client.calls[2].signal.aborted, true);
   session.resume(); session.startAll(); session.scanNext(); await settle();
   assert.equal(client.calls.length, 3);
+});
+
+const batch = (results, requested = results.length, overrides = {}) => ({ schemaVersion: 'edgar.13f-market-connections-batch.v1', manager: { cik: CIK }, selectedPeriod: PERIOD, requested, results, ...overrides });
+
+test('Prepared batch hydrates multiple exact holdings with one request and no source acquisitions', async () => {
+  const paths = [], data = report(4);
+  const client = create13FMarketConnectionClient({ fetchImpl: async path => {
+    paths.push(path);
+    const query = new URL(path, 'https://example.test').searchParams;
+    assert.equal(query.get('prepared'), '1');
+    assert.deepEqual(query.getAll('key'), data.portfolio.holdings.map(item => item.key));
+    return json(batch(data.portfolio.holdings.map(item => result(item))));
+  } });
+  const session = create13FMarketConnectionSession(data, { client });
+  session.setActive(true); await settle();
+  assert.equal(paths.length, 1);
+  assert.equal(session.getSnapshot().results.length, 4);
+  assert.equal(session.getSnapshot().completed, 4);
+  assert.equal(session.getSnapshot().progress, 100);
+  assert.equal(client.cacheSize().entries, 4);
+  await client.load(request(data.portfolio.holdings[2]));
+  assert.equal(paths.length, 1, 'Prepared evidence enters the same identity-checked memory cache');
+});
+
+test('Prepared client validates the complete envelope before caching any returned evidence', async () => {
+  const items = report(2).portfolio.holdings;
+  for (const invalid of [
+    batch(items.map(item => result(item)), 2, { manager: { cik: '0000000001' } }),
+    batch(items.map(item => result(item)), 2, { selectedPeriod: '2026-03-31' }),
+    batch(items.map(item => result(item)), 1),
+    batch([result(items[0]), result(items[0])]),
+    batch([result(items[0]), result(holding(9))]),
+    batch([result(items[0]), result({ ...items[1], quantity: 999 })]),
+  ]) {
+    const client = create13FMarketConnectionClient({ fetchImpl: async () => json(invalid) });
+    await assert.rejects(client.loadPrepared({ cik: CIK, period: PERIOD, holdings: items, signal: new AbortController().signal }), /did not match/);
+    assert.equal(client.cacheSize().entries, 0);
+  }
+});
+
+test('Prepared and memory cache freshness expires at original source age for every status', async () => {
+  for (const [status, ttl] of [['ready', 6 * 3600000], ['no_matches', 3600000], ['no_filing', 15 * 60000], ['unresolved', 60000]]) {
+    let clock = Date.now(), calls = 0;
+    const value = result();
+    value.identity.observedAt = new Date(clock - ttl + 1000).toISOString();
+    if (status === 'unresolved') { value.status = 'unresolved'; value.identity.status = 'unresolved'; value.discovery = null; }
+    else value.discovery.status = status;
+    const client = create13FMarketConnectionClient({ now: () => clock, fetchImpl: async path => {
+      calls++; return json(path.includes('prepared=1') ? batch([value]) : value);
+    } });
+    assert.equal((await client.loadPrepared({ cik: CIK, period: PERIOD, holdings: [holding()], signal: new AbortController().signal })).length, 1);
+    assert.ok(client.peek(request()));
+    clock += 1001;
+    assert.equal(client.peek(request()), null, `${status} must not inherit five more minutes from the browser read`);
+    assert.deepEqual(await client.loadPrepared({ cik: CIK, period: PERIOD, holdings: [holding()], signal: new AbortController().signal }), []);
+    assert.equal(client.cacheSize().entries, 0);
+    assert.equal(calls, 2);
+  }
+});
+
+test('Evidence with an unknown original identity timestamp is readable but never memory cached', async () => {
+  const value = result(); delete value.identity.observedAt;
+  let calls = 0;
+  const client = create13FMarketConnectionClient({ fetchImpl: async () => { calls++; return json(value); } });
+  await client.load(request()); await client.load(request());
+  assert.equal(calls, 2);
+  assert.equal(client.cacheSize().entries, 0);
+});
+
+test('Prepared reads remain byte bounded and have a short abortable deadline', async () => {
+  const args = { cik: CIK, period: PERIOD, holdings: [holding()], signal: new AbortController().signal };
+  const tooLarge = create13FMarketConnectionClient({ fetchImpl: async () => new Response(new Uint8Array(THIRTEEN_F_MARKET_CLIENT_LIMITS.preparedBytes + 1)) });
+  await assert.rejects(tooLarge.loadPrepared(args), /supported size/);
+  const timed = create13FMarketConnectionClient({ limits: { ...THIRTEEN_F_MARKET_CLIENT_LIMITS, preparedMs: 2 }, fetchImpl: async (_path, { signal }) => {
+    await new Promise(resolve => setTimeout(resolve, 10)); signal.throwIfAborted(); return json(batch([] ,1));
+  } });
+  await assert.rejects(timed.loadPrepared(args), { name: 'TimeoutError' });
+});
+
+test('Invalid or failed prepared batches silently fall through to bounded source workers', async () => {
+  for (const prepared of [
+    async () => { throw new Error('Prepared cache is unavailable'); },
+    async () => [result(holding(0)), result({ ...holding(1), valueUsd: 1 })],
+    async () => [result(holding(0)), result(holding(0))],
+    async () => [result(holding(9))],
+  ]) {
+    const client = deferredClient(); client.loadPrepared = prepared;
+    const session = create13FMarketConnectionSession(report(3), { client });
+    session.setActive(true); await settle();
+    assert.equal(session.getSnapshot().results.length, 0);
+    assert.equal(session.getSnapshot().error, null);
+    assert.equal(client.calls.length, 2);
+    client.calls[0].resolve(result(client.calls[0].holding)); await settle();
+    assert.equal(client.calls.length, 3);
+    client.calls[1].resolve(result(client.calls[1].holding)); client.calls[2].resolve(result(client.calls[2].holding)); await settle();
+    assert.equal(session.getSnapshot().completed, 3);
+  }
+});
+
+test('Prepared subsets acquire only missing holdings; next scopes hydrate in bounded groups', async () => {
+  const client = deferredClient(), batches = [];
+  client.loadPrepared = args => new Promise(resolve => batches.push({ ...args, resolve }));
+  const session = create13FMarketConnectionSession(report(45), { client });
+  session.setActive(true); await settle();
+  assert.equal(batches.length, 1); assert.equal(batches[0].holdings.length, 20);
+  batches[0].resolve(batches[0].holdings.slice(2).map(item => result(item))); await settle();
+  assert.equal(client.calls.length, 2);
+  assert.equal(session.getSnapshot().results.length, 18);
+  session.startAll(); await settle();
+  assert.equal(batches.length, 1, 'An expanded scope does not fan out while both source workers are occupied');
+  client.calls[0].resolve(result(client.calls[0].holding)); await settle();
+  assert.equal(batches.length, 2); assert.equal(batches[1].holdings.length, 20);
+  batches[1].resolve(batches[1].holdings.map(item => result(item))); await settle();
+  assert.equal(batches.length, 3); assert.equal(batches[2].holdings.length, 5);
+  batches[2].resolve(batches[2].holdings.map(item => result(item)));
+  client.calls[1].resolve(result(client.calls[1].holding)); await settle();
+  assert.equal(client.calls.length, 2);
+  assert.equal(session.getSnapshot().completed, 45);
+});
+
+test('Check next adds only the next 20 prepared keys without repeating the initial scope', async () => {
+  const batches = [], session = create13FMarketConnectionSession(report(45), { client: {
+    async loadPrepared({ holdings }) { batches.push(holdings); return holdings.map(item => result(item)); },
+    async load() { throw new Error('Prepared holdings must not acquire sources'); },
+  } });
+  session.setActive(true); await settle();
+  assert.equal(session.getSnapshot().limit, 20);
+  session.scanNext(); await settle();
+  assert.equal(session.getSnapshot().limit, 40);
+  assert.equal(session.getSnapshot().completed, 40);
+  assert.equal(batches.length, 2);
+  assert.equal(new Set(batches.flat().map(item => item.key)).size, 40);
+});
+
+test('Pause and navigation cancel prepared reads and reject late evidence', async () => {
+  const client = deferredClient(), batches = [];
+  client.loadPrepared = args => new Promise(resolve => batches.push({ ...args, resolve }));
+  const session = create13FMarketConnectionSession(report(3), { client });
+  session.setActive(true); await settle();
+  session.pause();
+  assert.equal(batches[0].signal.aborted, true);
+  batches[0].resolve(batches[0].holdings.map(item => result(item))); await settle();
+  assert.equal(session.getSnapshot().results.length, 0);
+  assert.equal(client.calls.length, 0);
+  session.resume(); await settle();
+  assert.equal(batches.length, 2);
+  session.setActive(false);
+  assert.equal(batches[1].signal.aborted, true);
+  batches[1].resolve(batches[1].holdings.map(item => result(item))); await settle();
+  assert.equal(session.getSnapshot().results.length, 0);
+  assert.equal(client.calls.length, 0);
+});
+
+test('Refresh bypasses prepared and memory caches while retaining earlier evidence', async () => {
+  const client = deferredClient(); let preparedCalls = 0;
+  client.loadPrepared = async ({ holdings }) => { preparedCalls++; return holdings.map(item => result(item)); };
+  client.peek = ({ holding: item }) => item.key === holding(0).key ? result(item) : null;
+  const session = create13FMarketConnectionSession(report(3), { client });
+  session.setActive(true); await settle();
+  const previous = session.getSnapshot().results;
+  assert.equal(previous.length, 3); assert.equal(preparedCalls, 1);
+  session.refresh(); await settle();
+  assert.equal(preparedCalls, 1);
+  assert.equal(session.getSnapshot().results, previous, 'Queue-only updates retain the immutable result array');
+  assert.equal(session.getSnapshot().completed, 0);
+  assert.equal(client.calls.length, 2);
+  assert.ok(client.calls.every(call => call.force));
+  session.setActive(false);
+});
+
+test('Refresh during hydration cancels prepared work and ignores its late response', async () => {
+  const client = deferredClient(), batches = [];
+  client.loadPrepared = args => new Promise(resolve => batches.push({ ...args, resolve }));
+  const session = create13FMarketConnectionSession(report(3), { client });
+  session.setActive(true); await settle();
+  session.refresh(); await settle();
+  assert.equal(batches[0].signal.aborted, true);
+  assert.equal(client.calls.length, 2);
+  assert.ok(client.calls.every(call => call.force));
+  batches[0].resolve(batches[0].holdings.map(item => result(item))); await settle();
+  assert.equal(session.getSnapshot().results.length, 0);
+  client.calls[0].resolve(result(client.calls[0].holding)); await settle();
+  assert.equal(batches.length, 1);
+  assert.equal(client.calls.length, 3);
+  session.setActive(false);
+});
+
+test('Known memory hits are immediately visible during a prepared lookup and respect the evidence ceiling', async () => {
+  const client = deferredClient(), batches = [];
+  client.peek = ({ holding: item }) => item.key === holding(0).key ? result(item) : null;
+  client.loadPrepared = args => new Promise(resolve => batches.push({ ...args, resolve }));
+  const bytes = new TextEncoder().encode(JSON.stringify(result())).byteLength;
+  const session = create13FMarketConnectionSession(report(3), { client, resultsBytes: bytes + 50 });
+  session.setActive(true);
+  assert.equal(session.getSnapshot().results.length, 1);
+  const previous = session.getSnapshot().results;
+  session.setActive(true);
+  assert.equal(session.getSnapshot().results, previous);
+  await settle();
+  assert.deepEqual(batches[0].holdings.map(item => item.key), [holding(1).key, holding(2).key]);
+  batches[0].resolve(batches[0].holdings.map(item => result(item))); await settle();
+  assert.equal(session.getSnapshot().blocked, true);
+  assert.equal(session.getSnapshot().results.length, 1);
+  assert.equal(client.calls.length, 0);
+});
+
+test('Client preserves rate-limit status and bounds Retry-After even for non-JSON errors', async () => {
+  for (const [header, expected] of [['12', 12000], ['999999999', 300000], ['invalid', 60000]]) {
+    const client = create13FMarketConnectionClient({ fetchImpl: async () => new Response('Too many requests', { status: 429, headers: { 'retry-after': header } }) });
+    await assert.rejects(client.load(request()), error => error.status === 429 && error.retryAfterMs === expected);
+    await assert.rejects(client.loadPrepared({ cik: CIK, period: PERIOD, holdings: [holding()], signal: new AbortController().signal }), error => error.status === 429 && error.retryAfterMs === expected);
+  }
+});
+
+test('A source rate limit pauses and preserves queued work instead of draining a large portfolio as failures', async () => {
+  const client = deferredClient(), session = create13FMarketConnectionSession(report(45), { client });
+  session.startAll(); session.setActive(true); await settle();
+  client.calls[0].resolve(result(client.calls[0].holding)); await settle();
+  const retained = session.getSnapshot().results;
+  client.calls[1].reject(Object.assign(new Error('Rate limited'), { status: 429, retryAfterMs: 12000 })); await settle();
+  assert.equal(session.getSnapshot().paused, true);
+  assert.equal(session.getSnapshot().pending, false);
+  assert.match(session.getSnapshot().error, /Wait 12 seconds.*Resume/);
+  assert.equal(client.calls.length, 3, 'The other 42 holdings remain queued');
+  assert.equal(client.calls[2].signal.aborted, true);
+  client.calls[2].resolve(result(client.calls[2].holding)); await settle();
+  assert.equal(session.getSnapshot().results, retained);
+  session.resume(); await settle();
+  assert.equal(session.getSnapshot().error, null);
+  assert.equal(client.calls.length, 5);
+  assert.ok(client.calls.slice(3).every(call => call.holding.key !== client.calls[0].holding.key));
+  session.setActive(false);
+});
+
+test('A prepared rate limit pauses without immediately falling through to source requests', async () => {
+  const client = deferredClient(); let batches = 0;
+  client.loadPrepared = async ({ holdings }) => {
+    batches++;
+    if (batches === 1) throw Object.assign(new Error('Rate limited'), { status: 429, retryAfterMs: 60000 });
+    return holdings.map(item => result(item));
+  };
+  const session = create13FMarketConnectionSession(report(3), { client });
+  session.setActive(true); await settle();
+  assert.equal(session.getSnapshot().paused, true);
+  assert.match(session.getSnapshot().error, /Wait 60 seconds.*Resume/);
+  assert.equal(client.calls.length, 0);
+  assert.equal(batches, 1);
+  session.resume(); await settle();
+  assert.equal(session.getSnapshot().paused, false);
+  assert.equal(session.getSnapshot().completed, 3);
+  assert.equal(session.getSnapshot().error, null);
+  assert.equal(client.calls.length, 0);
 });

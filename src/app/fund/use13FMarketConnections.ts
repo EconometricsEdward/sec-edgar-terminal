@@ -14,6 +14,6 @@ export function use13FMarketConnections(data: any, active: boolean) {
     return () => session.setActive(false);
   }, [session, active]);
   const model = useMemo(() => buildThirteenFMarketConnections(data, state.results), [data, state.results]);
-  return { model, pending: state.pending, paused: state.paused, blocked: state.blocked, limit: state.limit, progress: state.progress, error: state.error,
+  return { model, pending: state.pending, paused: state.paused, blocked: state.blocked, limit: state.limit, completed: state.completed, progress: state.progress, error: state.error,
     startAll: session.startAll, pause: session.pause, resume: session.resume, retry: session.retry, scanNext: session.scanNext, refresh: session.refresh };
 }

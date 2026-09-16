@@ -1,7 +1,8 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { normalizeHoldingCompanyRequest, parseScheduleIssuer, resolveHoldingCompanyEvidence } from '../src/utils/thirteenFCompanyIdentity.js';
-import { createThirteenFCompanyIdentityLoader } from '../src/utils/thirteenFCompanyIdentityServer.js';
+import { createThirteenFCompanyIdentityLoader, THIRTEEN_F_ISSUER_EVIDENCE_CACHE_TYPE } from '../src/utils/thirteenFCompanyIdentityServer.js';
 
 const NOW = Date.parse('2026-09-15T12:00:00Z');
 const holding = { issuer: 'MAPLEBEAR INC', classTitle: 'COM', cusip: '565394103', quantityType: 'SH', putCall: null };
@@ -226,4 +227,152 @@ test('issuer submission response must preserve the exact verified CIK', async ()
     companyLoader: async () => ({ ...company, cik: '0002012383' }),
   });
   await assert.rejects(loader(holding), /did not match/);
+});
+
+
+function sharedEvidenceStore() {
+  const entries = new Map(), writes = [];
+  return { entries, writes, cacheEnabled: () => true,
+    readEvidence: async (type, id, options) => {
+      assert.equal(type, THIRTEEN_F_ISSUER_EVIDENCE_CACHE_TYPE);
+      assert.ok(options.timeoutMs <= 1500 && options.deadline <= Date.now() + 1500);
+      return entries.has(id) ? { payload: structuredClone(entries.get(id)) } : null;
+    },
+    writeEvidence: async (type, id, value, ttl, options) => {
+      assert.equal(type, THIRTEEN_F_ISSUER_EVIDENCE_CACHE_TYPE);
+      assert.ok(options.timeoutMs <= 1500 && options.deadline <= Date.now() + 1500);
+      assert.ok(ttl > 0 && ttl <= 6 * 3600);
+      assert.equal(options.expiresAt, value.expiresAt);
+      assert.ok(Buffer.byteLength(JSON.stringify(value)) <= 128 * 1024);
+      writes.push({ id, value: structuredClone(value), ttl, expiresAt: options.expiresAt });
+      entries.set(id, structuredClone(value));
+      return { stored: true };
+    },
+  };
+}
+const freshIdentityLoader = (options = {}) => createThirteenFCompanyIdentityLoader({ now: () => NOW,
+  fetchSec: async url => response(url.includes('search-index') ? search([hit()]) : xml()),
+  companyLoader: async () => company, ...options });
+const resignEvidence = value => { value.integrity = createHash('sha256').update(JSON.stringify([value.schemaVersion, value.cusip, value.observedAt, value.expiresAt, value.evidence, value.coverage])).digest('hex'); return value; };
+
+test('verified issuer evidence survives a cold loader without repeating SEC search and XML downloads', async () => {
+  const store = sharedEvidenceStore();
+  const first = await freshIdentityLoader(store)(holding, { period: '2026-06-30' });
+  assert.equal(first.status, 'resolved');
+  assert.equal(store.writes.length, 1);
+  assert.equal(store.writes[0].value.observedAt, new Date(NOW).toISOString());
+  assert.equal(store.writes[0].expiresAt, new Date(NOW + 6 * 3600000).toISOString());
+  let companies = 0;
+  const second = freshIdentityLoader({ ...store, now: () => NOW + 3600000,
+    fetchSec: async () => { throw new Error('fresh shared proof must not repeat SEC ownership searches'); },
+    companyLoader: async cik => { companies++; assert.equal(cik, company.cik); return company; },
+  });
+  const cached = await second(holding, { period: '2026-06-30' });
+  assert.equal(cached.status, 'resolved');
+  assert.equal(cached.observedAt, first.observedAt);
+  assert.equal(companies, 1, 'shared evidence still requires issuer submissions verification');
+  assert.equal(store.writes.length, 1, 'reading shared evidence never renews its observation or storage expiry');
+  const conflict = await second({ ...holding, issuer: 'ANOTHER COMPANY INC' });
+  assert.equal(conflict.code, 'ISSUER_NAME_CONFLICT');
+  assert.equal(companies, 1, 'holding name checks rerun before company retrieval');
+  assert.equal((await second({ ...holding, classTitle: 'PREFERRED STOCK' })).code, 'SECURITY_CLASS_CONFLICT');
+});
+
+test('shared proof restores only its remaining lifetime in the local cache', async () => {
+  const store = sharedEvidenceStore();
+  await freshIdentityLoader(store)(holding);
+  let current = NOW + 5 * 3600000, searches = 0;
+  const loader = freshIdentityLoader({ ...store, now: () => current,
+    fetchSec: async url => { if (url.includes('search-index')) searches++; return response(url.includes('search-index') ? search([hit()]) : xml()); },
+  });
+  assert.equal((await loader(holding)).observedAt, new Date(NOW).toISOString());
+  assert.equal(searches, 0);
+  current = NOW + 6 * 3600000 + 1;
+  assert.equal((await loader(holding)).observedAt, new Date(current).toISOString());
+  assert.equal(searches, 1, 'an hour-old local hit cannot restart the six-hour shared freshness window');
+});
+
+test('shared evidence rejects corrupt, mismatched, future, expired, oversized and unbound source records', async () => {
+  const seed = sharedEvidenceStore();
+  await freshIdentityLoader(seed)(holding);
+  const original = seed.entries.get(holding.cusip);
+  const cases = [
+    value => { value.evidence[0].name = 'UNRELATED ISSUER'; },
+    value => { value.cusip = '67066G104'; resignEvidence(value); },
+    value => { value.observedAt = new Date(NOW + 1).toISOString(); value.expiresAt = new Date(NOW + 3600000).toISOString(); resignEvidence(value); },
+    value => { value.observedAt = new Date(NOW - 6 * 3600000).toISOString(); value.expiresAt = new Date(NOW).toISOString(); resignEvidence(value); },
+    value => { value.expiresAt = new Date(NOW + 7 * 3600000).toISOString(); resignEvidence(value); },
+    value => { value.evidence[0].url = value.evidence[0].url.replace('www.sec.gov', 'attacker.example'); resignEvidence(value); },
+    value => { value.evidence[0].accession = '0002012383-26-999999'; resignEvidence(value); },
+    value => { value.evidence[0].sourceUrl = 'https://www.sec.gov/unrelated'; resignEvidence(value); },
+    value => { value.evidence[0].indexUrl = 'https://www.sec.gov/unrelated'; resignEvidence(value); },
+    value => { value.evidence[0].cusips = ['67066G104']; resignEvidence(value); },
+    value => { value.coverage.matchingDocuments = 2; resignEvidence(value); },
+    value => { value.oversized = 'x'.repeat(128 * 1024); },
+  ];
+  for (const mutate of cases) {
+    const store = sharedEvidenceStore(), value = structuredClone(original);
+    mutate(value); store.entries.set(holding.cusip, value);
+    let searches = 0;
+    const loader = freshIdentityLoader({ ...store, fetchSec: async url => {
+      if (url.includes('search-index')) searches++;
+      return response(url.includes('search-index') ? search([hit()]) : xml());
+    } });
+    assert.equal((await loader(holding)).status, 'resolved');
+    assert.equal(searches, 1, `rejected ${mutate}`);
+    assert.equal(store.writes.length, 1);
+  }
+});
+
+test('failed, conflicting, unmatched or unverified issuer discovery never publishes shared evidence', async () => {
+  const cases = [
+    { fetchSec: async url => response(url.includes('search-index') ? search([]) : xml()) },
+    { fetchSec: async url => response(url.includes('search-index') ? search([hit()]) : xml({ name: 'UNRELATED INC' })) },
+    { fetchSec: async url => response(url.includes('search-index') ? search([hit()]) : xml({ cusip: '67066G104' })) },
+    { fetchSec: async url => url.includes('search-index') ? response(search([hit()])) : response('busy', 503) },
+    { companyLoader: async () => ({ ...company, cik: '0002012383' }) },
+    { companyLoader: async () => ({ ...company, filings: [{ form: 'NPORT-P' }] }) },
+    { fetchSec: async url => response(url.includes('search-index')
+      ? search([hit(), hit({ accession: '0002012383-26-001751', ciks: ['0000000001', '0002012383'] })])
+      : url.includes('/data/1/') ? xml({ cik: '0000000001' }) : xml()) },
+  ];
+  for (const options of cases) {
+    const store = sharedEvidenceStore();
+    const result = await freshIdentityLoader({ ...store, ...options })(holding).catch(() => null);
+    assert.notEqual(result?.status, 'resolved');
+    assert.equal(store.writes.length, 0);
+  }
+});
+
+test('complete bounded searches and valid CUSIP special characters remain shareable', async () => {
+  for (const cusip of ['565394103', '56539410*', '56539410@', '56539410#']) {
+    const store = sharedEvidenceStore();
+    const loader = freshIdentityLoader({ ...store, fetchSec: async url => response(url.includes('search-index') ? search([hit()], 1000) : xml({ cusip })) });
+    const result = await loader({ ...holding, cusip });
+    assert.equal(result.status, 'resolved');
+    assert.equal(result.coverage.bounded, true);
+    assert.equal(store.writes.length, 1);
+    assert.equal(store.writes[0].id, cusip);
+  }
+});
+
+test('slow or failing optional shared reads and writes retain a bounded SEC fallback', async () => {
+  for (const phase of ['readEvidence', 'writeEvidence']) {
+    const store = sharedEvidenceStore();
+    let expired = false, finished = false;
+    const loader = freshIdentityLoader({ ...store, cacheIoMs: 5,
+      [phase]: async (...args) => {
+        const options = args.at(-1);
+        options.signal.addEventListener('abort', () => { expired = true; }, { once: true });
+        await new Promise(resolve => setTimeout(resolve, 40));
+        finished = true;
+        throw new Error('slow optional storage');
+      },
+    });
+    assert.equal((await loader(holding)).status, 'resolved');
+    assert.equal(expired, true);
+    assert.equal(finished, false, 'research does not wait for optional storage beyond its deadline');
+  }
+  const store = sharedEvidenceStore();
+  assert.equal((await freshIdentityLoader({ ...store, readEvidence: async () => { throw new Error('cache outage'); }, writeEvidence: async () => { throw new Error('cache outage'); } })(holding)).status, 'resolved');
 });

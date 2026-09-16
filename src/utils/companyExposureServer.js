@@ -14,7 +14,7 @@ import { COMPANY_EXPOSURE_SCHEMA_VERSION, COMPANY_EXPOSURE_MAX_TEXT, COMPANY_EXP
 export const COMPANY_EXPOSURE_CACHE_NAMESPACE = `edgar.company-exposure-sources.v1:${cacheDeploymentScope()}`;
 export const COMPANY_EXPOSURE_MAX_HISTORY_FILES = 2;
 const MAX_DOCUMENT_BYTES = 24_000_000, LOAD_BUDGET_MS = 45_000;
-const cache = new Map(), inFlight = new Map();
+const MAX_LOCAL_CACHE_BYTES = 16 * 1024 * 1024;
 const ANNUAL_FORMS = new Set(['10-K', '20-F', '40-F']);
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const error = (message, code, status = 503) => Object.assign(new Error(message), { code, status });
@@ -278,40 +278,64 @@ export function restoreCompanyExposureSnapshot(snapshot, selection, now = new Da
 }
 
 function ttlFor(result) { return result.status === 'ready' ? 6 * 3600 : result.status === 'no_matches' ? 3600 : 900; }
-function remember(key, value, ttl) {
-  const time = Date.now();
-  for (const [id, item] of cache) if (item.expires <= time) cache.delete(id);
-  while (cache.size >= 80) cache.delete(cache.keys().next().value);
-  cache.set(key, { value, expires: time + ttl * 1000 });
+/** Reuse current-engine derived results within this process. Shared storage
+ * continues to hold only verified sources, so cold processes rerun extraction. */
+export function createCompanyExposureLoader({ read = warmGet, write = warmSet,
+  discover = discoverCompanyExposures, enabled = isCftcEnabled, now = Date.now,
+  cacheBytes = MAX_LOCAL_CACHE_BYTES,
+} = {}) {
+  const cache = new Map(), inFlight = new Map();
+  let usedBytes = 0;
+  const forget = key => {
+    const item = cache.get(key);
+    if (item) { usedBytes -= item.bytes; cache.delete(key); }
+  };
+  const remember = (key, value) => {
+    const time = now(), expires = Date.parse(value.checkedAt) + ttlFor(value) * 1000;
+    const bytes = Buffer.byteLength(JSON.stringify(value));
+    if (expires <= time || bytes > cacheBytes) return;
+    for (const [id, item] of cache) if (item.expires <= time) forget(id);
+    forget(key);
+    while (cache.size && (cache.size >= 80 || usedBytes + bytes > cacheBytes)) forget(cache.keys().next().value);
+    cache.set(key, { value, expires, bytes }); usedBytes += bytes;
+  };
+  return async function load(selection, { signal } = {}) {
+    if (!enabled()) throw error('CFTC company exposure research is disabled.', 'CFTC_DISABLED');
+    const checked = normalizeSelection(selection, now());
+    if (signal?.aborted) throw error('The SEC source request reached its time limit. Please retry.', 'COMPANY_EXPOSURE_TIMEOUT');
+    const key = `${checked.cik ? `cik:${checked.cik}` : checked.ticker}:${checked.asOf || 'latest'}`, local = cache.get(key);
+    if (local && local.expires > now()) {
+      cache.delete(key); cache.set(key, local);
+      return local.value;
+    }
+    forget(key);
+    if (inFlight.has(key)) return bounded(inFlight.get(key), signal);
+    if (inFlight.size >= 24) throw error('Company exposure research is busy. Please retry.', 'COMPANY_EXPOSURE_BUSY');
+    const task = (async () => {
+      const stored = await read(COMPANY_EXPOSURE_CACHE_NAMESPACE, key);
+      // Expired source text need not be decompressed or scanned before refresh.
+      const age = now() - Date.parse(stored?.checkedAt);
+      const restored = age >= 0 && age < 6 * 3600 * 1000 ? restoreCompanyExposureSnapshot(stored, checked, now()) : null;
+      if (restored && Date.parse(restored.checkedAt) + ttlFor(restored) * 1000 > now()) {
+        remember(key, restored); return restored;
+      }
+      let snapshot;
+      const value = await discover(checked, { now: new Date(now()), signal: AbortSignal.timeout(LOAD_BUDGET_MS), onSnapshot: prepared => { snapshot = prepared; } });
+      if (snapshot && ['ready', 'no_matches', 'no_filing'].includes(value.status) && !value.retryable && value.coverage.searchComplete) {
+        // Cache age starts at the manifest check, not the end of a slow fetch.
+        const ttl = Math.floor((Date.parse(value.checkedAt) + ttlFor(value) * 1000 - now()) / 1000);
+        remember(key, value);
+        if (ttl > 0) await write(COMPANY_EXPOSURE_CACHE_NAMESPACE, key, snapshot, ttl);
+      }
+      return value;
+    })();
+    inFlight.set(key, task);
+    task.finally(() => inFlight.delete(key)).catch(() => {});
+    return bounded(task, signal);
+  };
 }
 
-export async function loadCompanyExposures(selection, { signal } = {}) {
-  if (!isCftcEnabled()) throw error('CFTC company exposure research is disabled.', 'CFTC_DISABLED');
-  const checked = normalizeSelection(selection);
-  const key = `${checked.cik ? `cik:${checked.cik}` : checked.ticker}:${checked.asOf || 'latest'}`, local = cache.get(key);
-  if (local && local.expires > Date.now()) return local.value;
-  if (inFlight.has(key)) return bounded(inFlight.get(key), signal);
-  if (inFlight.size >= 24) throw error('Company exposure research is busy. Please retry.', 'COMPANY_EXPOSURE_BUSY');
-  const task = (async () => {
-    const stored = await warmGet(COMPANY_EXPOSURE_CACHE_NAMESPACE, key);
-    const restored = restoreCompanyExposureSnapshot(stored, checked);
-    if (restored) {
-      const age = Date.now() - Date.parse(restored.checkedAt), ttl = ttlFor(restored);
-      if (age >= 0 && age < ttl * 1000) { remember(key, restored, Math.max(1, ttl - age / 1000)); return restored; }
-    }
-    let snapshot;
-    const value = await discoverCompanyExposures(checked, { signal: AbortSignal.timeout(LOAD_BUDGET_MS), onSnapshot: prepared => { snapshot = prepared; } });
-    if (snapshot) {
-      const ttl = ttlFor(value);
-      remember(key, value, ttl);
-      await warmSet(COMPANY_EXPOSURE_CACHE_NAMESPACE, key, snapshot, ttl);
-    }
-    return value;
-  })();
-  inFlight.set(key, task);
-  task.finally(() => inFlight.delete(key)).catch(() => {});
-  return bounded(task, signal);
-}
+export const loadCompanyExposures = createCompanyExposureLoader();
 
 export async function loadCompanyExposuresByCik(cik, { asOf = null, signal } = {}) {
   return loadCompanyExposures(normalizeCompanyExposureCikRequest(cik, asOf), { signal });
