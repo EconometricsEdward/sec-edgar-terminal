@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { create13FCache, THIRTEEN_F_SNAPSHOT_TYPE, THIRTEEN_F_FILING_TYPE, THIRTEEN_F_FRESH_MS, THIRTEEN_F_STALE_MS,
+import { create13FCache, THIRTEEN_F_SNAPSHOT_TYPE, THIRTEEN_F_LEGACY_SNAPSHOT_TYPE, THIRTEEN_F_FILING_TYPE, THIRTEEN_F_FRESH_MS, THIRTEEN_F_STALE_MS,
   valid13FSnapshot, valid13FFiling, thirteenFFilingCacheKey } from '../src/utils/thirteenFCache.js';
 import { createThirteenFLoader } from '../src/utils/thirteenFServer.js';
 import { summarize13FPortfolio } from '../src/utils/thirteenF.js';
 import { GET } from '../src/app/api/fund-13f/route.js';
+import { createPublicFundReaders } from '../src/utils/fundPublicResearch.js';
 
 const CIK = '0001747057', PERIOD = '2026-06-30', START = Date.parse('2026-09-15T03:00:00Z');
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -238,7 +239,9 @@ test('Latest retains a compact pointer while both aliases return all 997 positio
   const pointer = f.records.get(`${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`).payload;
   assert.equal(pointer.data, undefined);
   assert.equal(pointer.selectedPeriod, PERIOD);
-  assert.ok(Buffer.byteLength(JSON.stringify(pointer)) < 600);
+  assert.ok(Buffer.byteLength(JSON.stringify(pointer)) <= 16 * 1024);
+  assert.equal(pointer.publicSummary.topHoldings.length, 10);
+  assert.equal(pointer.publicSummary.positionCount, 997);
   assert.equal(snapshots.filter(([, record]) => record.payload.data?.portfolio?.holdings).length, 1);
   for (const period of ['', PERIOD]) {
     const restored = await store.readSnapshot(CIK, period);
@@ -246,6 +249,16 @@ test('Latest retains a compact pointer while both aliases return all 997 positio
     assert.deepEqual(restored.data, data);
   }
   assert.equal(f.writes.length, 2, 'Hydration reads do not write or renew either record');
+  f.reads.length = 0;
+  const readers = createPublicFundReaders({ now: f.now, readManager: (cik, period, signal) => store.readPublicSummary(cik, period, signal) });
+  const summary = await readers.readPublicManagerSummary(CIK);
+  assert.equal(summary.status, 'ready');
+  assert.equal(summary.topHoldings.length, 10);
+  assert.equal(summary.positionCount, 997);
+  assert.equal(summary.totalValueUsd, 997000);
+  assert.equal(summary.topHoldings[0].weightPct, 1000 / 997000 * 100);
+  assert.deepEqual(f.reads, [[THIRTEEN_F_SNAPSHOT_TYPE, `${CIK}:LATEST`]], 'Public delivery downloads only the prepared projection');
+  assert.equal(f.writes.length, 2);
 });
 
 test('Legacy full latest snapshots remain readable and migrate only after a valid source check', async () => {
@@ -328,14 +341,145 @@ test('Independent workers accept only an identical CAS winner before publishing 
   assert.deepEqual((await caches[0].readSnapshot(CIK, '')).data, data);
 });
 
-test('Quarter invalidation reaches latest hydration even when its separate alias invalidation did not persist', async () => {
+test('Quarter invalidation first invalidates the public alias without extending either expiry', async () => {
   const f = fixture(), first = await f.loader()(CIK), store = f.cache();
+  const expiries = [...f.records].map(([key, row]) => [key, row.expiresAt]);
   f.advance(1000);
   const invalidatedAt = new Date(f.now()).toISOString();
   assert.equal(await store.invalidateSnapshot(CIK, PERIOD, PERIOD, invalidatedAt), true);
-  assert.equal(f.records.get(`${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`).payload.invalidatedAt, undefined);
+  assert.equal(f.records.get(`${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`).payload.invalidatedAt, invalidatedAt);
+  assert.deepEqual([...f.records].map(([key, row]) => [key, row.expiresAt]), expiries);
   const restored = await store.readSnapshot(CIK, '');
   assert.equal(restored.invalidatedAt, invalidatedAt);
   assert.equal(restored.checkedAt, first.cache.checkedAt);
+  assert.equal((await store.readPublicSummary(CIK, '')).invalidatedAt, invalidatedAt);
   assert.equal(await store.writeSnapshot(first, '', first.cache.checkedAt), false);
+});
+
+test('Public projection rejects tampering in summary and identity bindings without loading holdings', async () => {
+  const f = fixture(); await f.loader()(CIK);
+  const key = `${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`, original = structuredClone(f.records.get(key));
+  for (const mutate of [
+    value => { value.publicSummary.totalValueUsd++; },
+    value => { value.publicSummary.sources[0].url = 'https://example.com/untrusted'; },
+    value => { value.publicSummary.topHoldings[0].weightPct = 1; },
+    value => { value.publicSummary.limitations = []; },
+    value => { value.sourceChainHash = '0'.repeat(64); },
+    value => { value.dataHash = '0'.repeat(64); },
+    value => { value.checkedAt = new Date(f.now() - 1).toISOString(); },
+    value => { value.selectedPeriod = '2026-03-31'; },
+    value => { value.cik = '0000000001'; },
+  ]) {
+    const changed = structuredClone(original); mutate(changed.payload); f.records.set(key, changed); f.reads.length = 0;
+    assert.equal(await f.cache().readPublicSummary(CIK, ''), null);
+    assert.deepEqual(f.reads, [[THIRTEEN_F_SNAPSHOT_TYPE, `${CIK}:LATEST`]]);
+  }
+});
+
+test('Public freshness ages from the original source check across the seven-day retention window', async () => {
+  const f = fixture(), first = await f.loader()(CIK), store = f.cache();
+  const readers = createPublicFundReaders({ now: f.now, readManager: (cik, period, signal) => store.readPublicSummary(cik, period, signal) });
+  const writes = f.writes.length, sources = f.requests.length;
+  assert.equal((await readers.readPublicManagerSummary(CIK)).stale, false);
+  f.advance(THIRTEEN_F_FRESH_MS);
+  const stale = await readers.readPublicManagerSummary(CIK);
+  assert.equal(stale.status, 'ready'); assert.equal(stale.stale, true); assert.equal(stale.checkedAt, first.cache.checkedAt);
+  assert.equal(stale.freshUntil, new Date(START + THIRTEEN_F_FRESH_MS).toISOString());
+  f.advance(THIRTEEN_F_STALE_MS - THIRTEEN_F_FRESH_MS + 1);
+  assert.equal((await readers.readPublicManagerSummary(CIK)).status, 'unavailable');
+  assert.equal(f.writes.length, writes); assert.equal(f.requests.length, sources);
+  assert.ok(f.writes.filter(row => row.type === THIRTEEN_F_SNAPSHOT_TYPE).every(row => row.ttl === 7 * 86400));
+});
+
+test('V1 migration reads original quarter bodies only when V2 is absent and never promotes them on read', async () => {
+  const f = fixture(), first = await f.loader()(CIK);
+  for (const [key, row] of [...f.records]) {
+    if (!key.startsWith(THIRTEEN_F_SNAPSHOT_TYPE)) continue;
+    const legacy = structuredClone(row); delete legacy.payload.publicSummary; delete legacy.payload.publicSummaryHash;
+    legacy.rawSha256 = hash(legacy.payload); legacy.expiresAt = new Date(START + 25 * 3600000).toISOString();
+    f.records.set(key.replace(THIRTEEN_F_SNAPSHOT_TYPE, THIRTEEN_F_LEGACY_SNAPSHOT_TYPE), legacy); f.records.delete(key);
+  }
+  const writes = f.writes.length, store = f.cache();
+  for (const period of ['', PERIOD]) {
+    assert.equal((await store.readSnapshot(CIK, period)).checkedAt, first.cache.checkedAt);
+    assert.equal((await store.readPublicSummary(CIK, period)).publicSummary.positionCount, 1);
+  }
+  assert.equal(f.writes.length, writes);
+  assert.ok([...f.records.keys()].every(key => !key.startsWith(THIRTEEN_F_SNAPSHOT_TYPE)));
+  const latestKey = `${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`;
+  f.records.set(latestKey, { payload: { corrupt: true } });
+  assert.equal(await store.readPublicSummary(CIK, ''), null, 'A malformed current record does not resurrect legacy data');
+  f.records.delete(latestKey);
+  const failed = create13FCache({ enabled: () => true, now: f.now, read: async (type, id) => {
+    if (type === THIRTEEN_F_SNAPSHOT_TYPE) throw new Error('gateway unavailable');
+    return f.read(type, id);
+  } });
+  assert.equal(await failed.readSnapshot(CIK, ''), null, 'A current read failure is not a confirmed miss');
+  f.advance(24 * 3600000 + 1);
+  assert.equal(await store.readPublicSummary(CIK, ''), null, 'Legacy observation window is unchanged');
+});
+
+test('Failed alias invalidation cannot leave a newly invalidated quarter behind a fresh public projection', async () => {
+  const f = fixture(); await f.loader()(CIK); f.advance(1000);
+  const store = create13FCache({ enabled: () => true, now: f.now, read: f.read,
+    write: async (type, id, ...args) => id === `${CIK}:LATEST` ? { stored: false, reason: 'capacity' } : f.write(type, id, ...args) });
+  const writes = f.writes.length;
+  assert.equal(await store.invalidateSnapshot(CIK, PERIOD, PERIOD, new Date(f.now()).toISOString()), false);
+  assert.equal(f.writes.length, writes);
+  assert.equal(f.records.get(`${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:${PERIOD}`).payload.invalidatedAt, undefined);
+});
+
+test('Failed quarter invalidation still exposes incomplete evidence through the public alias', async () => {
+  const f = fixture(); await f.loader()(CIK); f.advance(1000);
+  const store = create13FCache({ enabled: () => true, now: f.now, read: f.read,
+    write: async (type, id, ...args) => id === `${CIK}:${PERIOD}` ? { stored: false, reason: 'capacity' } : f.write(type, id, ...args) });
+  const invalidatedAt = new Date(f.now()).toISOString();
+  assert.equal(await store.invalidateSnapshot(CIK, PERIOD, PERIOD, invalidatedAt), false);
+  assert.equal((await store.readPublicSummary(CIK, '')).invalidatedAt, invalidatedAt);
+});
+
+test('Failed latest publication preserves the old complete public summary with its original source time', async () => {
+  const f = fixture(), original = await f.loader()(CIK); f.advance(1000);
+  const newer = structuredClone(original), checkedAt = new Date(f.now()).toISOString();
+  newer.manager.name = 'Newer manager name'; newer.observedAt = checkedAt;
+  const store = create13FCache({ enabled: () => true, now: f.now, read: f.read,
+    write: async (type, id, ...args) => id === `${CIK}:LATEST` ? { stored: false, reason: 'capacity' } : f.write(type, id, ...args) });
+  assert.equal(await store.writeSnapshot(newer, '', checkedAt), false);
+  assert.equal((await store.readSnapshot(CIK, PERIOD)).data.manager.name, 'Newer manager name');
+  const published = await store.readPublicSummary(CIK, '');
+  assert.equal(published.publicSummary.name, original.manager.name);
+  assert.equal(published.checkedAt, original.cache.checkedAt);
+  assert.equal(await store.invalidateSnapshot(CIK, PERIOD, PERIOD, checkedAt), false);
+});
+
+test('Oversized public source chains use the full fallback without dropping sources, notes or unequal weights', async () => {
+  const f = fixture(), data = structuredClone(await f.loader()(CIK)), row = data.portfolio.holdings[0];
+  f.records.clear();
+  data.portfolio.holdings = Array.from({ length: 10 }, (_, index) => {
+    const cusip = String(index).padStart(9, '0');
+    return { ...row, issuer: '漢'.repeat(400), cusip, key: `${cusip}|SECURITY|SH`, valueUsd: (index + 1) * 1000 };
+  });
+  data.portfolio.positionCount = data.portfolio.entryCount = 10;
+  data.portfolio.totalValueUsd = 55000;
+  data.portfolio.holdings.forEach(holding => { holding.weightPct = holding.valueUsd / 55000 * 100; });
+  const source = data.portfolio.filings[0];
+  data.portfolio.filings = Array.from({ length: 16 }, (_, index) => {
+    const selected = accession(index + 1), root = `https://www.sec.gov/Archives/edgar/data/${Number(CIK)}/${selected.replaceAll('-', '')}/`;
+    return { ...source, accession: selected, indexUrl: `${root}${selected}-index.html`,
+      primaryUrl: `${root}${'a'.repeat(239)}.xml`, tableUrls: [`${root}holdings.xml`] };
+  });
+  data.reports[0].filingCount = 16;
+  data.coverage.note = '測'.repeat(800);
+  data.summary = summarize13FPortfolio(data.portfolio); delete data.summary.holdings;
+  const store = f.cache();
+  assert.equal(await store.writeSnapshot(data, '', data.cache.checkedAt), true);
+  const pointer = f.records.get(`${THIRTEEN_F_SNAPSHOT_TYPE}:${CIK}:LATEST`).payload;
+  assert.equal(pointer.publicSummary, undefined, 'The 16 KiB bound includes real UTF-8 byte lengths');
+  assert.ok(Buffer.byteLength(JSON.stringify(pointer)) < 600);
+  const summary = (await store.readPublicSummary(CIK, '')).publicSummary;
+  assert.equal(summary.sources.length, 32);
+  assert.equal(summary.limitations.at(-1), data.coverage.note);
+  assert.equal(summary.topHoldings[0].valueUsd, 10000);
+  assert.equal(summary.topHoldings[0].weightPct, 10000 / 55000 * 100);
+  assert.equal(summary.top10WeightPct, 100);
 });

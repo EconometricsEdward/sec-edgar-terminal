@@ -1,4 +1,5 @@
 import { loadThirteenF, normalize13FRequest } from '../../../utils/thirteenFServer.js';
+import { normalize13FDelivery, project13FDelivery } from '../../../utils/thirteenFDelivery.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
 
 export const runtime = 'nodejs';
@@ -7,10 +8,11 @@ export async function GET(request) {
   const startedAt = performance.now();
   try {
     const params = new URL(request.url).searchParams;
-    if ([...params.keys()].some(key => !['cik', 'period', 'refresh'].includes(key)) || params.getAll('cik').length !== 1 || params.getAll('period').length > 1
+    if ([...params.keys()].some(key => !['cik', 'period', 'refresh', 'delivery', 'offset', 'q', 'type', 'sort', 'snapshot'].includes(key)) || params.getAll('cik').length !== 1 || params.getAll('period').length > 1
       || params.getAll('refresh').length > 1 || params.has('refresh') && params.get('refresh') !== '1') {
       return Response.json({ error: 'Use one SEC CIK, an optional report quarter, and refresh=1 to recheck the report.', code: 'INVALID_REQUEST' }, { status: 400, headers: { 'Cache-Control': 'private, no-store' } });
     }
+    const delivery = normalize13FDelivery(params);
     const { cik, period } = normalize13FRequest(params.get('cik'), params.get('period'));
     const limit = await checkRateLimit({ key: `rl:fund-13f:${getClientIp(request)}`, windowMs: 60000, max: 30 });
     if (!limit.allowed) {
@@ -20,11 +22,11 @@ export async function GET(request) {
     }
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(55000)]);
     const refresh = params.get('refresh') === '1';
-    const data = await loadThirteenF(cik, { period, signal, refresh });
+    const data = project13FDelivery(await loadThirteenF(cik, { period, signal, refresh }), delivery);
     const bytes = new TextEncoder().encode(JSON.stringify(data));
     const freshSeconds = Math.max(0, Math.min(300, Math.ceil((Date.parse(data.cache?.freshUntil) - Date.now()) / 1000)));
     const headers = { 'Content-Type': 'application/json; charset=utf-8',
-      'X-13F-Cache': data.cache?.status || 'source', 'Server-Timing': `report;dur=${Math.round(performance.now() - startedAt)}`,
+      'X-13F-Cache': data.cache?.status || 'source', 'X-13F-Delivery': delivery.mode, 'Server-Timing': `report;dur=${Math.round(performance.now() - startedAt)}`,
       'Cache-Control': (refresh || data.cache?.stale || !freshSeconds || !data.coverage.selectedPeriodComplete || data.portfolio && !data.portfolio.complete) ? 'private, no-store'
         : `public, max-age=0, s-maxage=${freshSeconds}` };
     if (bytes.length < 3500000) return new Response(bytes, { headers });

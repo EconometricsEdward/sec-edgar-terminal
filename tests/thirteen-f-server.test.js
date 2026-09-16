@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createThirteenFLoader, normalize13FRequest } from '../src/utils/thirteenFServer.js';
+import { THIRTEEN_F_FRESH_MS } from '../src/utils/thirteenFCache.js';
 import { GET } from '../src/app/api/fund-13f/route.js';
 
 const CIK = '0001747057';
@@ -166,7 +167,7 @@ test('Identical requests coalesce and bounded cache expires; concurrent unique r
   assert.deepEqual(await first, await same);
   await load(CIK);
   assert.equal(calls, 1);
-  clock += 300001;
+  clock += THIRTEEN_F_FRESH_MS + 1;
   await load(CIK);
   assert.equal(calls, 2);
 });

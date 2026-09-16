@@ -2,12 +2,16 @@ import { createHash } from 'node:crypto';
 import { cacheGet, cachePut, disposableCacheEnabled } from './disposableCache.js';
 import { reconcile13FTable, summarize13FPortfolio } from './thirteenF.js';
 import { validFilingDate } from './filingsResearch.js';
+import { project13FPublicSummary, valid13FPublicSummary } from './thirteenFPublicProjection.js';
 
 export const THIRTEEN_F_CACHE_VERSION = 'edgar.13f-prepared.v1';
-export const THIRTEEN_F_FRESH_MS = 5 * 60 * 1000;
-export const THIRTEEN_F_STALE_MS = 24 * 60 * 60 * 1000;
-export const THIRTEEN_F_SNAPSHOT_TYPE = 'edgar.13f-snapshot.v1:production';
+export const THIRTEEN_F_FRESH_MS = 60 * 60 * 1000;
+export const THIRTEEN_F_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+export const THIRTEEN_F_SNAPSHOT_TYPE = 'edgar.13f-snapshot.v2:production';
+export const THIRTEEN_F_LEGACY_SNAPSHOT_TYPE = 'edgar.13f-snapshot.v1:production';
 export const THIRTEEN_F_FILING_TYPE = 'edgar.13f-filing.v1:production';
+const SNAPSHOT_TTL_SECONDS = THIRTEEN_F_STALE_MS / 1000;
+const PUBLIC_POINTER_MAX_BYTES = 16 * 1024;
 const LATEST_POINTER_VERSION = 'edgar.13f-latest-pointer.v1';
 const SHA256 = /^[a-f0-9]{64}$/;
 const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
@@ -19,6 +23,8 @@ const boundedString = (value, max = 500) => typeof value === 'string' && value.t
 const iso = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
 const snapshotId = (cik, period) => `${cik}:${period || 'LATEST'}`;
 const reportFields = filing => [filing.accession, filing.reportDate || '', filing.filingDate, filing.form, filing.primaryDoc || ''];
+const publicSummaryHash = pointer => hash(['edgar.13f-public-projection.v1', pointer.cik, pointer.selectedPeriod,
+  pointer.checkedAt, pointer.sourceChainHash, pointer.dataHash, pointer.publicSummary]);
 
 export function thirteenFFilingCacheKey(cik, filing) {
   return `${cik}:${filing.accession}:${hash([THIRTEEN_F_CACHE_VERSION, cik, ...reportFields(filing)])}`;
@@ -78,8 +84,8 @@ export function valid13FSnapshot(value, cik, period, now = Date.now()) {
       && value.sourceChainHash === hash(value.data.portfolio.filings);
   } catch { return false; }
 }
-// LATEST holds no holdings table. The exact-quarter record owns the complete
-// report; both its source chain and its full data are bound by this small alias.
+// LATEST holds no holdings table. Its bounded public projection is published
+// only after complete report validation; the exact-quarter record owns all rows.
 // An independent invalidation is essential when a newly discovered quarter is
 // incomplete: the older exact quarter remains usable under its own date.
 function validLatestPointer(value, cik, now) {
@@ -128,8 +134,31 @@ export function create13FCache({ enabled = disposableCacheEnabled, read = cacheG
   }
   const options = signal => ({ signal, timeoutMs, deadline: now() + timeoutMs });
   async function readRecord(type, id, signal) {
-    if (!enabled() || signal?.aborted) return null;
-    try { return await read(type, id, options(signal)); } catch { return null; }
+    if (!enabled() || signal?.aborted) return undefined;
+    // Undefined is an error/disabled read; only a confirmed null permits the
+    // read-only legacy fallback. Corruption must not resurrect an old report.
+    try { return await read(type, id, options(signal)); } catch { return undefined; }
+  }
+  async function readSnapshotRecord(cik, period, signal) {
+    const id = snapshotId(cik, period);
+    const current = await readRecord(THIRTEEN_F_SNAPSHOT_TYPE, id, signal);
+    if (current !== null) return { row: current, type: THIRTEEN_F_SNAPSHOT_TYPE };
+    const legacy = await readRecord(THIRTEEN_F_LEGACY_SNAPSHOT_TYPE, id, signal);
+    // Keep the old observation window during migration, regardless of the new
+    // type's longer retention. Reading never copies or renews a legacy record.
+    const row = legacy && now() - Date.parse(legacy.payload?.checkedAt) <= 24 * 3600000 ? legacy : null;
+    return { row, type: THIRTEEN_F_LEGACY_SNAPSHOT_TYPE };
+  }
+  async function hydrateSnapshot({ row, type }, cik, period, signal) {
+    if (valid13FSnapshot(row?.payload, cik, period, now())) return row.payload;
+    const pointer = row?.payload;
+    if (period || !validLatestPointer(pointer, cik, now())) return null;
+    const body = (await readRecord(type, snapshotId(cik, pointer.selectedPeriod), signal))?.payload;
+    if (!valid13FSnapshot(body, cik, pointer.selectedPeriod, now()) || body.checkedAt !== pointer.checkedAt
+      || body.sourceChainHash !== pointer.sourceChainHash || hash(body.data) !== pointer.dataHash) return null;
+    const invalidatedAt = [pointer.invalidatedAt, body.invalidatedAt].filter(Boolean).sort().at(-1);
+    const value = { ...body, requestedPeriod: '', ...(invalidatedAt ? { invalidatedAt } : {}) };
+    return valid13FSnapshot(value, cik, '', now()) ? value : null;
   }
   function validStoredSnapshot(value, cik, period) {
     return valid13FSnapshot(value, cik, period, now()) || !period && validLatestPointer(value, cik, now());
@@ -145,7 +174,7 @@ export function create13FCache({ enabled = disposableCacheEnabled, read = cacheG
       if (validStoredSnapshot(old?.payload, value.cik, period) && newerObservation(old.payload, value.checkedAt)) return false;
       if (old?.rawSha256 === valueHash) return true;
       try {
-        const result = await write(THIRTEEN_F_SNAPSHOT_TYPE, id, value, 25 * 3600,
+        const result = await write(THIRTEEN_F_SNAPSHOT_TYPE, id, value, SNAPSHOT_TTL_SECONDS,
           { ...options(signal), ifHash: old?.rawSha256 || 'absent' });
         if (result?.stored === true) return true;
         // A separate worker may have persisted the same body. Accept only the
@@ -160,20 +189,38 @@ export function create13FCache({ enabled = disposableCacheEnabled, read = cacheG
     pendingSnapshots.set(pendingKey, promise);
     return promise;
   }
+  async function invalidateStoredSnapshot(cik, period, selectedPeriod, invalidatedAt, signal, selected) {
+    const { row: old, type } = selected || await readSnapshotRecord(cik, period, signal);
+    const storedPeriod = old?.payload?.data?.selectedPeriod || old?.payload?.selectedPeriod;
+    if (!validStoredSnapshot(old?.payload, cik, period) || (period ? storedPeriod !== selectedPeriod : storedPeriod > selectedPeriod)
+      || Date.parse(old.payload.checkedAt) > Date.parse(invalidatedAt)
+      || old.payload.invalidatedAt && Date.parse(old.payload.invalidatedAt) >= Date.parse(invalidatedAt)) return false;
+    const remaining = Math.floor((Date.parse(old.expiresAt) - now()) / 1000);
+    if (!Number.isSafeInteger(remaining) || remaining <= 0) return false;
+    const value = { ...old.payload, invalidatedAt };
+    try { return (await write(type, snapshotId(cik, period), value, Math.min(type === THIRTEEN_F_SNAPSHOT_TYPE ? SNAPSHOT_TTL_SECONDS : 25 * 3600, remaining),
+      { ...options(signal), ifHash: old.rawSha256, expiresAt: old.expiresAt }))?.stored === true; } catch { return false; }
+  }
   return {
     async readSnapshot(cik, period, signal) {
-      const row = await readRecord(THIRTEEN_F_SNAPSHOT_TYPE, snapshotId(cik, period), signal);
       // Previously stored full latest reports remain readable until a normal
       // successful source check replaces them; reading never writes or renews.
-      if (valid13FSnapshot(row?.payload, cik, period, now())) return row.payload;
-      const pointer = row?.payload;
-      if (period || !validLatestPointer(pointer, cik, now())) return null;
-      const body = (await readRecord(THIRTEEN_F_SNAPSHOT_TYPE, snapshotId(cik, pointer.selectedPeriod), signal))?.payload;
-      if (!valid13FSnapshot(body, cik, pointer.selectedPeriod, now()) || body.checkedAt !== pointer.checkedAt
-        || body.sourceChainHash !== pointer.sourceChainHash || hash(body.data) !== pointer.dataHash) return null;
-      const invalidatedAt = [pointer.invalidatedAt, body.invalidatedAt].filter(Boolean).sort().at(-1);
-      const value = { ...body, requestedPeriod: '', ...(invalidatedAt ? { invalidatedAt } : {}) };
-      return valid13FSnapshot(value, cik, '', now()) ? value : null;
+      return hydrateSnapshot(await readSnapshotRecord(cik, period, signal), cik, period, signal);
+    },
+    async readPublicSummary(cik, period, signal) {
+      const selected = await readSnapshotRecord(cik, period, signal), pointer = selected.row?.payload;
+      if (!period && selected.type === THIRTEEN_F_SNAPSHOT_TYPE && pointer?.publicSummary !== undefined) {
+        if (!validLatestPointer(pointer, cik, now()) || Buffer.byteLength(JSON.stringify(pointer)) > PUBLIC_POINTER_MAX_BYTES
+          || pointer.publicSummaryHash !== publicSummaryHash(pointer)
+          || !valid13FPublicSummary(pointer.publicSummary, cik, pointer.selectedPeriod, pointer.checkedAt)) return null;
+        return { checkedAt: pointer.checkedAt, ...(pointer.invalidatedAt ? { invalidatedAt: pointer.invalidatedAt } : {}),
+          publicSummary: pointer.publicSummary };
+      }
+      // Exact-quarter selections and pre-projection pointers retain the full
+      // validator. Normal source preparation upgrades the pointer, never reads.
+      const saved = await hydrateSnapshot(selected, cik, period, signal);
+      return saved ? { checkedAt: saved.checkedAt, ...(saved.invalidatedAt ? { invalidatedAt: saved.invalidatedAt } : {}),
+        publicSummary: project13FPublicSummary(saved.data) } : null;
     },
     async writeSnapshot(data, period, checkedAt, signal) {
       const cik = data.manager.cik;
@@ -187,20 +234,34 @@ export function create13FCache({ enabled = disposableCacheEnabled, read = cacheG
       if (!await storeSnapshot(snapshotId(cik, selectedPeriod), { ...value, requestedPeriod: selectedPeriod }, selectedPeriod, signal)) return false;
       const pointer = { schemaVersion: LATEST_POINTER_VERSION, cik, requestedPeriod: '', selectedPeriod, checkedAt,
         sourceChainHash: value.sourceChainHash, dataHash: hash(data) };
+      const projection = project13FPublicSummary(data);
+      const compact = { ...pointer, publicSummary: projection };
+      compact.publicSummaryHash = publicSummaryHash(compact);
+      // Extremely large source chains still publish a usable alias and retain
+      // every source and limitation through the validated full-read fallback.
+      if (valid13FPublicSummary(projection, cik, selectedPeriod, checkedAt)
+        && Buffer.byteLength(JSON.stringify({ ...compact, invalidatedAt: checkedAt })) <= PUBLIC_POINTER_MAX_BYTES) return storeSnapshot(id, compact, '', signal);
       return storeSnapshot(id, pointer, '', signal);
     },
     async invalidateSnapshot(cik, period, selectedPeriod, invalidatedAt, signal) {
       if (!enabled() || !iso(invalidatedAt) || Date.parse(invalidatedAt) > now() || signal?.aborted) return false;
-      const id = snapshotId(cik, period), old = await readRecord(THIRTEEN_F_SNAPSHOT_TYPE, id, signal);
-      const storedPeriod = old?.payload?.data?.selectedPeriod || old?.payload?.selectedPeriod;
-      if (!validStoredSnapshot(old?.payload, cik, period) || (period ? storedPeriod !== selectedPeriod : storedPeriod > selectedPeriod)
-        || Date.parse(old.payload.checkedAt) > Date.parse(invalidatedAt)
-        || old.payload.invalidatedAt && Date.parse(old.payload.invalidatedAt) >= Date.parse(invalidatedAt)) return false;
-      const remaining = Math.floor((Date.parse(old.expiresAt) - now()) / 1000);
-      if (!Number.isSafeInteger(remaining) || remaining <= 0) return false;
-      const value = { ...old.payload, invalidatedAt };
-      try { return (await write(THIRTEEN_F_SNAPSHOT_TYPE, id, value, Math.min(25 * 3600, remaining),
-        { ...options(signal), ifHash: old.rawSha256, expiresAt: old.expiresAt }))?.stored === true; } catch { return false; }
+      if (period) {
+        // A public pointer must observe known incomplete evidence before its
+        // body does. If the alias write fails, fail closed and retry later.
+        const latest = await readSnapshotRecord(cik, '', signal), pointer = latest.row?.payload;
+        if (latest.row === undefined) return false;
+        const latestPeriod = pointer?.data?.selectedPeriod || pointer?.selectedPeriod;
+        if (validStoredSnapshot(pointer, cik, '') && latestPeriod <= selectedPeriod
+          && Date.parse(pointer.checkedAt) <= Date.parse(invalidatedAt)
+          && !(pointer.invalidatedAt && Date.parse(pointer.invalidatedAt) >= Date.parse(invalidatedAt))) {
+          if (!await invalidateStoredSnapshot(cik, '', selectedPeriod, invalidatedAt, signal, latest)) {
+            const winner = (await readSnapshotRecord(cik, '', signal)).row?.payload;
+            if (!validStoredSnapshot(winner, cik, '') || !(Date.parse(winner.invalidatedAt) >= Date.parse(invalidatedAt)
+              || Date.parse(winner.checkedAt) > Date.parse(invalidatedAt))) return false;
+          }
+        }
+      }
+      return invalidateStoredSnapshot(cik, period, selectedPeriod, invalidatedAt, signal);
     },
     async readFiling(cik, filing, signal) {
       const key = thirteenFFilingCacheKey(cik, filing), hit = local.get(key);

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
+import { cache, Suspense } from "react";
 import { notFound } from "next/navigation";
 import { unstable_cache } from "next/cache";
-import { buildPageMetadata } from "../../../utils/siteMetadata";
+import { buildPageMetadata, SITE_URL } from "../../../utils/siteMetadata";
 import { FUND_CATALOG } from "../../../utils/fundResearch";
 import { publicFundSelection } from "../../../utils/fundPublicSelectors.js";
 import { readPublicFundSummary } from "../../../utils/fundPublicResearch.js";
@@ -10,7 +10,8 @@ import FundResearchBrief, { type PublicFundSummary } from "../FundResearchBrief"
 import FundClient from "./FundClient";
 export const runtime = "nodejs";
 export const maxDuration = 15;
-const readSummary = unstable_cache(
+// Metadata and visible research share one read, including temporary misses.
+const readSummary = cache(unstable_cache(
   async (ticker: string, accession: string) => {
     const summary = await readPublicFundSummary(ticker, accession) as PublicFundSummary | null;
     // Do not retain an empty result after the interactive loader prepares it.
@@ -18,7 +19,7 @@ const readSummary = unstable_cache(
     return summary;
   },
   ["public-nport-fund-summary-v1"], { revalidate: 60 },
-);
+));
 interface Props {
   params: Promise<{ ticker: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -33,12 +34,16 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   if (!selected) return { title: "Fund report unavailable", robots: { index: false } };
   const { ticker, accession } = selected;
   const summary = await readSummary(ticker, accession).catch(() => null);
-  const name = FUND_CATALOG.find((f) => f.ticker === ticker)?.name || ticker;
-  return { ...buildPageMetadata({
-    title: `${name} (${ticker}) — Holdings & Portfolio Research`,
-    description: `Explore SEC-reported positions, net assets, concentration, reporting dates and source filings for ${ticker}.`,
+  const name = summary?.name || FUND_CATALOG.find((f) => f.ticker === ticker)?.name || ticker;
+  const reportDate = summary?.reportDate;
+  const metadata = buildPageMetadata({
+    title: `${name} (${ticker}) — Holdings${reportDate ? `, ${reportDate}` : " & Portfolio Research"}`,
+    description: `${ticker} SEC N-PORT fund portfolio${reportDate ? ` as of ${reportDate}` : ""}: reported positions, net assets, concentration and original source filings. Holdings cover the reported fund series.`,
     path: `/fund/${ticker}${accession ? `?accession=${accession}` : ""}`,
-  }), ...((accession || !FUND_CATALOG.some(fund => fund.ticker === ticker)) && summary?.status !== "ready" ? { robots: { index: false } } : {}) };
+  });
+  return { ...metadata,
+    alternates: { ...metadata.alternates, types: { "application/json": `${SITE_URL}/api/v1/funds/${ticker}${accession ? `?accession=${accession}` : ""}` } },
+    ...((accession || !FUND_CATALOG.some(fund => fund.ticker === ticker)) && summary?.status !== "ready" ? { robots: { index: false } } : {}) };
 }
 export default async function FundPage(props: Props) {
   const selected = await selection(props);
@@ -55,7 +60,7 @@ export default async function FundPage(props: Props) {
   };
   return (
     <>
-      <FundResearchBrief summary={{ ...summary, interactiveUrl: "#fund-workspace" }} jsonUrl={`/api/v1/funds/${ticker}${accession ? `?accession=${accession}` : ""}`} />
+      <FundResearchBrief summary={{ ...summary, interactiveUrl: "#fund-workspace" }} canonicalPath={`/fund/${ticker}${accession ? `?accession=${accession}` : ""}`} jsonUrl={`/api/v1/funds/${ticker}${accession ? `?accession=${accession}` : ""}`} />
       <div id="fund-workspace">
         <Suspense fallback={<p role="status">Opening fund research…</p>}>
           <FundClient key={ticker} urlTicker={ticker} selectedAccession={accession} preparedSummaryReady={summary.status === "ready"} />

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "../utils/siteMetadata";
+import { FUND_CATALOG } from "../utils/fundResearch";
 import { PUBLIC_FUND_MANAGERS } from "../utils/fundPublicSelectors.js";
 import { getActiveSecCoverageCompanies, loadSecCoverageRegistry } from "../utils/secCoverageRegistry.js";
 export const revalidate = 3600;
@@ -48,21 +49,6 @@ const FEATURED_ANALYSIS_TICKERS = [
 
 const FEATURED_FILING_TICKERS = ["AAPL", "JPM", "NVDA", "XOM"];
 
-const FEATURED_FUNDS = [
-  "SPY",
-  "VOO",
-  "QQQ",
-  "VTI",
-  "ARKK",
-  "IWM",
-  "BND",
-  "VXUS",
-  "VEA",
-  "VWO",
-  "AGG",
-  "TLT",
-];
-
 const FEATURED_COMPARISONS = [
   "AAPL,MSFT,GOOGL,META,AMZN",
   "JPM,BAC,WFC,C,GS",
@@ -94,7 +80,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...FEATURED_FILING_TICKERS.map((ticker) =>
       sitemapEntry(`/filings/${ticker}`, "weekly", 0.85),
     ),
-    ...FEATURED_FUNDS.map((ticker) =>
+    ...FUND_CATALOG.map(({ ticker }) =>
       sitemapEntry(`/fund/${ticker}`, "weekly", 0.8),
     ),
     ...PUBLIC_FUND_MANAGERS.map((manager) =>

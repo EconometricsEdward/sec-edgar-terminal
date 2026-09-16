@@ -4,6 +4,7 @@ import { readPreparedFund } from './fundResearchServer.js';
 import { FUND_CATALOG } from './fundResearch.js';
 import { create13FCache, THIRTEEN_F_FRESH_MS } from './thirteenFCache.js';
 import { PUBLIC_FUND_MANAGERS } from './fundPublicSelectors.js';
+import { project13FPublicSummary } from './thirteenFPublicProjection.js';
 
 const shared13F = create13FCache();
 const TICKER = /^[A-Z0-9][A-Z0-9.-]{0,14}$/;
@@ -40,7 +41,7 @@ function freshness(checkedAt, now, duration, invalidated = false) {
 
 /** Fixture injection isolates the cache-only boundary from SEC acquisition. */
 export function createPublicFundReaders({ readFund = readPreparedFund,
-  readManager = (cik, period, signal) => shared13F.readSnapshot(cik, period, signal), now = Date.now } = {}) {
+  readManager = (cik, period, signal) => shared13F.readPublicSummary(cik, period, signal), now = Date.now } = {}) {
   /** @param {string} tickerInput @param {string} accession @param {{signal?: AbortSignal}} options */
   async function readPublicFundSummary(tickerInput, accession = '', { signal } = {}) {
     const ticker = String(tickerInput).trim().toUpperCase();
@@ -86,25 +87,18 @@ export function createPublicFundReaders({ readFund = readPreparedFund,
     try { saved = await readManager(cik, period, signal ? AbortSignal.any([signal, deadline]) : deadline); }
     catch { return base; }
     const data = saved?.data, portfolio = data?.portfolio;
-    if (data?.status !== 'ready' || data.manager?.cik !== cik || !portfolio?.complete
-      || !data.coverage?.selectedPeriodComplete || period && portfolio.period !== period) return base;
-    return { ...base, status: 'ready', reason: undefined, name: text(data.manager.name),
-      reportDate: portfolio.period, filingDate: portfolio.filings.map(filing => filing.filingDate).sort().at(-1), retrievedAt: data.observedAt,
+    // The default reader returns a digest-bound prepared projection. Injected
+    // readers and older full snapshots retain the same complete-data boundary.
+    let projection = saved?.publicSummary;
+    if (!projection) {
+      if (data?.status !== 'ready' || data.manager?.cik !== cik || !portfolio?.complete
+        || !data.coverage?.selectedPeriodComplete || period && portfolio.period !== period) return base;
+      projection = project13FPublicSummary(data);
+    }
+    return { ...base, ...projection, status: 'ready', reason: undefined,
       ...freshness(saved.checkedAt, now(), THIRTEEN_F_FRESH_MS, Boolean(saved.invalidatedAt)),
-      positionCount: portfolio.positionCount, totalValueUsd: finite(portfolio.totalValueUsd),
-      top10WeightPct: finite(data.summary?.top10Pct),
-      weightBasis: 'Percentage of all reported 13F holdings value; not manager assets under management or net assets.',
-      confidentialOmitted: portfolio.confidentialOmitted, comparable: portfolio.comparable,
-      topHoldings: portfolio.holdings.map(holding => ({ name: text(`${holding.issuer} · ${holding.classTitle}`), identifier: holding.cusip,
-        valueUsd: finite(holding.valueUsd), weightPct: finite(holding.weightPct), putCall: holding.putCall, quantityType: holding.quantityType })).sort(sortValue).slice(0, 10),
-      sources: sources(portfolio.filings.flatMap(filing => [
-        { label: `${filing.form} · ${filing.filingDate}${filing.superseded ? ' · superseded' : ''}`, url: filing.indexUrl },
-        { label: `Original cover · ${filing.accession}`, url: filing.primaryUrl } ])),
-      limitations: ['Quarter-end public reportable holdings. Reported value is not assets under management, net assets, cash flow or performance.',
-        'The full portfolio determines weights. Options remain distinct from ordinary shares; their reported underlying value is not option premium.',
-        portfolio.confidentialOmitted ? 'This report explicitly omits confidential holdings; coverage and comparisons are limited.'
-          : 'Cash, short positions, non-reportable securities and any non-public holdings are outside this summary.',
-        ...(data.coverage.note ? [text(data.coverage.note, 800)] : []),
+      sources: sources(projection.sources),
+      limitations: [...projection.limitations,
         ...(saved.invalidatedAt ? ['Newer incomplete evidence was found. These are the last complete prepared results; refresh is required.'] : [])] };
   }
   return { readPublicFundSummary, readPublicManagerSummary };

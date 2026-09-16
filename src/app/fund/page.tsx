@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { buildPageMetadata } from "../../utils/siteMetadata";
+import { buildPageMetadata, SITE_URL } from "../../utils/siteMetadata";
 import { FUND_CATALOG } from "../../utils/fundResearch";
 import { PUBLIC_FUND_MANAGERS } from "../../utils/fundPublicSelectors.js";
+import { fundDirectoryStructuredData, serializeResearchJsonLd } from "../../utils/fundPublicMetadata.js";
 import FundsWorkspace from "./FundsWorkspace";
 import base from "./fund.module.css";
 import s from "./FundResearchBrief.module.css";
@@ -14,8 +15,10 @@ export const metadata: Metadata = buildPageMetadata({
   path: "/fund",
 });
 export default function FundIndexPage() {
+  const structuredData = fundDirectoryStructuredData({ funds: FUND_CATALOG, managers: PUBLIC_FUND_MANAGERS, siteUrl: SITE_URL });
   return (
     <>
+      <script id="fund-research-directory" type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeResearchJsonLd(structuredData) }} />
       <Suspense fallback={<p role="status">Opening fund research…</p>}>
         <FundsWorkspace />
       </Suspense>

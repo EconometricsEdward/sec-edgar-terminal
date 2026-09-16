@@ -7,6 +7,7 @@ import { ArrowDownToLine, ArrowRight, ArrowUpRight, Building2, Check, ChevronDow
 import { useSecFilerSearch } from "../../utils/useSecFilerSearch.js";
 import { exactFilerMatch, filerCik } from "../../utils/secFilerSearch.js";
 import { compare13FPortfolios } from "../../utils/thirteenF.js";
+import { select13FHoldings, project13FDelivery, valid13FDelivery } from "../../utils/thirteenFDelivery.js";
 import s from "./ThirteenFWorkspace.module.css";
 
 const ThirteenFHistory = dynamic(() => import("./ThirteenFHistory"), { loading: () => <p role="status">Opening portfolio history…</p> });
@@ -17,7 +18,11 @@ const HoldingActionContext = createContext<((holding: any) => void) | null>(null
 
 type Holding = { key: string; cusip: string; issuer: string; classTitle: string; putCall: "PUT" | "CALL" | null; quantity: number | null; quantityType: string; valueUsd: number | null; weightPct: number | null; investmentDiscretion?: string; sourceRowCount?: number };
 type Report = { period: string; filingCount: number; latestFiled: string; forms: string[] };
-type Response = { status: "ready" | "unavailable"; manager: { cik: string; name: string; submissionsUrl?: string }; reports: Report[]; selectedPeriod: string | null; portfolio: any; summary: any; coverage: any; observedAt: string; cache?: { status: string; stale: boolean; checkedAt: string; freshUntil: string; message?: string } };
+type DeliveryRequest = { mode: "full" | "summary" | "holdings"; offset?: number; query?: string; type?: string; sort?: string; snapshot?: string };
+const FULL_DELIVERY: DeliveryRequest = { mode: "full" };
+const SUMMARY_DELIVERY: DeliveryRequest = { mode: "summary" };
+const HOLDINGS_DELIVERY: DeliveryRequest = { mode: "holdings" };
+type Response = { delivery?: { mode: string; total: number; filteredTotal: number; offset: number; returned: number; version: string; holdingsComplete: boolean }; status: "ready" | "unavailable"; manager: { cik: string; name: string; submissionsUrl?: string }; reports: Report[]; selectedPeriod: string | null; portfolio: any; summary: any; coverage: any; observedAt: string; cache?: { status: string; stale: boolean; checkedAt: string; freshUntil: string; message?: string } };
 type Remote = { key: string; status: "idle" | "loading" | "ready" | "error"; data: Response | null; error: string };
 const cache = new Map<string, { data: Response; expires: number; bytes: number }>();
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -51,21 +56,31 @@ function priorQuarter(period: string) {
   const previous: Record<string, string> = { "03-31": `${year - 1}-12-31`, "06-30": `${year}-03-31`, "09-30": `${year}-06-30`, "12-31": `${year}-09-30` };
   return previous[period.slice(5)] || "";
 }
-async function fetchReport(cik: string, period: string, signal: AbortSignal, force: boolean) {
-  const key = `${cik}:${period}`;
+function deliveryKey(delivery: DeliveryRequest) { return JSON.stringify([delivery.mode, delivery.offset || 0, delivery.query || "", delivery.type || "all", delivery.sort || "value", delivery.snapshot || ""]); }
+async function fetchReport(cik: string, period: string, signal: AbortSignal, force: boolean, delivery: DeliveryRequest = FULL_DELIVERY) {
+  const key = `${cik}:${period}:${deliveryKey(delivery)}`;
   const stored = cache.get(key);
   if (!force && stored && stored.expires > Date.now()) return stored.data;
   if (force) {
-    cache.delete(key);
-    cache.delete(`${cik}:`);
-    if (stored?.data.selectedPeriod) cache.delete(`${cik}:${stored.data.selectedPeriod}`);
+    for (const cacheKey of cache.keys()) if (cacheKey.startsWith(`${cik}:`)) cache.delete(cacheKey);
+  } else if (delivery.mode !== "full") {
+    const full = cache.get(`${cik}:${period}:${deliveryKey(FULL_DELIVERY)}`);
+    if (full && full.expires > Date.now() && (!delivery.snapshot || full.data.delivery?.version === delivery.snapshot)) return project13FDelivery(full.data, delivery) as Response;
   }
-  const query = new URLSearchParams({ cik });
+  const query = new URLSearchParams({ cik, delivery: delivery.mode });
+  if (delivery.mode === "holdings") {
+    if (delivery.offset) query.set("offset", String(delivery.offset));
+    if (delivery.query) query.set("q", delivery.query);
+    if (delivery.type && delivery.type !== "all") query.set("type", delivery.type);
+    if (delivery.sort && delivery.sort !== "value") query.set("sort", delivery.sort);
+  }
+  if (delivery.snapshot) query.set("snapshot", delivery.snapshot);
   if (period) query.set("period", period);
   if (force) query.set("refresh", "1");
   const response = await fetch(`/api/fund-13f?${query}`, { signal, ...(force ? { cache: "no-store" as const } : {}) });
+  const responseLimit = delivery.mode === "full" ? MAX_RESPONSE_BYTES : 2 * 1024 * 1024;
   const declared = Number(response.headers.get("content-length"));
-  if (declared > MAX_RESPONSE_BYTES) throw new Error("This report is too large to open here. Use the SEC filings link to inspect its source tables.");
+  if (declared > responseLimit) throw new Error("This report is too large to open here. Use the SEC filings link to inspect its source tables.");
   const reader = response.body?.getReader();
   let raw = "", bytes = 0;
   if (reader) {
@@ -75,25 +90,26 @@ async function fetchReport(cik: string, period: string, signal: AbortSignal, for
         const part = await reader.read();
         if (part.done) break;
         bytes += part.value.byteLength;
-        if (bytes > MAX_RESPONSE_BYTES) { await reader.cancel(); throw new Error("This report exceeds the workspace size limit. Its source tables remain available in SEC filings."); }
+        if (bytes > responseLimit) { await reader.cancel(); throw new Error("This report exceeds the workspace size limit. Its source tables remain available in SEC filings."); }
         raw += decoder.decode(part.value, { stream: true });
       }
       raw += decoder.decode();
     } finally { reader.releaseLock(); }
   } else { raw = await response.text(); bytes = raw.length * 2; }
   signal.throwIfAborted();
-  if (bytes > MAX_RESPONSE_BYTES) throw new Error("This report exceeds the workspace size limit. Open its SEC information tables instead.");
+  if (bytes > responseLimit) throw new Error("This report exceeds the workspace size limit. Open its SEC information tables instead.");
   let data: Response;
   try { data = JSON.parse(raw); } catch { throw new Error("The SEC report could not be opened. Please retry."); }
   if (!response.ok) throw new Error(typeof (data as any)?.error === "string" ? (data as any).error : "SEC report data is temporarily unavailable. Please retry.");
   if (!["ready", "unavailable"].includes(data?.status) || data.manager?.cik !== cik || typeof data.manager.name !== "string" || !data.manager.name.trim() || !Array.isArray(data.reports) || data.reports.length > 100 || data.reports.some(report => !report || !/^\d{4}-(03-31|06-30|09-30|12-31)$/.test(report.period) || !Array.isArray(report.forms)) || (period && data.selectedPeriod !== period) || (data.status === "ready" && (!data.portfolio || data.portfolio.cik !== cik || data.portfolio.period !== data.selectedPeriod || !Array.isArray(data.portfolio.filings) || !Array.isArray(data.portfolio.issues) || !Array.isArray(data.portfolio.holdings) || data.portfolio.holdings.length > 20000))) throw new Error("This response could not be verified against the selected manager and reporting period. Please retry.");
+  if (!valid13FDelivery(data, delivery)) throw new Error("This response did not match the requested holdings page or snapshot. Refresh the report and try again.");
   const sourceExpiry = Date.parse(data.cache?.freshUntil || "") || Date.parse(data.observedAt) + 300000;
   if (bytes <= MAX_CACHE_BYTES && data.status === "ready" && data.portfolio?.complete && data.coverage?.selectedPeriodComplete && !data.cache?.stale && sourceExpiry > Date.now()) {
-    const keys = [...new Set([key, `${cik}:${data.selectedPeriod}`])];
+    const keys = [...new Set([key, `${cik}:${data.selectedPeriod}:${deliveryKey(delivery)}`])];
     for (const cacheKey of keys) {
     cache.delete(cacheKey);
     let total = [...cache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
-    while (cache.size && (cache.size >= 8 || total + bytes > MAX_CACHE_BYTES)) {
+    while (cache.size && (cache.size >= 32 || total + bytes > MAX_CACHE_BYTES)) {
       const oldest = cache.keys().next().value as string;
       total -= cache.get(oldest)!.bytes;
       cache.delete(oldest);
@@ -103,8 +119,8 @@ async function fetchReport(cik: string, period: string, signal: AbortSignal, for
   }
   return data;
 }
-function useReport(cik: string, period: string, enabled: boolean, attempt: number) {
-  const key = `${cik}:${period}`;
+function useReport(cik: string, period: string, enabled: boolean, attempt: number, delivery: DeliveryRequest = FULL_DELIVERY, refreshOnRetry = true) {
+  const key = `${cik}:${period}:${deliveryKey(delivery)}`;
   const [state, setState] = useState<Remote>(empty);
   const lastAttempt = useRef(attempt);
   useEffect(() => {
@@ -112,16 +128,16 @@ function useReport(cik: string, period: string, enabled: boolean, attempt: numbe
     const controller = new AbortController();
     let disposed = false;
     const deadline = setTimeout(() => controller.abort(), 90000);
-    const force = lastAttempt.current !== attempt;
+    const force = refreshOnRetry && lastAttempt.current !== attempt;
     lastAttempt.current = attempt;
     setState(previous => ({ key, status: "loading", data: previous.key === key ? previous.data : null, error: "" }));
-    fetchReport(cik, period, controller.signal, force).then(data => {
+    fetchReport(cik, period, controller.signal, force, delivery).then(data => {
       if (!disposed) setState({ key, status: "ready", data, error: "" });
     }).catch(error => {
       if (!disposed) setState(previous => ({ key, status: "error", data: previous.key === key ? previous.data : null, error: controller.signal.aborted ? "The SEC request took too long. Retry to continue loading this report." : error.message }));
     }).finally(() => clearTimeout(deadline));
     return () => { disposed = true; clearTimeout(deadline); controller.abort(); };
-  }, [cik, period, key, enabled, attempt]);
+  }, [cik, period, key, enabled, attempt, delivery, refreshOnRetry]);
   return enabled && cik ? state.key === key ? state : { ...empty, key, status: "loading" as const } : empty;
 }
 function csvCell(value: unknown) {
@@ -216,22 +232,61 @@ function Overview({ data, onView }: { data: Response; onView: (view: string) => 
     </div>
   </div>;
 }
-function Holdings({ data }: { data: Response }) {
+function Holdings({ data, onOpenHolding }: { data: Response; onOpenHolding: (source: Response, holding: Holding) => void }) {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [type, setType] = useState("all");
   const [sort, setSort] = useState("value");
-  const [requestedPage, setPage] = useState(0);
-  const rows = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return (data.portfolio.holdings as Holding[]).filter(row => (!needle || `${row.issuer} ${row.cusip} ${row.classTitle}`.toLowerCase().includes(needle)) && (type === "all" || type === "ordinary" && !row.putCall || type === "principal" && row.quantityType === "PRN" || row.putCall === type)).sort((a, b) => sort === "name" ? a.issuer.localeCompare(b.issuer) : sort === "quantity" ? (b.quantity ?? -Infinity) - (a.quantity ?? -Infinity) : (b.valueUsd ?? -Infinity) - (a.valueUsd ?? -Infinity));
-  }, [data.portfolio.holdings, query, type, sort]);
-  const pages = Math.ceil(rows.length / PAGE_SIZE), page = Math.min(requestedPage, Math.max(0, pages - 1));
-  function exportRows() {
-    const filings = data.portfolio.filings || [];
-    downloadCsv(`13f-${data.manager.cik}-${data.selectedPeriod}-holdings.csv`, [["Manager", "CIK", "Report period", "Coverage complete", "Issuer", "CUSIP", "Share class", "Put/call", "Quantity", "Quantity type", "Reported value USD", "Share of reported value %", "Investment discretion", "Source rows", "Source accessions", "SEC filing indexes", "SEC information tables"], ...rows.map(row => [data.manager.name, data.manager.cik, data.selectedPeriod, data.portfolio.complete, row.issuer, row.cusip, row.classTitle, row.putCall || "", row.quantity, row.quantityType, row.valueUsd, row.weightPct, row.investmentDiscretion, row.sourceRowCount, filings.map((f: any) => f.accession).join("; "), filings.map((f: any) => f.indexUrl).join("; "), filings.flatMap((f: any) => f.tableUrls || []).join("; ")])]);
+  const [page, setPage] = useState(0);
+  const [pageAttempt, setPageAttempt] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const exportController = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+  useEffect(() => () => {
+    const controller = exportController.current;
+    exportController.current = null;
+    controller?.abort();
+  }, []);
+  const request = useMemo<DeliveryRequest>(() => ({ mode: "holdings", offset: page * PAGE_SIZE, query: debouncedQuery, type, sort, snapshot: data.delivery?.version }), [page, debouncedQuery, type, sort, data.delivery?.version]);
+  const isFirstPage = page === 0 && !debouncedQuery && type === "all" && sort === "value";
+  const remote = useReport(data.manager.cik, data.selectedPeriod || "", !isFirstPage && query.trim() === debouncedQuery, pageAttempt, request, false);
+  const pageData = isFirstPage ? data : remote.data;
+  const loading = query.trim() !== debouncedQuery || !isFirstPage && ["idle", "loading"].includes(remote.status);
+  const rows: Holding[] = pageData?.portfolio?.holdings || [];
+  const count = pageData?.delivery?.filteredTotal || 0;
+  const pages = Math.ceil(count / PAGE_SIZE);
+  const filtered = !!debouncedQuery || type !== "all";
+  async function exportRows() {
+    if (exporting) return;
+    const controller = new AbortController();
+    exportController.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 90000);
+    setExporting(true); setExportError("");
+    try {
+      // A full report is fetched only for this explicit export. Filtering still
+      // covers every disclosed holding, including positions on other pages.
+      const full = await fetchReport(data.manager.cik, data.selectedPeriod || "", controller.signal, false, { mode: "full", snapshot: data.delivery?.version });
+      controller.signal.throwIfAborted();
+      const exportRows: Holding[] = select13FHoldings(full.portfolio.holdings, { query: debouncedQuery, type, sort });
+      const filings = full.portfolio.filings || [];
+      downloadCsv(`13f-${full.manager.cik}-${full.selectedPeriod}-holdings.csv`, [["Manager", "CIK", "Report period", "Coverage complete", "Issuer", "CUSIP", "Share class", "Put/call", "Quantity", "Quantity type", "Reported value USD", "Share of reported value %", "Investment discretion", "Source rows", "Source accessions", "SEC filing indexes", "SEC information tables"], ...exportRows.map(row => [full.manager.name, full.manager.cik, full.selectedPeriod, full.portfolio.complete, row.issuer, row.cusip, row.classTitle, row.putCall || "", row.quantity, row.quantityType, row.valueUsd, row.weightPct, row.investmentDiscretion, row.sourceRowCount, filings.map((f: any) => f.accession).join("; "), filings.map((f: any) => f.indexUrl).join("; "), filings.flatMap((f: any) => f.tableUrls || []).join("; ")])]);
+    } catch (error) {
+      if (!controller.signal.aborted) setExportError(error instanceof Error ? error.message : "The complete holdings export could not be loaded. Please retry.");
+      else if (exportController.current === controller) setExportError("The export took too long. Please retry.");
+    } finally {
+      clearTimeout(timeout);
+      if (exportController.current === controller) { exportController.current = null; setExporting(false); }
+    }
   }
-  return <section className={s.tablePanel}><div className={s.panelHeading}><div><span className={s.eyebrow}>The disclosed positions</span><h3>Holdings detail</h3></div><button type="button" onClick={exportRows} disabled={!rows.length}><ArrowDownToLine size={15} />Export {rows.length === data.portfolio.holdings.length ? "holdings" : "filtered rows"}</button></div><div className={s.filters}><label className={s.filterSearch}>Find a position<input type="search" value={query} placeholder="Issuer, CUSIP, or share class" onChange={e => { setQuery(e.target.value); setPage(0); }} /></label><label>Security type<select value={type} onChange={e => { setType(e.target.value); setPage(0); }}><option value="all">All reported securities</option><option value="ordinary">Non-option securities</option><option value="CALL">Calls</option><option value="PUT">Puts</option><option value="principal">Principal-amount units</option></select></label><label>Sort by<select value={sort} onChange={e => { setSort(e.target.value); setPage(0); }}><option value="value">Reported value · largest first</option><option value="name">Issuer · A to Z</option><option value="quantity">Quantity · largest first</option></select></label></div>
-    <div className={s.tableScroll} tabIndex={0} role="region" aria-label="13F holdings table, scroll horizontally for all columns"><table className={s.table}><thead><tr><th scope="col">Issuer / share class</th><th scope="col">CUSIP</th><th scope="col" className={s.numeric}>Reported value</th><th scope="col" className={s.numeric}>Report share</th><th scope="col" className={s.numeric}>Quantity</th><th scope="col">Units</th></tr></thead><tbody>{rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(row => <tr key={row.key}><td><PositionName holding={row} /></td><td className={s.identifier}>{row.cusip || "Not supplied"}</td><td className={s.numeric} title={finite(row.valueUsd) ? exactMoney.format(row.valueUsd) : undefined}>{money(row.valueUsd)}</td><td className={s.numeric}><div className={s.weightCell}><span>{percent(row.weightPct)}</span>{finite(row.weightPct) ? <i style={{ width: `${Math.min(100, Math.max(0, row.weightPct))}%` }} /> : null}</div></td><td className={s.numeric}>{number(row.quantity)}</td><td className={s.units}>{row.quantityType === "PRN" ? "Principal" : row.quantityType === "SH" ? "Shares" : "Not supplied"}</td></tr>)}</tbody></table>{!rows.length ? <p className={s.empty}>No positions match these filters.</p> : null}</div><Pagination page={page} pages={pages} count={rows.length} onPage={setPage} /><p className={s.caption}>Positions are identified by CUSIP, option type, and quantity units. CUSIP identifies the security class. Quantities across different securities or units are not directly comparable. Report share uses total disclosed value; it is not fund weight or net asset value.</p></section>;
+  return <HoldingActionContext.Provider value={holding => pageData && onOpenHolding(pageData, holding)}><section className={s.tablePanel}><div className={s.panelHeading}><div><span className={s.eyebrow}>The disclosed positions</span><h3>Holdings detail</h3></div><button type="button" onClick={() => void exportRows()} disabled={loading || exporting || !count}><ArrowDownToLine size={15} />{exporting ? "Preparing export…" : filtered ? "Export all matching rows" : "Export all holdings"}</button></div><div className={s.filters}><label className={s.filterSearch}>Find a position<input type="search" value={query} maxLength={160} placeholder="Issuer, CUSIP, or share class" onChange={e => { setQuery(e.target.value); setPage(0); }} /></label><label>Security type<select value={type} onChange={e => { setType(e.target.value); setPage(0); }}><option value="all">All reported securities</option><option value="ordinary">Non-option securities</option><option value="CALL">Calls</option><option value="PUT">Puts</option><option value="principal">Principal-amount units</option></select></label><label>Sort by<select value={sort} onChange={e => { setSort(e.target.value); setPage(0); }}><option value="value">Reported value · largest first</option><option value="name">Issuer · A to Z</option><option value="quantity">Quantity · largest first</option></select></label></div>
+    {loading ? <p className={s.caption} role="status"><RefreshCw size={14} className={s.spin} />Searching all {number(data.portfolio.positionCount)} positions…</p> : null}
+    {remote.status === "error" && !isFirstPage ? <p className={s.caption} role="alert">{remote.error} <button type="button" onClick={() => setPageAttempt(value => value + 1)}>Retry page</button></p> : null}
+    {exportError ? <p className={s.caption} role="alert">{exportError}</p> : null}
+    <div aria-busy={loading} className={s.tableScroll} tabIndex={0} role="region" aria-label="13F holdings table, scroll horizontally for all columns"><table className={s.table}><thead><tr><th scope="col">Issuer / share class</th><th scope="col">CUSIP</th><th scope="col" className={s.numeric}>Reported value</th><th scope="col" className={s.numeric}>Report share</th><th scope="col" className={s.numeric}>Quantity</th><th scope="col">Units</th></tr></thead><tbody>{rows.map(row => <tr key={row.key}><td><PositionName holding={row} /></td><td className={s.identifier}>{row.cusip || "Not supplied"}</td><td className={s.numeric} title={finite(row.valueUsd) ? exactMoney.format(row.valueUsd) : undefined}>{money(row.valueUsd)}</td><td className={s.numeric}><div className={s.weightCell}><span>{percent(row.weightPct)}</span>{finite(row.weightPct) ? <i style={{ width: `${Math.min(100, Math.max(0, row.weightPct))}%` }} /> : null}</div></td><td className={s.numeric}>{number(row.quantity)}</td><td className={s.units}>{row.quantityType === "PRN" ? "Principal" : row.quantityType === "SH" ? "Shares" : "Not supplied"}</td></tr>)}</tbody></table>{!loading && pageData && !rows.length ? <p className={s.empty}>No positions match these filters.</p> : null}</div>{!loading && pageData ? <Pagination page={page} pages={pages} count={count} onPage={setPage} /> : null}<p className={s.caption}>Positions are identified by CUSIP, option type, and quantity units. CUSIP identifies the security class. Quantities across different securities or units are not directly comparable. Report share uses total disclosed value; it is not fund weight or net asset value.</p></section></HoldingActionContext.Provider>;
 }
 function Changes({ data, before, onRetry }: { data: Response; before: Remote; onRetry: () => void }) {
   const [status, setStatus] = useState("all");
@@ -275,7 +330,8 @@ export default function ThirteenFWorkspace({ settings, onPatch }: { settings: an
   const [priorAttempt, setPriorAttempt] = useState(0);
   const [panel, setPanel] = useState<{ anchor: Response; data: Response; holding: Holding } | null>(null);
   const [historyHolding, setHistoryHolding] = useState<{ cik: string; period: string; key: string } | null>(null);
-  const current = useReport(cik, period, !!cik && view !== "compare", attempt);
+  const delivery = ["changes", "history", "markets"].includes(view) ? FULL_DELIVERY : view === "holdings" ? HOLDINGS_DELIVERY : SUMMARY_DELIVERY;
+  const current = useReport(cik, period, !!cik && view !== "compare", attempt, delivery);
   const data = current.data;
   const previousPeriod = data?.selectedPeriod ? priorQuarter(data.selectedPeriod) : "";
   const before = useReport(cik, previousPeriod, view === "changes" && current.status === "ready" && !!previousPeriod && data?.portfolio?.comparable === true, priorAttempt);
@@ -283,6 +339,11 @@ export default function ThirteenFWorkspace({ settings, onPatch }: { settings: an
     const source = data?.portfolio?.holdings?.some((row: Holding) => row.key === holding.key) ? data : before.data?.portfolio?.holdings?.some((row: Holding) => row.key === holding.key) ? before.data : null;
     const actual = source?.portfolio?.holdings?.find((row: Holding) => row.key === holding.key);
     if (source && actual && data) setPanel({ anchor: data, data: source, holding: actual });
+  }
+  function openPageHolding(source: Response, holding: Holding) {
+    if (!data || source.manager.cik !== cik || source.selectedPeriod !== data.selectedPeriod || source.delivery?.version !== data.delivery?.version) return;
+    const actual = source.portfolio?.holdings?.find((row: Holding) => row.key === holding.key);
+    if (actual) setPanel({ anchor: data, data: source, holding: actual });
   }
   function viewHoldingHistory(key: string) {
     if (panel && panel.anchor !== data) { setPanel(null); return; }
@@ -315,7 +376,7 @@ export default function ThirteenFWorkspace({ settings, onPatch }: { settings: an
       {!portfolio?.complete || portfolio?.confidentialOmitted || !data.coverage?.selectedPeriodComplete ? <div className={s.coverageNotice} role="status"><ShieldCheck size={17} /><p><strong>{portfolio?.confidentialOmitted ? "Some holdings were omitted under confidential treatment." : "This snapshot has a coverage limitation."}</strong> {portfolio?.complete ? "The public table can be inspected; quarter comparisons may be unavailable." : "Captured rows remain visible. Totals, concentration, and comparisons are shown only when supported by complete evidence."}</p><button type="button" onClick={() => chooseView("filings")}>Review evidence<ArrowRight size={14} /></button></div> : null}
       {issues.length ? <details className={s.evidenceNotes}><summary>{issues.length === 1 ? "Report coverage note" : `${issues.length} report coverage notes`}<ChevronDown size={15} /></summary><ul>{issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></details> : null}
       <nav className={s.tabs} aria-label="13F research views">{[{ key: "overview", label: "Overview", icon: Layers3 }, { key: "holdings", label: "Holdings", icon: Building2 }, { key: "changes", label: "Quarterly changes", icon: RefreshCw }, { key: "history", label: "Portfolio history", icon: ChartNoAxesCombined }, { key: "markets", label: "Market connections", icon: Network }, { key: "filings", label: "Filings & evidence", icon: FileText }].map(tab => <button key={tab.key} type="button" aria-current={view === tab.key ? "page" : undefined} onClick={() => chooseView(tab.key)}><tab.icon size={16} />{tab.label}{tab.key === "holdings" && hasHoldings ? <span>{number(portfolio.positionCount)}</span> : null}</button>)}</nav>
-      {view === "markets" ? <ThirteenFMarketConnections key={`${cik}:${data.selectedPeriod}:${data.observedAt}`} data={data} active={true} onInspectCompany={openHolding} /> : view === "filings" ? <Filings data={data} onChoose={chooseManager} /> : view === "history" ? <ThirteenFHistory key={`${cik}:${data.selectedPeriod}`} data={data} onOpenHolding={openHolding} onSelectPeriod={(managerPeriod: string) => onPatch({ managerPeriod })} initialHoldingKey={historyHolding?.cik === cik && historyHolding.period === data.selectedPeriod ? historyHolding.key : undefined} /> : !hasHoldings && view !== "changes" ? <section className={s.emptyPanel}><FileText size={28} /><h3>{portfolio?.complete ? "No reportable holdings were disclosed for this quarter" : String(portfolio?.reportType || "").toUpperCase().includes("NOTICE") ? "This filing is a notice, not a holdings table" : "No verified holdings table is available for this period"}</h3><p>{portfolio?.complete ? "The complete public information table reports zero entries. This does not establish that the manager holds no other assets." : String(portfolio?.reportType || "").toUpperCase().includes("NOTICE") ? "A Form 13F notice can indicate that another manager reports the holdings. Inspect the cover report and included manager references to find the reporting entity." : "The source chain does not currently provide a complete usable holdings table. Review the report coverage notes and SEC documents for the available evidence."}</p>{portfolio?.otherManagers?.length ? <div className={s.noticeManagers}>{portfolio.otherManagers.map((manager: any, index: number) => filerCik(manager.cik) ? <button type="button" key={manager.cik + ":" + index} onClick={() => chooseManager(filerCik(manager.cik)!)}>{manager.name || `CIK ${manager.cik}`}<ArrowRight size={14} /></button> : <span key={index}>{manager.name || "Reporting manager not named"}{manager.fileNumber ? ` · Form 13F file ${manager.fileNumber}` : ""}</span>)}</div> : null}<button type="button" onClick={() => chooseView("filings")}>Inspect filing evidence<ArrowRight size={15} /></button></section> : view === "holdings" ? <Holdings key={`${cik}:${data.selectedPeriod}`} data={data} /> : view === "changes" ? <Changes key={`${cik}:${data.selectedPeriod}`} data={data} before={before} onRetry={() => setPriorAttempt(value => value + 1)} /> : <Overview data={data} onView={chooseView} />}
+      {view === "markets" ? <ThirteenFMarketConnections key={`${cik}:${data.selectedPeriod}:${data.observedAt}`} data={data} active={true} onInspectCompany={openHolding} /> : view === "filings" ? <Filings data={data} onChoose={chooseManager} /> : view === "history" ? <ThirteenFHistory key={`${cik}:${data.selectedPeriod}:${deliveryKey(delivery)}`} data={data} onOpenHolding={openHolding} onSelectPeriod={(managerPeriod: string) => onPatch({ managerPeriod })} initialHoldingKey={historyHolding?.cik === cik && historyHolding.period === data.selectedPeriod ? historyHolding.key : undefined} /> : !hasHoldings && view !== "changes" ? <section className={s.emptyPanel}><FileText size={28} /><h3>{portfolio?.complete ? "No reportable holdings were disclosed for this quarter" : String(portfolio?.reportType || "").toUpperCase().includes("NOTICE") ? "This filing is a notice, not a holdings table" : "No verified holdings table is available for this period"}</h3><p>{portfolio?.complete ? "The complete public information table reports zero entries. This does not establish that the manager holds no other assets." : String(portfolio?.reportType || "").toUpperCase().includes("NOTICE") ? "A Form 13F notice can indicate that another manager reports the holdings. Inspect the cover report and included manager references to find the reporting entity." : "The source chain does not currently provide a complete usable holdings table. Review the report coverage notes and SEC documents for the available evidence."}</p>{portfolio?.otherManagers?.length ? <div className={s.noticeManagers}>{portfolio.otherManagers.map((manager: any, index: number) => filerCik(manager.cik) ? <button type="button" key={manager.cik + ":" + index} onClick={() => chooseManager(filerCik(manager.cik)!)}>{manager.name || `CIK ${manager.cik}`}<ArrowRight size={14} /></button> : <span key={index}>{manager.name || "Reporting manager not named"}{manager.fileNumber ? ` · Form 13F file ${manager.fileNumber}` : ""}</span>)}</div> : null}<button type="button" onClick={() => chooseView("filings")}>Inspect filing evidence<ArrowRight size={15} /></button></section> : view === "holdings" ? <Holdings key={`${cik}:${data.selectedPeriod}:${data.delivery?.version}`} data={data} onOpenHolding={openPageHolding} /> : view === "changes" ? <Changes key={`${cik}:${data.selectedPeriod}:${deliveryKey(delivery)}`} data={data} before={before} onRetry={() => setPriorAttempt(value => value + 1)} /> : <Overview data={data} onView={chooseView} />}
       <footer className={s.workspaceFooter}><span><ShieldCheck size={14} />SEC source evidence · Retrieved {date(data.observedAt)}{data.cache?.checkedAt ? ` · Last checked ${new Date(data.cache.checkedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC` : ""}</span><p>13F reports are delayed public disclosures. They exclude many assets and short positions; they do not measure current holdings or investment returns.</p></footer>
     </> : null}
     {panel && current.status === "ready" && panel.anchor === data ? <ThirteenFCompanyPanel key={`${panel.data.manager.cik}:${panel.data.selectedPeriod}:${panel.holding.key}`} holding={panel.holding} data={panel.data} onClose={() => setPanel(null)} onViewHistory={viewHoldingHistory} /> : null}
