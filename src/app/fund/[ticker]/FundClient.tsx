@@ -55,6 +55,7 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
   const evidenceRef = useRef<HTMLElement>(null);
   const previousAccession = useRef(selectedAccession);
   const briefRefreshes = useRef(new Set<string>());
+  const loadedApiQuery = useRef("");
   // Report navigation updates both the server research brief and this workspace.
   // Keep this component mounted so notes and research controls survive the change.
   useEffect(() => {
@@ -95,7 +96,10 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "The fund request failed.");
-        if (!controller.signal.aborted) setData(json);
+        if (!controller.signal.aborted) {
+          loadedApiQuery.current = apiQuery;
+          setData(json);
+        }
       })
       .catch((err) => {
         if (!controller.signal.aborted) setError(err.message);
@@ -106,7 +110,7 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
     return () => controller.abort();
   }, [apiQuery, retry]);
   useEffect(() => {
-    if (preparedSummaryReady || loading || error || data?.status !== "ready" || data.ticker !== urlTicker
+    if (preparedSummaryReady || loading || error || loadedApiQuery.current !== apiQuery || data?.status !== "ready" || data.ticker !== urlTicker
       || accession !== selectedAccession || accession && data.accession !== accession) return;
     const key = `${urlTicker}:${accession || "latest"}`;
     if (briefRefreshes.current.has(key)) return;
@@ -115,7 +119,7 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
     briefRefreshes.current.add(key);
     while (briefRefreshes.current.size > 24) briefRefreshes.current.delete(briefRefreshes.current.values().next().value!);
     router.refresh();
-  }, [preparedSummaryReady, loading, error, data, urlTicker, accession, selectedAccession, router]);
+  }, [preparedSummaryReady, loading, error, data, apiQuery, urlTicker, accession, selectedAccession, router]);
   useEffect(() => {
     if (accession !== selectedAccession) return;
     const p = new URLSearchParams(apiQuery);
