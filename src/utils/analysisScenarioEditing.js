@@ -21,6 +21,12 @@ export const SCENARIO_FIELDS = {
     label: "Replacement borrowing / baseline deposits",
     unit: "%",
   },
+  scenarioTaxRate: { label: "Tax on positive incremental earnings", unit: "%" },
+  scenarioWorkingCapital: { label: "Extra working capital / revenue", unit: "%" },
+  scenarioCapexChange: { label: "Capital spending change", unit: "%" },
+  scenarioBorrowing: { label: "New borrowing / revenue", unit: "%" },
+  scenarioDebtRepayment: { label: "Repayment / reported debt", unit: "%" },
+  scenarioBorrowRate: { label: "Annual interest on new borrowing", unit: "%" },
 };
 
 // Drafts are deliberately separate from committed assumptions. Blank, partial,
@@ -32,6 +38,11 @@ export function validateScenarioDrafts(drafts = {}) {
     if (key === "scenarioModel") {
       if (["margin", "cost"].includes(raw)) values[key] = raw;
       else errors[key] = "Choose a supported operating model.";
+      continue;
+    }
+    if (key === "scenarioCashMode") {
+      if (["independent", "connected"].includes(raw)) values[key] = raw;
+      else errors[key] = "Choose an independent or connected cash model.";
       continue;
     }
     if (!Object.hasOwn(SCENARIO_LIMITS, key)) continue;

@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { FlaskConical, Undo2, Redo2, RotateCcw } from "lucide-react";
 import {
   buildAnalysisScenario,
@@ -11,19 +12,18 @@ import {
   validateScenarioDrafts,
   scenarioAssumptionsEqual,
 } from "../../utils/analysisScenarioEditing.js";
-import { analysisValue } from "../../utils/analysisNotebook.js";
+import { buildScenarioCalibration } from "../../utils/analysisScenarioCalibration.js";
 import AnalysisScenarioContext from "./AnalysisScenarioContext";
 import AnalysisScenarioLab from "./AnalysisScenarioLab";
-import AnalysisScenarioSensitivity from "./AnalysisScenarioSensitivity";
-import AnalysisGoalSeek from "./AnalysisGoalSeek";
-import AnalysisScenarioCases from "./AnalysisScenarioCases";
+const AnalysisScenarioSensitivity = dynamic(() => import("./AnalysisScenarioSensitivity"));
+const AnalysisGoalSeek = dynamic(() => import("./AnalysisGoalSeek"));
+const AnalysisScenarioBaselineReview = dynamic(() => import("./AnalysisScenarioBaselineReview"));
 import styles from "./AnalysisScenarioWorkspace.module.css";
 
 const tabs = [
   ["model", "Model & results"],
   ["sensitivity", "Drivers & sensitivity"],
   ["targets", "Solve a target"],
-  ["cases", "Cases & briefs"],
 ];
 export default function AnalysisScenarioWorkspace(props: any) {
   const context = `${props.data.ticker}:${props.settings.basis}:${props.settings.asOf}:${props.data.periods?.[props.index]?.end}`;
@@ -43,10 +43,16 @@ function ScenarioWorkbench({
   marketContext,
   onClearMarketContext,
 }: any) {
+  const assumptionKey = JSON.stringify(normalizeScenarioSettings(settings));
   const scenario = useMemo(
-    () => buildAnalysisScenario(data, settings, index),
-    [data, settings, index],
+    () => buildAnalysisScenario(data, JSON.parse(assumptionKey), index),
+    [data, assumptionKey, index],
   );
+  const calibration = useMemo(
+    () => buildScenarioCalibration(data, { basis: settings.basis, asOf: settings.asOf }, index),
+    [data, index, settings.basis, settings.asOf],
+  );
+  const [reviewOpen, setReviewOpen] = useState(Boolean(settings.scenarioCase));
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [past, setPast] = useState<any[]>([]);
   const [future, setFuture] = useState<any[]>([]);
@@ -60,10 +66,10 @@ function ScenarioWorkbench({
     setPast([]);
     setFuture([]);
     setMessage(
-      "Reported baseline changed. Applied assumptions now use this period; assumption edit history was cleared. Saved case snapshots are preserved.",
+      "Reported baseline changed. Applied assumptions now use this period; assumption edit history was cleared. Retained baseline snapshots are preserved.",
     );
   }, [context]);
-  const tab = settings.scenarioTab;
+  const tab = tabs.some(([key]) => key === settings.scenarioTab) ? settings.scenarioTab : "model";
   const validation = validateScenarioDrafts(drafts);
   const dirty = Object.keys(drafts).length > 0;
   function commit(next: any, fromEditor = false) {
@@ -151,14 +157,6 @@ function ScenarioWorkbench({
             view: "scenarios",
           },
     });
-  const value = (amount: any, format = "currency") =>
-    analysisValue(amount, format, settings.units);
-  const operating = scenario.operating?.rows.find(
-    (row: any) => row.key === "OperatingIncome",
-  );
-  const equity = scenario.balance.rows.find(
-    (row: any) => row.key === "EquityAssets",
-  );
   const marketPath = marketContext
     ? marketContext.marketPath || `/market?${new URLSearchParams({
         tab: "positioning",
@@ -170,17 +168,10 @@ function ScenarioWorkbench({
   const sections: any = {
     model: (
       <>
-        <AnalysisScenarioContext
-          data={data}
-          settings={settings}
-          index={index}
-          scenario={scenario}
-          onPatch={commit}
-          onInspect={inspect}
-        />
         <AnalysisScenarioLab
           settings={settings}
           scenario={scenario}
+          calibration={calibration}
           drafts={drafts}
           errors={validation.errors}
           onDraft={(key: string, raw: string) => {
@@ -196,6 +187,23 @@ function ScenarioWorkbench({
           }}
           onInspect={inspect}
         />
+        <AnalysisScenarioContext
+          data={data}
+          settings={settings}
+          index={index}
+          scenario={scenario}
+          onPatch={commit}
+          onInspect={inspect}
+        />
+        <details className={styles.baselineReview} open={reviewOpen}
+          onToggle={(event) => setReviewOpen(event.currentTarget.open)}>
+          <summary>Compare new filings <span>Keep the original. Separate data changes from assumption changes.</span></summary>
+          {reviewOpen && <AnalysisScenarioBaselineReview
+            data={data} settings={settings} index={index} scenario={scenario}
+            cases={cases} onSaveCases={onSaveCases} onPatch={commit}
+            onInspect={inspect} draftsPending={dirty} ready={ready}
+          />}
+        </details>
       </>
     ),
     sensitivity: (
@@ -218,19 +226,7 @@ function ScenarioWorkbench({
         onApply={(next: any) => commit({ ...next, scenarioTab: "model" })}
       />
     ),
-    cases: (
-      <AnalysisScenarioCases
-        data={data}
-        settings={settings}
-        index={index}
-        scenario={scenario}
-        cases={cases}
-        onSaveCases={ready ? onSaveCases : () => false}
-        onPatch={commit}
-        onInspect={inspect}
-        draftsPending={dirty}
-      />
-    ),
+
   };
   return (
     <section
@@ -245,71 +241,15 @@ function ScenarioWorkbench({
               {data.ticker}
             </p>
             <h2 id="scenario-workbench-heading">
-              Understand what has to change.
+              Change the assumptions. Follow the effects.
             </h2>
             <p className={styles.muted}>
-              Start with reported SEC figures. Test explicit assumptions,
-              explain the effects, and keep the evidence with your case.
+              Explore how operating performance, cash and financial strength respond to your assumptions.
             </p>
           </div>
           <span className={styles.badge}>
             Hypothetical · {scenario.period?.label || scenario.period?.end}
           </span>
-        </div>
-        <div className={styles.summary}>
-          {scenario.operating && (
-            <div>
-              <span>Hypothetical operating income</span>
-              <strong>{value(operating?.selection.point.value)}</strong>
-              <small>
-                {scenario.operating.reason ||
-                  `Change: ${value(scenario.operating.delta)} · ${scenario.settings.scenarioModel} model`}
-              </small>
-            </div>
-          )}
-          <div>
-            <span>Hypothetical equity / assets</span>
-            <strong>{value(equity?.selection.point.value, "percent")}</strong>
-            <small>
-              {scenario.balance.reason || "Independent static balance exercise"}
-            </small>
-          </div>
-          {scenario.banking ? (
-            <div>
-              <span>Unfunded withdrawals</span>
-              <strong>
-                {scenario.balance.funding?.available
-                  ? value(scenario.balance.fundingGap)
-                  : "Unavailable"}
-              </strong>
-              <small>
-                Uses your cash availability and borrowing assumptions
-              </small>
-            </div>
-          ) : (
-            <div>
-              <span>
-                {scenario.corporate
-                  ? "Applied revenue assumption"
-                  : "Applied asset loss assumption"}
-              </span>
-              <strong>
-                {value(
-                  scenario.corporate
-                    ? scenario.settings.scenarioRevenue
-                    : scenario.settings.scenarioLoss,
-                  "percent",
-                )}
-              </strong>
-              <small>
-                {!scenario.corporate
-                  ? "Share of reported baseline assets"
-                  : scenario.settings.scenarioModel === "cost"
-                    ? `${scenario.settings.scenarioVariableCost}% variable cost share · ${scenario.settings.scenarioCostChange}% cost change`
-                    : `${scenario.settings.scenarioMargin} pp operating margin change`}
-              </small>
-            </div>
-          )}
         </div>
         <div className={styles.navigation} aria-label="Scenario sections">
           {tabs.map(([key, label]) => (
@@ -356,14 +296,13 @@ function ScenarioWorkbench({
             <RotateCcw size={14} aria-hidden="true" />
             Reset all assumptions
           </button>
-          <span>
-            Saved cases: {Array.isArray(cases) ? cases.length : 0}/8 · stored in
-            this browser
-          </span>
+          <Link href="/analysis/scenarios" prefetch={false} className={styles.guide}>How these models work ↗</Link>
         </div>
       </header>
       {cftcEnabled && (
-        <section className={styles.marketContext} aria-labelledby="scenario-market-context-heading">
+        <details className={styles.marketContext}>
+          <summary>{marketContext ? `${marketContext.label} · CFTC context · ${marketContext.reportDate}` : "Optional market context"}<span>SEC connections & CFTC positioning</span></summary>
+          <div className={styles.marketBody}>
           <div className={styles.heading}>
             <div>
               <p className={styles.eyebrow}>Research behind your assumptions</p>
@@ -406,7 +345,7 @@ function ScenarioWorkbench({
             </button>
             {marketContext && (
               <>
-                <Link href={marketPath}>
+                <Link href={marketPath} prefetch={false}>
                   Open contract history
                 </Link>
                 <button type="button" onClick={onClearMarketContext}>
@@ -415,7 +354,8 @@ function ScenarioWorkbench({
               </>
             )}
           </div>
-        </section>
+          </div>
+        </details>
       )}
       {dirty && (
         <p className={styles.notice}>

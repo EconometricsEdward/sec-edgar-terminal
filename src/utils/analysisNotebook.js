@@ -53,7 +53,7 @@ export const ANALYSIS_SETTINGS = {
 };
 const choices = {
   basis: ["annual", "quarter", "ytd", "ttm"],
-  scenarioTab: ["model", "sensitivity", "targets", "cases"],
+  scenarioTab: ["model", "sensitivity", "targets"],
   view: [
     "overview",
     "statements",

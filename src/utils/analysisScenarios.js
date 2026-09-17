@@ -1,4 +1,5 @@
 import { labInput, labCalculatedPoint } from "./analysisFormula.js";
+import { buildConnectedScenario } from "./analysisConnectedScenario.js";
 
 export const SCENARIO_DEFAULTS = {
   scenarioRevenue: 0,
@@ -10,6 +11,13 @@ export const SCENARIO_DEFAULTS = {
   scenarioCostChange: 0,
   scenarioCashAvailable: 100,
   scenarioReplacementFunding: 0,
+  scenarioCashMode: "independent",
+  scenarioTaxRate: 25,
+  scenarioWorkingCapital: 0,
+  scenarioCapexChange: 0,
+  scenarioBorrowing: 0,
+  scenarioDebtRepayment: 0,
+  scenarioBorrowRate: 0,
 };
 export const SCENARIO_LIMITS = {
   scenarioRevenue: [-50, 50],
@@ -20,6 +28,12 @@ export const SCENARIO_LIMITS = {
   scenarioCostChange: [-50, 50],
   scenarioCashAvailable: [0, 100],
   scenarioReplacementFunding: [0, 50],
+  scenarioTaxRate: [0, 60],
+  scenarioWorkingCapital: [-50, 50],
+  scenarioCapexChange: [-100, 100],
+  scenarioBorrowing: [0, 100],
+  scenarioDebtRepayment: [0, 100],
+  scenarioBorrowRate: [0, 30],
 };
 export function normalizeScenarioSettings(input = {}) {
   const source = input && typeof input === "object" ? input : {};
@@ -35,6 +49,8 @@ export function normalizeScenarioSettings(input = {}) {
   }
   if (["margin", "cost"].includes(source.scenarioModel))
     settings.scenarioModel = source.scenarioModel;
+  if (["independent", "connected"].includes(source.scenarioCashMode))
+    settings.scenarioCashMode = source.scenarioCashMode;
   return settings;
 }
 const ratio = (a, b) => {
@@ -81,7 +97,7 @@ export function buildAnalysisScenario(data, input, index) {
         inputs,
         value,
         `Hypothetical: ${formula}`,
-        `${hypothetical} ${note}`,
+        `${settings.scenarioCashMode === "connected" ? "Hypothetical static sensitivity, not a forecast or reported SEC result. This operating calculation itself excludes tax and cash effects; the connected model states its separate assumptions. No probability or regulatory-capital conclusion is implied." : hypothetical} ${note}`,
       ),
     },
   });
@@ -135,9 +151,12 @@ export function buildAnalysisScenario(data, input, index) {
     const bridgeMethod = costModel
       ? "First change revenue and variable costs with revenue volume; then apply the assumed cost change to both fixed and volume-adjusted variable costs."
       : "Separate the revenue effect at baseline margin, the margin effect at baseline revenue, and their interaction.";
+    const connectionNote = settings.scenarioCashMode === "connected"
+      ? "This operating result is the starting point for the optional connected model. Incremental tax, working capital, capital spending, financing and ending-balance effects are shown separately there under explicit assumptions."
+      : "This does not model net income, cash flow, tax, or balance sheet effects. The separate balance exercise below is not linked to this result.";
     const note = costModel
-      ? `Revenue change = ${settings.scenarioRevenue}%; baseline implied operating costs = reported revenue less operating income. User variable-cost share = ${settings.scenarioVariableCost}% of baseline implied costs; the remainder is fixed. Variable costs move proportionately with revenue; this is a modeling assumption, not reported cost behavior. After the volume change, both fixed and variable costs change by ${settings.scenarioCostChange}%. The operating margin control is inactive in this model. ${bridgeMethod} This does not model net income, cash flow, tax, or balance sheet effects. The separate balance exercise below is not linked to this result.`
-      : `Revenue change = ${settings.scenarioRevenue}%; operating margin change = ${settings.scenarioMargin} percentage points. Margin movement is an independent user assumption; costs are implied by revenue less operating income. ${bridgeMethod} This does not model net income, cash flow, tax, or balance sheet effects. The separate balance exercise below is not linked to this result.`;
+      ? `Revenue change = ${settings.scenarioRevenue}%; baseline implied operating costs = reported revenue less operating income. User variable-cost share = ${settings.scenarioVariableCost}% of baseline implied costs; the remainder is fixed. Variable costs move proportionately with revenue; this is a modeling assumption, not reported cost behavior. After the volume change, both fixed and variable costs change by ${settings.scenarioCostChange}%. The operating margin control is inactive in this model. ${bridgeMethod} ${connectionNote}`
+      : `Revenue change = ${settings.scenarioRevenue}%; operating margin change = ${settings.scenarioMargin} percentage points. Margin movement is an independent user assumption; costs are implied by revenue less operating income. ${bridgeMethod} ${connectionNote}`;
     const bridgeParts = costModel
       ? [
           [
@@ -252,7 +271,9 @@ export function buildAnalysisScenario(data, input, index) {
         diagnostic(
           "operatingLoss",
           "warning",
-          "These assumptions produce an operating loss; no net income or cash-flow conclusion is implied.",
+          settings.scenarioCashMode === "connected"
+            ? "These assumptions produce an operating loss. Its incremental cash and net-income effects depend on the explicit connected-model assumptions."
+            : "These assumptions produce an operating loss; no net income or cash-flow conclusion is implied.",
         ),
       );
     if (!reason && !costModel && changedMargin > 100)
@@ -530,9 +551,11 @@ export function buildAnalysisScenario(data, input, index) {
         "Replacement borrowing is an explicit assumption: it adds cash and debt equally. Interest, collateral and access to funding are not modeled.",
       ),
     );
+  const connected = buildConnectedScenario(data, settings, index, operating);
   return {
     settings,
     operating,
+    connected,
     banking,
     corporate,
     period,
@@ -551,6 +574,9 @@ export function buildAnalysisScenario(data, input, index) {
       diagnostics,
       funding: { available: fundingAvailable, reason: fundingReason },
     },
-    diagnostics: [...(operating?.diagnostics || []), ...diagnostics],
+    diagnostics: [
+      ...(operating?.diagnostics || []),
+      ...(connected.enabled ? connected.diagnostics : diagnostics),
+    ],
   };
 }

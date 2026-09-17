@@ -612,3 +612,14 @@ test("Noncash-asset limits block an impossible applied boundary and qualify curr
   assert.match(check.capacityNote, /exceeds the remaining noncash assets/);
   close(check.remainingNoncash, 50e6);
 });
+
+
+test("applying a standalone asset-loss target leaves the connected model explicitly", () => {
+  const data = company();
+  const input = { targetEquityRatio: "5" };
+  const applied = assetLossGoalApplication(data, input, 0, { scenarioCashMode: "connected" });
+  assert.equal(applied.reason, null);
+  assert.equal(applied.patch.scenarioCashMode, "independent");
+  const check = buildScenarioHeadroom(data, { scenarioCashMode: "connected" }, 0);
+  assert.match(check.reason, /independent balance exercise/);
+});

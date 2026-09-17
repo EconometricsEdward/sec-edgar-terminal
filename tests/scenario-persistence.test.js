@@ -152,7 +152,6 @@ test("Scenario cases appear in research search with their original assumptions, 
   assert.equal(destination.pathname, "/analysis/AAPL");
   for (const [setting, value] of Object.entries({
     view: "scenarios",
-    scenarioTab: "cases",
     scenarioCase: "scenario_costs",
     units: "billions",
     end: "2025-12-31",
@@ -166,6 +165,7 @@ test("Scenario cases appear in research search with their original assumptions, 
   }))
     assert.equal(destination.searchParams.get(setting), value, setting);
   assert.equal(destination.searchParams.has("notes"), false);
+  assert.equal(destination.searchParams.has("scenarioTab"), false);
 });
 
 test("Research backups restore complete immutable scenario evidence alongside existing company research", () => {

@@ -65,7 +65,7 @@ export const SITE_TOOLS = Object.freeze([
 ]);
 
 const TICKER = /^[A-Z0-9][A-Z0-9.-]{0,14}$/;
-const LANDINGS = new Set([...SITE_TOOLS.map((tool) => tool.href), "/about"]);
+const LANDINGS = new Set([...SITE_TOOLS.map((tool) => tool.href), "/about", "/analysis/scenarios"]);
 
 /** A CIK identifies an SEC filer; it must never become a stock ticker. */
 export function normalizeCikIdentifier(value) {
@@ -178,6 +178,7 @@ export function safeInternalPath(value) {
 export function entityFromRoute(pathname, searchParams) {
   if (typeof pathname !== "string") return null;
   const path = pathname.replace(/\/$/, "") || "/";
+  if (path === "/analysis/scenarios") return null;
   if (path === "/fund") {
     if (queryValue(searchParams, "view") !== "13f" || queryValue(searchParams, "managerView") === "compare") return null;
     const cik = normalizeCikIdentifier(queryValue(searchParams, "managerCik"));

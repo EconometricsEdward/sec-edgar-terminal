@@ -1,4 +1,5 @@
 import { Activity, ArrowDown, FileCheck2, GitCompareArrows, Layers3 } from "lucide-react";
+import Link from "next/link";
 import { buildPageMetadata } from "../../utils/siteMetadata";
 import CompanySearch from "./CompanySearch";
 import AnalysisDirectory from "./AnalysisDirectory";
@@ -40,7 +41,7 @@ export default async function AnalysisIndexPage() {
       <div className={styles.capabilities} aria-label="Available company analysis tools">
         <span><Layers3 size={18} aria-hidden="true" /> Financial statements</span>
         <span><Activity size={18} aria-hidden="true" /> Growth &amp; cash flow</span>
-        <span><GitCompareArrows size={18} aria-hidden="true" /> Ratios &amp; scenarios</span>
+        <Link href="/analysis/scenarios" prefetch={false}><GitCompareArrows size={18} aria-hidden="true" /> Scenario methodology <span aria-hidden="true">↗</span></Link>
         {cftcEnabled && <span><ArrowDown size={18} aria-hidden="true" /> CFTC market context</span>}
       </div>
       <AnalysisDirectory sectors={sectors} />

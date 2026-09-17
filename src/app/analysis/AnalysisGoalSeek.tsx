@@ -456,7 +456,7 @@ function GoalSeekForm({
                         )}
                       </dl>
                       <p className={styles.small}>
-                        Replaces the current total asset-loss assumption.{" "}
+                        Selects the independent balance exercise and replaces the current total asset-loss assumption.{" "}
                         {data.lens === "banking"
                           ? "Withdrawals and replacement borrowing are reset so the scenario matches this standalone solution. Current-scenario headroom, including funding, is checked below."
                           : "Current-scenario headroom is checked separately below."}

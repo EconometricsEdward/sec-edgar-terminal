@@ -1123,7 +1123,7 @@ function entriesFor(source, data, store = {}) {
           analysisPath(t, {
             ...entry.settings,
             view: "scenarios",
-            scenarioTab: "cases",
+            scenarioTab: "model",
             scenarioCase: entry.id,
           }),
           entry.updatedAt,

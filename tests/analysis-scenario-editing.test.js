@@ -124,3 +124,10 @@ test("collected scenario evidence retains original settings and actual historica
     { basis: "annual", end: "2024-09-28", asOf: "" },
   );
 });
+
+
+test("retired Cases & briefs links reopen Model & results and preserve the reference identity", () => {
+  const settings = readAnalysisSettings("view=scenarios&scenarioTab=cases&scenarioCase=case_old");
+  assert.equal(settings.scenarioTab, "model");
+  assert.equal(settings.scenarioCase, "case_old");
+});
