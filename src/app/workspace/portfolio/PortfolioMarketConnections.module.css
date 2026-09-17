@@ -5,7 +5,7 @@
   min-width: 0;
 }
 .detail, .comparisonAnchor {
-  scroll-margin-top: 1.25rem;
+  scroll-margin-top: calc(var(--site-header-height, 120px) + 20px);
 }
 .detail:focus-visible {
   outline: 2px solid #f5ca60;
