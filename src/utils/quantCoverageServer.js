@@ -7,7 +7,7 @@ import { MARKET_VERSION } from './marketResearch.js';
 import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary, MARKET_REVENUE_VERSION } from './marketResearchData.js';
 import { isMarketAtlas } from './marketResearchValidation.js';
 import { secFetch } from './secClient.js';
-import { readPreparedSecDocument } from './secDocumentStore.js';
+import { readPreparedSecDocument, refreshSecDocument, secDocumentIdentity } from './secDocumentStore.js';
 import { getOperatingTickers } from './tickerMap.js';
 import { warmGet, warmSet, warmGetMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
@@ -65,24 +65,29 @@ export function filingFingerprint(submissions) {
 export function needsFactsRefresh(cached, fingerprint, now = Date.now()) {
   return cached?.needsReconciliation || cached?.company?.revenueVersion !== MARKET_REVENUE_VERSION || fingerprint !== cached.fingerprint || !Number.isFinite(Date.parse(cached.factsRetrievedAt)) || now - Date.parse(cached.factsRetrievedAt) >= 7 * DAY;
 }
-async function secJson(path, signal) {
+async function secDocument(path, signal) {
   const prepared = await readPreparedSecDocument(path, { allowStale: false });
-  if (prepared) return prepared.payload;
+  if (prepared) return prepared;
   const response = await secFetch(`https://data.sec.gov${path}`, { headers: { Accept: 'application/json' }, signal, timeoutMs: 15000, retries: 0, cache: 'no-store' });
   if (!response.ok) throw new Error(`SEC returned HTTP ${response.status}.`);
-  return response.json();
+  const payload = await response.json(), fetchedAt = new Date().toISOString();
+  return { payload, metadata: { fetchedAt, revalidatedAt: fetchedAt } };
+}
+async function secJson(path, signal) {
+  return (await secDocument(path, signal)).payload;
 }
 async function refreshCompany(entry, cached, signal) {
   const now = Date.now();
   if (!cached?.needsReconciliation && cached?.company?.revenueVersion === MARKET_REVENUE_VERSION && cached?.checkedAt && now - Date.parse(cached.checkedAt) < 20 * 3600000) return { ...cached, reused: true };
   const submissions = await secJson(`/submissions/CIK${entry.cik}.json`, signal);
   const fingerprint = filingFingerprint(submissions);
-  let company = cached?.company, factsRetrievedAt = cached?.factsRetrievedAt;
+  let company = cached?.company, factsRetrievedAt = cached?.factsRetrievedAt, factsValidatedAt = cached?.factsValidatedAt;
   if (needsFactsRefresh(cached, fingerprint, now)) {
-    const facts = await secJson(`/api/xbrl/companyfacts/CIK${entry.cik}.json`, signal);
+    const factsEnvelope = await secDocument(`/api/xbrl/companyfacts/CIK${entry.cik}.json`, signal), facts = factsEnvelope.payload;
     if (!facts.facts || !submissions.sic || Number(facts.cik) !== Number(entry.cik)) throw new Error('SEC facts or industry identity are unavailable.');
     company = marketCompanySummary(buildMarketCompany({ ticker: entry.ticker, cik: entry.cik, name: submissions.name || entry.name, sic: submissions.sic, facts: facts.facts, acceptanceTimes: marketAcceptanceTimes(submissions) }, MARKET_LENSES.filter(c => c.tickers.includes(entry.ticker)).map(c => c.id)));
-    factsRetrievedAt = new Date().toISOString();
+    factsRetrievedAt = factsEnvelope.metadata.fetchedAt;
+    factsValidatedAt = factsEnvelope.metadata.revalidatedAt || factsRetrievedAt;
   }
   const checkedAt = new Date().toISOString();
   const recent=submissions.filings.recent;
@@ -90,19 +95,22 @@ async function refreshCompany(entry, cached, signal) {
   const expected=recent.accessionNumber[latestIndex];
   const represented=[company.reports?.annual?.accession,company.reports?.ttm?.accession,company.filingComparisons?.annual?.current?.accession,company.filingComparisons?.ttm?.current?.accession];
   const needsReconciliation=Boolean(expected)&&!represented.includes(expected);
-  const result = { company, fingerprint, checkedAt, factsRetrievedAt, attemptedAt: checkedAt, needsReconciliation };
+  const result = { company, fingerprint, checkedAt, factsRetrievedAt, factsValidatedAt, attemptedAt: checkedAt, needsReconciliation };
   if (!await warmSet(QUANT_COMPANY_CACHE, entry.cik, result, 14 * 86400)) throw new Error('Company checkpoint could not be persisted.');
   return result;
 }
 
 /** Each daily shard is small and resumable; successful issuers never lose their checkpoint. */
-export async function refreshQuantBatch(batch, { signal, deadline = Date.now() + 270000 } = {}) {
+export async function refreshQuantBatch(batch, { signal, deadline = Date.now() + 270000, tickers = null } = {}) {
   if (!Number.isSafeInteger(batch) || batch < 0 || batch >= QUANT_BATCHES) throw Object.assign(new Error('Invalid coverage batch.'), { status: 400 });
+  if (tickers !== null && (!Array.isArray(tickers) || tickers.length < 1 || tickers.length > 160
+    || tickers.some(ticker => !/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(ticker)))) throw new Error('Choose at most 160 valid correction tickers.');
   if (!warmCacheEnabled()) throw new Error('Shared coverage storage is unavailable.');
   const lease = await warmAcquireLease(QUANT_COVERAGE_CACHE, `batch-${batch}`, 295000);
   if (!lease) return { skipped: 'Batch coordination is unavailable or another refresh is running.', batch };
   try {
-    const membership = await readQuantMembership(), entries = membership.rows.filter(r => quantBatch(r.cik) === batch);
+    const selected = tickers ? new Set(tickers) : null;
+    const membership = await readQuantMembership(), entries = membership.rows.filter(r => quantBatch(r.cik) === batch && (!selected || selected.has(r.ticker)));
     const ids = entries.map(r => r.cik);
     const [current, legacy] = await Promise.all([
       warmGetMany(QUANT_COMPANY_CACHE, ids, {signal,deadline}),
@@ -159,7 +167,8 @@ export function assembleQuantAtlas(membership, records, now = Date.now()) {
       failures.push({ ticker: entry.ticker, reason: record?.lastError || 'A current SEC check is not available.', retryable: true }); return;
     }
     const group = QUANT_GROUPS.find(g => g.label === entry.sector);
-    companies.push({ ...record.company, ticker: entry.ticker, researchGroup: group, membershipFund: entry.fund, checkedAt: record.checkedAt, factsRetrievedAt: record.factsRetrievedAt });
+    companies.push({ ...record.company, ticker: entry.ticker, researchGroup: group, membershipFund: entry.fund, checkedAt: record.checkedAt, factsRetrievedAt: record.factsRetrievedAt,
+      ...(record.factsValidatedAt ? { factsValidatedAt: record.factsValidatedAt } : {}) });
   });
   if (companies.length < Math.ceil(membership.issuers * .95)) throw new Error(`Expanded SEC coverage is still preparing: ${companies.length} of ${membership.issuers} issuers checked. The prior snapshot remains available.`);
   const checked = companies.map(c => c.checkedAt).sort();
@@ -175,17 +184,19 @@ export async function publishQuantAtlas(atlas, options={}) {
   await publishMarketOverview(atlas, membershipId(membership) === atlas.coverage.membership_id ? membership : null, options);
 }
 
-/** Deployment-only, bounded correction of prepared public SEC calculations. No upstream SEC calls. */
+/** Deployment-only, bounded correction; source revalidation is explicitly opted in by the build. */
 export async function refreshQuantRevenueCorrections({ signal, deadline = Date.now() + 180000,
   readAtlas = readQuantAtlas, read = warmGet, write = warmSet, prepared = readPreparedSecDocument,
-  acquire = warmAcquireLease, release = warmReleaseLease,
+  acquire = warmAcquireLease, release = warmReleaseLease, revalidateSources = false, refreshDocument = refreshSecDocument,
+  refreshUnprepared = false, refreshBatch = refreshQuantBatch, preparedIdentity = secDocumentIdentity,
 } = {}) {
   const atlas = await readAtlas();
   if (!atlas) return { corrected: 0, withheld: 0, remaining: 0, skipped: 'Prepared atlas unavailable.' };
   const queue = atlas.companies.filter(company => revenueCorrectionPriority(company) !== null)
     .sort((a, b) => revenueCorrectionPriority(a) - revenueCorrectionPriority(b) || a.ticker.localeCompare(b.ticker));
-  const result = { candidates: queue.length, corrected: 0, withheld: 0, skipped: 0, remaining: 0, audited: [], errors: [] };
+  const result = { candidates: queue.length, corrected: 0, withheld: 0, skipped: 0, remaining: 0, sourceRevalidations: 0, audited: [], errors: [] };
   const changes = new Map();
+  const unprepared = [];
   for (const company of queue) {
     if (signal?.aborted || Date.now() >= deadline - 15000) break;
     const batchKey = `batch-${quantBatch(company.cik)}`;
@@ -199,16 +210,31 @@ export async function refreshQuantRevenueCorrections({ signal, deadline = Date.n
       if (!record) { result.skipped++; continue; }
       let corrected = record?.company?.revenueVersion === MARKET_REVENUE_VERSION ? record.company : null;
       if (!corrected) {
+        const currentCompany = { ...record.company, factsRetrievedAt: record.factsRetrievedAt,
+          factsValidatedAt: record.factsValidatedAt, checkedAt: record.checkedAt };
+        const paths = [`/api/xbrl/companyfacts/CIK${company.cik}.json`, `/submissions/CIK${company.cik}.json`];
         try {
-          const [facts, submissions] = await Promise.all([
-            prepared(`/api/xbrl/companyfacts/CIK${company.cik}.json`, { allowStale: true }),
-            prepared(`/submissions/CIK${company.cik}.json`, { allowStale: true }),
-          ]);
-          corrected = recalculatePreparedMarketRevenue({ ...record.company,
-            factsRetrievedAt: record.factsRetrievedAt, factsValidatedAt: record.factsValidatedAt, checkedAt: record.checkedAt }, facts, submissions);
+          const [facts, submissions] = await Promise.all(paths.map(path => prepared(path, { allowStale: true })));
+          corrected = recalculatePreparedMarketRevenue(currentCompany, facts, submissions);
         } catch (error) {
-          corrected = withholdUncorrectedRevenue(record?.company || company);
-          if (result.errors.length < 8) result.errors.push({ ticker: company.ticker, reason: error.message });
+          let failure = error;
+          const admitted = preparedIdentity(paths[0])?.covered;
+          if (!admitted && refreshUnprepared) unprepared.push(company);
+          if (admitted && revalidateSources && !signal?.aborted && Date.now() < deadline - 45000) {
+            // Existing source refresh owns conditional requests, SEC pacing,
+            // allowed coverage, identity validation and fenced publication.
+            // A fresh source clock is required; the calculation guard stays strict.
+            const refreshed = await Promise.allSettled(paths.map(path => refreshDocument(path, { signal, minRecheckAgeMs: 0 })));
+            result.sourceRevalidations += refreshed.filter(item => item.status === 'fulfilled' && item.value?.envelope).length;
+            try {
+              if (refreshed.some(item => item.status === 'rejected')) throw refreshed.find(item => item.status === 'rejected').reason;
+              corrected = recalculatePreparedMarketRevenue(currentCompany, refreshed[0].value?.envelope, refreshed[1].value?.envelope);
+            } catch (refreshError) { failure = refreshError; }
+          }
+          if (!corrected) {
+            corrected = withholdUncorrectedRevenue(record.company);
+            if (result.errors.length < 8) result.errors.push({ ticker: company.ticker, reason: failure.message });
+          }
         }
         if (!await write(QUANT_COMPANY_CACHE, company.cik, { ...record, company: corrected,
           checkedAt: corrected.checkedAt || record.checkedAt, factsRetrievedAt: corrected.factsRetrievedAt || record.factsRetrievedAt,
@@ -223,6 +249,22 @@ export async function refreshQuantRevenueCorrections({ signal, deadline = Date.n
         annualRevenue: corrected.metrics.annual.revenue, ttmRevenue: corrected.metrics.ttm.revenue,
         revenueVersion: corrected.revenueVersion || null });
     } finally { await release(QUANT_COVERAGE_CACHE, batchKey, lease); }
+  }
+  // The existing Quant pipeline already supports these membership issuers
+  // outside the prepared-SEC archive. Restrict it to this correction set;
+  // source pacing, validation, shard leases and admission policy stay intact.
+  for (const batch of [...new Set(unprepared.map(company => quantBatch(company.cik)))]) {
+    if (signal?.aborted || Date.now() >= deadline - 30000) break;
+    const members = unprepared.filter(company => quantBatch(company.cik) === batch);
+    try {
+      await refreshBatch(batch, { signal, deadline, tickers: members.map(company => company.ticker) });
+      for (const company of members) {
+        const record = await read(QUANT_COMPANY_CACHE, company.cik);
+        if (record?.company?.revenueVersion === MARKET_REVENUE_VERSION) {
+          changes.set(company.cik, record.company); result.corrected++; result.withheld--;
+        }
+      }
+    } catch (error) { if (result.errors.length < 8) result.errors.push({ batch, reason: error.message }); }
   }
   result.remaining = queue.length - changes.size;
   return result;
