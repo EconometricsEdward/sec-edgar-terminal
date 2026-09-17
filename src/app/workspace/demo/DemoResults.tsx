@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import ResearchWorkspace from "../portfolio/ResearchWorkspace";
+import PortfolioHoldings from "../portfolio/PortfolioHoldings";
 import CompanyResearchTable from "../portfolio/CompanyResearchTable";
 import WorkspaceMenu from "../WorkspaceMenu";
 import { allocationSummary } from "../../../utils/portfolioModel.js";
@@ -40,7 +41,11 @@ import {
   DEMO_INPUT_URL,
 } from "../../../utils/portfolioDemo.js";
 import { demoAllocationSettings } from "../../../utils/portfolioDemoAllocation.js";
-import { hubDestination } from "../../../utils/researchHubNavigation.js";
+import {
+  hubDestination,
+  normalizePortfolioDestination,
+  parseHubLocation,
+} from "../../../utils/researchHubNavigation.js";
 import { buildPortfolioResearchPackage } from "../../../utils/portfolioExports.js";
 import { portfolioReportHtml } from "../../../utils/portfolioReport.js";
 import { downloadText } from "../../../utils/download.js";
@@ -90,7 +95,34 @@ function present(point: any) {
   return `${point.value.toLocaleString("en-US", { maximumFractionDigits: 2 })}${point.unit === "%" ? "%" : point.unit && point.unit !== "ratio" ? ` ${point.unit}` : ""}`;
 }
 
-export default function DemoResults({ initialArea = "analytics" }: { initialArea?: "analytics" | "changes" }) {
+const DEMO_AREAS = new Set([
+  "analytics", "research", "changes", "filings", "disclosures", "ownership",
+]);
+function demoDestination(options: any) {
+  const destination = normalizePortfolioDestination(options);
+  if (destination.portfolioTab && !DEMO_AREAS.has(destination.portfolioTab)) {
+    return {
+      portfolioTab: "analytics",
+      analyticsArea: "overview",
+      holdingsMode: "all",
+    };
+  }
+  return {
+    ...destination,
+    portfolioTab: destination.portfolioTab || "analytics",
+    analyticsArea: destination.analyticsArea || "overview",
+  };
+}
+
+export default function DemoResults({
+  initialArea = "analytics",
+  initialAnalyticsArea = "overview",
+  initialHoldingsMode = "all",
+}: {
+  initialArea?: "analytics" | "research" | "changes";
+  initialAnalyticsArea?: "overview" | "financial" | "concentration";
+  initialHoldingsMode?: "all" | "screen";
+}) {
   const [sourceEvidence, setSourceEvidence] = useState<any>({});
   const [disclosureRequest, setDisclosureRequest] = useState<any>(null);
   const captureSources = useCallback(
@@ -99,7 +131,7 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
   );
   function openDisclosures(query: string, ciks: string[]) {
     setDisclosureRequest({ query, ciks });
-    setArea("disclosures");
+    navigateView("disclosures");
   }
   const [demo, setDemo] = useState<any>(null);
   const [reportingDemo, setReportingDemo] = useState<any>(null);
@@ -122,9 +154,10 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [area, setArea] = useState<string>(initialArea);
+  const [area, setArea] = useState<string>(initialArea === "research" ? "companies" : initialArea);
   const [allocationBasis, setAllocationBasis] = useState("example");
-  const [analyticsArea, setAnalyticsArea] = useState("overview");
+  const [analyticsArea, setAnalyticsArea] = useState<string>(initialAnalyticsArea);
+  const [holdingsMode, setHoldingsMode] = useState<"all" | "screen">(initialHoldingsMode);
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const companyTabRef = useRef<HTMLButtonElement | null>(null);
   const [query, setQuery] = useState("");
@@ -133,6 +166,39 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
   const [evidence, setEvidence] = useState<any>(null);
   const evidenceRef = useRef<HTMLElement | null>(null);
   const evidenceTrigger = useRef<HTMLButtonElement | null>(null);
+
+  function navigateView(value: string, mode: "all" | "screen" = "all") {
+    const destination = demoDestination(value.startsWith("analytics:")
+      ? { portfolioTab: "analytics", analyticsArea: value.slice(10) }
+      : { portfolioTab: value === "companies" ? "research" : value, holdingsMode: mode });
+    setArea(destination.portfolioTab === "research" ? "companies" : destination.portfolioTab || "analytics");
+    if (destination.analyticsArea) setAnalyticsArea(destination.analyticsArea);
+    setHoldingsMode(destination.holdingsMode === "screen" ? "screen" : "all");
+    setLimit(20);
+    setEvidence(null);
+    const url = new URL(window.location.href);
+    url.searchParams.set("portfolioTab", destination.portfolioTab || "analytics");
+    if (destination.portfolioTab === "analytics") url.searchParams.set("analyticsArea", destination.analyticsArea || "overview");
+    else url.searchParams.delete("analyticsArea");
+    if (destination.holdingsMode === "screen") url.searchParams.set("holdingsMode", "screen");
+    else url.searchParams.delete("holdingsMode");
+    if (url.href !== window.location.href) window.history.pushState(window.history.state, "", url);
+  }
+
+  useEffect(() => {
+    const restoreRoute = () => {
+      const destination = demoDestination(parseHubLocation(window.location.href));
+      setArea(destination.portfolioTab === "research" ? "companies" : destination.portfolioTab || "analytics");
+      setAnalyticsArea(destination.analyticsArea || "overview");
+      setHoldingsMode(destination.holdingsMode === "screen" ? "screen" : "all");
+      setEvidence(null);
+      setLimit(20);
+    };
+    restoreRoute();
+    window.addEventListener("popstate", restoreRoute);
+    return () => window.removeEventListener("popstate", restoreRoute);
+  }, [initialArea, initialAnalyticsArea, initialHoldingsMode]);
+
   useEffect(() => {
     const controller = new AbortController();
     setError("");
@@ -454,8 +520,9 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
       window.location.assign(
         hubDestination("portfolios", {
           portfolioId: portfolio.id,
-          portfolioTab: area === "changes" ? "changes" : "analytics",
+          portfolioTab: area === "companies" ? "research" : area,
           analyticsArea,
+          holdingsMode,
         }),
       );
     } catch (failure) {
@@ -480,8 +547,8 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
             S&P 500: top 100 companies <span className={s.demoTag}>Demo</span>
           </h1>
           <p>
-            One company list across every research view, with SEC evidence and
-            optional hypothetical weights.
+            Explore the financial profile, concentration and market connections
+            behind an example allocation.
           </p>
         </div>
         {demo && (
@@ -562,21 +629,19 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
                   : `${portfolioReportingLabel(reportingBasis)} · ${reportingDemo?.session_capture ? "Research checked" : "SEC evidence captured"} ${day(reportingDemo?.captured_at)}`}
               </span>
             </p>
-            {(area !== "analytics" || analyticsArea !== "metrics") && (
-              <label className={s.allocationSelect}>
-                Reporting perspective
-                <select
-                  value={reportingBasis}
-                  onChange={(event) => changeReportingBasis(event.target.value)}
-                >
-                  {PORTFOLIO_REPORTING_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <label className={s.allocationSelect}>
+              Reporting perspective
+              <select
+                value={reportingBasis}
+                onChange={(event) => changeReportingBasis(event.target.value)}
+              >
+                {PORTFOLIO_REPORTING_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <WorkspaceMenu label="About this demo">
               <strong>A starting point for your research</strong>
               <p>
@@ -593,8 +658,8 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
                 iShares IVV holdings source ↗
               </a>
               <p>
-                Use the overview for the big picture. Choose a research view to
-                compare companies, review filings or test a scenario.
+                Start with Summary, then explore holdings, financials,
+                concentration and new SEC or CFTC information.
               </p>
               <p>
                 {settings.basis === "equal"
@@ -602,8 +667,9 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
                   : demo.allocation_example.methodology}
               </p>
               <p>
-                Weights add allocation context. Company impact scenarios and
-                financial ratios work without portfolio weights.
+                Weights add allocation context. SEC-linked markets provide
+                CFTC positioning context; they do not quantify a company’s
+                commodity exposure or predict its returns.
               </p>
               <p>
                 Choose a reporting perspective to retrieve compatible SEC
@@ -620,8 +686,7 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
               </Link>
             </WorkspaceMenu>
           </div>
-          {reportingLoading &&
-            (area !== "analytics" || analyticsArea !== "metrics") && (
+          {reportingLoading && (
               <div className={s.reportingStatus} role="status">
                 <span>
                   Retrieving{" "}
@@ -665,27 +730,20 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
             selected={
               area === "analytics" ? `analytics:${analyticsArea}` : area
             }
-            onSelect={(value) => {
-              if (value.startsWith("analytics:")) {
-                setArea("analytics");
-                setAnalyticsArea(value.slice(10));
-              } else setArea(value);
-              setLimit(20);
-              setEvidence(null);
-            }}
+            onSelect={navigateView}
           >
             <div
-              hidden={
-                area !== "analytics" ||
-                (reportingLoading && analyticsArea !== "metrics")
-              }
+              hidden={area !== "analytics" || reportingLoading}
             >
               <PortfolioAnalytics
                 embedded
+                active={area === "analytics" && !reportingLoading}
+                onOpenHoldings={() => navigateView("companies")}
+                onOpenChanges={() => navigateView("changes")}
                 rows={rows}
                 settings={settings}
                 analyticsArea={analyticsArea}
-                onAreaChange={setAnalyticsArea}
+                onAreaChange={(value) => navigateView(`analytics:${value}`)}
                 companies={companies}
                 capturedAt={reportingDemo?.captured_at || null}
                 reportingBasis={reportingBasis}
@@ -701,28 +759,31 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
                 preview
               />
             </div>
-            {area === "companies" && !reportingLoading && (
-              <div className={s.filters}>
-                <label>
-                  Search{" "}
-                  {area === "companies"
-                    ? "companies or industries"
-                    : "companies or filing forms"}
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      setLimit(20);
-                    }}
-                    placeholder={
-                      area === "companies"
-                        ? "Try Apple, JPM, or semiconductors"
-                        : "Try AAPL or 10-K"
-                    }
-                  />
-                </label>
-                {area === "companies" && !reportingLoading && (
+            {area === "companies" && (
+              <div hidden={reportingLoading}>
+              <PortfolioHoldings
+                rows={rows}
+                settings={settings}
+                companies={companies}
+                capturedAt={reportingDemo?.captured_at || null}
+                mode={holdingsMode}
+                onModeChange={(mode) => navigateView("companies", mode)}
+                onInspectCompany={setFocusedRowId}
+                onDisclosure={openDisclosures}
+              >
+                <div className={s.filters}>
+                  <label>
+                    Search holdings
+                    <input
+                      type="search"
+                      value={query}
+                      onChange={(event) => {
+                        setQuery(event.target.value);
+                        setLimit(20);
+                      }}
+                      placeholder="Try Apple, JPM, or semiconductors"
+                    />
+                  </label>
                   <label>
                     Research lens
                     <select
@@ -741,17 +802,8 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
                       ))}
                     </select>
                   </label>
-                )}
-                <p role="status">
-                  {area === "companies"
-                    ? `${shown.length} of ${rows.length} companies`
-                    : `${feed.length} filing references`}{" "}
-                  match
-                </p>
-              </div>
-            )}
-            {area === "companies" && !reportingLoading && (
-              <>
+                  <p role="status">{shown.length} of {rows.length} companies match</p>
+                </div>
                 <p className={s.tableHelp}>
                   {view.description}{" "}
                   {METRICS[view.sort]
@@ -984,7 +1036,8 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
                     )}
                   </section>
                 )}
-              </>
+              </PortfolioHoldings>
+              </div>
             )}
             {area === "changes" && reportingDemo && (
               <PortfolioChanges
@@ -1025,7 +1078,7 @@ export default function DemoResults({ initialArea = "analytics" }: { initialArea
               onInspectMetric={(key: string, point: any) => {
                 const row = rows.find((item: any) => item.id === focusedRowId);
                 setFocusedRowId(null);
-                setArea("companies");
+                navigateView("companies");
                 setPreset("overview");
                 setQuery(
                   byCik[row.resolution.cik]?.name ||

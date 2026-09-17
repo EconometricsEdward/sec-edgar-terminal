@@ -26,6 +26,7 @@ import styles from "./PortfolioScreener.module.css";
 
 type Rule = { metricId: string; min: string; max: string };
 type Props = {
+  embedded?: boolean;
   report: any;
   companies?: any[];
   onDisclosure?: (query: string, ciks: string[]) => void;
@@ -245,6 +246,7 @@ const percent = (value: unknown) =>
   finite(value) ? `${compactNumber(value, 1)}%` : "—";
 
 export default function PortfolioScreener({
+  embedded = false,
   report,
   onDisclosure,
   companies = EMPTY_COMPANIES,
@@ -479,11 +481,11 @@ export default function PortfolioScreener({
     Number(Boolean(lens));
 
   return (
-    <section className={styles.screener} aria-labelledby={`${id}-title`}>
+    <section className={`${styles.screener} ${embedded ? styles.embedded : ""}`} aria-labelledby={`${id}-title`}>
       <header className={styles.compactHeader}>
         <div>
-          <span className={styles.eyebrow}>Company screener</span>
-          <h3 id={`${id}-title`}>All portfolio companies</h3>
+          {!embedded && <span className={styles.eyebrow}>Company screener</span>}
+          <h3 id={`${id}-title`}>{embedded ? "Financial criteria" : "All portfolio companies"}</h3>
           <p>
             Filter captured SEC fundamentals and open the filing behind every
             result.

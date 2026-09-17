@@ -1,9 +1,9 @@
 .root {
-  --a-gold: var(--p-gold, #f7c65a);
-  --a-line: var(--p-line, #29364c);
-  --a-muted: var(--p-muted, #a7b4c7);
-  --a-text: var(--p-text, #e8edf5);
-  --a-panel: var(--p-panel, #101a2b);
+  --a-gold: var(--p-gold, var(--demo-gold, #f7c65a));
+  --a-line: var(--p-line, var(--demo-line, #29364c));
+  --a-muted: var(--p-muted, var(--demo-muted, #a7b4c7));
+  --a-text: var(--p-text, var(--demo-text, #e8edf5));
+  --a-panel: var(--p-panel, var(--demo-panel, #101a2b));
   color: var(--a-text);
   min-width: 0;
   display: grid;
@@ -225,39 +225,78 @@
   display: none;
 }
 .concentrationModes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding-bottom: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
-.concentrationModes button {
+.root .concentrationModes button {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  min-height: 42px;
-  padding: 0.65rem 0.95rem;
-  border: 1px solid #324158;
-  border-radius: 9px;
-  background: #111c2b;
-  color: #acbdd0;
-  font-size: 0.78rem;
+  gap: 16px;
+  min-height: 86px;
+  padding: 20px;
+  border: 1px solid var(--a-line);
+  border-radius: 16px;
+  background: var(--a-panel);
+  color: var(--a-muted);
+  text-align: left;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
 }
-.concentrationModes button[aria-pressed="true"] {
-  color: #f2cd73;
-  border-color: #a68b48;
-  background: #d9b45513;
+.root .concentrationModes button[aria-pressed="true"] {
+  color: var(--a-gold);
+  border-color: color-mix(in srgb, var(--a-gold) 65%, var(--a-line));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--a-gold) 12%, var(--a-panel)), var(--a-panel));
 }
-.concentrationModes button span {
-  color: #85c3b5;
-  font-size: 0.58rem;
+.concentrationModes svg {
+  flex-shrink: 0;
+}
+.modeCopy {
+  display: grid;
+  gap: 5px;
+}
+.modeCopy small {
+  color: var(--a-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.exposureHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 0 8px;
+}
+.exposureHeading p:last-child {
+  color: var(--a-muted);
+  font-size: 15px;
+  line-height: 1.65;
+  max-width: 620px;
+  margin-top: 14px;
+}
+.sourceBadge {
+  flex-shrink: 0;
+  border: 1px solid var(--a-line);
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--a-muted);
   letter-spacing: 0.06em;
-  padding-left: 0.35rem;
 }
-.concentrationModes button:focus-visible {
-  outline: 2px solid #f2cd73;
-  outline-offset: 3px;
+.methodNote {
+  color: var(--a-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.methodNote summary {
+  cursor: pointer;
+  min-height: 32px;
+}
+.methodNote p {
+  max-width: 860px;
 }
 .sectionHeading {
   display: flex;
@@ -943,4 +982,35 @@
 }
 .membersHeading {
   scroll-margin-top: 150px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .root .concentrationModes button:hover {
+    transform: translateY(-3px);
+    border-color: var(--a-gold);
+  }
+}
+@media (max-width: 650px) {
+  .exposureHeading {
+    flex-direction: column;
+    gap: 14px;
+  }
+  .concentrationModes {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .root .concentrationModes button {
+    min-height: 72px;
+    padding: 15px 16px;
+  }
+}
+:global(html[data-reading-motion="reduced"]) .root .concentrationModes button {
+  transition: none;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-reading-motion="full"])) .root .concentrationModes button {
+    transition: none;
+    transform: none;
+  }
 }

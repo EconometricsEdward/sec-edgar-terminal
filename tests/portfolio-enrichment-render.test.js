@@ -318,8 +318,8 @@ test("financial profile overview renders every represented sector and compatible
     }),
   );
 
-  assert.match(html, /See the financial shape behind the holdings/);
-  assert.match(html, /Choose a sector/);
+  assert.match(html, /A financial fingerprint of your holdings/);
+  assert.match(html, /aria-label="Financial comparison scope"/);
   for (const sector of [
     "All sectors",
     "Information Technology",
@@ -335,11 +335,11 @@ test("financial profile overview renders every represented sector and compatible
     "Real Estate",
   ])
     assert.match(html, new RegExp(sector));
-  assert.match(html, /11 sectors available/);
+  assert.match(html, /<option value="all" selected="">All sectors · 100<\/option>/);
   assert.match(html, /fund-reported classification as of Sep 8, 2026/);
-  assert.match(html, /Accounting-compatible measure set/);
+  assert.match(html, /Accounting model/);
   for (const group of profile.lensGroups.filter((group) => group.companyCount))
-    assert.ok(html.includes(`${group.label} (${group.companyCount})`));
+    assert.ok(html.includes(`${group.label} · ${group.companyCount}`));
   assert.match(html, /24 supported ratio measures/);
   assert.match(html, /Growth × profitability, holding by holding/);
   assert.ok(html.includes(`${profile.corporateFingerprint.points.length} aligned companies`));
@@ -435,7 +435,9 @@ test("financial profile consumes request nonces once and remounts tools by secto
     /handledFinancialRequestNonce\.current = financialRequest\.nonce/,
   );
   assert.match(source, /key=\{`overview:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
-  assert.match(source, /key=\{`peers:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /<PortfolioMetricExplorer/);
+  assert.match(source, /requestedMetric=\{rankingRequest\}/);
+  assert.match(source, /showReportingControls=\{false\}/);
   assert.match(source, /key=\{`health:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
   assert.match(source, /key=\{`relationships:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
   assert.match(source, /key=\{`compare:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
@@ -582,7 +584,7 @@ test("unknown business models remain visibly disclosed outside model summaries",
 
   assert.match(html, /1 company needs a confirmed business model/);
   assert.match(html, /unlike accounting models are never blended/);
-  assert.match(html, /11 sectors available · 1 without sector coverage/);
+  assert.match(html, /<option value="Sector not covered">Sector not covered · 1<\/option>/);
   assert.match(
     html,
     /iShares fund-reported sources through Sep 8, 2026 · 99 of 100 companies/,

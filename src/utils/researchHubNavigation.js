@@ -5,11 +5,8 @@ export const HUB_VIEWS = [
 const ids = new Set(HUB_VIEWS.map(([id]) => id));
 export const ANALYTICS_AREAS = [
   "overview",
-  "metrics",
   "concentration",
   "financial",
-  "screener",
-  "scenario",
   "coverage",
 ];
 export const PORTFOLIO_TABS = [
@@ -27,6 +24,35 @@ const localId = (value) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(value)
     ? value
     : "";
+/** Retired pages resolve to the five-page workspace while evidence tools stay available. */
+export function normalizePortfolioDestination(options = {}) {
+  let tab = portfolioTab(options.portfolioTab);
+  let area = ANALYTICS_AREAS.includes(options.analyticsArea)
+    ? options.analyticsArea
+    : "";
+  let holdingsMode = options.holdingsMode === "screen" || options.holdingsMode === "all"
+    ? options.holdingsMode
+    : "";
+  if (!tab || tab === "analytics") {
+    if (options.analyticsArea === "metrics") {
+      tab = "analytics";
+      area = "financial";
+    } else if (options.analyticsArea === "screener") {
+      tab = "research";
+      area = "";
+      holdingsMode = "screen";
+    } else if (options.analyticsArea === "scenario") {
+      tab = "analytics";
+      area = "overview";
+    }
+  }
+  return {
+    portfolioTab: tab,
+    analyticsArea: area,
+    holdingsMode: tab === "research" ? holdingsMode : "",
+  };
+}
+
 export function parseHubLocation(value) {
   const url = new URL(value, "https://secedgarterminal.com");
   const view = url.searchParams.get("view") || "";
@@ -39,12 +65,11 @@ export function parseHubLocation(value) {
     portfolioId: localId(url.searchParams.get("portfolio")),
     rowId: localId(url.searchParams.get("row")),
     portfolioViewId: localId(url.searchParams.get("portfolioView")),
-    portfolioTab: portfolioTab(url.searchParams.get("portfolioTab")),
-    analyticsArea: ANALYTICS_AREAS.includes(
-      url.searchParams.get("analyticsArea"),
-    )
-      ? url.searchParams.get("analyticsArea")
-      : "",
+    ...normalizePortfolioDestination({
+      portfolioTab: url.searchParams.get("portfolioTab"),
+      analyticsArea: url.searchParams.get("analyticsArea"),
+      holdingsMode: url.searchParams.get("holdingsMode"),
+    }),
   };
 }
 /** Only local navigation identifiers enter the URL; research text stays in this browser. */
@@ -57,9 +82,11 @@ export function hubDestination(view, options = {}) {
     params.set("row", options.rowId);
   if (view === "portfolios" && localId(options.portfolioViewId))
     params.set("portfolioView", options.portfolioViewId);
-  if (view === "portfolios" && portfolioTab(options.portfolioTab))
-    params.set("portfolioTab", options.portfolioTab);
-  if (view === "portfolios" && ANALYTICS_AREAS.includes(options.analyticsArea))
-    params.set("analyticsArea", options.analyticsArea);
+  if (view === "portfolios") {
+    const destination = normalizePortfolioDestination(options);
+    if (destination.portfolioTab) params.set("portfolioTab", destination.portfolioTab);
+    if (destination.analyticsArea) params.set("analyticsArea", destination.analyticsArea);
+    if (destination.holdingsMode) params.set("holdingsMode", destination.holdingsMode);
+  }
   return `/workspace?${params}`;
 }

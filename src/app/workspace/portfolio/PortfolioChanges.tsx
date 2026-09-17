@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ChevronDown, Download, ExternalLink, FileText, RefreshCw } from "lucide-react";
+import { Activity, ArrowUpRight, Building2, ChevronDown, Download, ExternalLink, FileText, RefreshCw } from "lucide-react";
 import { comparePortfolioResearch } from "../../../utils/portfolioChanges.js";
 import { buildPortfolioRecentSecEvents, isPortfolioRecentDate } from "../../../utils/portfolioRecentChanges.js";
 import { loadPortfolioCftcChanges } from "../../../utils/portfolioCftcChangesClient.js";
@@ -46,10 +46,11 @@ function sourceLinks(event: any): string[] {
 type Props = {
   baseline: any; allocation?: any; snapshot: any; rows: any[];
   onInspectCompany: (rowId: string) => void; onRefresh?: () => void; refreshing?: boolean;
+  active?: boolean;
 };
 type CftcState = { key: string; loading: boolean; data: any | null; error: string; retryAt?: number };
 
-export default function PortfolioChanges({ baseline, allocation, snapshot, rows, onInspectCompany, onRefresh, refreshing = false }: Props) {
+export default function PortfolioChanges({ baseline, allocation, snapshot, rows, onInspectCompany, onRefresh, refreshing = false, active = true }: Props) {
   const comparison = useMemo(() => comparePortfolioResearch(baseline, snapshot, rows), [baseline, snapshot, rows]);
   const [source, setSource] = useState<"all" | "sec" | "cftc">("all");
   const [company, setCompany] = useState("all");
@@ -62,9 +63,11 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
   const [cftcState, setCftc] = useState<CftcState>({ key: "", loading: true, data: null, error: "" });
   const retainedCftc = useRef<{ key: string; data: any; retry: number }>({ key: "", data: null, retry: 0 });
   useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [active]);
   const currentDay = new Date(now).toISOString().slice(0, 10);
   const weights = useMemo(() => allocation?.basis && allocation.basis !== "none"
     ? Object.fromEntries((allocation.issuers || []).map((item: any) => [item.cik, item.weightPct])) : {}, [allocation]);
@@ -88,6 +91,7 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
   // Never briefly render another portfolio's results before its effect runs.
   const cftc = cftcState.key === requestKey ? cftcState : { loading: true, data: null, error: "", retryAt: 0 };
   useEffect(() => {
+    if (!active) return;
     const identifiers = JSON.parse(requestKey);
     const previous = retainedCftc.current.key === requestKey ? retainedCftc.current.data : null;
     const retryOnly = retry !== retainedCftc.current.retry;
@@ -97,29 +101,29 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
       return;
     }
     const controller = new AbortController();
-    let active = true;
+    let current = true;
     setCftc({ key: requestKey, loading: true, data: previous, error: "" });
     // Deferring the start also avoids a duplicate request during development Strict Mode remounts.
     const timer = setTimeout(() => {
       loadPortfolioCftcChanges(identifiers, {
         signal: controller.signal, previous, retryOnly,
         onUpdate: (data: any) => {
-          if (!active) return;
+          if (!current) return;
           retainedCftc.current = { key: requestKey, data, retry };
           setCftc({ key: requestKey, loading: true, data, error: "" });
         },
       }).then((data) => {
-        if (!active) return;
+        if (!current) return;
         retainedCftc.current = { key: requestKey, data, retry };
         setCftc({ key: requestKey, loading: false, data, error: "" });
       }).catch((error) => {
-        if (!active) return;
+        if (!current) return;
         setCftc({ key: requestKey, loading: false, data: retainedCftc.current.data,
           error: error instanceof Error ? error.message : "CFTC market context is unavailable.", retryAt: error?.retryAt || 0 });
       });
     }, 0);
-    return () => { active = false; clearTimeout(timer); controller.abort(); };
-  }, [requestKey, captureKey, retry, currentDay, refreshing]);
+    return () => { current = false; clearTimeout(timer); controller.abort(); };
+  }, [requestKey, captureKey, retry, currentDay, refreshing, active]);
 
   const allEvents = useMemo(() => {
     const market = (cftc.data?.events || []).filter((event: any) => isPortfolioRecentDate(event.reportDate, windowDays, now))
@@ -129,11 +133,14 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
   }, [recentSec.events, cftc.data, windowDays, now]);
   const filtered = useMemo(() => allEvents.filter((event: any) => (source === "all" || event.source === source)
     && (selectedCompany === "all" || relatedCompanies(event).some((item) => item.cik === selectedCompany))), [allEvents, source, selectedCompany]);
-  const counts = useMemo(() => ({
-    companies: new Set(filtered.flatMap((event: any) => relatedCompanies(event).filter((item) => selectedCompany === "all" || item.cik === selectedCompany).map((item) => item.cik || item.ticker))).size,
-    sec: filtered.filter((event: any) => event.source === "sec").length,
-    cftc: filtered.filter((event: any) => event.source === "cftc").length,
-  }), [filtered, selectedCompany]);
+  const counts = useMemo(() => {
+    const scoped = allEvents.filter((event: any) => selectedCompany === "all" || relatedCompanies(event).some((item) => item.cik === selectedCompany));
+    return {
+      companies: new Set(scoped.flatMap((event: any) => relatedCompanies(event).filter((item) => selectedCompany === "all" || item.cik === selectedCompany).map((item) => item.cik || item.ticker))).size,
+      sec: scoped.filter((event: any) => event.source === "sec").length,
+      cftc: scoped.filter((event: any) => event.source === "cftc").length,
+    };
+  }, [allEvents, selectedCompany]);
   function toggleDetails(id: string) {
     setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
@@ -163,9 +170,9 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
     <section className={styles.root} aria-labelledby="portfolio-changes-heading">
       <header className={styles.header}>
         <div className={styles.headingCopy}>
-          <p className={styles.eyebrow}>RECENT UPDATES</p>
+          <p className={styles.eyebrow}>KEEP UP WITH YOUR PORTFOLIO</p>
           <h3 id="portfolio-changes-heading">What changed?</h3>
-          <p>Company filings, changes in collected SEC evidence, and related futures-market moves.</p>
+          <p>A focused review of new company filings, changes in financial evidence, and related futures positioning.</p>
         </div>
         {onRefresh && <button type="button" className={styles.refreshButton} onClick={onRefresh} disabled={refreshing}>
           <RefreshCw size={16} className={refreshing ? styles.spinning : ""} aria-hidden="true" />{refreshing ? "Refreshing research…" : "Refresh all research"}
@@ -174,14 +181,14 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
       <div className={styles.contextBar}>
         <div><span className={styles.contextLabel}>Recent window</span><strong>Last {windowDays} days · through {displayDate(currentDay)}</strong></div>
         <div><span className={styles.contextLabel}>SEC research captured</span><strong>{displayDate(snapshot?.generated_at, true)}</strong></div>
-        <div className={styles.checkState}>{recentSec.checkedIssuers} issuers checked{recentSec.uncheckedIssuers ? ` · ${recentSec.uncheckedIssuers} need retry` : ""}</div>
+        <div className={styles.checkState}><span className={recentSec.uncheckedIssuers ? styles.dotWarn : styles.dotReady} aria-hidden="true" />{recentSec.checkedIssuers} issuers checked{recentSec.uncheckedIssuers ? ` · ${recentSec.uncheckedIssuers} need retry` : ""}</div>
       </div>
       {staleCapture && <p className={styles.quietWarning}>SEC filings reflect the saved capture. Refresh research to check for filings submitted since {displayDate(snapshot.generated_at)}.</p>}
       {!snapshot && <p className={styles.warning} role="status">Run research to load recent SEC filings for these companies.</p>}
       <div className={styles.summary} aria-label="Recent change summary">
-        <div><strong>{counts.companies}</strong><span>related companies</span></div>
-        <div><strong>{counts.sec}</strong><span>SEC updates</span></div>
-        <div><strong>{cftc.loading && !cftc.data ? "…" : (!cftc.data || cftc.data?.coverage?.checked === 0 || (!cftc.data?.coverage?.marketsChecked && cftc.data?.coverage?.marketUnavailable > 0)) ? "—" : counts.cftc}</strong><span>CFTC market moves</span></div>
+        <button type="button" aria-pressed={source === "all"} onClick={() => { setSource("all"); setLimit(20); }}><span className={styles.summaryLabel}><Building2 size={16} aria-hidden="true" />Companies with updates<ArrowUpRight size={14} aria-hidden="true" /></span><strong>{counts.companies}</strong><small>Across both sources in this window</small></button>
+        <button type="button" data-source="sec" aria-pressed={source === "sec"} onClick={() => { setSource("sec"); setLimit(20); }}><span className={styles.summaryLabel}><FileText size={16} aria-hidden="true" />SEC updates<ArrowUpRight size={14} aria-hidden="true" /></span><strong>{counts.sec}</strong><small>Filings and collected financial evidence</small></button>
+        <button type="button" data-source="cftc" aria-pressed={source === "cftc"} onClick={() => { setSource("cftc"); setLimit(20); }}><span className={styles.summaryLabel}><Activity size={16} aria-hidden="true" />CFTC market moves<ArrowUpRight size={14} aria-hidden="true" /></span><strong>{cftc.loading && !cftc.data ? "…" : (!cftc.data || cftc.data?.coverage?.checked === 0 || (!cftc.data?.coverage?.marketsChecked && cftc.data?.coverage?.marketUnavailable > 0)) ? "—" : counts.cftc}</strong><small>Aggregate positioning in linked markets</small></button>
       </div>
       <div className={styles.toolbar}>
         <div className={styles.sourceTabs} aria-label="Data source filter">

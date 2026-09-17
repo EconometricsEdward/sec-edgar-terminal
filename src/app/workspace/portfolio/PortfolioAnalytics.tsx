@@ -5,26 +5,18 @@ import dynamic from "next/dynamic";
 import {
   ArrowUpRight,
   BarChart3,
-  CircleHelp,
   ClipboardList,
-  ListFilter,
   Layers3,
   Search,
   ShieldCheck,
 } from "lucide-react";
 import { buildPortfolioAnalytics } from "../../../utils/portfolioAnalytics.js";
-import PortfolioScenario from "./PortfolioScenario";
+import PortfolioBriefing from "./PortfolioBriefing";
 import { buildCatalogReport } from "../../../utils/portfolioEnrichment.js";
 const PortfolioInsightTools = dynamic(() => import("./PortfolioInsightTools"));
 import s from "./PortfolioAnalytics.module.css";
 
-const PortfolioMetricExplorer = dynamic(
-  () => import("./PortfolioMetricExplorer"),
-);
 const loading = () => <p role="status">Opening analytics tools…</p>;
-const PortfolioBriefing = dynamic(() => import("./PortfolioBriefing"), {
-  loading,
-});
 const PortfolioConcentrationTools = dynamic(
   () => import("./PortfolioConcentrationTools"),
   { loading },
@@ -41,9 +33,6 @@ const PortfolioFinancialProfile = dynamic(
   () => import("./PortfolioFinancialProfile"),
   { loading },
 );
-const PortfolioScreener = dynamic(() => import("./PortfolioScreener"), {
-  loading,
-});
 const PortfolioCoverageMatrix = dynamic(
   () => import("./PortfolioCoverageMatrix"),
   { loading },
@@ -68,6 +57,9 @@ type Props = {
   refreshing: boolean;
   preview?: boolean;
   embedded?: boolean;
+  active?: boolean;
+  onOpenChanges?: () => void;
+  onOpenHoldings?: () => void;
 };
 type Issuer = {
   cik: string;
@@ -82,12 +74,9 @@ type Issuer = {
   sic: string | null;
 };
 const AREAS = [
-  { id: "overview", label: "Portfolio briefing", icon: ClipboardList },
-  { id: "metrics", label: "Metrics & rankings", icon: BarChart3 },
-  { id: "concentration", label: "Concentration", icon: Layers3 },
-  { id: "financial", label: "Financial profile", icon: BarChart3 },
-  { id: "screener", label: "Company screener", icon: ListFilter },
-  { id: "scenario", label: "Scenario lab", icon: CircleHelp },
+  { id: "overview", label: "Summary", icon: ClipboardList },
+  { id: "financial", label: "Financials", icon: BarChart3 },
+  { id: "concentration", label: "Concentration & Exposure", icon: Layers3 },
   { id: "coverage", label: "Evidence coverage", icon: ShieldCheck },
 ] as const;
 const finite = (value: unknown): value is number =>
@@ -206,6 +195,9 @@ export default function PortfolioAnalytics({
   refreshing,
   preview = false,
   embedded = false,
+  active = true,
+  onOpenChanges,
+  onOpenHoldings,
   analyticsArea,
   onAreaChange,
   onDisclosure,
@@ -219,8 +211,9 @@ export default function PortfolioAnalytics({
   const coverageSelectionId = useId();
   const areaButtons = useRef<Record<string, HTMLButtonElement | null>>({});
   const [localArea, setLocalArea] = useState<string>("overview");
-  const area = AREAS.some((entry) => entry.id === analyticsArea)
-    ? analyticsArea!
+  const requestedArea = analyticsArea === "metrics" ? "financial" : analyticsArea;
+  const area = AREAS.some((entry) => entry.id === requestedArea)
+    ? requestedArea!
     : localArea;
   const [visitedAreas, setVisitedAreas] = useState(() => new Set(["overview"]));
   useEffect(() => {
@@ -234,7 +227,12 @@ export default function PortfolioAnalytics({
     metricId: string;
     nonce: number;
   } | null>(null);
-  const changeArea = (next: string) => {
+  const changeArea = (destination: string) => {
+    if (destination === "screener" || destination === "companies") {
+      onOpenHoldings?.();
+      return;
+    }
+    const next = destination === "metrics" ? "financial" : destination === "scenario" ? "overview" : destination;
     if (!AREAS.some((entry) => entry.id === next)) return;
     setLocalArea(next);
     onAreaChange?.(next);
@@ -249,12 +247,12 @@ export default function PortfolioAnalytics({
   const membersHeading = useRef<HTMLHeadingElement>(null);
   const [focusMembers, setFocusMembers] = useState(false);
   useEffect(() => {
-    if (area === "concentration" && focusMembers && membersHeading.current) {
+    if (active && area === "concentration" && focusMembers && membersHeading.current) {
       membersHeading.current.focus();
       membersHeading.current.scrollIntoView({ block: "start" });
       setFocusMembers(false);
     }
-  }, [area, focusMembers]);
+  }, [active, area, focusMembers]);
   const [query, setQuery] = useState("");
   const [showIndustries, setShowIndustries] = useState(false);
   const [coverageSelection, setCoverageSelection] = useState<{
@@ -281,9 +279,10 @@ export default function PortfolioAnalytics({
   ];
   const mixGroups =
     grouping === "sector" ? concentration.sectors : concentration.industries;
+  const needsCatalog = area === "financial" || visitedAreas.has("financial");
   const catalogReport = useMemo(
-    () => buildCatalogReport(report, companies),
-    [report, companies],
+    () => needsCatalog ? buildCatalogReport(report, companies) : null,
+    [report, companies, needsCatalog],
   );
   const weighted = report.weighted;
   const queryText = query.trim().toLowerCase();
@@ -361,6 +360,13 @@ export default function PortfolioAnalytics({
       <div className={s.retained} hidden={area !== "overview"}>
         <PortfolioBriefing
           report={report}
+          onOpenChanges={onOpenChanges}
+          onOpenHoldings={onOpenHoldings}
+          onOpenMarkets={() => {
+            setConcentrationLens("markets");
+            setMarketConnectionsVisited(true);
+            changeArea("concentration");
+          }}
           onExploreGroup={(dimension, label) => {
             setConcentrationLens("allocation");
             setGrouping(dimension);
@@ -379,25 +385,16 @@ export default function PortfolioAnalytics({
         />
       </div>
 
-      {(visitedAreas.has("metrics") || area === "metrics") && (
-        <div hidden={area !== "metrics"}>
-          <PortfolioMetricExplorer
-            reportingBasis={reportingBasis}
-            onReportingBasisChange={onReportingBasisChange}
-            reportingLoading={reportingLoading}
-            reportingProgress={reportingProgress}
-            onCancelReporting={onCancelReporting}
-            onRefresh={onRefresh}
-            refreshing={refreshing}
-            report={report}
-            companies={companies}
-            onInspect={onInspectCompany}
-            onDisclosure={onDisclosure}
-          />
-        </div>
-      )}
       {(visitedAreas.has("concentration") || area === "concentration") && (
         <div className={s.panel} hidden={area !== "concentration"}>
+          <header className={s.exposureHeading}>
+            <div>
+              <p className={s.eyebrow}>04 / Concentration &amp; Exposure</p>
+              <h2>See where your holdings meet.</h2>
+              <p>Explore the allocation you control and the markets that connect your companies.</p>
+            </div>
+            <span className={s.sourceBadge}>SEC + CFTC</span>
+          </header>
           <div
             className={s.concentrationModes}
             aria-label="Concentration perspectives"
@@ -407,7 +404,8 @@ export default function PortfolioAnalytics({
               aria-pressed={concentrationLens === "allocation"}
               onClick={() => setConcentrationLens("allocation")}
             >
-              <Layers3 size={16} aria-hidden="true" /> Holdings & sectors
+              <Layers3 size={21} aria-hidden="true" />
+              <span className={s.modeCopy}><strong>Holdings &amp; sectors</strong><small>Where is the allocation concentrated?</small></span>
             </button>
             <button
               type="button"
@@ -417,8 +415,8 @@ export default function PortfolioAnalytics({
                 setMarketConnectionsVisited(true);
               }}
             >
-              <BarChart3 size={16} aria-hidden="true" /> Shared markets{" "}
-              <span>SEC + CFTC</span>
+              <BarChart3 size={21} aria-hidden="true" />
+              <span className={s.modeCopy}><strong>Shared markets</strong><small>Filing connections + CFTC positioning</small></span>
             </button>
           </div>
           <div
@@ -427,7 +425,7 @@ export default function PortfolioAnalytics({
           >
             <div className={s.sectionHeading}>
               <div>
-                <p className={s.eyebrow}>Where exposure collects</p>
+                <p className={s.eyebrow}>Allocation concentration</p>
                 <h3>
                   {weighted
                     ? "See the biggest concentrations."
@@ -441,7 +439,7 @@ export default function PortfolioAnalytics({
               </div>
               <button type="button" onClick={onReviewRows}>
                 {preview
-                  ? "Open full demo to review"
+                  ? "Make an editable copy"
                   : weighted
                     ? "Review allocation"
                     : "Add position weights"}
@@ -477,11 +475,11 @@ export default function PortfolioAnalytics({
                     </small>
                   </div>
                 </div>
-                <p className={s.note}>
+                <details className={s.methodNote}><summary>How concentration is measured</summary><p className={s.note}>
                   {concentration.complete
                     ? "Effective holding count is 1 ÷ the sum of squared holding weights expressed as fractions (1% = 0.01). Ten equally sized holdings produce a count of 10; larger concentrations lower it. This measures allocation concentration, not diversification across economic risks."
                     : concentration.reason}
-                </p>
+                </p></details>
               </>
             )}
             <PortfolioConcentrationHeatMap
@@ -790,7 +788,7 @@ export default function PortfolioAnalytics({
                 sector === "Unresolved positions") && (
                 <button type="button" onClick={onReviewRows}>
                   {preview
-                    ? "Open full demo to review"
+                    ? "Make an editable copy"
                     : "Review unresolved positions"}
                 </button>
               )}
@@ -816,7 +814,7 @@ export default function PortfolioAnalytics({
               <PortfolioMarketConnections
                 report={report}
                 active={
-                  area === "concentration" && concentrationLens === "markets"
+                  active && area === "concentration" && concentrationLens === "markets"
                 }
                 onInspectCompany={onInspectCompany}
               />
@@ -835,32 +833,17 @@ export default function PortfolioAnalytics({
             onInspectCompany={onInspectCompany}
             onDisclosure={onDisclosure}
             financialRequest={financialRequest}
+            initialView={analyticsArea === "metrics" ? "measures" : undefined}
+            reportingBasis={reportingBasis}
+            onReportingBasisChange={onReportingBasisChange}
+            reportingLoading={reportingLoading}
+            reportingProgress={reportingProgress}
+            onCancelReporting={onCancelReporting}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
           />
         </div>
       )}
-      {(visitedAreas.has("screener") || area === "screener") && (
-        <div className={s.retained} hidden={area !== "screener"}>
-          <PortfolioScreener
-            onDisclosure={onDisclosure}
-            report={catalogReport}
-            companies={companies}
-            onInspectCompany={onInspectCompany}
-          />
-        </div>
-      )}
-
-      {(visitedAreas.has("scenario") || area === "scenario") && (
-        <div className={s.retained} hidden={area !== "scenario"}>
-          <PortfolioScenario
-            report={report}
-            rows={rows}
-            settings={settings}
-            companies={companies}
-            onInspectCompany={onInspectCompany}
-          />
-        </div>
-      )}
-
       {(visitedAreas.has("coverage") || area === "coverage") && (
         <div className={s.panel} hidden={area !== "coverage"}>
           {report.warnings.length > 0 && (
@@ -920,13 +903,13 @@ export default function PortfolioAnalytics({
               </div>
               <div className={s.actions}>
                 <button type="button" onClick={onReviewRows}>
-                  {preview ? "Open full demo to review" : "Review input rows"}
+                  {preview ? "Make an editable copy" : "Review input rows"}
                 </button>
                 <button type="button" onClick={onRefresh} disabled={refreshing}>
                   {refreshing
                     ? "Refreshing research…"
                     : preview
-                      ? "Open full demo to refresh"
+                      ? "Refresh demo evidence"
                       : "Refresh research"}
                 </button>
               </div>

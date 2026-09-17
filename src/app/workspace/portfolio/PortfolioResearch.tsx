@@ -21,6 +21,7 @@ import {
 import { PORTFOLIO_METRIC_CATALOG } from "../../../utils/portfolioMetricCatalog.js";
 import dynamic from "next/dynamic";
 import ResearchWorkspace from "./ResearchWorkspace";
+import PortfolioHoldings from "./PortfolioHoldings";
 import CompanyResearchTable from "./CompanyResearchTable";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -69,6 +70,7 @@ import { advancePortfolioBaseline } from "../../../utils/portfolioChanges.js";
 import {
   PORTFOLIO_TABS,
   ANALYTICS_AREAS,
+  normalizePortfolioDestination,
 } from "../../../utils/researchHubNavigation.js";
 
 const PortfolioResearchDesk = dynamic(() => import("./PortfolioResearchDesk"));
@@ -179,6 +181,7 @@ export default function PortfolioResearch({
   const [workingSnapshot, setWorkingSnapshot] = useState<any>(null);
   const [tab, setTab] = useState("analytics");
   const [analyticsArea, setAnalyticsArea] = useState("overview");
+  const [holdingsMode, setHoldingsMode] = useState<"all" | "screen">("all");
   const [sourceEvidence, setSourceEvidence] = useState<Record<string, any>>({});
   const [disclosureRequest, setDisclosureRequest] = useState<any>(null);
   const [query, setQuery] = useState("");
@@ -361,6 +364,14 @@ export default function PortfolioResearch({
         setSelected([]);
         setWorkingSnapshot(null);
         setTab("research");
+        setHoldingsMode("all");
+        const url = new URL(window.location.href);
+        url.searchParams.set("view", "portfolios");
+        url.searchParams.set("portfolio", next.activeId);
+        url.searchParams.set("portfolioTab", "research");
+        for (const key of ["analyticsArea", "holdingsMode", "row", "portfolioView", "action"])
+          url.searchParams.delete(key);
+        window.history.replaceState(window.history.state, "", url);
       }
     } catch (failure) {
       setError(
@@ -421,6 +432,8 @@ export default function PortfolioResearch({
     }
   }
   function applyNavigation(request: any) {
+    request = { ...request, ...normalizePortfolioDestination(request) };
+    setHoldingsMode(request.holdingsMode === "screen" ? "screen" : "all");
     if (request.action === "cancel-editor") {
       cancelEditor();
       restoreDraftUrl();
@@ -449,8 +462,9 @@ export default function PortfolioResearch({
         ? request.analyticsArea
         : "overview",
     );
-    if (PORTFOLIO_TABS.includes(request.portfolioTab))
-      setTab(request.portfolioTab);
+    setTab(PORTFOLIO_TABS.includes(request.portfolioTab)
+      ? request.portfolioTab
+      : request.rowId || request.portfolioViewId ? "research" : "analytics");
     if (request.portfolioViewId) setTab("research");
     if (["new", "paste"].includes(request.action)) {
       editorOwner.current = documentKey(document);
@@ -483,26 +497,39 @@ export default function PortfolioResearch({
     workingSnapshot?.ownerKey === documentKey(document)
       ? workingSnapshot.snapshot
       : document?.snapshot;
-  function changePortfolioTab(value: string) {
+  function changePortfolioTab(value: string, mode: "all" | "screen" = "all") {
     if (!PORTFOLIO_TABS.includes(value)) return;
     setTab(value);
+    if (value === "research") setHoldingsMode(mode);
     const url = new URL(window.location.href);
     url.searchParams.set("portfolioTab", value);
+    url.searchParams.set("view", "portfolios");
+    if (document?.id) url.searchParams.set("portfolio", document.id);
+    if (value === "research" && mode === "screen") url.searchParams.set("holdingsMode", mode);
+    else url.searchParams.delete("holdingsMode");
+    if (value !== "analytics") url.searchParams.delete("analyticsArea");
     url.searchParams.delete("row");
     url.searchParams.delete("portfolioView");
-    window.history.replaceState(window.history.state, "", url);
+    if (url.href !== window.location.href) window.history.pushState(window.history.state, "", url);
   }
   function navigateAnalytics(area: string) {
+    const destination = normalizePortfolioDestination({ portfolioTab: "analytics", analyticsArea: area });
+    if (destination.portfolioTab === "research") {
+      changePortfolioTab("research", "screen");
+      return;
+    }
+    area = destination.analyticsArea || "overview";
     if (!ANALYTICS_AREAS.includes(area)) return;
     setAnalyticsArea(area);
     setTab("analytics");
     const url = new URL(window.location.href);
     url.searchParams.set("portfolio", document.id);
     url.searchParams.set("analyticsArea", area);
+    url.searchParams.delete("holdingsMode");
     url.searchParams.set("portfolioTab", "analytics");
     url.searchParams.delete("row");
     url.searchParams.delete("portfolioView");
-    window.history.pushState(null, "", url.pathname + url.search);
+    if (url.href !== window.location.href) window.history.pushState(window.history.state, "", url);
   }
   const companies = useMemo(
     () => (captured?.companies || []).map(augmentPortfolioCompanyMetrics),
@@ -1214,22 +1241,20 @@ export default function PortfolioResearch({
                   : "Run research to retrieve SEC evidence"}
               </span>
             </div>
-            {!(tab === "analytics" && analyticsArea === "metrics") && (
-              <label>
-                Reporting basis
-                <select
-                  value={captured?.basis || document.research.basis}
-                  disabled={busy}
-                  onChange={(event) => changeBasis(event.target.value)}
-                >
-                  {PORTFOLIO_REPORTING_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <label>
+              Reporting basis
+              <select
+                value={captured?.basis || document.research.basis}
+                disabled={busy}
+                onChange={(event) => changeBasis(event.target.value)}
+              >
+                {PORTFOLIO_REPORTING_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             {busy ? (
               <button
                 className={s.secondary}
@@ -1253,7 +1278,7 @@ export default function PortfolioResearch({
               </button>
             )}
           </div>
-          {busy && !(tab === "analytics" && analyticsArea === "metrics") && (
+          {busy && (
             <div className={s.progress}>
               <progress
                 value={progress.completed}
@@ -1295,6 +1320,9 @@ export default function PortfolioResearch({
             <div hidden={tab !== "analytics"}>
               <PortfolioAnalytics
                 embedded
+                active={active && tab === "analytics"}
+                onOpenHoldings={() => changePortfolioTab("research")}
+                onOpenChanges={() => changePortfolioTab("changes")}
                 key={document.id}
                 rows={rows}
                 onDisclosure={openPortfolioDisclosures}
@@ -1315,7 +1343,17 @@ export default function PortfolioResearch({
               />
             </div>
             {tab === "research" && (
-              <>
+              <PortfolioHoldings
+                key={document.id}
+                rows={rows}
+                settings={document.allocation}
+                companies={companies}
+                capturedAt={captured?.generated_at || null}
+                mode={holdingsMode}
+                onModeChange={(mode) => changePortfolioTab("research", mode)}
+                onInspectCompany={setFocusedRowId}
+                onDisclosure={openPortfolioDisclosures}
+              >
                 <PortfolioViews
                   value={viewSettings}
                   onChange={applyView}
@@ -1323,7 +1361,7 @@ export default function PortfolioResearch({
                 />
                 <div className={s.tableToolbar}>
                   <label className={s.search}>
-                    Search companies
+                    Search holdings
                     <span>
                       <Search size={17} />
                       <input
@@ -1333,92 +1371,97 @@ export default function PortfolioResearch({
                       />
                     </span>
                   </label>
-                  <label>
-                    Coverage
-                    <select
-                      value={filter}
-                      onChange={(event) => setFilter(event.target.value)}
-                    >
-                      <option value="all">All rows</option>
-                      <option value="ready">Ready</option>
-                      <option value="partial">Partial evidence</option>
-                      <option value="failed">Retrieval failed</option>
-                      <option value="needs-review">
-                        Needs review / not retrieved
-                      </option>
-                      <option value="unsupported">Unsupported</option>
-                      <option value="excluded">Excluded</option>
-                    </select>
-                  </label>
-                  <label>
-                    Sector or SEC industry
-                    <select
-                      value={industryFilter}
-                      onChange={(event) =>
-                        setIndustryFilter(event.target.value)
-                      }
-                    >
-                      <option value="">All sectors & industries</option>
-                      <optgroup label="Fund-reported sectors">
-                        {[
-                          ...new Set<string>(
-                            companies
-                              .filter((company: any) => company.kind !== "fund")
-                              .map(
-                                (company: any) =>
-                                  resolveCompanyClassification(company)
-                                    .sector || "Sector not covered",
+                  <details className={s.holdingFilters}>
+                    <summary>Filter & sort{filter !== "all" || industryFilter ? " · Active" : ""}</summary>
+                    <div className={s.filterFields}>
+                      <label>
+                        Coverage
+                        <select
+                          value={filter}
+                          onChange={(event) => setFilter(event.target.value)}
+                        >
+                          <option value="all">All rows</option>
+                          <option value="ready">Ready</option>
+                          <option value="partial">Partial evidence</option>
+                          <option value="failed">Retrieval failed</option>
+                          <option value="needs-review">
+                            Needs review / not retrieved
+                          </option>
+                          <option value="unsupported">Unsupported</option>
+                          <option value="excluded">Excluded</option>
+                        </select>
+                      </label>
+                      <label>
+                        Sector or SEC industry
+                        <select
+                          value={industryFilter}
+                          onChange={(event) =>
+                            setIndustryFilter(event.target.value)
+                          }
+                        >
+                          <option value="">All sectors & industries</option>
+                          <optgroup label="Fund-reported sectors">
+                            {[
+                              ...new Set<string>(
+                                companies
+                                  .filter((company: any) => company.kind !== "fund")
+                                  .map(
+                                    (company: any) =>
+                                      resolveCompanyClassification(company)
+                                        .sector || "Sector not covered",
+                                  ),
                               ),
-                          ),
-                        ]
-                          .sort()
-                          .map((sector) => (
-                            <option key={sector} value={`sector:${sector}`}>
-                              {sector}
+                            ]
+                              .sort()
+                              .map((sector) => (
+                                <option key={sector} value={`sector:${sector}`}>
+                                  {sector}
+                                </option>
+                              ))}
+                          </optgroup>
+                          <optgroup label="SEC industries">
+                            {[
+                              ...new Set<string>(
+                                companies.map(
+                                  (company: any) =>
+                                    resolveCompanyClassification(company).industry,
+                                ),
+                              ),
+                            ]
+                              .sort()
+                              .map((industry) => (
+                                <option key={industry}>{industry}</option>
+                              ))}
+                          </optgroup>
+                        </select>
+                      </label>
+                      <label>
+                        Sort by
+                        <select
+                          value={effectiveSort}
+                          onChange={(event) => setSort(event.target.value)}
+                        >
+                          <option value="name">Company name</option>
+                          {summary.mode !== "universe" && (
+                            <option value="weight">Modeled weight</option>
+                          )}
+                          {availableMetrics.map(({ key, label }) => (
+                            <option key={key} value={key}>
+                              {label}
                             </option>
                           ))}
-                      </optgroup>
-                      <optgroup label="SEC industries">
-                        {[
-                          ...new Set<string>(
-                            companies.map(
-                              (company: any) =>
-                                resolveCompanyClassification(company).industry,
-                            ),
-                          ),
-                        ]
-                          .sort()
-                          .map((industry) => (
-                            <option key={industry}>{industry}</option>
-                          ))}
-                      </optgroup>
-                    </select>
-                  </label>
-                  <label>
-                    Sort by
-                    <select
-                      value={effectiveSort}
-                      onChange={(event) => setSort(event.target.value)}
-                    >
-                      <option value="name">Company name</option>
-                      {summary.mode !== "universe" && (
-                        <option value="weight">Modeled weight</option>
-                      )}
-                      {availableMetrics.map(({ key, label }) => (
-                        <option key={key} value={key}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    className={s.secondary}
-                    onClick={() =>
-                      setDirection(direction === "asc" ? "desc" : "asc")
-                    }
-                  >
-                    {direction === "asc" ? "Ascending ↑" : "Descending ↓"}
-                  </button>
+                        </select>
+                      </label>
+                      <button
+                        className={s.secondary}
+                        onClick={() =>
+                          setDirection(direction === "asc" ? "desc" : "asc")
+                        }
+                      >
+                        {direction === "asc" ? "Ascending ↑" : "Descending ↓"}
+                      </button>
+                    </div>
+                  </details>
                 </div>
                 <details className={s.settings}>
                   <summary>
@@ -1457,7 +1500,7 @@ export default function PortfolioResearch({
                   >
                     Select shown
                   </button>
-                  <button onClick={() => setSelected([])}>
+                  <button disabled={!selected.length} onClick={() => setSelected([])}>
                     Clear selection
                   </button>
                   {comparisonTickers.length >= 2 &&
@@ -1469,12 +1512,12 @@ export default function PortfolioResearch({
                       Compare {comparisonTickers.length} tickers{" "}
                       <ArrowUpRight size={14} />
                     </Link>
-                  ) : (
+                  ) : selected.length > 0 ? (
                     <span>
                       Choose 2–{MAX_COMPARE_COMPANIES} supported company tickers
                       for Compare.
                     </span>
-                  )}
+                  ) : null}
                   {companies.some(
                     (company: any) =>
                       company.status === "failed" ||
@@ -1856,7 +1899,7 @@ export default function PortfolioResearch({
                   priorities={priorities}
                   onReview={() => openEditor("edit")}
                 />
-              </>
+              </PortfolioHoldings>
             )}
             {tab === "allocation" && (
               <>
@@ -1975,6 +2018,7 @@ export default function PortfolioResearch({
             )}
             {tab === "changes" && (
               <PortfolioChanges
+                active={active}
                 allocation={summary}
                 baseline={document.comparisonBaseline || null}
                 snapshot={captured}
@@ -1988,7 +2032,7 @@ export default function PortfolioResearch({
               key={document.id}
               rows={rows}
               companies={companies}
-              activeTab={tab}
+              activeTab={active ? tab : ""}
               request={
                 disclosureRequest?.portfolioId === document.id
                   ? disclosureRequest
