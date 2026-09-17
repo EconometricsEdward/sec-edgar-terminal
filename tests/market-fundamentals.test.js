@@ -64,10 +64,10 @@ test('v2 additive upgrades preserve SEC source clocks and rows while refusing le
   assert.throws(()=>upgradeUniverseSnapshot({...prior,schema_version:'edgar.factor-universe.v1'}),/cannot be upgraded/);
   const note=universeMarkdown(next,'all',1);assert.match(note,/Direction threshold: ±1 percentage points/);assert.match(note,/SEC Fundamental Lab/);
 });
-test('legacy factors views migrate to Fundamental Lab while preserving SEC metric settings',()=>{
-  const view={...DEFAULT_MARKET_VIEW,tab:'fundamentals',metric:'freeCashFlowMargin',quantThreshold:.5};
+test('legacy factors views migrate to sectors and retire the lab threshold',()=>{
+  const view={...DEFAULT_MARKET_VIEW,tab:'sectors',metric:'cashFlowMargin'};
   assert.deepEqual(parseMarketView(marketViewQuery(view)),view);
-  assert.equal(parseMarketView('tab=factors').tab,'fundamentals');
+  assert.equal(parseMarketView('tab=factors').tab,'sectors');
   assert.equal(parseMarketView('tab=factors').quantThreshold,0);
   assert.equal(parseMarketView('tab=factors&cutoff=-1').quantThreshold,0);
 });

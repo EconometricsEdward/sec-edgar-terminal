@@ -92,9 +92,9 @@ test("legacy Market visits cannot reopen retired price settings", () => {
   };
   const [item] = readResearchTrail(storage);
   assert.match(item.href, /^\/market\?/);
-  assert.match(item.href, /tab=fundamentals/);
+  assert.match(item.href, /tab=sectors/);
   assert.doesNotMatch(item.href, /(?:asset|window|proxy)=/);
-  assert.match(item.title, /Fundamental Lab/);
+  assert.match(item.title, /Sector Performance/);
 });
 
 

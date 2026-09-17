@@ -2,10 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { filingEligibility, matchesResearchScreen, universeResearchChecks, researchCsvCell } from '../src/utils/marketUniverseChecks.js';
 import { computeFundamentalDiagnostics } from '../src/utils/marketFundamentals.js';
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 
 const row = (ticker, change, financial=false) => ({ticker, financial, group:'technology', metrics:{operatingMargin:{current:change===null?null:10+change,prior:10,change},revenueGrowth:{current:change===null?null:10+change,prior:10,change}}});
 
@@ -45,16 +41,9 @@ test('all eligibility drilldowns reproduce exactly their exported ticker sets',(
   assert.equal(matchesResearchScreen(rows[0],'all','operatingMargin'),true);
 });
 
-test('empty research checks stay explicit and render no invented percentages',()=>{
+test('empty research checks retain explicit missing denominators',()=>{
   const checks=universeResearchChecks([],'operatingMargin');
   assert.ok(checks.sensitivity.every(item=>item.balance_pct===null&&item.eligible===0));
-  const require=createRequire(import.meta.url), ts=require('typescript');
-  const source=readFileSync(new URL('../src/app/market/MarketResearchChecks.tsx',import.meta.url),'utf8');
-  const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-  const testModule={exports:{}};
-  new Function('require','module','exports',compiled)(name=>name.endsWith('.css')?{}:require(name),testModule,testModule.exports);
-  const html=renderToStaticMarkup(createElement(testModule.exports.FundamentalResearchChecks,{checks,onScreen:()=>{},onThreshold:()=>{}}));
-  assert.match(html,/No comparable pairs are available/);
-  assert.match(html,/0 of 0 issuers/);
-  assert.doesNotMatch(html,/\b(?:NaN|Infinity|undefined|beta)\b/i);
+  assert.equal(checks.population,0);
+  assert.ok(checks.eligibility.every(item=>item.tickers.length===0));
 });

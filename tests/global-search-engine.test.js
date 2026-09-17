@@ -186,7 +186,7 @@ test('registered-fund holdings do not route to operating-company analysis', () =
 });
 
 test('tool navigation works without waiting for a company directory', () => {
-  const cases = [['research hub', '/workspace'], ['Open the research hub', '/workspace'], ['stock screener', '/market?tab=fundamentals'], ['13F', '/fund?view=13f'], ['compare managers', '/fund?view=13f&managerView=compare'], ['SEC filings', '/filings'], ['help', '/help'], ['funds', '/fund']];
+  const cases = [['research hub', '/workspace'], ['Open the research hub', '/workspace'], ['stock screener', '/market?tab=sectors'], ['sector performance', '/market?tab=sectors'], ['macro', '/market'], ['market briefing', '/market'], ['13F', '/fund?view=13f'], ['compare managers', '/fund?view=13f&managerView=compare'], ['SEC filings', '/filings'], ['help', '/help'], ['funds', '/fund']];
   for (const [query, expected] of cases) {
     const result = buildGlobalSearch(query, null);
     assert.equal(result.directPath, expected, query);

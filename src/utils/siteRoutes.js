@@ -30,7 +30,7 @@ export const SITE_TOOLS = Object.freeze([
     id: "market",
     label: "Market",
     href: "/market",
-    description: "Explore SEC fundamentals and CFTC positioning",
+    description: "Explore the macro briefing, sector fundamentals and CFTC positioning",
   },
   {
     id: "risk",

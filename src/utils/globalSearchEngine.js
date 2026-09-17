@@ -102,7 +102,7 @@ const TOOL_ALIASES = [
   ['compare', /^(?:compare|comparison|compare companies|company comparison)$/],
   ['fund', /^(?:funds?|etfs?|fund holdings|fund research|mutual funds?)$/],
   ['disclosures', /^(?:disclosures?|disclosure research|disclosure search|search disclosures)$/],
-  ['market', /^(?:market|markets|market research|market overview)$/],
+  ['market', /^(?:market|markets|market research|market overview|market briefing|macro|macroeconomics|macro market)$/],
   ['help', /^(?:help|guide|research guide|how to use|help me get started)$/],
   ['home', /^(?:home|homepage|start)$/],
 ];
@@ -111,7 +111,8 @@ function toolMatch(raw, cftcEnabled) {
   if (/^(?:13f|13f holdings|13f managers|managers|institutional managers|hedge funds?)$/.test(q)) return item('/fund?view=13f', 'Institutional managers · 13F', 'Find investment managers and their disclosed holdings', 'fund');
   if (/^(?:compare funds|fund comparison|etf comparison|compare etfs)$/.test(q)) return item('/fund?view=compare', 'Compare fund portfolios', 'Compare up to four registered funds', 'compare');
   if (/^(?:compare managers|manager comparison|compare hedge funds|13f comparison)$/.test(q)) return item('/fund?view=13f&managerView=compare', 'Compare institutional managers', 'Shared positions and reported portfolio exposures', 'compare');
-  if (/^(?:(?:stock|company|financial|fundamental) )?(?:screener|screen|screening)$/.test(q)) return item('/market?tab=fundamentals', 'Company screener', 'Screen SEC fundamentals and compare financial measures', 'market');
+  if (/^(?:(?:stock|company|financial|fundamental) )?(?:screener|screen|screening)$/.test(q)) return item('/market?tab=sectors', 'Sector Performance', 'Compare sector fundamentals across the covered SEC universe', 'market');
+  if (/^(?:sectors?|sector performance|sector comparison|sector heatmap|fundamental lab)$/.test(q)) return item('/market?tab=sectors', 'Sector Performance', 'Compare growth, profitability and cash generation across sectors', 'market');
   if (/^(?:fcm|fcm capital|futures commission merchants?)$/.test(q) && cftcEnabled) return item('/risk?view=fcm', 'Futures commission merchant capital', 'CFTC capital and customer-funds research', 'risk');
   for (const [id, pattern] of TOOL_ALIASES) if (pattern.test(q)) {
     const tool = SITE_TOOLS.find(entry => entry.id === id);
@@ -403,6 +404,6 @@ export function describeSearchPath(path) {
   if (tool === 'disclosures') return 'Disclosure research';
   if (tool === 'compare') return identifier ? `Company comparison · ${identifier.split(',').join(' / ')}` : 'Company comparison';
   if (tool === 'market' && url.searchParams.get('tab') === 'positioning') return 'CFTC market positioning';
-  if (tool === 'market' && url.searchParams.get('tab') === 'fundamentals') return 'Company screener';
+  if (tool === 'market' && ['sectors', 'fundamentals', 'factors', 'companies'].includes(url.searchParams.get('tab'))) return 'Sector Performance';
   return SITE_TOOLS.find(entry => entry.href === url.pathname)?.label || 'Research';
 }

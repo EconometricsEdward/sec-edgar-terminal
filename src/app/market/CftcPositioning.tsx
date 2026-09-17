@@ -10,8 +10,6 @@ import type { MarketView } from './marketTypes';
 import s from './cftcPositioning.module.css';
 
 type Props = { view: MarketView; onView: (patch: Partial<MarketView>, push?: boolean) => void; onNotice: (message: string) => void };
-type PreviewFamily = { pending: boolean; data: any; error: string };
-type PreviewState = Record<'tff' | 'disaggregated', PreviewFamily>;
 
 const DEFAULTS: Record<MarketView['cftcFamily'], { contract: string; group: string }> = {
   tff: { contract: '13874A', group: 'leveraged-funds' },
@@ -175,20 +173,4 @@ export default function CftcPositioning({ view, onView, onNotice }: Props) {
       <details className={s.method}><summary>How to interpret COT positioning</summary><p>COT reports describe aggregated outstanding positions reported for a Tuesday, generally released later in the week. They do not identify individual traders, traded volume, cash flows, dollar inflows, issuer exposure, or automatic buy/sell signals. Contract conventions differ, so a long or short Treasury, rate, currency, or commodity position does not translate automatically into a yield, dollar, or price forecast.</p><p>TFF and Disaggregated categories are not interchangeable. Standard, micro, venue-specific, discontinued, and replacement contracts remain separate. Net contracts are never summed across unrelated markets.</p><a href="https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm" target="_blank" rel="noreferrer">CFTC COT guidance <ExternalLink size={13} /></a></details>
     </>}
   </section>;
-}
-
-export function CftcPositioningPreview({ onOpen }: { onOpen: () => void }) {
-  const [state, setState] = useState<PreviewState>({ tff: { pending: true, data: null, error: '' }, disaggregated: { pending: true, data: null, error: '' } });
-  useEffect(() => {
-    let active = true;
-    const controllers = { tff: new AbortController(), disaggregated: new AbortController() };
-    const load = (family: keyof PreviewState) => {
-      fetchPreparedCftc(`/api/v1/cftc/markets?family=${family}`, { signal: controllers[family].signal })
-        .then(data => { if (active) setState(current => ({ ...current, [family]: { pending: false, data, error: '' } })); })
-        .catch(reason => { if (active) setState(current => ({ ...current, [family]: { pending: false, data: null, error: reason instanceof Error ? reason.message : 'Unavailable' } })); });
-    };
-    load('tff'); load('disaggregated');
-    return () => { active = false; Object.values(controllers).forEach(controller => controller.abort()); };
-  }, []);
-  return <section className={s.preview}><div><span className={s.eyebrow}>CFTC positioning</span><h2>Futures positioning, alongside—not inside—company research.</h2><p>Official futures-only COT reports provide separate market context across financial and physical contracts.</p></div><div className={s.previewStats}>{(['tff', 'disaggregated'] as const).map(family => { const item = state[family], label = CFTC_FAMILIES[family].shortLabel; return <span key={family} data-status={item.data?.status || (item.pending ? 'loading' : 'error')}>{item.pending ? <><b><Loader2 className={s.spin} size={14} />Loading</b>{label} report family</> : item.data ? <><b>{item.data.report_date}</b>{label} · {item.data.catalog.length} contracts<small>{item.data.status} · source age {item.data.freshness?.source_report_age_days ?? 'unavailable'} days</small></> : <><b>{label} unavailable</b><small title={item.error}>This report family could not be loaded.</small></>}</span>; })}</div><button onClick={onOpen}>Open CFTC Positioning</button></section>;
 }
