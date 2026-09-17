@@ -42,7 +42,6 @@ function ScenarioWorkbench({
   cftcEnabled = false,
   marketContext,
   onClearMarketContext,
-  onSaveMarketNote,
 }: any) {
   const scenario = useMemo(
     () => buildAnalysisScenario(data, settings, index),
@@ -399,7 +398,6 @@ function ScenarioWorkbench({
               {marketContext.asOf && marketContext.reportDate > marketContext.asOf
                 ? " The CFTC observation postdates that SEC cutoff and is current market context."
                 : ""}
-              Save it in Notebook to preserve it with your research brief.
             </p>
           )}
           <div className={styles.marketActions}>
@@ -411,19 +409,6 @@ function ScenarioWorkbench({
                 <Link href={marketPath}>
                   Open contract history
                 </Link>
-                <button
-                  type="button"
-                  disabled={!onSaveMarketNote}
-                  onClick={() => onSaveMarketNote?.([
-                    `CFTC scenario research — ${marketContext.label}`,
-                    `Positions as of ${marketContext.reportDate}${marketContext.asOf ? `; research cutoff ${marketContext.asOf}` : ""}.`,
-                    marketContext.summary,
-                    "Market-wide positioning context; scenario shocks are independent user assumptions.",
-                    `https://secedgarterminal.com${marketPath}`,
-                  ].join("\n"))}
-                >
-                  Save context to Notebook
-                </button>
                 <button type="button" onClick={onClearMarketContext}>
                   Clear context
                 </button>

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { X, ExternalLink, BookmarkPlus } from "lucide-react";
+import { X, ExternalLink } from "lucide-react";
 import { analysisValue } from "../../utils/analysisNotebook.js";
 import {
   analysisCollectionSettings,
@@ -102,14 +102,10 @@ export default function AnalysisInspector({
   settings = {},
   index = 0,
   close,
-  save,
   status,
 }: any) {
   const { definition, point, label } = selection;
   const observation = financialObservationContext(point, definition.key);
-  const [notes, setNotes] = useState(() =>
-    typeof selection.notes === "string" ? selection.notes : "",
-  );
   const [compareIndex, setCompareIndex] = useState(() =>
     analysisComparisonIndex(data, point, index, settings.baseline),
   );
@@ -387,50 +383,6 @@ export default function AnalysisInspector({
           )}
         </article>
       ))}
-      <label>
-        Evidence note for the figure you collect
-        <textarea
-          rows={3}
-          maxLength={5000}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Why this figure matters…"
-        />
-      </label>
-      <button
-        className={styles.primary}
-        disabled={point?.value == null}
-        onClick={() =>
-          save({
-            label: label || definition.label,
-            format: definition.format,
-            point,
-            notes,
-            analysisSettings: currentCollectionSettings,
-          })
-        }
-      >
-        <BookmarkPlus size={16} />
-        Collect this evidence
-      </button>
-      {comparison && (
-        <button
-          className={sourceStyles.comparisonCollect}
-          disabled={!Number.isFinite(comparison.before?.value)}
-          onClick={() =>
-            save({
-              label: label || definition.label,
-              format: definition.format,
-              point: comparison.before,
-              notes,
-              analysisSettings: comparisonCollectionSettings,
-            })
-          }
-        >
-          <BookmarkPlus size={14} aria-hidden="true" />
-          Collect comparison figure · {comparison.before?.period?.end}
-        </button>
-      )}
       {status && <p role="status">{status}</p>}
     </aside>
   );

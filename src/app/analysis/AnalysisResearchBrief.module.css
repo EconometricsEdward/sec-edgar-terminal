@@ -1,8 +1,29 @@
-.brief { background: #1c2533; border: 1px solid #36465a; border-radius: 14px; margin: 12px 0 24px; padding: 22px 26px; }
+.brief { background: var(--analysis-panel); border: 1px solid var(--analysis-border); border-radius: 14px; margin: 12px 0 24px; padding: 0; }
 .brief[hidden] { display: none; }
-.header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
-.header nav { display: flex; flex-wrap: wrap; gap: 8px 18px; max-width: 330px; font-size: 12px; }
-.header a, .evidence a, .tableWrap a { color: #f3c755; text-decoration: underline; text-underline-offset: 3px; }
+.brief .disclosure { border: 0; margin: 0; }
+.brief .toggle { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 19px 24px; border-radius: 14px; list-style: none; transition: background 160ms ease; }
+.toggle::-webkit-details-marker { display: none; }
+.toggle::marker { content: ""; }
+.toggle:hover { background: color-mix(in srgb, var(--analysis-accent) 5%, transparent); }
+.brief .toggle:focus-visible { outline-offset: 4px; }
+.summaryText { display: grid; gap: 4px; min-width: 0; }
+.summaryTitle { font-size: 16px; font-weight: 700; letter-spacing: -.015em; }
+.summaryMeta { font-size: 11px; color: var(--analysis-muted); font-weight: 450; }
+.summaryAside { display: flex; align-items: center; gap: 22px; flex-shrink: 0; }
+.status { display: inline-flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 550; color: var(--analysis-muted); }
+.status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.status[data-state="ready"] { color: #92c8bc; }
+.status[data-state="stale"] { color: var(--analysis-accent); }
+.toggleLabel { display: inline-flex; align-items: center; gap: 14px; color: var(--analysis-accent); font-size: 11px; white-space: nowrap; }
+.chevron { display: inline-block; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform 160ms ease; }
+.openLabel { display: none; }
+.disclosure[open] > .toggle .closedLabel { display: none; }
+.disclosure[open] > .toggle .openLabel { display: inline; }
+.disclosure[open] > .toggle .chevron { transform: translateY(2px) rotate(225deg); }
+.content { border-top: 1px solid var(--analysis-border); padding: 17px 24px 22px; }
+.links { display: flex; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 14px; font-size: 11px; }
+.links a, .evidence a, .tableWrap a { color: var(--analysis-accent); text-decoration: underline; text-underline-offset: 3px; }
+.sourceContent { scroll-margin-top: calc(var(--site-header-height, 120px) + 24px); }
 .freshness, .unavailable { color: #a0b0c4; font-size: 12px; }
 .freshness strong { color: #f3c755; }
 .tableWrap { overflow-x: auto; margin-top: 16px; }
@@ -16,11 +37,15 @@
 .evidence { font-size: 12px; margin-top: 16px; color: #a0b0c4; }
 .evidence summary { color: #e9edf4; cursor: pointer; font-weight: 600; }
 .evidence ul { padding-left: 20px; margin: 12px 0; }
-.directory { margin-top: 22px; }
-.directory details { border-top: 1px solid #36465a; padding: 12px 0; }
-.directory summary { cursor: pointer; font-weight: 600; }
-.directory ul { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px 24px; list-style: none; padding: 12px 0; }
-.directory a { color: #a0b0c4; font-size: 12px; }
-.directory strong { color: #f3c755; }
-@media(max-width: 760px) { .brief { padding: 18px; } .header { flex-direction: column; gap: 12px; } .directory ul { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media(max-width: 440px) { .directory ul { grid-template-columns: 1fr; } }
+@media(max-width: 760px) {
+  .brief .toggle { padding: 17px 18px; align-items: flex-start; gap: 12px; }
+  .summaryAside { flex-direction: column; align-items: flex-end; gap: 7px; }
+  .summaryTitle { font-size: 14px; }
+  .content { padding: 14px 18px 18px; }
+}
+@media(max-width: 520px) {
+  .brief .toggle { flex-direction: column; }
+  .summaryAside { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
+}
+@media(prefers-reduced-motion: reduce) { .brief .toggle, .chevron { transition: none; } }
+:global(html[data-theme-mode="light"]) .status[data-state="ready"] { color: #287566; }

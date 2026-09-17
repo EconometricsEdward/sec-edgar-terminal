@@ -12,7 +12,7 @@ const goals = {
       {
         title: "Read the financial statements",
         detail: "Choose a comparable reporting basis.",
-        href: `/analysis/${t}`,
+        href: `/analysis/${t}?view=statements`,
       },
       {
         title: "Inspect credit and liquidity",
@@ -20,9 +20,9 @@ const goals = {
         href: `/risk?ticker=${t}`,
       },
       {
-        title: "Keep your review and evidence",
-        detail: "Save notes and mark a financial baseline.",
-        href: `/analysis/${t}?view=notebook`,
+        title: "Verify the financial evidence",
+        detail: "Check source coverage, SEC tags, and reported inputs.",
+        href: `/analysis/${t}?view=checks`,
       },
     ],
   },
@@ -37,7 +37,7 @@ const goals = {
       {
         title: "Check the financial context",
         detail: "Inspect the balance sheet and its sources.",
-        href: `/analysis/${t}?statement=balance`,
+        href: `/analysis/${t}?view=statements&statement=balance`,
       },
       {
         title: "Review the reporting sequence",
@@ -60,9 +60,9 @@ const goals = {
         href: `/analysis/${t}?view=changes`,
       },
       {
-        title: "Save the review baseline",
-        detail: "Keep notes and evidence for your next visit.",
-        href: `/analysis/${t}?view=notebook`,
+        title: "Check the source history",
+        detail: "Inspect source filings, revisions, and reporting coverage.",
+        href: `/analysis/${t}?view=checks`,
       },
     ],
   },

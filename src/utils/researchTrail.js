@@ -67,11 +67,14 @@ function visitTitle(path) {
     cashflow: "Cash flow",
     ratios: "Industry ratios",
   };
-  const view =
+  const requestedView =
     url.searchParams.get("view") ||
     url.searchParams.get("tab") ||
     url.searchParams.get("family") ||
     url.searchParams.get("statement");
+  const view = tool === "analysis" && ["notebook", "extended"].includes(requestedView)
+    ? "overview"
+    : requestedView;
   return `${label}${detail ? ` · ${detail}` : ""}${labels[view] ? ` · ${labels[view]}` : ""}`;
 }
 export function recordResearchVisit(

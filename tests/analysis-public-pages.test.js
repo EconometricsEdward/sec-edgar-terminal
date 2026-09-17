@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { buildAnalysisCompany, packAnalysisCompany } from '../src/utils/analysisResearch.js';
+import { buildAnalysisDirectory } from '../src/utils/analysisDirectory.js';
 import { readAnalysisSettings } from '../src/utils/analysisNotebook.js';
 import { createPublicAnalysisReader, publicAnalysisSelection } from '../src/utils/analysisPublicResearch.js';
 
@@ -15,6 +16,7 @@ const files = {
   brief: '../src/app/analysis/AnalysisResearchBrief.tsx',
   company: '../src/app/analysis/[ticker]/page.tsx',
   directory: '../src/app/analysis/page.tsx',
+  sampler: '../src/app/analysis/AnalysisDirectory.tsx',
 };
 const companies = [
   { ticker: 'AAPL', cik: '0000320193', name: 'Apple fixture', sector: 'Technology' },
@@ -55,6 +57,8 @@ function fixture({ fail = false, available = true } = {}) {
       if (name === 'lucide-react') return new Proxy({}, { get: () => () => null });
       if (name.endsWith('/siteMetadata')) return { buildPageMetadata: value => value };
       if (name.endsWith('/cftcFeature.js')) return { isCftcEnabled: () => true };
+      if (name.endsWith('/analysisDirectory.js')) return { buildAnalysisDirectory };
+      if (name.endsWith('/AnalysisDirectory')) return compile('sampler');
       if (name.endsWith('/analysisNotebook.js')) return { readAnalysisSettings };
       if (name.endsWith('/secCoverageRegistry.js')) return {
         loadSecCoverageRegistry: async () => { registryCalls.push('registry'); },
@@ -93,6 +97,25 @@ test('Analysis initial HTML includes actual current/prior financial values, unit
   assert.doesNotMatch(html, /<script(?! type="application\/ld\+json")|NaN|undefined|private credentials/);
   assert.deepEqual(f.calls, [{ ticker: 'AAPL', basis: 'annual', end: '', asOf: '' }]);
   assert.equal(f.clientProps[0].preloadedCik, '0000320193');
+});
+
+test('Financial highlights start collapsed using native disclosure while the complete financial evidence remains in server HTML', async () => {
+  const f = fixture(), page = f.compile('company');
+  const html = renderToStaticMarkup(await page.default(props()));
+  const disclosure = html.match(/<details\b([^>]*)><summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/section>/);
+  assert.ok(disclosure, 'a native disclosure makes highlights available without client JavaScript');
+  assert.doesNotMatch(disclosure[1], /\bopen(?:\s|=|$)/, 'highlights must start collapsed');
+  assert.match(disclosure[2], /Apple fixture — financial highlights/);
+  assert.match(disclosure[2], /AAPL · Annual/);
+  assert.match(disclosure[2], /Period ending <time dateTime="2025-12-31">2025-12-31<\/time>/);
+  assert.match(disclosure[2], /Prepared research/);
+  assert.doesNotMatch(disclosure[2], /<(?:a|button|input|select)\b/, 'the disclosure control must not contain competing interactive elements');
+  assert.match(disclosure[3], /<nav[^>]*aria-label="Financial summary links"/);
+  assert.match(disclosure[3], /500 USD/);
+  assert.match(disclosure[3], /href="#analysis-summary-sources"/);
+  assert.match(disclosure[3], /<details[^>]*><summary>Source filings, coverage &amp; interpretation<\/summary><div id="analysis-summary-sources"/,
+    'source anchors target content inside the nested disclosure so fragment navigation can reveal it');
+  assert.match(disclosure[3], /href="https:\/\/www.sec.gov\/Archives\//);
 });
 
 test('quarter and selected end remain exact in HTML, public JSON links and initial interactive settings', async () => {
@@ -153,7 +176,10 @@ test('Analysis company directory renders registry identities, source-free discov
   }
   assert.match(html, /Technology/); assert.match(html, /Financials/);
   assert.match(html, /data-company-search="preserved"/);
-  assert.match(html, /href="\/analysis\/AAPL\?view=cftc"/);
+  assert.match(html, /A few places to start/);
+  assert.match(html, /CFTC market context/);
+  assert.match(html, /sample companies/);
+  assert.doesNotMatch(html, /Choose a company|Your research sequence|Notebook/);
   assert.equal(f.registryCalls.length, 1); assert.equal(f.calls.length, 0);
 });
 

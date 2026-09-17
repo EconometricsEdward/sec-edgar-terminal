@@ -437,7 +437,7 @@ export default function AnalysisScenarioCases({
       <div className={styles.heading}>
         <div>
           <p className={styles.eyebrow}>
-            <BookmarkPlus size={14} aria-hidden="true" /> Scenario notebook
+            <BookmarkPlus size={14} aria-hidden="true" /> Saved scenario cases
           </p>
           <h2 id="scenario-cases-heading">
             Save, compare, and explain your cases

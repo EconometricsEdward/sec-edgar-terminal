@@ -26,7 +26,7 @@ const tools = [
     key: "overview",
     label: "Overview",
     intent:
-      "Find financial movements and check your personal financial thresholds.",
+      "Explore financial highlights and the largest changes between reporting periods.",
   },
   {
     key: "statements",
@@ -75,18 +75,6 @@ const tools = [
     key: "checks",
     label: "Sources & checks",
     intent: "Audit source coverage, SEC tags, revisions and reconciliation.",
-  },
-  {
-    key: "notebook",
-    label: "Notebook",
-    intent:
-      "Track research questions and conclusions with evidence; save views and export a research brief.",
-  },
-  {
-    key: "extended",
-    label: "More research",
-    intent:
-      "Explore valuation, geographic exposure and additional research tools.",
   },
 ];
 
