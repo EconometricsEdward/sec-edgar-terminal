@@ -8,8 +8,8 @@ import { marketViewForCftcAvailability, marketViewPath, parseMarketView } from '
 import type { MarketData } from './marketTypes';
 
 export const revalidate = 900;
-// ISR caches the rendered page; Redis holds the compressed overview. Avoid a
-// second Next data-cache object, whose 2 MB item limit is too small at this scale.
+// Redis holds the prepared overview shared by this request and the API. Avoid
+// a second Next data-cache object, whose 2 MB item limit is too small at this scale.
 async function readCachedMarket() { try { return await readMarketOverview(); } catch { return null; } }
 
 export const metadata: Metadata = buildPageMetadata({
@@ -25,6 +25,11 @@ export default async function MarketOverviewPage({ searchParams }: { searchParam
   const query = new URLSearchParams(Object.entries(raw).flatMap(([key, value]) => Array.isArray(value) ? value.map(item => [key, item]) : value == null ? [] : [[key, value]])).toString();
   const requestedTab = new URLSearchParams(query).get('tab');
   const cftcEnabled = isCftcEnabled();
+  // Resolve retired Market views before reading the snapshot or hydrating the
+  // client. Bookmarks from the former company-detail panel remain usable.
+  if (requestedTab && !['overview', 'positioning', 'sectors'].includes(requestedTab)) {
+    redirect(marketViewPath(marketViewForCftcAvailability(parseMarketView(query), cftcEnabled)));
+  }
   if (!cftcEnabled && requestedTab === 'positioning') {
     redirect(marketViewPath(marketViewForCftcAvailability(parseMarketView(query), false)));
   }

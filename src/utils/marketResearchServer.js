@@ -1,7 +1,7 @@
 import { getOperatingTicker, getOperatingTickers } from './tickerMap.js';
 import { warmAcquireLease, warmCacheEnabled, warmGet, warmReleaseLease, warmSet } from './warmCache.js';
 import { MARKET_LENSES } from './marketCohorts.js';
-import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary } from './marketResearchData.js';
+import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary, MARKET_REVENUE_VERSION } from './marketResearchData.js';
 import { MARKET_ATLAS_FRESH_MS, MARKET_VERSION, metricStats } from './marketResearch.js';
 import { appendSnapshot } from './marketEvidence.js';
 import { secFetch } from './secClient.js';
@@ -56,7 +56,7 @@ export async function loadMarketCompany(ticker, knownEntry = null, { signal, for
   if (pending.has(key)) return pending.get(key);
   const task = (async () => {
     const cached = await readMarketCompanyCache(ticker);
-    if (!forceRefresh && cached && Date.now() - Date.parse(cached.observedAt) < COMPANY_FRESH_MS) { rememberCompany(ticker, cached); return cached; }
+    if (!forceRefresh && cached?.revenueVersion === MARKET_REVENUE_VERSION && Date.now() - Date.parse(cached.observedAt) < COMPANY_FRESH_MS) { rememberCompany(ticker, cached); return cached; }
     try {
       const entry = knownEntry || await getOperatingTicker(ticker);
       if (!entry) { const error = new Error('Ticker is absent from the current SEC operating-company map.'); error.name = 'UnresolvedTicker'; throw error; }
@@ -72,7 +72,7 @@ export async function loadMarketCompany(ticker, knownEntry = null, { signal, for
       await writeMarketCompanyCache(ticker, company);
       return company;
     } catch (error) {
-      if (cached) {
+      if (cached?.revenueVersion === MARKET_REVENUE_VERSION) {
         const stale = { ...cached, cache: { status: 'stale', warning: 'SEC refresh failed; using the last completed company snapshot.' } };
         rememberCompany(ticker, stale);
         return stale;

@@ -574,9 +574,13 @@ function officialSourceMatches(response, family, { kind, reportDate, code = null
       && (source.history_url == null || exactResourceQuery(source.history_url, family, launchHistoryQuery(family, reportDate)));
   }
   if (kind === 'history') {
-    const contractQuery = exactResourceQuery(source.url, family, contractHistoryQuery(family, code, reportDate));
+    // Historical selections can use the current prepared archive. Keep its
+    // original bounded query/date rather than claiming a fresh source request.
+    const sourceDate = response.retrieval?.source_report_date ?? reportDate;
+    if (cftcDate(sourceDate) !== sourceDate || sourceDate < reportDate || sourceDate > response.retrieved_at?.slice(0, 10)) return false;
+    const contractQuery = exactResourceQuery(source.url, family, contractHistoryQuery(family, code, sourceDate));
     const launchQuery = CFTC_LAUNCH_CATALOG.some(item => item.family === family && item.code === code)
-      && exactResourceQuery(source.url, family, launchHistoryQuery(family, reportDate));
+      && exactResourceQuery(source.url, family, launchHistoryQuery(family, sourceDate));
     return source.history_url == null && (contractQuery || launchQuery);
   }
   return false;
@@ -768,7 +772,8 @@ export function validHistoryResponse(response, family, code, group, throughDate,
   if (!semanticEqual(response.coverage.required_values_unavailable, requiredHistoryUnavailable(family, response.selected)) || !semanticEqual(response.formula, CFTC_HISTORY_FORMULA)) return false;
   if (response.retrieval != null) {
     const retrieval = response.retrieval;
-    if (!exactKeys(retrieval, ['origin_scope', 'scope_rows', 'source_rows', 'source_pages', 'source_page_size', 'cap_reached', 'bounded_scope_rows', 'bounded_source_rows'])
+    if (Object.hasOwn(retrieval, 'source_report_date') && (typeof retrieval.source_report_date !== 'string' || cftcDate(retrieval.source_report_date) !== retrieval.source_report_date)) return false;
+    if (!exactKeys(retrieval, ['origin_scope', 'scope_rows', 'source_rows', 'source_pages', 'source_page_size', 'cap_reached', 'bounded_scope_rows', 'bounded_source_rows'], ['source_report_date'])
       || !['contract_history', 'launch_selection'].includes(retrieval.origin_scope)
       || !safeInteger(retrieval.scope_rows, 1) || retrieval.scope_rows > 600 || retrieval.scope_rows < response.history.length
       || !safeInteger(retrieval.source_rows, 1) || retrieval.source_rows < retrieval.scope_rows
@@ -1305,11 +1310,15 @@ export async function loadCftcHistory({ family = 'tff', code, group, reportDate 
     }
     const durableClaim = await persistence.reserve(cacheId), rawHistories = [];
     const cacheWrite = await reserveCftcLegacyWriter(persistence, cacheId, durableClaim);
-    const rawThroughDate = throughDate, count = CFTC_HISTORY_WINDOWS[window];
+    // The scheduled job prepares one shared archive per current contract, not
+    // an archive for every selectable date. Derive past selections from those
+    // bounded rows; buildCftcHistoryResponse excludes every later observation.
+    const rawThroughDate = persistence.mode() === 'supabase' && !forceRefresh ? markets.report_date : throughDate;
+    const count = CFTC_HISTORY_WINDOWS[window];
     const source = await fetchCftcContractHistory(family, code, rawThroughDate, count, { group, signal: operationSignal, fetchImpl, expectedSelectedRaw: expectedLatest?.raw, bypassPrepared: forceRefresh,
       persistence, durableKey: cacheId, cacheSet: cacheWrite, captureRaw: persistence.mode() === 'off' ? null : envelope => rawHistories.push(envelope) });
     const responseCacheStatus = cftcHistoryResponseCacheStatus(source.cacheStatus);
-    const response = cftcPublicationStatus(buildCftcHistoryResponse({ family, code, group, throughDate, window, rawRows: source.rows, retrievedAt: source.retrievedAt, sourceUrl: source.sourceUrl, cacheStatus: responseCacheStatus, retrieval: { origin_scope: source.originScope, scope_rows: source.rows.length, source_rows: source.sourceRows, source_pages: source.pages, source_page_size: source.sourcePageSize, cap_reached: Boolean(source.capReached), bounded_scope_rows: 600, bounded_source_rows: source.sourceRowLimit } }), {
+    const response = cftcPublicationStatus(buildCftcHistoryResponse({ family, code, group, throughDate, window, rawRows: source.rows, retrievedAt: source.retrievedAt, sourceUrl: source.sourceUrl, cacheStatus: responseCacheStatus, retrieval: { origin_scope: source.originScope, scope_rows: source.rows.length, source_rows: source.sourceRows, source_pages: source.pages, source_page_size: source.sourcePageSize, cap_reached: Boolean(source.capReached), bounded_scope_rows: 600, bounded_source_rows: source.sourceRowLimit, ...(rawThroughDate !== throughDate ? { source_report_date: rawThroughDate } : {}) } }), {
       cacheRequired: warmCacheEnabled(),
       rawHistoryExpected: warmCacheEnabled() ? 1 : 0,
       rawHistoryPersisted: warmCacheEnabled() && (source.cachePersisted === true || source.cacheStatus === 'prepared') ? 1 : 0,

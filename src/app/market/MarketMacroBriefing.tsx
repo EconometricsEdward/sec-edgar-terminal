@@ -19,7 +19,7 @@ export default function MarketMacroBriefing({ data, basis, onSector, cftcEnabled
     { label: 'Positive operating cash flow', metric: summary.cash, detail: 'Positive operating cash flow / revenue', tone: 'blue' },
   ];
   const growthPct = summary.growth.positivePct;
-  const headline = growthPct == null ? 'The business picture, sector by sector.' : `${formatMarket(growthPct, 'pct', 0)} reported revenue growth.`;
+  const headline = growthPct == null ? 'The business picture, sector by sector.' : `${formatMarket(growthPct, 'pct', 0)} of companies grew revenue.`;
   return <section className={m.briefing} aria-labelledby="macro-briefing-heading">
     <div className={m.readout}>
       <div className={m.kicker}><span>01 / Business conditions</span><span>SEC · {basis === 'ttm' ? 'TTM' : 'Annual'}</span></div>

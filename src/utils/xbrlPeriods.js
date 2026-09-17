@@ -74,15 +74,57 @@ function observations(facts, tag, unit, asOf) {
       .map((e) => ({ ...e, tag, taxonomy, unit }))).sort(latest);
 }
 
+// Opt-in revenue safeguard for a specific contradictory SEC context: a 10-Q
+// repeats its shorter YTD revenue as a full year, disagrees with that year's
+// annual report, and would make Q4 negative against the reported nine months.
+// Keep genuine revisions (including 10-K/A and ordinary 10-Q comparatives).
+// No value is capped or guessed; the annual report remains the cited input.
+function guardAnnualRevenueObservations(entries) {
+  const shorterByAccession = new Map();
+  for (const entry of entries) {
+    const days = duration(entry);
+    if (entry.accn && days >= 60 && days < 300) {
+      const key = `${entry.accn}:${entry.taxonomy}:${entry.start}:${entry.val}`;
+      shorterByAccession.set(key, true);
+    }
+  }
+  const conflicts = new Map();
+  for (const entry of entries) {
+    const days = duration(entry);
+    if (!/^10-Q(\/A)?$/.test(entry.form) || days < 300 || days > 400 ||
+        !shorterByAccession.has(`${entry.accn}:${entry.taxonomy}:${entry.start}:${entry.val}`)) continue;
+    const prior = entries.find((e) => e.taxonomy === entry.taxonomy && e.start === entry.start &&
+      e.filed <= entry.filed && daysBetween(e.end, entry.end) >= 60 && daysBetween(e.end, entry.end) <= 120);
+    if (!prior || prior.val <= entry.val) continue;
+    const annual = entries.find((e) => ANNUAL.test(e.form) && e.taxonomy === entry.taxonomy &&
+      e.start === entry.start && e.end === entry.end && e.filed <= entry.filed);
+    if (!annual || annual.val < prior.val || annual.val === entry.val) continue;
+    conflicts.set(entry, {
+      code: 'annual-revenue-context-conflict',
+      accession: entry.accn, filed: entry.filed, value: entry.val,
+    });
+  }
+  if (!conflicts.size) return entries;
+  return entries.filter((entry) => !conflicts.has(entry)).map((entry) => {
+    if (!ANNUAL.test(entry.form)) return entry;
+    const contextWarnings = [...conflicts].filter(([rejected]) => rejected.taxonomy === entry.taxonomy &&
+      rejected.start === entry.start && rejected.end === entry.end).map(([, warning]) => warning);
+    return contextWarnings.length ? { ...entry, contextWarnings } : entry;
+  });
+}
+
 function reported(entry, peers) {
   const sameContext = peers.filter((e) => e.start === entry.start && e.end === entry.end && e.unit === entry.unit);
-  const revised = new Set(sameContext.map((e) => e.val)).size > 1;
+  const revised = new Set(sameContext.map((e) => e.val)).size > 1 || Boolean(entry.contextWarnings?.length);
   const source = {
     tag: entry.tag, taxonomy: entry.taxonomy, unit: entry.unit,
     accession: entry.accn, filed: entry.filed, start: entry.start || null,
     end: entry.end, form: entry.form, value: entry.val,
     durationDays: duration(entry), classification: 'reported', revised,
-    revisionNote: revised ? 'Different values were filed for this exact context. Inspect the filings to determine the reason.' : null,
+    revisionNote: entry.contextWarnings?.length
+      ? 'Annual-report revenue used: a conflicting quarterly-filing annual context repeats a shorter-period value and would imply negative fourth-quarter revenue. Inspect both filings.'
+      : revised ? 'Different values were filed for this exact context. Inspect the filings to determine the reason.' : null,
+    ...(entry.contextWarnings?.length ? { contextWarnings: entry.contextWarnings } : {}),
   };
   return {
     value: entry.val, source, sources: [source], classification: 'reported',
@@ -115,10 +157,11 @@ export function sumCompatibleFinancialFacts(inputs, formula, period) {
 }
 
 /** No currency substitution or same-year fallback. Unknown means unavailable. */
-export function selectFinancialFact(facts, tags, period, unit = 'USD', { additive = true } = {}) {
+export function selectFinancialFact(facts, tags, period, unit = 'USD', { additive = true, guardAnnualRevenueContext = false } = {}) {
   const kind = period.kind || (period.fp === 'FY' ? 'annual' : 'quarter');
   for (const tag of tags) {
-    const all = observations(facts, tag, unit, period.asOf);
+    const observationsForTag = observations(facts, tag, unit, period.asOf);
+    const all = guardAnnualRevenueContext ? guardAnnualRevenueObservations(observationsForTag) : observationsForTag;
     const ending = all.filter((e) => e.end === period.end);
     if (!ending.length) continue;
     const instants = ending.filter((e) => !e.start);
@@ -168,7 +211,7 @@ export function selectFinancialFact(facts, tags, period, unit = 'USD', { additiv
         const gap = daysBetween(quarters[i + 1].end, p.end);
         return gap < 60 || gap > 120;
       })) continue;
-      const points = quarters.map((p) => selectFinancialFact(facts, [tag], { ...p, kind: 'quarter' }, unit, { additive }));
+      const points = quarters.map((p) => selectFinancialFact(facts, [tag], { ...p, kind: 'quarter' }, unit, { additive, guardAnnualRevenueContext }));
       if (points.every(Boolean)) return calculated(points.reduce((sum, p) => sum + p.value, 0), points,
         'Sum of four consecutive standalone quarters', 'Trailing twelve months; all four quarters are required.', { ...period, start: quarters[3].start });
     }

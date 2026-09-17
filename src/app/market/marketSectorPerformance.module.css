@@ -100,6 +100,17 @@
 .companyDirectoryScroll thead { position:sticky; top:0; background:var(--m-panel); }
 .companyDirectoryScroll :is(th,td) { padding:7px 8px!important; }
 .companyDirectoryScroll tbody th { color:var(--m-accent); }
+.companyDirectoryScroll a { text-decoration:underline; text-underline-offset:3px; }
+.companyDirectoryScroll a:hover { color:var(--m-accent); }
+.directoryBasis { display:block; margin-top:3px; color:var(--m-muted); font-size:10px; }
+.directoryControls { margin-top:14px; }
+.directoryControls label { display:block; margin-bottom:6px; font-size:11px; }
+.directoryControls input { width:100%; max-width:440px; min-height:40px; border:1px solid var(--m-line); border-radius:6px; padding:8px 11px; background:var(--m-panel); color:var(--m-text); font-size:12px; }
+.directoryPagination { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:12px; font-size:11px; }
+.directoryPagination > span { margin-right:auto; color:var(--m-muted); }
+.directoryPagination button { border:1px solid var(--m-line); border-radius:6px; padding:8px 11px; }
+.directoryPagination button:disabled { opacity:.45; cursor:default; }
+.directoryPagination button:not(:disabled):hover { border-color:var(--m-accent); color:var(--m-accent); }
 .unavailable { margin-top:13px; }
 .unavailable summary { font-size:11px; cursor:pointer; }
 .unavailable ul { max-height:200px; overflow:auto; padding:10px 0 0 18px; font-size:10px; color:var(--m-muted); list-style:disc; }

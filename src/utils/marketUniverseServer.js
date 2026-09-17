@@ -3,7 +3,7 @@ import { MARKET_VERSION } from './marketResearch.js';
 import { isMarketAtlas } from './marketResearchValidation.js';
 import { buildUniverseSnapshot, UNIVERSE_METRICS, UNIVERSE_VERSION, UNIVERSE_METHOD, UNIVERSE_FRESH_MS, upgradeUniverseSnapshot } from './marketUniverse.js';
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
-import { prepareQuantAtlas, publishQuantAtlas, readQuantAtlas } from './quantCoverageServer.js';
+import { prepareQuantAtlas, publishQuantAtlas, readQuantAtlas, applyPreparedRevenueCorrections } from './quantCoverageServer.js';
 
 const environment = process.env.VERCEL_ENV === 'production' ? 'production' : process.env.VERCEL_ENV === 'preview' ? `preview-${String(process.env.VERCEL_GIT_COMMIT_SHA || 'unknown').slice(0, 12)}` : 'local';
 export const FUNDAMENTAL_UNIVERSE_CACHE = `edgar.fundamental-universe.v2:${environment}`;
@@ -180,6 +180,7 @@ export async function refreshUniverseSnapshot({ signal, deadline = Date.now() + 
     try { atlas = await prepareQuantAtlas({ signal, deadline }); }
     catch { atlas = await readQuantAtlas(); }
     if (!atlas) throw new Error('The prepared SEC atlas is unavailable; prior fundamental snapshots remain untouched.');
+    atlas = await applyPreparedRevenueCorrections(atlas, { signal, deadline });
     const publications = [], outcomes = [], generationNow = new Date();
     for (const basis of ['ttm', 'annual']) {
       if (signal?.aborted || Date.now() > deadline - 10000) throw new Error('Fundamental publication deferred at the deadline.');
