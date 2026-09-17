@@ -338,6 +338,14 @@ test("financial profile overview renders every represented sector and compatible
   assert.match(html, /<option value="all" selected="">All sectors · 100<\/option>/);
   assert.match(html, /fund-reported classification as of Sep 8, 2026/);
   assert.match(html, /Accounting model/);
+  const financialNavigation = html.match(
+    /<nav\b[^>]*aria-label="Financial sections"[^>]*>(.*?)<\/nav>/,
+  )?.[1];
+  assert.ok(financialNavigation);
+  assert.equal((financialNavigation.match(/<button\b/g) || []).length, 4);
+  for (const label of ["Financial profile", "Ratios", "Relationships", "Compare"])
+    assert.ok(financialNavigation.includes(label));
+  assert.doesNotMatch(html, /Measures &amp; rankings|Financial health/);
   for (const group of profile.lensGroups.filter((group) => group.companyCount))
     assert.ok(html.includes(`${group.label} · ${group.companyCount}`));
   assert.match(html, /24 supported ratio measures/);
@@ -355,7 +363,7 @@ test("financial profile overview renders every represented sector and compatible
   assert.doesNotMatch(html, /NaN|Infinity|undefined/);
 });
 
-test("unweighted financial profile uses company breadth throughout overview and measures", () => {
+test("unweighted financial profile uses company breadth throughout its overview", () => {
   const profileModule = component(
     "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
   );
@@ -381,9 +389,6 @@ test("unweighted financial profile uses company breadth throughout overview and 
       })),
     })),
   };
-  const profile = buildPortfolioFinancialProfile(catalog, {
-    lens: "corporate",
-  });
   const overview = renderToStaticMarkup(
     createElement(profileModule.default, {
       report: { ...report, weighted: false },
@@ -393,15 +398,6 @@ test("unweighted financial profile uses company breadth throughout overview and 
       onInspectCompany: () => {},
     }),
   );
-  const measures = renderToStaticMarkup(
-    createElement(profileModule.MeasureExplorer, {
-      profile,
-      requestedMetric: "netMargin",
-      onRequestedMetric: () => {},
-      onInspectCompany: () => {},
-    }),
-  );
-
   assert.match(overview, /Companies represented/);
   assert.match(overview, /Company footprints/);
   assert.match(overview, /Ranked by share of measured companies/);
@@ -410,11 +406,6 @@ test("unweighted financial profile uses company breadth throughout overview and 
     overview,
     /Known allocation represented|matched original allocation|Bubble area reflects known holding weight/,
   );
-  assert.match(measures, /Company average/);
-  assert.match(measures, /Share of measured companies/);
-  assert.match(measures, /<th scope="col">Company<\/th>/);
-  assert.match(measures, /<th scope="row">/);
-  assert.doesNotMatch(measures, /Allocation-weighted median|original allocation/);
 });
 
 test("financial profile consumes request nonces once and remounts tools by sector and measure set", () => {
@@ -435,25 +426,20 @@ test("financial profile consumes request nonces once and remounts tools by secto
     /handledFinancialRequestNonce\.current = financialRequest\.nonce/,
   );
   assert.match(source, /key=\{`overview:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
-  assert.match(source, /<PortfolioMetricExplorer/);
-  assert.match(source, /requestedMetric=\{rankingRequest\}/);
-  assert.match(source, /showReportingControls=\{false\}/);
-  assert.match(source, /key=\{`health:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
+  assert.match(source, /<PortfolioRatioAtlas/);
+  assert.doesNotMatch(source, /<PortfolioMetricExplorer|<FinancialHealth|<MeasureExplorer/);
+  assert.match(source, /key=\{`ratios:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
   assert.match(source, /key=\{`relationships:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
   assert.match(source, /key=\{`compare:\$\{profile\.sector\}:\$\{profile\.lens\}:\$\{profileRevision\}`\}/);
   assert.match(source, /<dt>Free cash flow direction<\/dt>/);
 });
 
-test("financial health scopes every reused tool to the selected sector and accounting-compatible set", () => {
+test("financial tools scope companies and metric observations to the selected sector and accounting model", () => {
   const profileModule = component(
     "../src/app/workspace/portfolio/PortfolioFinancialProfile.tsx",
   );
   const augmentedCompanies = companies.map(augmentPortfolioCompanyMetrics);
   const catalog = buildCatalogReport(report, augmentedCompanies);
-  const bankingProfile = buildPortfolioFinancialProfile(catalog, {
-    sector: "Financials",
-    lens: "banking",
-  });
   const scope = profileModule.buildFinancialHealthScope(
     report,
     catalog,
@@ -471,16 +457,6 @@ test("financial health scopes every reused tool to the selected sector and accou
       )
       .map((issuer) => String(issuer.cik).padStart(10, "0")),
   );
-  const html = renderToStaticMarkup(
-    createElement(profileModule.FinancialHealth, {
-      profile: bankingProfile,
-      report: scope.report,
-      companies: scope.companies,
-      capturedAt: demo.captured_at,
-      onInspectCompany: () => {},
-    }),
-  );
-
   assert.equal(scope.companyCount, bankingCiks.size);
   assert.ok(
     scope.report.concentration.issuers.every((issuer) =>
@@ -499,10 +475,13 @@ test("financial health scopes every reused tool to the selected sector and accou
       ),
     ),
   );
-  assert.match(html, /Financials · Banks only/);
-  assert.match(html, /Other sectors and incompatible accounting models are excluded, not blended/);
-  assert.match(html, /Ratio summaries/);
-  assert.match(html, /Cash-and-debt and condition diagnostics remain disabled/);
+  assert.ok(
+    scope.catalogReport.metrics.every((metric) =>
+      ["eligibleCiks", "missingCiks", "notApplicableCiks"].every((field) =>
+        metric[field].every((cik) => bankingCiks.has(String(cik).padStart(10, "0"))),
+      ),
+    ),
+  );
 
   const spacedCatalog = {
     ...catalog,
@@ -536,20 +515,139 @@ test("financial health scopes every reused tool to the selected sector and accou
     corporateProfile.sector,
     corporateProfile.companyCiks,
   );
-  const allSectorsHtml = renderToStaticMarkup(
-    createElement(profileModule.FinancialHealth, {
-      profile: corporateProfile,
-      report: corporateScope.report,
-      companies: corporateScope.companies,
-      capturedAt: demo.captured_at,
+  assert.equal(corporateScope.companyCount, corporateProfile.companyCount);
+  assert.ok(corporateScope.companyCount > bankingCiks.size);
+  assert.ok(
+    corporateScope.catalogReport.concentration.issuers.every(
+      (issuer) => issuer.lens === "corporate" && !bankingCiks.has(issuer.cik),
+    ),
+  );
+});
+
+test("ratio atlas retains every company, exact units, reporting dates and filing evidence without screener controls", () => {
+  const Atlas = component(
+    "../src/app/workspace/portfolio/PortfolioRatioAtlas.tsx",
+  ).default;
+  const augmentedCompanies = companies.map(augmentPortfolioCompanyMetrics);
+  const catalog = buildCatalogReport(report, augmentedCompanies);
+  const profile = buildPortfolioFinancialProfile(catalog, { lens: "corporate" });
+  const html = renderToStaticMarkup(
+    createElement(Atlas, {
+      catalogReport: catalog,
+      profile,
+      requestedMetric: "currentRatio",
+      onRequestedMetric: () => {},
       onInspectCompany: () => {},
     }),
   );
-  assert.match(
-    allSectorsHtml,
-    /Incompatible accounting models are excluded, not blended/,
+
+  assert.match(html, /aria-label="Liquidity company ratio map"/);
+  assert.equal((html.match(/<th scope="row">/g) || []).length, profile.companyCount);
+  for (const cik of profile.companyCiks)
+    assert.ok(html.includes(`<option value="${cik}"`), `Missing company ${cik}`);
+  for (const label of ["Current ratio", "Cash ratio", "Cash / assets"])
+    assert.ok(html.includes(label));
+  assert.match(html, /Current ratio: [\d.,]+ x\./);
+  assert.match(html, /Cash \/ assets: [\d.,]+%\./);
+  assert.match(html, /Unavailable\. Select for evidence coverage/);
+  assert.match(html, /<small>Annual<\/small>/);
+  assert.match(html, /\d{4}-\d{2}-\d{2} → \d{4}-\d{2}-\d{2}/);
+  assert.match(html, /href="https:\/\/(?:www\.)?sec\.gov\/Archives\//);
+  assert.match(html, /Color shows position, not financial quality/);
+  assert.equal(
+    (html.match(/<button\b[^>]*data-available="(?:true|false)"[^>]*tabindex="0"/g) || []).length,
+    1,
+    "The ratio map has one keyboard entry point for arrow navigation",
   );
-  assert.doesNotMatch(allSectorsHtml, /Other sectors and incompatible/);
+  assert.doesNotMatch(html, /<input\b|type="checkbox"|Value order|Company rankings|NaN|Infinity|undefined/);
+});
+
+test("ratio atlas uses bank-specific families and preserves missing ratios when allocation is unknown", () => {
+  const Atlas = component(
+    "../src/app/workspace/portfolio/PortfolioRatioAtlas.tsx",
+  ).default;
+  const catalog = {
+    ...buildCatalogReport(report, companies.map(augmentPortfolioCompanyMetrics)),
+    weighted: false,
+  };
+  const profile = buildPortfolioFinancialProfile(catalog, { lens: "banking" });
+  const html = renderToStaticMarkup(
+    createElement(Atlas, {
+      catalogReport: catalog,
+      profile,
+      requestedMetric: "loanDeposits",
+      onRequestedMetric: () => {},
+      onInspectCompany: () => {},
+    }),
+  );
+
+  assert.match(html, /aria-label="Funding &amp; credit company ratio map"/);
+  assert.equal((html.match(/<th scope="row">/g) || []).length, profile.companyCount);
+  assert.match(html, /Net loans \/ deposits/);
+  assert.match(html, /Allowance \/ net loans/);
+  assert.match(html, /Provision \/ net loans/);
+  assert.match(html, /AXP, Net loans \/ deposits: Unavailable/);
+  assert.match(html, /An evidence gap, kept visible/);
+  assert.doesNotMatch(html, /Current ratio|Gross margin|Known portfolio allocation|Known allocation|known allocation covered/);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined/);
+});
+
+test("non-ratio requests clearly explain the destination and retain a Holdings action", () => {
+  const Atlas = component(
+    "../src/app/workspace/portfolio/PortfolioRatioAtlas.tsx",
+  ).default;
+  const catalog = buildCatalogReport(report, companies.map(augmentPortfolioCompanyMetrics));
+  const html = renderToStaticMarkup(
+    createElement(Atlas, {
+      catalogReport: catalog,
+      profile: buildPortfolioFinancialProfile(catalog),
+      requestedMetric: "revenue",
+      onRequestedMetric: () => {},
+      onInspectCompany: () => {},
+      onOpenHoldings: () => {},
+    }),
+  );
+
+  assert.match(html, /<strong>Revenue<\/strong> is outside this ratio map/);
+  assert.match(html, /<button type="button">Open Holdings/);
+});
+
+test("equal peer values keep the selected value and median at the same map position", () => {
+  const Atlas = component(
+    "../src/app/workspace/portfolio/PortfolioRatioAtlas.tsx",
+  ).default;
+  const original = buildCatalogReport(report, companies.map(augmentPortfolioCompanyMetrics));
+  const ratio = original.metrics.find((metric) => metric.id === "currentRatio");
+  const observations = ratio.observations.slice(0, 2).map((row) => ({
+    ...row,
+    value: 1.5,
+    period: { kind: "annual", start: "2025-01-01", end: "2025-12-31" },
+    periodKey: "annual|2025-01-01|2025-12-31",
+    periodEnd: "2025-12-31",
+    definition: ratio.observations[0].definition,
+  }));
+  const ciks = new Set(observations.map((row) => row.cik));
+  const catalog = {
+    ...original,
+    concentration: {
+      ...original.concentration,
+      issuers: original.concentration.issuers.filter((issuer) => ciks.has(issuer.cik)),
+    },
+    metrics: [{ ...ratio, observations, availableCount: 2 }],
+  };
+  const html = renderToStaticMarkup(
+    createElement(Atlas, {
+      catalogReport: catalog,
+      profile: buildPortfolioFinancialProfile(catalog),
+      requestedMetric: "currentRatio",
+      onRequestedMetric: () => {},
+      onInspectCompany: () => {},
+    }),
+  );
+
+  assert.match(html, /Same-period peer range 1\.5 x to 1\.5 x/);
+  assert.match(html, /<i style="left:50%"><\/i><span style="left:50%"><\/span>/);
+  assert.doesNotMatch(html, /NaN|Infinity/);
 });
 
 test("unknown business models remain visibly disclosed outside model summaries", () => {

@@ -5,9 +5,6 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowUpRight,
-  BadgeDollarSign,
-  Banknote,
-  BarChart3,
   Building2,
   ChartScatter,
   CircleGauge,
@@ -25,48 +22,30 @@ import {
 import { canonicalPortfolioCik } from "../../../utils/portfolioModel.js";
 import s from "./PortfolioFinancialProfile.module.css";
 
-const PortfolioInsightTools = dynamic(() => import("./PortfolioInsightTools"), {
-  loading: () => <p role="status">Opening financial analysis…</p>,
-});
-const PortfolioConnections = dynamic(() => import("./PortfolioConnections"), {
-  loading: () => <p role="status">Connecting financial statements…</p>,
-});
-const CashEarnings = dynamic(() => import("./CashEarnings"), {
-  loading: () => <p role="status">Building the cash and earnings view…</p>,
-});
 const PortfolioFinancialTools = dynamic(
   () => import("./PortfolioFinancialTools"),
   { loading: () => <p role="status">Opening comparison tools…</p> },
 );
-const PortfolioMetricExplorer = dynamic(
-  () => import("./PortfolioMetricExplorer"),
-  { loading: () => <p role="status">Opening measures and rankings…</p> },
-);
+const PortfolioRatioAtlas = dynamic(() => import("./PortfolioRatioAtlas"), {
+  loading: () => <p role="status">Opening the ratio map…</p>,
+});
 
-type View = "overview" | "measures" | "health" | "relationships" | "compare";
-type HealthView = "weighted" | "buffers" | "overlap" | "statements";
+type View = "overview" | "ratios" | "relationships" | "compare";
 type Props = {
   report: any;
   catalogReport: any;
   companies: any[];
   capturedAt?: string | null;
   onInspectCompany: (rowId: string) => void;
-  onDisclosure?: (query: string, ciks: string[]) => void;
+  onOpenHoldings?: () => void;
   financialRequest?: { metricId: string; nonce: number } | null;
   initialView?: View;
-  onRefresh?: () => void;
-  refreshing?: boolean;
-  reportingBasis?: string;
-  onReportingBasisChange?: (basis: string) => void;
-  reportingLoading?: boolean;
-  reportingProgress?: { completed: number; total: number };
-  onCancelReporting?: () => void;
+
 };
 
 const VIEWS: { id: View; label: string; description: string; icon: typeof Sparkles }[] = [
   { id: "overview", label: "Financial profile", description: "Growth, profitability, cash and balance-sheet strength across your holdings.", icon: Sparkles },
-  { id: "measures", label: "Measures & rankings", description: "Explore SEC financial measures and see where each holding stands.", icon: BarChart3 },
-  { id: "health", label: "Financial health", description: "Investigate financial conditions, cash coverage and statement connections.", icon: ShieldCheck },
+  { id: "ratios", label: "Ratios", description: "Explore the liquidity, profitability, leverage and cash generation of the companies behind your allocation.", icon: CircleGauge },
   { id: "relationships", label: "Relationships", description: "Explore how two financial measures relate across comparable holdings.", icon: ChartScatter },
   { id: "compare", label: "Compare", description: "Compare selected companies with compatible accounting and reporting periods.", icon: Scale },
 ];
@@ -774,258 +753,15 @@ function Overview({
   );
 }
 
-export function MeasureExplorer({
-  profile,
-  requestedMetric,
-  onRequestedMetric,
-  onInspectCompany,
-}: {
-  profile: any;
-  requestedMetric: string;
-  onRequestedMetric: (id: string) => void;
-  onInspectCompany: Props["onInspectCompany"];
-}) {
-  const available = profile.metricSummaries.filter((metric: any) => metric.measuredCompanyCount > 0);
-  const metric = available.find((entry: any) => entry.id === requestedMetric) || available[0];
-  const categoryLabel =
-    profile.categories.find((entry: any) => entry.id === metric?.category)
-      ?.label || metric?.category;
-  const [selectedBin, setSelectedBin] = useState<number | null>(null);
-  const [limit, setLimit] = useState(20);
-  if (!metric) return <p className={s.empty}>No ratio measures have supported evidence for this sector and financial measure set.</p>;
-  const histogram = metric.histogram?.bins || [];
-  const maxCount = Math.max(1, ...histogram.map((bin: any) => bin.count));
-  const rows = selectedBin === null ? metric.observations : histogram[selectedBin]?.rows || [];
-  return (
-    <section className={s.measureExplorer} aria-labelledby="measure-explorer-title">
-      <div className={s.measureHeading}>
-        <div>
-          <p className={s.eyebrow}>Company distributions{profile.weighted ? " with allocation context" : ""}</p>
-          <h3 id="measure-explorer-title">Explore every supported financial measure.</h3>
-          <p>
-            Each company contributes one observation. {profile.weighted
-              ? "Allocation-weighted statistics reweight only measured holdings and never pretend the holdings form a consolidated company."
-              : "Company statistics give every observed issuer equal influence; no portfolio exposure is inferred."}
-          </p>
-        </div>
-        <label>
-          Financial measure
-          <select value={metric.id} onChange={(event) => { onRequestedMetric(event.target.value); setSelectedBin(null); setLimit(20); }}>
-            {profile.categories.map((category: any) => (
-              <optgroup label={category.label} key={category.id}>
-                {category.metrics.filter((entry: any) => entry.measuredCompanyCount > 0).map((entry: any) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
-              </optgroup>
-            ))}
-          </select>
-        </label>
-      </div>
-      <section className={s.measureCard}>
-        <div className={s.measureTitle}>
-          <div><span>{categoryLabel}</span><h4>{metric.label}</h4><p>{metric.formula || "Reported or evidence-backed calculated company measure."}</p></div>
-          {metric.periods.length > 1 && <span className={s.coverageBadge}>{metric.periods.length} reporting cohorts</span>}
-        </div>
-        <div className={s.measureStats}>
-          <div>
-            <span>{profile.weighted ? "Allocation-weighted median" : "Company average"}</span>
-            <strong>{valueLabel(profile.weighted ? metric.weightedMedian : metric.unweightedMean, metric.unit)}</strong>
-            <small>
-              {profile.weighted
-                ? `${companyCountLabel(metric.weightedCompanyCount)} with positive known weight`
-                : `${companyCountLabel(metric.measuredCompanyCount)} with equal weight`}
-            </small>
-          </div>
-          <div><span>Company median</span><strong>{valueLabel(metric.median, metric.unit)}</strong><small>Unweighted issuer midpoint</small></div>
-          <div><span>Middle 50%</span><strong>{finite(metric.p25) && finite(metric.p75) ? `${valueLabel(metric.p25, metric.unit)} – ${valueLabel(metric.p75, metric.unit)}` : "Unavailable"}</strong><small>25th to 75th percentile</small></div>
-          <div><span>Evidence coverage</span><strong>{metric.measuredCompanyCount}<em> / {metric.eligibleCompanyCount}</em></strong><small>{profile.weighted ? `${percent(metric.coveredWeightPct)} original allocation · ` : ""}{metric.missingCompanyCount} missing · {metric.notApplicableCompanyCount} N/A</small></div>
-        </div>
-        {finite(metric.weightedMean) && finite(metric.weightedMedian) && Math.abs(metric.weightedMean - metric.weightedMedian) > Math.max(10, Math.abs(metric.weightedMedian) * 2) && (
-          <p className={s.outlierNote}><CircleGauge size={16} aria-hidden="true" /> The weighted mean is {valueLabel(metric.weightedMean, metric.unit)}, far from the weighted median. Extreme values can distort the mean, so the median leads this view.</p>
-        )}
-        <div className={s.histogram} aria-label={`${metric.label} company distribution`}>
-          {histogram.map((bin: any, index: number) => (
-            <button
-              type="button"
-              key={`${bin.index}-${bin.min}-${bin.max}`}
-              aria-pressed={selectedBin === index}
-              aria-label={`${companyCountLabel(bin.count)} from ${valueLabel(bin.min, metric.unit)} to ${valueLabel(bin.max, metric.unit)}`}
-              onClick={() => { setSelectedBin(selectedBin === index ? null : index); setLimit(20); }}
-            >
-              <strong>{bin.count}</strong>
-              <span><i style={{ height: `${Math.max(3, (bin.count / maxCount) * 100)}%` }} /></span>
-              <small>{valueLabel(bin.min, metric.unit)}<br />to {valueLabel(bin.max, metric.unit)}</small>
-            </button>
-          ))}
-        </div>
-      </section>
-      <section className={s.observations}>
-        <div className={s.sectionHeading}>
-          <div><h4>{selectedBin === null ? "Measured companies" : "Companies in selected range"}</h4><span>{rows.length} observations</span></div>
-          {selectedBin !== null && <button type="button" onClick={() => setSelectedBin(null)}>Clear range</button>}
-        </div>
-        <div className={s.tableWrap} role="region" aria-label={`${metric.label} company evidence`} tabIndex={0}>
-          <table>
-            <thead><tr><th scope="col">Company</th><th scope="col">{metric.label}</th><th scope="col">{profile.weighted ? "Known allocation" : "Share of measured companies"}</th><th scope="col">Reporting end</th><th scope="col">Evidence</th></tr></thead>
-            <tbody>
-              {rows.slice(0, limit).map((row: any) => (
-                <tr key={row.cik}>
-                  <th scope="row"><button type="button" onClick={() => onInspectCompany(row.rowId)}>{row.ticker || row.name}</button><span>{row.name}</span></th>
-                  <td>{valueLabel(row.value, metric.unit)}</td>
-                  <td>{profile.weighted ? percent(row.weightPct) : percent(100 / metric.measuredCompanyCount)}</td>
-                  <td>{dateLabel(row.periodEnd)}</td>
-                  <td>{row.sourceUrl ? <a href={row.sourceUrl} target="_blank" rel="noopener noreferrer">SEC filing <ArrowUpRight size={13} aria-hidden="true" /></a> : <button type="button" onClick={() => onInspectCompany(row.rowId)}>Inspect evidence</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className={s.tableFooter}>
-          <span>Showing {Math.min(limit, rows.length)} of {rows.length}. Zero and negative values are retained; missing values are not converted to zero.</span>
-          {limit < rows.length && <button type="button" onClick={() => setLimit((value) => value + 20)}>Show next 20</button>}
-        </div>
-      </section>
-    </section>
-  );
-}
-
-export function FinancialHealth({
-  profile,
-  report,
-  companies,
-  capturedAt,
-  onInspectCompany,
-  onDisclosure,
-}: {
-  profile: any;
-  report: any;
-  companies: any[];
-  capturedAt?: string | null;
-  onInspectCompany: Props["onInspectCompany"];
-  onDisclosure?: Props["onDisclosure"];
-}) {
-  const [healthView, setHealthView] = useState<HealthView>("weighted");
-  const corporate =
-    profile.hasCompatibleCohort && profile.lens === "corporate";
-  const statementCompatible =
-    profile.hasCompatibleCohort &&
-    ["corporate", "banking"].includes(profile.lens);
-  return (
-    <div className={s.health}>
-      <div className={s.toolIntro}>
-        <div>
-          <p className={s.eyebrow}>Pressure-test the financial character</p>
-          <h3>Follow profitability, liquidity, leverage and cash.</h3>
-        </div>
-        <p>
-          Use comparable cohorts and exact periods. These tools surface what to
-          investigate; they do not manufacture a portfolio-level balance sheet.
-        </p>
-      </div>
-      <div className={s.healthScope} role="status">
-        <Building2 size={17} aria-hidden="true" />
-        <p>
-          <strong>
-            {profile.sectorDefinition?.label} · {profile.hasCompatibleCohort
-              ? `${profile.lensDefinition?.label || profile.lens} only`
-              : "no compatible financial measure set"}
-          </strong>
-          <span>
-            {profile.hasCompatibleCohort
-              ? `${companyCountLabel(profile.companyCount)} in this financial-health cohort. ${profile.sector === FINANCIAL_PROFILE_ALL_SECTORS ? "Incompatible accounting models" : "Other sectors and incompatible accounting models"} are excluded, not blended.`
-              : `${companyCountLabel(profile.sectorCompanyCount)} are not assigned to a comparable accounting model, so ratio-based financial health remains unavailable.`}
-          </span>
-        </p>
-      </div>
-      <nav className={s.subnav} aria-label="Financial health tools">
-        <button
-          type="button"
-          aria-pressed={healthView === "weighted"}
-          onClick={() => setHealthView("weighted")}
-        >
-          <CircleGauge size={16} aria-hidden="true" /> Ratio summaries
-        </button>
-        <button
-          type="button"
-          aria-pressed={healthView === "buffers"}
-          disabled={!corporate}
-          title={corporate ? undefined : "Designed for operating companies"}
-          onClick={() => setHealthView("buffers")}
-        >
-          <Banknote size={16} aria-hidden="true" /> Cash &amp; debt
-        </button>
-        <button
-          type="button"
-          aria-pressed={healthView === "overlap"}
-          disabled={!corporate}
-          title={corporate ? undefined : "Designed for operating companies"}
-          onClick={() => setHealthView("overlap")}
-        >
-          <BadgeDollarSign size={16} aria-hidden="true" /> Condition builder
-        </button>
-        <button
-          type="button"
-          aria-pressed={healthView === "statements"}
-          disabled={!statementCompatible}
-          title={
-            statementCompatible
-              ? undefined
-              : "Available for operating companies and banks"
-          }
-          onClick={() => setHealthView("statements")}
-        >
-          <Activity size={16} aria-hidden="true" /> Statement connections
-        </button>
-      </nav>
-      {!corporate && (
-        <p className={s.healthAvailability}>
-          Cash-and-debt and condition diagnostics remain disabled because their
-          definitions are specific to operating-company statements.
-        </p>
-      )}
-      {healthView !== "statements" ? (
-        <PortfolioInsightTools
-          report={report}
-          companies={companies}
-          view={healthView}
-          onInspect={onInspectCompany}
-        />
-      ) : (
-        <div className={s.connectedTools}>
-          <PortfolioConnections
-            report={report}
-            companies={companies}
-            onInspect={onInspectCompany}
-            onDisclosure={onDisclosure}
-          />
-          {corporate && (
-            <CashEarnings
-              report={report}
-              companies={companies}
-              capturedAt={capturedAt}
-              onInspect={onInspectCompany}
-            />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function PortfolioFinancialProfile({
   report,
   catalogReport,
   companies,
   capturedAt,
   onInspectCompany,
-  onDisclosure,
+  onOpenHoldings,
   financialRequest,
   initialView = "overview",
-  onRefresh,
-  refreshing,
-  reportingBasis,
-  onReportingBasisChange,
-  reportingLoading,
-  reportingProgress,
-  onCancelReporting,
 }: Props) {
   const titleId = useId();
   const handledFinancialRequestNonce = useRef<number | null>(null);
@@ -1035,11 +771,8 @@ export default function PortfolioFinancialProfile({
     () => buildPortfolioFinancialProfile(catalogReport).lens,
   );
   const [metricId, setMetricId] = useState("netMargin");
-  const [measureView, setMeasureView] = useState<"rankings" | "distribution">("rankings");
-  const [rankingRequest, setRankingRequest] = useState<{ metricId: string; nonce: number } | null>(null);
   useEffect(() => {
     setView(initialView);
-    if (initialView === "measures") setMeasureView("rankings");
   }, [initialView]);
   const profile = useMemo(
     () => buildPortfolioFinancialProfile(catalogReport, { sector, lens }),
@@ -1081,29 +814,24 @@ export default function PortfolioFinancialProfile({
       ) || current,
     );
     setMetricId(financialRequest.metricId);
-    setRankingRequest(financialRequest);
-    setMeasureView("rankings");
-    setView("measures");
+    setView("ratios");
   }, [catalogReport, financialRequest]);
   const changeLens = (next: string) => {
     setLens(next);
     const nextProfile = buildPortfolioFinancialProfile(catalogReport, { sector: profile.sector, lens: next });
-    setMetricId(nextProfile.featuredPillars.find((pillar: any) => pillar.metric?.measuredCompanyCount)?.metricId || nextProfile.metricSummaries.find((metric: any) => metric.measuredCompanyCount)?.id || "");
+    setMetricId(nextProfile.categories.some((category: any) => category.metricIds.includes(metricId)) ? metricId : nextProfile.featuredPillars.find((pillar: any) => pillar.metric?.measuredCompanyCount)?.metricId || "");
   };
   const changeSector = (next: string) => {
     const nextProfile = buildPortfolioFinancialProfile(catalogReport, { sector: next });
     setSector(nextProfile.sector);
     setLens(nextProfile.lens);
-    setMetricId(nextProfile.featuredPillars.find((pillar: any) => pillar.metric?.measuredCompanyCount)?.metricId || nextProfile.metricSummaries.find((metric: any) => metric.measuredCompanyCount)?.id || "");
+    setMetricId(nextProfile.categories.some((category: any) => category.metricIds.includes(metricId)) ? metricId : nextProfile.featuredPillars.find((pillar: any) => pillar.metric?.measuredCompanyCount)?.metricId || "");
   };
   const openMetric = (id: string) => {
     setMetricId(id);
-    setRankingRequest((current) => ({ metricId: id, nonce: (current?.nonce || 0) + 1 }));
-    setMeasureView("rankings");
-    setView("measures");
+    setView("ratios");
   };
   const selectedView = VIEWS.find((item) => item.id === view) || VIEWS[0];
-  const showScope = view !== "measures" || measureView === "distribution";
   return (
     <section className={s.root} aria-labelledby={titleId}>
       <header className={s.pageHeader}>
@@ -1121,61 +849,20 @@ export default function PortfolioFinancialProfile({
           </button>
         ))}
       </nav>
-      {showScope && <SectorPicker profile={profile} sector={profile.sector} lens={profile.lens} onSectorChange={changeSector} onLensChange={changeLens} />}
+      <SectorPicker profile={profile} sector={profile.sector} lens={profile.lens} onSectorChange={changeSector} onLensChange={changeLens} />
       {view === "overview" && <Overview key={`overview:${profile.sector}:${profile.lens}:${profileRevision}`} profile={profile} catalogReport={catalogReport} capturedAt={capturedAt} onOpenMetric={openMetric} onInspectCompany={onInspectCompany} />}
-      {view !== "overview" && showScope && !profile.hasCompatibleCohort ? (
+      {view !== "overview" && !profile.hasCompatibleCohort ? (
         <CompatibleCohortUnavailable profile={profile} />
       ) : null}
-      {view === "measures" && (
-        <div className={s.measureWorkspace}>
-          <nav className={s.measureModes} aria-label="Financial measure presentation">
-            <button type="button" aria-pressed={measureView === "rankings"} onClick={() => {
-              setRankingRequest((current) => ({ metricId, nonce: (current?.nonce || 0) + 1 }));
-              setMeasureView("rankings");
-            }}><BarChart3 size={15} aria-hidden="true" /> Company rankings</button>
-            <button type="button" aria-pressed={measureView === "distribution"} onClick={() => {
-              const nextLens = resolveFinancialProfileMetricLens(catalogReport, metricId, lens) || lens;
-              const nextProfile = buildPortfolioFinancialProfile(catalogReport, { sector, lens: nextLens });
-              setLens(nextLens);
-              if (!nextProfile.metricSummaries.some((metric: any) => metric.id === metricId && metric.measuredCompanyCount > 0)) {
-                setMetricId(nextProfile.metricSummaries.find((metric: any) => metric.measuredCompanyCount > 0)?.id || "");
-              }
-              setMeasureView("distribution");
-            }}><Layers3 size={15} aria-hidden="true" /> {catalogReport.weighted ? "Allocation distribution" : "Company distribution"}</button>
-          </nav>
-          {measureView === "rankings" ? (
-            <div className={s.rankings}>
-              <PortfolioMetricExplorer
-                report={report}
-                companies={companies}
-                onInspect={onInspectCompany}
-                onDisclosure={onDisclosure}
-                onRefresh={onRefresh}
-                refreshing={refreshing}
-                reportingBasis={reportingBasis}
-                onReportingBasisChange={onReportingBasisChange}
-                reportingLoading={reportingLoading}
-                reportingProgress={reportingProgress}
-                onCancelReporting={onCancelReporting}
-                requestedMetric={rankingRequest}
-                onMetricChange={setMetricId}
-                showReportingControls={false}
-              />
-            </div>
-          ) : profile.hasCompatibleCohort ? (
-            <MeasureExplorer key={`${profile.sector}:${profile.lens}:${metricId}:${profileRevision}`} profile={profile} requestedMetric={metricId} onRequestedMetric={setMetricId} onInspectCompany={onInspectCompany} />
-          ) : null}
-        </div>
-      )}
-      {view === "health" && profile.hasCompatibleCohort && (
-        <FinancialHealth
-          key={`health:${profile.sector}:${profile.lens}:${profileRevision}`}
+      {view === "ratios" && profile.hasCompatibleCohort && (
+        <PortfolioRatioAtlas
+          key={`ratios:${profile.sector}:${profile.lens}:${profileRevision}`}
           profile={profile}
-          report={healthScope.report}
-          companies={healthScope.companies}
-          capturedAt={capturedAt}
+          catalogReport={catalogReport}
+          requestedMetric={metricId}
+          onRequestedMetric={setMetricId}
           onInspectCompany={onInspectCompany}
-          onDisclosure={onDisclosure}
+          onOpenHoldings={onOpenHoldings}
         />
       )}
       {view === "relationships" && profile.hasCompatibleCohort && <PortfolioFinancialTools key={`relationships:${profile.sector}:${profile.lens}:${profileRevision}`} report={healthScope.catalogReport} onInspectCompany={onInspectCompany} view="relationships" lens={profile.lens} onLensChange={changeLens} />}
