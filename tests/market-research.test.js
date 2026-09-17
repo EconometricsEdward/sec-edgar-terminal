@@ -224,18 +224,34 @@ test('Screener filters do not treat unavailable values as losses; missing values
   for (const direction of ['asc', 'desc']) assert.equal(selectMarketCompanies(rows, { ...view, screen: 'all', direction }, [], '').at(-1).ticker, 'MISSING');
   assert.deepEqual(selectMarketCompanies(rows, { ...view, screen: 'watchlist' }, ['POS'], '').map((c) => c.ticker), ['POS']);
 });
-test('Shareable views round-trip filters, sanitize invalid options, and cap peer selection', () => {
-  const view = { ...DEFAULT_MARKET_VIEW, tab: 'fundamentals', cohort: 'credit', basis: 'annual', query: 'JPM & bank', selected: ['JPM', 'BAC'], screen: 'losses' };
-  assert.deepEqual(parseMarketView(marketViewQuery(view), ['credit']), view);
-  const defaultFundamentalQuery = new URLSearchParams(marketViewQuery({ ...DEFAULT_MARKET_VIEW, tab: 'fundamentals' }));
-  assert.equal(defaultFundamentalQuery.get('tab'), 'fundamentals');
-  assert.equal(defaultFundamentalQuery.has('asset'), false);
-  assert.equal(defaultFundamentalQuery.has('window'), false);
-  assert.equal(defaultFundamentalQuery.has('proxy'), false);
-  assert.deepEqual(parseMarketView('tab=factors&asset=JPM&window=5y&proxy=XLF', ['credit']), { ...DEFAULT_MARKET_VIEW, tab: 'fundamentals' });
-  const malformed = parseMarketView('basis=invalid&cohort=unknown&peers=A,A,B,C,D,E,F,%3Cscript%3E&asset=%2FBAD&window=10y&proxy=QQQ', ['credit']);
-  assert.equal(malformed.basis, 'ttm'); assert.equal(malformed.cohort, 'all'); assert.deepEqual(malformed.selected, ['A', 'B', 'C', 'D', 'E']);
-  assert.equal('factorTicker' in malformed, false);assert.equal('factorWindow' in malformed, false);assert.equal('factorSector' in malformed, false);
+test('Macro views round-trip supported controls and retire company-screen settings', () => {
+  const view = { ...DEFAULT_MARKET_VIEW, tab: 'sectors', cohort: 'sector-technology', basis: 'annual', metric: 'netMargin', statistic: 'mean' };
+  assert.deepEqual(parseMarketView(marketViewQuery(view), ['sector-technology']), view);
+  for (const tab of ['factors', 'fundamentals', 'companies']) {
+    const retired = parseMarketView(`tab=${tab}&cohort=credit&q=bank&screen=losses&sort=ticker&direction=asc&peers=JPM,BAC&cutoff=0.5`, ['credit']);
+    assert.deepEqual(retired, { ...DEFAULT_MARKET_VIEW, tab: 'sectors' });
+    assert.equal(marketViewPath(retired), '/market?tab=sectors');
+  }
+  assert.equal(parseMarketView('tab=saved').tab, 'overview');
+  assert.equal(parseMarketView('tab=companies&cohort=sector-technology', ['sector-technology']).cohort, 'sector-technology');
+  const malformed = parseMarketView('basis=invalid&cohort=unknown&peers=A,A,B,C,D,E,F,%3Cscript%3E');
+  assert.equal(malformed.basis, 'ttm'); assert.equal(malformed.cohort, 'all'); assert.deepEqual(malformed.selected, []);
+  assert.equal('factorTicker' in malformed, false);
+});
+test('Active macro navigation only exposes the five rendered metrics while legacy saved metrics remain exportable', () => {
+  const supported = ['revenueGrowth', 'netMargin', 'cashFlowMargin', 'capexIntensity', 'equityToAssets'];
+  const saved = parseMarketSaved(JSON.stringify({ version: 1, watchlist: [], baselines: {}, views: MARKET_METRICS.map(metric => ({ name: metric.label, query: `tab=sectors&metric=${metric.key}` })) }));
+  assert.equal(saved.views.length, MARKET_METRICS.length);
+  for (const [index, metric] of MARKET_METRICS.entries()) {
+    const expected = supported.includes(metric.key) ? metric.key : 'revenueGrowth';
+    assert.equal(parseMarketView(`tab=sectors&metric=${metric.key}`).metric, expected);
+    assert.equal(parseMarketView(marketViewQuery({ ...DEFAULT_MARKET_VIEW, tab: 'sectors', metric: metric.key })).metric, expected);
+    const canonical = new URLSearchParams(canonicalMarketViewQuery(`tab=sectors&metric=${metric.key}`).query);
+    assert.equal(canonical.get('metric'), expected === 'revenueGrowth' ? null : expected);
+    assert.equal(new URLSearchParams(saved.views[index].query).get('metric'), metric.key);
+  }
+  const exported = JSON.stringify(saved);
+  assert.deepEqual(parseMarketSaved(exported).views, saved.views, 'legacy metric choices survive read/export/read');
 });
 test('CFTC positioning views round-trip family-specific controls without altering SEC selections',()=>{
   const view={...DEFAULT_MARKET_VIEW,tab:'positioning',basis:'annual',cohort:'credit',cftcFamily:'disaggregated',cftcContract:'067651',cftcGroup:'managed-money',cftcDate:'2026-09-08',cftcHistory:'3y',cftcDisplay:'percentile'};
@@ -244,13 +260,13 @@ test('CFTC positioning views round-trip family-specific controls without alterin
   assert.equal(wrong.cftcContract,'067651');assert.equal(wrong.cftcGroup,'managed-money');assert.equal(wrong.cftcHistory,'5y');assert.equal(wrong.cftcDisplay,'net-oi');
   assert.equal(parseMarketView('tab=positioning&date=2026-09-08junk').cftcDate,'latest');
 });
-test('Market history pushes real tab transitions, replaces filter changes, and skips no-op entries',()=>{
-  const companies={...DEFAULT_MARKET_VIEW,tab:'companies'};
-  assert.equal(marketViewHistoryMode(DEFAULT_MARKET_VIEW,companies),'pushState');
-  assert.equal(marketViewHistoryMode(companies,{...companies,screen:'losses'}),'replaceState');
-  assert.equal(marketViewHistoryMode(companies,{...companies}),null);
-  assert.equal(marketViewHistoryMode(companies,{...companies,screen:'losses'},true),'pushState');
-  assert.equal(marketViewPath(companies),'/market?tab=companies');
+test('Market history pushes tab transitions, replaces sector settings and ignores retired filters',()=>{
+  const sectors={...DEFAULT_MARKET_VIEW,tab:'sectors'};
+  assert.equal(marketViewHistoryMode(DEFAULT_MARKET_VIEW,sectors),'pushState');
+  assert.equal(marketViewHistoryMode(sectors,{...sectors,metric:'netMargin'}),'replaceState');
+  assert.equal(marketViewHistoryMode(sectors,{...sectors,screen:'losses'}),null);
+  assert.equal(marketViewHistoryMode(sectors,{...sectors,metric:'netMargin'},true),'pushState');
+  assert.equal(marketViewPath({...sectors, tab:'companies', query:'JPM', selected:['JPM']}),'/market?tab=sectors');
 });
 test('Saved views canonicalize supported state and reject unknown or malformed rules without substitution',()=>{
   const positioning=canonicalMarketViewQuery('tab=positioning&family=tff&contract=abc123&group=dealer&history=1y&display=percentile');
@@ -264,10 +280,20 @@ test('Saved views canonicalize supported state and reject unknown or malformed r
   const saved=parseMarketSaved(raw,['credit']);
   assert.equal(saved.views.length,1);
   assert.equal(saved.views[0].name,'Legacy price view');
-  assert.equal(new URLSearchParams(saved.views[0].query).get('tab'),'fundamentals');
-  assert.match(saved.migrationNotice,/moved to Fundamental Lab/);
+  assert.equal(new URLSearchParams(saved.views[0].query).get('tab'),'sectors');
+  assert.match(saved.migrationNotice,/now opens the macro market summary or Sector Performance/);
   assert.match(saved.migrationNotice,/3 saved views were not restored/);
   assert.match(saved.migrationNotice,/no replacement screening rule was applied/);
+});
+test('Legacy saved filters remain exportable but never filter the active macro page',()=>{
+  const query='tab=companies&basis=annual&cohort=credit&q=bank&screen=losses&sort=ticker&direction=asc&peers=JPM,BAC&cutoff=0.5';
+  const raw=JSON.stringify({version:1,watchlist:['JPM'],baselines:{JPM:{notes:'Keep this'}},views:[{name:'Banks',query}]});
+  const saved=parseMarketSaved(raw,['credit']);
+  const retained=new URLSearchParams(saved.views[0].query);
+  for(const key of ['cohort','q','screen','sort','direction','peers','cutoff']) assert.equal(retained.get(key),new URLSearchParams(query).get(key));
+  assert.equal(saved.watchlist[0],'JPM'); assert.equal(saved.baselines.JPM.notes,'Keep this');
+  assert.equal(marketViewPath(parseMarketView(saved.views[0].query,['credit'])),'/market?tab=sectors&basis=annual');
+  assert.equal(canonicalMarketViewQuery(query,['credit']).query,'tab=sectors&basis=annual');
 });
 test('CFTC presentation selects the requested prior-report percentile and discloses its exact comparison range',()=>{
   const group={netPctOi:4.5,oneWeekNetPctChange:-1.25,percentile:{value:80,observations:260,required:260,comparisonRange:{observations:260,earliest:'2021-09-14',latest:'2026-09-01'}},shorterPercentiles:[
@@ -285,7 +311,7 @@ test('CFTC presentation selects the requested prior-report percentile and disclo
 });
 test('Saved-view summaries distinguish CFTC scope from SEC fundamental views',()=>{
   assert.match(marketSavedViewSummary('tab=positioning&family=disaggregated&contract=067651&group=managed-money&history=3y'),/Disaggregated futures only · CFTC 067651 · Managed Money · 156 prior reports/);
-  assert.match(marketSavedViewSummary('tab=fundamentals&basis=annual'),/Fundamental Lab · Annual SEC fundamentals/);
+  assert.match(marketSavedViewSummary('tab=fundamentals&basis=annual'),/Sector Performance · Annual SEC fundamentals/);
 });
 test('Saved research refuses incompatible versions and keeps unavailable-company baselines', () => {
   assert.throws(() => parseMarketSaved('{"version":2,"watchlist":[],"views":[]}'));

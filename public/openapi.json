@@ -3,7 +3,7 @@
   "info": {
     "title": "EDGAR Terminal Public Research APIs",
     "version": "2.0.0",
-    "description": "Read-only company financial highlights, SEC Fundamental Lab, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal."
+    "description": "Read-only company financial highlights, SEC fundamental universe, prepared N-PORT and Form 13F summaries, and official CFTC Commitments of Traders data. CFTC positioning is separate market context and is not an equity-price feed or trade signal."
   },
   "servers": [{ "url": "https://secedgarterminal.com" }],
   "tags": [
@@ -147,7 +147,7 @@
     "/api/v2/factor-universe": {
       "get": {
         "tags": ["SEC fundamentals"],
-        "summary": "Read the prepared SEC Fundamental Lab universe",
+        "summary": "Read the prepared SEC fundamental universe universe",
         "description": "Returns equal-issuer-weight filing breadth, magnitude, paired dispersion, cash confirmation and sector variance. Public reads never initiate a bulk SEC refresh.",
         "parameters": [
           {

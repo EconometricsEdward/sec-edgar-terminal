@@ -51,7 +51,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
       ...recent.slice(0, 4).map(item => ({ ...item, id: `recent:${item.path}`, label: item.query, description: describeSearchPath(item.path), type: "recent", group: "Recent searches" })),
       ...EXAMPLES.map(item => ({ ...item, id: `example:${item.query}`, label: item.query, group: "Try a search", example: true })),
       { id: "tool:workspace", label: "Portfolio", description: "Upload a portfolio or explore the demo", path: "/workspace", type: "tool", group: "Explore" },
-      { id: "tool:screener", label: "Stock screener", description: "Find companies by SEC fundamentals", path: "/market?tab=fundamentals", type: "tool", group: "Explore" },
+      { id: "tool:sectors", label: "Sector Performance", description: "Compare growth, margins and cash generation across sectors", path: "/market?tab=sectors", type: "tool", group: "Explore" },
     ];
     const local = plan.items || [];
     const primary = local.filter(item => item.group !== "Search disclosures");

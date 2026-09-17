@@ -1,4 +1,4 @@
-import { MARKET_VERSION, MARKET_METRICS, metricStats } from './marketResearch.js';
+import { MARKET_VERSION, MARKET_METRICS, metricStats, activeMarketTab, activeMarketMetric, DEFAULT_MARKET_VIEW } from './marketResearch.js';
 
 export const MARKET_OVERVIEW_VERSION = 'market-overview-v1';
 
@@ -44,9 +44,13 @@ export function buildMarketOverview(atlas, { membership = null, previous = null,
   };
 }
 
-/** Keep shared sector filters through tab changes and honor heatmap selections. */
+/** Keep the macro view shareable while retiring company-screen controls. */
 export function updateMarketView(view, patch) {
   const next = { ...view, ...patch };
-  if (next.tab === 'fundamentals' && next.cohort !== 'all' && !next.cohort.startsWith('sector-')) next.cohort = 'all';
+  const legacyTab = ['fundamentals', 'factors', 'companies'].includes(next.tab);
+  next.tab = activeMarketTab(next.tab);
+  next.metric = activeMarketMetric(next.metric);
+  if (legacyTab && next.cohort !== 'all' && !next.cohort.startsWith('sector-')) next.cohort = 'all';
+  for (const key of ['query', 'screen', 'sort', 'direction', 'selected', 'quantThreshold']) next[key] = DEFAULT_MARKET_VIEW[key];
   return next;
 }

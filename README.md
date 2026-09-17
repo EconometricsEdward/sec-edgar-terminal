@@ -12,7 +12,7 @@ Live site: https://secedgarterminal.com/
 - Supports portfolio overview and research in `/workspace`, with saved company lists, financial comparisons, SEC evidence and portfolio exports.
 - Compares the latest report with the same reporting season, a prior report of the same form, or the exact accession saved at review. Financial changes and paired disclosure passages retain both source filings.
 - Adapts ratio views by industry, including banking, technology, retail, REIT, oil and gas, and airline-specific notes.
-- Adds an SEC-only Fundamental Lab for breadth, paired change, dispersion, and within-sector context, alongside a separate official CFTC positioning workspace.
+- Provides a macro market briefing, SEC filing-based Sector Performance, and official CFTC positioning, with company, sector and industry coverage made explicit.
 - Compares up to five peer companies side by side.
 - Searches recent SEC filings for user-defined words or phrases, returning source-linked filing excerpts.
 

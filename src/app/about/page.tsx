@@ -100,8 +100,8 @@ export default function AboutPage() {
           <div>
             <h3>Discover and investigate</h3>
             <p>
-              <Link href="/market">Market</Link> provides a company screener,
-              sector fundamentals, an SEC-only Fundamental Lab, and separate{" "}
+              <Link href="/market">Market</Link> provides a macro briefing,
+              sector performance from reported fundamentals, and official{" "}
               <Link href="/market?tab=positioning">CFTC positioning</Link>.{" "}
               <Link href="/analysis">Analysis</Link>,{" "}
               <Link href="/risk">Risk</Link>, and{" "}

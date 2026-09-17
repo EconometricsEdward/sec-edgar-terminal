@@ -164,8 +164,8 @@ test("recent searches migrate retired Market routes without inventing a replacem
       ts: 1,
     },
   ]);
-  assert.match(entry.path, /tab=fundamentals/);
-  assert.match(entry.path, /cohort=credit-banks/);
+  assert.match(entry.path, /tab=sectors/);
+  assert.doesNotMatch(entry.path, /cohort=credit-banks/);
   assert.doesNotMatch(entry.path, /(?:asset|window|proxy)=/);
 });
 

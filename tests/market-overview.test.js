@@ -40,17 +40,26 @@ test('Market shares issuer identities and metrics while sector totals and own de
   assert.equal(isMarketOverview(overlap), false);
 });
 
-test('Heatmap selections, tab navigation and exports retain the expanded scope', () => {
+test('Sector selections, legacy tab navigation and exports retain the expanded scope', () => {
   const { atlas, membership } = fixture(); const overview = buildMarketOverview(atlas, { membership });
   const selected = updateMarketView({ ...DEFAULT_MARKET_VIEW, tab: 'sectors' }, { tab: 'companies', cohort: 'sector-0' });
   const rows = selectMarketCompanies(overview.companies, selected, [], overview.generatedAt);
   assert.deepEqual(rows.map(r => r.ticker), ['NEW']);
   assert.equal(updateMarketView(selected, { tab: 'overview' }).cohort, 'sector-0');
   assert.equal(updateMarketView(selected, { tab: 'fundamentals' }).cohort, 'sector-0');
+  assert.equal(selected.tab, 'sectors');
+  assert.equal(updateMarketView(selected, { tab: 'saved' }).tab, 'overview');
   assert.equal(updateMarketView({ ...selected, cohort: 'theme' }, { tab: 'fundamentals' }).cohort, 'all');
   const csv = marketCsv(rows, 'ttm', overview.generatedAt, overview);
   assert.equal(csv.split('\r\n').length, 2); assert.match(csv, /Primary sector/); assert.match(csv, /membership-a/);
-  assert.match(marketBrief(rows, selected, overview, 'https://example.test/market'), /shared with Fundamental Lab/);
+  assert.match(marketBrief(rows, selected, overview, 'https://example.test/market'), /prepared market universe/);
+});
+
+test('Updating sector navigation normalizes unsupported metrics before the view is applied', () => {
+  const view = { ...DEFAULT_MARKET_VIEW, tab: 'sectors', metric: 'netMargin' };
+  assert.equal(updateMarketView(view, { metric: 'operatingMargin' }).metric, 'revenueGrowth');
+  assert.equal(updateMarketView(view, { metric: 'capexIntensity' }).metric, 'capexIntensity');
+  assert.equal(updateMarketView({ ...view, metric: 'freeCashFlowMargin' }, { statistic: 'mean' }).metric, 'revenueGrowth');
 });
 
 test('Public projection does not invent observations and scheduled history resets when membership changes', () => {

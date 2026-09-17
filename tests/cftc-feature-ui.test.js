@@ -12,7 +12,6 @@ import {
 const marketPage = readFileSync(new URL('../src/app/market/page.tsx', import.meta.url), 'utf8');
 const shortcut = readFileSync(new URL('../src/app/market/positioning/page.tsx', import.meta.url), 'utf8');
 const marketClient = readFileSync(new URL('../src/app/market/MarketOverviewClient.tsx', import.meta.url), 'utf8');
-const marketPanels = readFileSync(new URL('../src/app/market/MarketPanels.tsx', import.meta.url), 'utf8');
 const homePage = readFileSync(new URL('../src/app/page.tsx', import.meta.url), 'utf8');
 const homeResearch = readFileSync(new URL('../src/components/site/HomeResearch.tsx', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../src/app/layout.tsx', import.meta.url), 'utf8');
@@ -66,16 +65,14 @@ test('disabled CFTC saved views remain stored while their navigation is omitted'
   assert.equal(views.length, 3);
 });
 
-test('server-derived switch gates canonical routes, tabs, previews, saved views, home and recent navigation', () => {
+test('server-derived switch gates canonical routes, tabs, macro positioning, home and recent navigation', () => {
   assert.match(marketPage, /const cftcEnabled = isCftcEnabled\(\)/);
   assert.match(marketPage, /redirect\(marketViewPath\(marketViewForCftcAvailability/);
   assert.match(marketPage, /cftcEnabled=\{cftcEnabled\}/);
   assert.match(shortcut, /redirect\(isCftcEnabled\(\) \? '\/market\?tab=positioning' : '\/market'\)/);
   assert.match(marketClient, /TABS\.filter\(\(tab\) => cftcEnabled \|\| tab\.id !== 'positioning'\)/);
-  assert.match(marketClient, /cftcEnabled && <CftcPositioningPreview/);
+  assert.match(marketClient, /cftcEnabled && <MarketMacroPositioning/);
   assert.match(marketClient, /cftcEnabled=\{cftcEnabled\}/);
-  assert.match(marketPanels, /marketSavedViewsForCftcAvailability\(saved\.views, cohortIds, cftcEnabled\)/);
-  assert.match(marketPanels, /saved CFTC .* stored in this browser and will return/);
   assert.match(homePage, /cftcEnabled \|\| tool\.href !== "\/market\?tab=positioning"/);
   assert.match(homePage, /<HomeResearch cftcEnabled=\{cftcEnabled\} \/>/);
   assert.match(homeResearch, /!isCftcPositioningPath\(item\.href\)/);

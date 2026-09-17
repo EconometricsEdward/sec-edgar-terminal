@@ -36,7 +36,7 @@ const TOOLS = [
   [
     "Market",
     "/market",
-    "Explore sector fundamentals, the company screener, Fundamental Lab, and separate CFTC positioning.",
+    "Read the macro market briefing, compare sector performance, and explore official CFTC positioning.",
   ],
   [
     "Compare",

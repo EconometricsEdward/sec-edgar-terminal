@@ -15,7 +15,6 @@ const MAIN_PAGES: Array<
   ["/about", "monthly", 0.6],
   ["/help", "monthly", 0.7],
   ["/market", "weekly", 0.8],
-  ["/market/factors", "monthly", 0.75],
   ["/filings", "weekly", 0.8],
   ["/analysis", "weekly", 0.8],
   ["/analysis/scenarios", "monthly", 0.7],

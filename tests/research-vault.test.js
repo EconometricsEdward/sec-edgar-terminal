@@ -358,9 +358,9 @@ test("Market backups and restores remove retired provider fields without changin
     ),
     false,
   );
-  assert.match(market.views[0].query, /tab=fundamentals/);
+  assert.match(market.views[0].query, /tab=factors/);
   assert.doesNotMatch(market.views[0].query, /(?:asset|window|proxy)=/);
-  assert.match(market.migrationNotice, /Fundamental Lab/);
+  assert.match(market.migrationNotice, /Sector Performance/);
 
   const target = storage();
   const before = exportResearchBackup(target, now);

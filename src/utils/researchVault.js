@@ -10,7 +10,7 @@ import { PORTFOLIOS_KEY, readPortfolios } from "./portfolioStorage.js";
 import { RESEARCH_INBOX_KEY, readResearchInbox } from "./researchInbox.js";
 import { PORTFOLIO_VIEWS_KEY, readPortfolioViews } from "./portfolioViews.js";
 import { RESEARCH_BRIEFS_KEY, readResearchBriefs } from "./researchBriefs.js";
-import { MARKET_SAVED_KEY, parseMarketSaved } from "./marketResearch.js";
+import { MARKET_SAVED_KEY, parseMarketSaved, parseMarketView, marketViewPath } from "./marketResearch.js";
 
 export const RESEARCH_STORAGE_EVENT = "research-storage";
 export const RESEARCH_BACKUP_LIMIT = 16 * 1024 * 1024;
@@ -1282,7 +1282,7 @@ function entriesFor(source, data, store = {}) {
         t,
         data.baselines?.[t]?.name || t,
         "Market watchlist",
-        `/market?q=${t}&tab=companies`,
+        `/analysis/${t}`,
         data.baselines?.[t]?.observedAt,
         t,
       );
@@ -1291,11 +1291,8 @@ function entriesFor(source, data, store = {}) {
         "search",
         "",
         v.name,
-        "Saved market screen",
-        pathWithSettings(
-          "/market",
-          Object.fromEntries(new URLSearchParams(v.query)),
-        ),
+        "Saved market view",
+        marketViewPath(parseMarketView(v.query)),
         "",
         String(i),
       );
