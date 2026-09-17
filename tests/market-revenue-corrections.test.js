@@ -152,3 +152,52 @@ test('final publisher rejects older or invalid facts clocks despite a newer subm
   assert.equal(merged.companies[0].factsValidatedAt, date);
   assert.equal(merged.companies[0].revenueVersion, MARKET_REVENUE_VERSION);
 });
+
+test('build-only source revalidation repairs older prepared clocks without relaxing evidence guards', async () => {
+  const old = company({ factsRetrievedAt: date, checkedAt: date });
+  const { facts, submissions } = documents();
+  facts.metadata = { fetchedAt: '2026-09-13T00:00:00.000Z', revalidatedAt: '2026-09-17T03:00:00.000Z' };
+  submissions.metadata = { ...facts.metadata };
+  let written;
+  const refreshedPaths = [];
+  const result = await refreshQuantRevenueCorrections({ readAtlas: async () => ({ companies: [old] }),
+    read: async () => ({ company: old, factsRetrievedAt: date, checkedAt: date }),
+    write: async (_type, _id, record) => { written = record; return true; },
+    acquire: async () => 'lease', release: async () => {},
+    prepared: async path => path.includes('companyfacts') ? facts : submissions,
+    revalidateSources: true, preparedIdentity: () => ({ covered: true }),
+    refreshDocument: async (path, options) => {
+      refreshedPaths.push(path); assert.equal(options.minRecheckAgeMs, 0);
+      const envelope = path.includes('companyfacts') ? facts : submissions;
+      return { status: 'unchanged', envelope: { ...envelope, metadata: { ...envelope.metadata, revalidatedAt: '2026-09-17T12:00:00.000Z' } } };
+    },
+  });
+  assert.equal(result.corrected, 1);
+  assert.equal(result.sourceRevalidations, 2);
+  assert.equal(refreshedPaths.length, 2);
+  assert.equal(written.company.metrics.annual.revenue, 100);
+  assert.equal(written.factsRetrievedAt, facts.metadata.fetchedAt);
+  assert.equal(written.factsValidatedAt, '2026-09-17T12:00:00.000Z');
+});
+
+test('unadmitted prepared issuers use only the existing Quant shard restricted to affected tickers', async () => {
+  const old = company();
+  let record = { company: old, checkedAt: date }, released = false;
+  const calls = [];
+  const result = await refreshQuantRevenueCorrections({ readAtlas: async () => ({ companies: [old] }),
+    read: async () => record, write: async (_type, _id, next) => { record = next; return true; },
+    acquire: async () => 'lease', release: async () => { released = true; },
+    prepared: async () => null, preparedIdentity: () => ({ covered: false }), revalidateSources: true, refreshUnprepared: true,
+    refreshDocument: async () => { throw new Error('Unadmitted source must not be added to the prepared archive.'); },
+    refreshBatch: async (batch, options) => {
+      assert.equal(released, true, 'existing shard must acquire its own released lease');
+      calls.push({ batch, tickers: options.tickers });
+      record = { ...record, company: company({ revenueVersion: MARKET_REVENUE_VERSION }), factsRetrievedAt: date, factsValidatedAt: date };
+      return { checked: 1 };
+    },
+  });
+  assert.deepEqual(calls, [{ batch: Number(old.cik) % 16, tickers: ['IBKR'] }]);
+  assert.equal(result.corrected, 1);
+  assert.equal(result.withheld, 0);
+  assert.equal(result.sourceRevalidations, 0);
+});

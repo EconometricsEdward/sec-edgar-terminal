@@ -5,10 +5,10 @@ import { readQuantAtlas, refreshQuantBatch, readQuantMembership, membershipId, r
 import { QUANT_BATCHES } from '../src/utils/quantGroups.js';
 
 if (process.env.VERCEL_ENV === 'production' && warmCacheEnabled()) {
-  // Recompute known mapping/context fixes from the prepared public documents.
-  // Missing inputs remain unavailable; this never starts an upstream SEC crawl.
-  const correctionController = new AbortController(), correctionTimer = setTimeout(() => correctionController.abort(), 165000);
-  try { console.log('[Market] Prepared revenue correction checkpoints:', JSON.stringify(await refreshQuantRevenueCorrections({ signal: correctionController.signal, deadline: Date.now() + 180000 }))); }
+  // Recompute only the affected mappings; conditionally revalidate their two
+  // source documents when prepared evidence predates the company checkpoint.
+  const correctionController = new AbortController(), correctionTimer = setTimeout(() => correctionController.abort(), 275000);
+  try { console.log('[Market] Prepared revenue correction checkpoints:', JSON.stringify(await refreshQuantRevenueCorrections({ signal: correctionController.signal, deadline: Date.now() + 300000, revalidateSources: true, refreshUnprepared: true }))); }
   catch (error) { console.warn('[Market] Revenue correction publication deferred:', error.message); }
   finally { clearTimeout(correctionTimer); }
   const coverage = await readQuantMembership();
