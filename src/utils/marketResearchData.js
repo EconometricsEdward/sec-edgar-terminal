@@ -1,5 +1,5 @@
 import { buildMetricRow, extractAnnualPeriods, extractQuarterlyPeriods } from './xbrlParser.js';
-import { withPeriodKind, daysBetween, selectFinancialFact, sourceDocumentUrl } from './xbrlPeriods.js';
+import { withPeriodKind, daysBetween, selectFinancialFact, sumCompatibleFinancialFacts, sourceDocumentUrl } from './xbrlPeriods.js';
 import { classifyIndustry, INDUSTRY_GROUPS } from './industry.js';
 import { evidenceSources, evidenceCalculations } from './researchEvidence.js';
 import { MARKET_METRICS, MARKET_VERSION, isNumber } from './marketResearch.js';
@@ -12,6 +12,9 @@ const FACTOR_METRIC_KEYS = [
   'revenueGrowth', 'netMargin', 'operatingMargin', 'freeCashFlowMargin', 'equityToAssets', 'cashToAssets',
 ];
 const FACTOR_METRIC_KEY_SET = new Set(FACTOR_METRIC_KEYS);
+export const MARKET_REVENUE_VERSION = 'market-revenue-v2';
+const revenueFact = (facts, tags, period) => selectFinancialFact(facts, tags, period, 'USD', { guardAnnualRevenueContext: true });
+const unavailableRevenue = () => ({ value: null, classification: 'unavailable' });
 
 function normalizedAcceptance(value) {
   if (typeof value !== 'string' || !ACCEPTANCE_TIMESTAMP.test(value.trim()) || !Number.isFinite(Date.parse(value))) return null;
@@ -35,18 +38,28 @@ export function marketAcceptanceTimes(submissions) {
 // interest or premium line from the general statement display's fallbacks.
 export function marketRevenuePoint(facts, period, sic) {
   const industry = classifyIndustry(sic);
-  if (industry === INDUSTRY_GROUPS.BANKING) {
-    const direct = selectFinancialFact(facts, ['RevenuesNetOfInterestExpense'], period);
+  const broker = Number(sic) >= 6200 && Number(sic) <= 6299;
+  if (industry === INDUSTRY_GROUPS.BANKING || broker) {
+    const direct = revenueFact(facts, ['RevenuesNetOfInterestExpense'], period);
     if (direct) return direct;
     const interest = buildMetricRow(facts, 'netInterestIncome', '', [period], 'currency', sic).values[0];
     const other = buildMetricRow(facts, 'noninterestIncome', '', [period], 'currency', sic).values[0];
-    if (!isNumber(interest.value) || !isNumber(other.value)) return { value: null, classification: 'unavailable' };
-    return { value: interest.value + other.value, classification: 'calculated', formula: 'Net interest income + noninterest income',
-      sources: [...evidenceSources(interest), ...evidenceSources(other)],
-      calculations: [interest, other].flatMap((p) => [...evidenceCalculations(p), ...(p.formula ? [{ value: p.value, formula: p.formula, start: period.start, end: period.end, unit: 'USD' }] : [])]) };
+    const combined = sumCompatibleFinancialFacts([interest, other], 'Net interest income + noninterest income', period);
+    if (combined) return combined;
+    // A broker's ASC 606 fees omit lending/trading revenue when those streams
+    // are disclosed separately. A fee-only asset manager may still use the
+    // ordinary total-revenue concepts when no interest stream is reported.
+    if (industry === INDUSTRY_GROUPS.BANKING || isNumber(interest.value)) return unavailableRevenue();
   }
-  if (industry === INDUSTRY_GROUPS.INSURANCE) return selectFinancialFact(facts, ['Revenues', 'Revenue'], period) || { value: null, classification: 'unavailable' };
-  return buildMetricRow(facts, 'revenue', '', [period], 'currency', sic).values[0];
+  if (industry === INDUSTRY_GROUPS.INSURANCE) return revenueFact(facts, ['Revenues', 'Revenue'], period) || unavailableRevenue();
+  if (Number(sic) === 6798) {
+    // Lease income is outside ASC 606. For rental REITs such as Camden,
+    // contract-with-customer revenue contains only incidental management fees.
+    // Prefer a total; otherwise retain the explicitly labelled rental basis.
+    return revenueFact(facts, ['Revenues', 'Revenue', 'SalesRevenueNet', 'OperatingLeaseLeaseIncome'], period) || unavailableRevenue();
+  }
+  return revenueFact(facts, ['Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax',
+    'RevenueFromContractWithCustomerIncludingAssessedTax', 'SalesRevenueNet', 'SalesRevenueGoodsNet'], period) || unavailableRevenue();
 }
 export function marketPeriodMetrics(inputs, priorInputs) {
   const v = (key) => inputs[key]?.value ?? null;
@@ -214,8 +227,14 @@ export function buildMarketCompany({ ticker, cik, name, sic, facts, acceptanceTi
     annual: pointInTimeComparison(facts, sic, 'annual', cik, acceptanceTimes),
     ttm: pointInTimeComparison(facts, sic, 'ttm', cik, acceptanceTimes),
   };
-  return { version: MARKET_VERSION, ticker, cik, name, sic, cohorts, observedAt, metrics, reports, filingComparisons,
-    revenueBasis: classifyIndustry(sic) === INDUSTRY_GROUPS.BANKING ? 'Bank net revenue after interest expense' : 'Reported total revenue', evidence: { annual, ttm } };
+  const revenuePoints = [ttm[0]?.inputs.revenue, annual[0]?.inputs.revenue].filter(Boolean);
+  const revenueTags = revenuePoints.flatMap(point => evidenceSources(point).map(source => source.tag));
+  const revenueBasis = revenueTags.includes('OperatingLeaseLeaseIncome') ? 'Reported lease revenue; non-lease income excluded'
+    : classifyIndustry(sic) === INDUSTRY_GROUPS.BANKING ? 'Bank net revenue after interest expense'
+      : revenueTags.includes('RevenuesNetOfInterestExpense') || revenuePoints.some(point => point.formula === 'Net interest income + noninterest income')
+        ? 'Financial net revenue after interest expense' : 'Reported total revenue';
+  return { version: MARKET_VERSION, revenueVersion: MARKET_REVENUE_VERSION, ticker, cik, name, sic, cohorts, observedAt, metrics, reports, filingComparisons,
+    revenueBasis, evidence: { annual, ttm } };
 }
 
 function summaryComparisonPoint(point) {

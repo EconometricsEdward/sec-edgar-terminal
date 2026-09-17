@@ -4,7 +4,7 @@ import { QUANT_GROUPS, QUANT_BATCHES, QUANT_COVERAGE_VERSION, quantBatch } from 
 import { MEMBERSHIP_SOURCES, parseHoldingsCsv, buildMembership } from './quantMembership.js';
 import { MARKET_LENSES } from './marketCohorts.js';
 import { MARKET_VERSION } from './marketResearch.js';
-import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary } from './marketResearchData.js';
+import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary, MARKET_REVENUE_VERSION } from './marketResearchData.js';
 import { isMarketAtlas } from './marketResearchValidation.js';
 import { secFetch } from './secClient.js';
 import { readPreparedSecDocument } from './secDocumentStore.js';
@@ -13,6 +13,7 @@ import { warmGet, warmSet, warmGetMany, warmCacheEnabled, warmAcquireLease, warm
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
 import { publishMarketOverview } from './marketOverviewServer.js';
 import { cacheDeploymentScope, isProductionDeployment } from './cacheScope.js';
+import { revenueCorrectionPriority, recalculatePreparedMarketRevenue, withholdUncorrectedRevenue } from './marketRevenueCorrections.js';
 
 const scope = cacheDeploymentScope();
 export const QUANT_COVERAGE_CACHE = `${QUANT_COVERAGE_VERSION}:${scope}`;
@@ -62,7 +63,7 @@ export function filingFingerprint(submissions) {
   return hash(recent.accessionNumber.flatMap((accession, index) => /^(10-K|10-Q|20-F|40-F)(\/A)?$/.test(recent.form?.[index] || '') ? [[accession, recent.acceptanceDateTime?.[index], recent.reportDate?.[index]]] : []).slice(0, 40));
 }
 export function needsFactsRefresh(cached, fingerprint, now = Date.now()) {
-  return cached?.needsReconciliation || !cached?.company || fingerprint !== cached.fingerprint || !Number.isFinite(Date.parse(cached.factsRetrievedAt)) || now - Date.parse(cached.factsRetrievedAt) >= 7 * DAY;
+  return cached?.needsReconciliation || cached?.company?.revenueVersion !== MARKET_REVENUE_VERSION || fingerprint !== cached.fingerprint || !Number.isFinite(Date.parse(cached.factsRetrievedAt)) || now - Date.parse(cached.factsRetrievedAt) >= 7 * DAY;
 }
 async function secJson(path, signal) {
   const prepared = await readPreparedSecDocument(path, { allowStale: false });
@@ -73,7 +74,7 @@ async function secJson(path, signal) {
 }
 async function refreshCompany(entry, cached, signal) {
   const now = Date.now();
-  if (!cached?.needsReconciliation && cached?.checkedAt && now - Date.parse(cached.checkedAt) < 20 * 3600000) return { ...cached, reused: true };
+  if (!cached?.needsReconciliation && cached?.company?.revenueVersion === MARKET_REVENUE_VERSION && cached?.checkedAt && now - Date.parse(cached.checkedAt) < 20 * 3600000) return { ...cached, reused: true };
   const submissions = await secJson(`/submissions/CIK${entry.cik}.json`, signal);
   const fingerprint = filingFingerprint(submissions);
   let company = cached?.company, factsRetrievedAt = cached?.factsRetrievedAt;
@@ -172,4 +173,82 @@ export async function publishQuantAtlas(atlas, options={}) {
   if (!await writeSnapshot(QUANT_ATLAS_CACHE, 'atlas', atlas, 7*86400, options)) throw new Error('Expanded SEC snapshot could not be published.');
   const membership = await readQuantMembership();
   await publishMarketOverview(atlas, membershipId(membership) === atlas.coverage.membership_id ? membership : null, options);
+}
+
+/** Deployment-only, bounded correction of prepared public SEC calculations. No upstream SEC calls. */
+export async function refreshQuantRevenueCorrections({ signal, deadline = Date.now() + 180000,
+  readAtlas = readQuantAtlas, read = warmGet, write = warmSet, prepared = readPreparedSecDocument,
+  acquire = warmAcquireLease, release = warmReleaseLease,
+} = {}) {
+  const atlas = await readAtlas();
+  if (!atlas) return { corrected: 0, withheld: 0, remaining: 0, skipped: 'Prepared atlas unavailable.' };
+  const queue = atlas.companies.filter(company => revenueCorrectionPriority(company) !== null)
+    .sort((a, b) => revenueCorrectionPriority(a) - revenueCorrectionPriority(b) || a.ticker.localeCompare(b.ticker));
+  const result = { candidates: queue.length, corrected: 0, withheld: 0, skipped: 0, remaining: 0, audited: [], errors: [] };
+  const changes = new Map();
+  for (const company of queue) {
+    if (signal?.aborted || Date.now() >= deadline - 15000) break;
+    const batchKey = `batch-${quantBatch(company.cik)}`;
+    const lease = await acquire(QUANT_COVERAGE_CACHE, batchKey, 90000);
+    if (!lease) { result.skipped++; continue; }
+    try {
+      // Respect the same shard lease as scheduled refreshes and re-read its
+      // checkpoint after acquiring it so a delayed build cannot overwrite it.
+      const record = await read(QUANT_COMPANY_CACHE, company.cik)
+        || (isProductionDeployment() ? await read(LEGACY_COMPANY_CACHE, company.cik) : null);
+      if (!record) { result.skipped++; continue; }
+      let corrected = record?.company?.revenueVersion === MARKET_REVENUE_VERSION ? record.company : null;
+      if (!corrected) {
+        try {
+          const [facts, submissions] = await Promise.all([
+            prepared(`/api/xbrl/companyfacts/CIK${company.cik}.json`, { allowStale: true }),
+            prepared(`/submissions/CIK${company.cik}.json`, { allowStale: true }),
+          ]);
+          corrected = recalculatePreparedMarketRevenue({ ...record.company,
+            factsRetrievedAt: record.factsRetrievedAt, factsValidatedAt: record.factsValidatedAt, checkedAt: record.checkedAt }, facts, submissions);
+        } catch (error) {
+          corrected = withholdUncorrectedRevenue(record?.company || company);
+          if (result.errors.length < 8) result.errors.push({ ticker: company.ticker, reason: error.message });
+        }
+        if (!await write(QUANT_COMPANY_CACHE, company.cik, { ...record, company: corrected,
+          checkedAt: corrected.checkedAt || record.checkedAt, factsRetrievedAt: corrected.factsRetrievedAt || record.factsRetrievedAt,
+          ...(corrected.factsValidatedAt ? { factsValidatedAt: corrected.factsValidatedAt } : {}),
+          ...(corrected.revenueVersion !== MARKET_REVENUE_VERSION ? { needsReconciliation: true } : {}) }, 14 * 86400)) {
+          result.skipped++; continue;
+        }
+      }
+      changes.set(company.cik, { ...company, ...corrected });
+      if (corrected.revenueVersion === MARKET_REVENUE_VERSION) result.corrected++; else result.withheld++;
+      if (revenueCorrectionPriority(company) < 3) result.audited.push({ ticker: company.ticker,
+        annualRevenue: corrected.metrics.annual.revenue, ttmRevenue: corrected.metrics.ttm.revenue,
+        revenueVersion: corrected.revenueVersion || null });
+    } finally { await release(QUANT_COVERAGE_CACHE, batchKey, lease); }
+  }
+  result.remaining = queue.length - changes.size;
+  return result;
+}
+
+/** Called under the universe publisher lease, including its retained-atlas path. */
+export async function applyPreparedRevenueCorrections(atlas, { signal, deadline, readMany = warmGetMany } = {}) {
+  const candidates = atlas.companies.filter(company => revenueCorrectionPriority(company) !== null);
+  if (!candidates.length) return atlas;
+  const records = await readMany(QUANT_COMPANY_CACHE, candidates.map(company => company.cik), { signal, deadline });
+  const changes = new Map();
+  candidates.forEach((company, index) => {
+    const record = records[index], corrected = record?.company;
+    if (!corrected || corrected.revenueVersion !== MARKET_REVENUE_VERSION && corrected.revenueQuality !== 'awaiting-compatible-source') return;
+    // A checkpoint can be older than an independently published snapshot.
+    // Never move source knowledge or a reported fiscal period backwards.
+    if (Number(company.cik) !== Number(corrected.cik)
+      || company.checkedAt && (!Number.isFinite(Date.parse(record.checkedAt)) || Date.parse(record.checkedAt) < Date.parse(company.checkedAt))
+      || (company.factsValidatedAt || company.factsRetrievedAt) && (!Number.isFinite(Date.parse(record.factsValidatedAt || record.factsRetrievedAt))
+        || Date.parse(record.factsValidatedAt || record.factsRetrievedAt) < Date.parse(company.factsValidatedAt || company.factsRetrievedAt))
+      || ['annual', 'ttm'].some(basis => company.reports?.[basis]?.end
+        && (!corrected.reports?.[basis]?.end || corrected.reports[basis].end < company.reports[basis].end
+          || corrected.reports[basis].end === company.reports[basis].end && corrected.reports[basis].filed < company.reports[basis].filed))) return;
+    changes.set(company.cik, { ...company, ...corrected, checkedAt: record.checkedAt,
+      factsRetrievedAt: record.factsRetrievedAt, ...(record.factsValidatedAt ? { factsValidatedAt: record.factsValidatedAt } : {}) });
+  });
+  return changes.size ? { ...atlas, generatedAt: new Date().toISOString(),
+    companies: atlas.companies.map(company => changes.get(company.cik) || company) } : atlas;
 }

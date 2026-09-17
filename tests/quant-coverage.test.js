@@ -10,6 +10,7 @@ import { readSnapshot, writeSnapshot } from '../src/utils/snapshotCache.js';
 import { buildUniverseSnapshot } from '../src/utils/marketUniverse.js';
 import { chooseUniversePublication } from '../src/utils/marketUniverseServer.js';
 import { GET as cron } from '../src/app/api/cron/quant-coverage/route.js';
+import { MARKET_REVENUE_VERSION } from '../src/utils/marketResearchData.js';
 
 test('coverage manifest maps 1,505 exposures to 1,500 unique issuers in bounded stable shards', () => {
   assert.equal(seed.securities, 1505); assert.equal(seed.issuers, 1500);
@@ -47,8 +48,9 @@ test('filing fingerprint excludes unrelated reports but reconciliation cannot su
   const submissions = { filings: { recent: { accessionNumber: ['A', 'B'], form: ['10-Q', '4'], acceptanceDateTime: ['2026-09-01', '2026-09-02'], reportDate: ['2026-06-30', ''] } } };
   const fingerprint = filingFingerprint(submissions);
   submissions.filings.recent.accessionNumber[1] = 'C'; assert.equal(filingFingerprint(submissions), fingerprint);
-  const cached = { company: {}, fingerprint, factsRetrievedAt: '2026-09-09' };
+  const cached = { company: { revenueVersion: MARKET_REVENUE_VERSION }, fingerprint, factsRetrievedAt: '2026-09-09' };
   assert.equal(needsFactsRefresh(cached, fingerprint, Date.parse('2026-09-10')), false);
+  assert.equal(needsFactsRefresh({ ...cached, company: {} }, fingerprint, Date.parse('2026-09-10')), true, 'an unchanged filing still needs corrected calculations');
   assert.equal(needsFactsRefresh({ ...cached, needsReconciliation: true }, fingerprint, Date.parse('2026-09-10')), true);
   assert.equal(needsFactsRefresh(cached, fingerprint, Date.parse('2026-09-20')), true);
   submissions.filings.recent.accessionNumber[0] = 'D'; assert.equal(needsFactsRefresh(cached, filingFingerprint(submissions), Date.parse('2026-09-10')), true);

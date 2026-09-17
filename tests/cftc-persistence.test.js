@@ -65,6 +65,29 @@ test('CFTC durable roundtrip preserves prepared formulas, exact raw provenance, 
   assert.deepEqual(store.lastGood.get('markets:tff:latest'), store.current.get('markets:tff:latest'));
 });
 
+test('historical chart roundtrip keeps the selected date separate from its current source archive', async () => {
+  const store = fakeStore(); await save(store);
+  const selectedDate = priorDay(date, 7), code = codes[0];
+  const options = { family: 'tff', code, group: 'leveraged-funds', reportDate: selectedDate, window: '1y',
+    persistence: store.api, cacheGet: async () => null, fetchImpl: async () => assert.fail('No source request is needed') };
+  const history = await loadCftcHistory(options);
+  assert.equal(history.selected.reportDate, selectedDate);
+  assert.equal(history.retrieval.source_report_date, date);
+  assert.equal(history.source.url, launchUrl);
+  assert.equal(history.retrieved_at, retrievedAt);
+  assert.equal(history.history.length, 53);
+  const key = `history:tff:${code}:leveraged-funds:${selectedDate}:1y`;
+  const record = store.current.get(key);
+  assert.ok(record, 'the selected history is saved for subsequent readers');
+  assert.equal(record.metadata.reportPeriod, selectedDate);
+  assert.equal(JSON.parse(record.sourceBytes).rawHistories[0].through_date, date);
+  const before = store.calls.filter(call => call === 'publish').length;
+  const reread = await loadCftcHistory(options);
+  assert.equal(reread.selected.reportDate, selectedDate);
+  assert.equal(reread.retrieval.source_report_date, date);
+  assert.equal(store.calls.filter(call => call === 'publish').length, before, 'a verified historical slice reuses its saved response');
+});
+
 test('unchanged source content does not manufacture archives when retrieval times change', () => {
   const earlier = cftcSourceBundle(rawHistories, latestRows);
   const later = cftcSourceBundle(rawHistories.map(item => ({ ...item, savedAt: '2030-01-01T00:00:00Z', retrievedAt: '2030-01-01T00:00:00Z' })), latestRows);

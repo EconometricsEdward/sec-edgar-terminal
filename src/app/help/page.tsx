@@ -36,7 +36,7 @@ const TOOLS = [
   [
     "Market",
     "/market",
-    "Read the macro market briefing, compare sector performance, and explore official CFTC positioning.",
+    "Read the macro market briefing, compare sector performance, and explore official CFTC positioning. Expand Market universe → Find a company to search covered issuers and open their Analysis pages.",
   ],
   [
     "Compare",

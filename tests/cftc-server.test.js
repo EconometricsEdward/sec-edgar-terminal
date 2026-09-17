@@ -317,6 +317,52 @@ test('prepared-only chart reads serve the saved chart and never compute or crawl
   await assert.rejects(loadCftcHistory(options), error => error.code === 'CFTC_REPORT_NOT_PREPARED');
 });
 
+test('historical selections reuse the current prepared archive without source calls or later observations', async () => {
+  const family = 'tff', code = '13874A', group = 'leveraged-funds', now = Date.now();
+  const reportDate = new Date(now - 86400000).toISOString().slice(0, 10), selectedDate = priorDay(reportDate, 7);
+  const retrievedAt = new Date(now - 2000).toISOString(), savedAt = new Date(now - 1000).toISOString();
+  const raw = fixture('cftc-tff-gpe5-46if-v1.json');
+  const rows = Array.from({ length: 60 }, (_, i) => ({ ...raw, id: `prepared-${i}`, report_date_as_yyyy_mm_dd: `${priorDay(reportDate, i * 7)}T00:00:00.000` }));
+  const marketResponse = buildCftcMarketsSnapshot({ family, reportDate, latestRaw: [rows[0]], historyRaw: rows, retrievedAt,
+    sourceUrl: latestSourceUrl(family, reportDate), historySourceUrl: launchSourceUrl(family, reportDate) });
+  const markets = { savedAt, response: cftcPublicationStatus(marketResponse, { cacheRequired: false }) };
+  const archive = { schema_version: CFTC_RAW_HISTORY_SCHEMA_VERSION, family, code, report_basis: 'futures_only', through_date: reportDate,
+    savedAt, retrievedAt, sourceUrl: contractSourceUrl(family, code, reportDate), rows, pages: 1, sourceRows: rows.length,
+    sourcePageSize: 200, sourceRowLimit: 600, originScope: 'contract_history', capReached: false, sourceExhausted: true };
+  const reads = [], writes = [];
+  const persistence = { mode: () => 'supabase',
+    prepared: async (key, { validate }) => key === 'markets:tff:latest' && validate(markets) ? markets : null,
+    contractRaw: async ({ throughDate, validate }) => { reads.push(throughDate); return throughDate === reportDate && validate(archive) ? archive : null; },
+    raw: async () => null, reserve: async () => ({ generation: '1' }),
+    save: async ({ key, envelope, validate, rawHistories, validateRaw }) => {
+      assert.ok(validate(envelope), 'derived history must pass the complete cache/source/metric validation');
+      assert.ok(rawHistories.every(validateRaw), 'the original archive keeps its own validated source date');
+      writes.push(key); return {};
+    },
+  };
+  const options = { family, code, group, reportDate: selectedDate, window: '1y', persistence,
+    cacheGet: async () => null, fetchImpl: async () => assert.fail('Historical inspection cannot start an upstream crawl') };
+  const history = await loadCftcHistory(options);
+  assert.deepEqual(reads, [reportDate]);
+  assert.equal(history.selected.reportDate, selectedDate);
+  assert.equal(history.history.length, 53);
+  assert.ok(history.history.every(point => point.reportDate <= selectedDate));
+  assert.ok(history.percentile.comparisonRange.latest < selectedDate);
+  assert.equal(history.percentile.value, 50);
+  assert.equal(history.retrieved_at, retrievedAt);
+  assert.equal(history.source.url, archive.sourceUrl);
+  assert.equal(history.retrieval.source_report_date, reportDate);
+  assert.equal(writes.length, 1);
+  assert.ok(validHistoryResponse(history, family, code, group, selectedDate, '1y', Date.now()));
+  const forged = structuredClone(history);
+  forged.retrieval.source_report_date = priorDay(selectedDate, 7);
+  assert.equal(validHistoryResponse(forged, family, code, group, selectedDate, '1y', Date.now()), false);
+  const tooLong = await loadCftcHistory({ ...options, window: '5y' });
+  assert.equal(tooLong.percentile.value, null, 'retained history cannot invent the full requested prior sample');
+  assert.equal(tooLong.percentile.reason, 'insufficient_history');
+  await assert.rejects(loadCftcHistory({ ...options, reportDate: priorDay(reportDate, 1) }), error => error.code === 'CFTC_OBSERVATION_UNAVAILABLE');
+});
+
 test('prepared-only explicit-date reads reject a provisional latest primary and use its durable twin',async()=>{
   const family='tff',nowMs=Date.now(),reportDate=new Date(nowMs-86400_000).toISOString().slice(0,10);
   const retrievedAt=new Date(nowMs-2000).toISOString(),savedAt=new Date(nowMs-1000).toISOString();

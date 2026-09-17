@@ -270,7 +270,8 @@ export function createCftcPersistence({
       if (rawCodes.size !== rawHistories.length || promoteLastGood && (rawHistories.length < (response.cache_publication?.raw_history_expected || 0)
         || expectedCodes.some(code => !rawCodes.has(code)))) throw persistenceError('CFTC_DURABLE_RAW_HISTORY_MISSING');
       const reportPeriod = response.report_date || response.selection?.report_date;
-      if (rawHistories.some(item => item.family !== family || item.through_date !== reportPeriod || item.report_basis !== CFTC_REPORT_BASIS)) throw persistenceError('CFTC_DURABLE_VALIDATION_FAILED');
+      const sourcePeriod = response.retrieval?.source_report_date || reportPeriod;
+      if (rawHistories.some(item => item.family !== family || item.through_date !== sourcePeriod || item.report_basis !== CFTC_REPORT_BASIS)) throw persistenceError('CFTC_DURABLE_VALIDATION_FAILED');
       const bundle = cftcSourceBundle(rawHistories, latestRows);
       if (Buffer.byteLength(bundle.bytes) > MAX_SOURCE_BYTES) throw persistenceError('CFTC_DURABLE_SOURCE_TOO_LARGE');
       const record = await publish({ dataset: 'cftc', key, claim, payload: envelope, promoteLastGood,
