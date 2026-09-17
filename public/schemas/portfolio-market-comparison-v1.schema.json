@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://secedgarterminal.com/schemas/portfolio-market-comparison-v1.schema.json",
+  "title": "EDGAR Terminal Prepared CFTC Market Comparison v1",
+  "description": "Public, parameter-free comparison of 25 curated futures markets from prepared CFTC histories. Contains no portfolio holdings, allocations or measured issuer exposure. This schema describes HTTP 200 data envelopes, including partial or unavailable prepared coverage; HTTP error envelopes use a separate error contract.",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "status", "results"],
+  "properties": {
+    "schemaVersion": { "const": "edgar.portfolio-market-comparison.v1" },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Time this comparison was assembled from prepared histories, not the CFTC observation date or source retrieval time. A cached response preserves its assembly time."
+    },
+    "status": { "enum": ["ready", "partial", "unavailable"] },
+    "results": {
+      "type": "array",
+      "minItems": 25,
+      "maxItems": 25,
+      "items": { "$ref": "#/definitions/result" }
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "ready" } } },
+      "then": {
+        "properties": {
+          "results": {
+            "items": {
+              "properties": {
+                "status": { "const": "ready" },
+                "summary": { "properties": { "stale": { "const": false }, "incomplete": { "const": false } } }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "unavailable" } } },
+      "then": { "properties": { "results": { "items": { "properties": { "status": { "const": "unavailable" } } } } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "partial" } } },
+      "then": { "properties": { "results": { "contains": { "properties": { "status": { "const": "ready" } } } } } }
+    }
+  ],
+  "definitions": {
+    "key": {
+      "type": "string",
+      "pattern": "^(tff:[A-Z0-9+]{3,12}:leveraged-funds|disaggregated:[A-Z0-9+]{3,12}:managed-money)$"
+    },
+    "contract": { "type": "string", "pattern": "^[A-Z0-9+]{3,12}$" },
+    "date": { "type": "string", "format": "date" },
+    "nullableDate": { "type": ["string", "null"], "format": "date" },
+    "familyGroup": {
+      "if": { "properties": { "family": { "const": "tff" } } },
+      "then": { "properties": { "group": { "const": "leveraged-funds" }, "key": { "pattern": "^tff:" } } },
+      "else": { "properties": { "group": { "const": "managed-money" }, "key": { "pattern": "^disaggregated:" } } }
+    },
+    "result": {
+      "type": "object",
+      "required": ["key", "family", "contract", "group", "status", "summary"],
+      "properties": {
+        "key": { "$ref": "#/definitions/key" },
+        "family": { "enum": ["tff", "disaggregated"] },
+        "contract": { "$ref": "#/definitions/contract" },
+        "group": { "enum": ["leveraged-funds", "managed-money"] },
+        "status": {
+          "enum": ["ready", "unavailable"],
+          "description": "Ready means a validated summary is available; inspect its stale and incomplete flags and nullable values before interpreting it."
+        },
+        "summary": { "oneOf": [{ "$ref": "#/definitions/summary" }, { "type": "null" }] },
+        "errorCode": {
+          "enum": ["CFTC_REPORT_NOT_PREPARED", "CFTC_UNAVAILABLE", "CFTC_TIMEOUT", "CFTC_REQUEST_CANCELLED", "CFTC_COMPARISON_INVALID"]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        { "$ref": "#/definitions/familyGroup" },
+        {
+          "if": { "properties": { "status": { "const": "ready" } } },
+          "then": { "properties": { "summary": { "$ref": "#/definitions/summary" } }, "not": { "required": ["errorCode"] } },
+          "else": { "required": ["errorCode"], "properties": { "summary": { "type": "null" } } }
+        }
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "required": ["key", "family", "contract", "group", "groupLabel", "reportDate", "netPctOi", "weeklyChangePp", "priorDate", "range", "observationCount", "historyStart", "historyEnd", "ageDays", "stale", "incomplete", "sourceUrl", "marketPath"],
+      "properties": {
+        "key": { "$ref": "#/definitions/key" },
+        "family": { "enum": ["tff", "disaggregated"] },
+        "contract": { "$ref": "#/definitions/contract" },
+        "group": { "enum": ["leveraged-funds", "managed-money"] },
+        "groupLabel": { "enum": ["Leveraged Funds", "Managed Money"] },
+        "reportDate": {
+          "$ref": "#/definitions/date",
+          "description": "Selected CFTC observation date; release and retrieval dates are different clocks. Markets may have different selected dates."
+        },
+        "netPctOi": {
+          "type": ["number", "null"],
+          "minimum": -100,
+          "maximum": 100,
+          "description": "100 * (long - short) / open interest for the selected report and trader group. Null means unavailable; an older report is never substituted."
+        },
+        "weeklyChangePp": {
+          "type": ["number", "null"],
+          "minimum": -200,
+          "maximum": 200,
+          "description": "Selected netPctOi minus netPctOi exactly seven calendar days earlier, in percentage points, using each report's own open interest. Null when either exact-date value is unavailable; nearby reports are never substituted."
+        },
+        "priorDate": { "$ref": "#/definitions/nullableDate", "description": "Required comparison date, exactly seven days before reportDate, whether or not a valid observation exists on that date." },
+        "range": { "oneOf": [{ "$ref": "#/definitions/range" }, { "type": "null" }] },
+        "observationCount": { "type": "integer", "minimum": 0, "maximum": 365, "description": "Number of valid netPctOi observations in the trailing 52-week window, including the selected report if valid. Not a guarantee of complete weekly coverage." },
+        "historyStart": { "$ref": "#/definitions/nullableDate", "description": "Earliest valid observation actually used; null when no valid values exist." },
+        "historyEnd": { "$ref": "#/definitions/nullableDate", "description": "Latest valid observation actually used; may precede reportDate when the current value is unavailable." },
+        "ageDays": { "type": "integer", "minimum": 0 },
+        "stale": { "type": "boolean", "description": "Report is over 14 days old or its prepared source is marked stale. Preserve this flag alongside the source date." },
+        "incomplete": { "type": "boolean", "description": "Source is not ready, observations were invalid or excluded, the current report is missing, gaps or unavailable values exist, or annual coverage is insufficient. Annual coverage requires at least 52 valid observations spanning 356 calendar days (51 weeks with one day of calendar tolerance). Preserve actual observationCount and historyStart/historyEnd." },
+        "sourceUrl": { "type": "string", "format": "uri", "pattern": "^https://publicreporting\\.cftc\\.gov/resource/(gpe5-46if|72hh-3qpy)\\.json([?#].*)?$" },
+        "marketPath": { "type": "string", "pattern": "^/market\\?", "description": "Relative interactive drilldown URL fixed to the selected family, contract, group and report date." }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        { "$ref": "#/definitions/familyGroup" },
+        {
+          "if": { "properties": { "family": { "const": "tff" } } },
+          "then": { "properties": { "groupLabel": { "const": "Leveraged Funds" }, "sourceUrl": { "pattern": "/gpe5-46if\\.json" } } },
+          "else": { "properties": { "groupLabel": { "const": "Managed Money" }, "sourceUrl": { "pattern": "/72hh-3qpy\\.json" } } }
+        }
+      ]
+    },
+    "range": {
+      "type": "object",
+      "description": "Observed minimum and maximum of valid netPctOi values within 52 * 7 calendar days through reportDate, including current. Available with at least two valid observations. May cover less than a full year; preserve count, start and end. This is not a percentile distribution, price range or measured portfolio exposure.",
+      "required": ["min", "max", "position", "count", "start", "end"],
+      "properties": {
+        "min": { "type": "number", "minimum": -100, "maximum": 100 },
+        "max": { "type": "number", "minimum": -100, "maximum": 100 },
+        "position": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "100 * (netPctOi - min) / (max - min): linear position in the observed range, NOT a historical percentile. Null for a flat range or an unavailable current netPctOi."
+        },
+        "count": { "type": "integer", "minimum": 2, "maximum": 365 },
+        "start": { "$ref": "#/definitions/date" },
+        "end": { "$ref": "#/definitions/date" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

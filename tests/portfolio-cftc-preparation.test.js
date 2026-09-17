@@ -115,6 +115,56 @@ test('daily accession checks reuse extracted context and only new filings trigge
   assert.ok(f.writes.every(write => write.ttl <= disposableCachePolicy(TYPE, write.id).maxTtlSeconds));
 });
 
+test('prepared filing connections reuse one snapshot for exact identities in mixed portfolios without source work', async () => {
+  const f = fixture({ warm: true }); await complete(f);
+  const selected = universe.companies.slice(0, 2).map(({ ticker, cik }) => ({ ticker, cik }));
+  let reads = 0; const originalRead = f.deps.read;
+  f.deps.read = async (...args) => { reads++; return originalRead(...args); };
+  f.api = createPortfolioCftcPreparation(f.deps);
+  const writes = f.writes.length;
+  const result = await f.api.readPreparedPortfolioMarketConnections([...selected,
+    { ticker: 'ACU', cik: '0000002098' }, { ticker: selected[0].ticker, cik: selected[1].cik }]);
+  assert.equal(reads, 1); assert.equal(result.length, 2);
+  assert.deepEqual(result.map(({ ticker, cik }) => ({ ticker, cik })), selected);
+  assert.ok(result.every(row => row.status === 'no_matches' && row.context.status === 'no_matches'
+    && row.checkedAt === new Date(START).toISOString() && row.preparation.status === 'ready'));
+  assert.equal(f.sources.length, 0); assert.equal(f.discoveries.length, 0); assert.equal(f.writes.length, writes);
+  assert.equal(await f.api.readPreparedPortfolioMarketConnections([{ ticker: selected[0].ticker, cik: selected[1].cik }]), null);
+  assert.equal(reads, 1, 'unmatched public identities do not read a snapshot');
+  f.setEnabled(false);
+  assert.equal(await f.api.readPreparedPortfolioMarketConnections(selected), null);
+  assert.equal(reads, 1, 'disabled environments cannot access prepared production data');
+});
+
+test('prepared filing connections preserve recheck dates and explicitly mark aging data', async () => {
+  const f = fixture({ warm: true }); await complete(f);
+  const selected = universe.companies.slice(0, 1);
+  f.advance(POLICY.resultCheckMs + 1);
+  const stale = await f.api.readPreparedPortfolioMarketConnections(selected);
+  assert.equal(stale[0].preparation.status, 'stale');
+  assert.equal(stale[0].checkedAt, new Date(START).toISOString());
+  f.advance(POLICY.sourceCheckMs); await complete(f);
+  const fresh = await f.api.readPreparedPortfolioMarketConnections(selected);
+  assert.equal(fresh[0].preparation.status, 'ready');
+  assert.equal(fresh[0].context.generatedAt, new Date(START).toISOString(), 'source extraction time is never rewritten');
+  assert.equal(fresh[0].checkedAt, new Date(START + POLICY.resultCheckMs + 1 + POLICY.sourceCheckMs).toISOString());
+});
+
+test('prepared filing connections reject invalid snapshots and expired source checks even if a record outlives its TTL', async () => {
+  const f = fixture({ warm: true }); await complete(f);
+  const selected = universe.companies.slice(0, 1), saved = f.records.get('DEMO-CURRENT');
+  const valid = copy(saved);
+  saved.payload.contexts[0].context.cik = universe.companies[1].cik;
+  assert.equal(await f.api.readPreparedPortfolioMarketConnections(selected), null);
+  f.records.set('DEMO-CURRENT', valid);
+  valid.expiresAt = '2027-01-01T00:00:00Z';
+  f.advance(POLICY.snapshotRetentionSeconds * 1000);
+  assert.equal(await f.api.readPreparedPortfolioMarketConnections(selected), null, 'snapshot age has a hard retention bound');
+  valid.payload.checkedAt = new Date(START + POLICY.snapshotRetentionSeconds * 1000).toISOString();
+  valid.payload.nextCheckAt = new Date(Date.parse(valid.payload.checkedAt) + POLICY.resultCheckMs).toISOString();
+  assert.deepEqual(await f.api.readPreparedPortfolioMarketConnections(selected), [], 'recent publication cannot renew expired company source checks');
+});
+
 test('fresh validated warm contexts bootstrap the same100 without filing downloads', async () => {
   const f = fixture({ warm: true }); await complete(f);
   assert.equal(f.sources.length, 0); assert.equal(f.discoveries.length, 0);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   ArrowRight,
@@ -24,6 +24,8 @@ import {
 } from "../../../utils/portfolioMarketConnectionsClient.js";
 import { csvString } from "../../../utils/portfolioFiles.js";
 import { downloadText } from "../../../utils/download.js";
+import PortfolioMarketComparison from "./PortfolioMarketComparison";
+import { usePortfolioMarketComparison } from "./usePortfolioMarketComparison";
 import s from "./PortfolioMarketConnections.module.css";
 
 const Positioning = dynamic(() => import("./PortfolioMarketPositioning"), {
@@ -54,6 +56,8 @@ export default function PortfolioMarketConnections({
   onInspectCompany,
 }: Props) {
   const id = useId();
+  const detailRef = useRef<HTMLElement>(null);
+  const comparisonRef = useRef<HTMLDivElement>(null);
   const [basis, setBasis] = useState("companies");
   const [category, setCategory] = useState("all");
   const [selectedKey, setSelectedKey] = useState("");
@@ -78,6 +82,9 @@ export default function PortfolioMarketConnections({
       .map(({ cik, ticker }: any) => ({ cik, ticker })),
   );
   const scanCompanies = useMemo(() => JSON.parse(scanKey), [scanKey]);
+  const comparison = usePortfolioMarketComparison(active && scanCompanies.length > 0);
+  const preparedChecks = (scan.key === scanKey ? scan.results : []).filter(result => result.preparation && result.checkedAt);
+  const oldestPreparedCheck = preparedChecks.map(result => result.checkedAt).sort()[0];
   const model: any = useMemo(
     () =>
       buildPortfolioMarketConnections(
@@ -139,8 +146,6 @@ export default function PortfolioMarketConnections({
     coveragePage,
     Math.max(0, Math.ceil(coverageRows.length / 10) - 1),
   );
-  const denominator =
-    model.basis === "allocation" ? 100 : model.coverage.eligible;
   const progress = model.coverage.eligible
     ? (100 * model.coverage.attempted) / model.coverage.eligible
     : 0;
@@ -161,6 +166,10 @@ export default function PortfolioMarketConnections({
     setSelectedCik("");
     setQuery("");
     setMemberPage(0);
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+      detailRef.current?.focus({ preventScroll: true });
+    });
   };
   const retry = (all: boolean) => {
     if (all) clearPortfolioMarketConnections(scanCompanies);
@@ -197,11 +206,11 @@ export default function PortfolioMarketConnections({
             onClick={() => {
               downloadText(
                 "portfolio-market-connections.csv",
-                csvString(marketConnectionCsvRows(model)),
+                csvString(marketConnectionCsvRows(model, comparison.summaries)),
                 "text/csv",
               );
               setNotice(
-                "Exported market connections, scan coverage and original SEC evidence.",
+                "Exported market connections, CFTC comparison, source dates, scan coverage and SEC evidence.",
               );
             }}
           >
@@ -226,6 +235,10 @@ export default function PortfolioMarketConnections({
             attempted · {model.coverage.checked} usable filing scans
           </span>
         </div>
+        {oldestPreparedCheck && <span>
+          Prepared filing checks · oldest {new Date(oldestPreparedCheck).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" })}
+          {preparedChecks.some(result => result.preparation.status === "stale") ? " · update pending" : ""}
+        </span>}
         <progress
           max={100}
           value={progress}
@@ -355,67 +368,19 @@ export default function PortfolioMarketConnections({
 
       {!!model.markets.length && (
         <>
-          <div
-            className={s.marketBars}
-            role="group"
-            aria-label="Shared market connections"
-          >
-            <div className={s.barHeading}>
-              <span>Market</span>
-              <span>
-                {model.basis === "allocation"
-                  ? "Allocation in linked companies"
-                  : "Companies with source-backed filing links"}
-              </span>
-              <span>Sector breadth</span>
-            </div>
-            {model.markets.map((market: any) => (
-              <button
-                key={market.key}
-                type="button"
-                className={s.marketRow}
-                aria-pressed={selected?.key === market.key}
-                onClick={() => pickMarket(market.key)}
-                aria-label={`Review ${market.label}: ${market.count} of ${model.coverage.eligible} eligible companies across ${sectors(market.sectorCount)}${model.basis === "allocation" ? `; ${number(market.allocationPct)} percent of full portfolio allocation in linked companies` : ""}`}
-              >
-                <div className={s.marketLabel}>
-                  <strong>{market.label}</strong>
-                  <span>
-                    {market.family === "tff"
-                      ? "Financial futures"
-                      : "Commodity futures"}{" "}
-                    · {market.groupLabel}
-                    {market.contract === "043602"
-                      ? " · Broad rates proxy"
-                      : " · Benchmark link"}
-                  </span>
-                </div>
-                <div className={s.barCell}>
-                  <div className={s.track} aria-hidden="true">
-                    <span
-                      style={{
-                        width: `${Math.min(100, denominator > 0 ? (100 * market.value) / denominator : 0)}%`,
-                      }}
-                    />
-                  </div>
-                  <strong>
-                    {model.basis === "allocation"
-                      ? `${number(market.allocationPct)}%`
-                      : market.count}
-                    <small>
-                      {model.basis === "allocation"
-                        ? companies(market.count)
-                        : ` / ${model.coverage.eligible}`}
-                    </small>
-                  </strong>
-                </div>
-                <div className={s.sectorCount}>
-                  <strong>{market.sectorCount}</strong>
-                  <span>{market.sectorCount === 1 ? "sector" : "sectors"}</span>
-                  <ArrowRight size={16} aria-hidden="true" />
-                </div>
-              </button>
-            ))}
+          <div ref={comparisonRef} className={s.comparisonAnchor}>
+          <PortfolioMarketComparison
+            markets={model.markets}
+            allocationAvailable={model.allocationAvailable}
+            eligibleCompanies={model.coverage.eligible}
+            basis={model.basis}
+            selectedKey={selected?.key || null}
+            onSelect={pickMarket}
+            summaries={comparison.summaries}
+            loading={comparison.loading}
+            error={comparison.error}
+            onRetry={comparison.refresh}
+          />
           </div>
           <div className={s.matrixToggle}>
             <button
@@ -428,7 +393,7 @@ export default function PortfolioMarketConnections({
                 ? "Hide sector connections"
                 : "Compare connections across sectors"}
             </button>
-            <span>All bars use the same denominator.</span>
+            <span>A company can connect to more than one market.</span>
           </div>
           {matrixShown && (
             <div
@@ -503,7 +468,11 @@ export default function PortfolioMarketConnections({
       )}
 
       {selected && (
-        <section className={s.detail} aria-labelledby={`${id}-market`}>
+        <section ref={detailRef} tabIndex={-1} className={s.detail} aria-labelledby={`${id}-market`}>
+          <button type="button" className={s.backToComparison} onClick={() => {
+            comparisonRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+            comparisonRef.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.focus({ preventScroll: true });
+          }}>← Back to market comparison</button>
           <div className={s.detailHeading}>
             <div>
               <p className={s.eyebrow}>FOLLOW THE CONNECTION</p>
@@ -627,7 +596,7 @@ export default function PortfolioMarketConnections({
               </section>
             )}
           </div>
-          <Positioning key={selected.key} market={selected} active={active} />
+          <Positioning key={selected.key} market={selected} active={active} reportDate={comparison.summaries[selected.key]?.summary?.reportDate} />
         </section>
       )}
 

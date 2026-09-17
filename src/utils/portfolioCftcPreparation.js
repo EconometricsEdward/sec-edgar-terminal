@@ -108,6 +108,35 @@ export function createPortfolioCftcPreparation({ enabled = () => disposableCache
   async function readPreparedDemoCftcChanges({ days = 30, signal } = {}) {
     return readPreparedPortfolioCftcChanges({ companies, days }, { signal });
   }
+  /** Reuse prepared SEC filing connections without loading or filtering CFTC history.
+   * Exact public identities are required; a mixed custom portfolio can use its matching
+   * demo companies while the caller discovers the remainder independently.
+   * @param {Array<{ticker: string, cik: string}>} requested
+   * @param {{signal?: AbortSignal}} options
+   */
+  async function readPreparedPortfolioMarketConnections(requested = [], { signal } = {}) {
+    if (!Array.isArray(requested) || !requested.length || requested.length > companies.length || signal?.aborted) return null;
+    const selected = new Map();
+    for (const item of requested) {
+      const match = companies.find(company => company.ticker === item?.ticker && company.cik === item?.cik);
+      if (match) selected.set(match.cik, match);
+    }
+    if (!selected.size) return null;
+    const record = await readSnapshot(signal);
+    if (!record || signal?.aborted) return null;
+    const saved = record.payload, readAt = now();
+    if (readAt - Date.parse(saved.checkedAt) >= POLICY.snapshotRetentionSeconds * 1000) return null;
+    return saved.contexts.flatMap(entry => {
+      const company = selected.get(entry.cik), checked = Date.parse(entry.checkedAt);
+      if (!company || readAt - checked >= POLICY.contextRetentionSeconds * 1000
+        || Date.parse(entry.context.generatedAt) > checked) return [];
+      return [{ ticker: company.ticker, cik: company.cik, status: entry.context.status, context: entry.context,
+        checkedAt: entry.checkedAt, preparation: {
+          status: readAt < Date.parse(saved.nextCheckAt) && readAt - checked < POLICY.sourceCheckMs ? 'ready' : 'stale',
+          checkedAt: saved.checkedAt, nextCheckAt: saved.nextCheckAt,
+        } }];
+    });
+  }
   /** @param {{signal?: AbortSignal}} options */
   async function readPreparationProgress({ signal } = {}) {
     if (!enabled()) return null;
@@ -235,6 +264,6 @@ export function createPortfolioCftcPreparation({ enabled = () => disposableCache
       return { status: 'deferred', code: code(error), processed, completedCompanies: state.completedCompanies || 0, totalCompanies: 100 };
     }
   }
-  return { runPortfolioCftcPreparation, readPreparedPortfolioCftcChanges, readPreparedDemoCftcChanges, readPreparationProgress };
+  return { runPortfolioCftcPreparation, readPreparedPortfolioCftcChanges, readPreparedDemoCftcChanges, readPreparedPortfolioMarketConnections, readPreparationProgress };
 }
-export const { runPortfolioCftcPreparation, readPreparedPortfolioCftcChanges, readPreparedDemoCftcChanges, readPreparationProgress } = createPortfolioCftcPreparation();
+export const { runPortfolioCftcPreparation, readPreparedPortfolioCftcChanges, readPreparedDemoCftcChanges, readPreparedPortfolioMarketConnections, readPreparationProgress } = createPortfolioCftcPreparation();
