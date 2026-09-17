@@ -85,10 +85,10 @@
   .industry { min-height: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .document, .company, .companyTop > svg, .sectors button { transition: none; }
-  .evidenceVisual:hover .documentFront { transform: rotate(-5deg); }
-  .evidenceVisual:hover .documentBack { transform: rotate(11deg); }
-  .company:hover, .company:hover .companyTop > svg { transform: none; }
+  :global(html:not([data-reading-motion="full"])) :is(.document, .company, .companyTop > svg, .sectors button) { transition: none; }
+  :global(html:not([data-reading-motion="full"])) .evidenceVisual:hover .documentFront { transform: rotate(-5deg); }
+  :global(html:not([data-reading-motion="full"])) .evidenceVisual:hover .documentBack { transform: rotate(11deg); }
+  :global(html:not([data-reading-motion="full"])) .company:hover, :global(html:not([data-reading-motion="full"])) .company:hover .companyTop > svg { transform: none; }
 }
 .page .company { color: var(--analysis-text); }
 :global(html[data-theme-mode="light"]) .capabilities { border-color: #ccd6e3; }
@@ -111,3 +111,7 @@
 :global(html[data-theme-mode="light"]) .documentFront { background: linear-gradient(130deg,#fff9e9,#eff4fa); border-color: #b8a979; }
 :global(html[data-theme-mode="light"]) .document > div { background: #c8d2df; }
 :global(html[data-theme-mode="light"]) .searchArea form > div:first-of-type { background: #fff; border-color: #afbed0; box-shadow: 0 12px 40px #20324a0a; }
+:global(html[data-reading-motion="reduced"]) .evidenceVisual:hover .documentFront { transform: rotate(-5deg); }
+:global(html[data-reading-motion="reduced"]) .evidenceVisual:hover .documentBack { transform: rotate(11deg); }
+:global(html[data-reading-motion="reduced"]) .company:hover,
+:global(html[data-reading-motion="reduced"]) .company:hover .companyTop > svg { transform: none; }
