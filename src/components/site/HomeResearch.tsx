@@ -25,7 +25,19 @@ export default function HomeResearch({ cftcEnabled = true }: { cftcEnabled?: boo
     const read = () => {
       let failure = false;
       try {
-        setRecent(readResearchTrail(localStorage).filter((item) => cftcEnabled || !isCftcPositioningPath(item.href)).slice(0, 4));
+        const seenPaths = new Set<string>();
+        const seenTitles = new Set<string>();
+        setRecent(
+          readResearchTrail(localStorage)
+            .filter((item) => cftcEnabled || !isCftcPositioningPath(item.href))
+            .filter((item) => {
+              if (seenPaths.has(item.href) || seenTitles.has(item.title)) return false;
+              seenPaths.add(item.href);
+              seenTitles.add(item.title);
+              return true;
+            })
+            .slice(0, 4),
+        );
       } catch {
         failure = true;
       }
@@ -63,17 +75,17 @@ export default function HomeResearch({ cftcEnabled = true }: { cftcEnabled?: boo
     <section className={styles.resume} aria-labelledby="resume-title">
       <div className={styles.sectionHeading}>
         <div>
-          <p className={styles.eyebrow}>Your next session starts here</p>
-          <h2 id="resume-title">Pick up where you left off.</h2>
+          <p className={styles.eyebrow}>Your workspace</p>
+          <h2 id="resume-title">Continue your research.</h2>
         </div>
-        <Link href="/workspace">
-          Portfolio <ArrowUpRight size={15} />
+        <Link href="/workspace" prefetch={false}>
+          Open Portfolio <ArrowUpRight size={15} aria-hidden="true" />
         </Link>
       </div>
       <div className={styles.resumeGrid}>
         <div>
           <h3>
-            <Clock3 size={15} /> Recent research
+            <Clock3 size={15} aria-hidden="true" /> Recent research
           </h3>
           {!ready ? (
             <p role="status">Loading your research…</p>
@@ -85,7 +97,7 @@ export default function HomeResearch({ cftcEnabled = true }: { cftcEnabled?: boo
                     <span>{item.title}</span>
                     <small>
                       {item.at.slice(0, 10)}
-                      <ArrowUpRight size={14} />
+                      <ArrowUpRight size={14} aria-hidden="true" />
                     </small>
                   </Link>
                 </li>
@@ -93,8 +105,7 @@ export default function HomeResearch({ cftcEnabled = true }: { cftcEnabled?: boo
             </ul>
           ) : (
             <p className={styles.empty}>
-              The tools and companies you visit will appear here, with their
-              page settings. Start with a workflow above.
+              Your recent companies and research tools will appear here.
             </p>
           )}
         </div>
@@ -118,19 +129,17 @@ export default function HomeResearch({ cftcEnabled = true }: { cftcEnabled?: boo
                         ? `Reviewed ${row.review.reviewedAt.slice(0, 10)}`
                         : "Company"}
                   </small>
-                  <ArrowUpRight size={14} />
+                  <ArrowUpRight size={14} aria-hidden="true" />
                 </Link>
               ))}
             </div>
           ) : (
             <p className={styles.empty}>
-              Save companies in Analysis or Market, and funds in Funds.
-              Return to them here.
+              Save a company or fund while you research to return to it here.
             </p>
           )}
           <p className={styles.localNote}>
-            Stored in this browser. Use each tool’s export controls to keep
-            a copy of your research before changing devices.
+            Saved in this browser. Export your research before switching devices.
           </p>
         </div>
       </div>

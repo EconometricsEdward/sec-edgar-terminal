@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight, ArrowUpRight } from "lucide-react";
-import { loadClassifiedTickerMap } from "../../utils/tickerMapLoader.js";
+import { ArrowRight, ArrowUpRight, Route } from "lucide-react";
 import { validTicker } from "../../utils/researchWorkspace.js";
 import styles from "../../app/home.module.css";
 const goals = {
   understand: {
+    label: "Company",
     title: "Understand a company",
     steps: (t: string) => [
       {
@@ -27,6 +27,7 @@ const goals = {
     ],
   },
   disclosure: {
+    label: "Disclosures",
     title: "Investigate liquidity language",
     steps: (t: string) => [
       {
@@ -47,6 +48,7 @@ const goals = {
     ],
   },
   report: {
+    label: "New report",
     title: "Review a new company report",
     steps: (t: string) => [
       {
@@ -67,13 +69,27 @@ const goals = {
     ],
   },
 };
+const examples: Record<string, string> = {
+  AAPL: "Apple Inc.",
+  MSFT: "Microsoft Corporation",
+  JPM: "JPMorgan Chase & Co.",
+};
+
 export default function ResearchWorkflow() {
   const [goal, setGoal] = useState<keyof typeof goals>("understand");
   const [input, setInput] = useState("JPM");
   const [ticker, setTicker] = useState("JPM");
-  const [name, setName] = useState("Example workflow · JPMorgan Chase");
+  const [name, setName] = useState(examples.JPM);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+
+  function chooseCompany(value: string, companyName: string) {
+    setInput(value);
+    setTicker(value);
+    setName(companyName);
+    setNotice(`Research path ready for ${value}. Choose a step below.`);
+  }
+
   async function apply(event: React.FormEvent) {
     event.preventDefault();
     const value = input.trim().toUpperCase();
@@ -81,9 +97,16 @@ export default function ResearchWorkflow() {
       setNotice("Enter an exact company ticker.");
       return;
     }
+    if (examples[value]) {
+      chooseCompany(value, examples[value]);
+      return;
+    }
     setBusy(true);
     setNotice("Checking the SEC company directory…");
     try {
+      const { loadClassifiedTickerMap } = await import(
+        "../../utils/tickerMapLoader.js"
+      );
       const entry = (await loadClassifiedTickerMap())[value];
       if (!entry)
         throw new Error(
@@ -91,11 +114,9 @@ export default function ResearchWorkflow() {
         );
       if (entry.isFund)
         throw new Error(
-          `${value} is a fund. Choose the Funds tool below to research its holdings.`,
+          `${value} is a fund. Open Funds to research its holdings.`,
         );
-      setTicker(value);
-      setName(entry.name);
-      setNotice(`Workflow ready for ${value}. Choose a step below.`);
+      chooseCompany(value, entry.name);
     } catch (error) {
       setNotice(
         error instanceof Error
@@ -107,20 +128,31 @@ export default function ResearchWorkflow() {
     }
   }
   return (
-    <div className={styles.workflow}>
-      <p className={styles.eyebrow}>Build your research path</p>
-      <label htmlFor="research-goal">What would you like to do?</label>
-      <select
-        id="research-goal"
-        value={goal}
-        onChange={(e) => setGoal(e.target.value as keyof typeof goals)}
+    <section className={styles.workflow} aria-labelledby="workflow-title">
+      <div className={styles.workflowHeader}>
+        <div>
+          <p className={styles.eyebrow}>From question to evidence</p>
+          <h2 id="workflow-title">Your research desk</h2>
+        </div>
+        <Route size={24} aria-hidden="true" />
+      </div>
+      <div
+        className={styles.workflowTabs}
+        role="group"
+        aria-label="Choose your research goal"
       >
         {Object.entries(goals).map(([key, value]) => (
-          <option key={key} value={key}>
-            {value.title}
-          </option>
+          <button
+            key={key}
+            type="button"
+            aria-pressed={goal === key}
+            onClick={() => setGoal(key as keyof typeof goals)}
+          >
+            {value.label}
+          </button>
         ))}
-      </select>
+      </div>
+      <p className={styles.workflowGoal}>{goals[goal].title}</p>
       <form onSubmit={apply}>
         <label htmlFor="workflow-ticker" className={styles.srOnly}>
           Workflow company ticker
@@ -128,9 +160,14 @@ export default function ResearchWorkflow() {
         <input
           id="workflow-ticker"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setNotice("");
+          }}
+          disabled={busy}
           maxLength={15}
           autoComplete="off"
+          spellCheck={false}
           placeholder="Company ticker"
         />
         <button
@@ -142,8 +179,23 @@ export default function ResearchWorkflow() {
           <ArrowRight size={15} />
         </button>
       </form>
+      <div className={styles.workflowExamples} role="group" aria-label="Try a company">
+        <span>Try</span>
+        {Object.entries(examples).map(([symbol, companyName]) => (
+          <button
+            key={symbol}
+            type="button"
+            disabled={busy}
+            aria-label={`Research ${companyName} (${symbol})`}
+            aria-pressed={ticker === symbol}
+            onClick={() => chooseCompany(symbol, companyName)}
+          >
+            {symbol}
+          </button>
+        ))}
+      </div>
       <p className={styles.workflowCompany}>
-        {ticker} · {name}
+        <span>{ticker}</span> · {name}
       </p>
       <ol>
         {goals[goal].steps(ticker).map((step, index) => (
@@ -152,7 +204,7 @@ export default function ResearchWorkflow() {
             <Link href={step.href} prefetch={false}>
               <strong>
                 {step.title}
-                <ArrowUpRight size={15} />
+                <ArrowUpRight size={15} aria-hidden="true" />
               </strong>
               <small>{step.detail}</small>
             </Link>
@@ -162,6 +214,6 @@ export default function ResearchWorkflow() {
       <p role="status" className={styles.workflowStatus}>
         {notice}
       </p>
-    </div>
+    </section>
   );
 }
