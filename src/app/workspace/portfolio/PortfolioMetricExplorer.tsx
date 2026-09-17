@@ -1,7 +1,7 @@
 "use client";
 import { ANALYSIS_VERSION } from "../../../utils/analysisVersion.js";
 import { companyAvailable } from "../../../utils/portfolioModel.js";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { portfolioMetricDefinitionFor } from "../../../utils/portfolioMetricCatalog.js";
 import {
   rankPortfolioMetric,
@@ -74,12 +74,18 @@ export default function PortfolioMetricExplorer({
   reportingLoading = false,
   reportingProgress,
   onCancelReporting,
+  requestedMetric,
+  onMetricChange,
+  showReportingControls = true,
 }: {
   reportingBasis?: string;
   onReportingBasisChange?: (basis: string) => void;
   reportingLoading?: boolean;
   reportingProgress?: { completed: number; total: number };
   onCancelReporting?: () => void;
+  requestedMetric?: { metricId: string; nonce: number } | null;
+  onMetricChange?: (metricId: string) => void;
+  showReportingControls?: boolean;
   report: any;
   companies: any[];
   onInspect: (id: string) => void;
@@ -87,7 +93,7 @@ export default function PortfolioMetricExplorer({
   refreshing?: boolean;
   onDisclosure?: (query: string, ciks: string[]) => void;
 }) {
-  const [requestedMetricId, setMetricId] = useState("netMargin");
+  const [requestedMetricId, setMetricId] = useState(requestedMetric?.metricId || "netMargin");
   const [requestedCategory, setCategory] = useState("all");
   const [measureQuery, setMeasureQuery] = useState("");
   const [requestedSector, setSector] = useState("all");
@@ -101,6 +107,7 @@ export default function PortfolioMetricExplorer({
   const [inspector, setInspector] = useState<any>(null);
   const [filterNotice, setFilterNotice] = useState("");
   const comparisonHeading = useRef<HTMLHeadingElement>(null);
+  const handledMetricRequest = useRef<typeof requestedMetric>(null);
   const [requestedCompareKeys, setCompareKeys] = useState<string[] | null>(
     null,
   );
@@ -126,6 +133,24 @@ export default function PortfolioMetricExplorer({
       availableDefinitions[0]?.key ||
       "",
   );
+  useEffect(() => {
+    if (!requestedMetric || handledMetricRequest.current === requestedMetric) return;
+    if (!availableDefinitions.some((definition) => definition.key === requestedMetric.metricId)) return;
+    handledMetricRequest.current = requestedMetric;
+    setMetricId(requestedMetric.metricId);
+    setCategory("all");
+    setMeasureQuery("");
+    setSector("all");
+    setIndustry("all");
+    setPeriod("all");
+    setDurationGroup("auto");
+    setQuery("");
+    setPage(1);
+    setInspector(null);
+  }, [requestedMetric, availableDefinitions]);
+  useEffect(() => {
+    if (metricId) onMetricChange?.(metricId);
+  }, [metricId, onMetricChange]);
   const category = availableDefinitions.some(
     (d) => d.category === requestedCategory,
   )
@@ -481,7 +506,7 @@ export default function PortfolioMetricExplorer({
     >
       <div className={s.heading}>
         <div>
-          <h3 id="portfolio-metrics-title">Metrics & rankings</h3>
+          <h3 id="portfolio-metrics-title">Measures & rankings</h3>
         </div>
         <button
           disabled={reportingLoading || !matchingRows.length}
@@ -494,7 +519,7 @@ export default function PortfolioMetricExplorer({
         Choose a financial measure, then compare companies within sectors and
         SEC industries. Accounting compatibility is checked automatically.
       </p>
-      <div className={p.perspective}>
+      {showReportingControls && <div className={p.perspective}>
         <div className={p.perspectiveHeading}>
           <strong>Reporting perspective</strong>
           <span>
@@ -535,7 +560,7 @@ export default function PortfolioMetricExplorer({
           {perspective?.description} Each value shows its actual observation
           dates. Opening balances precede the selected reporting period.
         </p>
-      </div>
+      </div>}
       {reportingLoading ? (
         <div className={p.loading} role="status">
           <strong>

@@ -4,7 +4,7 @@
   --f-muted: var(--p-muted, #a7b4c7);
   --f-text: var(--p-text, #e8edf5);
   --f-panel: var(--p-panel, #101a2b);
-  --f-deep: #0b1321;
+  --f-deep: var(--hub-bg, #0b1321);
   --f-teal: #65c6b4;
   --f-coral: #ec8b78;
   display: grid;
@@ -15,6 +15,137 @@
 .root :is(h2, h3, h4, p) {
   margin: 0;
 }
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 0 2px;
+}
+.pageHeader h2 {
+  font-size: clamp(27px, 2.5vw, 34px);
+  line-height: 1.16;
+  font-weight: 740;
+  letter-spacing: -.04em;
+}
+.pageHeader > div > p:last-child {
+  max-width: 690px;
+  margin-top: 9px;
+  color: var(--f-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.sourceBadge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--f-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--f-teal) 5%, var(--f-panel));
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.sourceBadge svg { color: var(--f-teal); }
+.scopeBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 22px;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--f-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--f-panel) 85%, transparent);
+}
+.scopeSelectors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(170px, 260px));
+  gap: 16px;
+  min-width: 0;
+}
+.scopeSelectors label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+.scopeSelectors label > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.scopeSelectors select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 30px 8px 12px;
+  background: var(--f-deep);
+  color: var(--f-text);
+  font-size: 12px;
+}
+.scopeSelectors select:disabled { opacity: .8; }
+.scopeContext {
+  display: grid;
+  flex: 0 1 320px;
+  gap: 8px;
+  min-width: 0;
+  color: var(--f-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.scopeCount {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--f-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scopeCount i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--f-teal);
+}
+.scopeContext summary { cursor: pointer; }
+.scopeContext details p { margin-top: 7px; font-size: 11px; line-height: 1.55; }
+.scopeContext summary:focus-visible { outline: 2px solid var(--f-gold); outline-offset: 3px; }
+.measureWorkspace { display: grid; gap: 16px; min-width: 0; }
+.measureModes { display: flex; flex-wrap: wrap; gap: 6px; }
+.root .measureModes button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--f-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+.root .measureModes button[aria-pressed="true"] {
+  border-color: var(--f-line);
+  background: var(--f-panel);
+  color: var(--f-text);
+}
+.rankings {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--f-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--f-panel) 65%, transparent);
+}
+.rankings h3 { font-size: 23px; letter-spacing: -.025em; }
+.rankings p { font-size: 13px; }
 .root h3 {
   font-size: clamp(24px, 2.6vw, 34px);
   font-weight: 760;
@@ -400,6 +531,11 @@
   padding: 18px;
   text-align: left;
   background: linear-gradient(155deg, color-mix(in srgb, var(--f-line) 25%, var(--f-panel)), var(--f-panel));
+  transition: transform 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+.root .pillar:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--f-gold) 9%, var(--f-panel)), var(--f-panel));
 }
 .pillarLabel {
   color: var(--f-muted);
@@ -1101,6 +1237,12 @@
 }
 
 @media (max-width: 800px) {
+  .pageHeader { align-items: flex-start; }
+  .sourceBadge { display: none; }
+  .scopeBar { align-items: stretch; flex-direction: column; gap: 13px; }
+  .scopeSelectors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scopeContext { flex-basis: auto; }
+  .rankings { padding: 16px; }
   .lensPanel,
   .card,
   .measureCard,
@@ -1150,6 +1292,10 @@
 }
 
 @media (max-width: 560px) {
+  .scopeSelectors { grid-template-columns: 1fr; gap: 12px; }
+  .scopeBar { padding: 14px; }
+  .root .measureModes button { flex: 1 1 auto; }
+  .rankings { padding: 14px; }
   .pillarGrid,
   .footprintGrid,
   .atlasMetrics,
@@ -1197,7 +1343,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bubble {
+  .bubble,
+  .root .pillar {
     transition: none;
   }
+  .root .pillar:hover:not(:disabled) { transform: none; }
+}
+:global(html[data-reading-motion="reduced"]) .root .pillar:hover:not(:disabled) { transform: none; }
+:global(html[data-theme-mode="light"]) .root {
+  --f-deep: var(--hub-panel, #f5f7fa);
+  --f-teal: #177b68;
+  --f-coral: #b24e3c;
 }

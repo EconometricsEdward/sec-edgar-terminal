@@ -122,14 +122,13 @@
   min-width: 0;
 }
 .explorer[data-view="companies"] { --view-accent: #91baff; }
-.explorer[data-view="metrics"] { --view-accent: #c5a7f5; }
+.explorer[data-view="overview"] { --view-accent: #f7c65a; }
 .explorer[data-view="financial"] { --view-accent: #89cdeb; }
-.explorer[data-view="scenario"] { --view-accent: #f7c65a; }
 .explorer[data-view="changes"] { --view-accent: #e9a6ba; }
 .explorerHeading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 20px; flex-wrap: wrap; margin-bottom: 18px; }
 .explorerHeading h2 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -0.02em; }
 .explorerHeading p { margin: 0; font-size: 14px; }
-.viewTabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.viewTabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .viewTabs button {
   display: flex;
   align-items: center;
@@ -177,9 +176,8 @@
 :global(html[data-theme-mode="light"]) .demoCard { --card-accent: #2563a6; }
 :global(html[data-theme-mode="light"]) .explorer { --view-accent: #18705c; }
 :global(html[data-theme-mode="light"]) .explorer[data-view="companies"] { --view-accent: #2563a6; }
-:global(html[data-theme-mode="light"]) .explorer[data-view="metrics"] { --view-accent: #7544aa; }
+:global(html[data-theme-mode="light"]) .explorer[data-view="overview"] { --view-accent: #956100; }
 :global(html[data-theme-mode="light"]) .explorer[data-view="financial"] { --view-accent: #186986; }
-:global(html[data-theme-mode="light"]) .explorer[data-view="scenario"] { --view-accent: #956100; }
 :global(html[data-theme-mode="light"]) .explorer[data-view="changes"] { --view-accent: #a04462; }
 :global(html[data-reading-motion="reduced"]) .root :is(.card, .icon, .viewDetail) { transform: none !important; animation: none !important; transition: none !important; }
 :global(html[data-reading-motion="reduced"]) .root .card::before { transition: none; }

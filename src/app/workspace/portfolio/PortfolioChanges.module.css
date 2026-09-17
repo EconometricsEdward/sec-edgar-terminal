@@ -528,7 +528,44 @@
 .methodDetails summary { cursor: pointer; font-size: 14px; color: var(--hub-muted, #a7b4c7); }
 .methodDetails p { font-size: 13px; max-width: 960px; }
 .sourceTab, .sourceTabActive, .detailsButton, .textButton, .inspectButton, .compactField span { font-size: 14px; }
-@media (prefers-reduced-motion: reduce) { .spinning, .pulse { animation: none; } .detailsButton svg { transition: none; } }
+
 @media (max-width: 760px) { .summary { flex-wrap: wrap; overflow: visible; } .summary > div { min-width: 0; flex: 1 1 140px; margin-right: 12px; } .eventTopline time { margin-left: 0; } }
 
 .sourceExcerpt { margin: 10px 0; border-left: 2px solid var(--hub-border, #29364c); padding: 6px 12px; color: var(--hub-muted, #a7b4c7); font-size: 14px; line-height: 1.6; }
+
+/* Source cards filter the existing event feed without another request. */
+.root .header { padding-bottom: 4px; }
+.root .header h3 { font-size: clamp(28px, 3.4vw, 42px); font-weight: 650; letter-spacing: -.045em; }
+.root .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; border: 0; min-height: 0; }
+.root .summary > button { --source-color: var(--hub-accent, #f7c65a); text-align: left; display: grid; gap: 12px; color: var(--hub-text, #e8edf5); border: 1px solid var(--hub-border, #29364c); background: linear-gradient(125deg, color-mix(in srgb, var(--source-color) 5%, transparent), transparent 80%); border-radius: 13px; padding: 18px 19px; cursor: pointer; font: inherit; transition: transform .18s ease, border-color .18s ease, background-color .18s ease; }
+.root .summary > button[data-source="sec"] { --source-color: #8bb9ff; }
+.root .summary > button[data-source="cftc"] { --source-color: #74d7b4; }
+.root .summary > button:hover { transform: translateY(-3px); border-color: var(--source-color); background-color: color-mix(in srgb, var(--source-color) 4%, transparent); }
+.root .summary > button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--source-color) 55%, var(--hub-border, #29364c)); }
+.root .summaryLabel { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--hub-muted, #a7b4c7); }
+.root .summaryLabel svg:first-child { color: var(--source-color); }
+.root .summaryLabel svg:last-child { margin-left: auto; }
+.root .summary strong { font-size: 34px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.root .summary small { font-size: 11px; line-height: 1.5; color: var(--hub-muted, #a7b4c7); }
+.root .contextBar { background: transparent; border: 0; border-block: 1px solid var(--hub-border, #29364c); border-radius: 0; padding-inline: 0; }
+.root .contextLabel { font-size: 10px; }
+.root .toolbar { padding: 14px 0; border-block: 1px solid var(--hub-border, #29364c); }
+.root .timeline { gap: 10px; }
+.root .event { border: 1px solid var(--hub-border, #29364c); border-radius: 13px; padding: 19px; background: color-mix(in srgb, var(--hub-panel, #101a2b) 28%, transparent); }
+.root .eventHeadline h4 { font-size: 17px; }
+.root .sourceMark { width: 32px; height: 32px; }
+.root .quickFacts { gap: 8px 16px; margin-top: 12px; }
+.root .quickFacts > span { background: color-mix(in srgb, var(--hub-border, #29364c) 24%, transparent); border-radius: 6px; padding: 6px 9px; }
+.root .quickFacts small { font-size: 10px; }
+.root .detailsButton { padding: 5px 8px; border-radius: 6px; border: 1px solid var(--hub-border, #29364c); font-size: 12px; }
+:global(html[data-theme-mode="light"]) .root .secBadge { color: #285580; background: #3575a810; }
+:global(html[data-theme-mode="light"]) .root .cftcBadge { color: #176c51; background: #17764f10; }
+:global(html[data-theme-mode="light"]) .root .secMark { color: #285580; }
+:global(html[data-theme-mode="light"]) .root .cftcMark { color: #176c51; }
+:global(html[data-theme-mode="light"]) .root .summary > button[data-source="sec"] { --source-color: #3977a2; }
+:global(html[data-theme-mode="light"]) .root .summary > button[data-source="cftc"] { --source-color: #238263; }
+:global(html[data-reading-motion="reduced"]) .root * { animation: none !important; transition: none !important; }
+:global(html[data-reading-motion="reduced"]) .root button:hover { transform: none; }
+@media (max-width: 700px) { .root .summary { gap: 8px; } .root .summary > button { padding: 14px 11px; } .root .summaryLabel { font-size: 11px; } .root .summaryLabel svg { display: none; } .root .summary strong { font-size: 29px; } .root .event { padding: 15px 12px; } }
+@media (max-width: 450px) { .root .summary { grid-template-columns: 1fr; } .root .summary > button { grid-template-columns: minmax(0,1fr) auto; gap: 5px 12px; } .root .summary strong { grid-area: 1 / 2 / 3 / 3; align-self: center; } .root .summaryLabel svg { display: block; } .root .summaryLabel svg:last-child { display: none; } }
+@media (prefers-reduced-motion: reduce) { :global(html:not([data-reading-motion="full"])) .root * { transition: none !important; animation: none !important; } :global(html:not([data-reading-motion="full"])) .root button:hover { transform: none; } }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Activity, ArrowRight, BarChart3, Building2, Download, FileUp, FolderOpen, History, Layers3, ListPlus, Plus, SlidersHorizontal, X } from "lucide-react";
+import { Activity, ArrowRight, Building2, Download, FileUp, FolderOpen, History, Layers3, ListPlus, Plus, ScanLine, X } from "lucide-react";
 import s from "./HubOverview.module.css";
 
 type Props = {
@@ -10,18 +10,17 @@ type Props = {
 };
 
 const researchViews = [
-  { id: "companies", label: "Companies", Icon: Building2, title: "Get to know every holding.", description: "Review the companies in your portfolio and open the SEC evidence behind their financials.", features: ["Company details", "Financial statements", "SEC evidence"] },
-  { id: "metrics", label: "Metrics & rankings", Icon: BarChart3, title: "Put the numbers in perspective.", description: "Compare company metrics, explore rankings, and trace the figures back to their sources.", features: ["Company rankings", "Metric definitions", "Source links"] },
-  { id: "concentration", label: "Concentration", Icon: Layers3, title: "See where your exposure sits.", description: "Explore your portfolio by sector, industry, and company to understand what drives its concentration.", features: ["Sectors", "Industries", "Largest holdings"] },
-  { id: "financial", label: "Financial profile", Icon: Activity, title: "Understand the businesses behind it.", description: "Explore revenue, profitability, and leverage across the companies you hold or want to research.", features: ["Revenue", "Profitability", "Leverage"] },
-  { id: "scenario", label: "Scenarios", Icon: SlidersHorizontal, title: "Ask what could change.", description: "Adjust assumptions and explore potential portfolio effects with company financials and market context.", features: ["What-if inputs", "Portfolio effects", "Market context"] },
-  { id: "changes", label: "What changed", Icon: History, title: "Focus on what is new.", description: "Review recent SEC filings, financial changes, and relevant CFTC positioning in one place.", features: ["SEC filings", "Financial changes", "CFTC positioning"] },
+  { id: "overview", label: "Summary", Icon: ScanLine, title: "Know what deserves your attention.", description: "Start with your allocation, the financial evidence behind it, and the next questions to explore.", features: ["Portfolio signals", "Allocation context", "Evidence coverage"] },
+  { id: "companies", label: "Holdings", Icon: Building2, title: "Find the holdings that fit your criteria.", description: "Review every company, screen its financial characteristics, and inspect the SEC evidence behind the numbers.", features: ["Company details", "Financial screens", "Source evidence"] },
+  { id: "financial", label: "Financials", Icon: Activity, title: "Understand what your allocation represents.", description: "Explore profitability, growth, leverage, and company rankings with weights and reporting periods in view.", features: ["Weighted measures", "Company rankings", "Financial comparisons"] },
+  { id: "concentration", label: "Concentration & Exposure", Icon: Layers3, title: "See what connects your holdings.", description: "Explore company and sector concentration, then connect SEC filing evidence with CFTC futures-market positioning.", features: ["Largest holdings", "Shared market links", "CFTC positioning"] },
+  { id: "changes", label: "What Changed", Icon: History, title: "Focus on the new information.", description: "Follow new SEC filings, changes in company financial evidence, and weekly CFTC positioning in connected markets.", features: ["SEC filings", "Financial changes", "CFTC changes"] },
 ] as const;
 
 export default function HubOverview({ onNavigate }: Props) {
   const [importOpen, setImportOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
-  const [selectedView, setSelectedView] = useState(2);
+  const [selectedView, setSelectedView] = useState(0);
   const viewButtons = useRef<(HTMLButtonElement | null)[]>([]);
   const view = researchViews[selectedView];
   const ViewIcon = view.Icon;
@@ -73,7 +72,7 @@ export default function HubOverview({ onNavigate }: Props) {
               View demo <ArrowRight size={18} aria-hidden="true" />
             </Link>
           </div>
-          <span className={s.footnote}>SEC financials, concentration, and recent changes.</span>
+          <span className={s.footnote}>SEC financials and filings. CFTC market context.</span>
         </section>
       </div>
 

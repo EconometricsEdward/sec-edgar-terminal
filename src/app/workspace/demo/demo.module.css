@@ -303,6 +303,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
+  padding: 24px;
+  border: 1px solid var(--demo-line);
+  border-radius: 20px;
+  background: radial-gradient(ellipse at 8% 0%, #f7c65a0d, transparent 70%), var(--demo-panel);
 }
 .page .workspaceHeader h1 {
   display: flex;
@@ -311,7 +315,7 @@
   gap: 12px;
 }
 .page .workspaceHeader p {
-  font-size: 16px;
+  font-size: 14px;
   margin: 0;
 }
 .demoTag {
@@ -332,15 +336,14 @@
 .workspaceToolbar {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 8px 0 20px;
-  border-bottom: 1px solid var(--demo-line);
+  gap: 18px;
+  padding: 2px 4px 8px;
 }
 .allocationSelect {
   display: flex;
   gap: 12px;
   align-items: center;
-  font-size: 14px;
+  font-size: 12px;
   color: var(--demo-muted);
 }
 .allocationSelect select {
@@ -373,6 +376,8 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 18px;
+    padding: 18px;
+    border-radius: 16px;
   }
   .page .workspaceHeader h1 {
     font-size: 26px;
@@ -432,4 +437,13 @@
   max-width: 180px;
   height: 8px;
   accent-color: var(--demo-gold);
+}
+
+.page :is(.primary, .secondary, .tableScroll tbody tr) { transition: transform 160ms ease, background 160ms ease, border-color 160ms ease; }
+.page :is(.primary, .secondary):hover:not(:disabled) { transform: translateY(-1px); }
+.tableScroll tbody tr:hover { background: #f7c65a0a; }
+.page .tableHelp { border-left: 2px solid var(--demo-line); padding-left: 14px; font-size: 12px; }
+:global(html[data-reading-motion="reduced"]) .page :is(.primary, .secondary, .tableScroll tbody tr) { transition: none; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-reading-motion="full"])) .page :is(.primary, .secondary, .tableScroll tbody tr) { transition: none; transform: none; }
 }

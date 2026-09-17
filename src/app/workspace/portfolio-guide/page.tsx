@@ -250,7 +250,7 @@ export default function PortfolioGuidePage() {
       <section id="deep-portfolio-research">
         <h2>Bring the research tools to your own portfolio</h2>
         <p>
-          The Metrics &amp; rankings view includes the Analysis page’s
+          Financials → Measures &amp; rankings includes the Analysis page’s
           statement, cash-flow, profitability, banking and accounting-check
           catalog. Filter by business model, SEC industry and full reporting
           period; sort any measure and select up to six companies with up to ten
@@ -266,7 +266,7 @@ export default function PortfolioGuidePage() {
           not summed as portfolio cash flows.
         </p>
         <p>
-          The Filing library starts with the saved references, then loads full
+          Under Tools &amp; sources, the Filing library starts with saved references, then loads full
           recent submissions and historical archives on request. Disclosure
           search applies an explicit query, date range, forms and section to up
           to 100 portfolio companies. Work proceeds in paced batches, retains
@@ -275,7 +275,7 @@ export default function PortfolioGuidePage() {
           topic is absent.
         </p>
         <p>
-          Fund ownership discovers reporting funds holding a selected portfolio
+          Fund ownership in Tools &amp; sources discovers reporting funds holding a selected portfolio
           company. The percentage of fund net assets is that fund’s allocation,
           not your portfolio exposure or market ownership. Fund dates, verified
           series, unavailable reports and remaining candidates stay visible.
@@ -310,20 +310,23 @@ export default function PortfolioGuidePage() {
       <section id="analytics">
         <h2>Understand the list as a whole</h2>
         <p>
-          Open Portfolio analytics in your saved portfolio, or explore the{" "}
-          <Link href="/workspace/demo">100-company example</Link>. Every chart
-          uses your included rows and the captured SEC evidence. Company links
-          open the financial measures, reporting periods and source filings.
+          Portfolio Research has five views: Summary, Holdings, Financials,
+          Concentration &amp; Exposure, and What Changed. Open your saved
+          portfolio or explore the{" "}
+          <Link href="/workspace/demo">100-company example</Link>. Financial
+          charts use your included rows and captured SEC evidence. Company links
+          open financial measures, reporting periods and source filings; connected
+          markets provide separately sourced CFTC positioning context.
         </p>
         <ul>
           <li>
-            <strong>Portfolio briefing:</strong> start with the largest known
-            exposures, financial conditions and evidence gaps. Each finding
+            <strong>Summary:</strong> start with the largest holdings,
+            financial conditions and evidence gaps. Each finding
             leads to a relevant view or company. Counts describe identified
             companies; a ticker list does not imply invested weights.
           </li>
           <li>
-            <strong>Cash backing of earnings:</strong> the briefing compares
+            <strong>Cash backing of earnings in Summary:</strong> compare
             positive versus non-positive net income and operating cash flow for
             operating companies with aligned full annual or TTM periods and USD
             measures. Financial-company lenses and SIC 6798 REITs are excluded.
@@ -335,7 +338,7 @@ export default function PortfolioGuidePage() {
             score.
           </li>
           <li>
-            <strong>Concentration:</strong> see combined holding exposure across
+            <strong>Concentration &amp; Exposure:</strong> see combined holdings across
             share classes and the SEC industry mix. Top-holding percentages use
             known original weights. Complete, reviewed allocations totaling 100%
             also show an effective holding count: 1 divided by the sum of
@@ -347,18 +350,22 @@ export default function PortfolioGuidePage() {
             holdings. Limit settings are research assumptions. Incomplete
             weights cannot establish that exposure is within a limit. HHI
             contributions use squared holding weights only when allocation is
-            complete.
+            complete. Shared markets connect SEC filing references with CFTC
+            futures-market positioning. A filing connection does not measure the
+            size or direction of a company’s market exposure; CFTC positions are
+            aggregate market context, not the company’s own trades.
           </li>
           <li>
-            <strong>Financial profile:</strong> compare company medians, the
-            middle 50% of observations and distributions for growth, margins,
-            leverage and selected banking measures. Each company counts once.
-            Medians describe companies with supported evidence, rather than an
-            investment return or an ownership share of company earnings. Missing
-            and not-applicable observations stay separate.
+            <strong>Financials:</strong> explore growth, margins, leverage and
+            selected banking measures, with company rankings, distributions and
+            allocation context. Company medians count each eligible issuer once;
+            allocation-weighted medians describe the supported part of your
+            allocation. These are financial characteristics, not investment
+            returns or a sum of company earnings attributable to your portfolio.
+            Missing and not-applicable observations stay separate.
           </li>
           <li>
-            <strong>Peer benchmarks and relationships:</strong> choose a SEC
+            <strong>Peer benchmarks and relationships in Financials:</strong> choose a SEC
             industry and reporting dates to compare a relevant group. Percentile
             ranks describe position within the measured group; a higher rank is
             not necessarily better. Two-metric charts use only companies with
@@ -367,36 +374,27 @@ export default function PortfolioGuidePage() {
             correlations or forecasts.
           </li>
           <li>
-            <strong>Company comparisons:</strong> select up to four companies
+            <strong>Company comparisons in Financials:</strong> select up to four companies
             and compare supported measures, reporting periods and SEC sources
             side by side. Missing values remain visible. Industry filters do not
             change the saved portfolio or its weight denominator.
           </li>
           <li>
-            <strong>Company screener:</strong> combine up to four financial
-            rules and inspect companies meeting all of them. A company needs
+            <strong>Holdings:</strong> review every holding or choose Screen
+            holdings to combine up to four financial rules and inspect companies
+            meeting all of them. A company needs
             supported evidence for every rule to qualify. Presets are editable
             research questions. Download the matching observations with their
             coverage and sources.
           </li>
           <li>
-            <strong>Scenario lab:</strong> apply hypothetical price changes to
-            all holdings, a company or a SEC industry. A 60% holding falling
-            20%, with the remaining 40% unchanged, contributes −12 percentage
-            points to modeled portfolio value. Scenarios require complete
-            reviewed allocations, or your explicit choice to try a temporary
-            equal-weight model. The temporary model does not edit saved weights.
-            Sensitivity tables vary the target and other holdings&apos; price
-            changes. The loss-target tool solves the target price change needed
-            to produce your specified portfolio loss, holding the other
-            assumptions fixed; it reports when that change is outside the
-            supported range. Compare up to four named sets of assumptions and
-            download the comparison. Cases remain available while you switch
-            research tabs. Reloading, editing rows or opening another portfolio
-            clears them; download the comparison to keep it.
+            <strong>What Changed:</strong> review new SEC filings, changes in
+            financial evidence and weekly CFTC positioning moves in connected
+            markets. Observation dates, company links and source coverage help
+            you distinguish new information from incomplete checks.
           </li>
           <li>
-            <strong>Evidence coverage:</strong> inspect metric coverage,
+            <strong>Data coverage in Tools &amp; sources:</strong> inspect metric coverage,
             reporting-date differences and the companies that need attention.
             Missing financial evidence never becomes a zero value. Reported
             periods can differ across companies, including in the same chart.
@@ -405,10 +403,9 @@ export default function PortfolioGuidePage() {
           </li>
         </ul>
         <p>
-          Scenario price changes are your assumptions. The calculation does not
-          estimate their likelihood, correlations, spillovers, trading costs or
-          liquidity. It is separate from historical SEC fundamentals. Download a
-          scenario CSV to retain its inputs and contributions.
+          Tools &amp; sources keeps filing searches, fund ownership, data
+          coverage, allocation settings and exports available alongside the
+          five main views.
         </p>
       </section>
 
