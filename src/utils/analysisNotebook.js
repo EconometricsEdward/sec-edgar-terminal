@@ -62,8 +62,6 @@ const choices = {
     "cash",
     "checks",
     "drivers",
-    "notebook",
-    "extended",
     "capital",
     "cftc",
     "scenarios",
@@ -174,7 +172,7 @@ export function readAnalysisSettings(search) {
   for (const key of ["pins", "chart", "briefMetrics", "briefSections"])
     if (params.has(key))
       input[key] = (params.get(key) || "").split(",").filter(Boolean);
-  // Older deep links retain access to their original panels.
+  // Retired research views reopen the overview; statement links remain useful.
   if (
     [
       "snapshot",
@@ -185,7 +183,7 @@ export function readAnalysisSettings(search) {
       "financials",
     ].includes(input.view)
   )
-    input.view = input.view === "financials" ? "statements" : "extended";
+    input.view = input.view === "financials" ? "statements" : "overview";
   return normalizeAnalysisSettings(input);
 }
 export function analysisPath(ticker, settings) {

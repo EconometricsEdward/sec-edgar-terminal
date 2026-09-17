@@ -7,8 +7,6 @@ import {
   ChartNoAxesCombined,
   ChevronLeft,
   ChevronRight,
-  Bookmark,
-  Check,
   Download,
   ExternalLink,
   Pin,
@@ -18,12 +16,10 @@ import {
 import CompanySearch from "../CompanySearch";
 import AnalysisOverview from "../AnalysisOverview";
 import AnalysisMetricFinder from "../AnalysisMetricFinder";
-import { useAnalysisNotes } from "../useAnalysisNotes";
 import {
   analysisRows,
   exportVisibleAnalysisCsv,
 } from "../../../utils/analysisRows.js";
-import { evaluateAnalysisRules } from "../../../utils/analysisRules.js";
 import { resolveChartKeys } from "../../../utils/analysisChart.js";
 import AnalysisInspector from "../AnalysisInspector";
 import { useWorkspace } from "../../../components/research/WorkspaceProvider";
@@ -36,10 +32,8 @@ import {
 } from "../../../utils/analysisResearch.js";
 import {
   ANALYSIS_SETTINGS,
-  analysisCollectionSettings,
   analysisPath,
   analysisValue,
-  exportAnalysisCsv,
   normalizeAnalysisSettings,
   readAnalysisSettings,
 } from "../../../utils/analysisNotebook.js";
@@ -52,9 +46,6 @@ import {
 import styles from "../analysis.module.css";
 const AnalysisChart = dynamic(() => import("../AnalysisChart"), {
   loading: () => <p role="status">Loading chart…</p>,
-});
-const ExtendedAnalysis = dynamic(() => import("./AnalysisClient"), {
-  loading: () => <p role="status">Loading extended research tools…</p>,
 });
 function AnalysisToolLoading() {
   return (
@@ -88,10 +79,6 @@ const AnalysisSourceObservatory = dynamic(
   () => import("../AnalysisSourceObservatory"),
   { loading: AnalysisToolLoading },
 );
-const AnalysisBriefComposer = dynamic(
-  () => import("../AnalysisBriefComposer"),
-  { loading: AnalysisToolLoading },
-);
 const AnalysisVintageComparison = dynamic(
   () => import("../AnalysisVintageComparison"),
   { loading: AnalysisToolLoading },
@@ -102,13 +89,6 @@ const AnalysisHistoricalContext = dynamic(
 );
 const AnalysisEarningsBridge = dynamic(
   () => import("../AnalysisEarningsBridge"),
-  { loading: AnalysisToolLoading },
-);
-const AnalysisThresholds = dynamic(() => import("../AnalysisThresholds"), {
-  loading: AnalysisToolLoading,
-});
-const AnalysisResearchQuestions = dynamic(
-  () => import("../AnalysisResearchQuestions"),
   { loading: AnalysisToolLoading },
 );
 const CompanyCftcContext = dynamic(
@@ -136,8 +116,6 @@ const views = [
   ["scenarios", "Scenarios"],
   ["formula", "Custom ratios"],
   ["checks", "Sources & checks"],
-  ["notebook", "Notebook"],
-  ["extended", "More research"],
 ];
 const statementNames = {
   income: "Income statement",
@@ -176,7 +154,6 @@ function Workspace(props: any) {
   const [selection, setSelection] = useState<any>(null);
   const [status, setStatus] = useState("");
   const [viewName, setViewName] = useState("");
-  const [extended, setExtended] = useState(false);
   const [scenarioOpened, setScenarioOpened] = useState(false);
   const [cftcOpened, setCftcOpened] = useState(false);
   const [scenarioMarketContext, setScenarioMarketContext] =
@@ -192,13 +169,6 @@ function Workspace(props: any) {
   const previousRetry = useRef(retry);
   const workspace = useWorkspace();
   const saved = workspace.data.companies[ticker];
-  const notebook = useAnalysisNotes({
-    ticker,
-    name: data?.name || props.preloadedCompanyName || ticker,
-    cik: data?.cik,
-    workspace,
-  });
-  const { notes, setNotes } = notebook;
   useEffect(() => {
     const read = () => {
       const restored = readAnalysisSettings(window.location.search);
@@ -344,16 +314,6 @@ function Workspace(props: any) {
         : updated;
     });
   }, [cftcEnabled]);
-  function saveCftcNote(text: string) {
-    if (!notebook.ready || notebook.status === "conflict" || workspace.error)
-      return;
-    setNotes(`${notes.trimEnd()}${notes.trim() ? "\n\n" : ""}${text}`);
-    setStatus(
-      notebook.flush()
-        ? "Dated CFTC evidence saved in your Notebook research notes."
-        : "The CFTC note is in your draft. Open Notebook to resolve the save issue or export it.",
-    );
-  }
   function save(patchValue: any, message: string) {
     const ok = workspace.update((w) => ({
       ...w,
@@ -372,37 +332,9 @@ function Workspace(props: any) {
       },
     }));
     setStatus(
-      ok ? message : "Could not save. Export a brief to preserve your work.",
+      ok ? message : "Could not save in this browser. Your current settings remain available in the address bar.",
     );
     return ok;
-  }
-  function collect(item: any) {
-    const collectedSettings = analysisCollectionSettings(item, settings);
-    const id = JSON.stringify([
-      item.label,
-      item.format,
-      item.point?.period?.kind,
-      item.point?.period?.start,
-      item.point?.period?.end,
-      collectedSettings.asOf,
-      item.point?.formula,
-      item.point?.value,
-      item.point?.note,
-    ]);
-    save(
-      (current: any) => ({
-        evidence: [
-          ...(current.evidence || []).filter((e) => e.analysisId !== id),
-          {
-            ...item,
-            analysisId: id,
-            analysisSettings: collectedSettings,
-            collectedAt: new Date().toISOString(),
-          },
-        ].slice(-100),
-      }),
-      "Evidence and note collected in your notebook.",
-    );
   }
   function inspect(key: string, index: number, override?: any) {
     evidenceTrigger.current = document.activeElement as HTMLElement;
@@ -427,7 +359,7 @@ function Workspace(props: any) {
         `${window.location.origin}${analysisPath(ticker, settings)}`,
       );
       setStatus(
-        "Link copied with these financial settings. Notes and collected evidence are private.",
+        "Link copied with these financial settings. Saved scenario cases remain private.",
       );
     } catch {
       setStatus("Copy the current address to share these financial settings.");
@@ -506,25 +438,6 @@ function Workspace(props: any) {
           <small title="Different values were filed for this context">↺</small>
         )}
       </button>
-    );
-  }
-  function markReviewed() {
-    if (!notebook.flush()) return;
-    save(
-      {
-        analysisBaseline: {
-          version: data.version,
-          basis: data.basis,
-          asOf: settings.asOf,
-          period,
-          metrics: Object.fromEntries(
-            definitions.map((d) => [d.key, data.metrics[d.key][index]]),
-          ),
-          observedAt: data.observedAt,
-        },
-        analysisReviewedAt: new Date().toISOString(),
-      },
-      "Review baseline and notes saved.",
     );
   }
   function statementControls() {
@@ -721,6 +634,34 @@ function Workspace(props: any) {
                 <button type="submit" disabled={!workspace.ready}>
                   Save financial view
                 </button>
+              {(saved?.analysisViews || []).length > 0 && (
+                <ul className={styles.savedList} aria-label="Saved financial views">
+                  {(saved.analysisViews || []).map((view: any, viewIndex: number) => (
+                    <li key={`${view.name}:${viewIndex}`}>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          patch(normalizeAnalysisSettings(view.settings));
+                          const popover = event.currentTarget.closest("details");
+                          if (popover) popover.open = false;
+                        }}
+                      >
+                        {view.name} · {view.settings.basis}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete saved view ${view.name}`}
+                        onClick={() => save((current: any) => ({
+                          analysisViews: (current.analysisViews || []).filter((item: any) =>
+                            item.name !== view.name || item.savedAt !== view.savedAt),
+                        }), "Saved view removed.")}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               </form>
             </details>
             <button onClick={share}>
@@ -806,9 +747,6 @@ function Workspace(props: any) {
                 onClick={() => patch({ view: key })}
               >
                 {label}
-                {key === "notebook" && saved?.evidence?.length
-                  ? ` (${saved.evidence.length})`
-                  : ""}
               </button>
             ))}
         </nav>
@@ -825,11 +763,6 @@ function Workspace(props: any) {
             companyName={data?.name || props.preloadedCompanyName || ticker}
             asOf={settings.asOf}
             mode="analysis"
-            onSaveNote={
-              notebook.ready && notebook.status !== "conflict" && !workspace.error
-                ? saveCftcNote
-                : undefined
-            }
             onOpenScenario={(context) => {
               setScenarioMarketContext({ ...context, asOf: settings.asOf });
               patch({ view: "scenarios", scenarioTab: "model" });
@@ -946,33 +879,14 @@ function Workspace(props: any) {
           <div className={styles.workspaceGrid} data-inspector={!!selection}>
             <div className={styles.content}>
               {settings.view === "overview" && (
-                <>
-                  <AnalysisOverview
-                    data={data}
-                    settings={settings}
-                    index={index}
-                    onInspect={inspectSelection}
-                    onPatch={patch}
-                    cftcEnabled={cftcEnabled}
-                  />
-                  <AnalysisThresholds
-                    data={data}
-                    settings={settings}
-                    index={index}
-                    rules={saved?.analysisRules || []}
-                    ready={workspace.ready && !workspace.error}
-                    onPatch={patch}
-                    onInspect={inspectSelection}
-                    onSave={(update) =>
-                      save(
-                        (current) => ({
-                          analysisRules: update(current.analysisRules || []),
-                        }),
-                        "Financial thresholds saved.",
-                      )
-                    }
-                  />
-                </>
+                <AnalysisOverview
+                  data={data}
+                  settings={settings}
+                  index={index}
+                  onInspect={inspectSelection}
+                  onPatch={patch}
+                  cftcEnabled={cftcEnabled}
+                />
               )}
               {settings.view === "capital" && (
                 <AnalysisCapitalLab
@@ -999,11 +913,6 @@ function Workspace(props: any) {
                         : null
                     }
                     onClearMarketContext={() => setScenarioMarketContext(null)}
-                    onSaveMarketNote={
-                      notebook.ready && notebook.status !== "conflict" && !workspace.error
-                        ? saveCftcNote
-                        : undefined
-                    }
                     onSaveCases={(updater: any) =>
                       save(
                         (current: any) => ({
@@ -1641,370 +1550,6 @@ function Workspace(props: any) {
                   </section>
                 </>
               )}
-              {settings.view === "notebook" && (
-                <section className={styles.panel}>
-                  <div className={styles.sectionHeading}>
-                    <div>
-                      <p className={styles.eyebrow}>
-                        Research that carries forward
-                      </p>
-                      <h2>{ticker} notebook</h2>
-                    </div>
-                    <Link href="/workspace" className={styles.textLink}>
-                      Portfolio <ArrowUpRight size={14} />
-                    </Link>
-                  </div>
-                  <div className={styles.tools}>
-                    <button
-                      disabled={!workspace.ready}
-                      onClick={() =>
-                        save(
-                          { saved: !saved?.saved },
-                          saved?.saved
-                            ? "Company removed from saved list."
-                            : "Company saved.",
-                        )
-                      }
-                    >
-                      <Bookmark size={15} />
-                      {saved?.saved ? "Unsave company" : "Save company"}
-                    </button>
-                    <button disabled={!workspace.ready} onClick={markReviewed}>
-                      <Check size={15} />
-                      Mark reviewed
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        downloadText(
-                          `${ticker}-financial-evidence.csv`,
-                          exportAnalysisCsv(data, settings),
-                          "text/csv",
-                        )
-                      }
-                    >
-                      Evidence CSV
-                    </button>
-                  </div>
-                  <label className={styles.noteLabel}>
-                    Research notes
-                    <textarea
-                      rows={6}
-                      maxLength={50000}
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      onBlur={() => notebook.flush()}
-                      disabled={!notebook.ready}
-                      placeholder="Your thesis, open questions, and next steps…"
-                    />
-                  </label>
-                  <div className={styles.sectionHeading}>
-                    <p className={styles.muted}>
-                      Notes save automatically in this browser. Export a
-                      portable copy before changing browsers.
-                      <span className={styles.noteStatus} role="status">
-                        {
-                          {
-                            loading: "Loading saved notes…",
-                            idle: "Ready",
-                            saving: "Saving…",
-                            saved: "All edits saved",
-                            unavailable:
-                              "Not saved. Keep this page open and export your draft.",
-                            conflict:
-                              "Notes changed in another view. Your draft is preserved here.",
-                          }[notebook.status]
-                        }
-                      </span>
-                    </p>
-                    <button
-                      onClick={() => notebook.flush()}
-                      disabled={
-                        !notebook.ready || notebook.status === "conflict"
-                      }
-                    >
-                      Save notes
-                    </button>
-                  </div>
-                  {notebook.status === "conflict" && (
-                    <div className={styles.notice}>
-                      <p>
-                        A newer saved note is available. Choose which version to
-                        keep.
-                      </p>
-                      <details>
-                        <summary>Read the saved version</summary>
-                        <pre className={styles.noteConflict}>
-                          {notebook.conflictNotes}
-                        </pre>
-                      </details>
-                      <button onClick={notebook.saveDraft}>
-                        Keep my draft
-                      </button>{" "}
-                      <button onClick={notebook.useSaved}>
-                        Use saved notes
-                      </button>
-                    </div>
-                  )}
-                  <AnalysisResearchQuestions
-                    data={data}
-                    settings={settings}
-                    index={index}
-                    questions={saved?.analysisQuestions || []}
-                    evidence={saved?.evidence || []}
-                    ready={workspace.ready && !workspace.error}
-                    onInspect={inspectSelection}
-                    onSave={(update) =>
-                      save(
-                        (current) => ({
-                          analysisQuestions: update(
-                            current.analysisQuestions || [],
-                          ),
-                        }),
-                        "Research questions saved.",
-                      )
-                    }
-                  />
-                  <AnalysisBriefComposer
-                    data={data}
-                    settings={settings}
-                    index={index}
-                    notes={notes}
-                    evidence={saved?.evidence || []}
-                    questions={saved?.analysisQuestions || []}
-                    ruleEvaluations={evaluateAnalysisRules(
-                      data,
-                      settings,
-                      index,
-                      saved?.analysisRules || [],
-                    )}
-                    onPatch={patch}
-                  />
-                  <section className={styles.subpanel}>
-                    <h3>Saved financial views</h3>
-                    <form
-                      className={styles.tools}
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const name =
-                          viewName.trim() ||
-                          `${basisNames[settings.basis]} review`;
-                        if (
-                          save(
-                            {
-                              analysisViews: [
-                                ...(saved?.analysisViews || []).filter(
-                                  (v) => v.name !== name,
-                                ),
-                                {
-                                  name,
-                                  settings,
-                                  savedAt: new Date().toISOString(),
-                                },
-                              ].slice(-20),
-                            },
-                            "Financial view saved with period, cutoff, pins, and chart settings.",
-                          )
-                        )
-                          setViewName("");
-                      }}
-                    >
-                      <label>
-                        View name
-                        <input
-                          value={viewName}
-                          maxLength={80}
-                          onChange={(e) => setViewName(e.target.value)}
-                          placeholder="Annual credit review"
-                        />
-                      </label>
-                      <button disabled={!workspace.ready}>
-                        Save current view
-                      </button>
-                    </form>
-                    <ul className={styles.savedList}>
-                      {(saved?.analysisViews || []).map((v, i) => (
-                        <li key={i}>
-                          <button
-                            onClick={() =>
-                              patch(normalizeAnalysisSettings(v.settings))
-                            }
-                          >
-                            {v.name} · {v.settings.basis}
-                          </button>
-                          <button
-                            aria-label={`Delete saved view ${v.name}`}
-                            onClick={() =>
-                              save(
-                                {
-                                  analysisViews: saved.analysisViews.filter(
-                                    (_, n) => n !== i,
-                                  ),
-                                },
-                                "Saved view removed.",
-                              )
-                            }
-                          >
-                            Remove
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                  <section className={styles.subpanel}>
-                    <h3>Since your last financial review</h3>
-                    {saved?.analysisBaseline ? (
-                      <>
-                        <p className={styles.muted}>
-                          Reviewed {saved.analysisReviewedAt?.slice(0, 10)} ·{" "}
-                          {saved.analysisBaseline.basis} ending{" "}
-                          {saved.analysisBaseline.period?.end}. Filing cutoff:{" "}
-                          {saved.analysisBaseline.asOf || "Latest at review"}.
-                        </p>
-                        {saved.analysisBaseline.version !== data.version ||
-                        saved.analysisBaseline.basis !== data.basis ? (
-                          <p className={styles.notice}>
-                            {saved.analysisBaseline.version !== data.version
-                              ? "The financial model has changed since this review. Your saved evidence is preserved. Review the current financials before saving a new baseline."
-                              : "Select the same reporting basis as your saved review to compare figures."}
-                          </p>
-                        ) : (
-                          <ul className={styles.savedList}>
-                            {definitions
-                              .filter((d) => data.highlights.includes(d.key))
-                              .map((d) => {
-                                const previous =
-                                  saved.analysisBaseline.metrics[d.key];
-                                const current = data.metrics[d.key][index];
-                                const change = analysisChange(
-                                  current,
-                                  previous,
-                                  d.format,
-                                );
-                                return (
-                                  <li key={d.key}>
-                                    <span>
-                                      {d.label}
-                                      <small>
-                                        {change.delta === 0
-                                          ? "Unchanged"
-                                          : previous?.period?.end ===
-                                              current?.period?.end
-                                            ? "Same-period value changed"
-                                            : "Different reporting periods"}
-                                      </small>
-                                    </span>
-                                    <span>
-                                      {changeText(change, d.format)}
-                                      {change.reason && (
-                                        <small>{change.reason}</small>
-                                      )}
-                                    </span>
-                                  </li>
-                                );
-                              })}
-                          </ul>
-                        )}
-                      </>
-                    ) : (
-                      <p className={styles.muted}>
-                        Mark reviewed to preserve the exact values, source
-                        accessions, period basis, and filing cutoff you
-                        reviewed. Future comparisons do not overwrite this
-                        baseline automatically.
-                      </p>
-                    )}
-                  </section>
-                  <section className={styles.subpanel}>
-                    <h3>Collected evidence ({saved?.evidence?.length || 0})</h3>
-                    <p className={styles.muted}>
-                      Open any financial value and choose “Collect this
-                      evidence” to add the figure, its source inputs, and your
-                      note to this brief.
-                    </p>
-                    <ul className={styles.savedList}>
-                      {(saved?.evidence || []).map((e, i) => (
-                        <li key={i}>
-                          <div>
-                            {e.point ? (
-                              <button
-                                onClick={() => {
-                                  evidenceTrigger.current =
-                                    document.activeElement as HTMLElement;
-                                  setSelection({
-                                    analysisSettings:
-                                      e.analysisSettings ?? null,
-                                    notes: e.notes || e.text || "",
-                                    definition: {
-                                      label: e.label,
-                                      format: e.format || "currency",
-                                    },
-                                    point: {
-                                      ...e.point,
-                                      sources:
-                                        e.point.sources ||
-                                        (e.point.source
-                                          ? [e.point.source]
-                                          : []),
-                                    },
-                                  });
-                                }}
-                              >
-                                {e.label} · {e.point.period?.end}
-                              </button>
-                            ) : (
-                              <a href={e.url} target="_blank" rel="noreferrer">
-                                {e.label}
-                              </a>
-                            )}
-                            <p>{e.notes || e.text}</p>
-                          </div>
-                          <button
-                            onClick={() =>
-                              save(
-                                {
-                                  evidence: saved.evidence.filter(
-                                    (_, n) => n !== i,
-                                  ),
-                                },
-                                "Evidence removed.",
-                              )
-                            }
-                          >
-                            Remove
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                </section>
-              )}
-              {settings.view === "extended" && (
-                <section className={styles.panel}>
-                  <p className={styles.eyebrow}>Extended company research</p>
-                  <h2>Filings, quality & ownership tools</h2>
-                  <p className={styles.muted}>
-                    Open the existing research panels for filing-language
-                    comparisons, disclosure radar, deeper quality diagnostics,
-                    insider transactions and institutional holders. These
-                    tools use their own latest-data controls; the financial
-                    filing cutoff above applies to this new workspace.
-                  </p>
-                  <button
-                    className={styles.primary}
-                    onClick={() => setExtended((v) => !v)}
-                  >
-                    {extended
-                      ? "Close extended tools"
-                      : "Open extended research tools"}
-                  </button>
-                  {extended && (
-                    <div className={styles.extended}>
-                      <ExtendedAnalysis {...props} />
-                    </div>
-                  )}
-                </section>
-              )}
             </div>
             {selection && (
               <AnalysisInspector
@@ -2014,7 +1559,6 @@ function Workspace(props: any) {
                 settings={settings}
                 index={index}
                 close={closeInspector}
-                save={collect}
                 status={status}
               />
             )}

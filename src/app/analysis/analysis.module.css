@@ -1080,6 +1080,8 @@
   background: var(--analysis-raised);
 }
 .savePopover form {
+  max-height: min(65vh, 520px);
+  overflow-y: auto;
   position: absolute;
   right: 0;
   top: calc(100% + 7px);

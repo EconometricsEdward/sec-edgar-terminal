@@ -423,7 +423,7 @@ test("Analysis share URLs restore every financial control and reject malformed d
   const path = analysisPath("JPM", settings);
   assert.deepEqual(readAnalysisSettings(path.split("?")[1]), settings);
   assert.equal(normalizeAnalysisSettings({ asOf: "2025-02-31" }).asOf, "");
-  assert.equal(readAnalysisSettings("?view=ownership").view, "extended");
+  assert.equal(readAnalysisSettings("?view=ownership").view, "overview");
 });
 test("Analysis exports preserve raw negatives, source dates, settings and safe analyst text", () => {
   const d = buildAnalysisCompany(
@@ -464,4 +464,24 @@ test("latest-only Analysis retains exact annual and TTM values with one observat
       assert.deepEqual(values[0], full.metrics[key][0], `${basis} ${key}`);
     }
   }
+});
+
+
+test("retired Analysis views reopen Overview without discarding financial settings or saved records", () => {
+  for (const view of ["notebook", "extended", "ownership", "quality", "filings-risk", "snapshot", "market"]) {
+    const settings = readAnalysisSettings(`?view=${view}&basis=ytd&end=2025-09-30&asOf=2026-01-15&pins=revenue,netIncome&scenarioRevenue=-12`);
+    assert.equal(settings.view, "overview");
+    assert.equal(settings.basis, "ytd");
+    assert.equal(settings.end, "2025-09-30");
+    assert.equal(settings.asOf, "2026-01-15");
+    assert.deepEqual(settings.pins, ["revenue", "netIncome"]);
+    assert.equal(settings.scenarioRevenue, -12);
+    assert.doesNotMatch(analysisPath("AAPL", settings), /view=/);
+  }
+  const saved = Object.freeze({ view: "notebook", basis: "quarter", briefTitle: "Existing research", pins: ["netIncome"] });
+  const normalized = normalizeAnalysisSettings(saved);
+  assert.equal(normalized.view, "overview");
+  assert.equal(normalized.briefTitle, "Existing research");
+  assert.equal(saved.view, "notebook", "normalization must not rewrite a stored record");
+  assert.equal(readAnalysisSettings("?view=financials").view, "statements");
 });

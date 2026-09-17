@@ -5,7 +5,6 @@ import {
   Layers,
   SearchCheck,
   FlaskConical,
-  FileText,
   ChartNoAxesCombined,
 } from "lucide-react";
 import {
@@ -98,7 +97,7 @@ export default function AnalysisOverview({
             <p>
               Explore futures positioning in relevant commodity, currency, and
               interest-rate markets. Check the company’s disclosures, then take
-              a dated observation into your notes or a scenario.
+              a dated observation into a scenario.
             </p>
           </div>
           <button onClick={() => onPatch({ view: "cftc" })}>
@@ -265,12 +264,6 @@ export default function AnalysisOverview({
                   "checks",
                   "Verify the inputs",
                   "Are periods and filing sources consistent?",
-                ],
-                [
-                  FileText,
-                  "notebook",
-                  "Compose a brief",
-                  "Turn your evidence into a review.",
                 ],
               ].map(([Icon, view, title, copy]: any) => (
                 <button key={view} onClick={() => onPatch({ view })}>

@@ -265,7 +265,7 @@ test("unified index includes all six tools with separate evidence, notes, search
   assert.ok(vault.entries.find((e) => e.href === "/fund/VTI"));
   assert.ok(
     vault.entries.find((e) =>
-      e.href.includes("/analysis/JPM?basis=annual&view=drivers"),
+      e.href.includes("/analysis/JPM?view=drivers"),
     ),
   );
   assert.ok(vault.entries.every((e) => safeInternalPath(e.href)));
@@ -886,4 +886,35 @@ test("Disclosures restored briefs, query snapshots and review markers reject mal
     change(data[disclosuresKey]);
     assert.ok(imported(data).issues.length > 0);
   }
+});
+
+
+test("retired Analysis destinations reopen active views without rewriting archived notes or evidence", () => {
+  const records = fixtures();
+  const company = records[workspaceKey].companies.JPM;
+  company.analysisViews.push({ name: "Old notebook", settings: { view: "notebook", basis: "quarter", end: "2025-06-30", asOf: "2025-08-01" }, savedAt: now });
+  company.analysisViews.push({ name: "Old extra tools", settings: { view: "extended", basis: "ttm" }, savedAt: now });
+  company.evidence[0].analysisSettings = { basis: "annual", asOf: "2026-03-01" };
+  company.analysisQuestions = [{ id: "archived-question", title: "Original question", status: "in-progress", conclusion: "Original conclusion", evidence: [company.evidence[0]], updatedAt: now }];
+  const s = storage(records);
+  const before = s.getItem(workspaceKey);
+  const entries = readResearchVault(s).entries.filter(entry => entry.source === "Analysis");
+  assert.ok(entries.every(entry => !/[?&]view=(notebook|extended)/.test(entry.href)));
+  const note = entries.find(entry => entry.type === "note" && entry.title === "JPM saved research notes");
+  assert.equal(note.text, "Credit review notes");
+  assert.equal(note.href, "/analysis/JPM");
+  const question = entries.find(entry => entry.title === "Original question");
+  assert.match(question.text, /Original conclusion/);
+  assert.equal(question.href, "/analysis/JPM");
+  const evidence = entries.find(entry => entry.type === "evidence");
+  const evidenceUrl = new URL(evidence.href, "https://secedgarterminal.com");
+  assert.equal(evidenceUrl.searchParams.get("view"), "checks");
+  assert.equal(evidenceUrl.searchParams.get("end"), "2025-12-31");
+  assert.equal(evidenceUrl.searchParams.get("asOf"), "2026-03-01");
+  assert.ok(evidence.sources.some(source => source.url === url));
+  const oldView = entries.find(entry => entry.title === "Old notebook");
+  assert.match(oldView.href, /basis=quarter/);
+  assert.match(oldView.href, /end=2025-06-30/);
+  assert.equal(s.getItem(workspaceKey), before);
+  assert.equal(s.writes.length, 0);
 });

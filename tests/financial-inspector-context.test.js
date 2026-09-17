@@ -218,3 +218,11 @@ test("inspectors preserve sub-cent raw source precision independently of headlin
     assert.match(text, /0\.123456789012345 USD/);
   }
 });
+
+
+test("Analysis inspector keeps SEC evidence readable without orphaned notebook controls", () => {
+  const html = renderInspector(analysis, definition("accountsPayable", "Accounts payable"), closing);
+  assert.match(html, /Financial evidence/);
+  assert.match(html, /amzn-20251231.htm/);
+  assert.doesNotMatch(html, /Collect this evidence|Collect comparison figure|Evidence note|<textarea/);
+});

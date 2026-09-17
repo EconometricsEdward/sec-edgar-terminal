@@ -735,7 +735,12 @@ const pointSummary = (point) =>
         .filter(Boolean)
         .join(" · ");
 function companyEvidenceDestination(t, evidence) {
-  if (!/^\d{10}$/.test(t)) return `/analysis/${t}?view=notebook`;
+  if (!/^\d{10}$/.test(t)) return analysisPath(t, {
+    ...(evidence.analysisSettings || {}),
+    basis: evidence.analysisSettings?.basis || evidence.point?.period?.kind,
+    end: evidence.point?.period?.end || evidence.analysisSettings?.end,
+    view: "checks",
+  });
   // CIK-only issuers have no supported ticker route in Analysis. Open their saved
   // SEC evidence directly; a source-free note stays in the searchable library.
   try {
@@ -1041,9 +1046,9 @@ function entriesFor(source, data, store = {}) {
         add(
           "note",
           t,
-          `${t} research notes`,
+          `${t} saved research notes`,
           c.notes,
-          `/analysis/${t}?view=notebook`,
+          `/analysis/${t}`,
           c.analysisReviewedAt || c.reviewedAt,
           t,
         );
@@ -1059,7 +1064,7 @@ function entriesFor(source, data, store = {}) {
           ]
             .filter(Boolean)
             .join(" · "),
-          `/analysis/${t}?view=notebook`,
+          `/analysis/${t}`,
           question.reviewedAt || question.updatedAt,
           `${t}:question:${question.id}`,
           question,
@@ -1091,7 +1096,7 @@ function entriesFor(source, data, store = {}) {
           t,
           v.name || "Saved financial view",
           `${v.settings.basis || "Annual"} financials`,
-          pathWithSettings(`/analysis/${t}`, v.settings),
+          analysisPath(t, v.settings),
           v.savedAt,
           `${t}:${i}`,
         );

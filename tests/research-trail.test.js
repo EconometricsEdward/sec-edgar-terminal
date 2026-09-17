@@ -72,7 +72,7 @@ test("resume links name the saved view so repeated companies stay distinguishabl
   );
   assert.equal(
     readResearchTrail(storage)[1].title,
-    "Analysis · JPM · Notebook",
+    "Analysis · JPM · Overview",
   );
 });
 
@@ -95,4 +95,16 @@ test("legacy Market visits cannot reopen retired price settings", () => {
   assert.match(item.href, /tab=fundamentals/);
   assert.doesNotMatch(item.href, /(?:asset|window|proxy)=/);
   assert.match(item.title, /Fundamental Lab/);
+});
+
+
+test("retired Analysis views use Overview titles without renaming other tools' notebooks", () => {
+  let raw = null;
+  const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };
+  recordResearchVisit(storage, "/analysis/AAPL?view=extended&basis=quarter");
+  recordResearchVisit(storage, "/filings/AAPL?view=notebook");
+  const items = readResearchTrail(storage);
+  assert.equal(items[0].title, "Filings · AAPL · Notebook");
+  assert.equal(items[1].title, "Analysis · AAPL · Overview");
+  assert.match(items[1].href, /basis=quarter/);
 });
