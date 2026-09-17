@@ -1,0 +1,129 @@
+.lab {
+  container: scenario-lab / inline-size;
+  min-width: 0;
+  --lab-teal: #73c3b8;
+  --lab-loss: #dbaa9d;
+}
+.layout { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 18px; align-items: start; }
+.assumptions, .resultsPanel { border: 1px solid var(--analysis-border); border-radius: 15px; background: var(--analysis-panel); min-width: 0; }
+.assumptions { padding: 22px; }
+.resultsColumn { min-width: 0; align-self: stretch; scroll-margin-top: calc(var(--analysis-header-height, 0px) + var(--analysis-controls-height, 0px) + 20px); }
+.resultsPanel { min-height: 100%; padding: 22px; background: linear-gradient(130deg, color-mix(in srgb, var(--lab-teal) 5%, var(--analysis-panel)), var(--analysis-panel) 50%); }
+.stickyResults { position: sticky; top: calc(var(--analysis-header-height, 0px) + var(--analysis-controls-height, 0px) + 12px); z-index: 1; background: var(--analysis-panel); padding: 12px 0; margin-top: -12px; }
+.resultsPanel:has(.resultDetails[open], .method[open]) .stickyResults { position: static; }
+.panelHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.panelHeading h3 { margin: 7px 0 0; font-size: clamp(18px, 1.6vw, 23px); font-weight: 680; letter-spacing: -0.035em; line-height: 1.35; }
+.lab .eyebrow { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--analysis-accent); text-transform: uppercase; letter-spacing: .13em; font-size: 10px; font-weight: 700; }
+.step { color: color-mix(in srgb, var(--analysis-muted) 45%, transparent); font-size: 31px; font-weight: 450; letter-spacing: -.07em; }
+.fieldset { border: 0; border-top: 1px solid var(--analysis-border); min-width: 0; margin: 24px 0 0; padding: 15px 0 0; }
+.fieldset legend { padding: 0 10px 0 0; font-size: 12px; font-weight: 650; }
+.lab .modelChoice { display: grid; gap: 7px; color: var(--analysis-muted); font-size: 11px; }
+.lab .modelChoice select { width: 100%; color: var(--analysis-text); font-size: 12px; }
+.control { min-width: 0; padding-top: 23px; }
+.controlHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lab .controlHeading label { display: block; font-size: 12px; font-weight: 600; line-height: 1.5; }
+.controlHeading label span { color: var(--analysis-muted); font-weight: 400; }
+.lab .controlHeading input { width: 90px; flex: 0 0 90px; height: 35px; text-align: right; font-size: 15px; font-variant-numeric: tabular-nums; background: var(--analysis-bg); }
+.lab .control input[type="range"] { display: block; width: 100%; margin: 10px 0 0; padding: 0; height: 20px; background: transparent; accent-color: var(--analysis-accent); cursor: pointer; }
+.lab .control input[aria-invalid="true"] { border-color: var(--lab-loss); }
+.lab .control p, .lab .control small, .lab .help { color: var(--analysis-muted); font-size: 11px; line-height: 1.65; margin: 6px 0 0; }
+.lab .control .error { color: var(--lab-loss); }
+.connection { border: 1px solid var(--analysis-border); background: color-mix(in srgb, var(--analysis-bg) 55%, transparent); border-radius: 10px; padding: 15px; margin-top: 24px; transition: border-color 180ms, background 180ms; }
+.connection[data-connected="true"] { background: color-mix(in srgb, var(--lab-teal) 6%, var(--analysis-bg)); border-color: color-mix(in srgb, var(--lab-teal) 45%, var(--analysis-border)); }
+.connectionHeading { display: flex; align-items: center; gap: 9px; }
+.connectionHeading > svg { color: var(--lab-teal); flex-shrink: 0; }
+.lab .connectionHeading label { color: var(--analysis-text); font-size: 12px; font-weight: 650; }
+.lab .connection p { font-size: 11px; line-height: 1.7; color: var(--analysis-muted); margin: 9px 0 0; }
+.lab .connection p.pending { color: var(--analysis-accent); }
+.lab .toggle { display: block; min-height: 24px; height: 24px; min-width: 41px; width: 41px; padding: 3px; margin-left: auto; border: 1px solid var(--analysis-border); border-radius: 99px; background: var(--analysis-raised); flex-shrink: 0; }
+.toggle span { display: block; width: 16px; height: 16px; border-radius: 50%; background: var(--analysis-muted); transform: translateX(0); transition: transform 180ms, background 180ms; }
+.lab .toggle[aria-checked="true"] { border-color: var(--lab-teal); background: color-mix(in srgb, var(--lab-teal) 20%, var(--analysis-bg)); }
+.toggle[aria-checked="true"] span { transform: translateX(16px); background: var(--lab-teal); }
+.connectedControls { margin-top: 15px; }
+.assumptionGroup { border-top: 1px solid var(--analysis-border); padding: 15px 0; min-width: 0; }
+.assumptionGroup summary, .resultDetails summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; list-style: none; cursor: pointer; font-size: 12px; font-weight: 600; }
+.assumptionGroup summary::-webkit-details-marker, .resultDetails summary::-webkit-details-marker { display: none; }
+.assumptionGroup summary small { display: block; font-size: 10px; color: var(--analysis-muted); font-weight: 400; line-height: 1.65; margin-top: 5px; }
+.assumptionGroup summary > svg, .resultDetails summary > svg { color: var(--analysis-muted); flex-shrink: 0; transition: transform 160ms; }
+.assumptionGroup[open] summary > svg, .resultDetails[open] summary > svg { transform: rotate(180deg); }
+.fieldset > .assumptionGroup { margin-top: 18px; }
+.applyBar { display: flex; gap: 9px; flex-wrap: wrap; padding-top: 21px; margin-top: 22px; border-top: 1px solid var(--analysis-border); }
+.lab .applyBar button { padding: 9px 12px; font-size: 11px; }
+.lab .applyBar .primary { background: var(--analysis-accent); border-color: var(--analysis-accent); color: #151c27; font-weight: 700; }
+.lab .applyBar button:disabled { opacity: .45; }
+.lab .applyBar p { width: 100%; font-size: 11px; line-height: 1.65; color: var(--analysis-muted); margin: 1px 0 0; }
+.resultStatus { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 16px 0 15px; color: var(--analysis-muted); font-size: 10px; }
+.resultStatus > span:last-child { margin-left: auto; }
+.statusDot { height: 5px; width: 5px; border-radius: 50%; background: var(--lab-teal); }
+.statusDot[data-pending="true"] { background: var(--analysis-accent); }
+.featured { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.lab .resultCard { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 5px; min-width: 0; padding: 15px; text-align: left; border: 1px solid var(--analysis-border); border-radius: 9px; background: var(--analysis-bg); transition: border-color 180ms, transform 180ms, background 180ms; }
+.cardLabel { display: flex; justify-content: space-between; gap: 5px; align-items: start; color: var(--analysis-muted); font-size: 10px; line-height: 1.5; }
+.cardLabel > svg { flex-shrink: 0; color: var(--lab-teal); }
+.resultCard strong { font-size: clamp(20px, 1.8vw, 28px); font-weight: 680; letter-spacing: -.035em; font-variant-numeric: tabular-nums; color: var(--analysis-text); overflow-wrap: anywhere; }
+.baseline { margin-top: 2px; color: var(--analysis-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.delta { color: var(--lab-teal); font-size: 10px; font-variant-numeric: tabular-nums; }
+.lab .notice { border-left: 2px solid var(--analysis-accent); background: color-mix(in srgb, var(--analysis-accent) 5%, var(--analysis-bg)); padding: 10px 12px; font-size: 11px; line-height: 1.7; border-radius: 0 6px 6px 0; margin: 12px 0; overflow-wrap: anywhere; }
+.miniBridge { padding: 18px 0 13px; }
+.lab .miniBridge h4, .lab .resultDetails h4 { font-size: 12px; margin: 0; font-weight: 650; }
+.lab .miniBridge p { color: var(--analysis-muted); font-size: 10px; margin: 4px 0 12px; }
+.bridgeRows { display: grid; gap: 3px; }
+.lab .bridgeRow { display: grid; grid-template-columns: minmax(105px, 1.3fr) minmax(40px, 1fr) minmax(65px, .8fr); gap: 10px; align-items: center; background: none; border: 0; border-radius: 4px; padding: 5px 0; width: 100%; text-align: left; font-size: 10px; }
+.bridgeRow > span:first-child { color: var(--analysis-muted); }
+.bridgeRow strong { font-weight: 550; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.bridgeTrack { position: relative; height: 12px; background: color-mix(in srgb, var(--analysis-muted) 5%, transparent); }
+.bridgeTrack::before { position: absolute; content: ""; width: 1px; left: 50%; height: 100%; background: var(--analysis-border); }
+.bridgeTrack i { position: absolute; width: var(--effect-width); height: 6px; top: 3px; border-radius: 2px; transition: width 220ms; }
+.bridgeTrack i[data-direction="positive"] { left: 50%; background: var(--lab-teal); }
+.bridgeTrack i[data-direction="negative"] { right: 50%; background: var(--lab-loss); }
+.resultDetails { padding: 14px 0; border-top: 1px solid var(--analysis-border); }
+.resultDetails section { margin-top: 18px; }
+.tableScroll { overflow-x: auto; max-width: 100%; margin: 10px 0; }
+.lab .tableScroll table { min-width: 460px; width: 100%; border-collapse: collapse; font-size: 10px; }
+.tableScroll caption { text-align: left; color: var(--analysis-muted); padding: 0 0 9px; font-size: 10px; }
+.tableScroll th, .tableScroll td { text-align: left; padding: 9px 7px; border-bottom: 1px solid var(--analysis-border); font-variant-numeric: tabular-nums; }
+.tableScroll thead th { color: var(--analysis-muted); font-weight: 500; background: var(--analysis-bg); }
+.tableScroll tbody th { font-weight: 550; }
+.lab .tableScroll button { padding: 5px 6px; font-size: 10px; white-space: nowrap; }
+.method { border-top: 1px solid var(--analysis-border); padding-top: 13px; color: var(--analysis-muted); font-size: 10px; }
+.method summary { cursor: pointer; }
+.lab .method p { font-size: 11px; line-height: 1.75; }
+.compactSummary { display: none; }
+.lab :is(button, a, summary, input, select):focus-visible { outline: 2px solid var(--analysis-accent); outline-offset: 3px; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .lab .resultCard:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--lab-teal) 65%, var(--analysis-border)); background: color-mix(in srgb, var(--lab-teal) 4%, var(--analysis-bg)); }
+}
+@container scenario-lab (max-width: 830px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .stickyResults { position: static; }
+  .compactSummary { display: block; position: sticky; top: calc(var(--analysis-header-height, 0px) + var(--analysis-controls-height, 0px) + 5px); z-index: 3; margin-bottom: 14px; padding: 11px 15px; border: 1px solid var(--analysis-border); border-radius: 10px; background: var(--analysis-bg); box-shadow: 0 6px 16px #0002; }
+  .compactStatus { display: block; color: var(--analysis-accent); font-size: 9px; margin-bottom: 6px; }
+  .compactSummary > div { display: flex; gap: 16px; }
+  .compactSummary > div > span { display: grid; gap: 3px; flex: 1; min-width: 0; }
+  .compactSummary small { color: var(--analysis-muted); font-size: 9px; line-height: 1.4; }
+  .compactSummary strong { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .compactSummary a { display: flex; gap: 4px; align-items: center; margin-top: 5px; font-size: 9px; width: fit-content; }
+  .control { max-width: 100%; }
+  .resultCard strong { font-size: 25px; }
+}
+@container scenario-lab (max-width: 420px) {
+  .assumptions, .resultsPanel { padding: 16px; border-radius: 11px; }
+  .lab .controlHeading input { width: 72px; flex-basis: 72px; }
+  .lab .resultCard { padding: 12px; }
+  .resultCard strong { font-size: 21px; }
+  .resultStatus > span:last-child { margin-left: 12px; }
+  .compactSummary > div { gap: 9px; }
+  .compactSummary strong { font-size: 14px; }
+  .lab .bridgeRow { grid-template-columns: minmax(95px, 1.3fr) minmax(30px, .7fr) minmax(65px, .8fr); gap: 7px; }
+}
+@media (max-height: 760px) {
+  .stickyResults { position: static; }
+  .compactSummary { position: static; }
+}
+:global(html[data-theme-mode="light"]) .lab { --lab-teal: #27796e; --lab-loss: #a95139; }
+:global(html[data-reading-motion="reduced"]) .lab *, :global(html[data-reading-motion="reduced"]) .lab *::before { transition: none !important; animation: none !important; }
+:global(html[data-reading-motion="reduced"]) .lab .resultCard:hover { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .lab *, .lab *::before { transition: none !important; animation: none !important; }
+  .lab .resultCard:hover { transform: none; }
+}

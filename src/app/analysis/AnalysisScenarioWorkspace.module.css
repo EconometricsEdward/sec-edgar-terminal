@@ -358,3 +358,24 @@
     break-inside: avoid;
   }
 }
+
+/* Keep the shell compact so the actual model is the first visual destination. */
+.hero { padding: 20px 22px; }
+.heading h2 { font-size: clamp(22px, 2.4vw, 30px); margin-bottom: 6px; }
+.heading .muted { margin: 0 0 16px; }
+.navigation { padding-top: 2px; }
+.toolbar { margin-top: 12px; }
+.guide { margin-left: auto; font-size: 11px; color: var(--analysis-muted); }
+.marketContext { padding: 0; border-left-width: 1px; }
+.marketContext > summary,
+.baselineReview > summary { padding: 13px 17px; cursor: pointer; font-size: 12px; font-weight: 650; }
+.marketContext > summary span,
+.baselineReview > summary span { color: var(--analysis-muted); font-size: 11px; font-weight: 400; margin-left: 14px; }
+.marketBody { padding: 4px 20px 18px; border-top: 1px solid var(--analysis-border); }
+.baselineReview { border: 1px solid var(--analysis-border); border-radius: 10px; background: var(--analysis-panel); min-width: 0; }
+.baselineReview[open] > summary { border-bottom: 1px solid var(--analysis-border); }
+@media(max-width: 700px) {
+ .hero { padding: 16px; }
+ .marketContext > summary span, .baselineReview > summary span { display: block; margin: 5px 0 0; line-height: 1.6; }
+ .guide { margin-left: 0; }
+}

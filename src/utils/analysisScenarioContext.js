@@ -103,7 +103,9 @@ export function scenarioBaselineContext(
           },
         ]
       : []),
-    { key: "balance", label: "Balance model", model: scenario.balance },
+    scenario.connected?.enabled
+      ? { key: "connected", label: "Connected cash and financing", model: scenario.connected }
+      : { key: "balance", label: "Balance model", model: scenario.balance },
   ];
   const cards = new Map();
   for (const group of groups) {

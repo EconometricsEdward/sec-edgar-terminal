@@ -19,13 +19,14 @@ export default function AnalysisScenarioContext({
   onInspect,
 }: any) {
   const [applied, setApplied] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
   const baseline = useMemo(
     () => scenarioBaselineContext(data, settings, index, scenario),
     [data, settings, index, scenario],
   );
   const history = useMemo(
-    () => scenarioHistoricalCalibration(data, settings, index),
-    [data, settings, index],
+    () => historyOpen ? scenarioHistoricalCalibration(data, settings, index) : null,
+    [data, settings, index, historyOpen],
   );
   const starters = scenarioStarterCases(data, settings);
   const value = (amount: any, format = "currency") =>
@@ -49,18 +50,18 @@ export default function AnalysisScenarioContext({
       className={styles.context}
       aria-label="Scenario baseline, historical context, and starter cases"
     >
-      <div className={styles.baseline}>
-        <div className={styles.title}>
-          <p>
-            <Database size={14} aria-hidden="true" /> Reported baseline
-          </p>
+      <details className={styles.baseline}>
+        <summary className={styles.title}>
+          <span>
+            <Database size={14} aria-hidden="true" /> Reported baseline & SEC sources
+          </span>
           <strong>
             {baseline.ticker} ·{" "}
             {baseline.period?.label ||
               baseline.period?.end ||
               "No selected period"}
           </strong>
-        </div>
+        </summary>
         <dl className={styles.metadata}>
           <div>
             <dt>Actual period</dt>
@@ -130,20 +131,19 @@ export default function AnalysisScenarioContext({
               <strong>{group.label}:</strong> {group.reason}
             </p>
           ))}
-      </div>
+      </details>
 
-      <details className={styles.panel}>
+      <details className={styles.panel} onToggle={(event) => setHistoryOpen(event.currentTarget.open)}>
         <summary>
           <span>
             <History size={14} aria-hidden="true" /> Compare the same
             assumptions with prior reported periods
           </span>
           <small>
-            {history.checked} prior observation
-            {history.checked === 1 ? "" : "s"} checked
+            Up to five comparable prior periods
           </small>
         </summary>
-        <div className={styles.panelBody}>
+        {history && <div className={styles.panelBody}>
           <p className={styles.note}>{history.note}</p>
           <p className={styles.coverage}>
             {scenario.corporate && (
@@ -225,7 +225,7 @@ export default function AnalysisScenarioContext({
               </table>
             </div>
           )}
-          {history.rows.length > 0 && (
+          {!scenario.connected?.enabled && history.rows.length > 0 && (
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <caption>
@@ -275,7 +275,7 @@ export default function AnalysisScenarioContext({
             zero. Input availability counts describe this comparison only; they
             are not event frequencies or probabilities.
           </p>
-        </div>
+        </div>}
       </details>
 
       <details className={styles.panel}>

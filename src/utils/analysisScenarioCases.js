@@ -1,4 +1,4 @@
-import { normalizeScenarioSettings } from "./analysisScenarios.js";
+import { normalizeScenarioSettings, SCENARIO_DEFAULTS } from "./analysisScenarios.js";
 import { normalizeAnalysisSettings } from "./analysisNotebook.js";
 import {
   goalSeekInput,
@@ -33,6 +33,21 @@ function stable(value) {
       .map((key) => `${JSON.stringify(key)}:${stable(value[key])}`)
       .join(",")}}`;
   return JSON.stringify(value);
+}
+
+// Version-one snapshots predate the connected model. Accept only these known
+// additive defaults and the retired navigation key, without rewriting evidence.
+const connectedKeys = [
+  "scenarioCashMode", "scenarioTaxRate", "scenarioWorkingCapital",
+  "scenarioCapexChange", "scenarioBorrowing", "scenarioDebtRepayment", "scenarioBorrowRate",
+];
+function compatibleSavedSettings(saved, normalized, navigation = false) {
+  if (!object(saved)) return false;
+  const comparable = { ...saved };
+  for (const key of connectedKeys)
+    if (!Object.hasOwn(comparable, key)) comparable[key] = SCENARIO_DEFAULTS[key];
+  if (navigation && comparable.scenarioTab === "cases") comparable.scenarioTab = "model";
+  return stable(comparable) === stable(normalized);
 }
 
 /** Store full, immutable evidence; restoring assumptions never overwrites these inputs. */
@@ -192,9 +207,7 @@ export function validateScenarioCase(entry, validateEvidencePoint) {
     "Scenario observation date is invalid.",
   );
   requireValid(
-    object(entry.settings) &&
-      stable(entry.settings) ===
-        stable(normalizeAnalysisSettings(entry.settings)),
+    compatibleSavedSettings(entry.settings, normalizeAnalysisSettings(entry.settings), true),
     "Scenario settings are invalid or outside supported bounds.",
   );
   requireValid(
@@ -208,8 +221,7 @@ export function validateScenarioCase(entry, validateEvidencePoint) {
     "Scenario result snapshot is invalid.",
   );
   requireValid(
-    stable(entry.snapshot.settings) ===
-      stable(normalizeScenarioSettings(entry.settings)),
+    compatibleSavedSettings(entry.snapshot.settings, normalizeScenarioSettings(entry.settings)),
     "Scenario result assumptions do not match the saved assumptions.",
   );
   requireValid(
@@ -219,6 +231,7 @@ export function validateScenarioCase(entry, validateEvidencePoint) {
   for (const section of [
     entry.snapshot.operating,
     entry.snapshot.balance,
+    entry.snapshot.connected,
   ].filter(Boolean)) {
     requireValid(
       object(section) &&
@@ -386,7 +399,7 @@ export function updateScenarioCases(cases, action) {
 
 function inputSignature(entry) {
   return stable(
-    [entry.snapshot.operating, entry.snapshot.balance]
+    [entry.snapshot.operating, entry.snapshot.balance, ...(entry.snapshot.connected?.enabled ? [entry.snapshot.connected] : [])]
       .filter(Boolean)
       .map((section) =>
         section.inputs
@@ -449,7 +462,7 @@ export function scenarioCaseRestoreSettings(entry) {
     asOf: entry.context.asOf,
     view: "scenarios",
     scenarioCase: entry.id,
-    scenarioTab: "cases",
+    scenarioTab: "model",
   };
 }
 
@@ -460,7 +473,12 @@ export function scenarioCaseRows(entry) {
       exercise: "Operating sensitivity",
       comparisonKey: `operating:${row.key}`,
     })),
-    ...(entry.snapshot.balance?.rows || []).map((row) => ({
+    ...(entry.snapshot.connected?.enabled ? entry.snapshot.connected.rows || [] : []).map((row) => ({
+      ...row,
+      exercise: "Connected cash and financing",
+      comparisonKey: `connected:${row.key}`,
+    })),
+    ...(entry.snapshot.connected?.enabled ? [] : entry.snapshot.balance?.rows || []).map((row) => ({
       ...row,
       exercise: "Balance sensitivity",
       comparisonKey: `balance:${row.key}`,

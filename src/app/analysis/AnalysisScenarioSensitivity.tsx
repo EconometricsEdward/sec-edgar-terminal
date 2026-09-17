@@ -7,6 +7,7 @@ import {
   buildScenarioDriverBridge,
 } from "../../utils/analysisScenarioSensitivity.js";
 import { analysisValue } from "../../utils/analysisNotebook.js";
+import AnalysisScenarioDriverRanking from "./AnalysisScenarioDriverRanking";
 import styles from "./AnalysisScenarioSensitivity.module.css";
 
 const exactNumber = (value: number, format = "currency") =>
@@ -295,6 +296,7 @@ function SensitivityExplorer({
   );
   return (
     <div className={styles.exploration}>
+      <AnalysisScenarioDriverRanking data={data} settings={settings} index={index} onInspect={onInspect} />
       <DriverBridge
         scenario={scenario}
         settings={settings}

@@ -368,6 +368,7 @@ export function assetLossGoalApplication(data, input, index, settings = {}) {
       preview: null,
     };
   const patch = {
+    scenarioCashMode: "independent",
     scenarioLoss: (solved.loss / solved.inputs[0].point.value) * 100,
     scenarioFunding: 0,
     scenarioReplacementFunding: 0,
@@ -391,7 +392,7 @@ export function buildScenarioHeadroom(data, settings, index) {
   const currentEquityRow = balance.rows.find((row) => row.key === "Equity");
   const currentAssets = currentAssetRow?.selection.point.value;
   const currentEquity = currentEquityRow?.selection.point.value;
-  let reason = baseline.reason || balance.reason || null;
+  let reason = (scenario.connected?.enabled ? "This asset-loss headroom check uses the independent balance exercise. Switch off the connected cash model to evaluate it; connected earnings and cash effects are not included." : null) || baseline.reason || balance.reason || null;
   if (!reason && (!(currentAssets > 0) || !Number.isFinite(currentEquity)))
     reason =
       "Current scenario balances are unavailable; remaining loss headroom cannot be calculated.";

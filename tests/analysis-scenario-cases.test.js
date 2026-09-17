@@ -116,7 +116,7 @@ test("Scenario snapshots retain actual reporting context, goal settings and immu
   const restored = scenarioCaseRestoreSettings(entry);
   assert.equal(restored.end, period.end);
   assert.equal(restored.scenarioCase, entry.id);
-  assert.equal(restored.scenarioTab, "cases");
+  assert.equal(restored.scenarioTab, "model");
   const selection = scenarioCaseSelection(
     entry,
     entry.snapshot.operating.rows[0].selection,
@@ -373,4 +373,28 @@ test("Solved goal snapshots stay distinct from applied sensitivities and preserv
   entry.goalSnapshots[0].rows[0].point.value = 1;
   assert.equal(model.cases[0].goalSnapshots[0].rows[0].point.value, 800000000);
   assert.equal(scenarioBriefHtml(model), html);
+});
+
+
+test("legacy immutable snapshots survive new defaults and retired case navigation", () => {
+  const legacy = make("legacy");
+  legacy.settings.scenarioTab = "cases";
+  for (const key of ["scenarioCashMode", "scenarioTaxRate", "scenarioWorkingCapital", "scenarioCapexChange", "scenarioBorrowing", "scenarioDebtRepayment", "scenarioBorrowRate"]) {
+    delete legacy.settings[key];
+    delete legacy.snapshot.settings[key];
+  }
+  delete legacy.snapshot.connected;
+  const original = JSON.stringify(legacy);
+  assert.doesNotThrow(() => validateScenarioCases([legacy]));
+  assert.equal(JSON.stringify(legacy), original);
+  assert.equal(scenarioCaseRestoreSettings(legacy).scenarioTab, "model");
+  const bad = structuredClone(legacy);
+  bad.settings.scenarioRevenue = 900;
+  assert.throws(() => validateScenarioCases([bad]), /settings/);
+  const unknown = structuredClone(legacy);
+  unknown.settings.unknown = true;
+  assert.throws(() => validateScenarioCases([unknown]), /settings/);
+  const missing = structuredClone(legacy);
+  delete missing.settings.scenarioRevenue;
+  assert.throws(() => validateScenarioCases([missing]), /settings/);
 });
