@@ -217,9 +217,8 @@ function Workspace(props: any) {
       basis: settings.basis,
       asOf: settings.asOf,
     });
-    const cached = cache.current.get(id, {
-      bypass: previousRetry.current !== retry,
-    });
+    const forceRefresh = previousRetry.current !== retry;
+    const cached = cache.current.get(id, { bypass: forceRefresh });
     previousRetry.current = retry;
     setSelection(null);
     setError("");
@@ -232,7 +231,7 @@ function Workspace(props: any) {
     setLoading(true);
     fetch(
       `/api/analysis-research?${new URLSearchParams({ ticker, basis: settings.basis, asOf: settings.asOf })}`,
-      { signal: controller.signal },
+      { signal: controller.signal, cache: forceRefresh ? "no-cache" : "default" },
     )
       .then(async (response) => {
         const result = await response.json();
@@ -904,6 +903,7 @@ function Workspace(props: any) {
                     index={index}
                     onInspect={inspectSelection}
                     onPatch={patch}
+                    onRefreshData={() => setRetry((value) => value + 1)}
                     cases={saved?.analysisScenarios || []}
                     ready={workspace.ready && !workspace.error}
                     cftcEnabled={cftcEnabled}

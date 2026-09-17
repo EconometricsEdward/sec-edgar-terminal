@@ -26,12 +26,15 @@ const scope = (input, mapping) => {
 /** Same-period counterfactual: change reported ending cash only by incremental
  * cash effects. Reported CFO has already contributed to the ending balance. */
 export function buildConnectedScenario(data, settings, index, operating) {
-  const enabled = settings.scenarioCashMode === "connected";
+  const requested = settings.scenarioCashMode === "connected";
+  const enabled = requested && data.lens === "corporate";
   const empty = { enabled, reason: null, note: "", inputs: [], rows: [], bridge: [], diagnostics: [], metrics: {}, periodDays: null };
+  if (requested && !enabled) {
+    const reason = "The connected operating and cash model is available for operating companies only. The independent balance exercise remains active for this accounting lens.";
+    return { ...empty, reason, diagnostics: [diagnostic("connectedUnavailable", "info", reason)] };
+  }
   if (!enabled) return empty;
-  const reason = data.lens !== "corporate"
-    ? "The connected operating and cash model is available for operating companies only."
-    : operating?.reason || (!Number.isFinite(operating?.delta) ? "A compatible operating scenario is required before connecting cash and financing." : null);
+  const reason = operating?.reason || (!Number.isFinite(operating?.delta) ? "A compatible operating scenario is required before connecting cash and financing." : null);
   if (reason) return { ...empty, reason, diagnostics: [diagnostic("connectedUnavailable", "error", reason)] };
 
   const period = data.periods?.[index];

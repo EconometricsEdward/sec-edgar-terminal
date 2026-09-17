@@ -13,7 +13,7 @@ const seasonDistance = (a, b) => {
   return Math.min(distance, 366 - distance);
 };
 
-function comparisonBoundary(reference, data, settings, index) {
+function recalculationBoundary(reference, data, settings, index) {
   const before = reference.context;
   const period = data.periods?.[index];
   if (before.ticker !== data.ticker || before.lens !== data.lens || (before.cik && data.cik && String(before.cik).replace(/^0+/, "") !== String(data.cik).replace(/^0+/, "")))
@@ -25,21 +25,30 @@ function comparisonBoundary(reference, data, settings, index) {
   if (!validDate(period?.end) || !validDate(before.period.end) || period.end < before.period.end)
     return "The selected reporting period is older than the reference or has no valid date. Select the same period or a later comparable period.";
   const previousDays = duration(before.period), currentDays = duration(period);
-  if (!previousDays || !currentDays || previousDays <= 0 || currentDays <= 0 || Math.abs(previousDays - currentDays) > 14)
-    return "The reporting durations are missing or differ by more than 14 days. A numerical change would mix different reporting windows.";
+  if (!previousDays || !currentDays || previousDays <= 0 || currentDays <= 0)
+    return "The reporting durations are missing or invalid. Select valid reporting windows before recalculating.";
   if (period.end === before.period.end && period.start !== before.period.start)
     return "The same reporting endpoint has different starting dates. Review the reporting windows before comparing.";
-  if (period.end !== before.period.end && before.basis !== "ttm" && (
-    seasonDistance(before.period.end, period.end) > 14 ||
-    (before.period.fp && period.fp && before.period.fp !== period.fp)
-  ))
-    return "Choose a later period at the same point in the fiscal year. Sequential quarters or different year-to-date windows are not seasonally comparable.";
   const cutoff = data.asOf ?? settings.asOf ?? "";
   if (cutoff && (!validDate(cutoff) || (before.asOf && cutoff < before.asOf)))
     return "The filing cutoff precedes the saved reference. Use the same cutoff or later filings.";
   const priorFiled = outcomeRows(reference.snapshot).flatMap((row) => evidenceSources(row.selection?.point)).map((source) => source.filed).filter(validDate).sort().at(-1);
   if (cutoff && priorFiled && cutoff < priorFiled)
     return "The selected filing cutoff excludes evidence retained in the reference. Use a later cutoff.";
+  return null;
+}
+
+// Different seasons or durations prevent numerical attribution, but do not
+// prevent applying the retained assumptions to a valid later reporting period.
+function comparisonBoundary(reference, period) {
+  const before = reference.context;
+  if (Math.abs(duration(before.period) - duration(period)) > 14)
+    return "The reporting durations differ by more than 14 days. Numerical attribution is withheld because it would mix different reporting windows.";
+  if (period.end !== before.period.end && before.basis !== "ttm" && (
+    seasonDistance(before.period.end, period.end) > 14 ||
+    (before.period.fp && period.fp && before.period.fp !== period.fp)
+  ))
+    return "These periods are not at the same point in the fiscal year. Sequential quarters or different year-to-date windows are not seasonally comparable, so numerical attribution is withheld.";
   return null;
 }
 
@@ -94,14 +103,25 @@ const contextSelection = (row, settings, period, asOf) => row?.selection ? {
  */
 export function buildScenarioRebase({ reference, data, settings, index = 0, scenario }) {
   try { validateScenarioCase(reference); } catch (error) {
-    return { compatible: false, reason: error.message, rows: [] };
+    return { compatible: false, recalculable: false, reason: error.message, rows: [] };
   }
-  const reason = comparisonBoundary(reference, data, settings, index);
-  if (reason) return { compatible: false, reason, rows: [] };
+  const reason = recalculationBoundary(reference, data, settings, index);
+  if (reason) return { compatible: false, recalculable: false, reason, rows: [] };
   const period = data.periods[index];
   const cutoff = data.asOf ?? settings.asOf ?? "";
   const rebasedSettings = { ...settings, ...normalizeScenarioSettings(reference.settings), basis: data.basis || settings.basis, end: period.end, asOf: cutoff };
   const rebasedScenario = buildAnalysisScenario(data, rebasedSettings, index);
+  const comparisonReason = comparisonBoundary(reference, period);
+  if (comparisonReason) return {
+    compatible: false, recalculable: true, reason: comparisonReason, rows: [],
+    rebasedSettings, rebasedScenario, period,
+    updatedRows: outcomeRows(rebasedScenario).map((row) => ({
+      key: row.comparisonKey, label: row.label, format: row.format,
+      value: row.selection?.point?.value ?? null,
+      selection: contextSelection(row, rebasedSettings, period, cutoff),
+    })),
+    note: "The original assumptions have been recalculated on the selected reporting period. You can keep these results as a separate reference; the original remains unchanged. No numerical changes between the two reporting windows are attributed.",
+  };
   const currentScenario = scenario || buildAnalysisScenario(data, settings, index);
   const originalRows = new Map(outcomeRows(reference.snapshot).map((row) => [row.comparisonKey, row]));
   const rebasedRows = new Map(outcomeRows(rebasedScenario).map((row) => [row.comparisonKey, row]));
@@ -144,7 +164,7 @@ export function buildScenarioRebase({ reference, data, settings, index = 0, scen
     };
   });
   return {
-    compatible: true, reason: null, rows, rebasedSettings, rebasedScenario,
+    compatible: true, recalculable: true, reason: null, rows, rebasedSettings, rebasedScenario,
     period, modelChanged,
     status: period.end === reference.context.period.end
       ? rows.every((row) => row.dataChange === 0 && stable(evidenceSources(row.originalSelection?.point)) === stable(evidenceSources(row.rebasedSelection?.point)))
