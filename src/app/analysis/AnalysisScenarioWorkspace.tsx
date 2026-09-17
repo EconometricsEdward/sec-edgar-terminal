@@ -35,6 +35,7 @@ function ScenarioWorkbench({
   settings,
   index,
   onPatch,
+  onRefreshData,
   onInspect,
   cases,
   onSaveCases,
@@ -122,6 +123,17 @@ function ScenarioWorkbench({
     }
     commit(validation.values, true);
   }
+  function refreshLatest(referenceId: string) {
+    if (dirty) {
+      setMessage("Apply or discard your assumption edits before refreshing the reported baseline.");
+      return false;
+    }
+    if (!commit({ end: "latest", asOf: "", scenarioCase: referenceId })) return false;
+    // A period selection alone does not fetch data. Reuse the workspace retry
+    // path so even an already-current selection bypasses the browser cache.
+    onRefreshData();
+    return true;
+  }
   function travel(direction: "undo" | "redo") {
     if (dirty) {
       setMessage(
@@ -201,6 +213,7 @@ function ScenarioWorkbench({
           {reviewOpen && <AnalysisScenarioBaselineReview
             data={data} settings={settings} index={index} scenario={scenario}
             cases={cases} onSaveCases={onSaveCases} onPatch={commit}
+            onRefreshLatest={refreshLatest}
             onInspect={inspect} draftsPending={dirty} ready={ready}
           />}
         </details>

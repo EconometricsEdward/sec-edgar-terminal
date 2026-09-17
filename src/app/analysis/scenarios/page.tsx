@@ -107,7 +107,8 @@ export default function ScenarioMethodologyPage() {
       <p className={styles.eyebrow}>06 / Keep the comparison clear</p>
       <h2>Separate new evidence from new assumptions</h2>
       <p>When updating a scenario to a newer reported baseline, preserve the original period, source evidence and assumptions. First apply the original assumptions to the newer baseline; then apply any revised assumptions. This separates the effect of changed reported inputs from the effect of a changed scenario.</p>
-      <p>Different period lengths, accounting scopes and missing evidence can prevent a meaningful comparison. Review the displayed reporting dates and availability reasons before interpreting the difference. An updated filing is new evidence, not proof that an earlier hypothetical outcome occurred.</p>
+      <p>Use latest filings refreshes the latest available financial data while retaining the selected reference. Check the observed date to see when those inputs were obtained. Saving an updated baseline creates a separate reference using the original assumptions; it never overwrites the original.</p>
+      <p>A new quarter or longer year-to-date window can be recalculated and saved with the original assumptions, but numerical change attribution is withheld when the reporting windows are not comparable. Different accounting scopes and missing evidence can also prevent a meaningful comparison. Review the displayed dates and availability reasons before interpreting the difference. An updated filing is new evidence, not proof that an earlier hypothetical outcome occurred.</p>
     </section>
 
     <section className={styles.section} aria-labelledby="evidence-heading">

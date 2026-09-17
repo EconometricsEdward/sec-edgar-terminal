@@ -107,6 +107,25 @@ test("bank-specific deposit and usable-cash controls remain available without a 
   assert.doesNotMatch(html, /role="switch"|id="scenario-scenarioTaxRate"/);
 });
 
+test("stale connected settings retain visible bank and insurer balance results", () => {
+  for (const lens of ["banking", "insurance"]) {
+    const input = props({ scenarioCashMode: "connected", scenarioFunding: 10, scenarioLoss: 5 }, {}, company(lens));
+    const html = render(input);
+    assert.match(html, /Independent exercises/);
+    assert.match(html, /Balance-sheet results/);
+    assert.match(html, /Inspect hypothetical shareholder equity/);
+    assert.match(html, /id="scenario-scenarioLoss"/);
+    assert.doesNotMatch(html, /Earnings → cash → financial strength|role="switch"|id="scenario-scenarioTaxRate"|Operating cash flow/);
+    if (lens === "banking") {
+      assert.match(html, /Cash after withdrawals/);
+      assert.equal(input.scenario.balance.rows.find((row) => row.key === "Cash").selection.point.value, 60);
+    } else {
+      assert.match(html, /Total assets/);
+      assert.equal(input.scenario.balance.rows.find((row) => row.key === "Assets").selection.point.value, 760);
+    }
+  }
+});
+
 test("source inspection receives the original calculated point and errors reveal their assumption group", () => {
   let inspected;
   const input = props({ scenarioCashMode: "connected" }, { errors: { scenarioWorkingCapital: "Enter a complete number." }, onInspect: selection => { inspected = selection; } });

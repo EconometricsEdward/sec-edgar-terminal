@@ -179,6 +179,21 @@ test("separate loss is excluded, bank models remain independent, and repayment i
   assert.equal(output.metrics.debt, 250);
 });
 
+test("stale connected settings fall back to independent bank and insurer balances without corporate earnings", () => {
+  for (const lens of ["banking", "insurance"]) {
+    const data = { ...company(), lens };
+    const independent = buildAnalysisScenario(data, { scenarioLoss: 10 }, 0);
+    const stale = buildAnalysisScenario(data, { scenarioCashMode: "connected", scenarioLoss: 10, scenarioRevenue: -20, scenarioBorrowing: 50 }, 0);
+    assert.equal(stale.connected.enabled, false);
+    assert.match(stale.connected.reason, /independent balance exercise remains active/);
+    assert.equal(stale.operating, null);
+    assert.deepEqual(stale.connected.rows, []);
+    assert.deepEqual(stale.connected.metrics, {});
+    assert.deepEqual(stale.balance.rows.map((item) => [item.key, item.selection.point.value]), independent.balance.rows.map((item) => [item.key, item.selection.point.value]));
+    assert.equal(stale.balance.rows.find((item) => item.key === "Equity").selection.point.value, 220);
+  }
+});
+
 test("connected settings normalize safely and strict drafts retain invalid entries as errors", () => {
   assert.equal(SCENARIO_DEFAULTS.scenarioCashMode, "independent");
   assert.equal(normalizeScenarioSettings({ scenarioTaxRate: Infinity }).scenarioTaxRate, 25);

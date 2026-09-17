@@ -9,9 +9,8 @@ import styles from "./AnalysisScenarioBaselineReview.module.css";
 
 export default function AnalysisScenarioBaselineReview({
   data, settings, index, scenario, cases: storedCases = [], onSaveCases,
-  onPatch, onInspect, draftsPending = false, ready = false,
+  onPatch, onRefreshLatest, onInspect, draftsPending = false, ready = false,
 }: any) {
-  const [selectedId, setSelectedId] = useState(settings.scenarioCase || "");
   const [metric, setMetric] = useState("operating:OperatingIncome");
   const [message, setMessage] = useState("");
   const [removeId, setRemoveId] = useState("");
@@ -21,7 +20,7 @@ export default function AnalysisScenarioBaselineReview({
       return { cases: storedCases.filter((entry: any) => entry.context.ticker === data.ticker), error: "" };
     } catch (error: any) { return { cases: [], error: error.message }; }
   }, [storedCases, data.ticker]);
-  const reference = storage.cases.find((entry: any) => entry.id === selectedId) || storage.cases.at(-1);
+  const reference = storage.cases.find((entry: any) => entry.id === settings.scenarioCase) || storage.cases.at(-1);
   const comparison = useMemo(() => reference ? buildScenarioRebase({ reference, data, settings, index, scenario }) : null,
     [reference, data, settings, index, scenario]);
   const row = comparison?.rows.find((item: any) => item.key === metric) || comparison?.rows[0];
@@ -30,7 +29,7 @@ export default function AnalysisScenarioBaselineReview({
   const period = data.periods?.[index];
   const saveBlocked = !ready || draftsPending || Boolean(storage.error) || storedCases.length >= SCENARIO_CASE_LIMIT;
   function keep(updated = false) {
-    if (saveBlocked || (updated && !comparison?.compatible)) return;
+    if (saveBlocked || (updated && !comparison?.recalculable)) return;
     try {
       const entry = createScenarioCase({
         data, index,
@@ -47,7 +46,7 @@ export default function AnalysisScenarioBaselineReview({
         setMessage(outcome?.ok ? "Browser storage could not save this baseline. Existing references are preserved." : outcome?.reason || "The baseline could not be saved.");
         return;
       }
-      if (!updated) setSelectedId(entry.id);
+      onPatch({ scenarioCase: updated ? reference.id : entry.id });
       setMessage(updated ? "Updated inputs with the original assumptions saved as a separate reference. The original is unchanged." : "Baseline, assumptions, and source evidence saved in this browser.");
     } catch (error: any) { setMessage(error.message); }
   }
@@ -60,7 +59,10 @@ export default function AnalysisScenarioBaselineReview({
         return outcome.cases;
       });
       setMessage(outcome?.ok && saved ? "Selected reference removed. Other baselines and the current assumptions are unchanged." : outcome?.reason || "The reference could not be removed.");
-      if (outcome?.ok && saved) { setRemoveId(""); setSelectedId(""); }
+      if (outcome?.ok && saved) {
+        setRemoveId("");
+        onPatch({ scenarioCase: outcome.cases.filter((entry: any) => entry.context.ticker === data.ticker).at(-1)?.id || "" });
+      }
     } catch (error: any) { setMessage(error.message); }
   }
   const inspectValue = (amount: any, selection: any, label: string, format: string) => selection ? (
@@ -74,14 +76,14 @@ export default function AnalysisScenarioBaselineReview({
       <p className={styles.intro}>Keep a dated reference, then see what changed in the reported inputs and what changed in your assumptions. Every saved reference retains its original evidence.</p>
       <div className={styles.controls}>
         {reference && <label className={styles.reference}>Saved reference
-          <select value={reference.id} onChange={(event) => { setSelectedId(event.target.value); setRemoveId(""); }}>
+          <select value={reference.id} onChange={(event) => { onPatch({ scenarioCase: event.target.value }); setRemoveId(""); }}>
             {storage.cases.map((entry: any) => <option key={entry.id} value={entry.id}>{entry.name} · saved {entry.createdAt.slice(0, 10)} {entry.createdAt.slice(11, 19)} UTC</option>)}
           </select>
         </label>}
         <div className={styles.actions}>
           <button type="button" onClick={() => keep()} disabled={saveBlocked}><BookmarkPlus size={14} aria-hidden="true" /> Keep current baseline</button>
           <button type="button" disabled={draftsPending} onClick={() => {
-            if (onPatch({ end: "latest", asOf: "" }) !== false) setMessage("Latest available filings selected. Your saved reference is preserved; the comparison updates when the selected data arrives.");
+            if (onRefreshLatest(reference?.id || "") !== false) setMessage("Requesting the latest available financial data. Your saved reference is preserved.");
           }}><RefreshCw size={14} aria-hidden="true" /> Use latest filings</button>
         </div>
       </div>
@@ -90,6 +92,17 @@ export default function AnalysisScenarioBaselineReview({
       {storage.error && <p className={styles.notice} role="alert">{storage.error} Existing stored records have not been changed.</p>}
       {!reference && !storage.error && <div className={styles.empty}><BookmarkPlus size={22} aria-hidden="true" /><p>Keep this baseline before the next filing.<span>You can return to the original figures and assumptions when new SEC data arrives.</span></p></div>}
       {comparison && !comparison.compatible && <p className={styles.notice}>{comparison.reason}</p>}
+      {comparison?.recalculable && !comparison.compatible && <>
+        <p className={styles.note}>{comparison.note}</p>
+        <details className={styles.allResults}>
+          <summary>Recalculated outcomes &amp; source evidence · {period.end}</summary>
+          <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Recalculated baseline outcomes">
+            <table><caption>Original assumptions applied to {period.end}. These results are not a numerical comparison with the saved reporting period.</caption><thead><tr><th scope="col">Outcome</th><th scope="col">Recalculated result</th></tr></thead><tbody>
+              {comparison.updatedRows?.map((item: any) => <tr key={item.key}><th scope="row">{item.label}</th><td>{inspectValue(item.value, item.selection, `${item.label}, updated reporting period and original assumptions`, item.format)}</td></tr>)}
+            </tbody></table>
+          </div>
+        </details>
+      </>}
       {comparison?.compatible && <>
         <div className={styles.comparisonHeading}>
           <div><span className={styles.eyebrow}>{comparison.status}</span><p>{reference.context.period.end} <ArrowRight size={12} aria-hidden="true" /> {period.end}<span> · {settings.basis}</span></p></div>
@@ -117,8 +130,8 @@ export default function AnalysisScenarioBaselineReview({
             </tbody></table>
           </div>
         </details>
-        <div className={styles.footer}><p>Original observed {reference.context.observedAt?.slice(0, 10) || "date unavailable"} · current observed {data.observedAt?.slice(0, 10) || "date unavailable"}. Saved only in this browser.</p><button type="button" disabled={saveBlocked} onClick={() => keep(true)} title="Save current reported inputs with the original reference assumptions as a new reference"><BookmarkPlus size={14} aria-hidden="true" /> Keep updated baseline</button></div>
       </>}
+      {comparison?.recalculable && <div className={styles.footer}><p>Original observed {reference.context.observedAt?.slice(0, 10) || "date unavailable"} · current observed {data.observedAt?.slice(0, 10) || "date unavailable"}. Saved only in this browser.</p><button type="button" disabled={saveBlocked} onClick={() => keep(true)} title="Save current reported inputs with the original reference assumptions as a new reference"><BookmarkPlus size={14} aria-hidden="true" /> Keep updated baseline</button></div>}
       {reference && <div className={styles.actions}>{removeId === reference.id ? <><span className={styles.note}>Remove this saved reference and its retained evidence?</span><button type="button" disabled={!ready} onClick={removeReference}>Remove reference</button><button type="button" onClick={() => setRemoveId("")}>Keep reference</button></> : <button type="button" disabled={!ready || Boolean(storage.error)} onClick={() => setRemoveId(reference.id)}>Remove selected reference…</button>}</div>}
       {message && <p className={styles.status} role="status">{message}</p>}
     </div>

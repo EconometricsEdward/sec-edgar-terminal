@@ -97,6 +97,74 @@ test("52/53-week annual windows remain comparable while different quarter season
   assert.equal(compare(reference, company(q1)).compatible, true);
 });
 
+test("Sequential quarters can keep a separate updated baseline without attributing seasonal changes", () => {
+  const quarter = { start: "2025-01-01", end: "2025-03-31", kind: "quarter", fp: "Q1" };
+  const reference = save(company(quarter), { scenarioCashMode: "connected", scenarioWorkingCapital: 2 });
+  const original = structuredClone(reference);
+  const nextQuarter = { start: "2025-04-01", end: "2025-06-30", kind: "quarter", fp: "Q2" };
+  const data = company(nextQuarter, { revenue: 1200, operatingIncome: 180, cash: 400 });
+  const result = compare(reference, data, { scenarioRevenue: 20, scenarioWorkingCapital: 10 });
+  assert.equal(result.compatible, false);
+  assert.equal(result.recalculable, true);
+  assert.match(result.reason, /not seasonally comparable/);
+  assert.deepEqual(result.rows, []);
+  const cash = result.updatedRows.find((row) => row.key === "connected:Cash");
+  near(cash.value, 358);
+  assert.equal(cash.selection.analysisSettings.end, nextQuarter.end);
+  assert.equal(cash.selection.analysisSettings.scenarioRevenue, -10);
+  assert.equal(cash.selection.analysisSettings.scenarioWorkingCapital, 2);
+  assert.ok(result.updatedRows.every((row) => !Object.hasOwn(row, "dataChange") && !Object.hasOwn(row, "assumptionChange")));
+  const updated = createScenarioCase({ data, settings: result.rebasedSettings, scenario: result.rebasedScenario, index: 0, name: "Second-quarter baseline", id: "updated" });
+  const saved = updateScenarioCases([reference], { type: "add", id: updated.id, entry: updated });
+  assert.equal(saved.ok, true);
+  assert.equal(saved.cases.length, 2);
+  assert.deepEqual(saved.cases[0], original);
+  assert.equal(saved.cases[1].context.period.end, nextQuarter.end);
+  assert.equal(saved.cases[1].settings.scenarioRevenue, -10);
+});
+
+test("Longer year-to-date windows recalculate retained assumptions without comparing durations", () => {
+  const firstQuarter = { start: "2025-01-01", end: "2025-03-31", kind: "ytd", fp: "Q1" };
+  const reference = save(company(firstQuarter), { scenarioModel: "cost", scenarioVariableCost: 70, scenarioCostChange: 5 });
+  const secondQuarter = { start: "2025-01-01", end: "2025-06-30", kind: "ytd", fp: "Q2" };
+  const data = company(secondQuarter, { revenue: 2100, operatingIncome: 300 });
+  const result = compare(reference, data, { scenarioVariableCost: 20, scenarioCostChange: 0 });
+  assert.equal(result.compatible, false);
+  assert.equal(result.recalculable, true);
+  assert.match(result.reason, /durations differ/);
+  assert.deepEqual(result.rows, []);
+  assert.equal(result.rebasedSettings.scenarioVariableCost, 70);
+  assert.equal(result.rebasedSettings.scenarioCostChange, 5);
+  near(result.updatedRows.find((row) => row.key === "operating:OperatingIncome").value, 132.3);
+  const updated = createScenarioCase({ data, settings: result.rebasedSettings, scenario: result.rebasedScenario, index: 0, name: "Half-year baseline", id: "updated" });
+  assert.equal(updated.context.basis, "ytd");
+  assert.equal(updated.context.period.end, secondQuarter.end);
+});
+
+test("Recalculation eligibility preserves identity, model, period validity and filing chronology safeguards", () => {
+  const period = { start: "2025-01-01", end: "2025-03-31", kind: "ytd", fp: "Q1" };
+  const reference = save(company(period));
+  const nextPeriod = { start: "2025-01-01", end: "2025-06-30", kind: "ytd", fp: "Q2" };
+  for (const data of [
+    { ...company(nextPeriod), ticker: "OTHER" },
+    { ...company(nextPeriod), cik: "2" },
+    { ...company(nextPeriod), lens: "banking" },
+    { ...company(nextPeriod), version: "different-model" },
+    { ...company(nextPeriod), basis: "quarter" },
+    { ...company(nextPeriod), asOf: "2025-12-31" },
+    company({ ...nextPeriod, start: null }),
+    company({ ...nextPeriod, start: "2025-07-01" }),
+    company({ ...period, start: "2025-01-02" }),
+    company({ ...period, start: "2024-01-01", end: "2024-03-31" }),
+  ]) {
+    const result = compare(reference, data);
+    assert.equal(result.compatible, false);
+    assert.equal(result.recalculable, false);
+    assert.equal(result.rebasedScenario, undefined);
+    assert.deepEqual(result.rows, []);
+  }
+});
+
 test("Missing or changed concepts, unit, scope and filing dates are never zero-filled", () => {
   const reference = save();
   for (const patch of [{ tag: "RevenueFromContractWithCustomerExcludingAssessedTax" }, { scope: "subsidiary" }]) {
