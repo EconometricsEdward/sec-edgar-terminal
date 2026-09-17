@@ -269,3 +269,23 @@ test("CSV keeps source identity, raw filing passages, coverage and allocation in
   assert.equal(records.filter((row) => row.record_type === "coverage" && row.scan_status === "unchecked").length, 2);
   assert.match(records.find((row) => row.record_type === "methodology").company, /not market exposure/i);
 });
+
+test("comparison export retains zero values, observed ranges and distinct SEC/CFTC dates", () => {
+  const report = portfolio();
+  const issuer = marketConnectionIssuers(report).find(item => item.ticker === 'A');
+  const model = modelFor(report, [resultFor(issuer)]);
+  const key = model.allMarkets[0].key;
+  const summary = { reportDate: '2026-09-08', netPctOi: 0, weeklyChangePp: 0, priorDate: '2026-09-01',
+    range: { min: -20, max: 30, position: 40 }, observationCount: 50, historyStart: '2025-09-16', historyEnd: '2026-09-08',
+    stale: false, incomplete: true, sourceUrl: 'https://publicreporting.cftc.gov/resource/gpe5-46if.json' };
+  const [headers, ...rows] = marketConnectionCsvRows(model, { [key]: { status: 'ready', summary } });
+  const connection = Object.fromEntries(headers.map((header, i) => [header, rows.find(row => row[0] === 'connection')[i]]));
+  assert.equal(connection.cftc_net_pct_open_interest, 0);
+  assert.equal(connection.cftc_weekly_change_pp, 0);
+  assert.equal(connection.cftc_stale, false);
+  assert.equal(connection.cftc_incomplete, true);
+  assert.equal(connection.cftc_report_date, '2026-09-08');
+  assert.equal(connection.report_date, evidenceFor(issuer).reportDate);
+  assert.equal(connection.cftc_position_in_range_pct, 40);
+  assert.ok(rows.every(row => row.length === headers.length));
+});

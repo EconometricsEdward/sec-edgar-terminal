@@ -4,6 +4,22 @@
   color: var(--text-primary, #e8edf5);
   min-width: 0;
 }
+.detail, .comparisonAnchor {
+  scroll-margin-top: 1.25rem;
+}
+.detail:focus-visible {
+  outline: 2px solid #f5ca60;
+  outline-offset: 5px;
+}
+.root .backToComparison {
+  width: fit-content;
+  border: 0;
+  padding: 0.35rem 0;
+  background: transparent;
+  color: var(--text-secondary, #a6b2c3);
+  font-size: 0.73rem;
+}
+.root .backToComparison:hover { text-decoration: underline; }
 .header {
   display: flex;
   justify-content: space-between;

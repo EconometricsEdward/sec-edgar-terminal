@@ -222,7 +222,7 @@ export function buildPortfolioMarketConnections(
   };
 }
 
-export function marketConnectionCsvRows(model) {
+export function marketConnectionCsvRows(model, comparisons = {}) {
   const headers = [
     "record_type",
     "ticker",
@@ -310,5 +310,16 @@ export function marketConnectionCsvRows(model) {
     "",
     model.coverage.eligible,
   ]);
-  return rows;
+  const comparisonHeaders = ['cftc_status', 'cftc_report_date', 'cftc_net_pct_open_interest', 'cftc_weekly_change_pp',
+    'cftc_prior_report_date', 'cftc_range_min_pct', 'cftc_range_max_pct', 'cftc_position_in_range_pct',
+    'cftc_observation_count', 'cftc_history_start', 'cftc_history_end', 'cftc_stale', 'cftc_incomplete', 'cftc_source'];
+  return [headers.concat(comparisonHeaders), ...rows.slice(1).map(row => {
+    const entry = row[0] === 'connection' ? comparisons[`${row[6]}:${row[7]}:${row[9]}`] : null;
+    const summary = entry?.status === 'ready' ? entry.summary : null;
+    const values = row[0] !== 'connection' ? [] : [entry?.status || 'not_loaded', summary?.reportDate,
+      summary?.netPctOi, summary?.weeklyChangePp, summary?.priorDate, summary?.range?.min,
+      summary?.range?.max, summary?.range?.position, summary?.observationCount, summary?.historyStart,
+      summary?.historyEnd, summary?.stale, summary?.incomplete, summary?.sourceUrl];
+    return headers.map((_, index) => row[index] ?? '').concat(comparisonHeaders.map((_, index) => values[index] ?? ''));
+  })];
 }

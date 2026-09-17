@@ -1,4 +1,5 @@
 import { loadCompanyCftcContext, isCompanyCftcCachedContext } from "./companyCftcServer.js";
+import { readPreparedPortfolioMarketConnections, PORTFOLIO_PREPARATION_POLICY } from "./portfolioCftcPreparation.js";
 
 export const PORTFOLIO_MARKET_CONNECTIONS_VERSION = "edgar.portfolio-market-connections.v1";
 export const PORTFOLIO_MARKET_CONNECTIONS_BATCH = 12;
@@ -105,7 +106,7 @@ function verifiedContext(context, company, now) {
 
 /** Unfiltered SEC discovery: no CFTC movement threshold or market-history dependency. */
 export async function buildPortfolioMarketConnections(input, {
-  loadContext = loadCompanyCftcContext, signal, now = new Date(),
+  loadContext = loadCompanyCftcContext, loadPrepared = readPreparedPortfolioMarketConnections, signal, now = new Date(),
   deadlineMs = PORTFOLIO_MARKET_CONNECTIONS_DEADLINE_MS,
 } = {}) {
   const { companies } = parsePortfolioMarketConnections(input);
@@ -118,10 +119,40 @@ export async function buildPortfolioMarketConnections(input, {
   const timer = setTimeout(() => controller.abort(new Error("Discovery deadline reached.")), deadlineMs);
   const interruptedCode = () => signal?.aborted ? "DISCOVERY_CANCELLED" : "DISCOVERY_TIMEOUT";
   const results = companies.map(company => unavailable(company, interruptedCode()));
+  const prepared = new Map();
+  // A missed or slow optional snapshot must leave most of the batch budget for
+  // ordinary discovery. The same deadline also bounds injected/cache loaders.
+  if (!deadline.aborted) {
+    const lookupController = new AbortController();
+    const lookupSignal = AbortSignal.any([deadline, lookupController.signal]);
+    const lookupTimer = setTimeout(() => lookupController.abort(new Error("Prepared connection lookup deadline reached.")), Math.min(4000, deadlineMs / 4));
+    try {
+      const saved = await withinDeadline(Promise.resolve().then(() => loadPrepared(companies, { signal: lookupSignal })), lookupSignal);
+      if (Array.isArray(saved)) for (const company of companies) {
+        const matches = saved.filter(entry => entry?.ticker === company.ticker && entry?.cik === company.cik);
+        if (matches.length !== 1) continue;
+        const entry = matches[0], current = nowMs + Date.now() - startedAt;
+        const checked = Date.parse(entry.checkedAt), published = Date.parse(entry.preparation?.checkedAt), next = Date.parse(entry.preparation?.nextCheckAt);
+        if (entry.status !== entry.context?.status || verifiedContext(entry.context, company, current)
+          || !Number.isFinite(checked) || checked > current || Date.parse(entry.context.generatedAt) > checked
+          || current - checked >= PORTFOLIO_PREPARATION_POLICY.contextRetentionSeconds * 1000
+          || !Number.isFinite(published) || published > current || checked > published
+          || current - published >= PORTFOLIO_PREPARATION_POLICY.snapshotRetentionSeconds * 1000
+          || next !== published + PORTFOLIO_PREPARATION_POLICY.resultCheckMs) continue;
+        prepared.set(company.cik, { ...company, status: entry.context.status, context: entry.context,
+          checkedAt: entry.checkedAt, preparation: {
+            status: current < next && current - checked < PORTFOLIO_PREPARATION_POLICY.sourceCheckMs ? "ready" : "stale",
+            checkedAt: entry.preparation.checkedAt, nextCheckAt: entry.preparation.nextCheckAt,
+          } });
+      }
+    } catch { /* A cache miss or invalid snapshot uses the normal verified loader. */ }
+    finally { clearTimeout(lookupTimer); }
+  }
   let cursor = 0;
   const workers = Array.from({ length: Math.min(PORTFOLIO_MARKET_CONNECTIONS_CONCURRENCY, companies.length) }, async () => {
     while (cursor < companies.length && !deadline.aborted) {
       const index = cursor++, company = companies[index];
+      if (prepared.has(company.cik)) { results[index] = prepared.get(company.cik); continue; }
       try {
         const context = await withinDeadline(Promise.resolve().then(() => loadContext({ ticker: company.ticker }, { signal: deadline })), deadline);
         if (deadline.aborted) { results[index] = unavailable(company, interruptedCode()); continue; }

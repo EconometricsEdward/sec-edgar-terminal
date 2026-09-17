@@ -327,6 +327,34 @@
         }
       }
     },
+    "/api/v1/cftc/market-comparison": {
+      "get": {
+        "tags": ["CFTC positioning"],
+        "summary": "Compare prepared CFTC positioning across 25 public futures markets",
+        "description": "Parameter-free, shared public comparison built only from existing prepared histories. Never starts SEC or CFTC acquisition and contains no portfolio holdings or allocations. TFF markets use Leveraged Funds; Disaggregated markets use Managed Money. Net/OI changes require exact seven-day observations and are percentage-point differences. Historical ranges use available observations within the trailing 52-week window, including current; range.position is linear min/max placement, NOT a percentile. Preserve per-market report dates, actual observation counts and date spans, nulls, stale and incomplete flags. A ready row can contain stale, incomplete or unavailable individual values; inspect its summary. HTTP 200 may contain partial or entirely unavailable prepared coverage. All query parameters are rejected.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Fixed public catalog with validated summaries or explicit unavailable rows; preparation of all markets is not guaranteed",
+            "headers": {
+              "X-Schema-Version": { "$ref": "#/components/headers/SchemaVersion" },
+              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimit" },
+              "RateLimit-Remaining": { "$ref": "#/components/headers/RateRemaining" },
+              "RateLimit-Reset": { "$ref": "#/components/headers/RateReset" },
+              "Link": { "$ref": "#/components/headers/SchemaLink" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "https://secedgarterminal.com/schemas/portfolio-market-comparison-v1.schema.json" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
     "/api/v1/cftc/status": {
       "get": {
         "tags": ["CFTC positioning"],

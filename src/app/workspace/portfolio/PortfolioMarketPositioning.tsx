@@ -7,10 +7,11 @@ import {
   fetchPreparedCftc,
 } from "../../../utils/cftcClient.js";
 import { scenarioMarketHistory } from "../../../utils/portfolioScenarioMarket.js";
+import { marketComparisonHistoryPath } from "../../../utils/portfolioMarketComparison.js";
 import { cftcConcentrationMatchesHistory } from "../../../utils/cftcConcentration.js";
 import s from "./PortfolioMarketPositioning.module.css";
 
-type Props = { market: any; active: boolean };
+type Props = { market: any; active: boolean; reportDate?: string | null };
 type RequestState = {
   path: string;
   status: "loading" | "ready" | "error";
@@ -27,25 +28,21 @@ const numeric = (value: unknown, digits = 1, suffix = "", signed = false) =>
     : "Unavailable";
 
 /** Mount only the selected, visible market; shared prepared requests stay cached. */
-export default function PortfolioMarketPositioning({ market, active }: Props) {
-  if (!active || !market) return null;
+export default function PortfolioMarketPositioning({ market, active, reportDate }: Props) {
+  const path = marketComparisonHistoryPath(market, reportDate || "latest");
+  if (!active || !market || !path) return null;
   return (
     <MarketPositioning
-      key={`${market.family}:${market.contract}:${market.group}`}
+      key={path}
       candidate={market}
+      path={path}
+      reportDate={reportDate || "latest"}
     />
   );
 }
 
-function MarketPositioning({ candidate }: { candidate: any }) {
+function MarketPositioning({ candidate, path, reportDate }: { candidate: any; path: string; reportDate: string }) {
   const id = useId();
-  const path = `/api/v1/cftc/history?${new URLSearchParams({
-    family: candidate.family,
-    contract: candidate.contract,
-    group: candidate.group,
-    window: "1y",
-    date: "latest",
-  })}`;
   const [request, setRequest] = useState<RequestState>({
     path,
     status: "loading",
@@ -72,8 +69,8 @@ function MarketPositioning({ candidate }: { candidate: any }) {
 
   const raw = request.path === path ? request.data : null;
   const positioning: any = useMemo(
-    () => (raw ? scenarioMarketHistory(raw, candidate) : null),
-    [raw, candidate],
+    () => (raw && (reportDate === "latest" || raw.selected?.reportDate === reportDate) ? scenarioMarketHistory(raw, candidate) : null),
+    [raw, candidate, reportDate],
   );
   const pending = request.path !== path || request.status === "loading";
   const unavailable = request.status === "error";

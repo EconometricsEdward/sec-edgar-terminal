@@ -26,7 +26,11 @@ function context(issuer = company(), status = "ready") {
   };
 }
 const build = (input = { companies: [company()] }, dependencies = {}) => buildPortfolioMarketConnections(input, {
-  now, loadContext: async ({ ticker }) => context(companies.find(item => item.ticker === ticker)), ...dependencies,
+  now, loadPrepared: async () => null, loadContext: async ({ ticker }) => context(companies.find(item => item.ticker === ticker)), ...dependencies,
+});
+const prepared = (issuer = company()) => ({
+  ...issuer, status: "ready", context: context(issuer), checkedAt: now.toISOString(),
+  preparation: { status: "ready", checkedAt: now.toISOString(), nextCheckAt: new Date(now.getTime() + 6 * 3600_000).toISOString() },
 });
 const request = (body, headers = {}, suffix = "") => new Request(`https://example.test/api/v1/cftc/portfolio-connections${suffix}`, {
   method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": `connections-test-${request.counter++}`, ...headers },
@@ -56,6 +60,64 @@ test("only three company loaders are active and requests contain only public tic
   assert.equal(maximum, PORTFOLIO_MARKET_CONNECTIONS_CONCURRENCY);
   assert.equal(calls.length, 12); assert.equal(result.results.length, 12);
   assert.ok(calls.every(item => Object.keys(item).join() === "ticker"));
+});
+
+test("one prepared read serves all matching companies and discovers only the custom remainder", async () => {
+  let reads = 0;
+  const discoveries = [];
+  const result = await build({ companies }, {
+    loadPrepared: async (requested, options) => {
+      reads++; assert.deepEqual(requested, companies); assert.ok(options.signal instanceof AbortSignal);
+      return companies.slice(0, 11).map(prepared);
+    },
+    loadContext: async ({ ticker }) => { discoveries.push(ticker); return context(companies[11]); },
+  });
+  assert.equal(reads, 1); assert.deepEqual(discoveries, ["C12"]);
+  assert.equal(result.results.length, 12); assert.ok(result.results.every(item => item.status === "ready"));
+  assert.deepEqual(result.results[0], prepared());
+  assert.ok(!result.results[11].preparation);
+});
+
+test("prepared reads keep original source dates and flag stale preparation without another SEC scan", async () => {
+  const value = prepared(), original = new Date(now.getTime() - 2 * 86400_000).toISOString();
+  value.context.generatedAt = original; value.checkedAt = original;
+  value.preparation.checkedAt = original;
+  value.preparation.nextCheckAt = new Date(Date.parse(original) + 6 * 3600_000).toISOString();
+  const result = await build(undefined, {
+    loadPrepared: async () => [value], loadContext: async () => assert.fail("Prepared source evidence must be reused."),
+  });
+  assert.equal(result.results[0].checkedAt, original);
+  assert.equal(result.results[0].context.generatedAt, original);
+  assert.equal(result.results[0].preparation.status, "stale");
+});
+
+test("unverified, expired, duplicated or malformed prepared entries fall back to source discovery", async () => {
+  for (const mutate of [
+    value => { value.context.cik = company(2).cik; },
+    value => { value.context.links[0].evidence[0].text = "Short"; },
+    value => { value.checkedAt = "invalid"; },
+    value => { value.checkedAt = "2026-09-15T00:00:00Z"; },
+    value => { value.context.generatedAt = value.checkedAt = "2026-08-30T00:00:00Z"; },
+    value => { value.preparation.checkedAt = "2026-08-01T00:00:00Z"; },
+    value => { value.preparation.nextCheckAt = "2026-09-15T00:00:00Z"; },
+    value => { value.status = "unavailable"; },
+  ]) {
+    const value = prepared(); mutate(value); let calls = 0;
+    const result = await build(undefined, { loadPrepared: async () => [value], loadContext: async () => { calls++; return context(); } });
+    assert.equal(calls, 1); assert.equal(result.results[0].status, "ready"); assert.ok(!result.results[0].preparation);
+  }
+  let calls = 0;
+  await build(undefined, { loadPrepared: async () => [prepared(), prepared()], loadContext: async () => { calls++; return context(); } });
+  assert.equal(calls, 1);
+});
+
+test("a failed or stalled prepared lookup leaves time for ordinary verified discovery", async () => {
+  for (const loadPrepared of [async () => { throw new Error("private cache failure"); }, () => new Promise(() => {})]) {
+    const started = Date.now(); let calls = 0;
+    const result = await build(undefined, { deadlineMs: 200, loadPrepared, loadContext: async () => { calls++; return context(); } });
+    assert.ok(Date.now() - started < 500); assert.equal(calls, 1);
+    assert.equal(result.results[0].status, "ready"); assert.doesNotMatch(JSON.stringify(result), /private cache failure/);
+  }
 });
 
 test("no matches and no filing retain distinct successful statuses rather than unavailable", async () => {
