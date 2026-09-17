@@ -116,7 +116,7 @@ export default function PortfolioRatioAtlas({ catalogReport, profile, requestedM
             </tbody>
           </table>
         </div>
-        <footer className={s.mapFooter}><span id={`${id}-keyboard-help`}><MoveHorizontal size={14} aria-hidden="true" /> All {atlas.companyCount} companies · use arrow keys within the map</span><button type="button" onClick={() => { detailRef.current?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); detailRef.current?.focus({ preventScroll: true }); }}>Inspect {company.ticker || "selected company"} · {metric.label}<ArrowDown size={14} aria-hidden="true" /></button></footer>
+        <footer className={s.mapFooter}><span id={`${id}-keyboard-help`}><MoveHorizontal size={14} aria-hidden="true" /> All {atlas.companyCount} companies · use arrow keys within the map</span><button type="button" onClick={() => { detailRef.current?.scrollIntoView({ block: "start", behavior: "auto" }); detailRef.current?.focus({ preventScroll: true }); }}>Inspect {company.ticker || "selected company"} · {metric.label}<ArrowDown size={14} aria-hidden="true" /></button></footer>
       </section>
 
       <section className={s.detail} aria-labelledby={`${id}-detail-title`} ref={detailRef} tabIndex={-1}>
