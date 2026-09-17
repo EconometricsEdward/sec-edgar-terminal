@@ -175,7 +175,7 @@ export default function CompanySearch({ compact = false }: { compact?: boolean }
       <p id={statusId} role="status" aria-live="polite" className={showMatches && !error ? searchStyles.srOnly : searchStyles.status}>
         {statusMessage}
       </p>
-      {expanded && status === "error" && context && (
+      {status === "error" && context && (
         <button type="button" className={searchStyles.retry} onClick={() => {
           setError("");
           setPendingQuery(null);
