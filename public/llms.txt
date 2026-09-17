@@ -2,6 +2,12 @@
 
 EDGAR Terminal is a free, source-linked research application for SEC filings, company fundamentals, reported fund holdings and official CFTC Commitments of Traders positioning. It is an educational research tool, not investment advice.
 
+## Start here
+
+- [Home](https://secedgarterminal.com/): public research directory linking company financial analysis, filings, Portfolio, Market Briefing, Funds and institutional managers, and disclosure research. The main directory and source explanations are available in server-rendered HTML; no account is required.
+- Prefer a company, fund or manager's canonical research brief for a specific reported fact. The home page is a navigation and product overview, not a live dataset or a source for current company figures.
+- Use [About & methodology](https://secedgarterminal.com/about) and the [Research guide](https://secedgarterminal.com/help) for scope and interpretation. Company financials and fund holdings originate in SEC records; futures positioning originates in separately labeled CFTC reports.
+
 ## Main research surfaces
 
 - [Financial Analysis](https://secedgarterminal.com/analysis): full SEC company search and a small sector sampler, with server-rendered financial highlights at `/analysis/{ticker}`. Six business-specific metrics include current and comparable prior values, reporting periods, explicit units, calculated-versus-reported labels and original SEC sources. The interactive workspace provides full statements, evidence and scenarios.
@@ -13,6 +19,7 @@ EDGAR Terminal is a free, source-linked research application for SEC filings, co
 - [Portfolio](https://secedgarterminal.com/workspace): upload a custom portfolio or explore the demo through Summary, Holdings, Financials, Concentration & Exposure, and What Changed. Shared markets compares SEC filing connections with separately sourced CFTC positioning; linked-company allocation is not measured market exposure.
 - [Demo: What changed](https://secedgarterminal.com/workspace/demo/changes): server-rendered, dated SEC-linked CFTC market changes for the same 100-company demo universe used throughout the portfolio demo. Includes company checks, incomplete/stale coverage and original-source links; candidate market connections are not measured issuer exposures. Prepared results may not yet be available.
 - [Funds & institutional managers](https://secedgarterminal.com/fund): links to server-rendered, source-dated fund and manager research briefs. Fund reports use `/fund/{ticker}` (optional `?accession=`); manager reports use `/fund/manager/{CIK}` (optional `?period=YYYY-MM-DD`). Briefs show prepared holdings, reporting coverage and freshness without requiring JavaScript. The interactive workspaces provide full holdings, comparisons and research tools.
+- [13F manager workspace](https://secedgarterminal.com/fund?view=13f): explore institutional managers' reported positions, portfolio history, concentration, quarterly changes and manager comparisons. For source-backed citations, prefer the canonical `/fund/manager/{CIK}` brief and its original SEC filing links; 13F holdings are delayed public reports, not live positions or complete manager assets.
 - Prepared fund and manager briefs include Dataset structured metadata and an `application/json` alternate link to the same bounded summary. Prefer the canonical brief URL when citing research; cite its original SEC filing for filing facts. Preserve the reporting period and stale status. The directory lists available research routes, not a guarantee that every route has prepared coverage.
 - [Filings](https://secedgarterminal.com/filings), [Analysis](https://secedgarterminal.com/analysis), [Risk](https://secedgarterminal.com/risk), [Compare](https://secedgarterminal.com/compare), [Funds](https://secedgarterminal.com/fund), and [Disclosures](https://secedgarterminal.com/disclosures).
 
