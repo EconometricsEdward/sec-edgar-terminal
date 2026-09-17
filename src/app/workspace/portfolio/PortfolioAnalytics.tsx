@@ -200,12 +200,6 @@ export default function PortfolioAnalytics({
   onOpenHoldings,
   analyticsArea,
   onAreaChange,
-  onDisclosure,
-  reportingBasis,
-  onReportingBasisChange,
-  reportingLoading = false,
-  reportingProgress,
-  onCancelReporting,
 }: Props) {
   const titleId = useId();
   const coverageSelectionId = useId();
@@ -831,16 +825,9 @@ export default function PortfolioAnalytics({
             companies={companies}
             capturedAt={capturedAt}
             onInspectCompany={onInspectCompany}
-            onDisclosure={onDisclosure}
+            onOpenHoldings={onOpenHoldings}
             financialRequest={financialRequest}
-            initialView={analyticsArea === "metrics" ? "measures" : undefined}
-            reportingBasis={reportingBasis}
-            onReportingBasisChange={onReportingBasisChange}
-            reportingLoading={reportingLoading}
-            reportingProgress={reportingProgress}
-            onCancelReporting={onCancelReporting}
-            onRefresh={onRefresh}
-            refreshing={refreshing}
+            initialView={analyticsArea === "metrics" ? "ratios" : undefined}
           />
         </div>
       )}
