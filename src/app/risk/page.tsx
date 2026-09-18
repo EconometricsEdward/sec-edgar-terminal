@@ -23,11 +23,12 @@ export default async function RiskPage({ searchParams }: { searchParams: SearchP
   const query = new URLSearchParams(Object.entries(params).flatMap(([key, value]) => Array.isArray(value) ? value.map(item => [key, item]) : value == null ? [] : [[key, value]])).toString();
   const cftcEnabled = isCftcEnabled();
   const location = parseRiskLocation(query, cftcEnabled);
-  const requestedView = new URLSearchParams(query).get('view');
+  const queryParams = new URLSearchParams(query);
+  const requestedView = queryParams.get('view') || queryParams.get('tab');
 
   // Retired tabs and disabled CFTC views resolve before hydration. Keep the
   // selected company, financial basis and filing cutoff from existing links.
-  if (requestedView && requestedView !== location.view) {
+  if (requestedView && (requestedView !== location.view || queryParams.has('tab'))) {
     redirect(riskViewPath(query, location.view, cftcEnabled));
   }
 

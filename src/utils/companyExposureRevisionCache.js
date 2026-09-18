@@ -7,7 +7,7 @@ export const COMPANY_EXPOSURE_REVISION_TYPE = `edgar.company-exposure-revision.v
 // Bump the source version when visible-text parsing changes; bump the extraction
 // version when classification rules or the supported benchmark catalog change.
 export const COMPANY_EXPOSURE_TEXT_VERSION = 'filing-visible-text.v2';
-export const COMPANY_EXPOSURE_EXTRACTION_VERSION = 'company-exposure-extraction.v1';
+export const COMPANY_EXPOSURE_EXTRACTION_VERSION = 'company-exposure-extraction.v2';
 export const COMPANY_EXPOSURE_REVISION_RETENTION_SECONDS = 30 * 86400;
 const FILING_FIELDS = ['role', 'form', 'filed', 'reportDate', 'accession', 'primaryDoc', 'url'];
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').toUpperCase();

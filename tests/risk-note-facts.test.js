@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractRiskNoteFacts } from '../src/utils/riskNoteFacts.js';
+import { extractRiskNoteFacts, verifiesJointRegistrantFacts } from '../src/utils/riskNoteFacts.js';
+import { SEC_EVIDENCE_CONTINUITY } from '../src/utils/secEvidenceContinuity.js';
 import { parseRiskNoteRequest, selectRiskNoteFiling, discoverRiskNoteFacts } from '../src/utils/riskNoteFactsServer.js';
 
 const cik = '0000123456';
@@ -19,6 +20,32 @@ function fact(id, value, attributes = '') {
   return `<ix:nonFraction name="us-gaap:DerivativeNotionalAmount" contextRef="${id}" unitRef="usd" scale="6" format="ixt:num-dot-decimal" id="fact-${id}" ${attributes}>${value}</ix:nonFraction>`;
 }
 const extract = source => extractRiskNoteFacts(`${header}${units}${source}</html>`, { cik, filing });
+
+test('joint registrant evidence requires both verified identities, exact period and a known filing', async () => {
+  const successor = '0002115436', predecessor = '0000034088';
+  const transition = SEC_EVIDENCE_CONTINUITY[successor];
+  const selected = { ...filing, ...transition.source, form: '10-Q', primaryDoc: 'xom-20260630.htm' };
+  const document = header.replace('<html ', '<html xmlns:dei="http://xbrl.sec.gov/dei/2026" ') + units
+    + context('base', selected.reportDate, [], { issuer: predecessor, start: '2026-01-01' })
+    + context('joint', selected.reportDate, [['dei:LegalEntityAxis', 'company:SuccessorMember']], { issuer: predecessor, start: '2026-01-01' })
+    + context('amount', selected.reportDate, fx, { issuer: predecessor }) + fact('amount', '123')
+    + `<ix:nonNumeric name="dei:EntityCentralIndexKey" contextRef="base">${predecessor}</ix:nonNumeric>`
+    + `<ix:nonNumeric name="dei:EntityCentralIndexKey" contextRef="joint">${successor}</ix:nonNumeric>`
+    + '<ix:nonNumeric name="dei:DocumentType" contextRef="base">10-Q</ix:nonNumeric>'
+    + '<ix:nonNumeric name="dei:DocumentPeriodEndDate" contextRef="base">June 30, 2026</ix:nonNumeric></html>';
+  const options = { cik: successor, predecessorCik: predecessor, filing: selected };
+  assert.equal(verifiesJointRegistrantFacts(document, options), true);
+  assert.equal(verifiesJointRegistrantFacts(document.replace(`>${successor}<`, '>0000999999<'), options), false);
+  assert.equal(verifiesJointRegistrantFacts(document.replace('June 30, 2026', 'June 29, 2026'), options), false);
+  const dependencies = setup([selected], { lookupTicker: async () => ({ cik: successor }),
+    loadSubmissions: async () => ({ cik: successor, filings: { recent: manifestRows([selected]), files: [] } }), loadFiling: async () => document });
+  const result = await discoverRiskNoteFacts({ ticker: 'XOM' }, dependencies);
+  assert.equal(result.cik, successor);
+  assert.equal(result.coverage.factCik, predecessor);
+  assert.equal(result.rows[0].current.value, 123_000_000);
+  const invalid = await discoverRiskNoteFacts({ ticker: 'XOM' }, { ...dependencies, loadFiling: async () => document.replace(`>${successor}<`, '>0000999999<') });
+  assert.equal(invalid.rows.length, 0);
+});
 
 test('inline facts retain exact dimensions, scale, dates and source anchors; current and prior match', () => {
   const result = extract(context('now') + context('prior', '2025-12-31') + fact('now', '<span>61,313</span>') + fact('prior', '62,647'));
@@ -82,6 +109,34 @@ test('unknown transforms, nil facts, negative notionals, invalid scale, ambiguou
   }
   const unknown = fact('now', '100').replace('ixt:num-dot-decimal', 'company:num-dot-decimal');
   assert.equal(extract(context('now') + unknown).rows.length, 0);
+});
+
+test('standard fixed-zero retains current zero notionals and the most recent zero comparison', () => {
+  const zero = (id, value = '—', attrs = '') => fact(id, value, attrs).replace('ixt:num-dot-decimal', 'ixt:fixed-zero');
+  for (const namespace of ['2020-02-12', '2022-02-16']) {
+    const source = `${header.replace('transformation/2020-02-12', `transformation/${namespace}`)}${units}`;
+    const compared = extractRiskNoteFacts(source + context('now') + fact('now', '328')
+      + context('recent', '2025-12-31') + zero('recent')
+      + context('older', '2025-06-30') + fact('older', '57') + '</html>', { cik, filing }).rows[0];
+    assert.equal(compared.current.value, 328_000_000);
+    assert.equal(compared.prior.value, 0);
+    assert.equal(compared.prior.end, '2025-12-31');
+    for (const displayed of ['-', '–', '—', '−', '', '0', '0.00']) {
+      const result = extractRiskNoteFacts(source + context('now') + zero('now', displayed, 'sign="-"') + '</html>', { cik, filing });
+      assert.equal(result.rows.length, 1, displayed);
+      assert.equal(result.rows[0].current.value, 0);
+      assert.equal(Object.is(result.rows[0].current.value, -0), false);
+    }
+  }
+});
+
+test('fixed-zero requires a supported namespace and unambiguous zero rendering', () => {
+  const zero = fact('now', '—').replace('ixt:num-dot-decimal', 'ixt:fixed-zero');
+  for (const content of [zero.replace('ixt:fixed-zero', 'company:fixed-zero'), zero.replace('>—<', '>100<'), zero.replace('>—<', '>Unavailable<'),
+    zero.replace('scale="6"', 'scale="99"'), zero.replace('id="fact-now"', 'id="fact-now" xsi:nil="true"')])
+    assert.equal(extract(context('now') + content).rows.length, 0);
+  const unsupportedNamespace = (header + units + context('now') + zero + '</html>').replace('transformation/2020-02-12', 'transformation/2015-02-26');
+  assert.equal(extractRiskNoteFacts(unsupportedNamespace, { cik, filing }).rows.length, 0);
 });
 
 test('unrecognized currency, misleading unit prefix and divided units are not USD', () => {

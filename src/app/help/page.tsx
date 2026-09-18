@@ -31,7 +31,7 @@ const TOOLS = [
   [
     "Risk",
     "/risk",
-    "Start with the company Risk Profile to compare liquidity, leverage, capital and earnings over time. Explore filing-supported business exposures and separate CFTC market context, with reporting dates and source evidence.",
+    "Start with the company Risk Profile to compare liquidity, leverage, capital and earnings over time. Use Business Exposures for revenue, funding, counterparties, fund holdings and relevant CFTC market links, with reporting dates and source evidence.",
   ],
   [
     "Market",

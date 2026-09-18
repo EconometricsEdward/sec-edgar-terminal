@@ -25,6 +25,8 @@ const CROSS_REFERENCE = /^(?:see|refer to|for (?:additional|further) (?:informat
 const NEGATED = /\bno longer\b|\b(?:no|negligible|immaterial|insignificant)\s+(?:(?:direct|material|significant|meaningful|remaining|net|price|market|financial|foreign|currency|commodity|interest|rate|gold|silver|copper|oil|gas)\s+){0,5}(?:exposure|risk|holdings?|operations|reserves?|purchases?|borrowings?|debt)\b|\b(?:not|never)\s+(?:(?:directly|materially|significantly|currently|economically)\s+){0,3}(?:exposed|affected|sensitive|subject|hold|held|own|purchase|produce|consume|use|trade|invest)\b|\b(?:exposure|risk|holdings?)\b[^;.!?]{0,60}\b(?:not material|not significant|immaterial|insignificant|negligible)\b|\b(?:do|does|did)\s+not\s+(?:have|hold|own|purchase|produce|consume|use|trade|invest)\b|\b(?:do|does)\s+not\s+(?:believe|expect|consider)\b[^;.!?]{0,100}\b(?:material|significant)\b/i;
 const THIRD_PARTY = /\b(?:our|the company['’]s|the firm['’]s)\s+(?:customers?|clients?|borrowers?|suppliers?|competitors?|counterparties|investors?|shareholders?|tenants?)\s+(?:(?:may|can|could|also|often|typically|generally|regularly)\s+){0,3}(?:are|have|hold|own|buy|purchase|sell|produce|consume|use|borrow|invest|face|incur|trade|hedge|experience)\b/i;
 const SPECULATION = /\b(?:we|the company|the group|the bank|the firm)\s+(?:believe|expect|anticipate|predict|forecast|estimate|think)\b[^;.!?]{0,80}\b(?:the (?:industry|market|economy)|(?:global|world|industry|market)\s+(?:demand|supply|prices?|growth))\b/i;
+const EXHIBIT_INDEX_ENTRY = /^(?:\(?\d+[.)]?\s*)?(?:officer['’]s certificate|(?:supplemental )?indenture|form of|(?:amended and restated )?(?:credit|loan|guarantee) agreement)\b/i;
+const ASSET_DISPOSAL = /\b(?:sold|sell|selling|divested|disposed of)\s+[^;.!?]{0,90}\b(?:ownership|equity|economic|partnership|membership)\s+interests?\b/i;
 
 const MARKETS = [
   { id: 'sofr', label: 'SOFR', type: 'rate', re: /\b(?:SOFR|secured overnight financing rate)\b/i, code: '134741', named: /\b(?:SOFR|secured overnight financing rate)\b/i, basis: 'The filing names SOFR. Three-month SOFR futures are market context; reset dates, spread adjustments, tenor, and company instrument terms may differ.' },
@@ -159,7 +161,19 @@ function operatingCommodityUse(text, market) {
 function categoriesFor(text, market) {
   text = marketChannelText(text, market);
   if (market.type === 'currency') return CURRENCY_ECONOMIC.test(text) ? ['currencies'] : [];
-  if (market.type === 'rate') return [BORROWING.test(text) && 'borrowing', INVESTMENTS.test(text) && 'investments'].filter(Boolean);
+  if (market.type === 'rate') {
+    // Net-investment hedge terminology and equity valuation in a list of
+    // separate market risks do not establish a rate-sensitive asset balance.
+    const investmentText = text
+      .replace(/\bnet investment hedg(?:e|es|ing)(?: contracts?)?\b/gi, '')
+      .replace(/\bfair values? of (?:certain )?equity(?: and equity[- ]method)? investments?\b/gi, '');
+    const clientExecution = /\b(?:execut(?:e|es|ed|ing)|facilitat(?:e|es|ed|ing)|process(?:es|ed|ing)?)\b[^;.!?]{0,80}\b(?:for|on behalf of) (?:our )?clients?\b/i.test(text);
+    const ownPosition = /\b(?:our|the (?:company|firm|bank)['’]s)\s+(?:(?:own|proprietary|trading|investment) ){0,3}(?:holdings?|positions?|inventory|portfolio|investments?|securities)\b|\b(?:we|the company|the firm|the bank)\s+(?:hold|holds|own|owns|invest|invests)\b/i.test(text);
+    return [BORROWING.test(text) && 'borrowing', INVESTMENTS.test(investmentText) && (!clientExecution || ownPosition) && 'investments'].filter(Boolean);
+  }
+  // Selling an ownership stake in a commodity business is a corporate asset
+  // disposal, not evidence of ongoing commodity sales or physical holdings.
+  if (ASSET_DISPOSAL.test(text)) return [];
   const operatingUse = operatingCommodityUse(text, market);
   return [REVENUE.test(operatingUse.revenueText) && 'revenue', (operatingUse.input || INPUT.test(text)) && !/\b(?:market[- ]making|with clients|financing arrangements)\b/i.test(text) && 'input-costs', COMMODITY_INVESTMENTS.test(text) && 'investments'].filter(Boolean);
 }
@@ -253,6 +267,7 @@ export function extractCompanyExposureMap(sources, { companyName = '', ticker = 
     coverage.push({ ...filing, role, textCharactersScanned: scanned.length, textTruncated: input.length > scanned.length, passagesScanned: sentences.length });
     for (const sentence of sentences) {
       if (CROSS_REFERENCE.test(sentence) || /\b(?:Scope [123]|greenhouse gas|carbon dioxide equivalent|settlements? with|government authorities|legal proceedings|civil penalt(?:y|ies)|pursuing opportunities|opportunities in (?:other )?emerging)\b/i.test(sentence)) continue;
+      if (EXHIBIT_INDEX_ENTRY.test(sentence) && /\b(?:filed as|incorporated by reference|exhibit\s+[0-9])/i.test(sentence)) continue;
       for (const clause of clauses(sentence)) {
         if ((!SUBJECT.test(clause) && !OWNERSHIP.test(clause) && !issuer?.test(clause)) || THIRD_PARTY.test(clause) || SPECULATION.test(clause)) continue;
         const commodityText = commodityMeaningText(clause);

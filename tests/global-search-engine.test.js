@@ -73,11 +73,12 @@ test('report intent uses supported form and filing-date filters', () => {
 });
 
 test('risk intent opens risk tools while specific disclosure questions preserve the whole question', () => {
-  for (const [query, view] of [['JPM risk', 'overview'], ['JPM credit risk', 'overview'], ['JPM stress test', 'overview'], ['JPM commodity exposure', 'exposures'], ['JPM CFTC', 'cftc']]) {
+  for (const [query, view] of [['JPM risk', 'overview'], ['JPM credit risk', 'overview'], ['JPM stress test', 'overview'], ['JPM commodity exposure', 'exposures'], ['JPM CFTC', 'exposures']]) {
     const result = plan(query);
     assert.equal(url(result).pathname, '/risk', query);
     assert.deepEqual([parseRiskLocation(url(result).search).ticker, parseRiskLocation(url(result).search).view], ['JPM', view]);
   }
+  assert.equal(url(plan('JPM CFTC')).searchParams.get('exposurePanel'), 'markets');
   for (const query of ['Microsoft cybersecurity risks', 'Apple supply chain risks', 'What did Apple disclose about revenue?', 'Apple revenue recognition', 'AAPL China exposure']) {
     const result = plan(query);
     assert.equal(url(result).pathname, '/disclosures');

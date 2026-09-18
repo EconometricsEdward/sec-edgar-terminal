@@ -14,7 +14,7 @@ const CACHE_TTL_MS = 5 * 60_000;
 const colors = ['#87d4cb', '#a8b8ef', '#edc76d', '#bc9ddf', '#dcaa96', '#8db8d7', '#b6c68a'];
 const money = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 2 }).format(value);
 const pct = (value: number) => `${(value * 100).toLocaleString('en-US', { maximumFractionDigits: 1 })}%`;
-const scopeLabel = (value?: string) => (value || '').replace(/^Operating Segments?$/i, '').trim();
+const scopeLabel = (value?: string) => (value || '').trim();
 const exact = (value: number) => `${value.toLocaleString('en-US', { maximumFractionDigits: 3 })} USD`;
 
 function ConcentrationChart({ group, title }: { group: Group; title: string }) {

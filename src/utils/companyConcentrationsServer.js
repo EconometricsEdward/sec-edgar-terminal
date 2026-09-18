@@ -10,6 +10,7 @@ export async function discoverCompanyConcentrations(selection, dependencies = {}
     status: groups.revenue.length || groups.funding || groups.credit.length ? 'ready' : 'no_matches',
     message: groups.revenue.length || groups.funding || groups.credit.length ? null : 'This filing has no supported tagged concentration breakdown. Open the SEC source for the complete disclosures.',
     limitations: [
+      ...(_limitations || []).filter(note => note.startsWith('This verified joint filing')),
       'Figures come from standard USD inline facts in one verified SEC primary filing. Custom concepts, typed dimensions and untagged tables are not included.',
       'Revenue retains its actual quarter, year-to-date or fiscal-year duration; latest-quarter disclosures are not labeled trailing twelve months.',
       'Every percentage uses a matching reported total and reporting period. Disclosed categories may overlap; balances are not automatically summed.',

@@ -2,22 +2,24 @@
 export const EXPOSURE_INSTRUMENT_GROUPS = [
   { id: 'interest_rate', label: 'Interest rates', description: 'Rate contracts and their reported designations.' },
   { id: 'foreign_exchange', label: 'Currencies', description: 'Currency contracts and their reported designations.' },
+  { id: 'cross_currency', label: 'Currency & rates', description: 'Cross-currency interest-rate contracts carry both currency and rate terms. Each reported amount appears once.' },
   { id: 'credit', label: 'Credit derivatives', description: 'Credit derivatives, including purchased and sold protection.' },
   { id: 'commodity', label: 'Commodities', description: 'Commodity-linked swaps, options, futures and forwards.' },
-  { id: 'other', label: 'Other instruments', description: 'Other reported derivative instruments.' },
+  { id: 'other', label: 'Other & aggregate', description: 'Other instrument types and amounts reported without an instrument-class breakdown.' },
 ];
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const validValue = fact => finite(fact?.value) && fact.value >= 0;
 const instrumentClass = row => {
-  if (row.category === 'interest_rate' || row.category === 'foreign_exchange') return row.category;
   // Classify the reported instrument itself, not a customer's name or credit grade.
   const identity = (row.dimensions || [])
     .filter(dimension => /DerivativeInstrument(?:Risk|Type)Axis$/.test(dimension.axis || ''))
     .map(dimension => `${dimension.member} ${dimension.label}`).join(' ').replace(/[^a-z]/gi, '').toLowerCase();
-  if (/foreignexchange|currencycontract/.test(identity)) return 'foreign_exchange';
+  if (/crosscurrencyinterestrate/.test(identity)) return 'cross_currency';
+  if (row.category === 'interest_rate' || row.category === 'foreign_exchange') return row.category;
+  if (/foreignexchange|currency(?:contract|swap|forward|option)/.test(identity)) return 'foreign_exchange';
   if (/interestrate/.test(identity)) return 'interest_rate';
-  if (/creditdefault|creditderivative|creditcontract/.test(identity)) return 'credit';
+  if (/creditdefault|creditderivative|credit(?:risk)?contract/.test(identity)) return 'credit';
   if (/commodit/.test(identity)) return 'commodity';
   return 'other';
 };

@@ -26,6 +26,23 @@ function manager(overrides = {}) {
 }
 const project = (funds = [fund()], managers = [manager()], extra = {}) => projectCompanyOwnership({ ticker: 'AAPL', target, funds, managers, now: NOW, ...extra });
 
+test('verified predecessor holdings are dated, labelled and cannot supply later successor positions', () => {
+  const directory = { XOM: { name: 'ExxonMobil Holdings Corporation', cik: '0002115436' } };
+  const selected = ownershipCompanyTarget('XOM', directory, { now: NOW });
+  const predecessorStock = { ...stock, name: 'Exxon Mobil Corporation', cusip: '30231G102' };
+  const reports = [fund({ holdings: [predecessorStock] })];
+  const holdings = [{ cusip: '30231G102', issuer: 'EXXON MOBIL CORP', classTitle: 'COM', quantity: 100, valueUsd: 1000, quantityType: 'SH', putCall: null }];
+  const before = project(reports, [manager({ holdings })], { target: selected, ticker: 'XOM' });
+  assert.equal(before.funds.length, 1); assert.equal(before.managers.length, 1);
+  assert.equal(before.funds[0].predecessor.cik, '0000034088');
+  assert.equal(before.identity.predecessor.effectiveDate, '2026-07-01');
+  const after = project(reports, [manager({ holdings, period: '2026-09-30' })], { target: selected, ticker: 'XOM' });
+  assert.equal(after.managers.length, 0);
+  assert.equal(ownershipCompanyTarget('XOM', directory, { asOf: '2026-07-31', now: NOW }).predecessor, null);
+  const laterFund = project([fund({ asOf: '2026-07-31', holdings: [predecessorStock] })], [], { target: selected, ticker: 'XOM' });
+  assert.equal(laterFund.funds.length, 0);
+});
+
 test('prepared ownership retains original dollar units, shares and complete separate denominators', () => {
   const data = project();
   assert.equal(data.funds[0].valueUsd, 200); assert.equal(data.funds[0].shares, 20); assert.equal(data.funds[0].weightPct, 20);

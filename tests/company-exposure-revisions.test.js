@@ -49,7 +49,7 @@ test('new selected accessions and extraction engine versions invalidate only the
   assert.deepEqual(downloaded, [annual.accession, quarter.accession]);
   assert.equal(withQuarter.sources[0].retrievedAt, first.sources[0].retrievedAt);
   const revisedTime = nextTime + 86400000; shared.setTime(revisedTime);
-  const revised = await discoverCompanyExposures(selection, { now: new Date(revisedTime), revisionCache: shared.create({ extractionVersion: 'company-exposure-extraction.v2' }),
+  const revised = await discoverCompanyExposures(selection, { now: new Date(revisedTime), revisionCache: shared.create({ extractionVersion: 'company-exposure-extraction.test-next' }),
     loadSubmissions: async () => manifest([annual, quarter]), loadFilingText });
   assert.deepEqual(downloaded, [annual.accession, quarter.accession]);
   assert.equal(revised.generatedAt, new Date(revisedTime).toISOString());

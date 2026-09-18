@@ -20,6 +20,20 @@ test('a credit-grade or customer dimension cannot classify an unknown instrument
   assert.equal(buildExposureInstrumentGroups([item])[0].id, 'other');
 });
 
+test('utility currency swaps, mixed corporate swaps and broker credit contracts receive explicit groups', () => {
+  const items = [row('nee-currency', 'CurrencySwap', 9_600_000_000),
+    row('wmt-mixed', 'CrossCurrencyInterestRateContract', 5_147_000_000),
+    row('jnj-mixed', 'CrossCurrencyInterestRateContract', 36_800_000_000),
+    row('gs-credit', 'CreditRiskContract', 2_175_460_000_000)];
+  const groups = buildExposureInstrumentGroups(items);
+  assert.deepEqual(groups.map(group => [group.id, group.rows.map(item => item.id)]), [
+    ['foreign_exchange', ['nee-currency']],
+    ['cross_currency', ['jnj-mixed', 'wmt-mixed']],
+    ['credit', ['gs-credit']],
+  ]);
+  assert.equal(groups.flatMap(group => group.rows).length, items.length);
+});
+
 test('credit percentages retain denominator groups even when counterparties overlap', () => {
   const concentration = (id, benchmark, value) => row(id, 'Customer One', value, { kind: 'credit_concentration', unit: 'pure', dimensions: [{ axis: 'us-gaap:ConcentrationRiskByBenchmarkAxis', member: `us-gaap:${benchmark}Member`, label: benchmark }] });
   const [group] = buildExposureInstrumentGroups([concentration('a', 'TradeAccountsReceivable', .8), concentration('b', 'TradeAccountsReceivable', .7), concentration('c', 'NonTradeReceivable', .9)]);

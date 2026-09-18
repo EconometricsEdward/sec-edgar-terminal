@@ -23,6 +23,7 @@ import { readPreparedPortfolio } from "./preparedResearchStore.js";
 import { getDataStoreMode } from "./dataStore.js";
 import { isBroadSecCoverageEnabled } from "./dataStoreDeployment.js";
 import { loadSecCoverageRegistry } from "./secCoverageRegistry.js";
+import { SEC_EVIDENCE_CONTINUITY } from './secEvidenceContinuity.js';
 import {
   normalizePortfolioInput,
   createPortfolioRows,
@@ -41,21 +42,6 @@ const CACHE_MAX_MS = 24 * 60 * 60 * 1000;
 const localCache = new Map();
 const inFlight = new Map();
 let nextSecRequest = 0;
-
-/**
- * SEC registrant transitions that have been individually verified. The current
- * registrant remains the legal identity shown to users; these entries only
- * extend its evidence chain across an identified predecessor/joint filer.
- */
-const SEC_EVIDENCE_CONTINUITY = Object.freeze({
-  "0002115436": Object.freeze({
-    predecessorCiks: Object.freeze(["0000034088"]),
-    relationship: "predecessor-and-joint-filer",
-    effectiveDate: "2026-07-01",
-    description:
-      "ExxonMobil registrant succession and joint-filer transition",
-  }),
-});
 
 const nowIso = () => new Date().toISOString();
 const cikString = (value) => String(value || "").padStart(10, "0");
