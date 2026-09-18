@@ -73,7 +73,8 @@ export function riskMetricComparison(metric, basis = 'annual') {
 }
 
 function input(profile, key, metricIds, labels) {
-  const reported = profile.reportedFlows?.[key]?.find((point) => point.end === profile.periods?.[0]?.end);
+  const history = profile.reportedFlows?.[key] || profile.reportedBalances?.[key];
+  const reported = history?.find((point) => point.end === profile.periods?.[0]?.end);
   if (finite(reported?.value)) return { value: reported.value, label: labels[0], formula: reported.formula || 'Reported SEC fact', sources: reported.sources || [], metricId: metricIds[0] || null };
   const explicit = profile.stressInputs?.[key];
   if (finite(explicit?.value)) return { value: explicit.value, label: labels[0], formula: explicit.formula || 'Reported SEC fact', sources: explicit.sources || [], metricId: metricIds[0] || null };
@@ -91,6 +92,18 @@ function balancePresentation(profile, lens) {
   const equity = input(profile, 'equity', ['debt_to_equity', 'bank_equity_assets', 'ins_equity_assets'], ['Stockholders equity']);
   const cash = input(profile, 'cash', ['net_debt', 'cash_to_assets', 'bank_cash_assets'], ['Cash & equivalents', 'Tagged cash balance', 'Cash and equivalents', 'Cash excluding tagged restrictions', 'Narrow tagged cash balance']);
   const debt = input(profile, 'totalDebt', ['net_debt', 'ocf_to_debt'], ['Total debt']);
+  const currentDebt = input(profile, 'currentDebt', [], ['Current debt']);
+  const noncurrentDebt = input(profile, 'noncurrentDebt', [], ['Noncurrent debt']);
+  const currentSecurities = input(profile, 'currentMarketableSecurities', [], ['Current marketable securities']);
+  const noncurrentSecurities = input(profile, 'noncurrentMarketableSecurities', [], ['Noncurrent marketable securities']);
+  const combine = (label, entries, formula, calculate) => ({
+    label, value: entries.every((entry) => finite(entry.value)) ? calculate(entries.map((entry) => entry.value)) : null,
+    formula, sources: entries.flatMap((entry) => entry.sources), metricId: null,
+  });
+  const cashAndMarketableSecurities = combine('Cash and marketable securities', [cash, currentSecurities, noncurrentSecurities],
+    'Cash and cash equivalents + current marketable securities + noncurrent marketable securities', (values) => values.reduce((sum, value) => sum + value, 0));
+  const netDebtAfterMarketableSecurities = combine('Debt less cash and marketable securities', [debt, cashAndMarketableSecurities],
+    'Current and noncurrent debt − cash and cash equivalents − current and noncurrent marketable securities', ([borrowings, liquidAssets]) => borrowings - liquidAssets);
   const loans = input(profile, 'loans', ['loans_deposits'], ['Loans, net']);
   const deposits = input(profile, 'deposits', ['loans_deposits'], ['Deposits']);
   const notes = [];
@@ -114,9 +127,10 @@ function balancePresentation(profile, lens) {
   }
   if (equity.value != null && equity.value < 0) notes.push('Book equity is negative. A composition chart is not meaningful; review the equity note together with cash generation and debt service.');
   if (cash.value != null) notes.push(lens.id === 'bank' ? 'Tagged cash is only one liquidity source; securities, borrowing capacity, and deposit concentration require the funding note.' : 'Cash availability, restrictions, collateral, and committed facilities require the liquidity note.');
-  if (lens.id === 'corporate') notes.push('Tagged debt requires both current and noncurrent components; missing components are never assumed to be zero.');
+  if (lens.id === 'corporate') notes.push('Borrowings use a current-debt total or separately reported current maturities and short-term borrowings, plus noncurrent debt. Missing components are never assumed to be zero; leases and other obligations require separate review.');
+  if (currentSecurities.value != null || noncurrentSecurities.value != null) notes.push('Marketable securities are separate from cash. Credit quality, price risk, maturities, taxes, and restrictions can affect their realizable value and availability.');
   if (lens.id === 'bank' || lens.id === 'insurance' || lens.id === 'financial') notes.push('Book equity is an accounting balance, not a regulatory capital ratio.');
-  return { assets, liabilities, equity, cash, debt, loans, deposits, segments, reconciliation, notes, comparisonLabel: lens.id === 'bank' ? 'Net loans and deposits' : 'Cash and tagged debt' };
+  return { assets, liabilities, equity, cash, debt, currentDebt, noncurrentDebt, currentSecurities, noncurrentSecurities, cashAndMarketableSecurities, netDebtAfterMarketableSecurities, loans, deposits, segments, reconciliation, notes, comparisonLabel: lens.id === 'bank' ? 'Net loans and deposits' : 'Cash and reported borrowings' };
 }
 
 // Historical flows are recovered only from explicit calculation outputs or
