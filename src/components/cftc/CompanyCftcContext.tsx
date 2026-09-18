@@ -5,13 +5,14 @@ import { ArrowUpRight, BookOpen, ChartNoAxesCombined, Download, FileText, FlaskC
 import { CFTC_FAMILIES, CFTC_LAUNCH_CATALOG, CFTC_REPORT_BASIS, cftcCsv } from '../../utils/cftc.js';
 import { clearPreparedCftc, fetchPreparedCftc } from '../../utils/cftcClient.js';
 import { cftcCompanyResearchNote, cftcContextChart, cftcPositionChange } from '../../utils/cftcContextAnalytics.js';
+import { companyCftcEvidence, matchesCompanyCftcHistory } from '../../utils/companyCftcEvidence.js';
 import { downloadText } from '../../utils/download.js';
 import CftcPositioningVisuals from './CftcPositioningVisuals';
 import s from './CompanyCftcContext.module.css';
 
-export type CftcScenarioContext = { label: string; contract: string; family: string; reportDate: string; summary: string; marketPath?: string };
-type Props = { ticker: string; companyName?: string; asOf?: string; mode?: 'analysis' | 'risk'; onOpenScenario?: (context: CftcScenarioContext) => void; onSaveNote?: (text: string) => void };
-type Candidate = { id: string; label: string; family: string; contract: string; group: string; reason: string; reviewQuestion: string; evidence: { text: string; url: string; accession: string; form: string; filed: string; reportDate: string }[] };
+export type CftcScenarioContext = { ticker: string; label: string; contract: string; family: string; group: string; reportBasis: string; reportDate: string; historyWindow: string; asOf: string; basis: string; periodEnd: string; evidenceFit: string; evidenceIds: string[]; summary: string; marketPath: string };
+type Props = { ticker: string; companyName?: string; cik?: string | number; asOf?: string; basis?: string; periodEnd?: string; companyType?: string; mode?: 'analysis' | 'risk'; onOpenScenario?: (context: CftcScenarioContext) => void; onSaveNote?: (text: string) => void };
+type Candidate = { id: string; label: string; categoryLabel: string; family: string; contract: string; group: string; fit: string; reason: string; reviewQuestion: string; benchmark?: { label: string } | null; evidence: { id: string; text: string; url: string; accession: string; form: string; filed: string; reportDate: string; sourceCik?: string; disclosureDirection?: string }[] };
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const fmt = (value: unknown, decimals = 0) => finite(value) ? value.toLocaleString('en-US', { maximumFractionDigits: decimals, minimumFractionDigits: decimals }) : 'Unavailable';
 const signed = (value: unknown, decimals = 0, suffix = '') => finite(value) ? `${value > 0 ? '+' : ''}${fmt(value, decimals)}${suffix}` : 'Unavailable';
@@ -19,10 +20,10 @@ const pct = (value: unknown) => finite(value) ? `${fmt(value, 1)}%` : 'Unavailab
 const retrieved = (value: string) => value ? `${value.slice(0, 16).replace('T', ' ')} UTC` : 'Unavailable';
 
 export default function CompanyCftcContext(props: Props) {
-  return <Context key={`${props.ticker}:${props.asOf || ''}`} {...props} />;
+  return <Context key={`${props.ticker}:${props.cik || ''}:${props.asOf || ''}:${props.basis || 'ttm'}:${props.periodEnd || ''}:${props.companyType || ''}`} {...props} />;
 }
 
-function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScenario, onSaveNote }: Props) {
+function Context({ ticker, companyName, cik = '', asOf = '', basis = 'ttm', periodEnd = '', companyType = 'corporate', mode = 'analysis', onOpenScenario, onSaveNote }: Props) {
   const [discovery, setDiscovery] = useState<any>(null);
   const [discovering, setDiscovering] = useState(true);
   const [discoveryError, setDiscoveryError] = useState('');
@@ -36,24 +37,26 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
   const [historyRetry, setHistoryRetry] = useState(0);
   const [notice, setNotice] = useState('');
   const [inspection, setInspection] = useState<{ path: string; date: string } | null>(null);
-  const discoveryPath = `/api/v1/cftc/company-context?${new URLSearchParams({ ticker, ...(asOf ? { asOf } : {}) })}`;
+  const discoveryPath = `/api/v1/cftc/company-exposures?${new URLSearchParams({ ticker, ...(asOf ? { asOf } : {}) })}`;
 
   useEffect(() => {
     const controller = new AbortController();
     setDiscovering(true); setDiscoveryError('');
     fetchPreparedCftc(discoveryPath, { signal: controller.signal }).then(value => {
+      companyCftcEvidence(value, { ticker, asOf, basis, companyType, cik: String(cik) });
       if (!controller.signal.aborted) setDiscovery(value);
     }).catch(error => { if (!controller.signal.aborted) setDiscoveryError(error.message); }).finally(() => { if (!controller.signal.aborted) setDiscovering(false); });
     return () => controller.abort();
-  }, [discoveryPath, discoveryRetry]);
+  }, [discoveryPath, discoveryRetry, ticker, asOf, basis, companyType, cik]);
 
-  const candidates: Candidate[] = discovery?.ticker === ticker ? discovery.links || [] : [];
+  const evidence = useMemo(() => discovery ? companyCftcEvidence(discovery, { ticker, asOf, basis, companyType, cik: String(cik) }) : null, [discovery, ticker, asOf, basis, companyType, cik]);
+  const candidates: Candidate[] = evidence?.rows || [];
   const selectedId = choice || candidates[0]?.id || '';
   const candidate = candidates.find(item => item.id === selectedId) || null;
   const manual = selectedId.startsWith('manual:') ? CFTC_LAUNCH_CATALOG.find(item => `${item.family}:${item.code}` === selectedId.slice(7)) : null;
   const family = candidate?.family || manual?.family || '';
   const contract = candidate?.contract || manual?.code || '';
-  const label = candidate?.label || manual?.label || '';
+  const label = candidate?.benchmark?.label || manual?.label || '';
   const familyConfig = CFTC_FAMILIES[family];
   const group = familyConfig?.groups.some(item => item.id === groupOverride) ? groupOverride : candidate?.group || (family === 'tff' ? 'leveraged-funds' : 'managed-money');
   const historyPath = contract && family ? `/api/v1/cftc/history?${new URLSearchParams({ family, contract, group, window, date: 'latest' })}` : '';
@@ -63,7 +66,7 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
     const controller = new AbortController();
     setHistoryPending(true); setHistoryError('');
     fetchPreparedCftc(historyPath, { signal: controller.signal }).then(value => {
-      if (!value?.selected || value.selection?.contract !== contract || value.selected.code !== contract || value.selection?.group !== group || value.selected.selectedGroup?.id !== group || value.report_family !== family || value.report_basis !== CFTC_REPORT_BASIS || value.selection?.history_window !== window || !Array.isArray(value.history)) throw new Error('The returned CFTC observations do not match the selected market and trader category.');
+      if (!matchesCompanyCftcHistory(value, { contract, group, family, window })) throw new Error('The returned CFTC observations do not match the selected market, trader category, report date, and comparison history.');
       if (!controller.signal.aborted) setHistoryState({ key: historyPath, data: value });
     }).catch(error => { if (!controller.signal.aborted) setHistoryError(error.message); }).finally(() => { if (!controller.signal.aborted) setHistoryPending(false); });
     return () => controller.abort();
@@ -79,7 +82,7 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
   const selected = history?.selected;
   const values = mode === 'risk' ? inspectedPoint : selected?.selectedGroup;
   const marketPath = history ? `/market?${new URLSearchParams({ tab: 'positioning', family, contract, group, date: selected.reportDate, history: window, display: 'net-oi' })}` : '';
-  const note = history ? cftcCompanyResearchNote({ ticker, companyName, candidate, history, asOf }) : '';
+  const note = history ? cftcCompanyResearchNote({ ticker, companyName, candidate, history, asOf, basis, periodEnd }) : '';
   function choose(id: string) { setChoice(id); setGroupOverride(''); setNotice(''); setHistoryError(''); setInspection(null); }
   function retryDiscovery() { clearPreparedCftc(discoveryPath); setDiscoveryRetry(value => value + 1); }
   function retryHistory() { clearPreparedCftc(historyPath); setInspection(null); setHistoryRetry(value => value + 1); }
@@ -90,21 +93,26 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
       <span className={s.sourceBadge}>Official CFTC COT<br /><small>Futures-only reports</small></span>
     </header>
     {asOf && <p className={s.warning}><b>Historical SEC cutoff: {asOf}.</b> The CFTC observations below are current market context and may postdate this cutoff. They are excluded from historical financial calculations and are not presented as information available at that time.</p>}
+    {periodEnd && <p className={s.note}>Financial baseline: {basis === 'annual' ? 'Annual' : basis === 'quarter' ? 'Quarterly' : basis === 'ytd' ? 'Year to date' : 'Trailing year'} ended {periodEnd}. Filing context follows {asOf ? `the SEC cutoff ${asOf}` : 'the latest available SEC filings'}; the baseline date does not establish when either source was publicly available.</p>}
     <div className={s.connections}>
-      <div className={s.sectionTitle}><div><span className={s.step}>01 / Company connection</span><h3>Start with the filing evidence</h3></div>{discovery?.filing && <a href={discovery.filing.url} target="_blank" rel="noreferrer">{discovery.filing.form} · Filed {discovery.filing.filed}<ArrowUpRight size={14} /></a>}</div>
-      {discovering && <p className={s.loading} role="status"><Loader2 size={16} className={s.spin} /> Checking an annual filing for relevant market disclosures. You can also choose a market below.</p>}
+      <div className={s.sectionTitle}><div><span className={s.step}>01 / Company connection</span><h3>Start with the filing evidence</h3></div>{evidence && <span className={s.note}>{evidence.evidenceBasis}</span>}</div>
+      {discovering && <p className={s.loading} role="status"><Loader2 size={16} className={s.spin} /> Checking annual and newer quarterly filings for relevant market disclosures. You can also choose a market below.</p>}
       {discoveryError && <div className={s.warning} role="alert"><p>Company evidence is temporarily unavailable: {discoveryError}</p><button type="button" onClick={retryDiscovery}><RefreshCw size={14} />Retry filing evidence</button></div>}
-      {!discovering && !discoveryError && !candidates.length && <div className={s.empty}><BookOpen size={20} /><div><b>No specific company connection established</b><p>{discovery?.status === 'no_matches' ? 'The bounded annual-filing scan did not find a supported market passage. This does not establish that the company has no exposure.' : 'A usable annual filing could not be matched for this review.'} Choose a market for your own research below.</p>{discovery?.retryable && <button type="button" onClick={retryDiscovery}>Retry evidence</button>}</div></div>}
-      {candidates.length > 0 && <details className={s.connectionList} open={candidates.length <= 3 || undefined}><summary>Browse filing-linked markets · {candidates.length}</summary><div className={s.candidateGrid}>{candidates.map(item => <button type="button" key={item.id} aria-pressed={selectedId === item.id} className={s.candidate} onClick={() => choose(item.id)}><span>Filing passage matched</span><strong>{item.label}<ArrowUpRight size={14} /></strong><small>Candidate connection · review required</small></button>)}</div></details>}
-      {candidate && <details className={s.evidence}><summary>Why this market appears · {candidate.evidence.length} filing passage{candidate.evidence.length === 1 ? '' : 's'}</summary><div className={s.evidenceBody}><div><FileText size={17} /><div><h3>Why this market appears</h3><p>{candidate.reason}</p></div></div>{candidate.evidence.map((item, index) => <blockquote key={`${item.accession}:${index}`}><p>“{item.text}”</p><cite><a href={item.url} target="_blank" rel="noreferrer">{item.form} · Filed {item.filed} · Period {item.reportDate || 'not provided'}<ArrowUpRight size={12} /></a></cite></blockquote>)}<p className={s.note}>An automated passage match is a research lead. It does not establish the company’s position, hedge size, or sensitivity to this contract.</p></div></details>}
-      <details className={s.manual} open={!candidates.length}><summary>Choose your own market</summary><label>Research market<select value={manual ? selectedId : ''} onChange={event => choose(event.target.value)}><option value="">Select a market for independent context</option>{['tff', 'disaggregated'].map(reportFamily => <optgroup key={reportFamily} label={CFTC_FAMILIES[reportFamily].label}>{CFTC_LAUNCH_CATALOG.filter(item => item.family === reportFamily).map(item => <option key={item.code} value={`manual:${item.family}:${item.code}`}>{item.label} · {item.code}</option>)}</optgroup>)}</select></label>{manual && <p className={s.note}>You selected {manual.label}. No company connection is inferred from this selection.</p>}</details>
-      {discovery?.coverage && <details className={s.coverage}><summary>Evidence coverage and limits</summary><p>{discovery.coverage.filingsScanned || 0} annual filings scanned · {fmt(discovery.coverage.textCharactersScanned)} text characters checked{discovery.coverage.historyLimited ? ' · Filing-history search was limited' : ''}{discovery.coverage.textTruncated ? ' · Filing text was truncated' : ''}.</p>{(discovery.limitations || []).map((item: string, i: number) => <p key={i}>{item}</p>)}</details>}
+      {!discovering && !discoveryError && !candidates.length && <div className={s.empty}><BookOpen size={20} /><div><b>No specific company connection established</b><p>{discovery?.status === 'no_matches' ? 'The bounded filing scan did not find a qualifying company-market passage. This does not establish that the company has no exposure.' : 'No qualifying passage is available in this filing selection.'} Choose a market for your own research below.</p>{discovery?.retryable && <button type="button" onClick={retryDiscovery}>Retry evidence</button>}</div></div>}
+      {discovery?.coverage && !discovery.coverage.annualAvailable && <p className={s.note}>No eligible annual report was scanned for this issuer. Any quarterly evidence shown has its own dates; predecessor-company filings require a separately verified connection.</p>}
+      {discovery?.status === 'partial' && <div className={s.warning} role="status"><p><b>SEC evidence is incomplete.</b> {discovery.coverage?.filingsFailed || 0} eligible reports could not be read; retained passages keep their original filing dates.</p><button type="button" onClick={retryDiscovery}><RefreshCw size={14} />Retry missing evidence</button></div>}
+      {candidates.length > 0 && <details className={s.connectionList} open={candidates.length <= 3 || undefined}><summary>Browse disclosed business channels · {candidates.length}</summary><div className={s.candidateGrid}>{candidates.map(item => <button type="button" key={item.id} aria-pressed={selectedId === item.id} className={s.candidate} onClick={() => choose(item.id)}><span>{item.categoryLabel}</span><strong>{item.label}<ArrowUpRight size={14} /></strong><small>{item.fit === 'named-reference' ? 'Named benchmark · review terms' : item.fit === 'proxy' ? 'Benchmark proxy · review fit' : 'No supported futures benchmark'}</small></button>)}</div></details>}
+      {candidate && <details className={s.evidence}><summary>Review the company connection · {candidate.evidence.length} filing passage{candidate.evidence.length === 1 ? '' : 's'}</summary><div className={s.evidenceBody}><div><FileText size={17} /><div><h3>{candidate.categoryLabel} · {candidate.label}</h3><p>{candidate.reason}</p></div></div>{candidate.evidence.map((item, index) => <blockquote key={`${item.accession}:${index}`}><span className={s.note}>{item.disclosureDirection === 'qualifying-or-negative' ? 'Qualification or negative disclosure' : 'Company disclosure'}</span><p>“{item.text}”</p><cite><a href={item.url} target="_blank" rel="noreferrer">{item.form} · Filed {item.filed} · Period {item.reportDate || 'not provided'}{item.sourceCik ? ` · Source CIK ${item.sourceCik}` : ''}<ArrowUpRight size={12} /></a></cite></blockquote>)}<p className={s.note}>An automated passage match is a research lead. It does not establish the company’s position, hedge size, or sensitivity to this contract.</p></div></details>}
+      {candidate && !candidate.contract && <p className={s.warning}><b>No automatic futures link.</b> The cited business channel does not establish a supported contract benchmark. Choose a market below for independent research.</p>}
+      <details className={s.manual} open={!candidates.length || !!candidate && !candidate.contract}><summary>Choose your own market</summary><label>Research market<select value={manual ? selectedId : ''} onChange={event => choose(event.target.value)}><option value="">Select a market for independent context</option>{['tff', 'disaggregated'].map(reportFamily => <optgroup key={reportFamily} label={CFTC_FAMILIES[reportFamily].label}>{CFTC_LAUNCH_CATALOG.filter(item => item.family === reportFamily).map(item => <option key={item.code} value={`manual:${item.family}:${item.code}`}>{item.label} · {item.code}</option>)}</optgroup>)}</select></label>{manual && <p className={s.note}>You selected {manual.label}. No company connection is inferred from this selection.</p>}</details>
+      {discovery?.coverage && <details className={s.coverage}><summary>Evidence coverage and limits</summary><p>{discovery.coverage.filingsScanned || 0}/{discovery.coverage.filingsEligible || 0} eligible reports scanned · {fmt((discovery.coverage.filings || []).reduce((sum: number, item: any) => sum + (item.textCharactersScanned || 0), 0))} text characters checked{discovery.coverage.historyLimited ? ' · Filing-history search was limited' : ''}{discovery.coverage.filings?.some((item: any) => item.textTruncated) ? ' · Filing text was truncated' : ''}.</p>{evidence?.sources.map((source: any) => <p key={source.accession}><a href={source.url} target="_blank" rel="noreferrer">{source.form} · Filed {source.filed} · Period {source.reportDate}{source.sourceCik ? ` · Source CIK ${source.sourceCik}` : ''}<ArrowUpRight size={12} /></a> · {source.status === 'ready' ? 'Scanned' : 'Unavailable'}</p>)}{(discovery.limitations || []).map((item: string, i: number) => <p key={i}>{item}</p>)}</details>}
     </div>
     {contract && <div className={s.observations}>
       <div className={s.sectionTitle}><div><span className={s.step}>02 / Market observations</span><h3>{label}</h3><p>{familyConfig?.label} · Code {contract}</p></div><div className={s.controls}><label>Trader category<select value={group} onChange={event => { setGroupOverride(event.target.value); setNotice(''); setInspection(null); }}>{familyConfig?.groups.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>Comparison history<select value={window} onChange={event => { setWindow(event.target.value); setNotice(''); setInspection(null); }}><option value="1y">52 prior reports</option><option value="3y">156 prior reports</option><option value="5y">260 prior reports</option></select></label></div></div>
       {historyPending && <p className={s.loading} role="status"><Loader2 size={16} className={s.spin} /> Loading {label} positioning…</p>}
       {historyError && <div className={s.warning} role="alert"><p>{historyError}</p><button type="button" onClick={retryHistory}><RefreshCw size={14} />Retry CFTC data</button></div>}
       {history && !historyPending && !historyError && <>
+        {periodEnd && selected.reportDate > periodEnd && <p className={s.warning}><b>CFTC positions dated {selected.reportDate} postdate the financial baseline {periodEnd}.</b> This is current market research, excluded from the historical SEC calculations and scenario baseline.</p>}
         <div className={s.dates}><span>Positions as of <b>{inspectedDate}</b></span><span>Retrieved <b>{retrieved(history.retrieved_at)}</b></span><span>Latest report age <b>{history.freshness?.source_report_age_days ?? 'Unknown'} days</b></span><span>{selected.exchange}</span></div>
         {(history.status !== 'ready' || history.freshness?.source_currency === 'aged' || String(history.freshness?.cache_status).startsWith('stale')) && <p className={s.warning}><b>{history.status === 'stale' || String(history.freshness?.cache_status).startsWith('stale') ? 'Last successful snapshot.' : 'Coverage or freshness needs review.'}</b> {history.refresh_warning || `Response status: ${history.status}. Some observations may be missing or older than expected.`}</p>}
         <div className={s.metrics}>
@@ -120,9 +128,9 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
         <div className={s.horizons}>{[[fourWeeks, 'Four weeks'], [thirteenWeeks, 'Thirteen weeks']].map(([value, name]: any) => <div key={name}><b>{name}</b><span>{value.available ? `${signed(value.netChange)} net contracts` : 'Comparison unavailable'}</span><small>{value.available ? `${signed(value.netPctChange, 2)} percentage points in net / OI` : value.reason}</small></div>)}</div></>}
         <div className={s.question}><span className={s.step}>03 / Your next research question</span><p>{candidate?.reviewQuestion || (mode === 'risk' ? 'Does this market relate to a disclosed funding, input-cost, currency, or collateral risk? Verify the connection in the company’s filings before using it in your review.' : 'Which disclosed business driver could make this market relevant to the company? Review the filing before linking these aggregate positions to company results.')}</p></div>
         <div className={s.actions}>
-          <a className={s.button} href={marketPath}>Explore latest CFTC market<ArrowUpRight size={14} /></a>
+          <a className={s.button} href={marketPath}>Explore this dated CFTC market<ArrowUpRight size={14} /></a>
           {onSaveNote && <button type="button" onClick={() => { onSaveNote(note); setNotice('Dated CFTC context added to your analysis notebook draft.'); }}><BookOpen size={14} />Add to notebook</button>}
-          {onOpenScenario && <button type="button" onClick={() => onOpenScenario({ label, contract, family, reportDate: selected.reportDate, summary: note, marketPath })}><FlaskConical size={14} />Use as scenario context</button>}
+          {onOpenScenario && <button type="button" onClick={() => onOpenScenario({ ticker, label, contract, family, group, reportBasis: CFTC_REPORT_BASIS, reportDate: selected.reportDate, historyWindow: window, asOf, basis, periodEnd, evidenceFit: candidate?.fit || 'user-selected', evidenceIds: candidate?.evidence.map(item => item.id) || [], summary: note, marketPath })}><FlaskConical size={14} />Use as scenario context</button>}
           <button type="button" onClick={() => { downloadText(`${ticker}-cftc-context-${selected.reportDate}.md`, note, 'text/markdown'); setNotice('Research note exported with separate SEC and CFTC source dates.'); }}><Download size={14} />Research note</button>
           <button type="button" onClick={() => downloadText(`cftc-${contract}-${group}-${selected.reportDate}.csv`, cftcCsv(history), 'text/csv')}>History CSV</button>
         </div>

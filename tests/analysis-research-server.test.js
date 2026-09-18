@@ -49,6 +49,21 @@ test('bases and filing cutoffs have distinct work and cache identities', async (
   assert.equal(results[3].payload.metrics.revenue[0].value, 100.125);
 });
 
+test('Analysis source loading receives the selected basis and cutoff and caches degraded evidence briefly', async () => {
+  const settings = { ...selection, basis: 'ttm', asOf: '2025-03-01' };
+  let savedTtl;
+  const load = createInteractiveAnalysisLoader({ ...dependencies,
+    load: async (ticker, options) => {
+      assert.equal(ticker, settings.ticker); assert.equal(options.basis, settings.basis); assert.equal(options.asOf, settings.asOf);
+      return { ...company, sourceCoverage: { filedThrough: settings.asOf, filingFallback: { status: 'unavailable' } } };
+    },
+    write: async (_type, _id, _value, ttl) => { savedTtl = ttl; },
+  });
+  const result = await load(settings);
+  assert.equal(result.payload.sourceCoverage.filedThrough, settings.asOf);
+  assert.equal(savedTtl, 60);
+});
+
 test('a shared-cache response retains its original calculation timestamp and is not rewritten', async () => {
   const payload = { ...resultFor(), observedAt: '2025-02-01T00:00:00.000Z' };
   const load = createInteractiveAnalysisLoader({ ...dependencies,
@@ -61,7 +76,7 @@ test('a shared-cache response retains its original calculation timestamp and is 
 });
 
 test('corrupt or mismatched cached selections never serve another company, basis, cutoff or calculator', async () => {
-  for (const changes of [{ ticker: 'OTHER' }, { basis: 'quarter' }, { asOf: '2024-01-01' }, { version: 'old' }, { packed: false }]) {
+  for (const changes of [{ ticker: 'OTHER' }, { basis: 'quarter' }, { asOf: '2024-01-01' }, { version: 'old' }, { mappingVersion: undefined }, { packed: false }]) {
     let loads = 0;
     const load = createInteractiveAnalysisLoader({ ...dependencies,
       read: async () => ({ gzip: gzipSync(JSON.stringify({ ...resultFor(), ...changes })).toString('base64') }),

@@ -72,7 +72,7 @@ export function analysisOverview(data, index) {
         : [
             "revenue",
             "netIncome",
-            "operatingMargin",
+            data.businessModel === "broker-dealer" ? "netMargin" : "operatingMargin",
             "operatingCashFlow",
             "freeCashFlow",
             "roe",

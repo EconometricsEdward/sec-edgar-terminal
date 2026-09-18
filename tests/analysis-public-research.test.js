@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { buildAnalysisCompany, packAnalysisCompany } from '../src/utils/analysisResearch.js';
 import { createPublicAnalysisReader, publicAnalysisSelection, PUBLIC_ANALYSIS_MAX_BYTES } from '../src/utils/analysisPublicResearch.js';
+import { ANALYSIS_MAPPING_VERSION } from '../src/utils/analysisVersion.js';
 
 const now = Date.parse('2026-09-16T12:00:00Z');
 const iso = value => new Date(value).toISOString();
@@ -44,6 +46,7 @@ test('compact summary preserves reported precision, derived inputs, revisions an
   const payload = model(), before = JSON.stringify(payload);
   const result = await reader(payload)({ ticker: 'AAPL' });
   assert.equal(result.status, 'ready');
+  assert.equal(result.mappingVersion, ANALYSIS_MAPPING_VERSION);
   assert.equal(result.metrics.length, 6);
   const revenue = result.metrics.find(value => value.key === 'revenue');
   assert.equal(revenue.value, 200.12345); assert.equal(revenue.unit, 'USD');
@@ -96,7 +99,7 @@ test('cache misses, corruption and expiry fail closed without claiming that fina
     assert.equal(result.status, 'not-prepared'); assert.equal(result.metrics.length, 0);
     assert.match(result.limitations[0], /does not establish/);
   }
-  for (const patch of [{ ticker: 'MSFT' }, { basis: 'quarter' }, { asOf: '2025-01-01' }, { version: 'old' }, { cik: '0000000000' }]) {
+  for (const patch of [{ ticker: 'MSFT' }, { basis: 'quarter' }, { asOf: '2025-01-01' }, { version: 'old' }, { mappingVersion: 'old' }, { cik: '0000000000' }]) {
     assert.equal((await reader({ ...model(), ...patch })({ ticker: 'AAPL' })).status, 'not-prepared');
   }
   const expired = { fetchedAt: iso(now - 10 * 86400000), revalidatedAt: iso(now - 10 * 86400000), expiresAt: iso(now - 8 * 86400000) };
@@ -118,6 +121,23 @@ test('industry selection preserves bank denominators and point-in-time deposit o
   const insurance = await reader(model(6311))({ ticker: 'AAPL' });
   assert.equal(insurance.lens, 'insurance');
   assert.equal(insurance.metrics.some(value => value.key === 'operatingMargin'), false);
+});
+
+test('broker public summaries match the workspace and preserve the reported net-revenue scope', async () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/analysis-gs-sec-facts.json', import.meta.url), 'utf8'));
+  const payload = packAnalysisCompany(buildAnalysisCompany({ ...fixture, cik: String(fixture.cik).padStart(10, '0') }, { basis: 'quarter' }));
+  const result = await reader(payload)({ ticker: 'GS', basis: 'quarter' });
+  assert.equal(result.status, 'ready'); assert.equal(result.businessModel, 'broker-dealer');
+  assert.equal(result.metrics.some(metric => metric.key === 'operatingMargin'), false);
+  const revenue = result.metrics.find(metric => metric.key === 'revenue');
+  assert.equal(revenue.value, 20338000000);
+  assert.equal(revenue.label, 'Revenue, net of interest expense');
+  assert.match(revenue.reason, /revenue after interest expense/);
+  assert.ok(revenue.sourceIds.every(id => result.sourceCatalog[id].scopeNote.includes('net revenue basis')));
+  const margin = result.metrics.find(metric => metric.key === 'netMargin');
+  assert.equal(margin.value, 6628000000 / 20338000000 * 100);
+  assert.match(margin.formula, /net-of-interest basis/);
+  assert.ok(margin.sourceIds.some(id => result.sourceCatalog[id].scopeNote?.includes('net revenue basis')));
 });
 
 test('missing values stay null, negative comparison bases do not produce misleading growth', async () => {

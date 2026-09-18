@@ -24,7 +24,7 @@ const OWNERSHIP = /\b(?:our|the company['’]s|the group['’]s|the bank['’]s|
 const CROSS_REFERENCE = /^(?:see|refer to|for (?:additional|further) (?:information|discussion)|the following table|as (?:shown|described) in (?:the|note|item))\b|^(?:the company|the firm)['’]s discussion\b[^.!?]*\bis (?:contained|included|presented)\b/i;
 const NEGATED = /\bno longer\b|\b(?:no|negligible|immaterial|insignificant)\s+(?:(?:direct|material|significant|meaningful|remaining|net|price|market|financial|foreign|currency|commodity|interest|rate|gold|silver|copper|oil|gas)\s+){0,5}(?:exposure|risk|holdings?|operations|reserves?|purchases?|borrowings?|debt)\b|\b(?:not|never)\s+(?:(?:directly|materially|significantly|currently|economically)\s+){0,3}(?:exposed|affected|sensitive|subject|hold|held|own|purchase|produce|consume|use|trade|invest)\b|\b(?:exposure|risk|holdings?)\b[^;.!?]{0,60}\b(?:not material|not significant|immaterial|insignificant|negligible)\b|\b(?:do|does|did)\s+not\s+(?:have|hold|own|purchase|produce|consume|use|trade|invest)\b|\b(?:do|does)\s+not\s+(?:believe|expect|consider)\b[^;.!?]{0,100}\b(?:material|significant)\b/i;
 const THIRD_PARTY = /\b(?:our|the company['’]s|the firm['’]s)\s+(?:customers?|clients?|borrowers?|suppliers?|competitors?|counterparties|investors?|shareholders?|tenants?)\s+(?:(?:may|can|could|also|often|typically|generally|regularly)\s+){0,3}(?:are|have|hold|own|buy|purchase|sell|produce|consume|use|borrow|invest|face|incur|trade|hedge|experience)\b/i;
-const SPECULATION = /\b(?:we|the company|the group|the bank|the firm)\s+(?:believe|expect|anticipate|predict|forecast|estimate|think)\b[^;.!?]{0,80}\b(?:the (?:industry|market|economy)|(?:global|world|industry|market)\s+(?:demand|supply|prices?|growth))\b/i;
+const SPECULATION = /\b(?:we|the company|the group|the bank|the firm)\s+(?:believe|expect|anticipate|predict|forecast|estimate|think)s?\b[^;.!?]{0,80}\b(?:the (?:industry|market|economy)|(?:global|world|industry|market)\s+(?:demand|supply|prices?|growth))\b/i;
 const EXHIBIT_INDEX_ENTRY = /^(?:\(?\d+[.)]?\s*)?(?:officer['’]s certificate|(?:supplemental )?indenture|form of|(?:amended and restated )?(?:credit|loan|guarantee) agreement)\b/i;
 const ASSET_DISPOSAL = /\b(?:sold|sell|selling|divested|disposed of)\s+[^;.!?]{0,90}\b(?:ownership|equity|economic|partnership|membership)\s+interests?\b/i;
 
@@ -65,7 +65,7 @@ const MARKETS = [
   ...['aluminum', 'lithium', 'nickel', 'zinc', 'steel', 'iron ore', 'sugar', 'rice', 'rubber', 'palladium', 'platinum'].map(name => ({ id: name.replaceAll(' ', '-'), label: name[0].toUpperCase() + name.slice(1), type: 'commodity', re: new RegExp(`\\b${name}\\b`, 'i'), unavailable: 'This market is outside the verified benchmark selection supported by this map. No unrelated commodity futures contract is substituted.' })),
 ];
 
-const REVENUE = /\b(?:upstream segment|revenue|revenues|sales|selling prices?|production|produc(?:e|es|ed|ing)|extract(?:ion|s|ed|ing)?|min(?:e|es|ed|ing)|sell|sells|sold)\b/i;
+const REVENUE = /\b(?:upstream segment|revenue|revenues|sales?|selling prices?|production|produc(?:e|es|ed|ing)|extract(?:ion|s|ed|ing)?|min(?:e|es|ed|ing)|sell|sells|sold)\b/i;
 const INPUT = /\b(?:input costs?|raw materials?|ingredients?|procure(?:ment|s|d)?|purchas(?:e|es|ed|ing)|buy|buys|bought|consum(?:e|es|ed|ption)|fuel (?:costs?|expense)|(?:largest|significant|major) cost component|cost (?:of|for) (?:buying|purchasing|consuming))\b|\b(?:prices?|costs?)\b[^;.!?]{0,90}\b(?:our|the company['’]s)\s+(?:costs?|expenses?|margins?)\b|\b(?:our|the company['’]s)\s+(?:(?:annual|operating|energy|commodity|fuel|electricity|material)\s+){0,3}costs?\b/i;
 const BORROWING = /\b(?:borrow(?:ing|ings|ed|s)?|debt(?! securities)|credit (?:facilit(?:y|ies)|agreements?|lines?)|revolving (?:credit|facilit(?:y|ies))|interest expense|funding costs?|deposit (?:costs?|rates?|liabilities)|financing costs?)\b/i;
 const INVESTMENTS = /\b(?:investment(?:s| portfolio)?|securities|earning assets|loan(?:s| portfolio|s receivable)?|holdings?|held|own(?:s|ed)?|portfolio|interest income)\b/i;
@@ -79,11 +79,26 @@ const CHANNELS = {
   currencies: 'The cited passage connects currency changes or denomination to the company’s business or financial exposures. Transaction, translation, debt, and hedge effects can differ.',
 };
 
-function issuerRegex(companyName) {
+function definedIssuerAliases(text, companyName) {
+  const normalizeName = value => String(value || '').replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  const name = normalizeName(companyName);
+  if (name.length < 5) return [];
+  // A definitions table can explicitly bind an acronym to the full legal
+  // issuer. Tickers, subsidiaries and nearby company names are not aliases.
+  const section = String(text || '').slice(0, 100_000).match(/(?:^|\n)\s*(?:DEFINITIONS|GLOSSARY(?: OF (?:TERMS|DEFINED TERMS))?)\s*\n([\s\S]{0,20000})/i)?.[1]
+    .split(/\n\s*(?:TABLE OF CONTENTS|FORWARD[- ]LOOKING STATEMENTS)\s*\n/i)[0];
+  if (!section) return [];
+  const cells = section.split(/\n\s*\n/).map(value => value.trim());
+  return [...new Set(cells.flatMap((cell, index) => /^[A-Z][A-Z0-9]{1,9}$/.test(cell)
+    && normalizeName(cells[index + 1]) === name ? [cell] : []))].slice(0, 5);
+}
+
+function issuerRegex(companyName, text = '') {
   let name = String(companyName || '').trim(), previous;
   do { previous = name; name = name.replace(/[,\s]+(?:&\s*)?(?:co(?:mpany)?|inc(?:orporated)?|corp(?:oration)?|ltd|limited|plc|llc)\.?$/i, '').trim(); } while (name !== previous);
   const words = name.match(/[A-Za-z0-9]+/g) || [];
-  return words.join('').length >= 5 ? new RegExp(`\\b${words.join('[\\s.&-]*')}(?:['’]s)?\\b`, 'i') : null;
+  const names = [...(words.join('').length >= 5 ? [words.join('[\\s.&-]*')] : []), ...definedIssuerAliases(text, companyName)];
+  return names.length ? new RegExp(`\\b(?:${names.join('|')})(?:['’]s)?\\b`, 'i') : null;
 }
 
 function passages(text) {
@@ -137,7 +152,7 @@ function marketMatches(text) {
 function marketChannelText(text, market) {
   // Keep different verbs attached to their own objects: producing oil and
   // purchasing gas must not become oil procurement plus gas production.
-  const parts = text.split(/,?\s+(?:and|but|while)\s+(?=(?:(?:also|primarily|typically|generally)\s+)?(?:purchas(?:e|es|ed)|buy|buys|bought|produc(?:e|es|ed)|sell|sells|sold|consum(?:e|es|ed)|use|uses|used|mine|mines|mined|hold|holds|own|owns)\b)/i);
+  const parts = text.split(/,?\s+(?:and|but|while)\s+(?=(?:(?:also|primarily|typically|generally)\s+)?(?:purchas(?:e|es|ed)|buy|buys|bought|produc(?:e|es|ed)|sell|sells|sold|consum(?:e|es|ed)|use|uses|used|mine|mines|mined|hold|holds|own|owns)\b)|,?\s+and\s+(?=to\s+(?:optimize|manage|hedge)\b)/i);
   if (parts.length === 1) return text;
   return parts.flatMap((part, index) => {
     if (!market.re.test(part)) return [];
@@ -175,7 +190,12 @@ function categoriesFor(text, market) {
   // disposal, not evidence of ongoing commodity sales or physical holdings.
   if (ASSET_DISPOSAL.test(text)) return [];
   const operatingUse = operatingCommodityUse(text, market);
-  return [REVENUE.test(operatingUse.revenueText) && 'revenue', (operatingUse.input || INPUT.test(text)) && !/\b(?:market[- ]making|with clients|financing arrangements)\b/i.test(text) && 'input-costs', COMMODITY_INVESTMENTS.test(text) && 'investments'].filter(Boolean);
+  const inputText = text.replace(/\bengineering,?\s+procurement\s+(?:and|&)\s+construction\b/gi, 'construction');
+  // A portfolio of facilities is not a holding of the commodity itself.
+  // Keep separate explicit inventories, physical positions or derivatives.
+  const infrastructurePortfolio = /\b(?:portfolio|holdings?)\s+of\b[^;.!?]{0,260}\b(?:projects?|facilities|plants?|pipelines?|infrastructure)\b/i.test(text);
+  const commodityPosition = /\b(?:inventor(?:y|ies)|bullion|physical (?:holdings?|positions?|gold|silver|copper|natural gas)|spot (?:holdings?|positions?)|futures|derivatives)\b/i.test(text);
+  return [REVENUE.test(operatingUse.revenueText) && 'revenue', (operatingUse.input || INPUT.test(inputText)) && !/\b(?:market[- ]making|with clients|financing arrangements)\b/i.test(text) && 'input-costs', COMMODITY_INVESTMENTS.test(text) && (!infrastructurePortfolio || commodityPosition) && 'investments'].filter(Boolean);
 }
 function idOf(text) {
   let hash = 2166136261;
@@ -259,22 +279,26 @@ function qualifiedAmounts(clause, sentence, marketCount, category, market) {
  * contract positioning, financial materiality, or silence in a newer report.
  */
 export function extractCompanyExposureMap(sources, { companyName = '', ticker = '' } = {}) {
-  const issuer = issuerRegex(companyName), rows = new Map(), coverage = [], qualifiers = [];
+  const rows = new Map(), coverage = [], qualifiers = [];
   let omittedRows = 0, omittedEvidence = 0;
   for (const source of (Array.isArray(sources) ? sources : []).slice(0, 5)) {
     const input = String(source.text || ''), scanned = input.slice(0, COMPANY_EXPOSURE_MAX_TEXT), sentences = passages(scanned);
+    const issuer = issuerRegex(companyName, scanned);
     const filing = source.filing || {}, role = source.role === 'quarterly' ? 'quarterly' : 'annual';
     coverage.push({ ...filing, role, textCharactersScanned: scanned.length, textTruncated: input.length > scanned.length, passagesScanned: sentences.length });
     for (const sentence of sentences) {
       if (CROSS_REFERENCE.test(sentence) || /\b(?:Scope [123]|greenhouse gas|carbon dioxide equivalent|settlements? with|government authorities|legal proceedings|civil penalt(?:y|ies)|pursuing opportunities|opportunities in (?:other )?emerging)\b/i.test(sentence)) continue;
       if (EXHIBIT_INDEX_ENTRY.test(sentence) && /\b(?:filed as|incorporated by reference|exhibit\s+[0-9])/i.test(sentence)) continue;
       for (const clause of clauses(sentence)) {
-        if ((!SUBJECT.test(clause) && !OWNERSHIP.test(clause) && !issuer?.test(clause)) || THIRD_PARTY.test(clause) || SPECULATION.test(clause)) continue;
+        const subjectText = issuer ? clause.replace(new RegExp(issuer.source, 'gi'), name => /['’]s$/i.test(name) ? "the company's" : 'the company') : clause;
+        if ((!SUBJECT.test(clause) && !OWNERSHIP.test(clause) && !issuer?.test(clause)) || THIRD_PARTY.test(subjectText) || SPECULATION.test(subjectText)) continue;
         const commodityText = commodityMeaningText(clause);
         const economicText = issuer ? commodityText.replace(new RegExp(issuer.source, 'gi'), '') : commodityText;
         const markets = marketMatches(economicText);
         if (NEGATED.test(clause)) {
-          if (markets.length && qualifiers.length < 200) qualifiers.push({ sentence, economicText, markets, filing, role });
+          const qualifiedMarkets = markets.filter(market => market.type === 'rate' || market.type === 'currency'
+            || categoriesFor(economicText, market).length || /\b(?:exposure|risk|prices?|holdings?|reserves?)\b/i.test(economicText));
+          if (qualifiedMarkets.length && qualifiers.length < 200) qualifiers.push({ sentence, economicText, markets: qualifiedMarkets, filing, role });
           continue;
         }
         for (const market of markets) {
@@ -296,7 +320,7 @@ export function extractCompanyExposureMap(sources, { companyName = '', ticker = 
             // that fit and its separately dated evidence, not a new exposure.
             const benchmark = benchmarkFor(market, economicText);
             if (benchmark?.fit === 'named-reference') row.benchmark = benchmark;
-            row.evidence.push({ _score: score, id: evidenceId, text: sentence, url: filing.url, accession: filing.accession, form: filing.form, filed: filing.filed, reportDate: filing.reportDate || null, role, disclosureDirection: 'connection', benchmark: benchmarkFor(market, economicText), amounts });
+            row.evidence.push({ _score: score, id: evidenceId, text: sentence, url: filing.url, accession: filing.accession, form: filing.form, filed: filing.filed, reportDate: filing.reportDate || null, role, ...(filing.sourceCik ? { sourceCik: filing.sourceCik } : {}), disclosureDirection: 'connection', benchmark: benchmarkFor(market, economicText), amounts });
             rows.set(key, row);
           }
         }
@@ -321,7 +345,7 @@ export function extractCompanyExposureMap(sources, { companyName = '', ticker = 
           row.evidence = row.evidence.filter(item => item !== weakest); omittedEvidence++;
         } else if (row.evidence.length >= 4) { omittedEvidence++; continue; }
         const filing = qualifier.filing;
-        row.evidence.push({ _score: 100, id: evidenceId, text: qualifier.sentence, url: filing.url, accession: filing.accession, form: filing.form, filed: filing.filed, reportDate: filing.reportDate || null, role: qualifier.role, disclosureDirection: 'qualifying-or-negative', benchmark: null, amounts: [] });
+        row.evidence.push({ _score: 100, id: evidenceId, text: qualifier.sentence, url: filing.url, accession: filing.accession, form: filing.form, filed: filing.filed, reportDate: filing.reportDate || null, role: qualifier.role, ...(filing.sourceCik ? { sourceCik: filing.sourceCik } : {}), disclosureDirection: 'qualifying-or-negative', benchmark: null, amounts: [] });
       }
     }
   }

@@ -3,6 +3,7 @@
 import { readPreparedAnalysis } from './preparedFinancialData.js';
 import { preparedEnvelopeUsable } from './secDocumentStore.js';
 import { analysisBaseline, analysisChange, ANALYSIS_VERSION } from './analysisResearch.js';
+import { ANALYSIS_MAPPING_VERSION } from './analysisVersion.js';
 
 export const PUBLIC_ANALYSIS_VERSION = 'edgar.public-analysis.v1';
 export const PUBLIC_ANALYSIS_BASES = Object.freeze(['annual', 'quarter', 'ytd', 'ttm']);
@@ -12,6 +13,7 @@ const MAX_INPUTS = 64;
 const MAX_CALCULATIONS = 32;
 const primary = {
   corporate: ['revenue', 'netIncome', 'operatingMargin', 'operatingCashFlow', 'freeCashFlow', 'roe'],
+  'broker-dealer': ['revenue', 'netIncome', 'netMargin', 'operatingCashFlow', 'freeCashFlow', 'roe'],
   banking: ['bankRevenue', 'netIncome', 'roe', 'equityAssets', 'deposits', 'loanDeposits'],
   insurance: ['premiumsEarned', 'investmentIncome', 'netIncome', 'roe', 'equityAssets', 'cashAssets'],
 };
@@ -48,7 +50,7 @@ function urls(selection) {
     summaryUrl: `/api/v1/analysis/${selection.ticker}${suffix}` };
 }
 function unavailable(selection, reason) {
-  return { schemaVersion: PUBLIC_ANALYSIS_VERSION, calculationVersion: ANALYSIS_VERSION,
+  return { schemaVersion: PUBLIC_ANALYSIS_VERSION, calculationVersion: ANALYSIS_VERSION, mappingVersion: ANALYSIS_MAPPING_VERSION,
     status: 'not-prepared', ticker: selection.ticker, name: selection.ticker, basis: selection.basis,
     asOf: selection.asOf, selectedEnd: selection.end || 'latest', stale: false,
     period: null, comparisonPeriod: null, metrics: [], sourceCatalog: [], coverage: null,
@@ -70,7 +72,8 @@ function source(value) {
     || url.username || url.password || url.port || !url.pathname.startsWith('/Archives/')) throw new Error('Invalid SEC source');
   return { taxonomy: text(value.taxonomy, 40), tag: text(value.tag, 240), unit: text(value.unit, 40),
     start: date(value.start), end: value.end, value: value.value, accession: value.accession,
-    filed: value.filed, form: text(value.form, 16), url: url.href, revised: value.revised === true };
+    filed: value.filed, form: text(value.form, 16), url: url.href, revised: value.revised === true,
+    ...(text(value.scopeNote, 800) ? { scopeNote: text(value.scopeNote, 800) } : {}) };
 }
 const units = { currency: 'USD', percent: '%', decimal: 'ratio', eps: 'USD/shares', shares: 'shares', days: 'days', number: 'count' };
 
@@ -87,7 +90,7 @@ export function createPublicAnalysisReader({ read = readPreparedAnalysis, now = 
     try { envelope = await read({ ticker: selected.ticker, basis: selected.basis, asOf: '' }); }
     catch { return missing('Prepared financial storage is temporarily unavailable. Open the interactive workspace or retry later.'); }
     const data = envelope?.payload;
-    if (!preparedEnvelopeUsable(envelope, at) || data?.version !== ANALYSIS_VERSION || data?.packed !== true
+    if (!preparedEnvelopeUsable(envelope, at) || data?.version !== ANALYSIS_VERSION || data?.mappingVersion !== ANALYSIS_MAPPING_VERSION || data?.packed !== true
       || data.ticker !== selected.ticker || data.basis !== selected.basis || data.asOf
       || !/^\d{10}$/.test(data.cik || '') || Number(data.cik) === 0
       || !Array.isArray(data.periods) || !Array.isArray(data.definitions)
@@ -130,7 +133,7 @@ export function createPublicAnalysisReader({ read = readPreparedAnalysis, now = 
         reason: text(value.reason || value.note, 500) || null, sourceIds: ids, calculations };
     }
     try {
-      const metricKeys = primary[data.lens] || primary.corporate;
+      const metricKeys = data.businessModel === 'broker-dealer' ? primary['broker-dealer'] : primary[data.lens] || primary.corporate;
       const metrics = metricKeys.map(key => {
         const definition = data.definitions.find(value => value.key === key);
         if (!definition) return null;
@@ -144,7 +147,7 @@ export function createPublicAnalysisReader({ read = readPreparedAnalysis, now = 
       }).filter(Boolean);
       if (!metrics.length) return missing('This prepared model has no supported financial summary metrics.');
       const metadata = envelope.metadata;
-      const result = { schemaVersion: PUBLIC_ANALYSIS_VERSION, calculationVersion: data.version, status: 'ready',
+      const result = { schemaVersion: PUBLIC_ANALYSIS_VERSION, calculationVersion: data.version, mappingVersion: data.mappingVersion, status: 'ready',
         ticker: selected.ticker, cik: data.cik, name: text(data.name) || selected.ticker,
         lens: text(data.lens, 32), businessModel: text(data.businessModel, 40) || null,
         basis: selected.basis, asOf: '', selectedEnd: selected.end || 'latest',

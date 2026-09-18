@@ -15,12 +15,14 @@ import {
   sourceDocumentUrl,
 } from "./xbrlPeriods.js";
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
+import { comparePointQuality } from "./compareQuality.js";
+import { createAnalysisFinancialMapper } from "./analysisFinancialMappings.js";
 import {
   SUPPLEMENTAL_METRIC_DEFINITIONS,
   calculateSupplementalMetric,
 } from "./financialSupplementalMetrics.js";
 
-import { ANALYSIS_VERSION } from "./analysisVersion.js";
+import { ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION } from "./analysisVersion.js";
 export { ANALYSIS_VERSION } from "./analysisVersion.js";
 const finite = (p) => Number.isFinite(p?.value);
 const missing = (
@@ -79,6 +81,7 @@ export function buildAnalysisCompany(company, settings = {}) {
     : comparison.periods;
   const { lens } = comparison;
   const industry = lens === "banking" ? "banking" : company.sic;
+  const financialMapper = createAnalysisFinancialMapper(company);
   const metrics = {};
   const definitions = {};
   function add(row, category, extra = {}) {
@@ -125,13 +128,16 @@ export function buildAnalysisCompany(company, settings = {}) {
         ].includes(row.key)
       )
         continue;
-      add(row, category);
+      add(financialMapper.row(row, periods), category);
     }
   }
   for (const metric of COMPARE_METRICS.filter((m) => m.lenses.includes(lens))) {
     if (!definitions[metric.key])
       add(
-        { ...metric, values: comparison.metrics[metric.key] },
+        financialMapper.row(
+          { ...metric, values: comparison.metrics[metric.key] },
+          periods,
+        ),
         metric.inputs && metric.format !== "currency"
           ? "ratios"
           : ["deposits", "loans"].includes(metric.key)
@@ -160,6 +166,11 @@ export function buildAnalysisCompany(company, settings = {}) {
         category,
       );
   }
+  for (const [key, label] of [
+    ["totalDebt", "Total reported debt"],
+    ["longTermInvestments", "Noncurrent investments"],
+  ])
+    add(financialMapper.row({ key, label, format: "currency" }, periods), "balance");
   // Consolidated balance equation avoids mixing parent equity with noncontrolling interests.
   const tagged = (key, label, tags) =>
     add(
@@ -249,6 +260,40 @@ export function buildAnalysisCompany(company, settings = {}) {
       category,
       { formula },
     );
+  // Compare's generic rows can use narrower debt components or a different
+  // revenue mapping. Recompute affected Analysis ratios from the actual rows
+  // shown here, with the same period/unit/cutoff checks as other financials.
+  const deriveMapped = (
+    key, label, inputs, formula, compute, category = "ratios", format = "percent",
+  ) => add({
+    key, label, format,
+    values: periods.map((period, index) => {
+      const points = inputs.map((input) => metrics[input]?.[index]);
+      const problem = points.map((point, i) => comparePointQuality(point, inputs[i], period))
+        .find((quality) => !quality.valid);
+      if (problem) return missing(period, problem.reason);
+      if (key === "netReportedDebt" && evidenceSources(points[1])
+        .some((source) => source.tag !== "CashAndCashEquivalentsAtCarryingValue"))
+        return missing(period, "Net reported debt requires the combined cash-and-equivalents concept; narrower cash and restricted cash are not substituted.");
+      return calculateAnalysisPoint(period, points, formula, compute);
+    }),
+  }, category, { formula, inputs });
+  if (lens === "corporate") {
+    deriveMapped("netMargin", "Net margin", ["netIncome", "revenue"],
+      "Net income / reported revenue × 100; financial-company revenue follows its reported net-of-interest basis",
+      (income, revenue) => revenue > 0 ? income / revenue * 100 : null);
+    deriveMapped("operatingMargin", "Operating margin", ["operatingIncome", "revenue"],
+      "Reported operating income / reported revenue × 100",
+      (income, revenue) => revenue > 0 ? income / revenue * 100 : null);
+  }
+  if (lens !== "banking")
+    deriveMapped("debtAssets", "Reported debt / assets", ["totalDebt", "totalAssets"],
+      "Reported combined debt or reconciled current plus noncurrent debt / positive total assets × 100",
+      (debt, assets) => assets > 0 ? debt / assets * 100 : null);
+  if (lens === "banking")
+    deriveMapped("efficiency", "Efficiency ratio", ["noninterestExpense", "bankRevenue"],
+      "Noninterest expense / revenue net of interest expense × 100",
+      (expense, revenue) => revenue > 0 ? expense / revenue * 100 : null);
   const revenueKey =
     lens === "banking"
       ? "bankRevenue"
@@ -260,7 +305,7 @@ export function buildAnalysisCompany(company, settings = {}) {
       "bankNetMargin",
       "Net income / bank revenue",
       ["netIncome", "bankRevenue"],
-      "Net income / (net interest income before provision + noninterest income) × 100",
+      "Net income / revenue net of interest expense × 100",
       (a, b) => (b > 0 ? (a / b) * 100 : null),
     );
   if (lens === "corporate")
@@ -451,6 +496,23 @@ export function buildAnalysisCompany(company, settings = {}) {
       { formula: definition.formula, inputs: definition.inputs },
     );
   }
+  if (lens !== "banking") {
+    const deriveDebt = (key, ...args) => {
+      const original = metrics[key];
+      const originalDefinition = definitions[key];
+      deriveMapped(key, ...args);
+      metrics[key] = metrics[key].map((point, index) => finite(original[index])
+        && original[index].value === point.value ? original[index] : point);
+      if (metrics[key].every((point, index) => point === original[index]
+        || !finite(point) && !finite(original[index]))) definitions[key] = originalDefinition;
+    };
+    deriveDebt("reportedDebtEquity", "Reported debt / equity", ["totalDebt", "stockholdersEquity"],
+      "Reported combined debt or reconciled current plus noncurrent debt / positive stockholders’ equity × 100",
+      (debt, equity) => equity > 0 ? debt / equity * 100 : null);
+    deriveDebt("netReportedDebt", "Net reported debt", ["totalDebt", "cash"],
+      "Reported combined debt or reconciled current plus noncurrent debt − cash and equivalents",
+      (debt, cash) => debt - cash, "balance", "currency");
+  }
   const order =
     lens === "banking"
       ? [
@@ -523,7 +585,10 @@ export function buildAnalysisCompany(company, settings = {}) {
           form: e.form,
           documentUrl:
             company.filings?.find((f) => f.accession === e.accn)?.documentUrl ||
-            sourceDocumentUrl(company.cik, { accession: e.accn }),
+            sourceDocumentUrl(company.cik, {
+              accession: e.accn, sourceCik: e.sourceCik,
+              documentUrl: e.documentUrl, factId: e.factId,
+            }),
         })),
       );
     }
@@ -556,6 +621,7 @@ export function buildAnalysisCompany(company, settings = {}) {
   return {
     ...comparison,
     version: ANALYSIS_VERSION,
+    mappingVersion: ANALYSIS_MAPPING_VERSION,
     periods,
     metrics,
     definitions: Object.values(definitions).sort((a, b) => a.order - b.order),
@@ -564,6 +630,7 @@ export function buildAnalysisCompany(company, settings = {}) {
     filings: (company.filings || [])
       .filter((f) => !settings.asOf || f.filingDate <= settings.asOf)
       .slice(0, 100),
+    ...(company.sourceCoverage ? { sourceCoverage: company.sourceCoverage } : {}),
     note: "Standard SEC XBRL concepts, USD and reported per-share units. This is a normalized financial extract, not a complete reproduction of the filed statements. Custom tags and unavailable contexts remain missing. Latest filed values within the cutoff are used; revisions are not automatically errors.",
   };
 }

@@ -5,8 +5,10 @@ import { secCoverageFingerprint } from '../src/utils/secCoverageMembership.js';
 import { createSecCoverageRegistry, installSecCoverageRegistry } from '../src/utils/secCoverageRegistry.js';
 import { readPreparedSecDocument, refreshSecDocument, secDocumentIdentity, isSecPreparedReadEnabled, getSecPreparedCompany } from '../src/utils/secDocumentStore.js';
 import { readPreparedAnalysis, prepareFinancialCompany, financialPreparedKey } from '../src/utils/preparedFinancialData.js';
+import { enrichAnalysisCompanySources } from '../src/utils/analysisResearchSources.js';
 import { readPreparedCompare, readPreparedPortfolio } from '../src/utils/preparedResearchStore.js';
 import { ANALYSIS_VERSION, buildAnalysisCompany, packAnalysisCompany } from '../src/utils/analysisResearch.js';
+import { ANALYSIS_MAPPING_VERSION } from '../src/utils/analysisVersion.js';
 
 const NOW = Date.parse('2026-09-13T12:00:00Z');
 const production = { VERCEL_ENV: 'production' };
@@ -104,7 +106,8 @@ const freshMetadata = () => ({ fetchedAt: new Date(Date.now() - 1000).toISOStrin
 
 test('candidate ticker changes cannot invalidate active Analysis and requested ticker is serialized with validated CIK', async () => {
   await withProductionRegistry(state(previous, renamed), async () => {
-    const payload = { packed: true, version: ANALYSIS_VERSION, ticker: 'AMZNX', cik: '0001018724', basis: 'annual', periods: [], sourceCatalog: [] };
+    const payload = { packed: true, version: ANALYSIS_VERSION, mappingVersion: ANALYSIS_MAPPING_VERSION,
+      ticker: 'AMZNX', cik: '0001018724', basis: 'annual', periods: [], sourceCatalog: [] };
     const options = { mode: 'supabase', hotRead: async () => null, read: async () => ({ payload, metadata: freshMetadata() }) };
     const result = await readPreparedAnalysis({ ticker: 'AMZN' }, options);
     assert.equal(result.payload.ticker, 'AMZN'); assert.equal(JSON.parse(result.serializedPayload).ticker, 'AMZN');
@@ -161,5 +164,6 @@ test('raw source changes republish Analysis provenance even when financial calcu
   assert.equal(publications[0].metadata.inputDocuments[0].contentHash, 'a'.repeat(64));
   const stable = value => ({ ...value, observedAt: undefined });
   assert.deepEqual(stable(publications[0].payload), stable(publications[1].payload));
-  assert.deepEqual(stable(publications[1].payload), stable(packAnalysisCompany(buildAnalysisCompany(company, { basis: 'annual', asOf: '' }))));
+  const enriched = await enrichAnalysisCompanySources(company, { basis: 'annual', asOf: '' });
+  assert.deepEqual(stable(publications[1].payload), stable(packAnalysisCompany(buildAnalysisCompany(enriched, { basis: 'annual', asOf: '' }))));
 });

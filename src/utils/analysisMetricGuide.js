@@ -26,7 +26,7 @@ const guide = (
 // calculations and reported concepts remain in the evidence inspector.
 const GUIDES = {
   revenue: guide(
-    "Sales recognized for the reporting period under the company's accounting policies.",
+    "Revenue recognized for the reporting period under the company's accounting policies. Financial institutions may report revenue net of interest expense; inspect the cited concept and scope.",
     "Investigate price, volume, product mix, acquisitions and currency effects.",
     "Revenue growth alone does not establish organic growth, cash collection or improved profitability.",
     "(revenue OR sales) AND (volume OR price OR acquisition OR currency)",
@@ -225,15 +225,31 @@ const GUIDES = {
     '"return on assets" OR "net income" OR "total assets"',
   ),
   debtAssets: guide(
-    "Reported current and noncurrent debt relative to total assets; both debt inputs are required.",
+    "Reported total debt relative to total assets, using a combined reported amount or a complete reconciliation of current and noncurrent debt. The evidence identifies the selected scope.",
     "Review issuance, repayment, debt reclassification, asset changes and borrowing terms.",
     "The selected debt concepts may not capture every lease, guarantee or commitment. This ratio does not establish covenant compliance.",
     "debt OR maturity OR covenant OR guarantee",
     "notes",
     ["corporate", "insurance"],
   ),
+  reportedDebtEquity: guide(
+    "Reported total debt relative to positive stockholders’ equity, using a combined reported amount or a complete reconciliation of current and noncurrent debt.",
+    "Review borrowing, repayments and changes in the equity base alongside the cited debt scope.",
+    "Lease and other obligation coverage follows the source concepts. Nonpositive equity makes this ratio unavailable; a small positive equity base can magnify it.",
+    '"borrowings" OR "debt" OR "stockholders equity"',
+    "notes",
+    ["corporate", "insurance"],
+  ),
+  netReportedDebt: guide(
+    "Reported total debt after subtracting cash and equivalents, using a combined reported debt amount or a complete reconciliation of current and noncurrent debt.",
+    "Review the sources of borrowing and cash changes and whether cash is available to repay obligations.",
+    "The cited debt scope may exclude obligations. A negative amount means selected cash exceeds selected debt; it does not establish that every obligation is covered.",
+    '"borrowings" OR "cash equivalents"',
+    "notes",
+    ["corporate", "insurance"],
+  ),
   bankRevenue: guide(
-    "Net interest income before provision plus noninterest income, as calculated in this workspace.",
+    "Reported revenue net of interest expense, or compatible net interest income before provision plus noninterest income. The evidence identifies the reported concept or calculation.",
     "Read about interest-rate sensitivity, earning-asset and funding mix, fees and trading or investment income.",
     "This is not gross interest revenue and may differ from the bank's adjusted presentation. Provision and operating expenses are separate.",
     '"net interest income" OR "noninterest income"',

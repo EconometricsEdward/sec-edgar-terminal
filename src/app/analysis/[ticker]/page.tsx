@@ -6,6 +6,7 @@ import AnalysisWorkspace from "./AnalysisWorkspace";
 import AnalysisResearchBrief from "../AnalysisResearchBrief";
 import { buildPageMetadata } from "../../../utils/siteMetadata";
 import { isCftcEnabled } from "../../../utils/cftcFeature.js";
+import { ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION } from "../../../utils/analysisVersion.js";
 import { publicAnalysisSelection, readPublicAnalysis } from "../../../utils/analysisPublicResearch.js";
 import { readAnalysisSettings } from "../../../utils/analysisNotebook.js";
 import { getActiveSecCoverageCompany, loadSecCoverageRegistry } from "../../../utils/secCoverageRegistry.js";
@@ -19,7 +20,7 @@ const readLatest = unstable_cache(async (ticker: string, basis: string) => {
   const result = await readPublicAnalysis({ ticker, basis, end: "", asOf: "" });
   if (result.status !== "ready") throw new Error("Analysis summary is not prepared");
   return result;
-}, ["public-analysis-summary-v1"], { revalidate: 60 });
+}, ["public-analysis-summary-v1", ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION], { revalidate: 60 });
 const readSummary = cache(async (ticker: string, basis: string, end: string, asOf: string) => {
   if (end || asOf) return readPublicAnalysis({ ticker, basis, end, asOf });
   return readLatest(ticker, basis).catch(() => null);

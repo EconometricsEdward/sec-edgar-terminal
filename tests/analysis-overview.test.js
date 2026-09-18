@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analysisMovements } from "../src/utils/analysisOverview.js";
+import { analysisMovements, analysisOverview } from "../src/utils/analysisOverview.js";
 import {
   normalizeAnalysisSettings,
   readAnalysisSettings,
@@ -40,6 +40,14 @@ const data = {
     eps: [point(10, 0), point(1, 1)],
   },
 };
+test("broker overview uses net margin without assuming a corporate operating subtotal", () => {
+  const company = { ...data, lens: "corporate", businessModel: "broker-dealer", definitions: [
+    ...data.definitions, { key: "netMargin" }, { key: "operatingMargin" },
+  ] };
+  assert.ok(analysisOverview(company, 0).primary.includes("netMargin"));
+  assert.ok(!analysisOverview(company, 0).primary.includes("operatingMargin"));
+  assert.ok(analysisOverview({ ...company, businessModel: "corporate" }, 0).primary.includes("operatingMargin"));
+});
 test("Overview ranks like-unit absolute changes including turnarounds and explains exclusions", () => {
   const result = analysisMovements(data, 0);
   assert.deepEqual(

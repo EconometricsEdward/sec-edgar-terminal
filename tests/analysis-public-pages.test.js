@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { buildAnalysisCompany, packAnalysisCompany } from '../src/utils/analysisResearch.js';
+import { ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION } from '../src/utils/analysisVersion.js';
 import { buildAnalysisDirectory } from '../src/utils/analysisDirectory.js';
 import { readAnalysisSettings } from '../src/utils/analysisNotebook.js';
 import { createPublicAnalysisReader, publicAnalysisSelection } from '../src/utils/analysisPublicResearch.js';
@@ -57,6 +58,7 @@ function fixture({ fail = false, available = true } = {}) {
       if (name === 'lucide-react') return new Proxy({}, { get: () => () => null });
       if (name.endsWith('/siteMetadata')) return { buildPageMetadata: value => value };
       if (name.endsWith('/cftcFeature.js')) return { isCftcEnabled: () => true };
+      if (name.endsWith('/analysisVersion.js')) return { ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION };
       if (name.endsWith('/analysisDirectory.js')) return { buildAnalysisDirectory };
       if (name.endsWith('/AnalysisDirectory')) return compile('sampler');
       if (name.endsWith('/analysisNotebook.js')) return { readAnalysisSettings };
