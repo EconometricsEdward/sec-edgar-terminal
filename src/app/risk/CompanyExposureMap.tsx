@@ -60,7 +60,7 @@ export default function CompanyExposureMap({ ticker, asOf = '', basis = 'ttm', o
       {panel === null && loadingPanel()}
       {panel === 'concentrations' && <CompanyConcentrations ticker={ticker} basis={basis} asOf={asOf} />}
       {panel === 'instruments' && <ExposureInstruments ticker={ticker} basis={basis} asOf={asOf} />}
-      {panel === 'markets' && <MarketConnections ticker={ticker} basis={basis} asOf={asOf} />}
+      {panel === 'markets' && <MarketConnections key={`${ticker}:${basis}:${asOf}`} ticker={ticker} basis={basis} asOf={asOf} />}
       {panel === 'ownership' && <CompanyOwnership ticker={ticker} asOf={asOf} />}
     </div>
   </section>;
