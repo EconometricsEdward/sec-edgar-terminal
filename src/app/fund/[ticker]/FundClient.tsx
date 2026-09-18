@@ -17,7 +17,6 @@ import {
   money,
   number,
   pct,
-  researchBrief,
   useFundShelf,
 } from "../fundUi";
 import type { Exposure, Fund, Holding } from "../fundTypes";
@@ -27,7 +26,7 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
   const params = useSearchParams();
   const router = useRouter();
   const [tab, setTab] = useState(
-    ["overview", "holdings", "sources", "notebook"].includes(
+    ["overview", "holdings", "sources"].includes(
       params.get("tab") || "",
     )
       ? params.get("tab")!
@@ -49,15 +48,13 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
   const [retry, setRetry] = useState(0),
     [message, setMessage] = useState(""),
     [detail, setDetail] = useState<Holding | null>(null);
-  const [notes, setNotes] = useState(""),
-    [notesReady, setNotesReady] = useState(false);
   const shelf = useFundShelf();
   const evidenceRef = useRef<HTMLElement>(null);
   const previousAccession = useRef(selectedAccession);
   const briefRefreshes = useRef(new Set<string>());
   const loadedApiQuery = useRef("");
   // Report navigation updates both the server research brief and this workspace.
-  // Keep this component mounted so notes and research controls survive the change.
+  // Keep this component mounted so portfolio controls survive the change.
   useEffect(() => {
     if (previousAccession.current === selectedAccession) return;
     previousAccession.current = selectedAccession;
@@ -141,14 +138,6 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
     );
   }, [apiQuery, tab, urlTicker, accession, selectedAccession]);
   useEffect(() => {
-    try {
-      setNotes(localStorage.getItem(`edgar-fund-notes:${urlTicker}`) || "");
-    } catch {
-      setMessage("Research notes cannot be loaded in this browser.");
-    }
-    setNotesReady(true);
-  }, [urlTicker]);
-  useEffect(() => {
     if (!detail) return;
     const close = (e: KeyboardEvent) => {
       if (e.key === "Escape") setDetail(null);
@@ -162,21 +151,9 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
       setMessage(success);
     } catch {
       setMessage(
-        "Copy failed. You can use the address bar or download the research brief.",
+        "Copy failed. Copy the page address from your browser to share this view.",
       );
     }
-  };
-  const downloadBrief = () => {
-    if (!data) return;
-    const url = URL.createObjectURL(
-      new Blob([researchBrief(data, notes)], { type: "text/markdown" }),
-    );
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${urlTicker}-${data.asOf}-research.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setMessage("Research brief download started.");
   };
   const reset = () => {
     setDraftQuery("");
@@ -324,14 +301,14 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
           </div>
           <div className={s.profileTools}>
             <nav aria-label="Fund research sections" className={s.tabs}>
-              {["overview", "holdings", "sources", "notebook"].map((t) => (
+              {["overview", "holdings", "sources"].map((t) => (
                 <button
                   key={t}
                   aria-current={tab === t ? "page" : undefined}
                   className={tab === t ? s.active : ""}
                   onClick={() => setTab(t)}
                 >
-                  {t === "notebook" ? "Research notebook" : t}
+                  {t}
                 </button>
               ))}
             </nav>
@@ -719,6 +696,12 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
                 >
                   Browse fund filings ↗
                 </a>
+                <a
+                  className={s.secondary}
+                  href={`/api/fund?v=2&ticker=${urlTicker}&accession=${data.accession}&format=csv`}
+                >
+                  <Download size={15} /> Full holdings CSV
+                </a>
               </div>
               <h3 className={s.subheading}>Recent registrant filings</h3>
               <p className={s.caption}>
@@ -751,63 +734,6 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
                     ))}
                   </tbody>
                 </table>
-              </div>
-            </section>
-          )}
-          {tab === "notebook" && (
-            <section className={s.panel}>
-              <p className={s.eyebrow}>Keep the evidence with your thinking</p>
-              <h2>Your fund research notebook</h2>
-              <p className={s.caption}>
-                Notes stay in this browser. Downloads include the selected
-                portfolio date, identifiers, and SEC source links.
-              </p>
-              <label className={s.notesLabel} htmlFor="fund-notes">
-                Research notes
-                <textarea
-                  id="fund-notes"
-                  value={notes}
-                  disabled={!notesReady}
-                  maxLength={12000}
-                  rows={8}
-                  onChange={(e) => {
-                    setNotes(e.target.value);
-                    try {
-                      localStorage.setItem(
-                        `edgar-fund-notes:${urlTicker}`,
-                        e.target.value,
-                      );
-                      setMessage("Notes saved in this browser.");
-                    } catch {
-                      setMessage(
-                        "Notes could not be saved. Download the brief to keep a copy.",
-                      );
-                    }
-                  }}
-                  placeholder="What stands out? Which positions or concentrations need a closer look?"
-                />
-              </label>
-              <div className={s.actions}>
-                <button className={s.primary} onClick={downloadBrief}>
-                  <Download size={15} /> Download research brief
-                </button>
-                <button
-                  className={s.secondary}
-                  onClick={() =>
-                    copy(
-                      researchBrief(data, notes),
-                      "Source-linked research brief copied.",
-                    )
-                  }
-                >
-                  Copy brief
-                </button>
-                <a
-                  className={s.secondary}
-                  href={`/api/fund?v=2&ticker=${urlTicker}&accession=${data.accession}&format=csv`}
-                >
-                  Download full holdings CSV
-                </a>
               </div>
             </section>
           )}

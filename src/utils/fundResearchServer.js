@@ -33,7 +33,7 @@ export function createFundLoader({ fundLookup = getFundTicker, operatingLookup =
       if (prepared) return prepared;
       const checkedAt = new Date(now()).toISOString();
       const data = await buildFund(ticker, accession, deadline, checkedAt);
-      if (data.status === 'ready') {
+      if (data.status === 'ready' && data.sourceCheckStatus !== 'regressed') {
         if (!validPreparedFundData(data, ticker, accession, now())) throw new Error('The N-PORT portfolio could not be fully validated. Open the original SEC filing.');
         await cache.publish(data, { latest: !accession, checkedAt, signal: deadline });
       }
@@ -84,7 +84,12 @@ export function createFundLoader({ fundLookup = getFundTicker, operatingLookup =
     const cik = String(lookup.cik || '').padStart(10, '0');
     if (!/^(?!0000000000)\d{10}$/.test(cik) || fund && (!/^S\d{9}$/.test(fund.seriesId) || !/^C\d{9}$/.test(fund.classId)))
       throw new Error('The SEC fund identity could not be verified. Retry this request.');
-    const submissions = await source(`https://data.sec.gov/submissions/CIK${cik}.json`, 'json', 16 * 1024 * 1024);
+    // Once identity is known, the registrant metadata and series feed are
+    // independent. Fetch both in the same bounded source window.
+    const [submissions, seriesFeed] = await Promise.all([
+      source(`https://data.sec.gov/submissions/CIK${cik}.json`, 'json', 16 * 1024 * 1024),
+      fund?.seriesId ? source(`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${fund.seriesId}&type=NPORT-P&count=40&output=atom`, 'text', 2 * 1024 * 1024) : null,
+    ]);
     if (String(submissions.cik || '').padStart(10, '0') !== cik || typeof submissions.name !== 'string'
       || !Array.isArray(submissions.filings?.recent?.form) || !Array.isArray(submissions.filings?.recent?.accessionNumber)
       || !Array.isArray(submissions.filings?.recent?.filingDate)) throw new Error('SEC returned incomplete fund filing metadata. Retry this request.');
@@ -115,8 +120,7 @@ export function createFundLoader({ fundLookup = getFundTicker, operatingLookup =
     // SEC's series-filtered feed narrows candidates; XML identity is independently checked.
     let candidates = nports;
     if (fund?.seriesId) {
-      const feed = await source(`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${fund.seriesId}&type=NPORT-P&count=40&output=atom`, 'text', 2 * 1024 * 1024);
-      candidates = parseFundFeed(feed).map((f) => ({
+      candidates = parseFundFeed(seriesFeed).map((f) => ({
         ...f,
         ...nports.find((n) => n.accession === f.accession),
       })).filter(f => validFilingDate(f.filingDate));
@@ -199,9 +203,41 @@ export function createFundLoader({ fundLookup = getFundTicker, operatingLookup =
       filingDate: data.filingDate, reportDate: data.asOf, form: data.form });
     data.summary = portfolioSummary(data);
     if (Buffer.byteLength(JSON.stringify(data)) > FUND_MAX_BYTES - 2048) throw new Error('This fund portfolio exceeds the supported size. Open the original SEC filing.');
+    if (!requestedAccession) {
+      // A temporarily lagging series feed must not replace a verified newer
+      // portfolio (or a later amendment) with older data. Exact report requests
+      // remain independent, and an identity change never takes this fallback.
+      const previous = await cache.readPrepared(ticker, '', { signal, allowStale: true });
+      const sameIdentity = previous && ['cik', 'seriesId', 'classId'].every(key => previous[key] === data[key]);
+      const regressed = sameIdentity && (previous.asOf > data.asOf
+        || previous.asOf === data.asOf && previous.filingDate > data.filingDate);
+      if (regressed) return {
+        ...previous,
+        cache: { ...previous.cache, stale: true },
+        sourceCheckStatus: 'regressed',
+        sourceCheckNotice: 'The latest SEC listing returned an older report. The newer verified portfolio is retained with its original check date; retry to check the listing again.',
+      };
+    }
     return data;
   }
   return load;
 }
 
 export const loadFund = createFundLoader();
+
+/** Discovery may display a dated prepared portfolio immediately. Explicit
+ * refresh uses the ordinary bounded loader and still respects fresh snapshots.
+ */
+export function createFundDiscoveryLoader({ readPrepared = readPreparedFund, loader = loadFund } = {}) {
+  return async function loadDiscovery(tickerInput, accessionInput = '', { signal, refresh = false } = {}) {
+    const { ticker, accession } = normalizeFundRequest(tickerInput, accessionInput);
+    signal?.throwIfAborted();
+    if (!refresh) {
+      const prepared = await readPrepared(ticker, accession, { signal, allowStale: true });
+      if (prepared) return prepared;
+    }
+    return loader(ticker, accession, { signal });
+  };
+}
+
+export const loadFundDiscovery = createFundDiscoveryLoader();

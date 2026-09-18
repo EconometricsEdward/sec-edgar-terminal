@@ -5,7 +5,7 @@ export const FUND_WORKSPACE_DEFAULTS = {
   family: "",
   sort: "ticker",
   direction: "asc",
-  layout: "table",
+  layout: "cards",
   coverage: "all",
   minAssets: "",
   maxConcentration: "",
@@ -26,7 +26,6 @@ export const FUND_WORKSPACE_DEFAULTS = {
   changeAfter: "",
   changeScope: "all",
   changeQuery: "",
-  board: "",
   managerCik: "",
   managerPeriod: "",
   managerView: "overview",
@@ -38,7 +37,7 @@ export const validFundTicker = (ticker) =>
 const accession = (value) =>
   typeof value === "string" && /^\d{10}-\d{2}-\d{6}$/.test(value);
 const choices = {
-  view: ["discover", "security", "compare", "allocation", "changes", "boards", "13f"],
+  view: ["discover", "security", "compare", "allocation", "changes", "13f"],
   managerView: ["overview", "holdings", "changes", "history", "markets", "filings", "compare"],
   category: [
     "All funds",
@@ -102,11 +101,6 @@ export function normalizeFundWorkspaceSettings(input = {}) {
     out[key] = accession(source[key]) ? source[key] : "";
   for (const key of ["minAssets", "maxConcentration", "maxAge"])
     out[key] = draft(source[key]);
-  out.board =
-    typeof source.board === "string" &&
-    /^[A-Za-z0-9_-]{1,100}$/.test(source.board)
-      ? source.board
-      : "";
   const cik = typeof source.managerCik === "string" ? source.managerCik.trim() : "";
   out.managerCik = /^\d{1,10}$/.test(cik) && Number(cik) > 0 ? cik.padStart(10, "0") : "";
   const period = typeof source.managerPeriod === "string" ? source.managerPeriod : "";

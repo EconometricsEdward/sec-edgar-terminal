@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Download, RefreshCw, BookmarkPlus } from "lucide-react";
+import { ArrowUpRight, Download, RefreshCw } from "lucide-react";
 import { money, pct } from "./fundUi";
 import s from "./fund.module.css";
 import c from "./FundComparison.module.css";
@@ -82,26 +82,15 @@ type ResponseData = {
   result: Result;
   pagination: { page: number; pageCount: number; total: number };
 };
-type Pin = {
-  kind: "comparison";
-  title: string;
-  summary: string;
-  values: { label: string; value: number | string | null; unit?: string }[];
-  sources: Evidence[];
-  methodology?: string;
-};
-
 export default function FundComparison({
   tickers,
   settings = {},
   onPatch = () => {},
-  onEvidence,
   onFunds,
 }: {
   tickers: string[];
   settings?: Settings;
   onPatch?: (patch: Record<string, unknown>) => void;
-  onEvidence?: (evidence: Pin) => void;
   onFunds?: (funds: any[]) => void;
 }) {
   const [data, setData] = useState<ResponseData | null>(null),
@@ -181,30 +170,6 @@ export default function FundComparison({
       JSON.stringify({ ...JSON.parse(reports), ...data.resolvedReports }),
     );
   csv.set("format", "csv");
-  const pin = (row: Row) => {
-    if (!result?.left || !result.right) return;
-    onEvidence?.({
-      kind: "comparison",
-      title: `${row.name}: ${left} versus ${right}`,
-      summary: `Eligible long security weights in ${result.left.asOf} and ${result.right.asOf} portfolios. ${row.ids.join("; ")}.`,
-      values: [
-        { label: `${left} NAV weight`, value: row.leftWeight, unit: "%" },
-        { label: `${right} NAV weight`, value: row.rightWeight, unit: "%" },
-        {
-          label: `${left} minus ${right}`,
-          value: row.difference,
-          unit: "percentage points",
-        },
-        {
-          label: "Shared NAV weight",
-          value: row.sharedWeight,
-          unit: "percentage points",
-        },
-      ],
-      sources: [result.left, result.right],
-      methodology: result.methodology,
-    });
-  };
   return (
     <section
       className={`${s.panel} ${c.panel}`}
@@ -553,7 +518,6 @@ export default function FundComparison({
                           <th scope="col">
                             {left} − {right}
                           </th>
-                          <th scope="col">Evidence</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -575,17 +539,6 @@ export default function FundComparison({
                             <td>
                               {row.difference > 0 ? "+" : ""}
                               {row.difference.toFixed(2)} pp
-                            </td>
-                            <td>
-                              {onEvidence && (
-                                <button
-                                  className={s.secondary}
-                                  onClick={() => pin(row)}
-                                  aria-label={`Pin comparison for ${row.name}`}
-                                >
-                                  <BookmarkPlus size={14} /> Pin
-                                </button>
-                              )}
                             </td>
                           </tr>
                         ))}

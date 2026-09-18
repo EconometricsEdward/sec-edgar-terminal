@@ -1,8 +1,9 @@
-import { loadFund } from "../../../utils/fundResearchServer.js";
+import { loadFund, loadFundDiscovery } from "../../../utils/fundResearchServer.js";
 import {
   filterHoldings,
   holdingsCsv,
   portfolioOverlap,
+  fundDiscoverySummary,
 } from "../../../utils/fundResearch.js";
 import {
   checkRateLimit,
@@ -16,14 +17,18 @@ export async function GET(request) {
   const ticker = (p.get("ticker") || "").trim().toUpperCase();
   const compare = (p.get("compare") || "").trim().toUpperCase();
   const accession = p.get("accession") || "";
+  const view = p.get("view") || "holdings";
   if (
     !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(ticker) ||
     (compare && !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(compare)) ||
-    (accession && !/^\d{10}-\d{2}-\d{6}$/.test(accession))
+    (accession && !/^\d{10}-\d{2}-\d{6}$/.test(accession)) ||
+    !["holdings", "summary"].includes(view) ||
+    (p.has("refresh") && (view !== "summary" || p.get("refresh") !== "1")) ||
+    (view === "summary" && (compare || p.has("format") || p.has("page") || ["q", "asset", "country", "sort", "direction"].some(key => p.has(key))))
   )
     return Response.json(
-      { error: "Enter a valid fund ticker and filing accession." },
-      { status: 400 },
+      { error: "Enter a valid fund ticker, filing accession and view. Summary views describe the complete portfolio." },
+      { status: 400, headers: { "Cache-Control": "no-store" } },
     );
   const limit = await checkRateLimit({
     key: `rl:fund:${getClientIp(request)}`,
@@ -32,16 +37,22 @@ export async function GET(request) {
   });
   if (!limit.allowed) return rateLimitedResponse(limit);
   try {
-    const data = await loadFund(ticker, accession);
+    const refresh = p.get("refresh") === "1";
+    const data = view === "summary"
+      ? await loadFundDiscovery(ticker, accession, { signal: request.signal, refresh })
+      : await loadFund(ticker, accession, { signal: request.signal });
     const headers = {
       "Cache-Control":
-        data.status === "ready"
-          ? "public, s-maxage=1800, stale-while-revalidate=3600"
-          : "no-store",
+        data.status !== "ready" || refresh
+          ? "no-store"
+          : data.cache?.stale
+            ? "public, s-maxage=60, stale-while-revalidate=60"
+            : "public, s-maxage=1800, stale-while-revalidate=3600",
     };
+    if (view === "summary") return Response.json(fundDiscoverySummary(data), { headers });
     if (data.status !== "ready") return Response.json(data, { headers });
     if (compare) {
-      const other = await loadFund(compare);
+      const other = await loadFund(compare, "", { signal: request.signal });
       if (other.status !== "ready")
         return Response.json(
           { error: `${compare}: ${other.reason}` },

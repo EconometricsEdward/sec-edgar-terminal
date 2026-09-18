@@ -3,10 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowUpRight,
-  BookmarkPlus,
   RefreshCw,
 } from "lucide-react";
-import { fundChangeEvidence } from "../../utils/fundChanges.js";
 import { ageDays, money, number, pct } from "./fundUi";
 import s from "./fund.module.css";
 import c from "./FundChanges.module.css";
@@ -117,13 +115,11 @@ export default function FundChanges({
   tickers,
   settings,
   onPatch,
-  onEvidence,
   onFunds,
 }: {
   tickers: string[];
   settings: Settings;
   onPatch: (patch: Record<string, unknown>) => void;
-  onEvidence: (evidence: unknown) => boolean | void;
   onFunds?: (funds: (Source & { reports: Report[] })[]) => void;
 }) {
   const ticker = tickers.includes(settings.changeTicker || "")
@@ -139,8 +135,7 @@ export default function FundChanges({
     [loading, setLoading] = useState(false),
     [attempt, setAttempt] = useState(0),
     [page, setPage] = useState(1),
-    [search, setSearch] = useState(query),
-    [notice, setNotice] = useState("");
+    [search, setSearch] = useState(query);
   const [reportList, setReportList] = useState<{
     ticker: string;
     reports: Report[];
@@ -156,7 +151,6 @@ export default function FundChanges({
   useEffect(() => setSearch(query), [query]);
   useEffect(() => {
     setPage(1);
-    setNotice("");
   }, [ticker, before, after, scope, query]);
   const params = useMemo(() => {
     const value = new URLSearchParams({
@@ -229,21 +223,6 @@ export default function FundChanges({
       ))}
     </>
   );
-  const pin = (row: Row) => {
-    if (
-      !result?.available ||
-      !result.before ||
-      !result.after ||
-      !result.coverage
-    )
-      return;
-    const accepted = onEvidence(fundChangeEvidence(result, row));
-    setNotice(
-      accepted === false
-        ? "This evidence could not be saved. Check the research-board message."
-        : `Pinned ${row.name} with both filing sources and comparison assumptions.`,
-    );
-  };
   return (
     <section className={s.panel} aria-label="Fund report changes">
       <div className={s.sectionHeading}>
@@ -515,11 +494,6 @@ export default function FundChanges({
                       {data!.pagination.total.toLocaleString()} filtered rows
                     </a>
                   </form>
-                  {notice && (
-                    <p role="status" className={c.notice}>
-                      {notice}
-                    </p>
-                  )}
                   <div className={s.tableWrap}>
                     <table className={`${s.table} ${c.table}`}>
                       <caption>
@@ -535,7 +509,6 @@ export default function FundChanges({
                           <th scope="col">Weight change</th>
                           <th scope="col">USD value change</th>
                           <th scope="col">Quantity change</th>
-                          <th scope="col">Evidence</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -601,16 +574,6 @@ export default function FundChanges({
                                   ? "See comparability note"
                                   : row.before.units}
                               </small>
-                            </td>
-                            <td>
-                              <button
-                                type="button"
-                                className={s.secondary}
-                                onClick={() => pin(row)}
-                                aria-label={`Pin change evidence for ${row.name}`}
-                              >
-                                <BookmarkPlus size={14} /> Pin
-                              </button>
                             </td>
                           </tr>
                         ))}

@@ -294,9 +294,11 @@ test("Research Hub indexes board evidence and backs up and restores the exact st
   const entry = vault.entries.find((item) => item.type === "board");
   assert.equal(entry.title, captured.name);
   assert.ok(entry.text.includes("Private analyst notes"));
-  assert.ok(
-    entry.href.includes("board=board-test") && !entry.href.includes("Private"),
-  );
+  const restoredView = readFundWorkspaceSettings(entry.href.split("?")[1]);
+  assert.equal(restoredView.view, "discover");
+  assert.deepEqual(restoredView.tickers, captured.settings.tickers);
+  assert.deepEqual(restoredView.reportMap, captured.settings.reportMap);
+  assert.ok(!entry.href.includes("board=") && !entry.href.includes("Private"));
   assert.equal(
     vault.entries.filter((item) => item.type === "evidence").length,
     1,

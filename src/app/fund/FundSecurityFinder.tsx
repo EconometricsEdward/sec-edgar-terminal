@@ -3,13 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowUpRight,
-  BookmarkPlus,
   Search,
 } from "lucide-react";
 import { ASSET_LABELS } from "../../utils/fundResearch.js";
 import {
   searchFundHoldings,
-  securitySearchEvidence,
   securityWeight,
 } from "../../utils/fundSecuritySearch.js";
 import { money } from "./fundUi";
@@ -111,13 +109,11 @@ export default function FundSecurityFinder({
   tickers,
   settings,
   onPatch,
-  onEvidence,
   onFunds,
 }: {
   tickers: string[];
   settings: Settings;
   onPatch: (patch: Partial<Settings>) => unknown;
-  onEvidence: (evidence: ReturnType<typeof securitySearchEvidence>) => unknown;
   onFunds?: (funds: Fund[]) => void;
 }) {
   const [query, setQuery] = useState(settings.securityQuery || "");
@@ -753,7 +749,7 @@ export default function FundSecurityFinder({
                     Matching securities{" "}
                     <b>{result.totalGroups.toLocaleString()}</b>
                   </span>
-                  <small>Open individual holdings and pin evidence</small>
+                  <small>Inspect individual holdings and SEC sources</small>
                 </summary>
                 <p className={s.help}>
                   Each security stays separate, including different bonds from
@@ -814,25 +810,6 @@ export default function FundSecurityFinder({
                                   : ""}
                             </small>
                           </div>
-                          <button
-                            className={s.secondary}
-                            onClick={() => {
-                              const saved = onEvidence(
-                                securitySearchEvidence(row, {
-                                  ...result,
-                                  errors: data.errors,
-                                }),
-                              );
-                              setMessage(
-                                saved === false
-                                  ? "Evidence was not saved. Check the research board storage message and retry."
-                                  : `Pinned ${row.name} to your research board.`,
-                              );
-                            }}
-                          >
-                            <BookmarkPlus size={15} aria-hidden="true" /> Pin
-                            evidence
-                          </button>
                         </div>
                         <div
                           className={s.tableWrap}
