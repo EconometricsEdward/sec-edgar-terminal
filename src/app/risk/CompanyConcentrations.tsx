@@ -14,6 +14,7 @@ const CACHE_TTL_MS = 5 * 60_000;
 const colors = ['#87d4cb', '#a8b8ef', '#edc76d', '#bc9ddf', '#dcaa96', '#8db8d7', '#b6c68a'];
 const money = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 2 }).format(value);
 const pct = (value: number) => `${(value * 100).toLocaleString('en-US', { maximumFractionDigits: 1 })}%`;
+const scopeLabel = (value?: string) => (value || '').replace(/^Operating Segments?$/i, '').trim();
 const exact = (value: number) => `${value.toLocaleString('en-US', { maximumFractionDigits: 3 })} USD`;
 
 function ConcentrationChart({ group, title }: { group: Group; title: string }) {
@@ -24,7 +25,7 @@ function ConcentrationChart({ group, title }: { group: Group; title: string }) {
   const max = Math.max(...rows.map(row => Math.abs(row.value)), 1);
   const reset = () => setInspected(null);
   return <div className={s.chart} aria-label={`${title}: ${group.label}`}>
-    <div className={s.chartMeta}><span>{group.period}</span>{group.scope && <span>{group.scope.replace(/ Segment/g, '')}</span>}</div>
+    <div className={s.chartMeta}><span>{group.period}</span>{scopeLabel(group.scope) && <span>{scopeLabel(group.scope)}</span>}</div>
     <div className={s.spotlight}>
       <div><span className={s.spotlightLabel}>{active.label}</span><strong>{active.share !== null ? pct(active.share) : money(active.value)}</strong><span className={s.spotlightContext}>{active.share !== null ? `of ${group.denominatorLabel.toLowerCase()}` : 'reported balance'}</span></div>
       <a href={active.fact.sourceUrl} target="_blank" rel="noreferrer" className={s.activeValue} title={`Open SEC source: ${exact(active.value)}`}>{money(active.value)}<ArrowUpRight size={15}/></a>
@@ -48,7 +49,7 @@ function ExposureLens({ groups, title, empty }: { groups: Group[]; title: string
   const id = useId();
   const active = groups.find(group => group.id === choice) || groups[0];
   return <article className={s.lens}>
-    <header className={s.lensHeader}><h3>{title}</h3>{groups.length > 1 && <><label htmlFor={id} className={s.srOnly}>{title} breakdown</label><select id={id} value={active.id} onChange={event => setChoice(event.target.value)}>{groups.map(group => <option key={group.id} value={group.id}>{group.label}{group.scope ? ` · ${group.scope.replace(/ Segment/g, '')}` : ''}</option>)}</select></>}{groups.length === 1 && <span>{active.label}</span>}</header>
+    <header className={s.lensHeader}><h3>{title}</h3>{groups.length > 1 && <><label htmlFor={id} className={s.srOnly}>{title} breakdown</label><select id={id} value={active.id} onChange={event => setChoice(event.target.value)}>{groups.map(group => <option key={group.id} value={group.id}>{group.label}{scopeLabel(group.scope) ? ` · ${scopeLabel(group.scope)}` : ''}</option>)}</select></>}{groups.length === 1 && <span>{active.label}</span>}</header>
     {active ? <ConcentrationChart key={active.id} group={active} title={title}/> : <div className={s.empty}><p>{empty}</p><span>Coverage gap · review the SEC filing</span></div>}
   </article>;
 }
