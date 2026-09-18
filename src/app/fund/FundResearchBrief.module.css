@@ -29,6 +29,12 @@
 .evidence a { text-decoration: underline; text-underline-offset: 3px; }
 .directory { border-top: 1px solid var(--fund-line); margin-top: 24px; padding-top: 22px; }
 .directory h2 { font-size: 21px; }
+.directoryToggle { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 24px; list-style: none; }
+.directoryToggle::-webkit-details-marker { display: none; }
+.directoryToggle::before { content: "+"; color: var(--fund-gold); font-size: 20px; }
+.directory details[open] > .directoryToggle::before { content: "−"; }
+.directoryToggle h2 { font-size: 15px; font-weight: 600; }
+.directoryToggle > span { font-size: 11px; color: var(--fund-muted); }
 .directory p { color: var(--fund-muted); margin-top: 8px; max-width: 900px; }
 .directoryGrid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 30px; margin-top: 20px; }
 .directoryGrid h3 { font-size: 15px; }

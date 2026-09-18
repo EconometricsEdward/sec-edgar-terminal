@@ -22,13 +22,14 @@ export default function FundIndexPage() {
       <Suspense fallback={<p role="status">Opening fund research…</p>}>
         <FundsWorkspace />
       </Suspense>
-      <section className={`${base.page} ${s.directory}`} aria-labelledby="public-fund-research">
-        <h2 id="public-fund-research">Reported portfolios, with the sources attached.</h2>
+      <section id="fund-report-directory" className={`${base.page} ${s.directory}`} aria-labelledby="public-fund-research">
+        <details><summary className={s.directoryToggle}><h2 id="public-fund-research">Browse fund & manager reports</h2><span>Original SEC sources and dated portfolio summaries</span></summary>
         <p>Open a concise research brief for portfolio dates, holdings, concentration and original SEC filings. N-PORT describes a fund portfolio; Form 13F describes an institutional manager’s reportable securities. Coverage varies by reporting structure.</p>
         <div className={s.directoryGrid}>
           <div><h3>Fund portfolio research · N-PORT</h3><ul>{FUND_CATALOG.map(fund => <li key={fund.ticker}><Link href={`/fund/${fund.ticker}`} prefetch={false}><strong>{fund.ticker} · {fund.name}</strong><span>{fund.family} · {fund.focus}</span></Link></li>)}</ul></div>
           <div><h3>Institutional manager research · 13F</h3><ul>{PUBLIC_FUND_MANAGERS.map(manager => <li key={manager.cik}><Link href={`/fund/manager/${manager.cik}`} prefetch={false}><strong>{manager.name}</strong><span>Reported holdings · SEC CIK {manager.cik}</span></Link></li>)}</ul></div>
         </div>
+        </details>
       </section>
     </>
   );

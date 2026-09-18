@@ -8,6 +8,12 @@ export const ASSET_LABELS = {
   RA: "Repurchase agreements",
   RE: "Real estate",
   SN: "Structured notes",
+  "ABS-MBS": "Mortgage-backed securities",
+  // SEC's ASSET_CATEGORY_TYPE spells this code APCP (not ABCP).
+  "ABS-APCP": "Asset-backed commercial paper",
+  "ABS-CBDO": "Collateralized bond / debt obligations",
+  "ABS-O": "Other asset-backed securities",
+  COMM: "Commodities",
   DIR: "Interest-rate derivatives",
   DCR: "Credit derivatives",
   DFE: "FX derivatives",
@@ -277,6 +283,27 @@ export function portfolioSummary(portfolio) {
     derivativeCount: holdings.filter((h) =>
       /^D(IR|CR|FE|E|CO|O)$/.test(h.assetCat),
     ).length,
+  };
+}
+/** Discovery uses complete-portfolio aggregates without downloading every position.
+ * The six visible positions are a preview; their weights are never rescaled.
+ */
+export function fundDiscoverySummary(data) {
+  if (data?.status !== "ready") return { ...data, responseScope: "summary" };
+  const fields = ["ticker", "cik", "seriesId", "classId", "isFund", "name", "registrant", "family",
+    "status", "asOf", "fundInfo", "accession", "filingDate", "form", "sourceUrl", "filingUrl", "secUrl",
+    "retrievedAt", "identity", "reports", "summary", "cache", "sourceCheckStatus", "sourceCheckNotice"];
+  return {
+    ...Object.fromEntries(fields.filter(key => key in data).map(key => [key, data[key]])),
+    responseScope: "summary",
+    summaryScope: "full-portfolio",
+    meta: { name: data.name, family: data.family || data.registrant },
+    holdingsAsOf: data.asOf,
+    holdingsFiledDate: data.filingDate,
+    holdingsAccession: data.accession,
+    filingCount: data.filings.length,
+    nportCount: data.reports.length,
+    topHoldings: [...data.holdings].sort((a, b) => compareNullable(a.value, b.value)).slice(0, 6),
   };
 }
 export function filterHoldings(

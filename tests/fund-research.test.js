@@ -7,6 +7,8 @@ import {
   filterHoldings,
   portfolioOverlap,
   holdingsCsv,
+  fundDiscoverySummary,
+  ASSET_LABELS,
 } from "../src/utils/fundResearch.js";
 function xml(positions, extra = "") {
   return `<edgarSubmission><genInfo><regCik>36405</regCik><regName>Trust &amp; Co.</regName><seriesName>Correct Fund</seriesName><seriesId>S000002839</seriesId><repPdEnd>2026-12-31</repPdEnd><repPdDate>2026-06-30</repPdDate></genInfo><fundInfo><totAssets>1200</totAssets><totLiabs>200</totLiabs><netAssets>1000</netAssets><cshNotRptdInCorD>0</cshNotRptdInCorD></fundInfo><invstOrSecs>${positions}</invstOrSecs>${extra}</edgarSubmission>`;
@@ -190,4 +192,54 @@ test("overlap excludes missing long/short labels and malformed security identifi
     ),
   );
   assert.equal(portfolioOverlap(q, q).count, 0);
+});
+
+test("discovery summary keeps full-portfolio facts and provenance while bounding the holdings preview", () => {
+  const p = {
+    ...parseNport(xml(Array.from({ length: 1000 }, (_, i) => position({ name: `Holding ${i}`, value: String(i) })).join(""))),
+    ticker: "TEST", status: "ready", isFund: true, classId: "C000000001",
+    sourceUrl: "https://www.sec.gov/Archives/source.xml", accession: "0000036405-26-000473",
+    filingDate: "2026-08-28", retrievedAt: "2026-09-18T00:00:00Z", identity: "SEC series matched",
+    reports: [{ accession: "0000036405-26-000473", reportDate: "2026-06-30" }], filings: [{ form: "NPORT-P" }],
+    cache: { checkedAt: "2026-09-18T00:00:00Z", stale: false },
+  };
+  p.summary = portfolioSummary(p);
+  const result = fundDiscoverySummary(p);
+  assert.equal(result.responseScope, "summary");
+  assert.equal(result.summaryScope, "full-portfolio");
+  assert.equal("holdings" in result, false);
+  assert.equal("filings" in result, false);
+  assert.equal("pagination" in result, false);
+  assert.equal(result.topHoldings.length, 6);
+  assert.equal(result.topHoldings[0].name, "Holding 999");
+  assert.equal(result.summary.count, 1000);
+  assert.equal(result.summary.weightTotal, 10000, "Weights are never normalized to the preview");
+  assert.deepEqual(result.summary, p.summary);
+  for (const key of ["cik", "seriesId", "classId", "accession", "asOf", "sourceUrl", "filingDate", "retrievedAt", "reports", "cache"])
+    assert.deepEqual(result[key], p[key]);
+  assert.ok(Buffer.byteLength(JSON.stringify(result)) < Buffer.byteLength(JSON.stringify(p)) / 20);
+  assert.equal(p.holdings.length, 1000, "Projection leaves canonical holdings intact");
+});
+
+test("discovery preserves signed and unavailable preview values and unsupported coverage reasons", () => {
+  const p = { ...parseNport(xml(position({ value: "0", weight: "0" }) + position({ value: "-20", weight: "-2" }) + position({ value: "N/A", weight: null }))),
+    status: "ready", filings: [], reports: [] };
+  p.summary = portfolioSummary(p);
+  const result = fundDiscoverySummary(p);
+  assert.deepEqual(result.topHoldings.map(row => row.value), [0, -20, null]);
+  assert.deepEqual(result.topHoldings.map(row => row.pctOfNav), [0, -2, null]);
+  assert.equal(result.summary.top10Weight, null);
+  const missing = fundDiscoverySummary({ ticker: "TEST", status: "unavailable", reason: "No matching public series report", holdings: [] });
+  assert.equal(missing.status, "unavailable");
+  assert.equal(missing.reason, "No matching public series report");
+  assert.equal(missing.summary, undefined);
+});
+
+test("SEC asset-backed security categories retain their own labels and NAV allocation", () => {
+  const p = parseNport(xml(position({ asset: "ABS-MBS", value: "600", weight: "60" }) + position({ asset: "ABS-CBDO", value: "100", weight: "10" }) + position({ asset: "ABS-O", value: "50", weight: "5" })));
+  assert.deepEqual(portfolioSummary(p).assets.map(row => [ASSET_LABELS[row.key], row.pctOfNav]), [
+    ["Mortgage-backed securities", 60], ["Collateralized bond / debt obligations", 10], ["Other asset-backed securities", 5],
+  ]);
+  assert.equal(ASSET_LABELS["ABS-APCP"], "Asset-backed commercial paper");
+  assert.equal(ASSET_LABELS.COMM, "Commodities");
 });

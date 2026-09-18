@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createFundResearchCache, validPreparedFundData, FUND_CACHE_TYPE, FUND_RETENTION_MS } from '../src/utils/fundResearchCache.js';
-import { createFundLoader } from '../src/utils/fundResearchServer.js';
+import { createFundLoader, createFundDiscoveryLoader } from '../src/utils/fundResearchServer.js';
 import { parseNport, portfolioSummary } from '../src/utils/fundResearch.js';
 
 const CIK = '0000036405', ACCESSION = '0000036405-26-000001', SERIES = 'S000002839', CLASS = 'C000007980';
@@ -173,4 +173,106 @@ test('An overall deadline cancels a stalled directory lookup', async () => {
     const { load } = loaderFixture({ cache, deadlineMs: 10, fundLookup: async () => new Promise(() => {}) });
     await assert.rejects(load('TEST'), error => error.name === 'TimeoutError');
   } finally { clearTimeout(keepAlive); }
+});
+
+test('SEC submissions and series requests overlap but XML identity still gates publication', async () => {
+  const f = fixture();
+  let submissionsStarted = false, feedStarted = false, releaseSubmissions;
+  const waitForFeed = new Promise(resolve => { releaseSubmissions = resolve; });
+  const { load } = loaderFixture({ cache: f.create(), fetchSec: async url => {
+    if (url.includes('/submissions/')) {
+      submissionsStarted = true;
+      await waitForFeed;
+      return Response.json({ cik: 36405, name: 'Test Trust', filings: { recent: {
+        form: ['NPORT-P'], accessionNumber: [ACCESSION], filingDate: ['2026-08-20'], reportDate: ['2026-06-30'], primaryDocument: ['primary_doc.xml'] } } });
+    }
+    if (url.includes('browse-edgar')) {
+      feedStarted = true;
+      assert.equal(submissionsStarted, true);
+      releaseSubmissions();
+      return new Response(`<feed><entry><accession-number>${ACCESSION}</accession-number><filing-date>2026-08-20</filing-date><filing-type>NPORT-P</filing-type></entry></feed>`);
+    }
+    assert.equal(feedStarted, true);
+    return new Response(document());
+  } });
+  const data = await load('TEST');
+  assert.equal(data.status, 'ready');
+  assert.equal(data.seriesId, SERIES);
+  assert.equal(f.writes.length, 2);
+});
+
+test('discovery serves a dated retained portfolio immediately; explicit refresh respects the ordinary loader', async () => {
+  const f = fixture(), cache = f.create();
+  await cache.publish(fund(), { latest: true });
+  f.advance(3600001);
+  const calls = [];
+  const discover = createFundDiscoveryLoader({ readPrepared: (...args) => cache.readPrepared(...args), loader: async (...args) => {
+    calls.push(args);
+    return { status: 'unavailable', ticker: args[0], reason: 'Temporary SEC outage' };
+  } });
+  const result = await discover('test');
+  assert.equal(result.cache.stale, true);
+  assert.equal(result.cache.checkedAt, new Date(CLOCK).toISOString());
+  assert.equal(calls.length, 0);
+  const refreshed = await discover('TEST', '', { refresh: true });
+  assert.equal(refreshed.status, 'unavailable');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'TEST');
+  assert.equal(calls[0][1], '');
+  assert.deepEqual(Object.keys(calls[0][2]), ['signal'], 'Refresh is not a bypass of canonical source freshness');
+  await discover('OTHER');
+  assert.equal(calls.length, 2, 'A genuine prepared miss uses the bounded source loader');
+});
+
+function laggingLoader(f, { series = SERIES, period = '2026-03-31', filingDate = '2026-05-20' } = {}) {
+  const accession = '0000036405-26-000000';
+  return { accession, load: createFundLoader({ cache: f.create(), now: f.now,
+    fundLookup: async () => ({ cik: CIK, seriesId: series, classId: CLASS }), operatingLookup: async () => null,
+    fetchSec: async url => {
+      if (url.includes('/submissions/')) return Response.json({ cik: 36405, name: 'Test Trust', filings: { recent: {
+        form: ['NPORT-P'], accessionNumber: [accession], filingDate: [filingDate], reportDate: [period], primaryDocument: ['primary_doc.xml'] } } });
+      if (url.includes('browse-edgar')) return new Response(`<feed><entry><accession-number>${accession}</accession-number><filing-date>${filingDate}</filing-date><filing-type>NPORT-P</filing-type></entry></feed>`);
+      return new Response(document(3, series).replace('2026-06-30', period));
+    } }) };
+}
+
+test('a regressed SEC feed preserves the newer verified portfolio and original check time without publishing', async () => {
+  const f = fixture(), original = fund();
+  await f.create().publish(original, { latest: true });
+  f.advance(3600001);
+  const { load, accession } = laggingLoader(f);
+  const retained = await load('TEST');
+  assert.equal(retained.accession, original.accession);
+  assert.equal(retained.asOf, '2026-06-30');
+  assert.equal(retained.cache.checkedAt, original.retrievedAt);
+  assert.equal(retained.cache.stale, true);
+  assert.equal(retained.sourceCheckStatus, 'regressed');
+  assert.match(retained.sourceCheckNotice, /older report/);
+  assert.equal(f.writes.length, 2, 'A regressed listing must not renew the latest head');
+  const exact = await load('TEST', accession);
+  assert.equal(exact.accession, accession);
+  assert.equal(exact.asOf, '2026-03-31', 'An intentional historical selection remains available');
+  assert.equal(exact.sourceCheckStatus, undefined);
+  assert.equal((await f.create().readPrepared('TEST')).accession, original.accession);
+});
+
+test('an older amendment check cannot replace a later filing for the same period', async () => {
+  const f = fixture(), amended = { ...fund(), form: 'NPORT-P/A' };
+  amended.reports[0].form = amended.form;
+  await f.create().publish(amended, { latest: true });
+  f.advance(3600001);
+  const { load } = laggingLoader(f, { period: '2026-06-30', filingDate: '2026-08-15' });
+  assert.equal((await load('TEST')).form, 'NPORT-P/A');
+  assert.equal(f.writes.length, 2);
+});
+
+test('a verified change in SEC series never falls back to a different newer series', async () => {
+  const f = fixture();
+  await f.create().publish(fund(), { latest: true });
+  f.advance(3600001);
+  const { load, accession } = laggingLoader(f, { series: 'S000002846' });
+  const result = await load('TEST');
+  assert.equal(result.accession, accession);
+  assert.equal(result.seriesId, 'S000002846');
+  assert.equal(result.sourceCheckStatus, undefined);
 });

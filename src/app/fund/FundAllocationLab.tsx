@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookmarkPlus, Download, RefreshCw } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import {
   equalFundAllocations,
   validateFundAllocations,
@@ -76,33 +76,22 @@ type Result = {
   samePortfolioGroups: string[][];
   notes: string[];
 };
-type Evidence = {
-  kind: "allocation";
-  title: string;
-  summary: string;
-  values: { label: string; value: number | string | null; unit?: string }[];
-  sources: Source[];
-  methodology?: string;
-};
 type Props = {
   tickers: string[];
   settings: {
     allocations?: Record<string, string | number>;
     reportMap?: Record<string, string>;
-    board?: string;
   };
   onPatch: (patch: {
     allocations?: Record<string, string>;
     reportMap?: Record<string, string>;
   }) => boolean | void;
-  onEvidence?: (evidence: Evidence) => boolean | void;
   onFunds?: (funds: any[]) => void;
 };
 export default function FundAllocationLab({
   tickers,
   settings,
   onPatch,
-  onEvidence,
   onFunds,
 }: Props) {
   const patchRef = useRef(onPatch);
@@ -149,25 +138,24 @@ export default function FundAllocationLab({
       total: 0,
     });
   const [search, setSearch] = useState("");
-  const previousInputs = useRef({ initial, board: settings.board });
+  const previousInputs = useRef(initial);
   useEffect(() => {
     const previous = previousInputs.current;
     setDrafts((current) =>
       Object.fromEntries(
         Object.entries(initial).map(([ticker, value]) => [
           ticker,
-          previous.board === settings.board &&
-          previous.initial[ticker] === value &&
+          previous[ticker] === value &&
           Object.hasOwn(current, ticker)
             ? current[ticker]
             : value,
         ]),
       ),
     );
-    previousInputs.current = { initial, board: settings.board };
+    previousInputs.current = initial;
     setShowValidation(false);
     setMessage("");
-  }, [initial, settings.board]);
+  }, [initial]);
   const committedValidation = useMemo(
     () =>
       validateFundAllocations(
@@ -295,38 +283,6 @@ export default function FundAllocationLab({
       setExporting(false);
     }
   }
-  function pin(row: Row) {
-    if (!onEvidence || !result) return;
-    const evidence: Evidence = {
-      kind: "allocation",
-      title: `${row.name.slice(0, 210)} · combined allocation`,
-      summary: `${pct(row.weight)} of the chosen allocation, combining ${row.contributions.map((c) => `${c.ticker} at ${c.allocation}%`).join(", ")}. ${result.partial ? "Incomplete fund coverage. " : ""}${result.mixedDates ? "Mixed reporting dates. " : ""}Historical disclosed holdings.`,
-      values: [
-        { label: "Combined eligible allocation", value: row.weight, unit: "%" },
-        ...row.contributions.flatMap((c) => [
-          {
-            label: `${c.ticker} chosen allocation`,
-            value: c.allocation,
-            unit: "%",
-          },
-          {
-            label: `${c.ticker} holding NAV weight`,
-            value: c.holdingWeight,
-            unit: "%",
-          },
-          {
-            label: `${c.ticker} contribution`,
-            value: c.contribution,
-            unit: "percentage points",
-          },
-        ]),
-      ],
-      sources: row.contributions.map((c) => c.source),
-      methodology: `${row.ids.join("; ")}. ${result.notes.join(" ")}`,
-    };
-    if (onEvidence(evidence) !== false)
-      setMessage(`Selected ${row.name} for the research board.`);
-  }
   const visible =
     result?.rows.filter(
       (row) =>
@@ -441,7 +397,7 @@ export default function FundAllocationLab({
       {dirty && (
         <p className={s.notice}>
           Your allocation edits are not applied. Apply or discard them before
-          pinning evidence or exporting results.
+          exporting results.
         </p>
       )}
       {message && (
@@ -615,15 +571,6 @@ export default function FundAllocationLab({
                         .join(" · ")}
                     </p>
                     <small>{row.key}</small>
-                    {onEvidence && (
-                      <button
-                        disabled={dirty}
-                        className={s.secondary}
-                        onClick={() => pin(row)}
-                      >
-                        <BookmarkPlus size={14} /> Pin holding
-                      </button>
-                    )}
                   </article>
                 ))}
               </div>
@@ -676,7 +623,6 @@ export default function FundAllocationLab({
                           {ticker} contribution
                         </th>
                       ))}
-                      <th scope="col">Research</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -728,18 +674,6 @@ export default function FundAllocationLab({
                             </td>
                           );
                         })}
-                        <td>
-                          {onEvidence && (
-                            <button
-                              className={s.secondary}
-                              disabled={dirty}
-                              onClick={() => pin(row)}
-                              aria-label={`Pin allocation evidence for ${row.name}`}
-                            >
-                              <BookmarkPlus size={14} /> Pin
-                            </button>
-                          )}
-                        </td>
                       </tr>
                     ))}
                   </tbody>
