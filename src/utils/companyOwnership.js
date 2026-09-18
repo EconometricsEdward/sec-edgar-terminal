@@ -11,7 +11,7 @@ export const OWNERSHIP_FUNDS = Object.freeze([
 ]);
 export const OWNERSHIP_MANAGERS = Object.freeze([
   { id: '0000102909', name: 'Vanguard Group' },
-  { id: '0001364742', name: 'BlackRock' },
+  { id: '0002012383', name: 'BlackRock' },
   { id: '0000093751', name: 'State Street' },
   { id: '0001067983', name: 'Berkshire Hathaway' },
   { id: '0001350694', name: 'Bridgewater Associates' },
