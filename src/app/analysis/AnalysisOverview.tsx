@@ -289,9 +289,11 @@ export default function AnalysisOverview({
               Later reports can update historical values. Use the filing cutoff
               to reproduce an earlier information set.
             </p>
-            <span className={styles.badge}>{data.lens} financial lens</span>
+            <span className={styles.badge}>{data.businessModel === "broker-dealer" ? "broker-dealer" : data.lens} financial lens</span>
             <p className={styles.muted}>
-              {data.lens === "banking"
+              {data.businessModel === "broker-dealer"
+                ? "Net margin compares net income with the revenue scope shown in the SEC evidence. Interest and funding costs are integral to this business model."
+                : data.lens === "banking"
                 ? "GAAP funding and returns; no regulatory capital or liquidity certification."
                 : data.lens === "insurance"
                   ? "Premiums and investment income remain separate; no universal underwriting margin is inferred."
