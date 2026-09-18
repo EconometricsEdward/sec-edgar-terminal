@@ -50,7 +50,7 @@ export function cftcContextChart(points = [], { maxGapDays = 7 } = {}) {
   return { paths, dots, min, max, zeroY: y(0), start: rows[0].reportDate, end: rows.at(-1).reportDate, count: valid.length };
 }
 
-export function cftcCompanyResearchNote({ ticker, companyName, candidate, history, asOf = '' }) {
+export function cftcCompanyResearchNote({ ticker, companyName, candidate, history, asOf = '', basis = '', periodEnd = '' }) {
   if (!history?.selected || !history?.selection) return '';
   const selected = history.selected, group = selected.selectedGroup;
   const change = cftcPositionChange(history);
@@ -61,12 +61,18 @@ export function cftcCompanyResearchNote({ ticker, companyName, candidate, histor
     `Market: ${selected.contractName} · ${selected.exchange} · code ${history.selection.contract}`,
     `Report: ${selected.reportDate} · Retrieved: ${history.retrieved_at} · ${history.status}`,
     `Report family: ${history.report_family} · Futures only · Trader category: ${group?.label || history.selection.group}`,
+    `Report basis: ${history.report_basis || 'futures_only'} · Trader category ID: ${history.selection.group} · History window: ${history.selection.history_window}`,
+    `Freshness: ${history.freshness?.cache_status || 'unavailable'} · Report age: ${history.freshness?.source_report_age_days ?? 'unavailable'} days.`,
+    ...(history.refresh_warning ? [`Coverage/freshness warning: ${history.refresh_warning}`] : []),
     `Reported longs: ${number(group?.long)}; shorts: ${number(group?.short)}; net: ${signed(group?.net)} contracts.`,
     `Open interest: ${number(selected.openInterest)} contracts; net / open interest: ${percent(group?.netPctOi)}.`,
     `${history.percentile?.required || 'Selected'} prior-report percentile: ${percent(history.percentile?.value)}.`,
     change.available ? change.explanation : change.reason,
-    candidate ? `Candidate company connection: ${candidate.label}. ${candidate.reason} Review the source before concluding exposure.` : 'User-selected market context. No company connection has been established.',
-    ...(candidate?.evidence || []).slice(0, 2).flatMap(item => [`SEC ${item.form} filed ${item.filed}: ${item.url}`, `Excerpt: ${item.text}`]),
+    candidate ? `Candidate company connection: ${candidate.categoryLabel ? `${candidate.categoryLabel} / ` : ''}${candidate.label}. ${candidate.reason} Review the source before concluding exposure.` : 'User-selected market context. No company connection has been established.',
+    ...(candidate?.fit ? [`Benchmark fit: ${candidate.fit}. A named reference does not establish identical contract terms or the company’s futures holdings.`] : []),
+    ...(candidate?.evidence || []).slice(0, 4).flatMap(item => [`SEC ${item.form} filed ${item.filed} · Period ${item.reportDate || 'not provided'} · Accession ${item.accession || 'not provided'}${item.sourceCik ? ` · Source CIK ${item.sourceCik}` : ''}: ${item.url}`, `${item.disclosureDirection === 'qualifying-or-negative' ? 'Qualification or negative disclosure' : 'Excerpt'}: ${item.text}`]),
+    ...(periodEnd ? [`Financial baseline: ${basis || 'selected'} ended ${periodEnd}. Filing evidence is selected by its separate SEC cutoff, not this financial reporting endpoint.`,
+      ...(selected.reportDate > periodEnd ? [`The CFTC observation ${selected.reportDate} postdates the financial baseline. It is current research context, not a historical model input.`] : [])] : []),
     ...(asOf ? [`SEC filing cutoff: ${asOf}. The CFTC observation is current context, not information verified as available at that cutoff.`] : []),
     `CFTC source: ${history.source?.url || ''}`,
     `Positioning workspace: https://secedgarterminal.com/market?${query}`,

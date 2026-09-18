@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
 import { prepareFinancialCompany, readPreparedAnalysis, financialPreparedKey, refreshSecFinancialCohort, sampleFinancialShadow, createFinancialPayloadCache } from '../src/utils/preparedFinancialData.js';
 import { buildAnalysisCompany, packAnalysisCompany, unpackAnalysisCompany } from '../src/utils/analysisResearch.js';
+import { enrichAnalysisCompanySources } from '../src/utils/analysisResearchSources.js';
+import { ANALYSIS_MAPPING_VERSION } from '../src/utils/analysisVersion.js';
 
 const now = Date.now();
 const metadata = { fetchedAt: new Date(now - 60000).toISOString(), revalidatedAt: new Date(now).toISOString(), expiresAt: new Date(now + 60000).toISOString(), documentContentHash: 'source-hash' };
@@ -29,7 +31,8 @@ test('all four prepared bases exactly retain existing calculations, evidence, pr
     begin: async () => ({ generation: 1 }), publish: async (value) => { writes.push(value); }, legacyWrite: async () => true });
   assert.equal(result.bases.length, 4);
   for (const write of writes) {
-    assert.deepEqual(stable(write.payload), stable(packAnalysisCompany(buildAnalysisCompany(company, { basis: write.metadata.basis, asOf: '' }))));
+    const enriched = await enrichAnalysisCompanySources(company, { basis: write.metadata.basis, asOf: '' });
+    assert.deepEqual(stable(write.payload), stable(packAnalysisCompany(buildAnalysisCompany(enriched, { basis: write.metadata.basis, asOf: '' }))));
     assert.equal(write.metadata.fetchedAt, metadata.fetchedAt);
     assert.equal(write.metadata.inputDocuments.length, 2);
     assert.equal(write.metadata.publishedAt, null);
@@ -57,6 +60,21 @@ test('prepared reader uses compact snapshot through Redis failure, never loads S
   assert.equal(value.cacheSource, 'supabase-prepared');
   await assert.rejects(readPreparedAnalysis({ ticker: 'AAPL' }, { mode: 'supabase', hotRead: async () => null, read: async () => { throw new Error('Supabase down'); } }), (error) => error.status === 503);
   await assert.rejects(readPreparedAnalysis({ ticker: 'AAPL' }, { mode: 'supabase', hotRead: async () => null, read: async () => null }), (error) => error.status === 503);
+});
+
+test('prepared readers reject an obsolete mapping revision while retaining approved storage keys', async () => {
+  const current = packAnalysisCompany(buildAnalysisCompany(company, { basis: 'annual' }));
+  assert.equal(current.mappingVersion, ANALYSIS_MAPPING_VERSION);
+  const obsolete = { ...current, mappingVersion: 'analysis-mappings-obsolete' };
+  let durableReads = 0;
+  const result = await readPreparedAnalysis({ ticker: 'AAPL' }, { mode: 'supabase',
+    hotRead: async () => ({ gzip: gzipSync(JSON.stringify(obsolete)).toString('base64'), metadata }),
+    read: async (_dataset, key) => { durableReads++; assert.equal(key, financialPreparedKey('AAPL', 'annual')); return { payload: current, metadata }; },
+  });
+  assert.equal(durableReads, 1); assert.equal(result.payload.mappingVersion, ANALYSIS_MAPPING_VERSION);
+  await assert.rejects(readPreparedAnalysis({ ticker: 'AAPL' }, { mode: 'supabase', hotRead: async () => null,
+    read: async () => ({ payload: obsolete, metadata }),
+  }), error => error.status === 503);
 });
 
 test('broad prepared issuers skip a guaranteed warm-cache miss and retain their complete durable result', async () => {
@@ -92,7 +110,8 @@ test('unchanged financial inputs revalidate without recalc, preserving rollback 
   await prepareFinancialCompany('AAPL', dependencies);
   assert.equal(published, 1); assert.equal(revalidated, 1); assert.equal(rollbackWrites, 2);
   const prepared = [...stored.values()][0];
-  assert.equal(await sampleFinancialShadow(company, prepared.payload, { mode: 'shadow', read: async () => prepared, now: now + 1e6, report: () => {} }), 'identical');
+  const enriched = await enrichAnalysisCompanySources(company, { basis: 'annual' });
+  assert.equal(await sampleFinancialShadow(enriched, prepared.payload, { mode: 'shadow', read: async () => prepared, now: now + 1e6, report: () => {} }), 'identical');
 });
 
 test('bounded cohort stops on failed company and resumes its cursor', async () => {

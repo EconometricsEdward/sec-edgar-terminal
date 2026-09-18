@@ -11,6 +11,7 @@ import { cftcDate } from './cftc.js';
 import { parseCompanyCftcRequest } from './companyCftc.js';
 import { COMPANY_EXPOSURE_SCHEMA_VERSION, COMPANY_EXPOSURE_MAX_TEXT, COMPANY_EXPOSURE_LIMITATIONS, extractCompanyExposureMap } from './companyExposure.js';
 import { companyExposureRevisionCache } from './companyExposureRevisionCache.js';
+import { SEC_EVIDENCE_CONTINUITY } from './secEvidenceContinuity.js';
 
 export const COMPANY_EXPOSURE_CACHE_NAMESPACE = `edgar.company-exposure-sources.v1:${cacheDeploymentScope()}`;
 export const COMPANY_EXPOSURE_MAX_HISTORY_FILES = 2;
@@ -26,7 +27,7 @@ const validDate = value => typeof value === 'string' && DATE_PATTERN.test(value)
 const validTime = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
 const completeManifestRows = rows => Array.isArray(rows?.accessionNumber)
   && ['form', 'filingDate', 'reportDate', 'primaryDocument'].every(key => Array.isArray(rows[key]) && rows[key].length === rows.accessionNumber.length);
-const sameFiling = (a, b) => ['role', 'form', 'filed', 'reportDate', 'accession', 'primaryDoc', 'url'].every(key => a[key] === b[key]);
+const sameFiling = (a, b) => ['role', 'form', 'filed', 'reportDate', 'accession', 'primaryDoc', 'url', 'sourceCik'].every(key => a[key] === b[key]);
 
 /** Internal callers that already proved an issuer CIK must not round-trip
  * through a ticker, which can represent a different security or change over
@@ -106,6 +107,47 @@ export function selectCompanyExposureFilings(filings) {
   return [annual && { ...annual, role: 'annual' }, quarterly && { ...quarterly, role: 'quarterly' }].filter(Boolean);
 }
 
+async function manifestExposureFilings(manifest, cik, cutoff, result, { loadSubmissions, signal, before = null }) {
+  const eligible = rows => companyExposureFilings(rows, cik, cutoff)
+    .filter(filing => !before || filing.reportDate < before)
+    .map(filing => before ? { ...filing, sourceCik: cik } : filing);
+  let filings = eligible(manifest.filings.recent);
+  const historyFiles = (Array.isArray(manifest.filings.files) ? manifest.filings.files : [])
+    .filter(file => new RegExp(`^CIK${cik}-submissions-\\d+\\.json$`).test(file.name)
+      && validDate(file.filingFrom) && validDate(file.filingTo) && file.filingFrom <= cutoff && file.filingFrom <= file.filingTo)
+    .sort((a, b) => b.filingTo.localeCompare(a.filingTo));
+  for (const file of historyFiles) {
+    const annual = selectCompanyExposureFilings(filings).find(filing => filing.role === 'annual');
+    if (annual && file.filingTo < annual.filed) break;
+    if (result.coverage.historyFilesScanned === COMPANY_EXPOSURE_MAX_HISTORY_FILES) {
+      result.coverage.historyLimited = true; result.coverage.searchComplete = false; break;
+    }
+    result.coverage.historyFilesScanned += 1;
+    try {
+      const historic = await bounded(loadSubmissions(file.name, signal), signal);
+      if (!completeManifestRows(historic)) throw error('The SEC history manifest was not readable.', 'SEC_HISTORY_INVALID', 502);
+      filings = filings.concat(eligible(historic));
+    } catch (cause) {
+      result.coverage.searchComplete = false;
+      result.coverage.historyFailures.push({ name: file.name, code: cause.code || 'SEC_HISTORY_UNAVAILABLE', message: 'This SEC history file could not be checked; later or additional eligible reports may be missing.' });
+    }
+  }
+  return filings;
+}
+
+function continuityCoverage(cik, status, predecessorCiks) {
+  const transition = SEC_EVIDENCE_CONTINUITY[cik];
+  return { status, currentCik: cik, predecessorCiks, sourceUrl: transition.source.url,
+    effectiveDate: transition.effectiveDate, evidenceFiled: transition.source.filed };
+}
+
+function discloseSelectedContinuity(result) {
+  const predecessorCiks = [...new Set(result.sources.map(source => source.sourceCik).filter(Boolean))];
+  if (!predecessorCiks.length) return;
+  result.coverage.continuity = continuityCoverage(result.cik, result.coverage.searchComplete ? 'applied' : 'partial', predecessorCiks);
+  result.limitations.push('The annual source includes reviewed predecessor history before the registrant transition. It retains its original SEC registrant and dates; it does not establish current exposure or CFTC positions.');
+}
+
 function initialResult(selection, now) {
   const checkedAt = new Date(now).toISOString();
   return {
@@ -116,7 +158,7 @@ function initialResult(selection, now) {
       annualAvailable: false, quarterlyAvailable: false, maxHistoryFiles: COMPANY_EXPOSURE_MAX_HISTORY_FILES, maxDocumentBytes: MAX_DOCUMENT_BYTES },
     limitations: [...COMPANY_EXPOSURE_LIMITATIONS,
       'The map searches the latest eligible complete annual report and at most one newer complete 10-Q. Annual and quarterly passages remain separately dated and are not a combined current balance.',
-      'Amendments, 6-K attachments, exhibits, predecessor entities, and table amounts without readable narrative context are outside this search. A missing match does not establish that an exposure is absent.',
+      'Amendments, 6-K attachments, exhibits, unreviewed predecessor entities, and table amounts without readable narrative context are outside this search. A missing match does not establish that an exposure is absent.',
       'The filing-date cutoff limits SEC evidence. It does not establish when CFTC market observations became publicly available.'],
   };
 }
@@ -166,7 +208,7 @@ function decodeDocumentSource(raw, selection, cik, companyName, now) {
   const snapshot = { cacheVersion: COMPANY_EXPOSURE_SCHEMA_VERSION, ticker: selection.ticker, asOf: selection.asOf,
     cik, companyName, checkedAt: new Date(now).toISOString(), historyFilesScanned: 0, sources: [raw] };
   snapshot.integrity = snapshotIntegrity(snapshot);
-  return decodeCompanyExposureSnapshot(snapshot, selection, now);
+  return decodeCompanyExposureSnapshot(snapshot, selection, now, { complete: false });
 }
 
 /** Injectable transport verifies source selection, partial outages and date limits
@@ -192,26 +234,27 @@ export async function discoverCompanyExposures(selection, {
     }
     if (typeof manifest.name === 'string' && manifest.name.trim()) result.companyName = manifest.name.slice(0, 500);
     if (!result.companyName.trim()) throw error('The SEC manifest did not verify the selected issuer name.', 'SEC_SOURCE_IDENTITY_MISMATCH', 502);
-    let filings = companyExposureFilings(manifest.filings.recent, cik, cutoff);
-    const historyFiles = (Array.isArray(manifest.filings.files) ? manifest.filings.files : [])
-      .filter(file => new RegExp(`^CIK${cik}-submissions-\\d+\\.json$`).test(file.name)
-        && validDate(file.filingFrom) && validDate(file.filingTo) && file.filingFrom <= cutoff && file.filingFrom <= file.filingTo)
-      .sort((a, b) => b.filingTo.localeCompare(a.filingTo));
-    for (const file of historyFiles) {
-      const annual = selectCompanyExposureFilings(filings).find(filing => filing.role === 'annual');
-      // An older archive cannot supersede the selected annual or contain a later quarter.
-      if (annual && file.filingTo < annual.filed) break;
-      if (result.coverage.historyFilesScanned === COMPANY_EXPOSURE_MAX_HISTORY_FILES) {
-        result.coverage.historyLimited = true; result.coverage.searchComplete = false; break;
-      }
-      result.coverage.historyFilesScanned += 1;
-      try {
-        const historic = await bounded(loadSubmissions(file.name, signal), signal);
-        if (!completeManifestRows(historic)) throw error('The SEC history manifest was not readable.', 'SEC_HISTORY_INVALID', 502);
-        filings = filings.concat(companyExposureFilings(historic, cik, cutoff));
-      } catch (cause) {
-        result.coverage.searchComplete = false;
-        result.coverage.historyFailures.push({ name: file.name, code: cause.code || 'SEC_HISTORY_UNAVAILABLE', message: 'This SEC history file could not be checked; later or additional eligible reports may be missing.' });
+    let filings = await manifestExposureFilings(manifest, cik, cutoff, result, { loadSubmissions, signal });
+    const transition = SEC_EVIDENCE_CONTINUITY[cik];
+    // A current annual supersedes predecessor history. Only independently
+    // reviewed continuity available by this cutoff permits an additional CIK.
+    if (!selectCompanyExposureFilings(filings).some(filing => filing.role === 'annual') && transition?.source.filed <= cutoff) {
+      result.coverage.continuity = continuityCoverage(cik, 'partial', [...transition.predecessorCiks]);
+      for (const predecessorCik of transition.predecessorCiks) {
+        const name = `CIK${predecessorCik}.json`;
+        try {
+          const prior = await bounded(loadSubmissions(name, signal), signal);
+          if (String(prior?.cik).padStart(10, '0') !== predecessorCik || !completeManifestRows(prior?.filings?.recent))
+            throw error('The predecessor manifest did not verify the reviewed SEC identity.', 'SEC_SOURCE_IDENTITY_MISMATCH', 502);
+          const history = await manifestExposureFilings(prior, predecessorCik, cutoff, result,
+            { loadSubmissions, signal, before: transition.effectiveDate });
+          const annual = selectCompanyExposureFilings(history).find(filing => filing.role === 'annual');
+          if (!annual) throw error('No eligible predecessor annual was found in the bounded manifest search.', 'SEC_PREDECESSOR_ANNUAL_UNAVAILABLE');
+          filings = filings.concat(annual);
+        } catch (cause) {
+          result.coverage.searchComplete = false;
+          result.coverage.historyFailures.push({ name, code: cause.code || 'SEC_PREDECESSOR_UNAVAILABLE', message: 'The reviewed predecessor annual history could not be checked; its missing passages have not been treated as absent exposure.' });
+        }
       }
     }
     const selected = selectCompanyExposureFilings(filings);
@@ -232,7 +275,7 @@ export async function discoverCompanyExposures(selection, {
         const raw = await revisionCache.document(cik, source, { signal });
         const saved = decodeDocumentSource(raw, checked, cik, result.companyName, now);
         if (saved) return { source: saved.sources[0], input: saved.inputs[0], raw };
-        const loaded = await bounded(loadFilingText(cik, filing, { signal }), signal);
+        const loaded = await bounded(loadFilingText(filing.sourceCik || cik, filing, { signal }), signal);
         if (loaded?.error || typeof loaded?.text !== 'string' || loaded.text.trim().length < 30) {
           throw error('The eligible SEC filing did not return usable narrative text.', 'SEC_FILING_TEXT_UNAVAILABLE');
         }
@@ -252,6 +295,7 @@ export async function discoverCompanyExposures(selection, {
       }
     }));
     result.sources = outcomes.map(item => item.source);
+    discloseSelectedContinuity(result);
     const inputs = outcomes.map(item => item.input).filter(Boolean);
     const rawSources = outcomes.map(item => item.raw).filter(Boolean);
     await fillPreparedDerived(result, inputs, rawSources, { signal, revisionCache });
@@ -267,7 +311,8 @@ export async function discoverCompanyExposures(selection, {
 }
 
 function binding(source, cik, text) {
-  return createHash('sha256').update(JSON.stringify([cik, source.role, source.form, source.filed, source.reportDate, source.accession, source.primaryDoc, source.url, source.retrievedAt, source.textCharactersRetrieved, text])).digest('hex');
+  return createHash('sha256').update(JSON.stringify([cik, source.role, source.form, source.filed, source.reportDate, source.accession, source.primaryDoc, source.url, source.retrievedAt, source.textCharactersRetrieved, text,
+    ...(source.sourceCik ? [source.sourceCik] : [])])).digest('hex');
 }
 
 function snapshotIntegrity(snapshot) {
@@ -292,7 +337,7 @@ export function encodeCompanyExposureSnapshot(result, inputs, rawSources = []) {
   return { ...snapshot, integrity: snapshotIntegrity(snapshot) };
 }
 
-function decodeCompanyExposureSnapshot(snapshot, selection, now = new Date()) {
+function decodeCompanyExposureSnapshot(snapshot, selection, now = new Date(), { complete = true } = {}) {
   try {
     const currentTime = new Date(now).getTime();
     if (snapshot?.cacheVersion !== COMPANY_EXPOSURE_SCHEMA_VERSION || snapshot.ticker !== selection.ticker || snapshot.asOf !== selection.asOf
@@ -303,6 +348,9 @@ function decodeCompanyExposureSnapshot(snapshot, selection, now = new Date()) {
       || !Array.isArray(snapshot.sources) || snapshot.sources.length > 2
       || !/^[a-f\d]{64}$/.test(snapshot.integrity) || snapshotIntegrity(snapshot) !== snapshot.integrity) return null;
     const cutoff = selection.asOf || snapshot.checkedAt.slice(0, 10), seenRoles = new Set();
+    const transition = SEC_EVIDENCE_CONTINUITY[snapshot.cik];
+    // Old current-only snapshots cannot suppress the newly supported annual.
+    if (complete && transition?.source.filed <= cutoff && !snapshot.sources.some(source => source.role === 'annual')) return null;
     const inputs = [], sources = [];
     for (const raw of snapshot.sources) {
       if (!['annual', 'quarterly'].includes(raw.role) || seenRoles.has(raw.role) || raw.status !== 'ready'
@@ -310,8 +358,11 @@ function decodeCompanyExposureSnapshot(snapshot, selection, now = new Date()) {
         || !validTime(raw.retrievedAt) || Date.parse(raw.retrievedAt) < Date.parse(raw.filed) || Date.parse(raw.retrievedAt) > currentTime
         || !Number.isInteger(raw.textCharactersRetrieved) || raw.textCharactersRetrieved < 30 || raw.textCharactersRetrieved > MAX_DOCUMENT_BYTES
         || typeof raw.gzip !== 'string' || raw.gzip.length > 3_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw.gzip) || !/^[a-f\d]{64}$/.test(raw.digest)) return null;
-      const validated = companyExposureFilings({ accessionNumber: [raw.accession], form: [raw.form], filingDate: [raw.filed], reportDate: [raw.reportDate], primaryDocument: [raw.primaryDoc] }, snapshot.cik, cutoff)[0];
+      if (raw.sourceCik !== undefined && (!transition || transition.source.filed > cutoff || !transition.predecessorCiks.includes(raw.sourceCik)
+        || raw.role !== 'annual' || raw.reportDate >= transition.effectiveDate)) return null;
+      const validated = companyExposureFilings({ accessionNumber: [raw.accession], form: [raw.form], filingDate: [raw.filed], reportDate: [raw.reportDate], primaryDocument: [raw.primaryDoc] }, raw.sourceCik || snapshot.cik, cutoff)[0];
       if (!validated || validated.url !== raw.url) return null;
+      if (raw.sourceCik) validated.sourceCik = raw.sourceCik;
       const text = gunzipSync(Buffer.from(raw.gzip, 'base64'), { maxOutputLength: (COMPANY_EXPOSURE_MAX_TEXT + 1) * 4 }).toString('utf8');
       if (text.trim().length < 30 || text.length !== Math.min(raw.textCharactersRetrieved, COMPANY_EXPOSURE_MAX_TEXT + 1) || binding(raw, snapshot.cik, text) !== raw.digest) return null;
       const source = { ...validated, role: raw.role, status: 'ready', retrievedAt: raw.retrievedAt, textCharactersRetrieved: raw.textCharactersRetrieved };
@@ -329,6 +380,7 @@ export function restoreCompanyExposureSnapshot(snapshot, selection, now = new Da
   const { sources, inputs } = decoded;
   const result = initialResult(selection, snapshot.checkedAt);
   result.companyName = snapshot.companyName; result.cik = snapshot.cik; result.sources = sources;
+  discloseSelectedContinuity(result);
   result.generatedAt = new Date(now).toISOString();
   result.coverage.historyFilesScanned = snapshot.historyFilesScanned; result.coverage.filingsEligible = sources.length;
   return fillDerived(result, inputs);
@@ -380,6 +432,7 @@ export function createCompanyExposureLoader({ read = warmGet, write = warmSet,
     if (!decoded) return null;
     const result = initialResult(checked, stored.checkedAt);
     result.companyName = stored.companyName; result.cik = stored.cik; result.sources = decoded.sources;
+    discloseSelectedContinuity(result);
     result.generatedAt = new Date(now()).toISOString();
     result.coverage.historyFilesScanned = stored.historyFilesScanned; result.coverage.filingsEligible = decoded.sources.length;
     const restored = await fillPreparedDerived(result, decoded.inputs, stored.sources, { signal, revisionCache });

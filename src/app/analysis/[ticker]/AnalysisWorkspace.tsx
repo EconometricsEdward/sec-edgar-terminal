@@ -22,6 +22,8 @@ import {
 } from "../../../utils/analysisRows.js";
 import { resolveChartKeys } from "../../../utils/analysisChart.js";
 import AnalysisInspector from "../AnalysisInspector";
+import type { CftcScenarioContext } from "../../../components/cftc/CompanyCftcContext";
+import { ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION } from "../../../utils/analysisVersion.js";
 import { useWorkspace } from "../../../components/research/WorkspaceProvider";
 import {
   analysisBaseline,
@@ -42,6 +44,7 @@ import {
   analysisBriefMatches,
   analysisBrowserCacheKey,
   createAnalysisBrowserCache,
+  matchesAnalysisResponse,
 } from "../../../utils/analysisBrowserCache.js";
 import styles from "../analysis.module.css";
 const AnalysisChart = dynamic(() => import("../AnalysisChart"), {
@@ -95,15 +98,6 @@ const CompanyCftcContext = dynamic(
   () => import("../../../components/cftc/CompanyCftcContext"),
   { loading: AnalysisToolLoading },
 );
-type ScenarioMarketContext = {
-  label: string;
-  contract: string;
-  family: string;
-  reportDate: string;
-  summary: string;
-  marketPath?: string;
-  asOf: string;
-};
 const views = [
   ["overview", "Overview"],
   ["statements", "Statements"],
@@ -157,7 +151,7 @@ function Workspace(props: any) {
   const [scenarioOpened, setScenarioOpened] = useState(false);
   const [cftcOpened, setCftcOpened] = useState(false);
   const [scenarioMarketContext, setScenarioMarketContext] =
-    useState<ScenarioMarketContext | null>(null);
+    useState<CftcScenarioContext | null>(null);
   useEffect(() => {
     if (settings.view === "scenarios") setScenarioOpened(true);
     if (cftcEnabled && settings.view === "cftc") setCftcOpened(true);
@@ -230,7 +224,7 @@ function Workspace(props: any) {
     setData(null);
     setLoading(true);
     fetch(
-      `/api/analysis-research?${new URLSearchParams({ ticker, basis: settings.basis, asOf: settings.asOf })}`,
+      `/api/analysis-research?${new URLSearchParams({ ticker, basis: settings.basis, asOf: settings.asOf, v: `${ANALYSIS_VERSION}:${ANALYSIS_MAPPING_VERSION}` })}`,
       { signal: controller.signal, cache: forceRefresh ? "no-cache" : "default" },
     )
       .then(async (response) => {
@@ -239,6 +233,8 @@ function Workspace(props: any) {
           throw new Error(
             result.error || "Financial data could not be retrieved.",
           );
+        if (!matchesAnalysisResponse(result, { ticker, basis: settings.basis, asOf: settings.asOf }))
+          throw new Error("The financial response does not match this company and reporting selection. Please refresh the data.");
         return result;
       })
       .then((result) => {
@@ -500,7 +496,7 @@ function Workspace(props: any) {
           </h1>
           <div className={styles.inline}>
             <span className={styles.badge}>
-              {data ? `${data.lens} lens` : "SEC financial data"}
+              {data ? `${data.businessModel === "broker-dealer" ? "broker-dealer" : data.lens} lens` : "SEC financial data"}
             </span>
             {data && (
               <span className={styles.muted}>
@@ -761,6 +757,10 @@ function Workspace(props: any) {
             ticker={ticker}
             companyName={data?.name || props.preloadedCompanyName || ticker}
             asOf={settings.asOf}
+            basis={settings.basis}
+            periodEnd={period?.end || ""}
+            cik={data?.cik || props.preloadedCik || ""}
+            companyType={data?.businessModel === "broker-dealer" ? "broker" : data?.lens || "corporate"}
             mode="analysis"
             onOpenScenario={(context) => {
               setScenarioMarketContext({ ...context, asOf: settings.asOf });
@@ -875,6 +875,15 @@ function Workspace(props: any) {
               </div>
             </div>
           </div>
+          {data.sourceCoverage?.notices?.length > 0 && (
+            <details className={styles.notice}>
+              <summary>SEC source coverage</summary>
+              {data.sourceCoverage.notices.map((notice: string) => <p key={notice}>{notice}</p>)}
+              {data.sourceCoverage.latestFilingReportDate && (
+                <p>Latest eligible filing period: {data.sourceCoverage.latestFilingReportDate}. Supported financial history through {data.sourceCoverage.supplementedThrough || "unavailable"}.</p>
+              )}
+            </details>
+          )}
           <div className={styles.workspaceGrid} data-inspector={!!selection}>
             <div className={styles.content}>
               {settings.view === "overview" && (
@@ -908,7 +917,10 @@ function Workspace(props: any) {
                     ready={workspace.ready && !workspace.error}
                     cftcEnabled={cftcEnabled}
                     marketContext={
-                      cftcEnabled && scenarioMarketContext?.asOf === settings.asOf
+                      cftcEnabled && scenarioMarketContext && scenarioMarketContext.ticker === ticker
+                        && scenarioMarketContext.asOf === settings.asOf
+                        && scenarioMarketContext.basis === settings.basis
+                        && scenarioMarketContext.periodEnd === period.end
                         ? scenarioMarketContext
                         : null
                     }

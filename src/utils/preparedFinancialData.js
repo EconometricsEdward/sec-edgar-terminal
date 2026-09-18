@@ -2,11 +2,14 @@ import { createHash } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { getDataStoreMode, readDataset, readDatasetManifests, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, stableDataStoreJson } from './dataStore.js';
 import { buildAnalysisCompany, packAnalysisCompany, ANALYSIS_VERSION } from './analysisResearch.js';
+import { ANALYSIS_MAPPING_VERSION } from './analysisVersion.js';
 import { buildFilingUrl } from './filingTextParser.js';
 import { RESEARCH_FORMS } from './researchWorkspace.js';
 import { warmGet, warmReserveGeneration, warmSetGeneration } from './warmCache.js';
 import { SEC_MIGRATION_COHORT, getSecPreparedCompany, getActiveSecPreparedCompany, isSecPreparedReadEnabled, secDocumentIdentity, refreshSecDocument, preparedEnvelopeUsable, PreparedSecUnavailableError } from './secDocumentStore.js';
 import { loadSecCoverageRegistry } from './secCoverageRegistry.js';
+import { enrichAnalysisCompanySources, loadAnalysisCompanyFacts, loadAnalysisFiling } from './analysisResearchSources.js';
+import { analysisSourcesDegraded } from './analysisSourceCoverage.js';
 
 export const FINANCIAL_PREPARED_VERSION = 'financial-analysis-v1';
 export const FINANCIAL_PREPARED_BASES = Object.freeze(['annual', 'quarter', 'ytd', 'ttm']);
@@ -15,6 +18,7 @@ const legacyKey = (ticker, basis) => `${ANALYSIS_VERSION}:${ticker}:${basis}:`;
 const hash = (value) => createHash('sha256').update(stableDataStoreJson(value)).digest('hex');
 const companyForTicker = getSecPreparedCompany;
 const pilotTickers = new Set(SEC_MIGRATION_COHORT.map(company => company.ticker));
+const SOURCE_ENRICHMENT_VERSION = 'analysis-sources-v1';
 
 const MAX_FINANCIAL_DECODE_BYTES = 24 * 1024 * 1024;
 const MAX_FINANCIAL_GZIP_BYTES = 6 * 1024 * 1024;
@@ -88,6 +92,7 @@ export function financialPreparedKey(ticker, basis, asOf = '') {
 function validatePrepared(envelope, cik, basis) {
   const data = envelope?.payload;
   return preparedEnvelopeUsable(envelope) && data.packed === true && data.version === ANALYSIS_VERSION
+    && data.mappingVersion === ANALYSIS_MAPPING_VERSION
     && data.cik === cik && (!envelope.metadata.entityId || envelope.metadata.entityId === cik)
     && data.basis === basis && !data.asOf
     && Array.isArray(data.periods) && Array.isArray(data.sourceCatalog);
@@ -181,7 +186,8 @@ export function financialServingObservations(data) {
       accession: source?.accession || null, form: source?.form || null, filed: source?.filed || null,
       taxonomy: source?.taxonomy || null, concept: source?.tag || null,
       fiscalYear: period.fy ?? null, fiscalPeriod: period.fp || null, calculationVersion: ANALYSIS_VERSION,
-      context: { classification: point.classification, reason: point.reason || null, formula: point.formula || null,
+      context: { classification: point.classification, mappingVersion: ANALYSIS_MAPPING_VERSION,
+        reason: point.reason || null, formula: point.formula || null,
         sourceIds: point.sourceIds || [], calculationIds: point.calculationIds || [], kind: period.kind,
         // IDs address catalogs in this row's immutable version snapshot. Do not
         // duplicate potentially large revision histories in each database row.
@@ -196,6 +202,8 @@ export async function prepareFinancialCompany(ticker, {
   legacyWrite = warmSetGeneration, reserveLegacy = warmReserveGeneration,
   bases = FINANCIAL_PREPARED_BASES,
   signal, deadline = Infinity, loadRegistry = loadSecCoverageRegistry,
+  enrichCompany = enrichAnalysisCompanySources,
+  loadCompanyFacts = loadAnalysisCompanyFacts, loadFiling = loadAnalysisFiling,
 } = {}) {
   if (mode !== 'off') await loadRegistry({ required: true });
   const cohort = companyForTicker(ticker);
@@ -232,28 +240,71 @@ export async function prepareFinancialCompany(ticker, {
   const sources = await Promise.all(sourcePaths.map((path) => read('sec', secDocumentIdentity(path).key, { allowStale: true })));
   if (sources.some((source) => !preparedEnvelopeUsable(source) || Number(source.payload.cik) !== Number(cohort.cik))) throw new PreparedSecUnavailableError('Both canonical SEC documents are required before preparing financial data.');
   const company = researchCompanyFromDocuments(ticker, sources[0].payload, sources[1].payload);
-  const financialCompanyHash = financialInputIdentity(company);
+  const baseCompanyHash = financialInputIdentity(company);
   const inputDocuments = sources.map((source, index) => ({ key: secDocumentIdentity(sourcePaths[index]).key,
     contentHash: source.metadata.documentContentHash, generation: source.metadata.generation ?? null,
     fetchedAt: source.metadata.fetchedAt }));
   // A new raw submissions document (for example, a Form 4-only change) still
   // requires a new version-linked provenance record when financials are equal.
   const sourceIdentity = inputDocuments.map(({ key, contentHash }) => ({ key, contentHash }));
-  const financialInputHash = hash({ financialCompanyHash, inputDocuments: sourceIdentity });
+  const financialBaseInputHash = hash({ financialCompanyHash: baseCompanyHash, inputDocuments: sourceIdentity });
   const fetchedAt = sources.map((source) => source.metadata.fetchedAt).sort()[0];
   const revalidatedAt = sources.map((source) => source.metadata.revalidatedAt || source.metadata.fetchedAt).sort()[0];
   const expiresAt = sources.map((source) => source.metadata.expiresAt).sort()[0];
   if (stopped()) return defer(claims);
   const manifests = !mirrorLegacy && read === readDataset
     ? await readDatasetManifests('financial', claims.map(({ key }) => key)) : null;
+  // Annual uses the latest eligible 10-K; quarter/YTD/TTM use the same latest
+  // 10-K or 10-Q source selection. A preparation never downloads a predecessor
+  // feed or primary document more than once across these two selections.
+  const augmented = new Map(), extraDocuments = new Map();
+  const reuse = (key, load) => {
+    if (!extraDocuments.has(key)) extraDocuments.set(key, Promise.resolve().then(load));
+    return extraDocuments.get(key);
+  };
+  const enrich = (basis) => {
+    const sourceBasis = basis === 'annual' ? 'annual' : 'quarter';
+    if (!augmented.has(sourceBasis)) augmented.set(sourceBasis, enrichCompany(company, { basis: sourceBasis, asOf: '' }, {
+      signal,
+      loadCompanyFacts: (cik, requestSignal) => reuse(`companyfacts:${cik}`, () => loadCompanyFacts(cik, requestSignal)),
+      loadFiling: (filing, requestSignal) => reuse(`filing:${filing.url}`, () => loadFiling(filing, requestSignal)),
+    }));
+    return augmented.get(sourceBasis);
+  };
   for (const [index, { basis, key, claim }] of claims.entries()) {
     if (stopped()) return defer(claims.slice(index));
     const manifest = manifests?.[index];
     const previous = manifests ? manifest && {
-      metadata: manifest.metadata, payload: { version: manifest.metadata.calculationVersion },
+      metadata: manifest.metadata, payload: { version: manifest.metadata.calculationVersion, mappingVersion: manifest.metadata.mappingVersion },
     } : await read('financial', key, { allowStale: true });
     if (stopped()) return defer(claims.slice(index));
-    if (previous?.metadata?.financialInputHash === financialInputHash && previous?.payload?.version === ANALYSIS_VERSION
+    // Primary documents are accession-linked immutable evidence. Their healthy
+    // enrichment can be reused while both canonical documents are unchanged.
+    // Predecessor companyfacts can revise independently, so recheck those feeds.
+    const reusableSources = previous?.metadata?.financialBaseInputHash === financialBaseInputHash
+      && previous?.payload?.mappingVersion === ANALYSIS_MAPPING_VERSION
+      && previous?.metadata?.sourceEnrichmentVersion === SOURCE_ENRICHMENT_VERSION
+      && previous?.metadata?.sourceCoverage && !analysisSourcesDegraded(previous.metadata)
+      && !previous.metadata.supplementalDocuments?.some(document => document.kind === 'companyfacts');
+    let enrichedCompany, financialCompanyHash, financialInputHash, supplementalDocuments;
+    if (!reusableSources || previous?.payload?.version !== ANALYSIS_VERSION) {
+      enrichedCompany = await enrich(basis);
+      if (stopped()) return defer(claims.slice(index));
+      if (analysisSourcesDegraded(enrichedCompany)) {
+        // Keep the last good immutable version and let the scheduled retry (or
+        // short-lived interactive response) recover the unavailable source.
+        await release('financial', key, claim);
+        results.push({ basis, status: 'busy', reason: 'Supplemental SEC evidence could not be verified; the last good prepared version was retained.' });
+        continue;
+      }
+      supplementalDocuments = enrichedCompany.sourceCoverage?.sourceDocuments || [];
+      financialCompanyHash = financialInputIdentity(enrichedCompany);
+      financialInputHash = hash({ financialCompanyHash, inputDocuments: sourceIdentity, supplementalDocuments });
+    }
+    if ((reusableSources || previous?.metadata?.financialInputHash === financialInputHash) && previous?.payload?.version === ANALYSIS_VERSION
+      && previous?.payload?.mappingVersion === ANALYSIS_MAPPING_VERSION
+      && previous?.metadata?.sourceEnrichmentVersion === SOURCE_ENRICHMENT_VERSION
+      && previous?.metadata?.sourceCoverage && !analysisSourcesDegraded(previous.metadata)
       && previous?.metadata?.metricProjectionVersion === 'latest-all-v1') {
       if (await revalidate('financial', key, { claim, revalidatedAt, expiresAt }) !== true) throw new Error('Financial revalidation lost its publication claim.');
       const rollbackStored = mirrorLegacy && await legacyWrite(hotNamespace, legacyKey(ticker, basis),
@@ -261,15 +312,33 @@ export async function prepareFinancialCompany(ticker, {
         25 * 3600, { ...claim, fenceId: key });
       results.push({ basis, status: 'unchanged', rollbackStored }); continue;
     }
-    const payload = packAnalysisCompany(buildAnalysisCompany(company, { basis, asOf: '' }));
+    // Projection changes also need the enriched company even when its source
+    // identity was eligible for the cheap revalidation path above.
+    if (!enrichedCompany) {
+      enrichedCompany = await enrich(basis);
+      if (stopped()) return defer(claims.slice(index));
+      if (analysisSourcesDegraded(enrichedCompany)) {
+        await release('financial', key, claim);
+        results.push({ basis, status: 'busy', reason: 'Supplemental SEC evidence could not be verified; the last good prepared version was retained.' });
+        continue;
+      }
+      supplementalDocuments = enrichedCompany.sourceCoverage?.sourceDocuments || [];
+      financialCompanyHash = financialInputIdentity(enrichedCompany);
+      financialInputHash = hash({ financialCompanyHash, inputDocuments: sourceIdentity, supplementalDocuments });
+    }
+    const payload = packAnalysisCompany(buildAnalysisCompany(enrichedCompany, { basis, asOf: '' }));
     if (stopped()) return defer(claims.slice(index));
     const metadata = { sourceId: 'sec-edgar', sourceUrl: sourcePaths.map((path) => `https://data.sec.gov${path}`)[1],
       entityId: cohort.cik, fetchedAt, revalidatedAt, expiresAt, publishedAt: null,
       reportPeriod: payload.periods[0]?.end || null, parserVersion: FINANCIAL_PREPARED_VERSION,
-      calculationVersion: ANALYSIS_VERSION, financialInputHash, financialCompanyHash, metricProjectionVersion: 'latest-all-v1',
-      inputDocuments, basis };
+      calculationVersion: ANALYSIS_VERSION, mappingVersion: ANALYSIS_MAPPING_VERSION,
+      financialInputHash, financialCompanyHash, metricProjectionVersion: 'latest-all-v1',
+      financialBaseInputHash, sourceEnrichmentVersion: SOURCE_ENRICHMENT_VERSION,
+      sourceCoverage: enrichedCompany.sourceCoverage, supplementalDocuments, inputDocuments, basis };
     const published = await publish({ dataset: 'financial', key, claim, payload, metadata,
       identityInputs: { financialInputHash, inputDocuments: sourceIdentity, calculationVersion: ANALYSIS_VERSION,
+        mappingVersion: ANALYSIS_MAPPING_VERSION,
+        supplementalDocuments, sourceEnrichmentVersion: SOURCE_ENRICHMENT_VERSION,
         metricProjectionVersion: 'latest-all-v1', basis, asOf: '' }, observations: financialServingObservations(payload) });
     // Keep actual rollback responses populated without copying unverified legacy input.
     const rollbackStored = mirrorLegacy && await legacyWrite(hotNamespace, legacyKey(ticker, basis),

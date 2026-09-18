@@ -7,11 +7,11 @@ export const COMPANY_EXPOSURE_REVISION_TYPE = `edgar.company-exposure-revision.v
 // Bump the source version when visible-text parsing changes; bump the extraction
 // version when classification rules or the supported benchmark catalog change.
 export const COMPANY_EXPOSURE_TEXT_VERSION = 'filing-visible-text.v2';
-export const COMPANY_EXPOSURE_EXTRACTION_VERSION = 'company-exposure-extraction.v2';
+export const COMPANY_EXPOSURE_EXTRACTION_VERSION = 'company-exposure-extraction.v3';
 export const COMPANY_EXPOSURE_REVISION_RETENTION_SECONDS = 30 * 86400;
 const FILING_FIELDS = ['role', 'form', 'filed', 'reportDate', 'accession', 'primaryDoc', 'url'];
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').toUpperCase();
-const filingBinding = source => FILING_FIELDS.map(key => source?.[key] ?? null);
+const filingBinding = source => [...FILING_FIELDS.map(key => source?.[key] ?? null), ...(source?.sourceCik ? [source.sourceCik] : [])];
 const validCik = cik => /^(?!0000000000)\d{10}$/.test(cik || '');
 const validTime = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
 
@@ -76,7 +76,7 @@ export function createCompanyExposureRevisionCache({ enabled = disposableCacheEn
         || value.integrity !== digest([value.version, value.key, value.cik, value.generatedAt, value.extracted])) return null;
       // Every persisted passage remains attached to one exact selected document.
       if (value.extracted.rows.some(row => !Array.isArray(row.evidence) || !row.evidence.length || row.evidence.length > 4
-        || row.evidence.some(evidence => !sources.some(source => ['role', 'form', 'filed', 'reportDate', 'accession', 'url']
+        || row.evidence.some(evidence => !sources.some(source => ['role', 'form', 'filed', 'reportDate', 'accession', 'url', 'sourceCik']
           .every(field => (source[field] ?? null) === (evidence[field] ?? null)))))) return null;
       return { extracted: value.extracted, generatedAt: value.generatedAt };
     },

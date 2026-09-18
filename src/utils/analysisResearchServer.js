@@ -1,6 +1,7 @@
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { loadResearchCompany } from './secResearchData.js';
+import { loadAnalysisResearchCompany, analysisSourceCachePolicy } from './analysisResearchSources.js';
 import { buildAnalysisCompany, packAnalysisCompany, ANALYSIS_VERSION } from './analysisResearch.js';
+import { ANALYSIS_MAPPING_VERSION } from './analysisVersion.js';
 import { sampleFinancialShadow } from './preparedFinancialData.js';
 import { warmGet, warmSet } from './warmCache.js';
 
@@ -10,6 +11,7 @@ const MAX_DECODE_BYTES = 32 * 1024 * 1024;
 
 function matchingResult(value, { ticker, basis, asOf }) {
   return value?.packed === true && value.version === ANALYSIS_VERSION
+    && value.mappingVersion === ANALYSIS_MAPPING_VERSION
     && value.ticker === ticker && value.basis === basis && (value.asOf || '') === asOf
     && Array.isArray(value.periods) && Array.isArray(value.definitions)
     && value.metrics && typeof value.metrics === 'object' && !Array.isArray(value.metrics)
@@ -22,7 +24,7 @@ function matchingResult(value, { ticker, basis, asOf }) {
  * cache lifetime, and are never enrolled in the immutable prepared universe.
  */
 export function createInteractiveAnalysisLoader({
-  read = warmGet, write = warmSet, load = loadResearchCompany,
+  read = warmGet, write = warmSet, load = loadAnalysisResearchCompany,
   build = buildAnalysisCompany, pack = packAnalysisCompany, sample = sampleFinancialShadow,
 } = {}) {
   const pending = new Map(), unsettled = new Set();
@@ -52,7 +54,7 @@ export function createInteractiveAnalysisLoader({
             if (matchingResult(payload, settings)) return { payload, serializedPayload, cacheSource: 'warm' };
           } catch { /* Corrupt cached responses cannot prevent a valid recalculation. */ }
         }
-        const company = await load(ticker, { signal: AbortSignal.any([workSignal, AbortSignal.timeout(25000)]) });
+        const company = await load(ticker, { basis, asOf, signal: AbortSignal.any([workSignal, AbortSignal.timeout(25000)]) });
         workSignal.throwIfAborted();
         const payload = pack(build(company, { basis, asOf }));
         const serializedPayload = JSON.stringify(payload);
@@ -61,7 +63,7 @@ export function createInteractiveAnalysisLoader({
         catch { /* Shadow diagnostics are optional, not a prerequisite for research. */ }
         controller.signal.throwIfAborted();
         try {
-          await write('analysis-research', id, { gzip: gzipSync(serializedPayload).toString('base64') }, 300);
+          await write('analysis-research', id, { gzip: gzipSync(serializedPayload).toString('base64') }, analysisSourceCachePolicy(payload).ttlSeconds);
         } catch { /* The valid calculated response survives an optional cache outage. */ }
         // A source deadline expiring during optional persistence must not
         // discard a calculation that completed within its source budget.

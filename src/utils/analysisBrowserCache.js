@@ -1,3 +1,16 @@
+import { ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION } from "./analysisVersion.js";
+import { analysisSourceCachePolicy } from "./analysisSourceCoverage.js";
+
+export function matchesAnalysisResponse(value, { ticker, basis, asOf = "" }) {
+  return value?.packed === true && value.version === ANALYSIS_VERSION
+    && value.mappingVersion === ANALYSIS_MAPPING_VERSION
+    && value.ticker === String(ticker).toUpperCase() && value.basis === basis
+    && (value.asOf || "") === asOf && Array.isArray(value.periods)
+    && Array.isArray(value.definitions) && Array.isArray(value.sourceCatalog)
+    && Array.isArray(value.calculationCatalog) && value.metrics
+    && typeof value.metrics === "object" && !Array.isArray(value.metrics);
+}
+
 // Keep inactive research results packed. Only the selected result needs its
 // complete, unpacked metric evidence in the workspace.
 export const ANALYSIS_BROWSER_CACHE_LIMITS = Object.freeze({
@@ -9,6 +22,8 @@ export const ANALYSIS_BROWSER_CACHE_LIMITS = Object.freeze({
 export function analysisBrowserCacheKey(ticker, settings) {
   // Period selection uses the same model; a retry replaces this key.
   return JSON.stringify([
+    ANALYSIS_VERSION,
+    ANALYSIS_MAPPING_VERSION,
     String(ticker).toUpperCase(),
     settings.basis,
     settings.asOf || "",
@@ -50,7 +65,7 @@ export function createAnalysisBrowserCache({
     set(key, packed) {
       prune();
       remove(key);
-      if (packed?.packed !== true) return false;
+      if (packed?.packed !== true || packed.version !== ANALYSIS_VERSION || packed.mappingVersion !== ANALYSIS_MAPPING_VERSION) return false;
       const json = JSON.stringify(packed);
       // Count the UTF-16 string payload, rather than undercounting non-ASCII
       // strings or retaining unbounded object graphs behind a byte estimate.
@@ -58,7 +73,7 @@ export function createAnalysisBrowserCache({
       if (size > maxBytes || maxEntries < 1 || ttlMs <= 0) return false;
       while (entries.size >= maxEntries || bytes + size > maxBytes)
         remove(entries.keys().next().value);
-      entries.set(key, { json, bytes: size, expiresAt: now() + ttlMs });
+      entries.set(key, { json, bytes: size, expiresAt: now() + Math.min(ttlMs, analysisSourceCachePolicy(packed).ttlSeconds * 1000) });
       bytes += size;
       return true;
     },

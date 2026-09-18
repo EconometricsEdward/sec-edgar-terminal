@@ -337,6 +337,7 @@ export default function AnalysisInspector({
             <dt>Accession</dt>
             <dd>{s.accession}</dd>
           </dl>
+          {s.scopeNote && <p className={styles.small}>{s.scopeNote}</p>}
           {analysisSecUrl(s.documentUrl) && (
             <a
               href={analysisSecUrl(s.documentUrl)!}

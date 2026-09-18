@@ -36,3 +36,18 @@ test('saved context keeps SEC evidence and CFTC observation dates distinct', () 
   assert.match(note, /prior-report percentile: Unavailable/);
   assert.match(cftcCompanyResearchNote({ ticker: 'TEST', history }), /No company connection has been established/);
 });
+
+test('scenario research notes retain all selected annual and quarterly evidence, contract fit and baseline timing', () => {
+  const history = { selected: { reportDate: '2026-09-08', contractName: 'Euro FX', selectedGroup: { label: 'Asset Manager', long: 10, short: 5, net: 5, netPctOi: 1 }, openInterest: 500 }, selection: { contract: '099741', group: 'asset-manager', history_window: '3y' }, report_family: 'tff', report_basis: 'futures_only', retrieved_at: '2026-09-14', status: 'stale', percentile: { required: 156, value: null }, freshness: { cache_status: 'stale-last-good', source_report_age_days: 10 }, refresh_warning: 'Awaiting scheduled revalidation.', history: [] };
+  const evidence = [0, 1, 2, 3].map(index => ({ form: index < 2 ? '10-Q' : '10-K', filed: index < 2 ? '2026-08-01' : '2026-02-01', reportDate: index < 2 ? '2026-06-30' : '2025-12-31', accession: `accession-${index}`, url: `https://www.sec.gov/Archives/${index}`, text: `Exact disclosure ${index}`, disclosureDirection: index === 0 ? 'qualifying-or-negative' : 'connection' }));
+  const note = cftcCompanyResearchNote({ ticker: 'TEST', history, basis: 'quarter', periodEnd: '2026-06-30', asOf: '2026-08-15', candidate: { label: 'Euro', categoryLabel: 'Currencies', fit: 'proxy', reason: 'Currency pair may differ.', evidence } });
+  assert.match(note, /Trader category ID: asset-manager · History window: 3y/);
+  assert.match(note, /Benchmark fit: proxy/);
+  assert.match(note, /Qualification or negative disclosure: Exact disclosure 0/);
+  assert.match(note, /Period 2025-12-31 · Accession accession-3/);
+  assert.match(note, /postdates the financial baseline/);
+  assert.match(note, /SEC filing cutoff: 2026-08-15/);
+  assert.match(note, /stale-last-good/);
+  assert.match(note, /Awaiting scheduled revalidation/);
+  assert.match(note, /group=asset-manager&date=2026-09-08&history=3y/);
+});

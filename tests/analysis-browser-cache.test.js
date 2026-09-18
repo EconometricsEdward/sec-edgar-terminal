@@ -4,12 +4,19 @@ import {
   analysisBriefMatches,
   analysisBrowserCacheKey,
   createAnalysisBrowserCache,
+  matchesAnalysisResponse,
 } from "../src/utils/analysisBrowserCache.js";
 import { unpackAnalysisCompany } from "../src/utils/analysisResearch.js";
+import { ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION } from "../src/utils/analysisVersion.js";
 
 const packed = (value = 120) => ({
   packed: true,
+  version: ANALYSIS_VERSION,
+  mappingVersion: ANALYSIS_MAPPING_VERSION,
   ticker: "AAPL",
+  basis: "annual",
+  asOf: "",
+  definitions: [{ key: "revenue" }],
   periods: [{ kind: "annual", end: "2025-09-27" }],
   metrics: {
     revenue: [{ value, sourceIds: [0], calculationIds: [] }],
@@ -17,6 +24,24 @@ const packed = (value = 120) => ({
   },
   sourceCatalog: [{ taxonomy: "us-gaap", tag: "Revenue", value }],
   calculationCatalog: [{ formula: "income / revenue × 100" }],
+});
+
+test("responses must match issuer, basis, cutoff and calculation version", () => {
+  const selection = { ticker: "AAPL", basis: "annual", asOf: "" };
+  assert.equal(matchesAnalysisResponse(packed(), selection), true);
+  for (const change of [{ ticker: "GS" }, { basis: "quarter" }, { asOf: "2025-01-01" }, { version: "old" }, { mappingVersion: undefined }, { packed: false }, { sourceCatalog: null }])
+    assert.ok(!matchesAnalysisResponse({ ...packed(), ...change }, selection));
+});
+
+test("temporary source gaps expire promptly instead of retaining an incomplete result", () => {
+  let time = 0;
+  const cache = createAnalysisBrowserCache({ now: () => time });
+  cache.set("gap", { ...packed(), sourceCoverage: { filingFallback: { status: "unavailable" } } });
+  cache.set("healthy", packed());
+  time = 60000;
+  assert.equal(cache.get("gap"), null);
+  assert.ok(cache.get("healthy"));
+  assert.equal(cache.set("old", { ...packed(), version: "old" }), false);
 });
 
 test("only selected packed results expand, retaining period and complete evidence", () => {

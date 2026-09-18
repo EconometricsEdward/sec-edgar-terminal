@@ -78,7 +78,9 @@ export default function AnalysisOverview({
                 <ArrowUpRight size={14} />
               </button>
               <small>
-                {delta.delta === null
+                {!Number.isFinite(point?.value)
+                  ? "No compatible reported input for this period"
+                  : delta.delta === null
                   ? "Comparable prior input unavailable"
                   : `${delta.delta >= 0 ? "+" : "−"}${d.format === "percent" ? `${Math.abs(delta.delta).toFixed(2)} percentage points` : analysisValue(Math.abs(delta.delta), d.format, settings.units)} vs ${data.periods[beforeIndex]?.end}`}
               </small>
