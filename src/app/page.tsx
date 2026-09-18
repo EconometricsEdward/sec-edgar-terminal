@@ -70,7 +70,7 @@ export default function HomePage() {
 
       <section aria-labelledby="explore-title">
         <div className={styles.sectionHeading}>
-          <div><p className={styles.eyebrow}>Widen your perspective</p><h2 id="explore-title">A company never tells the whole story.</h2></div>
+          <div><p className={styles.eyebrow}>Widen your perspective</p><h2 id="explore-title">Every company has a wider context.</h2></div>
           <Link href="/help" prefetch={false}>Find your starting point <ArrowUpRight size={16} aria-hidden="true" /></Link>
         </div>
         <div className={styles.featureGrid}>
