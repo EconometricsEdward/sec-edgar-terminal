@@ -1,13 +1,14 @@
-/** Bounded, namespace-aware extraction of two standard SEC note concepts.
+/** Bounded, namespace-aware extraction of standard SEC risk note concepts.
  * Values come only from inline facts and their exact XBRL contexts and units.
  * Narrative proximity, table position and missing values never supply numbers.
  */
-export const RISK_NOTE_FACTS_VERSION = 'risk-note-facts-v2';
+export const RISK_NOTE_FACTS_VERSION = 'risk-note-facts-v3';
 export const RISK_NOTE_MAX_BYTES = 24_000_000;
 const XBRLI = 'http://www.xbrl.org/2003/instance';
 const XBRLDI = 'http://xbrl.org/2006/xbrldi';
 const INLINE = new Set(['http://www.xbrl.org/2013/inlineXBRL', 'http://www.xbrl.org/2008/inlineXBRL']);
-const CONCEPTS = new Set(['DerivativeNotionalAmount', 'ConcentrationRiskPercentage1']);
+const FAIR_VALUE_CONCEPTS = new Set(['DerivativeAssets', 'DerivativeLiabilities']);
+const CONCEPTS = new Set(['DerivativeNotionalAmount', 'ConcentrationRiskPercentage1', ...FAIR_VALUE_CONCEPTS]);
 const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 const local = name => String(name || '').split(':').at(-1);
 const humanize = value => local(value).replace(/(?:Member|Axis)$/, '').replace(/([a-z\d])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
@@ -63,6 +64,15 @@ const one = (node, name, namespace) => { const found = descendants(node, name, n
 const standard = (qname, namespaces) => /^https?:\/\/fasb\.org\/us-gaap\/20\d{2}(?:-\d{2}-\d{2})?$/.test(namespaces[qname?.split(':')[0]] || '');
 const namespaceFor = (name, namespaces) => namespaces[name.includes(':') ? name.split(':')[0] : ''] || '';
 
+// This standard concept is also used for signed reconciliation adjustments in
+// the verified ExxonMobil filing. Do not allow arbitrary negative gross asset
+// values or infer offsetting from a similarly named custom member elsewhere.
+const supportedFairValueOffset = (dimensions, namespaces, cik, filing) => String(cik).replace(/^0+/, '') === '34088'
+  && filing.reportDate === '2026-06-30' && dimensions.length === 1
+  && dimensions.some(dimension => local(dimension.axis) === 'DerivativeInstrumentRiskAxis' && standard(dimension.axis, namespaces)
+    && namespaceFor(dimension.member, namespaces) === 'http://www.exxonmobil.com/20260630'
+    && ['EffectOfCounterpartyNettingMember', 'EffectOfCollateralNettingMember'].includes(local(dimension.member)));
+
 function numberValue(node, namespaces) {
   const attrs = node.attrs;
   if (attrs._invalid || attrs['xsi:nil'] === 'true' || attrs['xsi:nil'] === '1' || attrs.continuedat || descendants(node, 'exclude').length) return null;
@@ -101,6 +111,14 @@ function contextValue(node, cik) {
   return { start: instant ? null : start, end: instant || end, periodType: instant ? 'instant' : 'duration', dimensions };
 }
 function describe(tag, dimensions, namespaces) {
+  if (FAIR_VALUE_CONCEPTS.has(local(tag))) {
+    const asset = local(tag) === 'DerivativeAssets';
+    // Fair-value levels, carrying values and signed netting adjustments are
+    // independent reported measures. Keep every dimension in the row identity
+    // and label; these values must never be relabeled as contract notionals.
+    return { kind: 'derivative_fair_value', category: asset ? 'derivative_asset' : 'derivative_liability',
+      label: [asset ? 'Derivative assets' : 'Derivative liabilities', ...dimensions.map(dimension => dimension.label)].join(' · ') };
+  }
   const members = dimensions.filter(dimension => standard(dimension.axis, namespaces) && standard(dimension.member, namespaces)).map(dimension => local(dimension.member));
   if (local(tag) === 'ConcentrationRiskPercentage1') {
     const customer = dimensions.find(dimension => /MajorCustomersAxis$/.test(dimension.axis));
@@ -229,8 +247,10 @@ export function extractRiskNoteFacts(html, { cik, filing }) {
   let rejectedFacts = 0;
   for (const node of facts) {
     const context = contexts.get(node.attrs.contextref), unit = units.get(node.attrs.unitref), value = numberValue(node, namespaces), tag = node.attrs.name;
-    const expectedUnit = local(tag) === 'DerivativeNotionalAmount' ? 'USD' : 'pure';
-    if (!standard(tag, namespaces) || !context || unit !== expectedUnit || value == null || value < 0
+    const fairValue = FAIR_VALUE_CONCEPTS.has(local(tag));
+    const expectedUnit = local(tag) === 'ConcentrationRiskPercentage1' ? 'pure' : 'USD';
+    if (!standard(tag, namespaces) || !context || unit !== expectedUnit || value == null
+      || (value < 0 && !(fairValue && supportedFairValueOffset(context.dimensions, namespaces, cik, filing)))
       || (unit === 'pure' && value > 1) || context.end > filing.reportDate) { rejectedFacts++; continue; }
     if (expectedUnit === 'USD' && context.periodType !== 'instant') { rejectedFacts++; continue; }
     if (expectedUnit === 'pure' && !context.dimensions.some(dimension => local(dimension.axis) === 'ConcentrationRiskByTypeAxis'
@@ -255,5 +275,9 @@ export function extractRiskNoteFacts(html, { cik, filing }) {
     rows.push({ id: group.identity, ...describe(group.tag, group.dimensions, namespaces), unit: group.unit, dimensions: group.dimensions, current: current[0], prior });
   }
   rows.sort((a, b) => a.kind.localeCompare(b.kind) || a.label.localeCompare(b.label));
-  return { rows: rows.slice(0, 60), coverage: { inlineFactsFound: facts.length, rejectedFacts, rowsOmitted: Math.max(0, rows.length - 60), concepts: [...CONCEPTS], dimensional: true } };
+  // Fair-value expansion must not displace previously supported notionals or
+  // concentration shares. Bound each family independently before presentation.
+  const retained = [...rows.filter(row => row.kind !== 'derivative_fair_value').slice(0, 60),
+    ...rows.filter(row => row.kind === 'derivative_fair_value').slice(0, 60)];
+  return { rows: retained, coverage: { inlineFactsFound: facts.length, rejectedFacts, rowsOmitted: rows.length - retained.length, concepts: [...CONCEPTS], dimensional: true } };
 }

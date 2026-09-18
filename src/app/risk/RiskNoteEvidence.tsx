@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, RefreshCw } from 'lucide-react';
 import { formatRiskValue } from '../../utils/riskWorkspace.js';
+import { matchesRiskNoteResponse } from '../../utils/riskNoteResponse.js';
 import s from './RiskNoteEvidence.module.css';
 
 type Fact = { value: number; start?: string; end: string; contextId: string; factId?: string; sourceUrl: string; tag: string };
@@ -106,12 +107,16 @@ function NoteEvidence({ ticker, basis, asOf }: { ticker: string; basis: string; 
     const params = new URLSearchParams({ticker,basis}); if (asOf) params.set('asOf',asOf);
     fetch(`/api/risk/notes?${params}`,{signal:controller.signal}).then(async response => {
       const body = await response.json();
-      if (!response.ok || !Array.isArray(body.rows) || body.ticker !== ticker || body.status === 'unavailable') throw new Error(body.message || body.error || 'The filing notes could not be loaded.');
+      if (!response.ok || !matchesRiskNoteResponse(body, ticker, basis, asOf)) throw new Error(body?.message || body?.error || 'The filing notes could not be verified for this company and reporting selection. Please retry.');
       return body as Notes;
     }).then(body => { if (!controller.signal.aborted) setData(body); }).catch(cause => { if (!controller.signal.aborted) setError(cause.message); });
     return () => controller.abort();
   },[ticker,basis,asOf,retry,visible]);
-  const rows = (data?.rows || []).filter(row => finite(row.current?.value) && row.current.value >= 0 && (!row.prior || (finite(row.prior.value) && row.prior.value >= 0)));
+  // This profile section compares notionals and concentration shares only.
+  // Other note measures, including fair values, belong to Business Exposures.
+  const rows = (data?.rows || []).filter(row => (row.kind === 'derivative_notional' && row.unit === 'USD'
+    || row.kind === 'credit_concentration' && row.unit === 'pure')
+    && finite(row.current?.value) && row.current.value >= 0 && (!row.prior || (finite(row.prior.value) && row.prior.value >= 0)));
   const derivatives = rows.filter(row => row.kind === 'derivative_notional' && row.unit === 'USD');
   const concentrations = rows.filter(row => row.kind === 'credit_concentration' && row.unit === 'pure' && row.current.value <= 1 && (!row.prior || row.prior.value <= 1));
   return <section ref={root} className={s.section} aria-label="Credit and currency disclosures">

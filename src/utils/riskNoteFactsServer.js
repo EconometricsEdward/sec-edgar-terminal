@@ -6,6 +6,7 @@ import { companyExposureFilings } from './companyExposureServer.js';
 import { extractRiskNoteFacts, verifiesJointRegistrantFacts, RISK_NOTE_FACTS_VERSION, RISK_NOTE_MAX_BYTES } from './riskNoteFacts.js';
 import { SEC_EVIDENCE_CONTINUITY } from './secEvidenceContinuity.js';
 import { warmGet, warmSet } from './warmCache.js';
+import { matchesRiskNoteResponse } from './riskNoteResponse.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
@@ -13,8 +14,9 @@ const completeRows = rows => Array.isArray(rows?.accessionNumber)
   && ['form', 'filingDate', 'reportDate', 'primaryDocument'].every(key => Array.isArray(rows[key]) && rows[key].length === rows.accessionNumber.length);
 const annualForms = new Set(['10-K', '20-F', '40-F']);
 export const RISK_NOTE_LIMITATIONS = [
-  'This view reads standard derivative-notional and credit-concentration facts in one SEC primary filing. Custom concepts, typed dimensions, non-USD amounts and untagged narrative tables are outside this extraction.',
+  'This view reads standard derivative-notional, derivative asset/liability fair-value and credit-concentration facts in one SEC primary filing. Custom concepts, typed dimensions, non-USD amounts and untagged narrative tables are outside this extraction.',
   'Derivative notionals are contract reference amounts, not fair values, expected losses, net currency exposure or estimates of hedge effectiveness. Designated and nondesignated contracts remain separate.',
+  'Derivative assets and liabilities retain their reported valuation, netting and collateral dimensions. Gross amounts, signed offsets, carrying values and fair-value hierarchy components are separate measures, not additive exposures or estimates of potential loss.',
   'Concentration percentages retain their reported benchmark. Customer groups may overlap, and anonymous customer or vendor labels do not establish the same counterparty across filings.',
   'Comparisons use matching concept, unit and dimensions within the same filing. An absent fact or comparison is not zero risk. SEC context dates remain available with each value.',
 ];
@@ -95,7 +97,7 @@ export async function discoverRiskNoteFacts(selection, { now = new Date(), signa
 export async function loadRiskNoteFacts(selection, { signal } = {}) {
   const key = `${selection.ticker}:${selection.basis}:${selection.asOf || 'latest'}`;
   const saved = await warmGet(RISK_NOTE_FACTS_VERSION, key);
-  if (saved) return saved;
+  if (matchesRiskNoteResponse(saved, selection.ticker, selection.basis || 'ttm', selection.asOf)) return saved;
   const requestSignal = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(45_000)]);
   const result = await discoverRiskNoteFacts(selection, { signal: requestSignal });
   if (!result.coverage.historyLimited) await warmSet(RISK_NOTE_FACTS_VERSION, key, result, result.status === 'ready' ? 3600 : 600);

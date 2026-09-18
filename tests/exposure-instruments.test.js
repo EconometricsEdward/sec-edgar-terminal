@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildExposureInstrumentGroups, compactInstrumentLabel } from '../src/utils/exposureInstruments.js';
+import { buildExposureInstrumentGroups, compactInstrumentLabel, instrumentComparisonScale } from '../src/utils/exposureInstruments.js';
 
 const fact = value => ({ value, end: '2026-06-30' });
 const row = (id, instrument, value, extra = {}) => ({ id, label: instrument, kind: 'derivative_notional', category: 'other_derivative', unit: 'USD', current: fact(value), prior: fact(value / 2), dimensions: [{ axis: 'us-gaap:DerivativeInstrumentRiskAxis', member: `us-gaap:${instrument}Member`, label: instrument }], ...extra });
@@ -52,4 +52,30 @@ test('invalid facts and unsupported units are omitted; zero remains a reported v
 test('compact labels preserve purchased/sold protection and internal rating distinctions', () => {
   assert.equal(compactInstrumentLabel({ label: 'Credit Default Swap · Credit Default Swap Selling Protection · Internal Noninvestment Grade' }), 'CDS · Protection sold · Internal non-investment grade');
   assert.equal(compactInstrumentLabel({ label: 'Foreign exchange · Accounting hedges' }), 'Foreign exchange · Accounting hedges');
+});
+
+test('derivative fair values keep signed netting, asset/liability sides and hierarchy disclosures separate', () => {
+  const amount = (id, category, value, dimension) => row(id, id, value, { kind: 'derivative_fair_value', category, dimensions: dimension ? [dimension] : [] });
+  const dimension = member => ({ axis: 'us-gaap:DerivativeInstrumentRiskAxis', member: `xom:${member}`, label: member });
+  const values = [amount('net-assets','derivative_asset',1_598e6,{axis:'us-gaap:FairValueByMeasurementBasisAxis',member:'us-gaap:CarryingReportedAmountFairValueDisclosureMember'}),
+    amount('asset-offset','derivative_asset',-17_681e6,dimension('EffectOfCounterpartyNettingMember')),
+    amount('gross-assets','derivative_asset',19_923e6,{axis:'us-gaap:FairValueByMeasurementBasisAxis',member:'us-gaap:FairValueDisclosureItemAmountsDomain'}),
+    amount('asset-collateral','derivative_asset',-644e6,dimension('EffectOfCollateralNettingMember')),
+    amount('net-liabilities','derivative_liability',1_818e6),
+    amount('level-one','derivative_asset',1_062e6,{axis:'us-gaap:FairValueByFairValueHierarchyLevelAxis',member:'us-gaap:FairValueInputsLevel1Member'}),
+    row('notional','CommodityContract',50_000e6)];
+  const groups = buildExposureInstrumentGroups(values), fair = groups.find(group => group.id === 'fair-values');
+  assert.equal(fair.rows.length,6);
+  assert.deepEqual(fair.balances.map(balance=>balance.rows.map(item=>item.id)), [['gross-assets','asset-offset','asset-collateral','net-assets'],['net-liabilities'],['level-one']]);
+  assert.equal(groups.find(group=>group.id==='commodity').rows.length,1);
+  assert.ok(!Object.hasOwn(fair,'total'));
+  const scale=instrumentComparisonScale(fair.balances[0].rows);
+  assert.ok(scale.minimum<0 && scale.maximum>0 && scale.zero>0 && scale.zero<100);
+  assert.equal(scale.bar(0).width,'0%');
+  for(const item of fair.rows) {
+    assert.ok(parseFloat(scale.bar(item.current.value).width)>=0);
+    if(item.current.value<0) assert.ok(parseFloat(scale.bar(item.current.value).left)<scale.zero);
+    if(item.current.value>0) assert.equal(parseFloat(scale.bar(item.current.value).left),scale.zero);
+  }
+  assert.equal(instrumentComparisonScale([row('zero','Other',0)]).maximum,0);
 });

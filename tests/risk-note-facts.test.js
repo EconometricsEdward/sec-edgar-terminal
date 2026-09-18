@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractRiskNoteFacts, verifiesJointRegistrantFacts } from '../src/utils/riskNoteFacts.js';
+import { extractRiskNoteFacts, verifiesJointRegistrantFacts, RISK_NOTE_FACTS_VERSION } from '../src/utils/riskNoteFacts.js';
 import { SEC_EVIDENCE_CONTINUITY } from '../src/utils/secEvidenceContinuity.js';
 import { parseRiskNoteRequest, selectRiskNoteFiling, discoverRiskNoteFacts } from '../src/utils/riskNoteFactsServer.js';
 
@@ -20,6 +20,96 @@ function fact(id, value, attributes = '') {
   return `<ix:nonFraction name="us-gaap:DerivativeNotionalAmount" contextRef="${id}" unitRef="usd" scale="6" format="ixt:num-dot-decimal" id="fact-${id}" ${attributes}>${value}</ix:nonFraction>`;
 }
 const extract = source => extractRiskNoteFacts(`${header}${units}${source}</html>`, { cik, filing });
+const fairValueFact = (id, concept, value, attributes = '') => fact(id, value, attributes).replace('us-gaap:DerivativeNotionalAmount', `us-gaap:${concept}`);
+
+test('fair-value coverage cannot crowd existing notionals out of the bounded response', () => {
+  let source = context('notional') + fact('notional', '500');
+  for (let index = 0; index < 65; index++) source += context(`fair-${index}`, filing.reportDate,
+    [['company:InstrumentAxis', `company:Instrument${index}Member`]]) + fairValueFact(`fair-${index}`, 'DerivativeAssets', '10');
+  const result = extract(source);
+  assert.equal(result.rows.filter(row => row.kind === 'derivative_notional').length, 1);
+  assert.equal(result.rows.filter(row => row.kind === 'derivative_fair_value').length, 60);
+  assert.equal(result.coverage.rowsOmitted, 5);
+});
+const extractVerifiedXom = source => extractRiskNoteFacts(`${header}${units}${source}</html>`
+  .replace('xmlns:company="https://example.test/2026"', 'xmlns:company="http://www.exxonmobil.com/20260630"')
+  .replaceAll(`>${cik}<`, '>0000034088<'), { cik: '0000034088', filing });
+
+test('derivative assets and liabilities retain reported gross, signed offsets, levels and carrying amounts independently', () => {
+  const measures = [
+    { name: 'level-one', dimensions: [['us-gaap:FairValueByFairValueHierarchyLevelAxis', 'us-gaap:FairValueInputsLevel1Member']], assets: [15_760, 5_197], liabilities: [15_452, 4_994] },
+    { name: 'level-two', dimensions: [['us-gaap:FairValueByFairValueHierarchyLevelAxis', 'us-gaap:FairValueInputsLevel2Member']], assets: [4_163, 2_259], liabilities: [4_384, 2_043] },
+    { name: 'gross', dimensions: [['us-gaap:FairValueByMeasurementBasisAxis', 'us-gaap:FairValueDisclosureItemAmountsDomain']], assets: [19_923, 7_456], liabilities: [19_836, 7_037] },
+    { name: 'counterparty', dimensions: [['us-gaap:DerivativeInstrumentRiskAxis', 'company:EffectOfCounterpartyNettingMember']], assets: [-17_681, -6_261], liabilities: [-17_681, -6_261] },
+    { name: 'collateral', dimensions: [['us-gaap:DerivativeInstrumentRiskAxis', 'company:EffectOfCollateralNettingMember']], assets: [-644, -341], liabilities: [-337, -141] },
+    { name: 'carrying', dimensions: [['us-gaap:FairValueByMeasurementBasisAxis', 'us-gaap:CarryingReportedAmountFairValueDisclosureMember']], assets: [1_598, 854], liabilities: [1_818, 635] },
+  ];
+  const source = measures.map(measure => {
+    const current = `${measure.name}-now`, prior = `${measure.name}-prior`;
+    let html = context(current, filing.reportDate, measure.dimensions) + context(prior, '2025-12-31', measure.dimensions);
+    for (const [concept, values] of [['DerivativeAssets', measure.assets], ['DerivativeLiabilities', measure.liabilities]]) {
+      html += [current, prior].map((id, index) => fairValueFact(id, concept, String(Math.abs(values[index])), values[index] < 0 ? 'sign="-"' : '')).join('');
+    }
+    return html;
+  }).join('');
+  const result = extractVerifiedXom(source);
+  assert.equal(RISK_NOTE_FACTS_VERSION, 'risk-note-facts-v3');
+  assert.equal(result.rows.length, 12);
+  assert.equal(result.coverage.rejectedFacts, 0);
+  assert.ok(result.rows.every(row => row.kind === 'derivative_fair_value' && row.unit === 'USD'));
+  for (const measure of measures) {
+    for (const [category, concept, values] of [['derivative_asset', 'DerivativeAssets', measure.assets], ['derivative_liability', 'DerivativeLiabilities', measure.liabilities]]) {
+      const row = result.rows.find(item => item.category === category && item.current.contextId === `${measure.name}-now`);
+      assert.equal(row.current.tag, `us-gaap:${concept}`);
+      assert.equal(row.current.value, values[0] * 1_000_000);
+      assert.equal(row.prior.value, values[1] * 1_000_000);
+      assert.equal(row.current.end, filing.reportDate);
+      assert.equal(row.prior.end, '2025-12-31');
+      assert.equal(row.current.sourceUrl, `${filing.url}#fact-${measure.name}-now`);
+      assert.deepEqual(row.dimensions.map(({ axis, member }) => [axis, member]), measure.dimensions);
+    }
+  }
+  assert.equal(result.rows.find(row => row.category === 'derivative_asset' && row.current.contextId === 'counterparty-now').label,
+    'Derivative assets · Effect Of Counterparty Netting');
+});
+
+test('fair values never replace or combine notionals and require matching comparison dimensions', () => {
+  const result = extract(context('notional') + fact('notional', '100')
+    + context('carrying', filing.reportDate, []) + fairValueFact('carrying', 'DerivativeAssets', '2')
+    + context('prior', '2025-12-31', [['us-gaap:FairValueByFairValueHierarchyLevelAxis', 'us-gaap:FairValueInputsLevel1Member']])
+    + fairValueFact('prior', 'DerivativeAssets', '3'));
+  assert.equal(result.rows.length, 2);
+  assert.equal(result.rows.find(row => row.kind === 'derivative_notional').current.value, 100_000_000);
+  const fairValue = result.rows.find(row => row.kind === 'derivative_fair_value');
+  assert.equal(fairValue.current.value, 2_000_000);
+  assert.equal(fairValue.prior, null);
+  assert.equal(fairValue.label, 'Derivative assets');
+});
+
+test('fair values keep the same issuer, namespace, USD, instant and duplicate-validation gates', () => {
+  const valid = fairValueFact('now', 'DerivativeAssets', '10');
+  for (const source of [
+    context('now', filing.reportDate, [], { issuer: '9999999' }) + valid,
+    context('now', filing.reportDate, [], { start: '2026-01-01' }) + valid,
+    context('now') + valid.replace('unitRef="usd"', 'unitRef="pure"'),
+    context('now') + valid.replace('us-gaap:DerivativeAssets', 'company:DerivativeAssets'),
+    context('now') + valid + fairValueFact('now', 'DerivativeAssets', '11'),
+  ]) assert.equal(extract(source).rows.length, 0);
+  assert.equal(extract(context('now') + fairValueFact('now', 'DerivativeAssets', '10', 'sign="-"')).rows.length, 0);
+  assert.equal(extract(context('now') + fact('now', '10', 'sign="-"')).rows.length, 0);
+});
+
+test('negative fair-value offsets require the audited issuer, namespace and exact dimension semantics', () => {
+  const dimensions = [['us-gaap:DerivativeInstrumentRiskAxis', 'company:EffectOfCounterpartyNettingMember']];
+  const source = context('now', filing.reportDate, dimensions) + fairValueFact('now', 'DerivativeAssets', '10', 'sign="-"');
+  assert.equal(extractVerifiedXom(source).rows[0].current.value, -10_000_000);
+  // Matching custom spelling alone does not establish an offsetting adjustment.
+  assert.equal(extract(source).rows.length, 0);
+  for (const altered of [source.replace('EffectOfCounterpartyNettingMember', 'FairValueDisclosureItemAmountsDomain'),
+    source.replace('us-gaap:DerivativeInstrumentRiskAxis', 'company:DerivativeInstrumentRiskAxis')])
+    assert.equal(extractVerifiedXom(altered).rows.length, 0);
+  assert.equal(extractVerifiedXom(context('now', filing.reportDate, []) + fairValueFact('now', 'DerivativeAssets', '10', 'sign="-"')).rows.length, 0);
+});
 
 test('joint registrant evidence requires both verified identities, exact period and a known filing', async () => {
   const successor = '0002115436', predecessor = '0000034088';
