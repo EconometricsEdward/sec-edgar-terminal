@@ -78,9 +78,9 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
   function retryDiscovery() { clearPreparedCftc(discoveryPath); setDiscoveryRetry(value => value + 1); }
   function retryHistory() { clearPreparedCftc(historyPath); setHistoryRetry(value => value + 1); }
 
-  return <section className={s.root} aria-label={`${ticker} CFTC market context`}>
+  return <section className={s.root} data-mode={mode} aria-label={`${ticker} CFTC market context`}>
     <header className={s.hero}>
-      <div><span className={s.eyebrow}><ChartNoAxesCombined size={15} />Company evidence · Market context</span><h2>Connect {ticker}’s disclosures to futures positioning.</h2><p>Review the company connection, inspect the latest market observations, and decide what deserves a closer look.</p></div>
+      <div><span className={s.eyebrow}><ChartNoAxesCombined size={15} />Company evidence · Market context</span><h2>{mode === 'risk' ? `The markets behind ${ticker}’s business.` : `Connect ${ticker}’s disclosures to futures positioning.`}</h2><p>Review the company connection, inspect the latest market observations, and decide what deserves a closer look.</p></div>
       <span className={s.sourceBadge}>Official CFTC COT<br /><small>Futures-only reports</small></span>
     </header>
     {asOf && <p className={s.warning}><b>Historical SEC cutoff: {asOf}.</b> The CFTC observations below are current market context and may postdate this cutoff. They are excluded from historical financial calculations and are not presented as information available at that time.</p>}
@@ -104,7 +104,7 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
         <div className={s.metrics}>
           <div><span>Net / open interest</span><strong>{pct(values?.netPctOi)}</strong><small>{signed(values?.net)} net contracts</small></div>
           <div><span>Weekly change in net / OI</span><strong>{signed(selected.oneWeekNetPctChange, 2)}</strong><small>Percentage points · exact 7-day comparison</small></div>
-          <div><span>{history.percentile?.required}-report percentile</span><strong>{pct(history.percentile?.value)}</strong><small>{history.percentile?.observations}/{history.percentile?.required} valid prior observations</small></div>
+          <div><span>{history.percentile?.required}-report percentile</span><strong>{pct(history.percentile?.value)}</strong>{mode === 'risk' && finite(history.percentile?.value) && history.percentile.value >= 0 && history.percentile.value <= 100 && <div className={s.rank} role="img" aria-label={`${pct(history.percentile.value)} historical positioning rank on a zero to one hundred scale, not a company risk score`}><i style={{ left: `${history.percentile.value}%` }} /></div>}<small>{history.percentile?.observations}/{history.percentile?.required} valid prior observations{mode === 'risk' ? ' · positioning rank, not company risk' : ''}</small></div>
           <div><span>Market open interest</span><strong>{fmt(selected.openInterest)}</strong><small>Outstanding futures contracts</small></div>
         </div>
         <div className={s.chartReview}>
@@ -125,6 +125,6 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
       </>}
     </div>}
     {notice && <p className={s.notice} role="status">{notice}</p>}
-    <p className={s.scope}>CFTC reports describe aggregate futures positions by trader category. They do not identify {ticker}’s holdings or establish a price forecast. Company financial ratios, risk screens, and user-entered scenario assumptions remain separate.</p>
+    <p className={s.scope}>CFTC reports describe aggregate futures positions by trader category. They do not identify {ticker}’s holdings or establish a price forecast. {mode === 'risk' ? 'Read positioning alongside the company’s disclosed business channels, cash coverage, and capital structure.' : 'Company financial ratios, risk screens, and user-entered scenario assumptions remain separate.'}</p>
   </section>;
 }

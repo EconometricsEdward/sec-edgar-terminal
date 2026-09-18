@@ -1,137 +1,125 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, BarChart3, Building2, Check, CircleAlert, FileText, FlaskConical, Loader2, Network, Search, ShieldCheck } from 'lucide-react';
-import { PILLAR_LABELS, RISK_VERSION, formatRiskValue, riskBrief, riskDelta, riskPeriodLabel, runRiskStress } from '../../utils/riskWorkspace.js';
-import { MetricExplorer, RiskDisclosures, RiskStress } from './RiskPanels';
+import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, Building2, Check, CircleAlert, Compass, Loader2, Network, Search, ShieldCheck } from 'lucide-react';
+import { RISK_VERSION, riskPeriodLabel } from '../../utils/riskWorkspace.js';
+import RiskProfileOverview from './RiskProfileOverview';
+import { riskProfileBrief } from './riskProfilePresentation.js';
 import type { RiskData } from './riskTypes';
 import s from './risk.module.css';
 import { downloadRiskFile } from './riskDownload';
 import { normalizeRiskView, parseRiskLocation, riskViewPath } from './riskNavigation.js';
 
-const CompanyCftcContext = dynamic(() => import('../../components/cftc/CompanyCftcContext'), { loading: () => <div className={s.inlineLoading} role="status"><Loader2 size={17} className={s.spin} /> Loading CFTC context…</div> });
-const FcmCapitalPanel = dynamic(() => import('./FcmCapitalPanel'), { loading: () => <div className={s.inlineLoading} role="status"><Loader2 size={17} className={s.spin} /> Loading futures broker capital…</div> });
-const CompanyExposureMap = dynamic(() => import('./CompanyExposureMap'), { loading: () => <div className={s.inlineLoading} role="status"><Loader2 size={17} className={s.spin} /> Loading company exposure map…</div> });
-const TABS = [['overview', 'Risk overview', BarChart3], ['exposures', 'Exposure map', Network], ['stress', 'Stress test', FlaskConical], ['disclosures', 'Filings & models', FileText], ['cftc', 'CFTC context', Activity]] as const;
+const MetricExplorer = dynamic(() => import('./RiskPanels').then(m => m.MetricExplorer), { loading: () => <p className={s.inlineLoading} role="status">Opening metric evidence…</p> });
+const CompanyCftcContext = dynamic(() => import('../../components/cftc/CompanyCftcContext'), { loading: () => <p className={s.inlineLoading} role="status"><Loader2 size={17} className={s.spin} /> Loading CFTC context…</p> });
+const FcmCapitalPanel = dynamic(() => import('./FcmCapitalPanel'), { loading: () => <p className={s.inlineLoading} role="status">Loading futures broker capital…</p> });
+const CompanyExposureMap = dynamic(() => import('./CompanyExposureMap'), { loading: () => <p className={s.inlineLoading} role="status">Loading company exposures…</p> });
+const TABS = [['overview', 'Risk Profile', ShieldCheck], ['exposures', 'Business Exposures', Network], ['cftc', 'Market Context', Activity]] as const;
 
-export default function RiskClient({ initialTicker = '', initialView = 'overview', initialEntity = '', initialAsOf = '', cftcEnabled = true }: { initialTicker?: string; initialView?: string; initialEntity?: string; initialAsOf?: string; cftcEnabled?: boolean }) {
-  const [input, setInput] = useState(initialTicker);
-  const [query, setQuery] = useState(initialTicker);
-  const [retry, setRetry] = useState(0);
-  const [data, setData] = useState<RiskData | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [basis, setBasis] = useState('ttm');
+export default function RiskClient({ initialTicker = '', initialView = 'overview', initialBasis = 'ttm', initialEntity = '', initialAsOf = '', cftcEnabled = true }: { initialTicker?: string; initialView?: string; initialBasis?: string; initialEntity?: string; initialAsOf?: string; cftcEnabled?: boolean }) {
+  const [input, setInput] = useState(initialTicker), [query, setQuery] = useState(initialTicker);
+  const [retry, setRetry] = useState(0), [data, setData] = useState<RiskData | null>(null);
+  const [error, setError] = useState(''), [loading, setLoading] = useState(Boolean(initialTicker));
+  const [basis, setBasis] = useState(initialBasis === 'annual' ? 'annual' : 'ttm');
   const [tab, setTab] = useState(() => normalizeRiskView(initialView, cftcEnabled));
   const [exposureAsOf, setExposureAsOf] = useState(initialAsOf);
-  const [pillar, setPillar] = useState('all');
-  const [selected, setSelected] = useState('');
-  const [onlyMissing, setOnlyMissing] = useState(false);
-  const [controls, setControls] = useState<Record<string, number>>({});
+  const [pillar, setPillar] = useState('all'), [selected, setSelected] = useState('');
+  const [onlyMissing, setOnlyMissing] = useState(false), [explorerOpen, setExplorerOpen] = useState(false);
   const [exported, setExported] = useState(false);
-  const explorerRef = useRef<HTMLDivElement>(null);
-  const loadedRequest = useRef('');
-  const isFcm = cftcEnabled && tab === 'fcm';
-  const isCftc = cftcEnabled && tab === 'cftc';
-  const isExposures = cftcEnabled && tab === 'exposures';
+  const [inspectVersion, setInspectVersion] = useState(0);
+  const explorerRef = useRef<HTMLDivElement>(null), loadedRequest = useRef('');
+  const isFcm = cftcEnabled && tab === 'fcm', isCftc = cftcEnabled && tab === 'cftc', isExposures = cftcEnabled && tab === 'exposures';
   const independent = isFcm || isCftc || isExposures;
 
   useEffect(() => {
     if (independent) { setLoading(false); setError(''); return; }
     if (!query) { loadedRequest.current = ''; setData(null); setError(''); setLoading(false); return; }
     const requestKey = `${query}:${retry}`;
-    // Returning from an independent CFTC view preserves the loaded SEC basis,
-    // metric selection and stress assumptions. Explicit retries still reload.
     if (loadedRequest.current === requestKey) { setLoading(false); setError(''); return; }
     loadedRequest.current = '';
     if (!/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(query)) {
-      setData(null); setLoading(false); setError('Enter a valid company ticker (for example JPM or BRK.B).'); return;
+      setData(null); setLoading(false); setError('Enter a company ticker such as JPM, AAPL, or BRK-B.'); return;
     }
     const controller = new AbortController();
-    setLoading(true); setError(''); setData(null); setControls({}); setExported(false);
+    setLoading(true); setError(''); setData(null); setExported(false); setExplorerOpen(false);
     fetch(`/api/risk?ticker=${encodeURIComponent(query)}&v=${RISK_VERSION}`, { signal: controller.signal })
-      .then(async (res) => { const body = await res.json(); if (!res.ok) throw new Error(body.error || 'Could not load the risk profile.'); return body; })
+      .then(async res => { const body = await res.json(); if (!res.ok) throw new Error(body.error || 'Could not load the risk profile.'); return body; })
       .then((body: RiskData) => {
         if (controller.signal.aborted) return;
-        loadedRequest.current = requestKey;
-        setData(body); setBasis(body.current.periods.length ? 'ttm' : 'annual');
-        setSelected(''); setPillar('all'); setOnlyMissing(false);
-      }).catch((err) => { if (!controller.signal.aborted) setError(err.message === 'Failed to fetch' ? 'The risk service could not be reached. Please retry.' : err.message); })
+        loadedRequest.current = requestKey; setData(body); setSelected(''); setPillar('all'); setOnlyMissing(false);
+      }).catch(err => { if (!controller.signal.aborted) setError(err.message === 'Failed to fetch' ? 'The risk service could not be reached. Please retry.' : err.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [query, retry, independent]);
 
   useEffect(() => {
-    const onPop = () => { const restored = parseRiskLocation(location.search, cftcEnabled); setInput(restored.ticker); setQuery(restored.ticker); setTab(restored.view); setExposureAsOf(restored.asOf); if (!restored.ticker) { loadedRequest.current = ''; setData(null); setLoading(false); } };
+    const onPop = () => { const restored = parseRiskLocation(location.search, cftcEnabled); setInput(restored.ticker); setQuery(restored.ticker); setTab(restored.view); setBasis(restored.basis); setExposureAsOf(restored.asOf); setExported(false); if (!restored.ticker) { loadedRequest.current = ''; setData(null); setLoading(false); } };
     window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop);
   }, [cftcEnabled]);
 
   function changeTab(view: string) {
-    const next = normalizeRiskView(view, cftcEnabled);
-    setTab(next);
+    const next = normalizeRiskView(view, cftcEnabled); setTab(next);
     const path = riskViewPath(window.location.search, next, cftcEnabled);
     if (path !== `${window.location.pathname}${window.location.search}`) window.history.pushState({}, '', path);
   }
-
   function search(ticker: string) {
-    const next = ticker.trim().toUpperCase();
-    if (!next) return;
-    setInput(next); if (next === query) setRetry((n) => n + 1); else setQuery(next);
+    const next = ticker.trim().toUpperCase(); if (!next) return;
+    setInput(next); setExported(false); setExplorerOpen(false);
+    if (next === query) setRetry(n => n + 1); else { setQuery(next); setData(null); }
     const url = new URL(location.href); url.searchParams.set('ticker', next); url.searchParams.delete('symbol'); window.history.pushState({}, '', url);
   }
+  function changeBasis(next: string) {
+    setBasis(next); setExported(false);
+    const url = new URL(location.href); if (next === 'annual') url.searchParams.set('basis', next); else url.searchParams.delete('basis'); window.history.pushState({}, '', url);
+  }
   function changeExposureAsOf(asOf: string) {
-    setExposureAsOf(asOf);
-    const url = new URL(location.href);
-    if (asOf) url.searchParams.set('asOf', asOf); else url.searchParams.delete('asOf');
-    window.history.pushState({}, '', url);
+    setExposureAsOf(asOf); const url = new URL(location.href);
+    if (asOf) url.searchParams.set('asOf', asOf); else url.searchParams.delete('asOf'); window.history.pushState({}, '', url);
   }
   function inspect(id: string, missing = false) {
-    changeTab('overview'); setPillar('all'); setOnlyMissing(missing); setSelected(id);
-    requestAnimationFrame(() => explorerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    setPillar('all'); setOnlyMissing(missing); setSelected(id); setInspectVersion(n => n + 1); setExplorerOpen(true);
+    requestAnimationFrame(() => explorerRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
   }
-  const profile = data ? basis === 'annual' ? data.annual : data.current : null;
-  const scenario = profile ? runRiskStress(profile, controls) : null;
+  const visibleData = data?.ticker === query ? data : null;
+  const profile = visibleData ? basis === 'annual' ? visibleData.annual : visibleData.current : null;
   const period = profile?.periods[0];
-  const age = period && data ? Math.floor((Date.parse(data.generatedAt) - Date.parse(period.end)) / 86400000) : null;
-  const heroIds = profile?.industry.isBank ? ['bank_equity_assets', 'provision_rate', 'loans_deposits', 'reserve_coverage'] : profile?.industry.isFinancial ? ['ins_equity_assets', 'loss_ratio', 'liab_to_assets', 'net_margin'] : ['interest_coverage', 'liab_to_assets', 'current_ratio', 'net_margin'];
+  const age = period && visibleData ? Math.floor((Date.parse(visibleData.generatedAt) - Date.parse(period.end)) / 86400000) : null;
 
   return <div className={s.page}>
-    <div className={s.pageHeader}>
-      <div><div className={s.eyebrow}><ShieldCheck size={15} /> {isFcm ? 'Counterparty risk research' : 'Company risk research'}</div><h1>See the pressure points.</h1><p>{isFcm ? 'Inspect a futures broker’s capital and customer fund reporting, one legal entity at a time.' : 'Understand what changed, inspect the evidence, and test what could happen next.'}</p></div>
-      {!isFcm && <form className={s.search} onSubmit={(e) => { e.preventDefault(); search(input); }}>
-        <label htmlFor="risk-ticker">Company ticker</label>
-        <div><Search size={17} /><input id="risk-ticker" value={input} onChange={(e) => setInput(e.target.value)} placeholder="JPM, AAPL, BAC…" maxLength={12} autoComplete="off" spellCheck={false} /><button type="submit" disabled={!input.trim()} aria-label="Load risk profile"><ArrowRight size={18} /></button></div>
+    <header className={s.pageHeader}>
+      <div><div className={s.eyebrow}><ShieldCheck size={15} /> Company risk research</div><h1>{isFcm ? 'Futures broker capital.' : 'Risk, in perspective.'}</h1><p>{isFcm ? 'Capital and customer funds, at the legal entity level.' : 'Capital. Cash. Business exposures. See how the pieces connect.'}</p></div>
+      {!isFcm && <form className={s.search} onSubmit={e => { e.preventDefault(); search(input); }}>
+        <label htmlFor="risk-ticker">Explore a company</label><div><Search size={17} /><input id="risk-ticker" value={input} onChange={e => setInput(e.target.value)} placeholder="Enter ticker, e.g. BAC" maxLength={12} autoComplete="off" spellCheck={false} /><button type="submit" disabled={!input.trim()} aria-label="Load risk profile"><ArrowRight size={18} /></button></div>
       </form>}
+    </header>
+    <div className={s.workflowBar}>
+      {!isFcm && query ? <nav className={s.tabs} aria-label="Risk workspace sections">{TABS.filter(([id]) => cftcEnabled || id === 'overview').map(([id,label,Icon], index) => <button key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => changeTab(id)}><span className={s.tabNumber}>0{index + 1}</span><Icon size={16}/>{label}</button>)}</nav> : <span className={s.toolLabel}>SEC filings{cftcEnabled && ' + CFTC reports'} · Source-linked research</span>}
+      {cftcEnabled && <button className={s.textButton} onClick={() => changeTab(isFcm ? 'overview' : 'fcm')}><Building2 size={14}/>{isFcm ? 'Back to company risk' : 'Futures broker capital'}<ArrowUpRight size={13}/></button>}
     </div>
-    {cftcEnabled && <nav className={s.riskModes} aria-label="Risk research workflow"><button aria-current={!isFcm ? 'page' : undefined} onClick={() => { if (isFcm) changeTab('overview'); }}><ShieldCheck size={18} /><span><strong>Company risk</strong><small>SEC financials & market context</small></span></button><button aria-current={isFcm ? 'page' : undefined} onClick={() => changeTab('fcm')}><Building2 size={18} /><span><strong>Futures broker capital</strong><small>Monthly CFTC legal entity reports</small></span><ArrowUpRight size={15} /></button></nav>}
-    {!isFcm && query && <nav className={s.tabs} aria-label="Risk workspace sections">{TABS.filter(([id]) => cftcEnabled || !['cftc', 'exposures'].includes(id)).map(([id,label,Icon]) => <button key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => changeTab(id)}><Icon size={17}/>{label}</button>)}</nav>}
     {isFcm && <FcmCapitalPanel initialEntity={initialEntity} />}
-    {isCftc && query && <CompanyCftcContext key={query} ticker={query} companyName={data?.ticker === query ? data.companyName : undefined} mode="risk" />}
+    {isCftc && query && <div className={s.marketContext}><CompanyCftcContext key={query} ticker={query} companyName={visibleData?.companyName} mode="risk" /></div>}
     {isExposures && query && <CompanyExposureMap key={`${query}:${retry}`} ticker={query} asOf={exposureAsOf} onAsOfChange={changeExposureAsOf} />}
-    {!independent && loading && <div className={s.loading} role="status"><Loader2 className={s.spin} size={24} /><h2>Building {query}’s risk profile</h2><p>Matching SEC reporting periods and tracing calculation inputs.</p><div className={s.skeletons}>{[1,2,3,4].map((n) => <span key={n} />)}</div></div>}
-    {!independent && error && <div className={s.empty} role="alert"><CircleAlert /><h2>We couldn’t load this company</h2><p>{error}</p><button className={s.button} onClick={() => setRetry((n) => n + 1)}>Try again</button></div>}
-    {!isFcm && !query && <div className={s.empty}><ShieldCheck size={34} /><h2>Start with a company you follow</h2><p>A source-linked view of credit, capital, liquidity, and earnings. No account required.</p><div className={s.actions}>{['JPM','BAC','AAPL','F'].map((t) => <button className={s.button} onClick={() => search(t)} key={t}>{t}<ArrowUpRight size={14} /></button>)}</div></div>}
-    {!independent && data && profile && <>
+    {!independent && loading && <div className={s.loading} role="status"><Loader2 className={s.spin} size={24} /><h2>Reading {query}’s financial position</h2><p>Matching reporting periods and tracing SEC source inputs.</p><div className={s.skeletons}>{[1,2,3,4].map(n => <span key={n} />)}</div></div>}
+    {!independent && error && <div className={s.empty} role="alert"><CircleAlert /><h2>We couldn’t load this company</h2><p>{error}</p><button className={s.button} onClick={() => setRetry(n => n + 1)}>Try again</button></div>}
+    {!isFcm && !query && <section className={s.riskLanding}>
+      <div><div className={s.eyebrow}>Start with the business</div><h2>What supports it?<br/><span>What could strain it?</span></h2><p>Follow a company’s ability to absorb losses, meet obligations, and generate cash. Then connect its disclosed business exposures to the wider market.</p><div className={s.exampleCompanies}>{[['BAC','Banking'],['AAPL','Technology'],['XOM','Energy'],['MET','Insurance']].map(([ticker,sector]) => <Link key={ticker} prefetch={false} href={`/risk?ticker=${ticker}`}><strong>{ticker}</strong><span>{sector}</span><ArrowUpRight size={16}/></Link>)}</div></div>
+      <ol className={s.researchSteps}><li><ShieldCheck/><div><span>01 / FINANCIAL POSITION</span><h3>The company Risk Profile</h3><p>Capital and funding, cash generation and earnings. Current figures alongside the company’s own history.</p></div></li><li><Network/><div><span>02 / BUSINESS EXPOSURES</span><h3>Follow the economic connection</h3><p>Read the SEC passages behind input costs, borrowing, investments, revenue, and currency exposures.</p></div></li><li><Activity/><div><span>03 / MARKET CONTEXT</span><h3>Put positioning in perspective</h3><p>Explore relevant CFTC futures positions and historical comparisons, with the limits of each benchmark in view.</p></div></li></ol>
+    </section>}
+    {!independent && visibleData && profile && <>
       <section className={s.company} aria-label="Company and reporting basis">
-        <div className={s.companyIdentity}><span className={s.ticker}>{data.ticker}</span><div><h2>{data.companyName}</h2><p>{profile.industry.label} · {profile.industry.isBank ? 'Bank credit lens' : profile.industry.isFinancial ? 'Insurance lens' : 'Corporate credit lens'}</p></div></div>
-        <div className={s.actions}><div className={s.segmented} aria-label="Reporting basis">{[['ttm','Latest + TTM'],['annual','Annual history']].map(([key,label]) => <button key={key} aria-pressed={basis === key} disabled={key === 'ttm' && !data.current.periods.length} onClick={() => { setBasis(key); setControls({}); setExported(false); }}>{label}</button>)}</div>
-          <button className={s.button} disabled={!scenario} onClick={() => { downloadRiskFile(`${data.ticker}-risk-brief-${period?.end || 'undated'}.md`, riskBrief(data, profile, scenario)); setExported(true); }}>{exported ? <Check size={15}/> : <ArrowDownToLine size={15}/>} {exported ? 'Brief exported' : 'Export brief'}</button></div>
+        <div className={s.companyIdentity}><span className={s.ticker}>{visibleData.ticker}</span><div><h2>{visibleData.companyName}</h2><p>{visibleData.sicDescription || profile.industry.label} · CIK {visibleData.cik}</p></div></div>
+        <div className={s.actions}><div className={s.segmented} aria-label="Reporting basis">{[['ttm','Latest + TTM'],['annual','Annual']].map(([key,label]) => <button key={key} aria-pressed={basis === key} onClick={() => changeBasis(key)}>{label}</button>)}</div><button className={s.textButton} onClick={() => { downloadRiskFile(`${visibleData.ticker}-risk-profile-${period?.end || 'undated'}.md`, riskProfileBrief(visibleData, profile)); setExported(true); }}>{exported ? <Check size={15}/> : <ArrowDownToLine size={15}/>} {exported ? 'Exported' : 'Export profile'}</button></div>
       </section>
-      <div className={s.freshness}><span><span className={s.dot} /> {period ? `${riskPeriodLabel(period)} · Period ended ${period.end} · Filed ${period.filed}` : 'No compatible reporting periods'}</span><span>{basis === 'ttm' ? 'Quarter-end balances · Trailing 12-month flows' : 'Fiscal-year-end balances · Annual flows'}</span><span>Retrieved {new Date(data.generatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</span></div>
-      {age != null && age > (basis === 'ttm' ? 180 : 550) && <div className={s.notice}><CircleAlert size={17} /> The latest available period ended {age} days before this data retrieval. Check for newer or untagged filings.</div>}
-      <div className={s.scorecards}>{heroIds.map((id) => { const m = profile.metrics.find((m) => m.id === id); return m && <button key={id} className={s.scorecard} onClick={() => inspect(id)}><span>{m.label}<ArrowUpRight size={14}/></span><strong>{formatRiskValue(m.value, m.format)}</strong><span className={s.cardBottom}><span className={s.badge} data-level={m.zone.level}>{m.zone.label}</span><small>{m.delta == null ? 'No prior comparison' : riskDelta(m)}</small></span></button>; })}</div>
-      <section className={s.briefing} aria-labelledby="review-priorities">
-        <div className={s.briefingTitle}><div className={s.eyebrow}>Your review queue</div><h2 id="review-priorities">{profile.watchItems.length ? `${profile.watchItems.length} signals to investigate` : 'No elevated screening signals'}</h2><p>Threshold screens prompt a review. They are not credit ratings.</p><button className={s.textButton} onClick={() => inspect(profile.coverage.missing[0] || '', true)}>{profile.coverage.available}/{profile.coverage.total} metrics available · {profile.coverage.missing.length} gaps <ArrowRight size={14}/></button></div>
-        <div className={s.watchList}>{profile.watchItems.slice(0,3).map((w, i) => <button key={w.id} onClick={() => inspect(w.id)}><span className={s.watchNumber}>{String(i + 1).padStart(2,'0')}</span><span><strong>{w.label}</strong><small>{w.reason}</small></span><ArrowUpRight size={17}/></button>)}{!profile.watchItems.length && <p className={s.noSignals}>Review available evidence and missing disclosures before drawing a conclusion.</p>}{profile.watchItems.length > 3 && <button onClick={() => { setPillar('watch'); setOnlyMissing(false); changeTab('overview'); explorerRef.current?.scrollIntoView({ behavior: 'smooth' }); }}>View all {profile.watchItems.length} priorities <ArrowRight size={16}/></button>}</div>
-      </section>
-      {cftcEnabled && tab === 'overview' && <section className={s.cftcEntry} aria-label="Company exposure map"><div><div className={s.eyebrow}><Network size={14} /> Follow the exposure</div><h3>How do markets connect to {data.ticker}’s business?</h3><p>Trace revenue, input costs, borrowing, investments, and currencies to company filing passages. Review reported amounts and the fit of each available CFTC benchmark.</p></div><button className={s.button} onClick={() => { changeTab('exposures'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Open exposure map <ArrowRight size={15} /></button></section>}
+      <div className={s.freshness}><span>{period ? `${riskPeriodLabel(period)} · Period ended ${period.end} · Filed ${period.filed || 'date unavailable'}` : 'No compatible reporting periods'}</span><span>{basis === 'ttm' ? 'Quarter-end balances · Trailing 12-month flows' : 'Fiscal-year-end balances · Annual flows'}</span><span>Retrieved {new Date(visibleData.generatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</span></div>
+      {age != null && age > (basis === 'ttm' ? 180 : 550) && <div className={s.notice}><CircleAlert size={17} /> The latest available period ended {age} days before retrieval. Check for newer or untagged filings.</div>}
+      <RiskProfileOverview data={visibleData} profile={profile} onInspect={inspect} onExposures={cftcEnabled ? () => changeTab('exposures') : undefined} />
       <div ref={explorerRef} className={s.workspace}>
-        {tab === 'overview' && <MetricExplorer key={`${data.ticker}:${basis}`} data={data} profile={profile} selected={selected} onSelect={setSelected} pillar={pillar} onPillar={setPillar} onlyMissing={onlyMissing} onOnlyMissing={setOnlyMissing} />}
-        {tab === 'stress' && <RiskStress profile={profile} controls={controls} onControls={(next) => { setControls(next); setExported(false); }} />}
-        {tab === 'disclosures' && <RiskDisclosures data={data} />}
+        <div className={s.explorerHeading}><div><div className={s.eyebrow}>Go to the evidence</div><h2>Inspect a metric, period by period.</h2></div><button className={s.button} aria-expanded={explorerOpen} aria-controls="risk-metric-evidence" onClick={() => setExplorerOpen(!explorerOpen)}>{explorerOpen ? 'Close metric explorer' : 'Explore all metrics'}<Compass size={16}/></button></div>
+        {explorerOpen && <div id="risk-metric-evidence"><MetricExplorer key={`${visibleData.ticker}:${basis}:${inspectVersion}`} data={visibleData} profile={profile} selected={selected} onSelect={setSelected} pillar={pillar} onPillar={setPillar} onlyMissing={onlyMissing} onOnlyMissing={setOnlyMissing} /></div>}
       </div>
-      <footer className={s.footer}><ShieldCheck size={16}/><p>Built from SEC company facts. {Object.values(PILLAR_LABELS).join(' · ')}. Missing or dimensional disclosures remain unavailable. Screening thresholds are product conventions; they are not calibrated default probabilities. <a href={`/api/risk?ticker=${data.ticker}&v=${RISK_VERSION}`} target="_blank" rel="noreferrer">View source data</a></p></footer>
+      <footer className={s.footer}><ShieldCheck size={16}/><p>SEC financial statements describe reported conditions. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}`} target="_blank" rel="noreferrer">View source data</a></p></footer>
     </>}
   </div>;
 }

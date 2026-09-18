@@ -33,6 +33,7 @@ import {
 import { classifyIndustry, industryLabel, INDUSTRY_GROUPS } from './industry.js';
 import { sourceDocumentUrl, selectFinancialFact } from './xbrlPeriods.js';
 import { evidenceSources, evidenceCalculations } from './researchEvidence.js';
+import { marketRevenuePoint } from './marketResearchData.js';
 
 const MAX_YEARS = 6;
 
@@ -127,13 +128,13 @@ function sumRows(rows, label, periods) {
   return { key: label, label, values, format: 'currency', componentTags: Array.from(componentTags) };
 }
 
-/** Per-period ratio of two rows (num/den); null when either side missing or den 0. */
-function ratioRows(numRow, denRow, label, periods) {
+/** Ratios require a positive denominator; book-equity leverage opts into negatives. */
+function ratioRows(numRow, denRow, label, periods, { allowNegativeDenominator = false } = {}) {
   const values = periods.map((p, i) => {
     const n = numRow?.values?.[i];
     const d = denRow?.values?.[i];
     const nOk = n && n.value != null && Number.isFinite(n.value);
-    const dOk = d && d.value != null && Number.isFinite(d.value) && d.value !== 0;
+    const dOk = d && d.value != null && Number.isFinite(d.value) && (allowNegativeDenominator ? d.value !== 0 : d.value > 0);
     return derivedPoint(p, nOk && dOk ? n.value / d.value : null, [n, d], `(${numRow.label}) / (${denRow.label})`, label);
   });
   return { key: label, label, values, format: 'ratio' };
@@ -365,17 +366,32 @@ function makeMetric({ id, label, pillar, format, row, periods, cik, bands, why, 
   };
 }
 
-const FINANCIAL_GROUPS = new Set([INDUSTRY_GROUPS.BANKING, INDUSTRY_GROUPS.INSURANCE]);
+// Risk uses narrower financial-company classifications than the shared tag
+// helper: non-depository lenders are not deposit-funded banks, and brokers or
+// insurance agents must not inherit industrial default screens or loss ratios.
+// SIC definitions: https://www.sec.gov/search-filings/standard-industrial-classification-sic-code-list
+export function classifyRiskIndustry(sicCode) {
+  const sic = Number.parseInt(sicCode, 10) || 0;
+  const isBank = (sic >= 6000 && sic <= 6089) || sic === 6712;
+  const isInsurer = sic >= 6300 && sic <= 6399;
+  const otherFinancial = (sic >= 6090 && sic <= 6299) || (sic >= 6400 && sic <= 6499)
+    || (sic >= 6720 && sic <= 6739) || sic === 6799;
+  const isFinancial = isBank || isInsurer || otherFinancial;
+  const broadGroup = classifyIndustry(sicCode);
+  const group = isBank ? INDUSTRY_GROUPS.BANKING : isInsurer ? INDUSTRY_GROUPS.INSURANCE
+    : otherFinancial ? 'financial_services'
+      : broadGroup === INDUSTRY_GROUPS.REIT && sic !== 6798 ? INDUSTRY_GROUPS.GENERAL : broadGroup;
+  const label = otherFinancial ? 'Financial services' : sic >= 6500 && sic <= 6599 ? 'Real estate' : industryLabel(group);
+  return { group, label, isBank, isInsurer, isFinancial };
+}
 
 /**
  * Main entry: assess risk from a companyfacts JSON + SIC code.
  * @returns {{ industry, periods, zScore, metrics, watchItems, notes }}
  */
 export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
-  const group = classifyIndustry(sicCode);
-  const isBank = group === INDUSTRY_GROUPS.BANKING;
-  const isInsurer = group === INDUSTRY_GROUPS.INSURANCE;
-  const isFinancial = FINANCIAL_GROUPS.has(group);
+  const industry = classifyRiskIndustry(sicCode);
+  const { group, isBank, isInsurer, isFinancial } = industry;
 
   const allPeriods = basis === 'ttm' ? withPeriodKind(extractQuarterlyPeriods(facts), 'ttm') : extractAnnualPeriods(facts);
   const periods = allPeriods.slice(0, MAX_YEARS);
@@ -383,13 +399,13 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
 
   if (periods.length === 0) {
     return {
-      industry: { group, label: industryLabel(group), isFinancial, isBank },
+      industry,
       periods: [],
       zScore: null,
       models: { zmijewski: null, beneish: null },
       metrics: [],
       watchItems: [],
-      basis, stressInputs: {}, notes: ['No compatible reporting periods found in SEC company facts.'],
+      basis, stressInputs: {}, reportedFlows: { netIncome: [], operatingCashFlow: [] }, notes: ['No compatible reporting periods found in SEC company facts.'],
     };
   }
 
@@ -426,6 +442,22 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     goodwill: R('goodwill', 'Goodwill'),
     intangibles: R('intangibles', 'Intangibles'),
   };
+  // Share the total-revenue and annual-context safeguards used by Market. Fee
+  // revenue alone is not a bank/broker's net revenue, and a rental REIT's ASC
+  // 606 revenue can omit virtually all rent. Keep any narrower basis explicit.
+  rows.revenue = { key: 'revenue', label: 'Revenue', values: periods.map((period) => {
+    const sic = Number(sicCode);
+    const financialService = isFinancial && !isBank && !isInsurer;
+    const genericFinancialService = financialService && !(sic >= 6200 && sic <= 6299);
+    const point = genericFinancialService
+      ? selectFinancialFact(facts, ['RevenuesNetOfInterestExpense', 'Revenues', 'Revenue'], period, 'USD', { guardAnnualRevenueContext: true }) || { value: null, classification: 'unavailable' }
+      : marketRevenuePoint(facts, period, isBank ? 6021 : isInsurer ? 6311 : sicCode);
+    const label = point.source?.tag === 'OperatingLeaseLeaseIncome' ? 'Reported lease revenue'
+      : point.source?.tag === 'RevenuesNetOfInterestExpense' || point.formula === 'Net interest income + noninterest income' ? 'Net revenue after interest expense' : 'Revenue';
+    return { ...point, period, label };
+  }) };
+  const revenueBasis = rows.revenue.values[0]?.label;
+  rows.revenue.label = revenueBasis || 'Revenue';
   // Separate current and noncurrent debt concepts prevent overlapping totals.
   rows.longTermDebt = taggedRow(['LongTermDebtNoncurrent'], 'Noncurrent debt');
   rows.shortTermDebt = taggedRow(['DebtCurrent'], 'Current debt');
@@ -450,7 +482,7 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
 
   // ---------- shared pillar: capital structure ----------
   const totalDebt = sumRows([rows.longTermDebt, rows.shortTermDebt], 'Total debt', periods);
-  const debtToEquity = ratioRows(rows.totalLiabilities, rows.equity, 'Liabilities / Equity', periods);
+  const debtToEquity = ratioRows(rows.totalLiabilities, rows.equity, 'Liabilities / Equity', periods, { allowNegativeDenominator: true });
   const liabToAssets = ratioRows(rows.totalLiabilities, rows.totalAssets, 'Liabilities / Assets', periods);
 
   const eqLatest = latestPoint(rows.equity);
@@ -767,7 +799,7 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
         extraSources: sourcesOf(cik, latestPoint(rows.ocf), latestPoint(rows.totalAssets)),
       }),
       makeMetric({
-        id: 'receivables_gap', label: 'Receivables growth − revenue growth', pillar: 'quality', format: 'pct',
+        id: 'receivables_gap', label: 'Receivables growth − revenue growth', pillar: 'quality', format: 'pp',
         row: recGapRow, periods, cik, bands: BANDS.receivablesGap, invertDeltaGood: true,
         why: 'When receivables grow much faster than sales, revenue may be pulled forward or collection is slipping — among the most common precursor flags in the accounting-fraud literature. Shown as the growth differential each fiscal year.',
         note: latestPoint(recGapRow) ? null : 'Requires receivables and revenue tagged in consecutive fiscal years.',
@@ -811,18 +843,18 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     metrics.push(
       makeMetric({
         id: 'current_ratio', label: 'Current ratio', pillar: 'liquidity', format: 'x',
-        row: currentRatio, periods, cik, bands: BANDS.currentRatio,
+        row: currentRatio, periods, cik, bands: isFinancial ? null : BANDS.currentRatio,
         why: 'Near-term assets against obligations due within a year. Below 1.0 deserves attention, though capital-light businesses with negative working-capital models (subscriptions, fast-turn retail) run there deliberately.',
       }),
       makeMetric({
         id: 'quick_ratio', label: 'Quick ratio (ex-inventory)', pillar: 'liquidity', format: 'x',
-        row: quickRatio, periods, cik, bands: BANDS.quickRatio,
+        row: quickRatio, periods, cik, bands: isFinancial ? null : BANDS.quickRatio,
         why: 'The stricter test: can near-cash assets alone cover current liabilities without selling a single unit of inventory.',
         note: hasInventory ? null : 'Inventory is not tagged for this period. The quick ratio is unavailable; missing inventory is not assumed to be zero.',
       }),
       makeMetric({
         id: 'cash_to_assets', label: 'Cash / assets', pillar: 'liquidity', format: 'pct',
-        row: cashToAssets, periods, cik, bands: BANDS.cashToAssets,
+        row: cashToAssets, periods, cik, bands: isFinancial ? null : BANDS.cashToAssets,
         why: 'Dry powder relative to the size of the business \u2014 the buffer that buys time in a downturn or credit-market freeze.',
       }),
     );
@@ -837,7 +869,7 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
   metrics.push(
     makeMetric({
       id: 'net_margin', label: 'Net margin', pillar: 'profitability', format: 'pct',
-      row: netMargin, periods, cik, bands: BANDS.netMargin,
+      row: netMargin, periods, cik, bands: isFinancial ? null : BANDS.netMargin,
       why: 'Earnings power is the first line of defense against every other risk on this page \u2014 leverage and thin liquidity are survivable while margins hold.',
     }),
     makeMetric({
@@ -858,6 +890,14 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
   lossMetric.sources = sourcesOf(cik, ...rows.netIncome.values);
   lossMetric.classification = reportedYears ? 'calculated' : 'unavailable';
   lossMetric.trajectory = null;
+  const marginMetric = metrics.find((metric) => metric.id === 'net_margin');
+  if (revenueBasis === 'Reported lease revenue') {
+    marginMetric.label = 'Net income / reported lease revenue';
+    marginMetric.revenueBasis = 'lease';
+  } else if (revenueBasis === 'Net revenue after interest expense') {
+    marginMetric.label = 'Net income / net revenue';
+    marginMetric.revenueBasis = 'net-of-interest';
+  }
 
   // Academic models retain their annual estimation basis. TTM is for ratios.
   if (basis !== 'annual') { zScore = null; zmijewski = null; beneish = null; }
@@ -893,10 +933,17 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     notes.push('Bank balance sheets are unclassified (no current vs. noncurrent split) and Altman Z-Scores are not defined for financial institutions \u2014 this profile uses the bank credit lens instead: asset quality, reserves, capital, and funding. Zmijewski and Beneish models are likewise estimated on non-financial samples and are not applied.');
   }
 
+  // Reported flows are useful for every business, even where industrial cash
+  // conversion ratios are inappropriate. Expose the already-loaded rows with
+  // their exact annual/TTM evidence instead of depending on a ratio's inputs.
+  const flowHistory = (row) => seriesOf(row, periods).reverse().map((point) => ({ ...point, sources: sourcesOf(cik, point) }));
+  const reportedFlows = { netIncome: flowHistory(rows.netIncome), operatingCashFlow: flowHistory(rows.ocf) };
+
   return {
     basis,
     stressInputs,
-    industry: { group, label: industryLabel(group), isFinancial, isBank },
+    reportedFlows,
+    industry,
     periods,
     zScore,
     models: { zmijewski, beneish },
