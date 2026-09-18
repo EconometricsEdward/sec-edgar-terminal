@@ -272,7 +272,8 @@ export async function refreshQuantRevenueCorrections({ signal, deadline = Date.n
 
 /** Called under the universe publisher lease, including its retained-atlas path. */
 export async function applyPreparedRevenueCorrections(atlas, { signal, deadline, readMany = warmGetMany } = {}) {
-  const candidates = atlas.companies.filter(company => revenueCorrectionPriority(company) !== null);
+  const candidates = atlas.companies.filter(company => revenueCorrectionPriority(company) !== null
+    || company.revenueVersion === MARKET_REVENUE_VERSION && company.revenueQuality === 'awaiting-compatible-source');
   if (!candidates.length) return atlas;
   const records = await readMany(QUANT_COMPANY_CACHE, candidates.map(company => company.cik), { signal, deadline });
   const changes = new Map();
@@ -288,8 +289,10 @@ export async function applyPreparedRevenueCorrections(atlas, { signal, deadline,
       || ['annual', 'ttm'].some(basis => company.reports?.[basis]?.end
         && (!corrected.reports?.[basis]?.end || corrected.reports[basis].end < company.reports[basis].end
           || corrected.reports[basis].end === company.reports[basis].end && corrected.reports[basis].filed < company.reports[basis].filed))) return;
-    changes.set(company.cik, { ...company, ...corrected, checkedAt: record.checkedAt,
-      factsRetrievedAt: record.factsRetrievedAt, ...(record.factsValidatedAt ? { factsValidatedAt: record.factsValidatedAt } : {}) });
+    const merged = { ...company, ...corrected, checkedAt: record.checkedAt,
+      factsRetrievedAt: record.factsRetrievedAt, ...(record.factsValidatedAt ? { factsValidatedAt: record.factsValidatedAt } : {}) };
+    if (corrected.revenueVersion === MARKET_REVENUE_VERSION) delete merged.revenueQuality;
+    changes.set(company.cik, merged);
   });
   return changes.size ? { ...atlas, generatedAt: new Date().toISOString(),
     companies: atlas.companies.map(company => changes.get(company.cik) || company) } : atlas;

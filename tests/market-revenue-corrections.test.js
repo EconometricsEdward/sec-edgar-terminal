@@ -153,6 +153,18 @@ test('final publisher rejects older or invalid facts clocks despite a newer subm
   assert.equal(merged.companies[0].revenueVersion, MARKET_REVENUE_VERSION);
 });
 
+test('final publisher clears the withholding flag on corrected revenue and repairs already-published flags', async () => {
+  const corrected = company({ revenueVersion: MARKET_REVENUE_VERSION, metrics: { annual: { revenue: 100 }, ttm: {} } });
+  const record = { company: corrected, checkedAt: date, factsRetrievedAt: date };
+  for (const previous of [withholdUncorrectedRevenue(company()), { ...corrected, revenueQuality: 'awaiting-compatible-source' }]) {
+    const published = await applyPreparedRevenueCorrections({ generatedAt: date, companies: [previous] }, { readMany: async () => [record] });
+    assert.equal(published.companies[0].metrics.annual.revenue, 100);
+    assert.equal(published.companies[0].revenueVersion, MARKET_REVENUE_VERSION);
+    assert.equal(Object.hasOwn(published.companies[0], 'revenueQuality'), false);
+    assert.equal(await applyPreparedRevenueCorrections(published, { readMany: async () => { throw new Error('Corrected publication is idempotent.'); } }), published);
+  }
+});
+
 test('build-only source revalidation repairs older prepared clocks without relaxing evidence guards', async () => {
   const old = company({ factsRetrievedAt: date, checkedAt: date });
   const { facts, submissions } = documents();
