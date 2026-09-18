@@ -120,6 +120,11 @@ function reported(entry, peers) {
     tag: entry.tag, taxonomy: entry.taxonomy, unit: entry.unit,
     accession: entry.accn, filed: entry.filed, start: entry.start || null,
     end: entry.end, form: entry.form, value: entry.val,
+    ...(entry.sourceCik ? { sourceCik: entry.sourceCik } : {}),
+    ...(entry.documentUrl ? { documentUrl: entry.documentUrl } : {}),
+    ...(entry.factId ? { factId: entry.factId } : {}),
+    ...(entry.sourceType ? { sourceType: entry.sourceType } : {}),
+    ...(entry.balanceClassification ? { balanceClassification: entry.balanceClassification, classificationEvidence: entry.classificationEvidence } : {}),
     durationDays: duration(entry), classification: 'reported', revised,
     revisionNote: entry.contextWarnings?.length
       ? 'Annual-report revenue used: a conflicting quarterly-filing annual context repeats a shorter-period value and would imply negative fourth-quarter revenue. Inspect both filings.'
@@ -220,8 +225,21 @@ export function selectFinancialFact(facts, tags, period, unit = 'USD', { additiv
 }
 
 export function sourceDocumentUrl(cik, source) {
-  if (!/^\d{1,10}$/.test(String(cik)) || !/^\d{10}-\d{2}-\d{6}$/.test(source?.accession || '')) return null;
-  return `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${source.accession.replaceAll('-', '')}/`;
+  const sourceCik = source?.sourceCik ?? cik;
+  if (!/^\d{1,10}$/.test(String(sourceCik)) || !/^\d{10}-\d{2}-\d{6}$/.test(source?.accession || '')) return null;
+  const path = `/Archives/edgar/data/${Number(sourceCik)}/${source.accession.replaceAll('-', '')}/`;
+  if (source.documentUrl) {
+    try {
+      const url = new URL(source.documentUrl);
+      if (url.protocol === 'https:' && ['www.sec.gov', 'sec.gov'].includes(url.hostname)
+        && !url.username && !url.password && !url.port && !url.search
+        && url.pathname.startsWith(path) && /^[\w.-]+$/.test(url.pathname.slice(path.length))) {
+        if (!url.hash && /^[\w.:-]+$/.test(source.factId || '')) url.hash = source.factId;
+        return url.href;
+      }
+    } catch { /* Use the verified accession directory when an exact link is invalid. */ }
+  }
+  return `https://www.sec.gov${path}`;
 }
 
 export function contextKey(e) {

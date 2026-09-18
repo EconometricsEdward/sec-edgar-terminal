@@ -135,7 +135,7 @@ function describe(tag, dimensions, namespaces) {
   return { kind: 'derivative_notional', category, label: [name, status, ...extras].filter(Boolean).join(' · ') };
 }
 
-function readInlineRiskDocument(html, { cik, filing, concepts = CONCEPTS, captureRegistrants = false }) {
+function readInlineRiskDocument(html, { cik, filing, concepts = CONCEPTS, conceptMappings = [], captureRegistrants = false }) {
   if (typeof html !== 'string' || html.trim().length < 30 || html.length > RISK_NOTE_MAX_BYTES || !/^\d{1,10}$/.test(String(cik)) || !validDate(filing?.reportDate))
     throw new Error('A bounded SEC document, verified issuer and reporting date are required.');
   if (/<title\b[^>]*>[^<]*(?:access denied|request rate threshold|undeclared automated tool)/i.test(html)
@@ -164,9 +164,11 @@ function readInlineRiskDocument(html, { cik, filing, concepts = CONCEPTS, captur
       continue;
     }
     const wanted = (namespace === XBRLI && ['context', 'unit'].includes(name))
-      || (INLINE.has(namespace) && name.toLowerCase() === 'nonfraction' && concepts.has(local(token.attrs.name)) && standard(token.attrs.name, namespaces))
+      || (INLINE.has(namespace) && name.toLowerCase() === 'nonfraction'
+        && (concepts.has(local(token.attrs.name)) && standard(token.attrs.name, namespaces)
+          || conceptMappings.some(mapping => mapping.concept === local(token.attrs.name) && mapping.namespace === namespaceFor(token.attrs.name, namespaces))))
       || (captureRegistrants && INLINE.has(namespace) && name.toLowerCase() === 'nonnumeric'
-        && ['EntityCentralIndexKey', 'DocumentPeriodEndDate', 'DocumentType'].includes(local(token.attrs.name))
+        && ['EntityCentralIndexKey', 'DocumentPeriodEndDate', 'DocumentType', 'DocumentFiscalYearFocus', 'DocumentFiscalPeriodFocus'].includes(local(token.attrs.name))
         && /^https?:\/\/xbrl\.sec\.gov\/dei\/20\d{2}(?:-\d{2}-\d{2})?$/.test(namespaceFor(token.attrs.name, namespaces)));
     if (!stack.length && !wanted) continue;
     if (++capturedNodes > 200_000) throw new Error('The SEC note document exceeds parser limits.');
@@ -221,22 +223,95 @@ export function verifiesJointRegistrantFacts(html, { cik, predecessorCik, filing
     && types.length > 0 && types.every(row => row.value === filing.form);
 }
 
+/** Filing identity for conservative Company Facts supplements. Only DEI facts
+ * in the verified issuer's unsegmented reporting context can identify a year
+ * or fiscal quarter; conflicting duplicates make the identity unavailable. */
+export function extractInlineFilingIdentity(html, { cik, filing }) {
+  const { namespaces, contexts, facts } = readInlineRiskDocument(html, { cik, filing, concepts: new Set(), captureRegistrants: true });
+  // Joint filings can nest the same visible DEI text in separate legal-issuer
+  // facts. Inspect each captured inline node's own context; an outer registrant
+  // never supplies identity to its nested peer. Excluded/invalid trees stay out.
+  const identityFacts = [];
+  const collect = node => {
+    if (node.attrs._invalid || node.attrs.continuedat || node.attrs['xsi:nil'] || (INLINE.has(node.namespace) && node.local.toLowerCase() === 'exclude')) return;
+    if (INLINE.has(node.namespace) && node.local.toLowerCase() === 'nonnumeric'
+      && /^https?:\/\/xbrl\.sec\.gov\/dei\/20\d{2}(?:-\d{2}-\d{2})?$/.test(namespaceFor(node.attrs.name || '', namespaces))) identityFacts.push(node);
+    for (const child of node.children || []) collect(child);
+  };
+  for (const node of facts) collect(node);
+  const identityText = node => (node.parts || []).map(part => typeof part === 'string' ? decoded(part) : identityText(part)).join('');
+  const values = new Map();
+  for (const node of identityFacts) {
+    const context = contexts.get(node.attrs.contextref);
+    if (!context || context.dimensions.length || context.periodType !== 'duration' || context.end !== filing.reportDate
+      || node.attrs._invalid || node.attrs.continuedat || node.attrs['xsi:nil'] || descendants(node, 'exclude').length) continue;
+    const key = local(node.attrs.name), value = identityText(node).trim();
+    if (!values.has(key)) values.set(key, value);
+    else if (values.get(key) !== value) values.set(key, null);
+  }
+  const year = values.get('DocumentFiscalYearFocus'), fiscalPeriod = values.get('DocumentFiscalPeriodFocus');
+  const documentType = values.get('DocumentType'), period = values.get('DocumentPeriodEndDate');
+  const date = validDate(period) ? period : /^[A-Za-z]+ \d{1,2}, \d{4}$/.test(period || '') && Number.isFinite(Date.parse(`${period} UTC`)) ? new Date(`${period} UTC`).toISOString().slice(0, 10) : null;
+  if (!/^20\d{2}$/.test(year || '') || !['FY', 'Q1', 'Q2', 'Q3', 'Q4'].includes(fiscalPeriod)
+    || documentType !== filing.form || date !== filing.reportDate) return null;
+  return { fiscalYear: Number(year), fiscalPeriod, documentType, documentPeriodEndDate: date };
+}
+
+function reportedPrecisionInterval(value, decimals) {
+  if (decimals === 'INF') return { lower: value, upper: value, precision: Infinity };
+  if (!/^-?(?:0|[1-9]\d?)$/.test(decimals || '')) return null;
+  const precision = Number(decimals);
+  if (Math.abs(precision) > 12) return null;
+  const halfWidth = 0.5 * 10 ** -precision;
+  // If floating-point resolution cannot represent the declared interval,
+  // do not use it to reconcile otherwise different reported values.
+  if (halfWidth < Number.EPSILON * Math.max(1, Math.abs(value)) * 2) return null;
+  return { lower: value - halfWidth, upper: value + halfWidth, precision };
+}
+
 /** Namespace-verified standard USD facts for company concentration views.
  * The caller supplies a fixed concept allowlist; dimensions retain the exact
- * reported context. Conflicting duplicates are omitted, never picked at random.
+ * reported context. Genuine conflicting duplicates are omitted. Rounded repeats
+ * may retain the most precise reported fact only when all declared XBRL decimals
+ * intervals intersect; values are never averaged, invented or rebased.
  */
-export function extractCompanyInlineFacts(html, { cik, filing, concepts }) {
-  const { namespaces, contexts, units, facts } = readInlineRiskDocument(html, { cik, filing, concepts });
-  const observations = new Map();
+export function extractCompanyInlineFacts(html, { cik, filing, concepts, conceptMappings = [], reconcilePrecision = false }) {
+  const { namespaces, contexts, units, facts } = readInlineRiskDocument(html, { cik, filing, concepts, conceptMappings });
+  const observations = new Map(), precisionGroups = new Map();
   let rejectedFacts = 0;
   for (const node of facts) {
     const context = contexts.get(node.attrs.contextref), unit = units.get(node.attrs.unitref), value = numberValue(node, namespaces), tag = node.attrs.name;
-    if (!standard(tag, namespaces) || !context || unit !== 'USD' || value == null || context.end > filing.reportDate) { rejectedFacts++; continue; }
+    const mapping = conceptMappings.find(item => item.concept === local(tag) && item.namespace === namespaceFor(tag, namespaces));
+    if ((!standard(tag, namespaces) && !mapping) || !context || unit !== 'USD' || value == null || context.end > filing.reportDate
+      || mapping?.acceptsDimensions && !mapping.acceptsDimensions(context.dimensions, namespaces)) { rejectedFacts++; continue; }
     const id = JSON.stringify([local(tag), context.start, context.end, context.dimensions.map(({ axis, member }) => [axis, member])]);
-    const fact = { id, tag, concept: local(tag), unit, value, ...context, contextId: node.attrs.contextref, factId: node.attrs.id || null,
+    const fact = { id, tag, concept: local(tag), ...(mapping ? { mappingId: mapping.id } : {}), unit, value, ...context, contextId: node.attrs.contextref, factId: node.attrs.id || null,
       sourceUrl: `${filing.url}${node.attrs.id && /^[\w.-]+$/.test(node.attrs.id) ? `#${node.attrs.id}` : ''}` };
-    if (observations.has(id) && observations.get(id)?.value !== value) observations.set(id, null);
-    else if (!observations.has(id)) observations.set(id, fact);
+    if (!reconcilePrecision) {
+      if (observations.has(id) && observations.get(id)?.value !== value) observations.set(id, null);
+      else if (!observations.has(id)) observations.set(id, fact);
+      continue;
+    }
+    const interval = reportedPrecisionInterval(value, node.attrs.decimals);
+    if (!observations.has(id)) { observations.set(id, fact); precisionGroups.set(id, interval); continue; }
+    const previous = observations.get(id), group = precisionGroups.get(id);
+    if (!previous) continue; // A conflict cannot be revived by a later repeat.
+    if (!group || !interval) {
+      if (previous.value !== value) observations.set(id, null);
+      precisionGroups.set(id, null);
+      continue;
+    }
+    // Equal highest precision with different reported values has no unique
+    // best source; do not let document order choose the displayed amount.
+    if (interval.precision === group.precision && previous.value !== value) { observations.set(id, null); continue; }
+    const lower = Math.max(group.lower, interval.lower), upper = Math.min(group.upper, interval.upper);
+    const exact = group.lower === group.upper || interval.lower === interval.upper;
+    const consistent = lower < upper || (exact && lower === upper
+      && (group.lower === group.upper || lower > group.lower && lower < group.upper)
+      && (interval.lower === interval.upper || lower > interval.lower && lower < interval.upper));
+    if (!consistent) { observations.set(id, null); continue; }
+    if (interval.precision > group.precision) observations.set(id, fact);
+    precisionGroups.set(id, { lower, upper, precision: Math.max(group.precision, interval.precision) });
   }
   return { rows: [...observations.values()].filter(Boolean), coverage: { inlineFactsFound: facts.length, rejectedFacts, dimensional: true } };
 }

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeOwnershipRequest, ownershipCompanyTarget, projectCompanyOwnership } from '../src/utils/companyOwnership.js';
 import { createCompanyOwnershipReader } from '../src/utils/companyOwnershipServer.js';
+import { validCompanyOwnershipPayload } from '../src/utils/companyOwnershipResponse.js';
 
 const NOW = Date.parse('2026-09-18T05:00:00Z'), checkedAt = '2026-09-18T04:30:00Z';
 const target = { name: 'Apple Inc.', cik: '0000320193', aliases: ['AAPL'], nameMatchAllowed: true };
@@ -25,6 +26,71 @@ function manager(overrides = {}) {
       ], ...overrides } } } };
 }
 const project = (funds = [fund()], managers = [manager()], extra = {}) => projectCompanyOwnership({ ticker: 'AAPL', target, funds, managers, now: NOW, ...extra });
+const wire = data => JSON.parse(JSON.stringify(data));
+
+test('client accepts serialized AAPL and BAC projections with no predecessor metadata', () => {
+  const apple = wire(project());
+  const bankStock = { ...stock, name: 'Bank of America Corp', cusip: '060505104' };
+  const bank = wire(project([fund({ holdings: [bankStock] })], [manager({ holdings: [
+    { cusip: '060505104', issuer: 'BANK OF AMER CORP', classTitle: 'COM', quantity: 100, valueUsd: 1000, quantityType: 'SH', putCall: null },
+  ] })], { ticker: 'BAC', target: { name: 'BANK OF AMERICA CORP /DE/', aliases: ['BAC'], nameMatchAllowed: true } }));
+  for (const payload of [apple, bank]) {
+    assert.equal(payload.identity.predecessor, null);
+    assert.equal(payload.funds.length, 1);
+    assert.equal(payload.managers.length, 1);
+    assert.ok([...payload.funds, ...payload.managers].every(row => row.predecessor === null));
+    assert.equal(validCompanyOwnershipPayload(payload), true, payload.ticker);
+    delete payload.identity.predecessor;
+    for (const row of [...payload.funds, ...payload.managers]) delete row.predecessor;
+    assert.equal(validCompanyOwnershipPayload(payload), true, `${payload.ticker} older optional-field contract`);
+  }
+  const empty = wire(project([], []));
+  assert.equal(empty.identity.status, 'unavailable');
+  assert.equal(validCompanyOwnershipPayload(empty), true);
+});
+
+test('client accepts serialized XOM predecessor and mixed current/historical holding projections', () => {
+  const selected = ownershipCompanyTarget('XOM', { XOM: { name: 'ExxonMobil Holdings Corporation', cik: '0002115436' } }, { now: NOW });
+  const historicalStock = { ...stock, name: 'Exxon Mobil Corporation', cusip: '30231G102' };
+  const historicalFund = fund({ holdings: [historicalStock] });
+  const historicalManager = manager({ holdings: [
+    { cusip: '30231G102', issuer: 'EXXON MOBIL CORP', classTitle: 'COM', quantity: 100, valueUsd: 1000, quantityType: 'SH', putCall: null },
+  ] });
+  const historical = wire(project([historicalFund], [historicalManager], { ticker: 'XOM', target: selected }));
+  assert.equal(historical.identity.predecessor.cik, '0000034088');
+  assert.ok([...historical.funds, ...historical.managers].every(row => row.predecessor?.cik === '0000034088'));
+  assert.equal(validCompanyOwnershipPayload(historical), true);
+
+  const currentFund = fund({ ticker: 'VTI', seriesId: 'S000002848', asOf: '2026-08-31', filingDate: '2026-09-10',
+    holdings: [{ ...historicalStock, name: selected.name, tickerSymbol: 'XOM' }] });
+  currentFund.id = 'VTI';
+  const mixed = wire(project([historicalFund, currentFund], [historicalManager], { ticker: 'XOM', target: selected }));
+  assert.equal(mixed.funds.length, 2);
+  assert.equal(mixed.funds.find(row => row.ticker === 'VTI').predecessor, null);
+  assert.equal(mixed.funds.find(row => row.ticker === 'VOO').predecessor.cik, '0000034088');
+  assert.equal(validCompanyOwnershipPayload(mixed), true);
+});
+
+test('nullable predecessor contract still rejects malformed populated metadata and untrusted SEC links', () => {
+  const predecessor = ownershipCompanyTarget('XOM', { XOM: { name: 'ExxonMobil Holdings Corporation', cik: '0002115436' } }, { now: NOW }).predecessor;
+  const malformed = [false, '', [], {}, { ...predecessor, name: ' ' }, { ...predecessor, cik: 'XOM' },
+    { ...predecessor, effectiveDate: '2026-02-30' }, { ...predecessor, sourceUrl: 'javascript:alert(1)' },
+    { ...predecessor, sourceUrl: 'https://example.com/Archives/edgar/data/34088/filing.htm' },
+    { ...predecessor, sourceUrl: 'https://www.sec.gov@example.com/Archives/edgar/data/34088/filing.htm' }];
+  for (const invalid of malformed) {
+    for (const location of ['identity', 'fund', 'manager']) {
+      const payload = wire(project());
+      (location === 'identity' ? payload.identity : payload[`${location}s`][0]).predecessor = invalid;
+      assert.equal(validCompanyOwnershipPayload(payload), false, `${location}: ${JSON.stringify(invalid)}`);
+    }
+  }
+  const wrongSource = wire(project());
+  wrongSource.funds[0].sourceUrl = 'https://example.com/Archives/edgar/data/36405/filing.xml';
+  assert.equal(validCompanyOwnershipPayload(wrongSource), false);
+  const missingAmount = wire(project());
+  delete missingAmount.managers[0].valueUsd;
+  assert.equal(validCompanyOwnershipPayload(missingAmount), false);
+});
 
 test('verified predecessor holdings are dated, labelled and cannot supply later successor positions', () => {
   const directory = { XOM: { name: 'ExxonMobil Holdings Corporation', cik: '0002115436' } };

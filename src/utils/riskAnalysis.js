@@ -34,6 +34,7 @@ import { classifyIndustry, industryLabel, INDUSTRY_GROUPS } from './industry.js'
 import { sourceDocumentUrl, selectFinancialFact } from './xbrlPeriods.js';
 import { evidenceSources, evidenceCalculations } from './researchEvidence.js';
 import { marketRevenuePoint } from './marketResearchData.js';
+import { riskDebtBalances, riskMarketableSecurities, riskLiabilitiesBalance } from './riskFinancialMappings.js';
 
 const MAX_YEARS = 6;
 
@@ -490,15 +491,14 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
       return valid ? point : { ...point, value: null };
     }) };
   };
-  rows.longTermDebt = debtRow(['LongTermDebtNoncurrent'], 'Noncurrent debt');
-  const currentDebt = debtRow(['DebtCurrent'], 'Current debt');
-  const currentTermDebt = debtRow(['LongTermDebtCurrent'], 'Current portion of long-term debt');
-  const shortTermBorrowings = debtRow(['ShortTermBorrowings', 'CommercialPaper'], 'Short-term borrowings');
-  const combinedCurrentDebt = sumRows([currentTermDebt, shortTermBorrowings], 'Current debt', periods);
-  rows.shortTermDebt = { ...currentDebt, values: periods.map((_, i) =>
-    currentDebt.values[i].value != null ? currentDebt.values[i] : combinedCurrentDebt.values[i]) };
-  rows.currentMarketableSecurities = taggedRow(['MarketableSecuritiesCurrent', 'AvailableForSaleSecuritiesCurrent'], 'Current marketable securities');
-  rows.noncurrentMarketableSecurities = taggedRow(['MarketableSecuritiesNoncurrent', 'AvailableForSaleSecuritiesNoncurrent'], 'Noncurrent marketable securities');
+  const debtBalances = periods.map((period) => riskDebtBalances(facts, period));
+  const mappedDebt = (key, label) => ({ key, label, values: periods.map((period, index) => ({ period, ...debtBalances[index][key] })) });
+  rows.longTermDebt = mappedDebt('noncurrent', 'Noncurrent debt');
+  rows.shortTermDebt = mappedDebt('current', 'Current debt');
+  const totalDebt = mappedDebt('total', 'Total debt');
+  rows.totalLiabilities = { label: 'Total liabilities', values: periods.map((period) => ({ period, ...riskLiabilitiesBalance(facts, period) })) };
+  rows.currentMarketableSecurities = { label: 'Current investments', values: periods.map((period) => ({ period, ...riskMarketableSecurities(facts, period, 'current') })) };
+  rows.noncurrentMarketableSecurities = { label: 'Noncurrent investments', values: periods.map((period) => ({ period, ...riskMarketableSecurities(facts, period, 'noncurrent') })) };
   // Prefer cash excluding tagged restrictions. A narrow bank-cash fallback is
   // explicit; never silently assume that an untagged restriction is zero.
   if (isBank) {
@@ -553,7 +553,6 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
   });
 
   // ---------- shared pillar: capital structure ----------
-  const totalDebt = sumRows([rows.longTermDebt, rows.shortTermDebt], 'Total debt', periods);
   const debtToEquity = ratioRows(rows.totalLiabilities, rows.equity, 'Liabilities / Equity', periods, { allowNegativeDenominator: true });
   const liabToAssets = ratioRows(rows.totalLiabilities, rows.totalAssets, 'Liabilities / Assets', periods);
 

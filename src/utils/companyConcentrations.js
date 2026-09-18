@@ -1,9 +1,13 @@
 import { extractCompanyInlineFacts } from './riskNoteFacts.js';
+import { BAC_FTE_REVENUE_MAPPING, BAC_FTE_REVENUE_CONCEPT, BAC_REVENUE_SEGMENTS, reviewedRevenueMappings } from './companyRevenueMappings.js';
+import { COMPANY_CONCENTRATIONS_VERSION } from './companyConcentrationResponse.js';
 
-export const COMPANY_CONCENTRATIONS_VERSION = 'company-concentrations-v2';
-const REVENUE = ['RevenuesNetOfInterestExpense', 'RegulatedAndUnregulatedOperatingRevenue', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'RevenueFromContractWithCustomerIncludingAssessedTax', 'Revenues', 'SalesRevenueNet'];
+export { COMPANY_CONCENTRATIONS_VERSION };
+// Component concepts keep their own named denominator and are lower priority
+// than broad revenue. Their amounts are never added to estimate total revenue.
+const REVENUE = ['RevenuesNetOfInterestExpense', 'RegulatedAndUnregulatedOperatingRevenue', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'RevenueFromContractWithCustomerIncludingAssessedTax', 'Revenues', 'SalesRevenueNet', 'SalesRevenueGoodsNet', 'SalesRevenueServicesNet', 'InvestmentBankingRevenue', 'BrokerageCommissionsRevenue', 'RevenueNotFromContractWithCustomerExcludingInterestIncome'];
 const LOANS = ['FinancingReceivableExcludingAccruedInterestBeforeAllowanceForCreditLoss', 'FinancingReceivableRecordedInvestmentExcludingAccruedInterestBeforeAllowanceForCreditLoss', 'FinancingReceivableRecordedInvestmentBeforeAllowanceForCreditLoss', 'LoansAndLeasesReceivableNetReportedAmount', 'FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss', 'LoansAndLeasesReceivableNetOfDeferredIncome'];
-const FUNDING = ['Liabilities', 'UnsecuredDebtCurrent', 'UnsecuredLongTermDebt', 'SecuredLongTermDebt', 'Deposits', 'DepositsDomestic', 'DepositsForeign', 'NoninterestBearingDepositLiabilities', 'InterestBearingDepositLiabilities', 'DebtCurrent', 'LongTermDebtCurrent', 'LongTermDebtNoncurrent', 'LongTermDebt', 'LongTermDebtAndFinanceLeaseObligationsCurrent', 'LongTermDebtAndFinanceLeaseObligationsNoncurrent', 'ShortTermBorrowings', 'OtherShortTermBorrowings', 'CommercialPaper', 'SecuritiesSoldUnderAgreementsToRepurchase', 'FederalFundsPurchasedAndSecuritiesSoldUnderAgreementsToRepurchase', 'PayablesToBrokerDealersAndClearingOrganizations', 'PayablesToCustomers', 'SecuritiesSoldNotYetPurchasedAtFairValue'];
+const FUNDING = ['Liabilities', 'UnsecuredDebtCurrent', 'UnsecuredLongTermDebt', 'SecuredLongTermDebt', 'Deposits', 'DepositsDomestic', 'DepositsForeign', 'NoninterestBearingDepositLiabilities', 'InterestBearingDepositLiabilities', 'DebtCurrent', 'LongTermDebtCurrent', 'LongTermDebtNoncurrent', 'LongTermDebt', 'LongTermDebtAndFinanceLeaseObligationsCurrent', 'LongTermDebtAndFinanceLeaseObligationsNoncurrent', 'LongTermDebtAndCapitalLeaseObligationsCurrent', 'LongTermDebtAndCapitalLeaseObligations', 'LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities', 'ShortTermBorrowings', 'OtherShortTermBorrowings', 'CommercialPaper', 'SecuritiesSoldUnderAgreementsToRepurchase', 'FederalFundsPurchasedAndSecuritiesSoldUnderAgreementsToRepurchase', 'PayablesToBrokerDealersAndClearingOrganizations', 'PayablesToCustomers', 'SecuritiesSoldNotYetPurchasedAtFairValue'];
 export const CONCENTRATION_CONCEPTS = new Set([...REVENUE, ...LOANS, ...FUNDING]);
 const local = tag => String(tag || '').split(':').at(-1);
 const days = (start, end) => start ? (Date.parse(end) - Date.parse(start)) / 86400000 + 1 : 0;
@@ -12,7 +16,10 @@ const cleanLabel = label => String(label).replace(/ Segment$/, '').replace(/I Ph
 const periodLabel = fact => fact.start ? `${days(fact.start, fact.end) < 115 ? 'Quarter' : days(fact.start, fact.end) < 330 ? 'Year to date' : 'Fiscal year'} ended ${fact.end}` : `At ${fact.end}`;
 const rankDuration = (fact, basis) => basis === 'annual' ? (days(fact.start, fact.end) >= 330 && days(fact.start, fact.end) <= 400 ? 0 : 9)
   : days(fact.start, fact.end) >= 70 && days(fact.start, fact.end) <= 115 ? 0 : days(fact.start, fact.end) < 330 ? 1 : 2;
-const revenueLabel = concept => concept === 'RevenuesNetOfInterestExpense' ? 'Revenue, net of interest expense' : concept === 'RegulatedAndUnregulatedOperatingRevenue' ? 'Regulated and unregulated operating revenue' : /^RevenueFromContractWithCustomer/.test(concept) ? 'Revenue from customer contracts' : 'Reported revenue';
+const revenueLabel = concept => ({ RevenuesNetOfInterestExpense: 'Revenue, net of interest expense', RegulatedAndUnregulatedOperatingRevenue: 'Regulated and unregulated operating revenue',
+  SalesRevenueGoodsNet: 'Sales of goods, net', SalesRevenueServicesNet: 'Sales of services, net', InvestmentBankingRevenue: 'Investment banking revenue',
+  BrokerageCommissionsRevenue: 'Brokerage commission revenue', RevenueNotFromContractWithCustomerExcludingInterestIncome: 'Revenue outside customer contracts, excluding interest income',
+}[concept] || (/^RevenueFromContractWithCustomer/.test(concept) ? 'Revenue from customer contracts' : 'Reported revenue'));
 const equivalentRevenueScope = scope => scope === 'Operating Segments' ? '' : scope;
 const samePeriod = (a, b) => a.start === b.start && a.end === b.end;
 const factRow = (fact, label, denominator = null) => ({ id: fact.id, label: cleanLabel(label), value: fact.value, share: denominator?.value > 0 && fact.value >= 0 && fact.value <= denominator.value ? fact.value / denominator.value : null, fact });
@@ -94,10 +101,15 @@ function fundingGroup(facts, end) {
   if (aggregateCurrent) add(['DebtCurrent'], 'Current borrowings');
   else {
     add(['ShortTermBorrowings', 'OtherShortTermBorrowings', 'CommercialPaper'], pick(['ShortTermBorrowings', 'OtherShortTermBorrowings']) ? 'Short-term borrowings' : 'Commercial paper');
-    const termCurrent = add(['LongTermDebtCurrent', 'LongTermDebtAndFinanceLeaseObligationsCurrent'], 'Current portion of long-term debt');
+    const currentConcepts = ['LongTermDebtCurrent', 'LongTermDebtAndFinanceLeaseObligationsCurrent', 'LongTermDebtAndCapitalLeaseObligationsCurrent'];
+    const currentIncludesLeases = /LeaseObligations/.test(pick(currentConcepts)?.concept || '');
+    const termCurrent = add(currentConcepts, currentIncludesLeases ? 'Current long-term debt & finance / capital leases' : 'Current portion of long-term debt');
     if (!termCurrent) add(['UnsecuredDebtCurrent'], 'Current unsecured debt, reported amount');
   }
-  const broadTermDebt = add(['LongTermDebtNoncurrent', 'LongTermDebtAndFinanceLeaseObligationsNoncurrent', 'LongTermDebt'], pick(['LongTermDebtNoncurrent', 'LongTermDebtAndFinanceLeaseObligationsNoncurrent']) ? 'Noncurrent long-term debt' : 'Long-term debt, reported total');
+  const noncurrentConcepts = ['LongTermDebtNoncurrent', 'LongTermDebtAndFinanceLeaseObligationsNoncurrent', 'LongTermDebtAndCapitalLeaseObligations'];
+  const termConcepts = [...noncurrentConcepts, 'LongTermDebt', 'LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities'];
+  const term = pick(termConcepts), termNoncurrent = term && noncurrentConcepts.includes(term.concept), termLeases = /LeaseObligations/.test(term?.concept || '');
+  const broadTermDebt = add(termConcepts, termLeases ? termNoncurrent ? 'Noncurrent long-term debt & finance / capital leases' : 'Long-term debt & finance / capital leases, reported total' : termNoncurrent ? 'Noncurrent long-term debt' : 'Long-term debt, reported total');
   if (!broadTermDebt) {
     add(['UnsecuredLongTermDebt'], 'Unsecured long-term debt');
     add(['SecuredLongTermDebt'], 'Secured long-term debt');
@@ -114,8 +126,31 @@ function fundingGroup(facts, end) {
       : 'Reported funding amounts share a dollar scale. A matching total-liabilities amount is unavailable, so percentage shares are not calculated. Balances are not summed.' };
 }
 
+function reviewedRevenueGroups(facts, filing, basis) {
+  const matched = facts.filter(fact => fact.mappingId === BAC_FTE_REVENUE_MAPPING && fact.concept === BAC_FTE_REVENUE_CONCEPT
+    && fact.end === filing.reportDate && fact.periodType === 'duration' && rankDuration(fact, basis) <= 2);
+  const periods = [...new Set(matched.map(fact => fact.start))].sort((a, b) => rankDuration({ start: a, end: filing.reportDate }, basis) - rankDuration({ start: b, end: filing.reportDate }, basis));
+  for (const start of periods) {
+    const period = matched.filter(fact => fact.start === start);
+    const denominator = period.find(fact => !fact.dimensions.length);
+    const rows = period.flatMap(fact => {
+      const segment = fact.dimensions.find(dimension => local(dimension.axis) === 'StatementBusinessSegmentsAxis');
+      if (segment && Object.hasOwn(BAC_REVENUE_SEGMENTS, local(segment.member))) return [factRow(fact, BAC_REVENUE_SEGMENTS[local(segment.member)], denominator)];
+      if (fact.dimensions.length === 1 && local(fact.dimensions[0].member) === 'CorporateReconcilingItemsAndEliminationsMember') return [factRow(fact, 'All Other / reconciliation', denominator)];
+      return [];
+    }).sort((a, b) => b.value - a.value);
+    if (rows.length < 2) continue;
+    const reconciles = denominator?.value > 0 && Math.abs(rows.reduce((sum, row) => sum + row.value, 0) - denominator.value) <= tolerance(denominator.value);
+    return [{ id: JSON.stringify([BAC_FTE_REVENUE_MAPPING, start, filing.reportDate]), concept: BAC_FTE_REVENUE_CONCEPT, kind: 'revenue', label: 'Business segments',
+      reportingBasis: 'Fully taxable-equivalent (FTE)', period: periodLabel(rows[0].fact), start, end: filing.reportDate, rows, denominator: denominator || null,
+      denominatorLabel: 'Revenue, net of interest expense · FTE', reconciles,
+      note: `Amounts use the company’s fully taxable-equivalent basis, including All Other / reconciliation. ${reconciles ? 'The signed amounts reconcile to the reported FTE total.' : 'The displayed categories do not fully reconcile to the reported FTE total.'} FTE revenue differs from GAAP revenue; signed adjustments are not a share composition.` }];
+  }
+  return [];
+}
+
 export function buildCompanyConcentrations(facts, { filing, basis = 'ttm' }) {
   if (!filing) return { revenue: [], funding: null, credit: [] };
-  return { revenue: dimensionGroups(facts, REVENUE, filing.reportDate, basis, 'revenue'), funding: fundingGroup(facts, filing.reportDate), credit: dimensionGroups(facts, LOANS, filing.reportDate, basis, 'credit') };
+  return { revenue: [...reviewedRevenueGroups(facts, filing, basis), ...dimensionGroups(facts, REVENUE, filing.reportDate, basis, 'revenue')], funding: fundingGroup(facts, filing.reportDate), credit: dimensionGroups(facts, LOANS, filing.reportDate, basis, 'credit') };
 }
-export const extractConcentrationFacts = (html, options) => extractCompanyInlineFacts(html, { ...options, concepts: CONCENTRATION_CONCEPTS });
+export const extractConcentrationFacts = (html, options) => extractCompanyInlineFacts(html, { ...options, concepts: CONCENTRATION_CONCEPTS, conceptMappings: reviewedRevenueMappings(options.cik, options.filing) });

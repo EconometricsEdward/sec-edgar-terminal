@@ -1,5 +1,5 @@
 import { classifyIndustry, INDUSTRY_GROUPS } from './industry.js';
-import { reportingPeriods, selectFinancialFact, sumCompatibleFinancialFacts, daysBetween } from './xbrlPeriods.js';
+import { reportingPeriods, selectFinancialFact, sumCompatibleFinancialFacts, daysBetween, sourceDocumentUrl } from './xbrlPeriods.js';
 export { withPeriodKind } from './xbrlPeriods.js';
 
 // ============================================================================
@@ -691,7 +691,10 @@ export function periodLabel(period) {
 
 export function buildSourceUrl(cik, source) {
   if (!source) return null;
-  const paddedCik = String(cik).padStart(10, '0');
+  if (source.sourceType === 'inline-filing') return sourceDocumentUrl(cik, source);
+  const sourceCik = source.sourceCik ?? cik;
+  if (!/^\d{1,10}$/.test(String(sourceCik))) return null;
+  const paddedCik = String(sourceCik).padStart(10, '0');
   if (source.tag) {
     return `https://data.sec.gov/api/xbrl/companyconcept/CIK${paddedCik}/${source.taxonomy || 'us-gaap'}/${source.tag}.json`;
   }
