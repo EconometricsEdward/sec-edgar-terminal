@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, Building2, Check, CircleAlert, Compass, Loader2, Network, Search, ShieldCheck } from 'lucide-react';
+import { ArrowDownToLine, ArrowRight, ArrowUpRight, Building2, Check, CircleAlert, Compass, Loader2, Network, Search, ShieldCheck } from 'lucide-react';
 import { RISK_VERSION, riskPeriodLabel } from '../../utils/riskWorkspace.js';
 import RiskProfileOverview from './RiskProfileOverview';
 import { riskProfileBrief } from './riskProfilePresentation.js';
@@ -13,10 +13,9 @@ import { downloadRiskFile } from './riskDownload';
 import { normalizeRiskView, parseRiskLocation, riskViewPath } from './riskNavigation.js';
 
 const MetricExplorer = dynamic(() => import('./RiskPanels').then(m => m.MetricExplorer), { loading: () => <p className={s.inlineLoading} role="status">Opening metric evidence…</p> });
-const CompanyCftcContext = dynamic(() => import('../../components/cftc/CompanyCftcContext'), { loading: () => <p className={s.inlineLoading} role="status"><Loader2 size={17} className={s.spin} /> Loading CFTC context…</p> });
 const FcmCapitalPanel = dynamic(() => import('./FcmCapitalPanel'), { loading: () => <p className={s.inlineLoading} role="status">Loading futures broker capital…</p> });
 const CompanyExposureMap = dynamic(() => import('./CompanyExposureMap'), { loading: () => <p className={s.inlineLoading} role="status">Loading company exposures…</p> });
-const TABS = [['overview', 'Risk Profile', ShieldCheck], ['exposures', 'Business Exposures', Network], ['cftc', 'Market Context', Activity]] as const;
+const TABS = [['overview', 'Risk Profile', ShieldCheck], ['exposures', 'Business Exposures', Network]] as const;
 
 export default function RiskClient({ initialTicker = '', initialView = 'overview', initialBasis = 'ttm', initialEntity = '', initialAsOf = '', cftcEnabled = true }: { initialTicker?: string; initialView?: string; initialBasis?: string; initialEntity?: string; initialAsOf?: string; cftcEnabled?: boolean }) {
   const [input, setInput] = useState(initialTicker), [query, setQuery] = useState(initialTicker);
@@ -30,8 +29,8 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
   const [exported, setExported] = useState(false);
   const [inspectVersion, setInspectVersion] = useState(0);
   const explorerRef = useRef<HTMLDivElement>(null), loadedRequest = useRef('');
-  const isFcm = cftcEnabled && tab === 'fcm', isCftc = cftcEnabled && tab === 'cftc', isExposures = cftcEnabled && tab === 'exposures';
-  const independent = isFcm || isCftc || isExposures;
+  const isFcm = cftcEnabled && tab === 'fcm', isExposures = cftcEnabled && tab === 'exposures';
+  const independent = isFcm || isExposures;
 
   useEffect(() => {
     if (independent) { setLoading(false); setError(''); return; }
@@ -99,13 +98,12 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
       {cftcEnabled && <button className={s.textButton} onClick={() => changeTab(isFcm ? 'overview' : 'fcm')}><Building2 size={14}/>{isFcm ? 'Back to company risk' : 'Futures broker capital'}<ArrowUpRight size={13}/></button>}
     </div>
     {isFcm && <FcmCapitalPanel initialEntity={initialEntity} />}
-    {isCftc && query && <div className={s.marketContext}><CompanyCftcContext key={query} ticker={query} companyName={visibleData?.companyName} mode="risk" /></div>}
     {isExposures && query && <CompanyExposureMap key={`${query}:${retry}:${basis}`} ticker={query} basis={basis} asOf={exposureAsOf} onAsOfChange={changeExposureAsOf} onBasisChange={changeBasis} />}
     {!independent && loading && <div className={s.loading} role="status"><Loader2 className={s.spin} size={24} /><h2>Reading {query}’s financial position</h2><p>Matching reporting periods and tracing SEC source inputs.</p><div className={s.skeletons}>{[1,2,3,4].map(n => <span key={n} />)}</div></div>}
     {!independent && error && <div className={s.empty} role="alert"><CircleAlert /><h2>We couldn’t load this company</h2><p>{error}</p><button className={s.button} onClick={() => setRetry(n => n + 1)}>Try again</button></div>}
     {!isFcm && !query && <section className={s.riskLanding}>
       <div><div className={s.eyebrow}>Start with the business</div><h2>What supports it?<br/><span>What could strain it?</span></h2><p>Follow a company’s ability to absorb losses, meet obligations, and generate cash. Then connect its disclosed business exposures to the wider market.</p><div className={s.exampleCompanies}>{[['BAC','Banking'],['AAPL','Technology'],['XOM','Energy'],['MET','Insurance']].map(([ticker,sector]) => <Link key={ticker} prefetch={false} href={`/risk?ticker=${ticker}`}><strong>{ticker}</strong><span>{sector}</span><ArrowUpRight size={16}/></Link>)}</div></div>
-      <ol className={s.researchSteps}><li><ShieldCheck/><div><span>01 / FINANCIAL POSITION</span><h3>The company Risk Profile</h3><p>Capital and funding, cash generation and earnings. Current figures alongside the company’s own history.</p></div></li><li><Network/><div><span>02 / BUSINESS EXPOSURES</span><h3>Follow the economic connection</h3><p>Read the SEC passages behind input costs, borrowing, investments, revenue, and currency exposures.</p></div></li><li><Activity/><div><span>03 / MARKET CONTEXT</span><h3>Put positioning in perspective</h3><p>Explore relevant CFTC futures positions and historical comparisons, with the limits of each benchmark in view.</p></div></li></ol>
+      <ol className={s.researchSteps}><li><ShieldCheck/><div><span>01 / FINANCIAL POSITION</span><h3>The company Risk Profile</h3><p>Capital and funding, cash generation and earnings. Current figures alongside the company’s own history.</p></div></li><li><Network/><div><span>02 / BUSINESS EXPOSURES</span><h3>Follow the economic connection</h3><p>Explore revenue and funding concentrations, counterparties, fund holdings and relevant CFTC market comparisons.</p></div></li></ol>
     </section>}
     {!independent && visibleData && profile && <>
       <section className={s.company} aria-label="Company and reporting basis">

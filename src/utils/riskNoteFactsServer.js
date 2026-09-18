@@ -3,7 +3,8 @@ import { secResearchJson } from './secResearchData.js';
 import { secFetch } from './secClient.js';
 import { readBoundedFilingResponse } from './filingsReader.js';
 import { companyExposureFilings } from './companyExposureServer.js';
-import { extractRiskNoteFacts, RISK_NOTE_FACTS_VERSION, RISK_NOTE_MAX_BYTES } from './riskNoteFacts.js';
+import { extractRiskNoteFacts, verifiesJointRegistrantFacts, RISK_NOTE_FACTS_VERSION, RISK_NOTE_MAX_BYTES } from './riskNoteFacts.js';
+import { SEC_EVIDENCE_CONTINUITY } from './secEvidenceContinuity.js';
 import { warmGet, warmSet } from './warmCache.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -71,7 +72,19 @@ export async function discoverRiskNoteFacts(selection, { now = new Date(), signa
   result.filing = selectRiskNoteFiling(filings, checked.basis);
   if (!result.filing) { result.message = 'No eligible original filing was located in the bounded SEC manifest search.'; return result; }
   const html = await loadFiling(result.filing, signal);
-  const extracted = extractFacts(html, { cik, filing: result.filing });
+  let factCik = cik;
+  const transition = SEC_EVIDENCE_CONTINUITY[cik];
+  // Only the independently verified joint filing can use predecessor contexts.
+  // Its presence in the successor manifest alone does not establish identity.
+  if (transition?.predecessorCiks.length === 1 && transition.source.filed <= cutoff
+    && result.filing.accession === transition.source.accession && result.filing.reportDate === transition.source.reportDate
+    && result.filing.reportDate < transition.effectiveDate
+    && verifiesJointRegistrantFacts(html, { cik, predecessorCik: transition.predecessorCiks[0], filing: result.filing })) {
+    factCik = transition.predecessorCiks[0];
+    result.limitations = [...RISK_NOTE_LIMITATIONS, `This verified joint filing reports predecessor ${transition.predecessorName} (CIK ${factCik}) before the ${transition.effectiveDate} registrant transition.`];
+    result.coverage = { ...result.coverage, factCik, registrantTransition: transition.description };
+  }
+  const extracted = extractFacts(html, { cik: factCik, filing: result.filing });
   result.rows = extracted.rows;
   result.coverage = { ...result.coverage, ...extracted.coverage };
   result.status = result.rows.length ? 'ready' : 'no_matches';

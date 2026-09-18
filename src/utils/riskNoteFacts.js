@@ -2,7 +2,7 @@
  * Values come only from inline facts and their exact XBRL contexts and units.
  * Narrative proximity, table position and missing values never supply numbers.
  */
-export const RISK_NOTE_FACTS_VERSION = 'risk-note-facts-v1';
+export const RISK_NOTE_FACTS_VERSION = 'risk-note-facts-v2';
 export const RISK_NOTE_MAX_BYTES = 24_000_000;
 const XBRLI = 'http://www.xbrl.org/2003/instance';
 const XBRLDI = 'http://xbrl.org/2006/xbrldi';
@@ -68,15 +68,23 @@ function numberValue(node, namespaces) {
   if (attrs._invalid || attrs['xsi:nil'] === 'true' || attrs['xsi:nil'] === '1' || attrs.continuedat || descendants(node, 'exclude').length) return null;
   const format = local(attrs.format).toLowerCase();
   // Unknown transformations, fractions and locale-specific forms are omitted.
-  if (format && !['num-dot-decimal', 'numdotdecimal', 'num-dot-decimal-in', 'zerodash'].includes(format)) return null;
+  if (format && !['num-dot-decimal', 'numdotdecimal', 'num-dot-decimal-in', 'zerodash', 'fixed-zero'].includes(format)) return null;
   if (format && !/^https?:\/\/www\.xbrl\.org\/inlineXBRL\/transformation\/20\d{2}-\d{2}-\d{2}$/.test(namespaceFor(attrs.format, namespaces))) return null;
   let raw = nodeText(node).replace(/[\s\u00a0]/g, '');
+  if (format === 'fixed-zero') {
+    // Registry 4/5 explicitly define fixed-zero. Support visible zero/dash/empty
+    // forms only; conflicting numeric text stays unavailable instead of being
+    // silently rewritten to zero. A similarly named custom transform is invalid.
+    if (!/^http:\/\/www\.xbrl\.org\/inlineXBRL\/transformation\/(?:2020-02-12|2022-02-16)$/.test(namespaceFor(attrs.format, namespaces))
+      || !/^(?:[-\u2010-\u2015\u2212]|0+(?:\.0+)?)?$/.test(raw)) return null;
+    raw = '0';
+  }
   if (format === 'zerodash' && /^[-–—]$/.test(raw)) raw = '0';
   if (!/^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(raw)) return null;
   const scale = attrs.scale == null ? 0 : Number(attrs.scale);
   if (!Number.isInteger(scale) || Math.abs(scale) > 12 || (attrs.sign != null && attrs.sign !== '-')) return null;
   const value = Number(`${raw.replaceAll(',', '')}e${scale}`) * (attrs.sign === '-' ? -1 : 1);
-  return Number.isFinite(value) ? value : null;
+  return Number.isFinite(value) ? value === 0 ? 0 : value : null;
 }
 
 function contextValue(node, cik) {
@@ -109,7 +117,7 @@ function describe(tag, dimensions, namespaces) {
   return { kind: 'derivative_notional', category, label: [name, status, ...extras].filter(Boolean).join(' · ') };
 }
 
-function readInlineRiskDocument(html, { cik, filing, concepts = CONCEPTS }) {
+function readInlineRiskDocument(html, { cik, filing, concepts = CONCEPTS, captureRegistrants = false }) {
   if (typeof html !== 'string' || html.trim().length < 30 || html.length > RISK_NOTE_MAX_BYTES || !/^\d{1,10}$/.test(String(cik)) || !validDate(filing?.reportDate))
     throw new Error('A bounded SEC document, verified issuer and reporting date are required.');
   if (/<title\b[^>]*>[^<]*(?:access denied|request rate threshold|undeclared automated tool)/i.test(html)
@@ -138,7 +146,10 @@ function readInlineRiskDocument(html, { cik, filing, concepts = CONCEPTS }) {
       continue;
     }
     const wanted = (namespace === XBRLI && ['context', 'unit'].includes(name))
-      || (INLINE.has(namespace) && name.toLowerCase() === 'nonfraction' && concepts.has(local(token.attrs.name)) && standard(token.attrs.name, namespaces));
+      || (INLINE.has(namespace) && name.toLowerCase() === 'nonfraction' && concepts.has(local(token.attrs.name)) && standard(token.attrs.name, namespaces))
+      || (captureRegistrants && INLINE.has(namespace) && name.toLowerCase() === 'nonnumeric'
+        && ['EntityCentralIndexKey', 'DocumentPeriodEndDate', 'DocumentType'].includes(local(token.attrs.name))
+        && /^https?:\/\/xbrl\.sec\.gov\/dei\/20\d{2}(?:-\d{2}-\d{2})?$/.test(namespaceFor(token.attrs.name, namespaces)));
     if (!stack.length && !wanted) continue;
     if (++capturedNodes > 200_000) throw new Error('The SEC note document exceeds parser limits.');
     const node = { ...token, local: name, namespace, children: [], parts: [] };
@@ -162,6 +173,34 @@ function readInlineRiskDocument(html, { cik, filing, concepts = CONCEPTS }) {
     } else facts.push(node);
   }
   return { namespaces, contexts, units, facts };
+}
+
+/** Validate the DEI identity of a pre-transition joint filing without changing
+ * ordinary fact-context identity checks. Both legal registrants must be tagged;
+ * the predecessor owns the undimensioned reporting context and the successor is
+ * explicitly a legal-entity member in that same reporting period.
+ */
+export function verifiesJointRegistrantFacts(html, { cik, predecessorCik, filing }) {
+  const { namespaces, contexts, facts } = readInlineRiskDocument(html, { cik: predecessorCik, filing, concepts: new Set(), captureRegistrants: true });
+  const normalizeCik = value => /^\d{1,10}$/.test(value) && Number(value) > 0 ? value.padStart(10, '0') : null;
+  const samePeriod = context => context?.periodType === 'duration' && context.end === filing.reportDate;
+  const rows = facts.flatMap(node => {
+    const context = contexts.get(node.attrs.contextref);
+    if (node.attrs._invalid || node.attrs.continuedat || node.attrs['xsi:nil'] || descendants(node, 'exclude').length || !samePeriod(context)) return [];
+    return [{ concept: local(node.attrs.name), value: nodeText(node), context }];
+  });
+  const base = rows.filter(row => !row.context.dimensions.length);
+  const predecessor = base.filter(row => row.concept === 'EntityCentralIndexKey');
+  if (!predecessor.length || predecessor.some(row => normalizeCik(row.value) !== normalizeCik(predecessorCik))) return false;
+  const successor = rows.filter(row => row.concept === 'EntityCentralIndexKey' && row.context.dimensions.length === 1
+    && local(row.context.dimensions[0].axis) === 'LegalEntityAxis'
+    && /^https?:\/\/xbrl\.sec\.gov\/dei\/20\d{2}(?:-\d{2}-\d{2})?$/.test(namespaceFor(row.context.dimensions[0].axis, namespaces)));
+  if (!successor.some(row => normalizeCik(row.value) === normalizeCik(cik))) return false;
+  const periods = base.filter(row => row.concept === 'DocumentPeriodEndDate');
+  const types = base.filter(row => row.concept === 'DocumentType');
+  const periodDate = value => validDate(value) ? value : /^[A-Za-z]+ \d{1,2}, \d{4}$/.test(value) && Number.isFinite(Date.parse(`${value} UTC`)) ? new Date(`${value} UTC`).toISOString().slice(0, 10) : null;
+  return periods.length > 0 && periods.every(row => periodDate(row.value) === filing.reportDate)
+    && types.length > 0 && types.every(row => row.value === filing.form);
 }
 
 /** Namespace-verified standard USD facts for company concentration views.

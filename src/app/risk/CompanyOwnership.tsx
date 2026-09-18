@@ -4,6 +4,8 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ChevronDown, CircleAlert, Loader2 } from 'lucide-react';
 import s from './CompanyOwnership.module.css';
 
+type Predecessor = { name: string; cik: string; effectiveDate: string; sourceUrl: string };
+
 type OwnershipRow = {
   id: string;
   kind: 'fund' | 'manager';
@@ -22,6 +24,7 @@ type OwnershipRow = {
   denominatorLabel: 'fund net assets' | 'reported 13F holdings';
   sourceUrl: string;
   researchUrl: string;
+  predecessor?: Predecessor;
   positions: { cusip: string; name: string; classTitle: string; shares: number | null; valueUsd: number | null }[];
 };
 
@@ -31,7 +34,7 @@ type Ownership = {
   companyName: string | null;
   asOf: string | null;
   checkedAt: string | null;
-  identity: { status: 'reported-match' | 'unavailable'; cusips: string[]; note: string };
+  identity: { status: 'reported-match' | 'unavailable'; cusips: string[]; note: string; predecessor?: Predecessor };
   funds: OwnershipRow[];
   managers: OwnershipRow[];
   coverage: {
@@ -62,6 +65,17 @@ function finiteOrNull(value: unknown): value is number | null {
   return value === null || (typeof value === 'number' && Number.isFinite(value));
 }
 
+function validPredecessor(value: unknown): value is Predecessor | undefined {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const predecessor = value as Predecessor;
+  return typeof predecessor.name === 'string' && predecessor.name.trim().length > 0
+    && typeof predecessor.cik === 'string' && /^\d{1,10}$/.test(predecessor.cik)
+    && typeof predecessor.effectiveDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(predecessor.effectiveDate)
+    && dateLabel(predecessor.effectiveDate) !== 'Not reported'
+    && typeof predecessor.sourceUrl === 'string' && !!linkUrl(predecessor.sourceUrl);
+}
+
 function validPayload(value: unknown): value is Ownership {
   if (!value || typeof value !== 'object') return false;
   const body = value as Ownership;
@@ -69,6 +83,7 @@ function validPayload(value: unknown): value is Ownership {
     && (typeof body.asOf === 'string' || body.asOf === null) && (typeof body.checkedAt === 'string' || body.checkedAt === null)
     && !!body.identity && ['reported-match', 'unavailable'].includes(body.identity.status)
     && Array.isArray(body.identity.cusips) && typeof body.identity.note === 'string'
+    && validPredecessor(body.identity.predecessor)
     && Array.isArray(body.funds) && Array.isArray(body.managers) && !!body.coverage
     && ['fundsChecked', 'fundsAvailable', 'managersChecked', 'managersAvailable', 'excludedAfterCutoff'].every(key => Number.isFinite(body.coverage[key as keyof Ownership['coverage']]))
     && Array.isArray(body.coverage.notPrepared) && body.coverage.notPrepared.every(row => !!row && typeof row.id === 'string' && typeof row.name === 'string' && typeof row.url === 'string')
@@ -76,6 +91,7 @@ function validPayload(value: unknown): value is Ownership {
     && [...body.funds, ...body.managers].every(row => !!row && typeof row.id === 'string' && typeof row.name === 'string'
       && typeof row.reportDate === 'string' && typeof row.filingDate === 'string' && typeof row.checkedAt === 'string'
       && typeof row.sourceUrl === 'string' && typeof row.researchUrl === 'string' && typeof row.denominatorLabel === 'string'
+      && validPredecessor(row.predecessor)
       && finiteOrNull(row.valueUsd) && finiteOrNull(row.weightPct) && finiteOrNull(row.shares) && finiteOrNull(row.denominatorUsd)
       && Array.isArray(row.positions) && row.positions.every(position => !!position && typeof position.cusip === 'string'
         && typeof position.name === 'string' && typeof position.classTitle === 'string' && finiteOrNull(position.shares) && finiteOrNull(position.valueUsd)));
@@ -146,6 +162,8 @@ export default function CompanyOwnership({ ticker, asOf = '' }: { ticker: string
     return b[metric] - a[metric] || a.name.localeCompare(b.name);
   }), [data, view, metric]);
   const visibleRows = showAll ? rows : rows.slice(0, 5);
+  const visiblePredecessor = visibleRows.find(row => row.predecessor)?.predecessor;
+  const predecessor = visiblePredecessor ? data?.identity.predecessor || visiblePredecessor : undefined;
   const maximum = Math.max(0, ...rows.map(row => row[metric] || 0));
   const fundView = view === 'funds';
   const denominator = fundView ? 'fund net assets' : 'reported 13F holdings';
@@ -204,6 +222,7 @@ export default function CompanyOwnership({ ticker, asOf = '' }: { ticker: string
 
       <p className={s.context}>{fundView ? <><strong>Individual SEC fund series · N-PORT.</strong> Weight is the position’s share of the whole fund series’ net assets.</> : <><strong>Manager portfolios · 13F.</strong> These are manager reports, not individual funds. Weight is the position’s share of reported 13F holdings.</>} Neither weight measures the percentage of {normalizedTicker} owned.</p>
       {asOf && <p className={s.cutoff}>Filings through {dateLabel(asOf)}. Saved reports filed after this cutoff are excluded.</p>}
+      {predecessor && <aside className={s.predecessorNotice} aria-label="Historical predecessor holdings"><strong>Predecessor holdings · {predecessor.name}</strong><p>Reports dated before {dateLabel(predecessor.effectiveDate)} describe the predecessor company. A one-for-one share exchange established continuity; these are historical positions. <a href={linkUrl(predecessor.sourceUrl)} target="_blank" rel="noreferrer">SEC source <ArrowUpRight size={15} /></a></p></aside>}
 
       {rows.length > 0 ? <>
         <div className={s.listHeading}><span>{showAll ? rows.length : Math.min(5, rows.length)} of {rows.length} matching {fundView ? 'funds' : 'managers'}</span><span>Largest {metric === 'weightPct' ? 'portfolio weights' : 'positions'} first</span></div>
@@ -226,10 +245,11 @@ export default function CompanyOwnership({ ticker, asOf = '' }: { ticker: string
                   <div className={s.barTrack} aria-hidden="true"><span style={{ width: `${width}%` }} /></div>
                   <span className={s.secondary}>{metricLabel(row, metric === 'weightPct' ? 'valueUsd' : 'weightPct')} {metric === 'weightPct' ? 'position' : 'portfolio weight'}</span>
                 </div>
-                <div className={s.source}><span>Held {dateLabel(row.reportDate)}</span>{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer">SEC filing <ArrowUpRight size={15} /></a> : <span>Source unavailable</span>}</div>
+                <div className={s.source}><span>Held {dateLabel(row.reportDate)}{row.predecessor && <span className={s.predecessorLabel}>Predecessor shares</span>}</span>{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer">SEC filing <ArrowUpRight size={15} /></a> : <span>Source unavailable</span>}</div>
               </div>
               <div id={detailId} className={s.rowDetail} hidden={!expanded}>
                 <dl><div><dt>Filed</dt><dd>{dateLabel(row.filingDate)}</dd></div><div><dt>Shares reported</dt><dd>{row.shares === null ? 'Not reported' : sharesFormat.format(row.shares)}</dd></div><div><dt>{row.denominatorLabel}</dt><dd>{row.denominatorUsd === null ? 'Not reported' : exactDollars.format(row.denominatorUsd)}</dd></div></dl>
+                {row.predecessor && <p className={s.predecessorEvidence}><strong>Historical issuer:</strong> {row.predecessor.name} · CIK {row.predecessor.cik}. These positions report predecessor shares.</p>}
                 <div className={s.positions}><strong>Matched securities</strong>{row.positions.map((position, positionIndex) => <p key={`${position.cusip}:${positionIndex}`}>{position.name}{position.classTitle ? ` · ${position.classTitle}` : ''}<span>CUSIP {position.cusip}{position.valueUsd !== null ? ` · ${exactDollars.format(position.valueUsd)}` : ''}</span></p>)}</div>
                 <div className={s.detailFooter}><span>CIK {row.cik}{row.seriesId ? ` · Series ${row.seriesId}` : ''} · Checked {dateLabel(row.checkedAt)}</span>{researchUrl && <a href={researchUrl}>Open {fundView ? 'fund' : 'manager'} research <ArrowUpRight size={15} /></a>}</div>
               </div>

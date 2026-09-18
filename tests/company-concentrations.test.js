@@ -57,3 +57,28 @@ test('discovery retains verified issuer, reporting date and cutoff, and strips r
   const result=await discoverCompanyConcentrations({ticker:'EX',basis:'ttm',asOf:'2026-08-01'},{now:new Date('2026-09-18'),lookupTicker:async()=>({cik:1234,name:'Example'}),loadSubmissions:async()=>({cik:1234,name:'Example',sic:'6021',filings:{recent:{accessionNumber:['0000001234-26-000010'],form:['10-Q'],filingDate:['2026-07-30'],reportDate:['2026-06-30'],primaryDocument:['company.htm']},files:[]}}),loadFiling:async()=>header+context+units+inline(20)+'</html>'});
   assert.equal(result.ticker,'EX');assert.equal(result.asOf,'2026-08-01');assert.equal(result.filing.reportDate,'2026-06-30');assert.equal(result.funding.rows[0].value,20e6);assert.equal('rows' in result,false);assert.equal(result.sic,'6021');
 });
+
+test('utility operating revenue uses its own denominator and never substitutes customer-contract revenue', () => {
+  const tag='RegulatedAndUnregulatedOperatingRevenue',start='2026-04-01',axis='us-gaap:StatementBusinessSegmentsAxis';
+  const rows=[make(tag,7534,[],start),make(revenue,6500,[],start),make(tag,4896,[dim(axis,'example:UtilityMember')],start),make(tag,2532,[dim(axis,'example:EnergyResourcesMember')],start)];
+  const g=grouped(rows).revenue[0];assert.equal(g.denominator.value,7534);assert.equal(g.rows[0].share,4896/7534);assert.equal(g.reconciles,false);assert.equal(g.denominatorLabel,'Regulated and unregulated operating revenue');
+});
+test('identical unscoped and OperatingSegments revenue groups produce one lens without hiding differing amounts', () => {
+  const start='2026-04-01',axis='us-gaap:StatementBusinessSegmentsAxis',operating=dim('srt:ConsolidationItemsAxis','us-gaap:OperatingSegmentsMember','Operating Segments');
+  const rows=[make(revenue,100,[],start),make(revenue,60,[dim(axis,'example:A')],start),make(revenue,40,[dim(axis,'example:B')],start),make(revenue,60,[operating,dim(axis,'example:A')],start),make(revenue,40,[operating,dim(axis,'example:B')],start)];
+  assert.equal(grouped(rows).revenue.length,1);
+  rows[3].value=65;assert.equal(grouped(rows).revenue.length,2);
+});
+test('broker secured and unsecured debt remain explicitly labeled and are not added to aggregate debt', () => {
+  const rows=[make('Liabilities',2004969),make('Deposits',557955),make('UnsecuredDebtCurrent',34230),make('UnsecuredLongTermDebt',347963),make('SecuredLongTermDebt',11558)];
+  let g=grouped(rows).funding;assert.equal(g.rows.length,4);assert.equal(g.rows.find(r=>r.label==='Unsecured long-term debt').share,347963/2004969);assert.equal(g.rows.find(r=>r.label==='Current unsecured debt, reported amount').value,34230);
+  g=grouped([...rows,make('LongTermDebt',359521)]).funding;
+  assert.ok(!g.rows.some(r=>['Unsecured long-term debt','Secured long-term debt'].includes(r.label)));assert.equal(g.rows.find(r=>r.label==='Long-term debt, reported total').value,359521);
+});
+test('funding with no compatible total describes dollar amounts, not nonexistent percentage shares', () => {
+  const g=grouped([make('LongTermDebt',100)]).funding;assert.match(g.note,/percentage shares are not calculated/);assert.equal(g.rows[0].share,null);
+});
+test('customer-contract revenue is labeled as the denominator actually reported', () => {
+  const rows=[make(revenue,100,[],'2026-04-01'),make(revenue,60,product('A'),'2026-04-01'),make(revenue,40,product('B'),'2026-04-01')];
+  assert.equal(grouped(rows).revenue[0].denominatorLabel,'Revenue from customer contracts');
+});

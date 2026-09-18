@@ -47,7 +47,6 @@
 .researchSteps span { font-size:9px; letter-spacing:1.2px; color:var(--r-muted); }
 .researchSteps h3 { font-size:18px; font-weight:550; margin-top:7px; }
 .researchSteps p { font-size:12px; color:var(--r-muted); line-height:1.8; margin-top:7px; }
-.marketContext { min-width:0; }
 .pageHeader { display:flex; align-items:center; justify-content:space-between; gap:32px; margin-bottom:28px; }
 .pageHeader p, .detailHeader p, .models > p { color:var(--r-muted); margin-top:8px; }
 .eyebrow { display:flex; align-items:center; gap:7px; color:var(--r-accent); text-transform:uppercase; font-size:11px; font-weight:700; letter-spacing:1.8px; }

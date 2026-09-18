@@ -1,4 +1,5 @@
 import { normalizeIssuerName } from './globalFundSecurity.js';
+import { SEC_EVIDENCE_CONTINUITY } from './secEvidenceContinuity.js';
 
 // A coverage cohort, never an assertion that a selected manager holds a stock.
 export const OWNERSHIP_FUNDS = Object.freeze([
@@ -33,13 +34,22 @@ const legalIssuer = value => String(value || '').replace(/\s*\/[A-Z]{2,3}\/?\s*$
   .replace(/\bcompany\b/g, 'co').replace(/\blimited\b/g, 'ltd');
 const cikKey = value => String(value || '').padStart(10, '0');
 
-export function ownershipCompanyTarget(ticker, directory) {
+export function ownershipCompanyTarget(ticker, directory, { asOf = '', now = Date.now() } = {}) {
   const company = directory[ticker];
   if (!company) return null;
   const name = legalIssuer(company.name), cik = cikKey(company.cik);
   const matchingCiks = new Set(Object.values(directory).filter(row => legalIssuer(row.name) === name).map(row => cikKey(row.cik)));
+  const transition = SEC_EVIDENCE_CONTINUITY[cik], cutoff = asOf || new Date(now).toISOString().slice(0, 10);
+  // A verified financial predecessor is not automatically a stock identity.
+  // Only an independently documented one-for-one common-share exchange can
+  // add dated predecessor positions; it never asserts a successor CUSIP.
+  const predecessor = transition?.oneForOneCommonStockExchange === true && transition.predecessorCiks.length === 1
+    && transition.source.filed <= cutoff ? {
+      name: transition.predecessorName, cik: transition.predecessorCiks[0],
+      effectiveDate: transition.effectiveDate, sourceUrl: transition.source.url,
+    } : null;
   return { ...company, aliases: Object.entries(directory).filter(([, row]) => cikKey(row.cik) === cik).map(([symbol]) => upper(symbol)),
-    nameMatchAllowed: Boolean(name) && matchingCiks.size === 1 && matchingCiks.has(cik) };
+    nameMatchAllowed: Boolean(name) && matchingCiks.size === 1 && matchingCiks.has(cik), predecessor };
 }
 const cusip = value => /^(?!000000000)[A-Z0-9*@#]{8}[0-9]$/.test(upper(value)) ? upper(value) : null;
 const total = values => values.length && values.every(value => finite(value) !== null) ? values.reduce((sum, value) => sum + value, 0) : null;
@@ -56,6 +66,9 @@ const directMatch = (row, target) => {
   if (row.tickerSymbol) return target.aliases.includes(upper(row.tickerSymbol));
   return target.nameMatchAllowed === true && legalIssuer(row.name) === legalIssuer(target.name);
 };
+const predecessorPeriod = (target, reportDate) => Boolean(target.predecessor && date(reportDate) && reportDate < target.predecessor.effectiveDate);
+const predecessorMatch = (row, target, reportDate) => predecessorPeriod(target, reportDate)
+  && directMatch(row, { name: target.predecessor.name, aliases: target.aliases, nameMatchAllowed: true });
 const fresh = (checkedAt, now) => Number.isFinite(Date.parse(checkedAt)) && now - Date.parse(checkedAt) < 3600000;
 const source = value => {
   try { const url = new URL(value); return url.protocol === 'https:' && url.hostname === 'www.sec.gov'
@@ -84,11 +97,17 @@ export function projectCompanyOwnership({ ticker, target, funds = [], managers =
     if (!prior || item.data.asOf > prior.data.asOf || item.data.asOf === prior.data.asOf && item.data.filingDate > prior.data.filingDate) series.set(key, item);
   }
   const preparedFunds = [...series.values()];
-  const identifiers = new Set(preparedFunds.flatMap(item => item.data.holdings.filter(row => directMatch(row, target)).map(row => cusip(row.cusip)).filter(Boolean)));
-  const matchFund = row => directMatch(row, target) || commonLong(row) && identifiers.has(cusip(row.cusip))
-    && (!row.tickerSymbol || target.aliases.includes(upper(row.tickerSymbol)));
+  const currentIdentifiers = new Set(preparedFunds.flatMap(item => item.data.holdings.filter(row => directMatch(row, target)).map(row => cusip(row.cusip)).filter(Boolean)));
+  const predecessorIdentifiers = new Set(preparedFunds.flatMap(item => item.data.holdings.filter(row => predecessorMatch(row, target, item.data.asOf)).map(row => cusip(row.cusip)).filter(Boolean)));
+  const identifiers = new Set([...currentIdentifiers, ...predecessorIdentifiers]);
+  const identifierMatches = (row, reportDate) => currentIdentifiers.has(cusip(row.cusip))
+    || predecessorPeriod(target, reportDate) && predecessorIdentifiers.has(cusip(row.cusip));
+  const matchFund = (row, reportDate) => directMatch(row, target) || predecessorMatch(row, target, reportDate)
+    || commonLong(row) && identifierMatches(row, reportDate) && (!row.tickerSymbol || target.aliases.includes(upper(row.tickerSymbol)));
+  const predecessorFor = (holdings, reportDate) => predecessorPeriod(target, reportDate)
+    && holdings.some(row => predecessorIdentifiers.has(cusip(row.cusip))) ? target.predecessor : null;
   const fundRows = preparedFunds.flatMap(({ data }) => {
-    const holdings = data.holdings.filter(matchFund);
+    const holdings = data.holdings.filter(row => matchFund(row, data.asOf));
     if (!holdings.length) return [];
     const checkedAt = data.cache?.checkedAt || data.retrievedAt;
     const positions = holdings.map(row => ({ cusip: cusip(row.cusip) || '', name: row.name, classTitle: row.title || 'Common equity',
@@ -101,7 +120,8 @@ export function projectCompanyOwnership({ ticker, target, funds = [], managers =
       cik: data.cik, seriesId: data.seriesId, reportDate: data.asOf, filingDate: data.filingDate, checkedAt,
       stale: data.cache?.stale === true || !fresh(checkedAt, now), valueUsd, shares: total(positions.map(row => row.shares)), weightPct,
       denominatorUsd: nav, denominatorLabel: 'fund net assets', sourceUrl: data.sourceUrl,
-      researchUrl: `/fund/${encodeURIComponent(data.ticker)}?accession=${data.accession}`, positions }];
+      researchUrl: `/fund/${encodeURIComponent(data.ticker)}?accession=${data.accession}`, positions,
+      predecessor: predecessorFor(holdings, data.asOf) }];
   });
   const eligibleManagers = managers.filter(item => item.saved?.data?.status === 'ready' && item.saved.data.manager?.cik === item.id
     && item.saved.data.portfolio?.complete === true && item.saved.data.coverage?.selectedPeriodComplete === true
@@ -111,7 +131,7 @@ export function projectCompanyOwnership({ ticker, target, funds = [], managers =
     const { portfolio: p, manager } = saved.data;
     // The exact CUSIP comes from reported long common equity in N-PORT. Options,
     // preferred shares, notes and all principal-amount records stay outside it.
-    const holdings = p.holdings.filter(row => identifiers.has(cusip(row.cusip)) && row.putCall === null && row.quantityType === 'SH');
+    const holdings = p.holdings.filter(row => identifierMatches(row, p.period) && row.putCall === null && row.quantityType === 'SH');
     if (!holdings.length) return [];
     const positions = holdings.map(row => ({ cusip: row.cusip, name: row.issuer, classTitle: row.classTitle,
       shares: number(row.quantity), valueUsd: number(row.valueUsd) }));
@@ -124,16 +144,17 @@ export function projectCompanyOwnership({ ticker, target, funds = [], managers =
       denominatorUsd: denominator, denominatorLabel: 'reported 13F holdings', sourceUrl: filing.indexUrl,
       researchUrl: `/fund?view=13f&managerCik=${manager.cik}&managerPeriod=${p.period}&managerView=holdings`, positions,
       sources: p.filings.map(row => ({ url: row.indexUrl, filed: row.filingDate, form: row.form })),
-      confidentialOmitted: p.confidentialOmitted, reportType: p.reportType }];
+      confidentialOmitted: p.confidentialOmitted, reportType: p.reportType, predecessor: predecessorFor(holdings, p.period) }];
   });
   const missing = (items, available, kind) => items.filter(item => !available.includes(item)).map(item => ({ kind, id: item.id, name: item.name,
     url: kind === 'fund' ? `/fund/${item.id}` : `/fund?view=13f&managerCik=${item.id}` }));
   const checkedDates = [...preparedFunds.map(item => item.data.cache?.checkedAt || item.data.retrievedAt), ...eligibleManagers.map(item => item.saved.checkedAt)].filter(Boolean).sort();
+  const predecessor = [...fundRows, ...managerRows].some(row => row.predecessor) ? target.predecessor : null;
   return {
     schemaVersion: 'edgar.company-ownership.v1', ticker, companyName: target.name || ticker, asOf: asOf || null,
     checkedAt: checkedDates[0] || null,
     identity: { status: identifiers.size ? 'reported-match' : 'unavailable', cusips: [...identifiers].sort(),
-      note: 'Company-wide common equity matched by a compatible reported ticker or an unambiguous SEC legal name. Exact reported CUSIPs link 13F positions. Share classes remain visible in the evidence.' },
+      note: 'Company-wide common equity matched by a compatible reported ticker or an unambiguous SEC legal name. Exact reported CUSIPs link 13F positions. Share classes remain visible in the evidence.', predecessor },
     funds: sorted(fundRows), managers: sorted(managerRows),
     coverage: { fundsChecked: funds.length, fundsAvailable: preparedFunds.length, managersChecked: managers.length, managersAvailable: eligibleManagers.length,
       notPrepared: [...missing(funds, eligibleFunds, 'fund'), ...missing(managers, eligibleManagers, 'manager')],

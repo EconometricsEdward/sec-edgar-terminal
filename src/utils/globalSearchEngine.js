@@ -225,7 +225,7 @@ function companyIntent(entry, remaining, raw, cftcEnabled) {
   }
   if (TOPIC_PATTERN.test(q) && !/^(?:liquidity|liquidity risk|liquidity risks)$/.test(q) || /\bchina\b/.test(q)) return disclosureItem(raw, 'Best match');
   if (/^(?:(?:commodity|market|business) )?exposures?$/.test(q) && cftcEnabled) return item(`/risk?ticker=${company}&view=exposures`, `${company} business exposures`, 'Company disclosures connected to relevant market context', 'risk');
-  if (/^(?:cftc|futures exposure|commodity risk)$/.test(q) && cftcEnabled) return item(`/risk?ticker=${company}&view=cftc`, `${company} market context`, 'Company disclosures and aggregate CFTC futures positioning', 'risk');
+  if (/^(?:cftc|futures exposure|commodity risk)$/.test(q) && cftcEnabled) return item(`/risk?ticker=${company}&view=exposures&exposurePanel=markets`, `${company} business exposures · Market links`, 'Company disclosures and aggregate CFTC futures positioning', 'risk');
   if (/^(?:stress|stress test|stress testing)$/.test(q)) return item(`/risk?ticker=${company}`, `${company} risk profile`, 'Review financial resilience, trends and source evidence', 'risk');
   if (/^(?:(?:credit|liquidity|financial|company|business) )?risk(?:s| profile| analysis)?$/.test(q) || q === 'liquidity') return item(`/risk?ticker=${company}`, `${company} risk profile`, 'Credit, liquidity and business exposures', 'risk');
   const filing = /\b(?:10\s*k|10\s*q|8\s*k|20\s*f|40\s*f|6\s*k|s\s*1|def\s*14a|annual reports?|quarterly reports?|current reports?|sec filings?|filings?|proxy|insider filings?|form 4)\b/.test(q);

@@ -49,7 +49,7 @@ export function createCompanyOwnershipReader({ directory = getOperatingDirectory
     const index = await directory();
     const company = index[ticker];
     if (!company) throw new RangeError('No SEC operating-company identity was found for this ticker.');
-    const target = ownershipCompanyTarget(ticker, index);
+    const target = ownershipCompanyTarget(ticker, index, { asOf, now: now() });
     // Two readers total, rather than a per-fund SEC acquisition fanout. Dispose
     // of complete bodies after projecting the small company-specific response.
     const fundSnapshots = await mapBounded(funds, item => fundSnapshot(item, asOf, signal), signal);

@@ -325,3 +325,30 @@ test('later explicit metal exposure qualifications survive commodity-context scr
     assert.ok(row(result, `investments:${metal}`)?.evidence.some(item => item.text === qualification && item.disclosureDirection === 'qualifying-or-negative'), qualification);
   }
 });
+
+test('exhibit index certificates and commodity asset disposals do not create operating exposures', () => {
+  const examples = [
+    "Officer's Certificate of NextEra Energy Capital Holdings, Inc., dated February 4, 2025, creating the Floating Rate Debentures, Series due February 4, 2028 (filed as Exhibit 4(xx) to Form 10-K for the year ended December 31, 2024).",
+    'In 2024, subsidiaries of NextEra Energy Resources sold 100% ownership interests in certain natural gas and oil shale formations and, as part of a pipeline joint venture, sold an ownership interest in three natural gas pipeline facilities.',
+  ];
+  for (const text of examples) assert.deepEqual(extract(text, { companyName: 'NEXTERA ENERGY INC' }).rows, []);
+  const ongoing = extract('We sell natural gas from our producing wells under supply agreements with customers.');
+  assert.ok(row(ongoing, 'revenue:natural-gas'));
+});
+
+test('client trade execution alone does not become the broker dealer own Treasury portfolio', () => {
+  const agency = extract('We execute a high volume of transactions for our clients in large, highly liquid markets such as markets for U.S. Treasury securities, stocks and agency mortgage securities.');
+  assert.ok(!row(agency, 'investments:treasury'));
+  const own = extract('We hold U.S. Treasury securities in our own trading portfolio and execute transactions for our clients.');
+  assert.ok(row(own, 'investments:treasury'));
+});
+
+test('separately listed equity valuations and net investment hedges do not establish rate asset exposure', () => {
+  for (const text of [
+    'Market risks relating to our operations result primarily from changes in interest rates, currency exchange rates and the fair value of certain equity investments.',
+    'We are exposed to certain market risks, including changes in interest rates, currency exchange rates and the fair values of certain equity and equity method investments measured on a recurring basis.',
+    'The maximum length of time over which the Company is hedging transaction exposure is 18 months, excluding interest rate contracts and net investment hedge contracts.',
+    'The Company uses cross currency interest rate swaps and forward foreign exchange contracts designated as net investment hedges.',
+  ]) assert.ok(!row(extract(text), 'investments:interest-rates'), text);
+  assert.ok(row(extract('The Company invests in both fixed rate and floating rate interest earning securities which carry a degree of interest rate risk.'), 'investments:interest-rates'));
+});
