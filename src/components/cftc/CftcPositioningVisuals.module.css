@@ -7,3 +7,5 @@
 
 .plotViewport { min-width:0; overflow-x:auto; overscroll-behavior-inline:contain; scrollbar-color:var(--cv-line) transparent; }.plotViewport:focus-visible { outline:2px solid var(--cv-teal); outline-offset:4px; }
 @media(max-width:680px) { .plotViewport .timeline { width:820px; min-width:820px; max-width:none; min-height:0; }.plotViewport .distributionPlot { width:760px; min-width:760px; max-width:none; min-height:0; } }
+
+.inspectionTools{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px}.inspectionTools>span{color:var(--cv-muted);font-size:10px;line-height:1.6}.distributionReadout{display:flex;align-items:baseline;gap:12px 22px;flex-wrap:wrap;margin-top:17px;font-size:11px;color:var(--cv-muted);font-variant-numeric:tabular-nums}.distributionReadout strong{color:var(--cv-text);font-size:20px;font-weight:550}.distributionReadout small{color:var(--cv-muted);font-size:10px;font-weight:400}

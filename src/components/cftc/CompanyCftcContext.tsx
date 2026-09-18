@@ -35,6 +35,7 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
   const [historyError, setHistoryError] = useState('');
   const [historyRetry, setHistoryRetry] = useState(0);
   const [notice, setNotice] = useState('');
+  const [inspection, setInspection] = useState<{ path: string; date: string } | null>(null);
   const discoveryPath = `/api/v1/cftc/company-context?${new URLSearchParams({ ticker, ...(asOf ? { asOf } : {}) })}`;
 
   useEffect(() => {
@@ -69,16 +70,19 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
   }, [historyPath, historyRetry, contract, group, family, window]);
 
   const chart = useMemo(() => cftcContextChart(history?.history || []), [history]);
-  const weekly = useMemo(() => cftcPositionChange(history), [history]);
+  const inspectedDate = mode === 'risk' && inspection?.path === historyPath ? inspection.date : history?.selected?.reportDate;
+  const inspectedPoint = history?.history?.find(point => point.reportDate === inspectedDate);
+  const inspectedHistory = useMemo(() => history ? { ...history, selected: { ...history.selected, reportDate: inspectedDate } } : null, [history, inspectedDate]);
+  const weekly = useMemo(() => cftcPositionChange(inspectedHistory), [inspectedHistory]);
   const fourWeeks = useMemo(() => cftcPositionChange(history, 4), [history]);
   const thirteenWeeks = useMemo(() => cftcPositionChange(history, 13), [history]);
   const selected = history?.selected;
-  const values = selected?.selectedGroup;
+  const values = mode === 'risk' ? inspectedPoint : selected?.selectedGroup;
   const marketPath = history ? `/market?${new URLSearchParams({ tab: 'positioning', family, contract, group, date: selected.reportDate, history: window, display: 'net-oi' })}` : '';
   const note = history ? cftcCompanyResearchNote({ ticker, companyName, candidate, history, asOf }) : '';
-  function choose(id: string) { setChoice(id); setGroupOverride(''); setNotice(''); setHistoryError(''); }
+  function choose(id: string) { setChoice(id); setGroupOverride(''); setNotice(''); setHistoryError(''); setInspection(null); }
   function retryDiscovery() { clearPreparedCftc(discoveryPath); setDiscoveryRetry(value => value + 1); }
-  function retryHistory() { clearPreparedCftc(historyPath); setHistoryRetry(value => value + 1); }
+  function retryHistory() { clearPreparedCftc(historyPath); setInspection(null); setHistoryRetry(value => value + 1); }
 
   return <section className={s.root} data-mode={mode} aria-label={`${ticker} CFTC market context`}>
     <header className={s.hero}>
@@ -97,26 +101,26 @@ function Context({ ticker, companyName, asOf = '', mode = 'analysis', onOpenScen
       {discovery?.coverage && <details className={s.coverage}><summary>Evidence coverage and limits</summary><p>{discovery.coverage.filingsScanned || 0} annual filings scanned · {fmt(discovery.coverage.textCharactersScanned)} text characters checked{discovery.coverage.historyLimited ? ' · Filing-history search was limited' : ''}{discovery.coverage.textTruncated ? ' · Filing text was truncated' : ''}.</p>{(discovery.limitations || []).map((item: string, i: number) => <p key={i}>{item}</p>)}</details>}
     </div>
     {contract && <div className={s.observations}>
-      <div className={s.sectionTitle}><div><span className={s.step}>02 / Market observations</span><h3>{label}</h3><p>{familyConfig?.label} · Code {contract}</p></div><div className={s.controls}><label>Trader category<select value={group} onChange={event => { setGroupOverride(event.target.value); setNotice(''); }}>{familyConfig?.groups.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>Comparison history<select value={window} onChange={event => { setWindow(event.target.value); setNotice(''); }}><option value="1y">52 prior reports</option><option value="3y">156 prior reports</option><option value="5y">260 prior reports</option></select></label></div></div>
+      <div className={s.sectionTitle}><div><span className={s.step}>02 / Market observations</span><h3>{label}</h3><p>{familyConfig?.label} · Code {contract}</p></div><div className={s.controls}><label>Trader category<select value={group} onChange={event => { setGroupOverride(event.target.value); setNotice(''); setInspection(null); }}>{familyConfig?.groups.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>Comparison history<select value={window} onChange={event => { setWindow(event.target.value); setNotice(''); setInspection(null); }}><option value="1y">52 prior reports</option><option value="3y">156 prior reports</option><option value="5y">260 prior reports</option></select></label></div></div>
       {historyPending && <p className={s.loading} role="status"><Loader2 size={16} className={s.spin} /> Loading {label} positioning…</p>}
       {historyError && <div className={s.warning} role="alert"><p>{historyError}</p><button type="button" onClick={retryHistory}><RefreshCw size={14} />Retry CFTC data</button></div>}
       {history && !historyPending && !historyError && <>
-        <div className={s.dates}><span>Positions as of <b>{selected.reportDate}</b></span><span>Retrieved <b>{retrieved(history.retrieved_at)}</b></span><span>Report age <b>{history.freshness?.source_report_age_days ?? 'Unknown'} days</b></span><span>{selected.exchange}</span></div>
+        <div className={s.dates}><span>Positions as of <b>{inspectedDate}</b></span><span>Retrieved <b>{retrieved(history.retrieved_at)}</b></span><span>Latest report age <b>{history.freshness?.source_report_age_days ?? 'Unknown'} days</b></span><span>{selected.exchange}</span></div>
         {(history.status !== 'ready' || history.freshness?.source_currency === 'aged' || String(history.freshness?.cache_status).startsWith('stale')) && <p className={s.warning}><b>{history.status === 'stale' || String(history.freshness?.cache_status).startsWith('stale') ? 'Last successful snapshot.' : 'Coverage or freshness needs review.'}</b> {history.refresh_warning || `Response status: ${history.status}. Some observations may be missing or older than expected.`}</p>}
         <div className={s.metrics}>
           <div><span>Net / open interest</span><strong>{pct(values?.netPctOi)}</strong><small>{signed(values?.net)} net contracts</small></div>
-          <div><span>Weekly change in net / OI</span><strong>{signed(selected.oneWeekNetPctChange, 2)}</strong><small>Percentage points · exact 7-day comparison</small></div>
-          <div><span>{history.percentile?.required}-report percentile</span><strong>{pct(history.percentile?.value)}</strong>{mode === 'risk' && finite(history.percentile?.value) && history.percentile.value >= 0 && history.percentile.value <= 100 && <div className={s.rank} role="img" aria-label={`${pct(history.percentile.value)} historical positioning rank on a zero to one hundred scale, not a company risk score`}><i style={{ left: `${history.percentile.value}%` }} /></div>}<small>{history.percentile?.observations}/{history.percentile?.required} valid prior observations{mode === 'risk' ? ' · positioning rank, not company risk' : ''}</small></div>
-          <div><span>Market open interest</span><strong>{fmt(selected.openInterest)}</strong><small>Outstanding futures contracts</small></div>
+          <div><span>Weekly change in net / OI</span><strong>{signed(mode === 'risk' ? weekly.available ? weekly.netPctChange : null : selected.oneWeekNetPctChange, 2)}</strong><small>Percentage points · exact 7-day comparison</small></div>
+          <div><span>{history.percentile?.required}-report percentile · {selected.reportDate}</span><strong>{pct(history.percentile?.value)}</strong>{mode === 'risk' && finite(history.percentile?.value) && history.percentile.value >= 0 && history.percentile.value <= 100 && <div className={s.rank} role="img" aria-label={`${pct(history.percentile.value)} historical positioning rank on a zero to one hundred scale, not a company risk score`}><i style={{ left: `${history.percentile.value}%` }} /></div>}<small>{history.percentile?.observations}/{history.percentile?.required} valid prior observations{mode === 'risk' ? ' · positioning rank, not company risk' : ''}</small></div>
+          <div><span>Market open interest</span><strong>{fmt(mode === 'risk' ? inspectedPoint?.openInterest : selected.openInterest)}</strong><small>Outstanding futures contracts</small></div>
         </div>
-        {mode === 'risk' ? <CftcPositioningVisuals history={history} onGroupChange={value => { setGroupOverride(value); setNotice(''); }} /> : <><div className={s.chartReview}>
+        {mode === 'risk' ? <CftcPositioningVisuals history={history} onGroupChange={value => { setGroupOverride(value); setNotice(''); setInspection(null); }} onReportInspect={date => setInspection({ path: historyPath, date })} /> : <><div className={s.chartReview}>
           <div className={s.chartPanel}><h3>{values?.label} · Net / open interest</h3><p className={s.note}>Each observation uses that report’s open interest. Gaps remain visible.</p>{chart ? <svg className={s.chart} viewBox="0 0 680 210" role="img" aria-label={`Net position as a percentage of open interest, ${chart.count} observations from ${chart.start} to ${chart.end}. The full numeric history follows below.`}><line x1="48" x2="640" y1={chart.zeroY} y2={chart.zeroY} className={s.zeroLine} />{chart.paths.map((path, i) => <path key={i} d={path} />)}{chart.dots.map(dot => <circle key={dot.date} cx={dot.x} cy={dot.y} r="1.7"><title>{dot.date}: {dot.value.toFixed(2)}%</title></circle>)}<text x="4" y="40">{chart.max.toFixed(1)}%</text><text x="4" y="174">{chart.min.toFixed(1)}%</text><text x="48" y="202">{chart.start}</text><text x="560" y="202">{chart.end}</text></svg> : <p className={s.empty}>At least two compatible observations are needed to draw the chart.</p>}</div>
           <aside className={s.review}><span className={s.step}>What changed?</span><h3>Separate longs from shorts</h3><p>{weekly.available ? weekly.explanation : weekly.reason}</p>{weekly.available && <dl><div><dt>Change in reported longs</dt><dd>{signed(weekly.longChange)}</dd></div><div><dt>Change in reported shorts</dt><dd>{signed(weekly.shortChange)}</dd></div><div><dt>Net change: longs − shorts</dt><dd>{signed(weekly.netChange)}</dd></div></dl>}<p className={s.note}>Changes describe outstanding positions, not cash flows or the reasons traders held them.</p></aside>
         </div>
         <div className={s.horizons}>{[[fourWeeks, 'Four weeks'], [thirteenWeeks, 'Thirteen weeks']].map(([value, name]: any) => <div key={name}><b>{name}</b><span>{value.available ? `${signed(value.netChange)} net contracts` : 'Comparison unavailable'}</span><small>{value.available ? `${signed(value.netPctChange, 2)} percentage points in net / OI` : value.reason}</small></div>)}</div></>}
         <div className={s.question}><span className={s.step}>03 / Your next research question</span><p>{candidate?.reviewQuestion || (mode === 'risk' ? 'Does this market relate to a disclosed funding, input-cost, currency, or collateral risk? Verify the connection in the company’s filings before using it in your review.' : 'Which disclosed business driver could make this market relevant to the company? Review the filing before linking these aggregate positions to company results.')}</p></div>
         <div className={s.actions}>
-          <a className={s.button} href={marketPath}>Explore this CFTC market<ArrowUpRight size={14} /></a>
+          <a className={s.button} href={marketPath}>Explore latest CFTC market<ArrowUpRight size={14} /></a>
           {onSaveNote && <button type="button" onClick={() => { onSaveNote(note); setNotice('Dated CFTC context added to your analysis notebook draft.'); }}><BookOpen size={14} />Add to notebook</button>}
           {onOpenScenario && <button type="button" onClick={() => onOpenScenario({ label, contract, family, reportDate: selected.reportDate, summary: note, marketPath })}><FlaskConical size={14} />Use as scenario context</button>}
           <button type="button" onClick={() => { downloadText(`${ticker}-cftc-context-${selected.reportDate}.md`, note, 'text/markdown'); setNotice('Research note exported with separate SEC and CFTC source dates.'); }}><Download size={14} />Research note</button>
