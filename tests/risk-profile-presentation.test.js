@@ -150,7 +150,7 @@ test('broker-dealers, lenders and agents receive financial-service context witho
     assert.equal(p.zScore, null, String(sic));
     assert.ok(!p.metrics.some((metric) => ['loans_deposits', 'loss_ratio', 'interest_coverage'].includes(metric.id)), String(sic));
     assert.ok(p.metrics.filter((metric) => ['liab_to_assets', 'current_ratio', 'net_margin'].includes(metric.id)).every((metric) => metric.zone.level === 'info'), String(sic));
-    assert.equal(buildRiskProfilePresentation(p, { sic }).lens.id, 'financial');
+    assert.equal(buildRiskProfilePresentation(p, { sic }).lens.id, sic === 6211 ? 'broker' : 'financial');
   }
   assert.equal(classifyRiskIndustry(6712).isBank, true);
   assert.equal(classifyRiskIndustry(6311).isInsurer, true);
@@ -201,7 +201,31 @@ test('brief exports the new profile and sources without retired stress scenarios
   const brief = riskProfileBrief({ ticker: 'TEST', companyName: 'Test Company', sic: '3571', generatedAt: '2026-09-18T00:00:00Z' }, p);
   assert.match(brief, /Company risk profile/);
   assert.match(brief, /2025-12-31/);
-  assert.match(brief, /Supporting observations/);
+  assert.match(brief, /Financial risk dimensions/);
+  assert.doesNotMatch(brief, /Supporting observations|Questions for your review/);
   assert.match(brief, /https:\/\/www.sec.gov\/Archives/);
   assert.doesNotMatch(brief, /Illustrative stress scenario|Altman|Beneish|Zmijewski/);
+});
+
+
+test('bank CAMELS research framework keeps management qualitative and distinct from computed ratios', () => {
+  const p = profile({}, 6021);
+  const view = buildRiskProfilePresentation(p, { sic: '6021' });
+  assert.deepEqual(view.dimensions.map(d => d.id), ['capital','credit','management','earnings','funding','sensitivity']);
+  const management = view.dimensions.find(d => d.id === 'management');
+  assert.equal(management.metric, null);
+  assert.deepEqual(management.history, []);
+  assert.match(management.question, /no management score/);
+  assert.match(view.lens.description, /not a supervisory rating/);
+});
+
+test('broker lens prioritizes asset quality and firm liquidity while advisers keep the broader finance lens', () => {
+  for (const sic of [6211, 6221]) {
+    const view = buildRiskProfilePresentation(profile({}, sic), { sic: String(sic) });
+    assert.equal(view.lens.id, 'broker');
+    assert.deepEqual(view.dimensions.map(d => d.id), ['assets','liquidity','capital','earnings']);
+    assert.match(view.dimensions[1].question, /segregated customer assets/);
+    assert.equal('score' in view, false);
+  }
+  assert.equal(buildRiskProfilePresentation(profile({}, 6282), { sic: '6282' }).lens.id, 'financial');
 });

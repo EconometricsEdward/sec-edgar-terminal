@@ -71,6 +71,7 @@ function seriesOf(row, periods) {
       fp: periods[i]?.fp,
       kind: periods[i]?.kind,
       end: periods[i]?.end ?? null,
+      start: v.observationPeriod?.start ?? v.source?.start ?? null,
       value: v.value != null && Number.isFinite(v.value) ? v.value : null,
       sources: v.sources || (v.source ? [v.source] : []),
       calculations: evidenceCalculations(v),
@@ -374,6 +375,7 @@ export function classifyRiskIndustry(sicCode) {
   const sic = Number.parseInt(sicCode, 10) || 0;
   const isBank = (sic >= 6000 && sic <= 6089) || sic === 6712;
   const isInsurer = sic >= 6300 && sic <= 6399;
+  const isBrokerDealer = sic === 6211 || sic === 6221;
   const otherFinancial = (sic >= 6090 && sic <= 6299) || (sic >= 6400 && sic <= 6499)
     || (sic >= 6720 && sic <= 6739) || sic === 6799;
   const isFinancial = isBank || isInsurer || otherFinancial;
@@ -381,8 +383,8 @@ export function classifyRiskIndustry(sicCode) {
   const group = isBank ? INDUSTRY_GROUPS.BANKING : isInsurer ? INDUSTRY_GROUPS.INSURANCE
     : otherFinancial ? 'financial_services'
       : broadGroup === INDUSTRY_GROUPS.REIT && sic !== 6798 ? INDUSTRY_GROUPS.GENERAL : broadGroup;
-  const label = otherFinancial ? 'Financial services' : sic >= 6500 && sic <= 6599 ? 'Real estate' : industryLabel(group);
-  return { group, label, isBank, isInsurer, isFinancial };
+  const label = isBrokerDealer ? 'Broker-dealer' : otherFinancial ? 'Financial services' : sic >= 6500 && sic <= 6599 ? 'Real estate' : industryLabel(group);
+  return { group, label, isBank, isInsurer, isBrokerDealer, isFinancial };
 }
 
 /**
@@ -391,7 +393,7 @@ export function classifyRiskIndustry(sicCode) {
  */
 export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
   const industry = classifyRiskIndustry(sicCode);
-  const { group, isBank, isInsurer, isFinancial } = industry;
+  const { group, isBank, isInsurer, isBrokerDealer, isFinancial } = industry;
 
   const allPeriods = basis === 'ttm' ? withPeriodKind(extractQuarterlyPeriods(facts), 'ttm') : extractAnnualPeriods(facts);
   const periods = allPeriods.slice(0, MAX_YEARS);
@@ -416,6 +418,18 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     return { ...row, values: row.values.map((p) => ({ ...p, label })) };
   };
   const taggedRow = (tags, label) => ({ key: label, label, values: periods.map((p) => ({ period: p, label, ...(selectFinancialFact(facts, tags, p, 'USD') || { value: null }) })) });
+  // The selector supports both instant and duration facts. New cash-payment
+  // rows must explicitly be full-year/TTM flows, never a same-date balance.
+  const fundingFlow = (tags, label, nonnegative = false) => {
+    const row = taggedRow(tags, label);
+    return { ...row, values: row.values.map((point) => {
+      const start = point.observationPeriod?.start || point.source?.start;
+      const days = start ? (Date.parse(point.period.end) - Date.parse(start)) / 86400000 + 1 : 0;
+      const valid = Number.isFinite(point.value) && (!nonnegative || point.value >= 0)
+        && days >= 300 && days <= 400 && point.source?.end === point.period.end;
+      return valid ? point : { ...point, value: null };
+    }) };
+  };
 
   const rows = {
     totalAssets: R('totalAssets', 'Total assets'),
@@ -441,6 +455,11 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     sga: R('sga', 'SG&A expense'),
     goodwill: R('goodwill', 'Goodwill'),
     intangibles: R('intangibles', 'Intangibles'),
+    capitalExpenditure: fundingFlow(['PaymentsToAcquirePropertyPlantAndEquipment'], 'Cash capital expenditure', true),
+    // Total cash dividends only. Common-stock-only dividends can omit a
+    // preferred distribution and must not silently stand for the total.
+    dividendsPaid: fundingFlow(['PaymentsOfDividends'], 'Cash dividends paid', true),
+    cashInterestPaid: fundingFlow(['InterestPaidNet', 'InterestPaid'], 'Cash interest paid', true),
   };
   // Share the total-revenue and annual-context safeguards used by Market. Fee
   // revenue alone is not a bank/broker's net revenue, and a rental REIT's ASC
@@ -494,10 +513,44 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
       return narrow.values[i];
     }) };
   }
+  if (isBrokerDealer) {
+    // Customer reserve and segregated balances are shown separately. They
+    // cannot fund the parent's creditors and are never added to usable cash.
+    rows.cash = debtRow(['CashAndCashEquivalentsAtCarryingValue'], 'Cash and equivalents');
+    const brokerTags = {
+      brokerReceivables: [['ReceivablesFromBrokersDealersAndClearingOrganizations'], 'Broker and clearing receivables'],
+      brokerPayables: [['PayablesToBrokerDealersAndClearingOrganizations'], 'Broker and clearing payables'],
+      customerReceivables: [['ReceivablesFromCustomers'], 'Customer receivables'],
+      customerPayables: [['PayablesToCustomers'], 'Customer payables'],
+      securitiesBorrowed: [['SecuritiesBorrowed'], 'Securities borrowed'],
+      securitiesLoaned: [['SecuritiesLoaned'], 'Securities loaned'],
+      reverseRepos: [['SecuritiesPurchasedUnderAgreementsToResell'], 'Reverse repurchase agreements'],
+      repos: [['SecuritiesSoldUnderAgreementsToRepurchase'], 'Repurchase agreements'],
+      financialInstrumentsOwned: [['FinancialInstrumentsOwnedAtFairValue'], 'Financial instruments owned, fair value'],
+      segregatedAssets: [['CashAndSecuritiesSegregatedUnderFederalAndOtherRegulations'], 'Cash and securities segregated under regulations'],
+    };
+    for (const [key, [tags, label]] of Object.entries(brokerTags)) {
+      const primary = debtRow(tags, label);
+      rows[key] = { ...primary, values: periods.map((p, i) => {
+        if (primary.values[i].value != null) return primary.values[i];
+        // Some broker concepts moved to the SEC-recognized SRT taxonomy.
+        // Preserve that exact namespace; do not accept arbitrary extensions.
+        const srt = selectFinancialFact({ 'us-gaap': facts?.srt }, tags, p, 'USD');
+        if (!srt || !Number.isFinite(srt.value) || srt.value < 0 || srt.source?.start || srt.source?.end !== p.end) return primary.values[i];
+        return { ...srt, period: p, label, source: { ...srt.source, taxonomy: 'srt' },
+          sources: srt.sources.map((source) => ({ ...source, taxonomy: 'srt' })) };
+      }) };
+    }
+    rows.consolidatedEquity = taggedRow(['StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest', 'StockholdersEquity'], 'Book equity including noncontrolling interests when reported');
+  }
   const stressKeys = ['totalAssets', 'equity', 'cash', 'operatingIncome', 'interestExpense'];
   const stressInputs = Object.fromEntries(stressKeys.map((key) => [key, { value: latestPoint(rows[key])?.value ?? null, formula: latestPoint(rows[key])?.formula || latestPoint(rows[key])?.label || 'Unavailable', sources: sourcesOf(cik, latestPoint(rows[key])) }]));
 
   const metrics = [];
+  const contextMetric = (id, label, pillar, numerator, denominator, note, format = 'pct') => makeMetric({
+    id, label, pillar, format, row: ratioRows(numerator, denominator, label, periods), periods, cik,
+    bands: null, why: note, note,
+  });
 
   // ---------- shared pillar: capital structure ----------
   const totalDebt = sumRows([rows.longTermDebt, rows.shortTermDebt], 'Total debt', periods);
@@ -529,6 +582,12 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     const htmAC = R('htmSecuritiesAmortizedCost', 'HTM amortized cost');
     const htmFV = R('htmSecuritiesFairValue', 'HTM fair value');
     const nibRow = R('noninterestBearingDeposits', 'Noninterest-bearing deposits');
+    Object.assign(rows, { loans: loansNet, allowance, provision, nonaccrualLoans: npl, deposits,
+      grossLoans, htmCarrying: htmAC, htmFairValue: htmFV, noninterestDeposits: nibRow,
+      netInterestIncome: fundingFlow(['InterestIncomeExpenseNet'], 'Net interest income'),
+      noninterestIncome: fundingFlow(['NoninterestIncome'], 'Noninterest income'),
+      noninterestExpense: fundingFlow(['NoninterestExpense'], 'Noninterest expense', true),
+    });
     const htmUnrealizedRow = {
       key: 'htmUnrealized', label: 'HTM unrealized', format: 'currency',
       values: periods.map((p, i) => {
@@ -561,6 +620,17 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     const texasDenomRow = sumRows([tangibleEquityRow, allowance], 'Tangible equity + ACL', periods);
     const texasRow = ratioRows(npl, texasDenomRow, 'Texas ratio', periods);
     const nibShareRow = ratioRows(nibRow, deposits, 'NIB / deposits', periods);
+
+    metrics.push(
+      contextMetric('bank_earnings_assets', 'Net income / ending assets', 'profitability', rows.netIncome, rows.totalAssets,
+        'Annual or TTM reported net income divided by ending total assets. This uses ending assets, not the average-assets denominator of return on assets; parent-attributable earnings may differ from consolidated income.'),
+      contextMetric('bank_allowance_nonaccrual', 'Allowance / nonaccrual loans', 'credit', allowance, npl,
+        'Allowance divided by consolidated nonaccrual loans. Portfolio composition, expected future losses and scope affect interpretation; a zero or unavailable nonaccrual denominator is not assigned infinite coverage.', 'x'),
+      contextMetric('bank_cash_deposits', 'Tagged cash / deposits', 'liquidity', rows.cash, deposits,
+        'Tagged cash divided by deposits at the same balance date. Deposits at other banks, securities, borrowing capacity, uninsured balances and encumbrances require separate evidence.'),
+      contextMetric('bank_htm_gap_equity', 'HTM valuation gap / book equity', 'capital', htmUnrealizedRow, rows.equity,
+        'HTM fair value less carrying value divided by positive book equity. This is a before-tax valuation comparison; it does not include hedges, tax effects or regulatory capital adjustments.'),
+    );
 
     metrics.push(
       makeMetric({
@@ -632,6 +702,23 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
         why: 'Noninterest-bearing balances are cheap funding, but they are typically corporate operating accounts that can exceed insurance limits \u2014 a high share cuts funding costs while concentrating run risk, so the trend matters more than the level.',
         note: latestPoint(nibShareRow) ? null : 'Noninterest-bearing deposits not tagged separately by this filer.',
       }),
+    );
+  }
+
+  if (isBrokerDealer) {
+    for (const [id, label, numerator] of [
+      ['broker_receivables_assets', 'Customer receivables / assets', rows.customerReceivables],
+      ['broker_clearing_assets', 'Broker and clearing receivables / assets', rows.brokerReceivables],
+      ['broker_securities_borrowed_assets', 'Securities borrowed / assets', rows.securitiesBorrowed],
+      ['broker_financial_instruments_assets', 'Financial instruments owned / assets', rows.financialInstrumentsOwned],
+      ['broker_repos_assets', 'Repurchase agreements / assets', rows.repos],
+    ]) metrics.push(contextMetric(id, label, 'credit', numerator, rows.totalAssets,
+      'Reported balance divided by total assets. This shows balance-sheet concentration, not credit loss, collateral quality, settlement netting or freely usable liquidity. Missing custom or dimensional facts remain unavailable.'));
+    metrics.push(
+      contextMetric('broker_cash_liabilities', 'Cash / liabilities', 'liquidity', rows.cash, rows.totalLiabilities,
+        'Cash and equivalents divided by total liabilities. Separately segregated customer cash and securities are excluded; this does not establish customer-reserve compliance, liquidity adequacy or regulatory net capital.'),
+      contextMetric('broker_equity_assets', latestPoint(rows.consolidatedEquity)?.source?.tag === 'StockholdersEquity' ? 'Parent book equity / consolidated assets' : 'Consolidated book equity / assets', 'capital', rows.consolidatedEquity, rows.totalAssets,
+        'Book equity including noncontrolling interests when separately reported, otherwise parent book equity, divided by consolidated assets. The exact tag identifies each historical observation. This accounting ratio is not regulatory net capital and does not deduct illiquid assets or collateral haircuts.'),
     );
   }
 
@@ -956,12 +1043,29 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
   // conversion ratios are inappropriate. Expose the already-loaded rows with
   // their exact annual/TTM evidence instead of depending on a ratio's inputs.
   const flowHistory = (row) => seriesOf(row, periods).reverse().map((point) => ({ ...point, sources: sourcesOf(cik, point) }));
-  const reportedFlows = { netIncome: flowHistory(rows.netIncome), operatingCashFlow: flowHistory(rows.ocf) };
+  const reportedFlows = Object.fromEntries(Object.entries({
+    netIncome: rows.netIncome, operatingCashFlow: rows.ocf, operatingIncome: rows.operatingIncome,
+    interestExpense: rows.interestExpense, revenue: rows.revenue,
+    capitalExpenditure: rows.capitalExpenditure, dividendsPaid: rows.dividendsPaid, cashInterestPaid: rows.cashInterestPaid,
+    provision: rows.provision, netInterestIncome: rows.netInterestIncome,
+    noninterestIncome: rows.noninterestIncome, noninterestExpense: rows.noninterestExpense,
+  }).filter(([, row]) => row).map(([key, row]) => [key, flowHistory(row)]));
   const reportedBalances = Object.fromEntries(Object.entries({
     currentDebt: rows.shortTermDebt, noncurrentDebt: rows.longTermDebt, totalDebt, cash: rows.cash,
     currentMarketableSecurities: rows.currentMarketableSecurities,
     noncurrentMarketableSecurities: rows.noncurrentMarketableSecurities,
-  }).map(([key, row]) => [key, flowHistory(row)]));
+    totalAssets: rows.totalAssets, totalLiabilities: rows.totalLiabilities, equity: rows.equity,
+    currentAssets: rows.currentAssets, currentLiabilities: rows.currentLiabilities,
+    loans: rows.loans, grossLoans: rows.grossLoans, allowance: rows.allowance, nonaccrualLoans: rows.nonaccrualLoans,
+    deposits: rows.deposits, noninterestDeposits: rows.noninterestDeposits,
+    htmCarrying: rows.htmCarrying, htmFairValue: rows.htmFairValue,
+    brokerReceivables: rows.brokerReceivables, brokerPayables: rows.brokerPayables,
+    customerReceivables: rows.customerReceivables, customerPayables: rows.customerPayables,
+    securitiesBorrowed: rows.securitiesBorrowed, securitiesLoaned: rows.securitiesLoaned,
+    repos: rows.repos, reverseRepos: rows.reverseRepos,
+    financialInstrumentsOwned: rows.financialInstrumentsOwned, segregatedAssets: rows.segregatedAssets,
+    consolidatedEquity: rows.consolidatedEquity,
+  }).filter(([, row]) => row).map(([key, row]) => [key, flowHistory(row)]));
 
   return {
     basis,

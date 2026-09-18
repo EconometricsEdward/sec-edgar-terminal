@@ -100,7 +100,7 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
     </div>
     {isFcm && <FcmCapitalPanel initialEntity={initialEntity} />}
     {isCftc && query && <div className={s.marketContext}><CompanyCftcContext key={query} ticker={query} companyName={visibleData?.companyName} mode="risk" /></div>}
-    {isExposures && query && <CompanyExposureMap key={`${query}:${retry}`} ticker={query} asOf={exposureAsOf} onAsOfChange={changeExposureAsOf} />}
+    {isExposures && query && <CompanyExposureMap key={`${query}:${retry}:${basis}`} ticker={query} basis={basis} asOf={exposureAsOf} onAsOfChange={changeExposureAsOf} />}
     {!independent && loading && <div className={s.loading} role="status"><Loader2 className={s.spin} size={24} /><h2>Reading {query}’s financial position</h2><p>Matching reporting periods and tracing SEC source inputs.</p><div className={s.skeletons}>{[1,2,3,4].map(n => <span key={n} />)}</div></div>}
     {!independent && error && <div className={s.empty} role="alert"><CircleAlert /><h2>We couldn’t load this company</h2><p>{error}</p><button className={s.button} onClick={() => setRetry(n => n + 1)}>Try again</button></div>}
     {!isFcm && !query && <section className={s.riskLanding}>
@@ -114,11 +114,12 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
       </section>
       <div className={s.freshness}><span>{period ? `${riskPeriodLabel(period)} · Period ended ${period.end} · Filed ${period.filed || 'date unavailable'}` : 'No compatible reporting periods'}</span><span>{basis === 'ttm' ? 'Quarter-end balances · Trailing 12-month flows' : 'Fiscal-year-end balances · Annual flows'}</span><span>Retrieved {new Date(visibleData.generatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</span></div>
       {age != null && age > (basis === 'ttm' ? 180 : 550) && <div className={s.notice}><CircleAlert size={17} /> The latest available period ended {age} days before retrieval. Check for newer or untagged filings.</div>}
-      <RiskProfileOverview data={visibleData} profile={profile} onInspect={inspect} onExposures={cftcEnabled ? () => changeTab('exposures') : undefined} />
-      <div ref={explorerRef} className={s.workspace}>
-        <div className={s.explorerHeading}><div><div className={s.eyebrow}>Go to the evidence</div><h2>Inspect a metric, period by period.</h2></div><button className={s.button} aria-expanded={explorerOpen} aria-controls="risk-metric-evidence" onClick={() => setExplorerOpen(!explorerOpen)}>{explorerOpen ? 'Close metric explorer' : 'Explore all metrics'}<Compass size={16}/></button></div>
-        {explorerOpen && <div id="risk-metric-evidence"><MetricExplorer key={`${visibleData.ticker}:${basis}:${inspectVersion}`} data={visibleData} profile={profile} selected={selected} onSelect={setSelected} pillar={pillar} onPillar={setPillar} onlyMissing={onlyMissing} onOnlyMissing={setOnlyMissing} /></div>}
-      </div>
+      <RiskProfileOverview data={visibleData} profile={profile} onInspect={inspect} cftcEnabled={cftcEnabled} asOf={exposureAsOf} onExposures={cftcEnabled ? () => changeTab('exposures') : undefined} metricExplorer={
+        <div ref={explorerRef} className={s.workspace}>
+          <div className={s.explorerHeading}><div><div className={s.eyebrow}>Inspect the numbers</div><h2>Inspect a metric, period by period.</h2></div><button className={s.button} aria-expanded={explorerOpen} aria-controls="risk-metric-evidence" onClick={() => setExplorerOpen(!explorerOpen)}>{explorerOpen ? 'Close metric explorer' : 'Explore all metrics'}<Compass size={16}/></button></div>
+          {explorerOpen && <div id="risk-metric-evidence"><MetricExplorer key={`${visibleData.ticker}:${basis}:${inspectVersion}`} data={visibleData} profile={profile} selected={selected} onSelect={setSelected} pillar={pillar} onPillar={setPillar} onlyMissing={onlyMissing} onOnlyMissing={setOnlyMissing} /></div>}
+        </div>
+      } />
       <footer className={s.footer}><ShieldCheck size={16}/><p>SEC financial statements describe reported conditions. Screens are research prompts, not credit ratings or default probabilities. Missing figures are not treated as zero. <a href={`/api/risk?ticker=${encodeURIComponent(visibleData.ticker)}&v=${RISK_VERSION}`} target="_blank" rel="noreferrer">View source data</a></p></footer>
     </>}
   </div>;

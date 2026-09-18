@@ -52,14 +52,14 @@ function validPayload(value: unknown): value is ExposureMap {
       && row.evidence.every(evidence => typeof evidence.text === 'string' && typeof evidence.url === 'string' && Array.isArray(evidence.amounts)));
 }
 
-export default function CompanyExposureMap({ ticker, asOf = '', onAsOfChange }: { ticker: string; asOf?: string; onAsOfChange: (value: string) => void }) {
+export default function CompanyExposureMap({ ticker, asOf = '', basis = 'ttm', onAsOfChange }: { ticker: string; asOf?: string; basis?: string; onAsOfChange: (value: string) => void }) {
   const [data, setData] = useState<ExposureMap | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
-  const [sourceRole, setSourceRole] = useState('all');
+  const [sourceRole, setSourceRole] = useState(basis === 'annual' ? 'annual' : 'all');
   const [selectedId, setSelectedId] = useState('');
   const [draftAsOf, setDraftAsOf] = useState(asOf);
   const [exported, setExported] = useState('');
@@ -113,7 +113,7 @@ export default function CompanyExposureMap({ ticker, asOf = '', onAsOfChange }: 
     </header>
 
     {asOf && <div className={s.notice}><CalendarDays size={17} /><p><strong>Historical SEC evidence through {dateLabel(asOf)}.</strong> CFTC panels show separately dated market observations available now; they can postdate this cutoff. This is not a reconstruction of information available on that historical date.</p></div>}
-    <RiskNoteEvidence ticker={ticker} asOf={asOf} />
+    <RiskNoteEvidence ticker={ticker} asOf={asOf} basis={basis} />
     {loading && <div className={s.loading} role="status"><Loader2 size={24} className={s.spin} /><div><h3>Tracing {ticker}’s market exposures</h3><p>Reading eligible filings and connecting passages to business channels. This can take about a minute on the first request.</p></div></div>}
     {error && <div className={s.empty} role="alert"><CircleAlert size={25} /><h3>The exposure map could not be loaded</h3><p>{error}</p><button onClick={() => setRetry(value => value + 1)}>Retry filing review</button></div>}
 
