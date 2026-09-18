@@ -458,9 +458,28 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
   }) };
   const revenueBasis = rows.revenue.values[0]?.label;
   rows.revenue.label = revenueBasis || 'Revenue';
-  // Separate current and noncurrent debt concepts prevent overlapping totals.
-  rows.longTermDebt = taggedRow(['LongTermDebtNoncurrent'], 'Noncurrent debt');
-  rows.shortTermDebt = taggedRow(['DebtCurrent'], 'Current debt');
+  // DebtCurrent includes current maturities and short-term borrowings. Some
+  // filers (including Apple) instead report these as separate balance-sheet
+  // lines. Prefer the aggregate; never add its components a second time.
+  // ShortTermBorrowings includes commercial paper, so those are alternatives.
+  // LongTermDebt includes current maturities and is NOT a noncurrent fallback.
+  const debtRow = (tags, label) => {
+    const row = taggedRow(tags, label);
+    return { ...row, values: row.values.map((point) => {
+      const valid = point.value != null && Number.isFinite(point.value) && point.value >= 0
+        && point.source?.end === point.period.end && !point.source?.start;
+      return valid ? point : { ...point, value: null };
+    }) };
+  };
+  rows.longTermDebt = debtRow(['LongTermDebtNoncurrent'], 'Noncurrent debt');
+  const currentDebt = debtRow(['DebtCurrent'], 'Current debt');
+  const currentTermDebt = debtRow(['LongTermDebtCurrent'], 'Current portion of long-term debt');
+  const shortTermBorrowings = debtRow(['ShortTermBorrowings', 'CommercialPaper'], 'Short-term borrowings');
+  const combinedCurrentDebt = sumRows([currentTermDebt, shortTermBorrowings], 'Current debt', periods);
+  rows.shortTermDebt = { ...currentDebt, values: periods.map((_, i) =>
+    currentDebt.values[i].value != null ? currentDebt.values[i] : combinedCurrentDebt.values[i]) };
+  rows.currentMarketableSecurities = taggedRow(['MarketableSecuritiesCurrent', 'AvailableForSaleSecuritiesCurrent'], 'Current marketable securities');
+  rows.noncurrentMarketableSecurities = taggedRow(['MarketableSecuritiesNoncurrent', 'AvailableForSaleSecuritiesNoncurrent'], 'Noncurrent marketable securities');
   // Prefer cash excluding tagged restrictions. A narrow bank-cash fallback is
   // explicit; never silently assume that an untagged restriction is zero.
   if (isBank) {
@@ -689,18 +708,18 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
         id: 'interest_coverage', label: 'Interest coverage (EBIT / interest expense)', pillar: 'credit', format: 'x',
         row: interestCoverage, periods, cik, bands: BANDS.interestCoverage,
         why: 'How many times operating profit covers the interest bill. Below ~1.5\u00d7 a company is one weak year from missing payments; above 8\u00d7 debt service is a rounding error.',
-        note: latestPoint(rows.interestExpense) ? null : 'Interest expense is not tagged separately by this filer \u2014 coverage cannot be computed from the facts API.',
+        note: latestPoint(rows.interestExpense) ? null : 'A separate interest-expense amount is unavailable for this reporting window. Cash interest paid and net other income are not substitutes. This gap does not establish low or zero credit risk.',
         extraSources: sourcesOf(cik, latestPoint(rows.interestExpense), latestPoint(rows.operatingIncome)),
       }),
       makeMetric({
         id: 'ocf_to_debt', label: 'Operating cash flow / total debt', pillar: 'credit', format: 'pct',
         row: ocfToDebt, periods, cik, bands: BANDS.ocfToDebt,
         why: 'The repayment test: what share of total debt one year of operating cash flow could retire. Rating agencies lean on this family of ratios. Total debt here sums the tagged short- and long-term debt components.',
-        note: debtLatest ? `Debt components found: ${totalDebt.componentTags.join(', ') || 'none'}.` : 'No tagged debt found \u2014 this filer may be debt-free or tag borrowings under nonstandard concepts.',
+        note: debtLatest ? 'Reported current and noncurrent borrowing balances are included. Lease liabilities and obligations outside these debt tags require separate review.' : 'A complete compatible set of current and noncurrent borrowing balances is unavailable. Missing components are not zero and do not establish that the company is debt-free.',
         extraSources: sourcesOf(cik, latestPoint(rows.ocf), debtLatest),
       }),
       makeMetric({
-        id: 'net_debt', label: 'Net debt (total debt \u2212 cash)', pillar: 'credit', format: 'usd',
+        id: 'net_debt', label: 'Net debt, cash only', pillar: 'credit', format: 'usd',
         row: {
           key: 'netDebt', label: 'Net debt', format: 'currency',
           values: periods.map((p, i) => {
@@ -711,7 +730,7 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
           }),
         },
         periods, cik, bands: null, invertDeltaGood: true,
-        why: 'Debt the business actually has to earn its way out of after netting cash. A multi-year climb in net debt alongside flat earnings is the classic slow-motion credit deterioration.',
+        why: 'Reported current and noncurrent debt less cash and cash equivalents. Marketable securities are shown separately and are not deducted from this cash-only measure.',
         extraSources: sourcesOf(cik, debtLatest, cashLatest),
       }),
     );
@@ -847,10 +866,10 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
         why: 'Near-term assets against obligations due within a year. Below 1.0 deserves attention, though capital-light businesses with negative working-capital models (subscriptions, fast-turn retail) run there deliberately.',
       }),
       makeMetric({
-        id: 'quick_ratio', label: 'Quick ratio (ex-inventory)', pillar: 'liquidity', format: 'x',
+        id: 'quick_ratio', label: 'Current ratio, ex inventory', pillar: 'liquidity', format: 'x',
         row: quickRatio, periods, cik, bands: isFinancial ? null : BANDS.quickRatio,
-        why: 'The stricter test: can near-cash assets alone cover current liabilities without selling a single unit of inventory.',
-        note: hasInventory ? null : 'Inventory is not tagged for this period. The quick ratio is unavailable; missing inventory is not assumed to be zero.',
+        why: 'Current assets less inventory, divided by current liabilities. This still includes other current assets and is not a measure of immediately available cash.',
+        note: hasInventory ? null : 'Inventory is not tagged for this period. The inventory-adjusted current ratio is unavailable; missing inventory is not assumed to be zero.',
       }),
       makeMetric({
         id: 'cash_to_assets', label: 'Cash / assets', pillar: 'liquidity', format: 'pct',
@@ -938,11 +957,17 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
   // their exact annual/TTM evidence instead of depending on a ratio's inputs.
   const flowHistory = (row) => seriesOf(row, periods).reverse().map((point) => ({ ...point, sources: sourcesOf(cik, point) }));
   const reportedFlows = { netIncome: flowHistory(rows.netIncome), operatingCashFlow: flowHistory(rows.ocf) };
+  const reportedBalances = Object.fromEntries(Object.entries({
+    currentDebt: rows.shortTermDebt, noncurrentDebt: rows.longTermDebt, totalDebt, cash: rows.cash,
+    currentMarketableSecurities: rows.currentMarketableSecurities,
+    noncurrentMarketableSecurities: rows.noncurrentMarketableSecurities,
+  }).map(([key, row]) => [key, flowHistory(row)]));
 
   return {
     basis,
     stressInputs,
     reportedFlows,
+    reportedBalances,
     industry,
     periods,
     zScore,

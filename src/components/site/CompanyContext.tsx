@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowUpRight, Building2, ChevronRight, Wallet } from "lucide-react";
@@ -20,9 +20,39 @@ export default function CompanyContext() {
   const entity = entityFromRoute(pathname, params);
   const tool = SITE_TOOLS.find((item) => item.id === activeTool(pathname));
   const [copyStatus, setCopyStatus] = useState("");
+  const bannerRef = useRef<HTMLElement>(null);
+  const hasEntity = Boolean(entity);
   useEffect(() => {
     setCopyStatus("");
   }, [pathname, params]);
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>("[data-site-header]");
+    const banner = bannerRef.current;
+    if (!header) return;
+
+    // Measure wrapping, reading preferences, and browser zoom rather than
+    // assuming that the global header has the same height on every screen.
+    const root = document.documentElement;
+    function measureStack() {
+      const headerHeight = Math.ceil(header!.getBoundingClientRect().height);
+      const bannerHeight = Math.ceil(banner?.getBoundingClientRect().height || 0);
+      root.style.setProperty("--site-header-height", `${headerHeight}px`);
+      root.style.setProperty("--company-context-height", `${bannerHeight}px`);
+      root.style.setProperty("--site-sticky-stack-height", `${headerHeight + bannerHeight + 12}px`);
+    }
+    measureStack();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measureStack);
+    observer?.observe(header);
+    if (banner) observer?.observe(banner);
+    window.addEventListener("resize", measureStack);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measureStack);
+      root.style.removeProperty("--site-header-height");
+      root.style.removeProperty("--company-context-height");
+      root.style.removeProperty("--site-sticky-stack-height");
+    };
+  }, [hasEntity]);
   if (!entity) return null;
 
   const isFiler = entity.kind === "filer";
@@ -56,7 +86,9 @@ export default function CompanyContext() {
 
   return (
     <section
+      ref={bannerRef}
       className={styles.companyContext}
+      data-company-context
       aria-label={`${identityLabel} research context`}
     >
       <div className={styles.contextIdentity}>
@@ -101,7 +133,7 @@ export default function CompanyContext() {
           onClick={share}
           aria-label={`Copy link to this ${identityLabel} research view`}
         >
-          <ArrowUpRight size={13} aria-hidden="true" /> Share view
+          <ArrowUpRight size={13} aria-hidden="true" /> <span className={styles.contextShareLabel}>Share view</span>
         </button>
       </div>
       {copyStatus && (

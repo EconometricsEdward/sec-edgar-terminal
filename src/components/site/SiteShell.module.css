@@ -12,6 +12,9 @@
   color: var(--shell-text);
   -webkit-font-smoothing: antialiased;
 }
+:global(html):has(.shell) {
+  scroll-padding-top: var(--site-sticky-stack-height, 140px);
+}
 :global(html[data-theme-mode="light"]) .shell {
   --shell-bg: #f3f6fa;
   --shell-panel: rgba(250, 252, 255, 0.98);
@@ -145,6 +148,9 @@
   outline-offset: -2px;
 }
 .companyContext {
+  position: sticky;
+  top: var(--site-header-height, 120px);
+  z-index: 30;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -154,7 +160,8 @@
   margin-bottom: 22px;
   border: 1px solid var(--shell-line);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--shell-panel) 90%, transparent);
+  background: var(--shell-bg);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--shell-bg) 80%, transparent);
 }
 .contextIdentity {
   display: flex;
@@ -339,20 +346,40 @@
   }
   .companyContext {
     margin-bottom: 18px;
-    padding: 10px;
+    gap: 5px;
+    padding: 7px 9px;
   }
-  .contextText p {
-    max-width: min(70vw, 390px);
+  .contextIdentity {
+    gap: 7px;
+  }
+  .contextIcon {
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+  }
+  .contextBreadcrumb > a,
+  .contextBreadcrumb > svg:first-of-type,
+  .contextText p,
+  .contextShareLabel {
+    display: none;
+  }
+  .contextBreadcrumb {
+    font-size: 10px;
   }
   .contextActions {
-    gap: 8px;
+    flex-wrap: nowrap;
+    gap: 5px;
   }
   .contextActions nav {
-    flex-wrap: wrap;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
     gap: 2px;
   }
   .contextActions a,
   .contextActions button {
+    flex-shrink: 0;
+    min-height: 36px;
     font-size: 10px;
   }
 }

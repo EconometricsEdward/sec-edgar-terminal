@@ -45,6 +45,7 @@ test('reported zero debt is distinguishable from missing debt and supports an ex
 test('a missing newest input is never filled by an older historical amount', () => {
   const p = profile();
   p.stressInputs.cash.value = null;
+  p.reportedBalances.cash = p.reportedBalances.cash.map((point) => point.end === p.periods[0].end ? { ...point, value: null } : point);
   for (const metric of p.metrics) metric.inputs = metric.inputs.map((item) => /cash/i.test(item.label) ? { ...item, value: null } : item);
   const view = buildRiskProfilePresentation(p);
   assert.equal(view.balance.cash.value, null);
