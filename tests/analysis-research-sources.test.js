@@ -128,6 +128,7 @@ test('reader cancellation during optional filing or predecessor work propagates 
 });
 
 test('valid source coverage gets five minutes; every retryable failure has no stale-while-revalidate extension', () => {
-  for (const filingStatus of ['applied', 'not-needed']) assert.equal(analysisSourceCachePolicy({ sourceCoverage: { filingFallback: { status: filingStatus } } }).ttlSeconds, 300);
-  for (const filingStatus of ['unavailable', 'no-supported-facts']) assert.equal(analysisSourceCachePolicy({ sourceCoverage: { filingFallback: { status: filingStatus } } }).ttlSeconds, 60);
+  for (const filingStatus of ['applied', 'not-needed', 'no-supported-facts']) assert.equal(analysisSourceCachePolicy({ sourceCoverage: { filingFallback: { status: filingStatus } } }).ttlSeconds, 300);
+  assert.equal(analysisSourceCachePolicy({ sourceCoverage: { filingFallback: { status: 'unavailable' } } }).ttlSeconds, 60);
+  assert.equal(analysisSourceCachePolicy({ sourceCoverage: { filingFallback: { status: 'no-supported-facts' }, continuity: { status: 'partial' } } }).ttlSeconds, 60);
 });

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { prepareFinancialCompany } from '../src/utils/preparedFinancialData.js';
+import { prepareFinancialCompany, refreshSecFinancialCohort } from '../src/utils/preparedFinancialData.js';
 import { ANALYSIS_MAPPING_VERSION } from '../src/utils/analysisVersion.js';
 
 const cik = '0000320193';
@@ -86,6 +86,37 @@ test('unavailable enrichment never overwrites or extends a good snapshot and res
   const recovered = await prepareFinancialCompany('AAPL', options);
   assert.equal(recovered.status, 'prepared'); assert.equal(run.writes.length, 8);
   assert.ok(recovered.bases.every(row => row.status === 'updated'));
+});
+
+test('a verified filing with no supported extra facts preserves missing values and does not stall cohort preparation', async () => {
+  const run = preparation(), annual = filings[0];
+  const reported = { end: annual.end, accn: annual.accession, filed: annual.filed, form: annual.form, fy: 2025, fp: 'FY' };
+  const facts = run.documents[1].payload.facts['us-gaap'];
+  facts.Assets.units.USD.push({ ...reported, val: 1200 });
+  facts.Revenues = { units: { USD: [{ ...reported, start: annual.start, val: annual.revenue }] } };
+  // This generic concept requires a verified current/noncurrent section. The
+  // verified document has no such classification, so debt must remain missing.
+  facts.NotesAndLoansPayable = { units: { USD: [{ ...reported, val: 10 }] } };
+  let downloads = 0;
+  const options = { ...run.options, bases: ['annual'], loadFiling: async () => { downloads++; return html(annual); } };
+  const visited = [];
+  const cohort = await refreshSecFinancialCohort({ maxCompanies: 2, refresh: async () => ({ status: 'updated' }),
+    prepare: async ticker => {
+      visited.push(ticker);
+      return ticker === 'AAPL' ? prepareFinancialCompany(ticker, options) : { status: 'prepared', bases: [] };
+    },
+  });
+  assert.deepEqual(visited, ['AAPL', 'MSFT']); assert.equal(cohort.nextCursor, 2);
+  const published = run.writes[0];
+  assert.equal(published.payload.sourceCoverage.filingFallback.status, 'no-supported-facts');
+  assert.equal(published.payload.sourceCoverage.supplementedThrough, annual.end);
+  assert.equal(published.payload.metrics.revenue[0].value, annual.revenue);
+  assert.equal(published.payload.metrics.totalDebt[0].value, null);
+  assert.match(published.payload.sourceCoverage.notices.at(-1), /verified.*no supported consolidated facts/);
+  assert.equal(published.metadata.supplementalDocuments.length, 1);
+  const repeated = await prepareFinancialCompany('AAPL', options);
+  assert.equal(repeated.status, 'prepared'); assert.equal(repeated.bases[0].status, 'unchanged');
+  assert.equal(downloads, 1, 'The verified coverage limit does not trigger an endless source retry.');
 });
 
 test('a mapping revision republishes unchanged source inputs instead of revalidating old calculations', async () => {

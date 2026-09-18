@@ -1,6 +1,9 @@
 export function analysisSourcesDegraded(data) {
   const coverage = data?.sourceCoverage;
-  return ['unavailable', 'no-supported-facts'].includes(coverage?.filingFallback?.status)
+  // A verified filing can legitimately add no supported concepts or balance
+  // classifications. That is a disclosed coverage limit, not a failed fetch:
+  // repeated retries would never make the same source support another metric.
+  return coverage?.filingFallback?.status === 'unavailable'
     || coverage?.continuity?.status === 'partial';
 }
 
