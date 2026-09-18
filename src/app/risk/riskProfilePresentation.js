@@ -1,10 +1,12 @@
 import { formatRiskValue, riskPeriodLabel } from '../../utils/riskWorkspace.js';
+import { buildRiskFundingPresentation } from './riskFundingPresentation.js';
 
 const finite = (value) => typeof value === 'number' && Number.isFinite(value);
 const valueOf = (value) => finite(value) ? value : null;
 
 const LENSES = {
-  bank: { id: 'bank', label: 'Bank risk profile', description: 'Read loan quality, deposit funding, book capital, and earnings together.' },
+  bank: { id: 'bank', label: 'Bank risk profile · CAMELS', description: 'Connect capital, asset quality, management disclosures, earnings, liquidity, and sensitivity to market risk. This is a public-filing framework, not a supervisory rating.' },
+  broker: { id: 'broker', label: 'Broker-dealer risk profile', description: 'Connect the quality of financial assets with customer obligations, secured funding, firm liquidity, and the capital absorbing losses.' },
   insurance: { id: 'insurance', label: 'Insurance risk profile', description: 'Connect claims experience and earnings with the capital supporting policyholder obligations.' },
   financial: { id: 'financial', label: 'Financial services risk profile', description: 'Start with balance-sheet structure, earnings, and the specific funding obligations of this business.' },
   corporate: { id: 'corporate', label: 'Company risk profile', description: 'Connect debt service, near-term liquidity, capital structure, and the cash behind earnings.' },
@@ -17,11 +19,13 @@ function lensFor(profile, sicCode) {
   if (finite(sic) && sic > 0) {
     if ((sic >= 6000 && sic <= 6089) || sic === 6712) return LENSES.bank;
     if (sic >= 6300 && sic <= 6399) return LENSES.insurance;
+    if (sic === 6211 || sic === 6221) return LENSES.broker;
     if ((sic >= 6090 && sic <= 6299) || (sic >= 6400 && sic <= 6499) || (sic >= 6720 && sic <= 6739) || sic === 6799) return LENSES.financial;
     return LENSES.corporate;
   }
   if (profile.industry?.isBank) return LENSES.bank;
   if (profile.industry?.isInsurer || profile.industry?.group === 'insurance') return LENSES.insurance;
+  if (profile.industry?.isBrokerDealer) return LENSES.broker;
   if (profile.industry?.isFinancial) return LENSES.financial;
   return LENSES.corporate;
 }
@@ -34,10 +38,18 @@ const DIMENSIONS = {
     ['earnings', 'Earnings & cash', 'Are reported profits supported by operating cash flow?', ['net_margin', 'accruals_ratio', 'receivables_gap', 'loss_years']],
   ],
   bank: [
-    ['credit', 'Loan quality', 'How are problem loans and credit-loss provisions changing?', ['npl_ratio', 'provision_rate', 'reserve_coverage']],
-    ['funding', 'Deposit funding', 'How does the loan book compare with reported deposit funding?', ['loans_deposits', 'deposits_trend', 'bank_cash_assets', 'nib_deposit_share']],
-    ['capital', 'Capital & securities', 'What book capital supports the asset base, and what valuation gaps are disclosed?', ['bank_equity_assets', 'htm_unrealized', 'liab_to_assets']],
-    ['earnings', 'Earnings capacity', 'How consistently does the business generate reported profits?', ['net_margin', 'loss_years']],
+    ['capital', 'Capital adequacy', 'Book capital supports losses; regulatory capital and risk-weighted assets require their own disclosures.', ['bank_equity_assets', 'liab_to_assets']],
+    ['credit', 'Asset quality', 'Nonaccruals, allowances and provisions describe different parts of loan credit risk.', ['npl_ratio', 'reserve_coverage', 'bank_allowance_nonaccrual', 'provision_rate']],
+    ['management', 'Management & controls', 'Governance, risk limits and control effectiveness require qualitative filing review; no management score is inferred from ratios.', []],
+    ['earnings', 'Earnings resilience', 'Sustained earnings replenish capital and absorb credit costs.', ['bank_earnings_assets', 'net_margin', 'loss_years']],
+    ['funding', 'Liquidity & funding', 'Deposit stability, borrowing access and asset liquidity support obligations.', ['loans_deposits', 'bank_cash_deposits', 'bank_cash_assets', 'deposits_trend', 'nib_deposit_share']],
+    ['sensitivity', 'Sensitivity to market risk', 'Securities valuation and repricing differences connect rate movements to capital and earnings.', ['bank_htm_gap_equity', 'htm_unrealized', 'htm_adj_equity']],
+  ],
+  broker: [
+    ['assets', 'Asset quality & collateral', 'Customer receivables, securities financing and financial instruments create distinct counterparty and valuation exposures.', ['broker_receivables_assets', 'broker_clearing_assets', 'broker_securities_borrowed_assets', 'broker_financial_instruments_assets']],
+    ['liquidity', 'Firm liquidity', 'Firm cash must be assessed separately from segregated customer assets and secured funding requirements.', ['broker_cash_liabilities', 'cash_to_assets']],
+    ['capital', 'Loss absorption', 'Book equity supports consolidated losses; broker-dealer net capital is a separate legal-entity measure.', ['broker_equity_assets', 'liab_to_assets', 'debt_to_equity']],
+    ['earnings', 'Earnings resilience', 'Read net revenue and earnings against funding costs and the risks in customer and trading balances.', ['net_margin', 'loss_years']],
   ],
   insurance: [
     ['underwriting', 'Claims experience', 'How much earned premium is absorbed by reported claims?', ['loss_ratio']],
@@ -125,11 +137,17 @@ function balancePresentation(profile, lens) {
       }
     } else notes.push('Reported assets, liabilities, and equity do not reconcile into a positive composition. The original balances are shown without a percentage stack.');
   }
+  if (reconciliation && equity.sources.some(source => source.tag === 'StockholdersEquity')) {
+    equity.label = 'Parent book equity';
+    const segment = segments.find(item => item.id === 'equity');
+    if (segment) segment.label = equity.label;
+    notes.push('Parent book equity excludes noncontrolling interests. Other interests are shown in the reconciliation; neither amount is regulatory capital.');
+  }
   if (equity.value != null && equity.value < 0) notes.push('Book equity is negative. A composition chart is not meaningful; review the equity note together with cash generation and debt service.');
   if (cash.value != null) notes.push(lens.id === 'bank' ? 'Tagged cash is only one liquidity source; securities, borrowing capacity, and deposit concentration require the funding note.' : 'Cash availability, restrictions, collateral, and committed facilities require the liquidity note.');
   if (lens.id === 'corporate') notes.push('Borrowings use a current-debt total or separately reported current maturities and short-term borrowings, plus noncurrent debt. Missing components are never assumed to be zero; leases and other obligations require separate review.');
   if (currentSecurities.value != null || noncurrentSecurities.value != null) notes.push('Marketable securities are separate from cash. Credit quality, price risk, maturities, taxes, and restrictions can affect their realizable value and availability.');
-  if (lens.id === 'bank' || lens.id === 'insurance' || lens.id === 'financial') notes.push('Book equity is an accounting balance, not a regulatory capital ratio.');
+  if (lens.id !== 'corporate') notes.push('Book equity is an accounting balance, not a regulatory capital ratio.');
   return { assets, liabilities, equity, cash, debt, currentDebt, noncurrentDebt, currentSecurities, noncurrentSecurities, cashAndMarketableSecurities, netDebtAfterMarketableSecurities, loans, deposits, segments, reconciliation, notes, comparisonLabel: lens.id === 'bank' ? 'Net loans and deposits' : 'Cash and reported borrowings' };
 }
 
@@ -209,7 +227,7 @@ export function buildRiskProfilePresentation(profile, company = {}) {
   const limitations = lens.id === 'bank'
     ? ['Consolidated company facts may omit uninsured deposits, asset concentrations, regulatory capital, and dimensional credit disclosures.']
     : lens.id === 'insurance' ? ['Loss ratios exclude operating expenses; statutory capital and reserve adequacy require additional disclosures.']
-      : lens.id === 'financial' ? ['Collateral, netting, client balances, maturity mismatches, and regulatory capital require the business-specific notes. Industrial thresholds are not applied.']
+      : ['financial', 'broker'].includes(lens.id) ? ['Collateral, netting, client balances, maturity mismatches, and regulatory capital require the business-specific notes. Industrial thresholds are not applied.']
         : ['Debt maturity schedules, covenants, off-balance-sheet obligations, and restricted liquidity require the source notes.'];
   if (profile.basis === 'ttm') limitations.push('TTM earnings windows overlap. Their changes compare with the previous quarter end, not an independent full year.');
   return {
@@ -223,7 +241,7 @@ export function buildRiskProfilePresentation(profile, company = {}) {
 
 export function riskProfileBrief(data, profile) {
   const view = buildRiskProfilePresentation(profile, data);
-  const lines = [`# ${data.ticker} — Company risk profile`, data.companyName, `Reporting end: ${profile.periods?.[0]?.end || 'Unavailable'}`, `Basis: ${profile.basis === 'ttm' ? 'Quarter-end balances and trailing-twelve-month earnings' : 'Annual'}`, `Retrieved: ${data.generatedAt || 'Unavailable'}`, `Lens: ${view.lens.label}`, '', '## Supporting observations', ...view.strengths.map((item) => `- ${item.text}`), '', '## Review priorities', ...view.watchItems.map((item) => `- ${item.label}: ${item.reason}. ${item.question || ''}`), '', '## Risk dimensions'];
+  const lines = [`# ${data.ticker} — Company risk profile`, data.companyName, `Reporting end: ${profile.periods?.[0]?.end || 'Unavailable'}`, `Basis: ${profile.basis === 'ttm' ? 'Quarter-end balances and trailing-twelve-month earnings' : 'Annual'}`, `Retrieved: ${data.generatedAt || 'Unavailable'}`, `Lens: ${view.lens.label}`, '', '## Financial risk dimensions'];
   for (const dimension of view.dimensions) {
     lines.push('', `### ${dimension.label}`, dimension.question);
     for (const metric of dimension.metrics) {
@@ -233,6 +251,14 @@ export function riskProfileBrief(data, profile) {
       for (const source of metric.sources || []) lines.push(`  Source: ${source.label || source.tag}: ${source.value ?? 'Unavailable'} ${source.unit || ''}; ${source.start ? source.start + ' to ' : ''}${source.end || 'Undated'}; ${source.documentUrl || source.url || 'Source link unavailable'}`);
     }
   }
+  const funding = buildRiskFundingPresentation(profile, data);
+  const fundingRatios = [...funding.liquidity.ratios, ...funding.obligations.ratios, ...(funding.broker?.ratios || [])];
+  lines.push('', '## Funding and earnings capacity');
+  for (const metric of [...new Map(fundingRatios.map(item => [item.id, item])).values()]) {
+    lines.push(`- ${metric.label}: ${formatRiskValue(metric.value, metric.format)}; ${metric.end || 'Undated'}`, `  Formula: ${metric.formula}`, `  ${metric.note || metric.gap || ''}`);
+    for (const source of metric.sources) lines.push(`  Source: ${source.label || source.tag}: ${source.value ?? 'Unavailable'} ${source.unit || ''}; ${source.start ? source.start + ' to ' : ''}${source.end || 'Undated'}; ${source.documentUrl || source.url || 'Source link unavailable'}`);
+  }
+  lines.push('', ...funding.limitations.map(item => `- ${item}`));
   lines.push('', '## Scope', 'These are reported financial observations and transparent screening conventions, not credit ratings or default probabilities.', ...view.limitations.map((item) => `- ${item}`));
   return lines.join('\n');
 }

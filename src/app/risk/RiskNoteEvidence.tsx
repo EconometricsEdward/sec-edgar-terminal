@@ -13,20 +13,74 @@ const valueLabel = (row: Row, value: number) => formatRiskValue(value, row.unit 
 const exactValue = (row: Row, value: number, delta = false) => `${delta && value > 0 ? '+' : ''}${(row.unit === 'pure' ? value*100 : value).toLocaleString('en-US',{maximumFractionDigits:8})}${row.unit === 'pure' ? delta ? ' pp' : '%' : ' USD'}`;
 const contextDates = (fact: Fact) => fact.start ? `${fact.start} → ${fact.end}` : fact.end;
 
-function ComparisonPlot({ rows, concentration = false }: { rows: Row[]; concentration?: boolean }) {
-  const maximum = concentration ? 1 : Math.max(...rows.flatMap(row => [row.current.value, row.prior?.value ?? 0]), 1);
-  const x = (value: number) => 40 + value / maximum * 580;
-  const height = rows.length * 93 + 37;
-  return <div className={s.chartScroll} role="region" tabIndex={0} aria-label={`${concentration ? 'Credit concentration' : 'Derivative notional'} comparison chart; scroll horizontally on small screens`}><svg className={s.chart} viewBox={`0 0 700 ${height}`} role="img" aria-label={`${concentration ? 'Credit concentration' : 'Derivative notional'} comparisons. Filled dots show the reporting date; outlined dots show the prior date. Exact values and dates are in the table below.`}>
-    {[0,.25,.5,.75,1].map(fraction => <g key={fraction}><line x1={x(maximum*fraction)} x2={x(maximum*fraction)} y1={8} y2={height-28} className={s.grid}/><text x={x(maximum*fraction)} y={height-8} textAnchor="middle" className={s.axis}>{formatRiskValue(maximum*fraction, concentration ? 'pct' : 'usd')}</text></g>)}
-    {rows.map((row,index) => { const y = index*93+30; return <g key={row.id}>
-      <text x={40} y={y} className={s.rowLabel}>{row.label}</text>
-      <line x1={40} x2={620} y1={y+29} y2={y+29} className={s.track}/>
-      {row.prior && <><line x1={x(row.prior.value)} x2={x(row.current.value)} y1={y+29} y2={y+29} className={s.connector}/><circle cx={x(row.prior.value)} cy={y+29} r={6} className={s.prior}><title>{row.prior.end}: {valueLabel(row,row.prior.value)}</title></circle></>}
-      <circle cx={x(row.current.value)} cy={y+29} r={5} className={s.current}><title>{row.current.end}: {valueLabel(row,row.current.value)}</title></circle>
-      <text x={686} y={y+33} textAnchor="end" className={s.value}>{valueLabel(row,row.current.value)}</text>
-    </g>; })}
-  </svg></div>;
+const deltaLabel = (row: Row) => {
+  if (!row.prior) return 'Prior comparison unavailable';
+  const delta = row.current.value - row.prior.value;
+  const value = row.unit === 'pure'
+    ? `${Math.abs(delta * 100).toLocaleString('en-US', { maximumFractionDigits: 2 })} pp`
+    : valueLabel(row, Math.abs(delta));
+  return delta === 0 ? 'Unchanged' : `${delta > 0 ? '+' : '−'}${value}`;
+};
+
+function SourceLabel({ row, label }: { row: Row; label: string }) {
+  return <a className={s.measureLink} href={row.current.sourceUrl} target="_blank" rel="noreferrer">{label}<ArrowUpRight size={13} aria-hidden="true"/><span className={s.srOnly}> — {row.label}, SEC source</span></a>;
+}
+
+function CreditConcentrations({ rows }: { rows: Row[] }) {
+  const groups = new Map<string, { label: string; rows: Row[] }>();
+  rows.forEach(row => {
+    const benchmark = row.dimensions.find(dimension => /ConcentrationRiskByBenchmarkAxis$/.test(dimension.axis));
+    const key = benchmark?.member || row.id;
+    if (!groups.has(key)) groups.set(key, { label: benchmark?.label || 'Reported credit balance', rows: [] });
+    groups.get(key)!.rows.push(row);
+  });
+  return <div className={s.riskBlock}>
+    <div className={s.blockIntro}><span className={s.sectionNumber}>01 / CREDIT EXPOSURE</span><h3>Who pays matters.</h3><p>Collection delays or counterparty losses can reduce the cash available to meet financial obligations.</p><p className={s.interpretation}>These shares show where reported credit balances are concentrated. They do not estimate default probabilities or expected losses.</p></div>
+    <div className={s.creditGroups}>
+      <div className={s.legend}><span><i className={s.currentKey}/>Reported share</span><span><i className={s.priorKey}/>Prior share in this filing</span></div>
+      {[...groups.entries()].map(([key, group]) => <div key={key} className={s.creditGroup}>
+        <div className={s.groupHeading}><h4>{group.label}</h4><span>Share of this balance</span></div>
+        {group.rows.map(row => {
+          const label = row.dimensions.filter(dimension => !/ConcentrationRiskBy(?:Benchmark|Type)Axis$/.test(dimension.axis)).map(dimension => dimension.label).join(' · ') || row.label;
+          return <div key={row.id} className={s.concentrationRow}>
+            <div className={s.measureHeading}><SourceLabel row={row} label={label}/><div className={s.measureValue}><strong>{valueLabel(row, row.current.value)}</strong><span>{deltaLabel(row)}</span></div></div>
+            <div className={s.concentrationTrack} aria-hidden="true"><div className={s.concentrationFill} style={{ width: `${row.current.value * 100}%` }}/>{row.prior && <i className={s.priorMarker} style={{ left: `${row.prior.value * 100}%` }}/>}</div>
+            <div className={s.observationDates}><span>{row.current.end}</span><span>{row.prior ? `${valueLabel(row, row.prior.value)} at ${row.prior.end}` : 'No matching prior observation'}</span></div>
+          </div>;
+        })}
+        <div className={s.percentAxis} aria-hidden="true"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+      </div>)}
+      <p className={s.chartFootnote}>Each track uses the named balance as its denominator. Groups can overlap and are never added together.</p>
+    </div>
+  </div>;
+}
+
+const instrumentCopy: Record<string, { label: string; description: string }> = {
+  foreign_exchange: { label: 'Currency instruments', description: 'Exchange rates can change the value of foreign-currency cash flows and balances. Contract amounts provide context for the company’s risk management.' },
+  interest_rate: { label: 'Interest-rate instruments', description: 'Rates can affect borrowing costs and investment values. These contract amounts describe instruments the company reports in its derivatives note.' },
+  other_derivative: { label: 'Other derivatives', description: 'Read the underlying instrument and its purpose alongside the company’s operating, investment and funding exposures.' },
+};
+
+function MarketInstruments({ rows }: { rows: Row[] }) {
+  const maximum = Math.max(...rows.flatMap(row => [row.current.value, row.prior?.value ?? 0]), 1);
+  const categories = [...new Set(rows.map(row => row.category))];
+  return <div className={s.marketBlock}>
+    <div className={s.marketHeading}><div><span className={s.sectionNumber}>02 / CURRENCY & RATE EXPOSURE</span><h3>The instruments behind market risk.</h3></div><p>Current and prior contract notionals on the same dollar scale. A larger bar means a larger contract reference amount.</p></div>
+    {categories.map(category => {
+      const copy = instrumentCopy[category] || instrumentCopy.other_derivative;
+      return <div key={category} className={s.instrumentGroup}>
+        <div className={s.instrumentIntro}><h4>{copy.label}</h4><p>{copy.description}</p></div>
+        <div className={s.instrumentRows}>{rows.filter(row => row.category === category).map(row => <div key={row.id} className={s.instrumentRow}>
+          <div className={s.measureHeading}><SourceLabel row={row} label={category === 'other_derivative' ? row.label : row.label.split(' · ').slice(1).join(' · ') || row.label}/><div className={s.measureValue}><strong>{valueLabel(row, row.current.value)}</strong><span>{deltaLabel(row)}{row.prior && row.current.value !== row.prior.value ? ' change in notional' : ''}</span></div></div>
+          <div className={s.pairedBars}>
+            <div className={s.barObservation}><span className={s.barDate}>{row.current.end}</span><div className={s.barArea} aria-hidden="true"><div className={s.currentBar} style={{ width: `${row.current.value / maximum * 100}%` }}/></div><span className={s.barValue}>{valueLabel(row, row.current.value)}</span></div>
+            {row.prior && <div className={s.barObservation}><span className={s.barDate}>{row.prior.end}</span><div className={s.barArea} aria-hidden="true"><div className={s.priorBar} style={{ width: `${row.prior.value / maximum * 100}%` }}/></div><span className={s.barValue}>{valueLabel(row, row.prior.value)}</span></div>}
+          </div>
+        </div>)}<div className={s.dollarAxis} aria-hidden="true"><span>$0</span><span>Common scale · {valueLabel(rows[0], maximum)}</span></div></div>
+      </div>;
+    })}
+    <p className={s.marketInterpretation}>Notional is not the amount at risk. It is not fair value, net currency exposure, or potential loss. Accounting designation does not establish how much exposure is hedged; contracts without hedge-accounting designation can still serve a risk-management purpose.</p>
+  </div>;
 }
 
 function EvidenceTable({ rows }: { rows: Row[] }) {
@@ -57,19 +111,17 @@ function NoteEvidence({ ticker, basis, asOf }: { ticker: string; basis: string; 
     }).then(body => { if (!controller.signal.aborted) setData(body); }).catch(cause => { if (!controller.signal.aborted) setError(cause.message); });
     return () => controller.abort();
   },[ticker,basis,asOf,retry,visible]);
-  const rows = (data?.rows || []).filter(row => finite(row.current?.value) && row.current.value >= 0 && (!row.prior || finite(row.prior.value)));
+  const rows = (data?.rows || []).filter(row => finite(row.current?.value) && row.current.value >= 0 && (!row.prior || (finite(row.prior.value) && row.prior.value >= 0)));
   const derivatives = rows.filter(row => row.kind === 'derivative_notional' && row.unit === 'USD');
   const concentrations = rows.filter(row => row.kind === 'credit_concentration' && row.unit === 'pure' && row.current.value <= 1 && (!row.prior || row.prior.value <= 1));
   return <section ref={root} className={s.section} aria-label="Credit and currency disclosures">
-    <div className={s.heading}><div><span className={s.kicker}>INSIDE THE FILING NOTES</span><h2>Credit exposure. Currency exposure.</h2><p>Read the concentrations and financial instruments behind the ratios.</p></div>{data?.filing && <a className={s.sourceLink} href={data.filing.url} target="_blank" rel="noreferrer">{data.filing.form} · {data.filing.reportDate}<ArrowUpRight size={14}/></a>}</div>
+    <div className={s.heading}><div><span className={s.kicker}>COUNTERPARTIES & MARKET EXPOSURES</span><h2>Where financial risk enters the business.</h2><p>Connect credit concentration and market instruments to the company’s capacity to generate and preserve cash.</p></div>{data?.filing && <a className={s.sourceLink} href={data.filing.url} target="_blank" rel="noreferrer">{data.filing.form} · {data.filing.reportDate}<ArrowUpRight size={14}/></a>}</div>
     {!data && !error && <p className={s.state} role="status">{visible ? 'Reading the filing’s tagged risk disclosures…' : 'Filing-note comparisons load as you reach this section.'}</p>}
     {error && <div className={s.state} role="status"><p>{error}</p><button onClick={() => setRetry(n => n+1)}><RefreshCw size={13}/>Retry filing notes</button></div>}
     {data && <>
-      <div className={s.legend}><span><i/>Reporting date</span><span><i/>Prior date in this filing</span>{data.filing && <span>Filed {data.filing.filed}</span>}</div>
-      <div className={s.visuals}>
-        <div><h3>Currency & rate contracts</h3><p className={s.description}>Reported derivative notionals, compared on a common dollar scale. Accounting designation does not establish how much exposure is hedged.</p>{derivatives.length ? <ComparisonPlot rows={derivatives.slice(0,8)}/> : <p className={s.state}>No supported notional facts were identified. Review the filing’s currency and derivatives notes; this does not establish zero exposure.</p>}</div>
-        <div><h3>Where credit is concentrated</h3><p className={s.description}>Reported shares of receivables or other specified credit balances. Each measure retains its own denominator; groups are not added together.</p>{concentrations.length ? <ComparisonPlot rows={concentrations.slice(0,8)} concentration/> : <p className={s.state}>No supported concentration percentages were identified. Credit risk also includes customers, counterparties and investments outside these tagged measures.</p>}</div>
-      </div>
+      {data.filing && <p className={s.filingDate}>Filed {data.filing.filed} · Comparisons use observations in this filing</p>}
+      {concentrations.length ? <CreditConcentrations rows={concentrations.slice(0,8)}/> : <div className={s.emptyGroup}><h3>Credit concentration</h3><p>No supported concentration percentages were identified. Credit risk also includes customers, counterparties and investments outside these tagged measures.</p></div>}
+      {derivatives.length ? <MarketInstruments rows={derivatives.slice(0,8)}/> : <div className={s.emptyGroup}><h3>Currency & rate exposure</h3><p>No supported notional facts were identified. Review the filing’s currency and derivatives notes; this does not establish zero exposure.</p></div>}
       {(derivatives.length > 8 || concentrations.length > 8) && <p className={s.description}>Charts show the first eight measures in each group. All identified observations appear below.</p>}
       {rows.length > 0 && <EvidenceTable rows={rows}/>}
       <details className={s.details}><summary>Coverage & interpretation</summary><p>This reads supported numeric facts and dimensions from one eligible filing. Missing tags and unsupported note formats remain gaps. It does not calculate a credit rating or infer the company’s CFTC positions.</p>{data.limitations?.map(note => <p key={note}>{note}</p>)}{data.filing && <p>SEC accession {data.filing.accession} · Checked {data.checkedAt?.slice(0,10)}</p>}</details>
