@@ -10,13 +10,14 @@ import { secFetch } from '../../../utils/secClient.js';
 import { prepareRiskProfileSources } from '../../../utils/riskProfileSources.js';
 import { readBoundedFilingResponse } from '../../../utils/filingsReader.js';
 import { RISK_NOTE_MAX_BYTES } from '../../../utils/riskNoteFacts.js';
+import { riskProfileCachePolicy } from '../../../utils/riskProfileCache.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
-const response = (data) => NextResponse.json(data, { headers: { 'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=900' } });
+const response = (data) => NextResponse.json(data, { headers: { 'Cache-Control': riskProfileCachePolicy(data).cacheControl } });
 
 async function loadRiskProfileFiling(filing, signal) {
-  const result = await secFetch(filing.url, { signal, timeoutMs: 15_000, retries: 0, maxBytes: RISK_NOTE_MAX_BYTES,
+  const result = await secFetch(filing.url, { signal, timeoutMs: 18_000, retries: 1, maxBytes: RISK_NOTE_MAX_BYTES,
     redirect: 'error', headers: { Accept: 'text/html,text/plain' } });
   if (!result.ok || /application\/pdf|image\/|application\/(?:zip|octet-stream)/i.test(result.headers.get('content-type') || ''))
     throw new Error('The latest SEC filing could not be read.');
@@ -83,7 +84,7 @@ export async function GET(request) {
     const current = decorateRiskProfile(assessRisk(prepared.facts, submissions.sic, cik, { basis: 'ttm' }));
     const data = { ticker, cik, companyName: submissions.name || entry.name, sic: submissions.sic, sicDescription: submissions.sicDescription,
       annual, current, sourceCoverage: prepared.sourceCoverage, version: RISK_VERSION, generatedAt: new Date().toISOString() };
-    await warmSet(RISK_VERSION, ticker, data, 900);
+    await warmSet(RISK_VERSION, ticker, data, riskProfileCachePolicy(data).ttlSeconds);
     return profileResponse(data);
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Could not load the SEC risk profile. Please retry.' }, { status: 502 });

@@ -30,6 +30,8 @@ value remains unavailable when its reporting scope or period cannot be verified.
 registrant, fiscal focus, report date and consolidated standard USD contexts,
 and retains exact fact anchors. Contradictory same-filing aggregate values are
 not overwritten. Fetch failures retain existing verified data and report the gap.
+Unavailable filing supplements or incomplete predecessor loads use a short
+cache lifetime so a transient source failure does not persist for a full session.
 Repeated facts at different declared precision may retain the most precise
 reported amount only when their rounding intervals agree; values are not averaged.
 
