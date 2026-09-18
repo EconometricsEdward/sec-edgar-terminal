@@ -14,3 +14,4 @@
 @media(prefers-reduced-motion:reduce){.slice{transition:none}}
 
 .focusNav{display:flex;flex-wrap:wrap;gap:5px;padding:0 0 24px;margin-bottom:3px}.focusNav button{font:inherit;font-size:13px;color:var(--muted,#9daebf);padding:9px 15px;background:transparent;border:1px solid transparent;border-radius:6px;cursor:pointer}.focusNav button[aria-pressed=true]{color:#87d4cb;background:rgba(135,212,203,.08);border-color:rgba(135,212,203,.28)}.focusNav button:focus-visible{outline:2px solid #87d4cb;outline-offset:3px}
+.zeroLine{position:absolute;width:1px;top:-3px;bottom:-3px;background:var(--muted,#9daebf);pointer-events:none}.signedAxis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted,#9daebf);font-variant-numeric:tabular-nums}

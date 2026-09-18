@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ChevronDown, CircleAlert, Loader2 } from 'lucide-react';
+import { validCompanyOwnershipPayload } from '../../utils/companyOwnershipResponse.js';
 import s from './CompanyOwnership.module.css';
 
 type Predecessor = { name: string; cik: string; effectiveDate: string; sourceUrl: string };
@@ -24,7 +25,7 @@ type OwnershipRow = {
   denominatorLabel: 'fund net assets' | 'reported 13F holdings';
   sourceUrl: string;
   researchUrl: string;
-  predecessor?: Predecessor;
+  predecessor?: Predecessor | null;
   positions: { cusip: string; name: string; classTitle: string; shares: number | null; valueUsd: number | null }[];
 };
 
@@ -34,7 +35,7 @@ type Ownership = {
   companyName: string | null;
   asOf: string | null;
   checkedAt: string | null;
-  identity: { status: 'reported-match' | 'unavailable'; cusips: string[]; note: string; predecessor?: Predecessor };
+  identity: { status: 'reported-match' | 'unavailable'; cusips: string[]; note: string; predecessor?: Predecessor | null };
   funds: OwnershipRow[];
   managers: OwnershipRow[];
   coverage: {
@@ -61,40 +62,8 @@ function dateLabel(value: string | null) {
   return Number.isFinite(parsed.getTime()) ? parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : 'Not reported';
 }
 
-function finiteOrNull(value: unknown): value is number | null {
-  return value === null || (typeof value === 'number' && Number.isFinite(value));
-}
-
-function validPredecessor(value: unknown): value is Predecessor | undefined {
-  if (value === undefined) return true;
-  if (!value || typeof value !== 'object') return false;
-  const predecessor = value as Predecessor;
-  return typeof predecessor.name === 'string' && predecessor.name.trim().length > 0
-    && typeof predecessor.cik === 'string' && /^\d{1,10}$/.test(predecessor.cik)
-    && typeof predecessor.effectiveDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(predecessor.effectiveDate)
-    && dateLabel(predecessor.effectiveDate) !== 'Not reported'
-    && typeof predecessor.sourceUrl === 'string' && !!linkUrl(predecessor.sourceUrl);
-}
-
 function validPayload(value: unknown): value is Ownership {
-  if (!value || typeof value !== 'object') return false;
-  const body = value as Ownership;
-  return body.schemaVersion === 'edgar.company-ownership.v1' && typeof body.ticker === 'string'
-    && (typeof body.asOf === 'string' || body.asOf === null) && (typeof body.checkedAt === 'string' || body.checkedAt === null)
-    && !!body.identity && ['reported-match', 'unavailable'].includes(body.identity.status)
-    && Array.isArray(body.identity.cusips) && typeof body.identity.note === 'string'
-    && validPredecessor(body.identity.predecessor)
-    && Array.isArray(body.funds) && Array.isArray(body.managers) && !!body.coverage
-    && ['fundsChecked', 'fundsAvailable', 'managersChecked', 'managersAvailable', 'excludedAfterCutoff'].every(key => Number.isFinite(body.coverage[key as keyof Ownership['coverage']]))
-    && Array.isArray(body.coverage.notPrepared) && body.coverage.notPrepared.every(row => !!row && typeof row.id === 'string' && typeof row.name === 'string' && typeof row.url === 'string')
-    && Array.isArray(body.limitations) && body.limitations.every(note => typeof note === 'string')
-    && [...body.funds, ...body.managers].every(row => !!row && typeof row.id === 'string' && typeof row.name === 'string'
-      && typeof row.reportDate === 'string' && typeof row.filingDate === 'string' && typeof row.checkedAt === 'string'
-      && typeof row.sourceUrl === 'string' && typeof row.researchUrl === 'string' && typeof row.denominatorLabel === 'string'
-      && validPredecessor(row.predecessor)
-      && finiteOrNull(row.valueUsd) && finiteOrNull(row.weightPct) && finiteOrNull(row.shares) && finiteOrNull(row.denominatorUsd)
-      && Array.isArray(row.positions) && row.positions.every(position => !!position && typeof position.cusip === 'string'
-        && typeof position.name === 'string' && typeof position.classTitle === 'string' && finiteOrNull(position.shares) && finiteOrNull(position.valueUsd)));
+  return validCompanyOwnershipPayload(value);
 }
 
 function linkUrl(value: string) {

@@ -72,7 +72,7 @@ export function buildRiskFundingPresentation(profile = {}, { sic } = {}) {
   }));
   const liquidityRatios = [
     calc('cash_current_debt', 'Cash / current debt', ['cash', 'currentDebt'], divide, 'x', 'Cash and equivalents / current debt', 'Ending cash compared with debt classified as current. Cash restrictions and refinancing availability are separate.'),
-    calc('liquid_current_debt', 'Cash + current securities / current debt', ['cash', 'currentMarketableSecurities', 'currentDebt'], (cash, securities, debt) => divide(cash + securities, debt), 'x', '(Cash + current marketable securities) / current debt', 'Current securities are included at their reported value without liquidity haircuts. Noncurrent securities are excluded.'),
+    calc('liquid_current_debt', 'Cash + current investments / current debt', ['cash', 'currentMarketableSecurities', 'currentDebt'], (cash, securities, debt) => divide(cash + securities, debt), 'x', '(Cash + current investments) / current debt', 'Current investments follow the cited filing scope and may include nonmarketable assets. They are included at reported value without liquidity haircuts; this is not a measure of immediately available cash. Noncurrent investments are excluded.'),
     calc('current_debt_share', 'Current debt / total debt', ['currentDebt', 'totalDebt'], divide, 'pct', 'Current debt / total debt', 'Current balance-sheet classification is not a contractual maturity ladder.'),
     existing('current_ratio'),
   ];
@@ -113,6 +113,7 @@ export function buildRiskFundingPresentation(profile = {}, { sic } = {}) {
   ] } : null;
   const limitations = [
     'Missing facts remain unavailable. Flows use the selected annual or TTM basis; balance-sheet amounts use each corresponding period end.',
+    'Debt includes lease obligations when they are part of the cited debt concept. Separately reported operating-lease liabilities are not added. Investment balances may include nonmarketable assets and are not treated as cash.',
     lens === 'corporate' ? 'Cash after capex uses reported cash PP&E purchases. Dividends are distributions, not scheduled debt service. Lease payments may already be included in operating cash flow; they are not deducted again.'
       : 'Financial-company cash flows can be dominated by loans, securities, customer balances and funding movements. Industrial free-cash-flow debt coverage is not applied.',
     ...(lens === 'bank' ? ['CAMELS is used as a public-data organizing framework. These indicators are not supervisory ratings, and the management component has no inferred numerical score.'] : []),

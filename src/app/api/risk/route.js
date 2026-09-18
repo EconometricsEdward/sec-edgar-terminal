@@ -7,10 +7,21 @@ import { secResearchJson, submissionRows } from '../../../utils/secResearchData.
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../utils/rateLimit.js';
 import { warmGet, warmSet } from '../../../utils/warmCache.js';
 import { secFetch } from '../../../utils/secClient.js';
+import { prepareRiskProfileSources } from '../../../utils/riskProfileSources.js';
+import { readBoundedFilingResponse } from '../../../utils/filingsReader.js';
+import { RISK_NOTE_MAX_BYTES } from '../../../utils/riskNoteFacts.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 const response = (data) => NextResponse.json(data, { headers: { 'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=900' } });
+
+async function loadRiskProfileFiling(filing, signal) {
+  const result = await secFetch(filing.url, { signal, timeoutMs: 15_000, retries: 0, maxBytes: RISK_NOTE_MAX_BYTES,
+    redirect: 'error', headers: { Accept: 'text/html,text/plain' } });
+  if (!result.ok || /application\/pdf|image\/|application\/(?:zip|octet-stream)/i.test(result.headers.get('content-type') || ''))
+    throw new Error('The latest SEC filing could not be read.');
+  return readBoundedFilingResponse(result, RISK_NOTE_MAX_BYTES);
+}
 
 // The long document scan is requested separately, so it cannot delay ratios.
 async function readAnnualDisclosure(submissions, cik) {
@@ -56,17 +67,22 @@ export async function GET(request) {
     const entry = await getOperatingTicker(ticker);
     if (!entry) return NextResponse.json({ error: `No SEC operating company matched ${ticker}. Fund tickers are covered on the Funds page.` }, { status: 404 });
     const cik = String(entry.cik).padStart(10, '0');
+    const sourceSignal = AbortSignal.any([request.signal, AbortSignal.timeout(45_000)]);
     const [submissions, company] = await Promise.all([
-      secResearchJson(`/submissions/CIK${cik}.json`),
-      scanOnly ? Promise.resolve(null) : secResearchJson(`/api/xbrl/companyfacts/CIK${cik}.json`),
+      secResearchJson(`/submissions/CIK${cik}.json`, sourceSignal),
+      scanOnly ? Promise.resolve(null) : secResearchJson(`/api/xbrl/companyfacts/CIK${cik}.json`, sourceSignal),
     ]);
     if (scanOnly) return response({ ticker, filingScan: await readAnnualDisclosure(submissions, cik) });
     // A missing classification must never silently apply industrial models to a bank.
     if (!submissions.sic || !company?.facts) throw new Error('SEC industry classification or company facts are unavailable. Please retry.');
-    const annual = decorateRiskProfile(assessRisk(company.facts, submissions.sic, cik));
-    const current = decorateRiskProfile(assessRisk(company.facts, submissions.sic, cik, { basis: 'ttm' }));
+    const prepared = await prepareRiskProfileSources({ cik, company, submissions, signal: sourceSignal }, {
+      loadCompanyFacts: (sourceCik, signal) => secResearchJson(`/api/xbrl/companyfacts/CIK${sourceCik}.json`, signal),
+      loadFiling: loadRiskProfileFiling,
+    });
+    const annual = decorateRiskProfile(assessRisk(prepared.facts, submissions.sic, cik));
+    const current = decorateRiskProfile(assessRisk(prepared.facts, submissions.sic, cik, { basis: 'ttm' }));
     const data = { ticker, cik, companyName: submissions.name || entry.name, sic: submissions.sic, sicDescription: submissions.sicDescription,
-      annual, current, version: RISK_VERSION, generatedAt: new Date().toISOString() };
+      annual, current, sourceCoverage: prepared.sourceCoverage, version: RISK_VERSION, generatedAt: new Date().toISOString() };
     await warmSet(RISK_VERSION, ticker, data, 900);
     return profileResponse(data);
   } catch (error) {

@@ -2,11 +2,12 @@
 
 import { useEffect, useId, useState, type CSSProperties } from 'react';
 import { ArrowUpRight, RefreshCw } from 'lucide-react';
+import { matchesCompanyConcentrations, COMPANY_CONCENTRATIONS_VERSION } from '../../utils/companyConcentrationResponse.js';
 import s from './CompanyConcentrations.module.css';
 
 type Fact = { value: number; start: string | null; end: string; tag: string; sourceUrl: string; dimensions: { axis: string; member: string; label: string }[] };
 type Row = { id: string; label: string; value: number; share: number | null; fact: Fact };
-type Group = { id: string; kind: string; label: string; period: string; start: string | null; end: string; scope?: string; rows: Row[]; denominator: Fact | null; denominatorLabel: string; reconciles: boolean; note: string };
+type Group = { id: string; kind: string; label: string; period: string; start: string | null; end: string; scope?: string; reportingBasis?: string; rows: Row[]; denominator: Fact | null; denominatorLabel: string; reconciles: boolean; note: string };
 type Data = { ticker: string; basis: string; asOf: string | null; status: string; revenue: Group[]; funding: Group | null; credit: Group[]; filing?: { url: string; form: string; reportDate: string; filed: string }; limitations?: string[]; message?: string };
 type Focus = 'overview' | 'revenue' | 'funding' | 'credit';
 const responseCache = new Map<string, { savedAt: number; data: Data }>();
@@ -23,11 +24,15 @@ function ConcentrationChart({ group, title }: { group: Group; title: string }) {
   const active = group.rows.find(row => row.id === inspected) || rows[0];
   const composable = group.reconciles && group.rows.every(row => row.value >= 0 && row.share !== null) && group.rows.length <= 7;
   const max = Math.max(...rows.map(row => Math.abs(row.value)), 1);
+  const signed = rows.some(row => row.value < 0);
+  const low = Math.min(0, ...rows.map(row => row.value)), high = Math.max(0, ...rows.map(row => row.value));
+  const span = high - low || 1, zero = -low / span * 100;
+  const spotlightShare = !signed && active.share !== null;
   const reset = () => setInspected(null);
   return <div className={s.chart} aria-label={`${title}: ${group.label}`}>
-    <div className={s.chartMeta}><span>{group.period}</span>{scopeLabel(group.scope) && <span>{scopeLabel(group.scope)}</span>}</div>
+    <div className={s.chartMeta}><span>{group.period}</span>{scopeLabel(group.scope) && <span>{scopeLabel(group.scope)}</span>}{group.reportingBasis && <span>{group.reportingBasis}</span>}</div>
     <div className={s.spotlight}>
-      <div><span className={s.spotlightLabel}>{active.label}</span><strong>{active.share !== null ? pct(active.share) : money(active.value)}</strong><span className={s.spotlightContext}>{active.share !== null ? `of ${group.denominatorLabel.toLowerCase()}` : 'reported balance'}</span></div>
+      <div><span className={s.spotlightLabel}>{active.label}</span><strong>{spotlightShare ? pct(active.share!) : money(active.value)}</strong><span className={s.spotlightContext}>{spotlightShare ? `of ${group.denominatorLabel.toLowerCase()}` : group.reportingBasis || 'reported amount'}</span></div>
       <a href={active.fact.sourceUrl} target="_blank" rel="noreferrer" className={s.activeValue} title={`Open SEC source: ${exact(active.value)}`}>{money(active.value)}<ArrowUpRight size={15}/></a>
     </div>
     {composable ? <>
@@ -36,10 +41,10 @@ function ConcentrationChart({ group, title }: { group: Group; title: string }) {
       </div>
       <div className={s.legend} onMouseLeave={reset}>{rows.map((row, index) => <button type="button" key={row.id} onMouseEnter={() => setInspected(row.id)} onFocus={() => setInspected(row.id)} onBlur={reset} onClick={() => setInspected(row.id)} data-selected={active.id === row.id}><i style={{ background: colors[index % colors.length] }}/><span>{row.label}</span><strong>{pct(row.share!)}</strong></button>)}</div>
     </> : <div className={s.rankBars} onMouseLeave={reset}>{rows.map((row, index) => <button type="button" key={row.id} onMouseEnter={() => setInspected(row.id)} onFocus={() => setInspected(row.id)} onBlur={reset} onClick={() => setInspected(row.id)} data-selected={active.id === row.id} aria-label={`${row.label}: ${exact(row.value)}${row.share !== null ? `, ${pct(row.share)} of ${group.denominatorLabel}` : ''}. ${group.period}`}>
-      <span className={s.barLabel}>{row.label}<strong>{row.share !== null ? pct(row.share) : money(row.value)}</strong></span><span className={s.track}><i style={{ width: `${group.denominator && row.share !== null ? row.share * 100 : Math.abs(row.value) / max * 100}%`, background: colors[index % colors.length] }}/></span>
-    </button>)}</div>}
+      <span className={s.barLabel}>{row.label}<strong>{!signed && row.share !== null ? pct(row.share) : money(row.value)}</strong></span><span className={s.track}>{signed && <span className={s.zeroLine} style={{ left: `${zero}%` }}/>}<i style={{ width: `${signed ? Math.abs(row.value) / span * 100 : group.denominator && row.share !== null ? row.share * 100 : Math.abs(row.value) / max * 100}%`, ...(signed ? { marginLeft: `${(Math.min(0, row.value) - low) / span * 100}%` } : {}), background: colors[index % colors.length] }}/></span>
+    </button>)}{signed && <div className={s.signedAxis}><span>{money(low)}</span><span>{money(high)}</span></div>}</div>}
     <div className={s.denominator}>{group.denominator ? <><span>{group.denominatorLabel}</span><a href={group.denominator.sourceUrl} target="_blank" rel="noreferrer">{money(group.denominator.value)}<ArrowUpRight size={12}/></a></> : <span>A matching total is unavailable; amounts share a dollar scale.</span>}</div>
-    {!group.reconciles && <p className={s.note}>{group.note}</p>}
+    {(!group.reconciles || group.reportingBasis) && <p className={s.note}>{group.note}</p>}
     {group.rows.length > rows.length && <p className={s.note}>Largest {rows.length} of {group.rows.length} reported categories. All values are available in the source table.</p>}
   </div>;
 }
@@ -70,12 +75,12 @@ function ConcentrationsData({ ticker, basis, asOf, focus }: { ticker: string; ba
   const [data, setData] = useState<Data | null>(null), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams({ ticker, basis }); if (asOf) params.set('asOf', asOf);
+    const params = new URLSearchParams({ ticker, basis, v: COMPANY_CONCENTRATIONS_VERSION }); if (asOf) params.set('asOf', asOf);
     const cacheKey = params.toString(), saved = responseCache.get(cacheKey);
     if (saved && Date.now() - saved.savedAt < CACHE_TTL_MS && !retry) { setData(saved.data); return () => controller.abort(); }
     fetch(`/api/risk/concentrations?${params}`, { signal: controller.signal }).then(async response => {
       const body = await response.json();
-      if (!response.ok || body.ticker !== ticker || body.basis !== basis || (body.asOf || '') !== asOf || !Array.isArray(body.revenue) || !Array.isArray(body.credit)) throw new Error(body.error || 'Company concentrations could not be loaded.');
+      if (!response.ok || !matchesCompanyConcentrations(body, ticker, basis, asOf)) throw new Error(body.error || 'Company concentrations could not be loaded.');
       return body as Data;
     }).then(body => { if (!controller.signal.aborted) {
       responseCache.delete(cacheKey); responseCache.set(cacheKey, { savedAt: Date.now(), data: body });
@@ -94,7 +99,7 @@ function ConcentrationsData({ ticker, basis, asOf, focus }: { ticker: string; ba
       <div className={s.sourceLine}><span>Reported company concentrations</span>{data.filing && <a href={data.filing.url} target="_blank" rel="noreferrer">{data.filing.form} · {data.filing.reportDate}<ArrowUpRight size={13}/></a>}</div>
       {!focus && <nav className={s.focusNav} aria-label="Concentration focus">{(['overview', 'revenue', 'funding', ...(data.credit.length ? ['credit'] : [])] as Focus[]).map(item => <button type="button" key={item} onClick={() => setSelectedFocus(item)} aria-pressed={activeFocus === item}>{({ overview: 'Overview', revenue: 'Revenue', funding: 'Funding', credit: 'Loans & credit' })[item]}</button>)}</nav>}
       <div className={activeFocus === 'overview' ? s.overview : s.focused}>
-        {(activeFocus === 'overview' || activeFocus === 'revenue') && <ExposureLens groups={data.revenue} title="Revenue footprint" empty="A supported product, business or geographic revenue breakdown is not available in this filing."/>}
+        {(activeFocus === 'overview' || activeFocus === 'revenue') && <ExposureLens groups={data.revenue} title="Revenue footprint" empty="A revenue breakdown could not be mapped from the supported filing tags. The SEC filing may contain additional segment or geographic disclosures."/>}
         {(activeFocus === 'overview' || activeFocus === 'funding') && <ExposureLens groups={data.funding ? [data.funding] : []} title="Funding dependence" empty="A supported borrowing or deposit breakdown is not available in this filing."/>}
         {activeFocus === 'credit' && <ExposureLens groups={data.credit} title="Loan exposure" empty="A supported loan portfolio breakdown is not available. Customer and counterparty concentration disclosures appear in the credit evidence."/>}
       </div>

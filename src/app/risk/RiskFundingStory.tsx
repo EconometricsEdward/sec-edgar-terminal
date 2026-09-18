@@ -147,8 +147,8 @@ function CashBridge({ row, history, basis }: { row: History | undefined; history
 
 const fundingSeries: PlotSeries[] = [
   { key: 'cash', label: 'Cash & equivalents', color: 'teal' },
-  { key: 'currentMarketableSecurities', label: 'Current securities', color: 'blue' },
-  { key: 'noncurrentMarketableSecurities', label: 'Noncurrent securities', color: 'muted', dashed: true },
+  { key: 'currentMarketableSecurities', label: 'Current investments', color: 'blue' },
+  { key: 'noncurrentMarketableSecurities', label: 'Noncurrent investments', color: 'muted', dashed: true },
   { key: 'totalDebt', label: 'Total debt', color: 'gold' },
 ];
 const maturitySeries: PlotSeries[] = [
@@ -238,7 +238,7 @@ function FundingStoryContent({ profile, company, onInspect }: StoryProps) {
         <RatioStrip ratios={view.liquidity.ratios} end={end} onInspect={onInspect}/>
         <div className={s.chartHeading}><h3>How liquidity and borrowing have changed</h3><label htmlFor={`${uid}-funding`} className={s.selectLabel}>Compare<select id={`${uid}-funding`} value={fundingView} onChange={event => { setFundingView(event.target.value); setPreviewDate(null); }}><option value="balances">Cash, investments & debt</option><option value="maturities">Current & noncurrent debt</option><option value="working">Current assets & liabilities</option></select></label></div>
         <Legend items={balances} row={selected}/><Timeline history={view.history} series={balances} selectedEnd={end} basis={profile.basis} label="Liquidity and borrowing history" onPreview={setPreviewDate}/>
-        <p className={s.caption}>{fundingView === 'working' ? 'Current liabilities include obligations beyond borrowings. Current assets may include inventory, prepayments and receivables whose timing and collectability differ from cash.' : 'Balances share a dollar scale. Investments carry credit, market and liquidity risk; noncurrent securities are shown separately from cash. Current debt reflects reported classification, not a complete contractual maturity schedule.'}</p>
+        <p className={s.caption}>{fundingView === 'working' ? 'Current liabilities include obligations beyond borrowings. Current assets may include inventory, prepayments and receivables whose timing and collectability differ from cash.' : 'Balances share a dollar scale. Investments carry credit, market and liquidity risk; noncurrent investments are shown separately from cash. Current debt reflects reported classification, not a complete contractual maturity schedule.'}</p>
         <ExactHistory history={view.history} columns={allFundingColumns} ratios={view.liquidity.ratios} end={end} profile={profile} title="Liquidity history, ratios & SEC evidence"/>
       </section>
       <section className={s.section} aria-labelledby={`${uid}-capacity`}><div className={s.sectionTitle}><div><div className={s.kicker}>03 / EARNINGS & FINANCIAL OBLIGATIONS</div><h2 id={`${uid}-capacity`}>How much borrowing can cash generation support?</h2><p className={s.intro}>Profit supports credit capacity when it converts to cash. Investment needs and financial commitments determine how much flexibility remains.</p></div><span className={s.dateStamp}>{end}</span></div>

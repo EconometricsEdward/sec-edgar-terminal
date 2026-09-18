@@ -1,5 +1,4 @@
-import { loadCompanyConcentrations } from '../../../../utils/companyConcentrationsServer.js';
-import { parseRiskNoteRequest } from '../../../../utils/riskNoteFactsServer.js';
+import { loadCompanyConcentrations, parseCompanyConcentrationsRequest } from '../../../../utils/companyConcentrationsServer.js';
 import { COMPANY_CONCENTRATIONS_VERSION } from '../../../../utils/companyConcentrations.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../../utils/rateLimit.js';
 
@@ -9,7 +8,7 @@ export const maxDuration = 60;
 
 export async function GET(request) {
   let selection;
-  try { selection = parseRiskNoteRequest(request.url); }
+  try { selection = parseCompanyConcentrationsRequest(request.url); }
   catch (error) { return Response.json({ error: error.message }, { status: 400, headers: { 'Cache-Control': 'private, no-store' } }); }
   const limit = await checkRateLimit({ key: `rl:risk-concentrations:${getClientIp(request)}`, windowMs: 600_000, max: 30 });
   if (!limit.allowed) return rateLimitedResponse(limit);
