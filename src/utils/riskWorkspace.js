@@ -1,5 +1,5 @@
 // Risk-page presentation and deterministic, before-tax sensitivity calculations.
-export const RISK_VERSION = 'risk-workspace-v4';
+export const RISK_VERSION = 'risk-workspace-v5';
 export const SCREEN_LABELS = { low: 'Within screen', moderate: 'Monitor', elevated: 'Review', high: 'Priority review', info: 'Context', na: 'Unavailable' };
 export const PILLAR_LABELS = { credit: 'Credit', capital: 'Capital', liquidity: 'Liquidity', profitability: 'Earnings', quality: 'Earnings quality' };
 
@@ -38,7 +38,10 @@ export function decorateRiskProfile(profile) {
     const [label, why, question, thresholds] = definitions[metric.id] || [null, metric.why, 'Review the source filing.', null];
     const level = contextOnly.has(metric.id) && metric.value != null ? 'info' : metric.zone.level;
     const contextual = level === 'info';
-    return { ...metric, label: label || metric.label, why, question,
+    const revenueLabel = metric.revenueBasis === 'lease' ? 'Net income / reported lease revenue' : metric.revenueBasis === 'net-of-interest' ? 'Net income / net revenue' : null;
+    const revenueWhy = metric.revenueBasis === 'lease' ? 'Annual or trailing-twelve-month net income / reported lease revenue. This narrower denominator excludes non-lease income; compare with the full income statement.'
+      : metric.revenueBasis === 'net-of-interest' ? 'Annual or trailing-twelve-month net income / net revenue after interest expense. This revenue basis differs from an industrial company’s gross revenue.' : null;
+    return { ...metric, label: revenueLabel || label || metric.label, why: revenueWhy || why, question,
       zone: { level, label: SCREEN_LABELS[level] },
       thresholds: contextual ? null : thresholds,
       trajectory: contextOnly.has(metric.id) ? null : metric.trajectory,

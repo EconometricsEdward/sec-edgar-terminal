@@ -31,7 +31,7 @@ const TOOLS = [
   [
     "Risk",
     "/risk",
-    "Review industry-aware indicators and the financial evidence behind them.",
+    "Start with the company Risk Profile to compare liquidity, leverage, capital and earnings over time. Explore filing-supported business exposures and separate CFTC market context, with reporting dates and source evidence.",
   ],
   [
     "Market",

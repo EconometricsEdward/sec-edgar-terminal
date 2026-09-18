@@ -1,6 +1,6 @@
 .page { --r-panel:#171d29; --r-raised:#1d2533; --r-text:#eef2f7; --r-muted:#a3afc1; --r-line:#323d4e; --r-accent:#f6c654; --r-tint:rgba(246,198,84,.07); --r-good:#9dd9c2; --r-bad:#ffb6b0; color:var(--r-text); padding:28px 0 48px; font-size:14px; line-height:1.6; }
 :global(html[data-theme-mode="light"]) .page, :global(html[data-theme-mode="balanced"]) .page { --r-panel:#f8fafc; --r-raised:#edf1f5; --r-text:#182333; --r-muted:#536277; --r-line:#ccd5df; --r-accent:#865709; --r-tint:rgba(151,103,19,.07); --r-good:#206049; --r-bad:#a32b2a; }
-.page :is(h1,h2,h3,p) { margin:0; }
+.page :where(h1,h2,h3,p) { margin:0; }
 .page button, .page input, .page select { font:inherit; }
 .page button { cursor:pointer; }
 .page button:disabled { opacity:.5; cursor:not-allowed; }
@@ -8,8 +8,46 @@
 .page a { color:var(--r-accent); text-decoration:none; }
 .page a:hover { text-decoration:underline; }
 .page h1 { font-size:clamp(26px,3vw,38px); line-height:1.2; font-weight:650; letter-spacing:-1.3px; margin:8px 0; }
-.page h2 { font-size:21px; font-weight:600; line-height:1.35; letter-spacing:-.4px; }
-.page h3 { font-size:15px; font-weight:600; }
+.page :where(h2) { font-size:21px; font-weight:600; line-height:1.35; letter-spacing:-.4px; }
+.page :where(h3) { font-size:15px; font-weight:600; }
+.page .pageHeader h1 { font-size:clamp(34px,4vw,52px); line-height:1.08; letter-spacing:-1.8px; font-weight:550; margin:12px 0; }
+.page .pageHeader { padding:16px 0 12px; margin-bottom:17px; }
+.page .pageHeader p { font-size:13px; }
+.workflowBar { display:flex; align-items:center; justify-content:space-between; gap:24px; border-bottom:1px solid var(--r-line); margin-bottom:27px; min-height:52px; }
+.workflowBar .tabs { margin-bottom:0; border-bottom:0; gap:30px; }
+.workflowBar .tabs button { padding:18px 0; font-size:12px; }
+.tabNumber { font:10px ui-monospace,monospace; margin-right:1px; opacity:.65; }
+.workflowBar > .textButton { font-size:10px!important; flex-shrink:0; }
+.toolLabel { font-size:11px; color:var(--r-muted); }
+.page .company { border:0; padding-top:0; gap:24px; }
+.page .companyIdentity h2 { font-size:21px; font-weight:550; letter-spacing:-.5px; }
+.page .ticker { font:600 15px ui-monospace,monospace; letter-spacing:0; border:1px solid var(--r-line); padding:9px 12px; }
+.page .freshness { margin:17px 0 19px; gap:8px 20px; font-size:10px; }
+.page .explorer { border:0; border-top:1px solid var(--r-line); border-radius:0; background:transparent; }
+.page .metricDetail { padding-top:25px; }
+.page .metricSidebar { background:var(--r-tint); }
+.page .formula { border:0; border-left:2px solid var(--r-line); border-radius:0; background:transparent; }
+.explorerHeading { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:26px 0 23px; }
+.explorerHeading h2 { margin-top:9px; font-size:24px; font-weight:550; }
+.page .empty,.page .loading { border-radius:0; border:0; border-block:1px solid var(--r-line); background:transparent; }
+.page .skeletons span { border-radius:0; height:7px; }
+.page .notice { border:0; border-left:2px solid var(--r-accent); border-radius:0; }
+.riskLanding { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:90px; padding:44px 0 60px; }
+.riskLanding > div > h2 { font-size:clamp(32px,4.2vw,52px); font-weight:550; line-height:1.16; letter-spacing:-1.8px; margin:18px 0; }
+.riskLanding > div > h2 span { color:var(--r-accent); }
+.riskLanding > div > p { max-width:520px; font-size:14px; line-height:1.9; color:var(--r-muted); }
+.exampleCompanies { display:grid; grid-template-columns:1fr 1fr; gap:0 25px; margin-top:34px; }
+.exampleCompanies > a { display:flex; align-items:center; gap:10px; padding:16px 0; border-bottom:1px solid var(--r-line); }
+.exampleCompanies strong { font-size:14px; font-weight:550; }
+.exampleCompanies span { font-size:11px; color:var(--r-muted); }
+.exampleCompanies svg { margin-left:auto; }
+.researchSteps { list-style:none; padding:0; margin:0; }
+.researchSteps li { display:flex; gap:20px; padding:25px 0; border-top:1px solid var(--r-line); }
+.researchSteps li > svg { flex-shrink:0; width:22px; color:var(--r-accent); margin-top:8px; }
+.researchSteps span { font-size:9px; letter-spacing:1.2px; color:var(--r-muted); }
+.researchSteps h3 { font-size:18px; font-weight:550; margin-top:7px; }
+.researchSteps p { font-size:12px; color:var(--r-muted); line-height:1.8; margin-top:7px; }
+.marketContext { min-width:0; }
 .pageHeader { display:flex; align-items:center; justify-content:space-between; gap:32px; margin-bottom:28px; }
 .pageHeader p, .detailHeader p, .models > p { color:var(--r-muted); margin-top:8px; }
 .eyebrow { display:flex; align-items:center; gap:7px; color:var(--r-accent); text-transform:uppercase; font-size:11px; font-weight:700; letter-spacing:1.8px; }
@@ -242,3 +280,5 @@
 .fcmMethodology .sourceLinks { margin-top:18px; }
 @media (max-width:1000px) { .fcmHero { flex-direction:column; gap:16px; } .fcmSelection { gap:20px; } .fcmSignals { grid-template-columns:1fr; gap:18px; } }
 @media (max-width:760px) { .riskModes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } .riskModes > button { padding:12px 10px; gap:8px; align-items:flex-start; } .riskModes strong { font-size:12px; } .riskModes small { font-size:10px; } .riskModes > button > svg:last-child:not(:first-child) { display:none; } .cftcEntry { flex-direction:column; align-items:flex-start; padding:18px; gap:15px; } .fcmHero { padding:20px 16px; } .fcmSourceBadge { font-size:10px; white-space:normal; } .fcmReportBar { padding:13px 16px; font-size:11px; gap:8px 16px; } .fcmSelection { grid-template-columns:1fr; gap:12px; } .fcmSelection select { font-size:12px; } .fcmSelection p { font-size:11px; } .fcmEntityHeading { align-items:flex-start; flex-direction:column; gap:12px; } .fcmEntityHeading h3 { font-size:16px; } .fcmStat > strong { font-size:26px; } .fcmStatChange { font-size:10px; } .fcmSignals,.fcmDetail { padding:18px 15px; } .fcmDetail .detailHeader { flex-wrap:wrap; } .fcmFilters { gap:12px; } .fcmFilters .filterSearch { flex-basis:100%; } .fcmMethodology { padding:15px; } .fcmPeerTable { max-height:500px; } }
+@media(max-width:1000px) { .workflowBar { flex-wrap:wrap; gap:0 20px; } .workflowBar > .textButton { padding:12px 0; } .riskLanding { gap:40px; } }
+@media(max-width:760px) { .page .pageHeader { padding-top:5px; } .page .pageHeader h1 { font-size:38px; } .workflowBar .tabs { width:100%; gap:23px; } .workflowBar .tabs button { font-size:11px; gap:6px; } .tabNumber { display:none; } .page .companyIdentity h2 { font-size:18px; } .page .ticker { font-size:13px; padding:8px; } .page .company { gap:15px; } .riskLanding { grid-template-columns:1fr; gap:40px; padding-top:25px; } .riskLanding > div > h2 { font-size:40px; } .riskLanding > div > p { font-size:13px; } .explorerHeading { align-items:flex-start; flex-direction:column; } .explorerHeading h2 { font-size:22px; } }

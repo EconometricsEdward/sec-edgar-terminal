@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeRiskView, parseRiskLocation, riskViewPath } from '../src/app/risk/riskNavigation.js';
+import { normalizeRiskBasis, normalizeRiskView, parseRiskLocation, riskViewPath } from '../src/app/risk/riskNavigation.js';
 import { fcmChange, fcmComparisonCsv, fcmMoney, fcmRatio, fcmSignals, filterFcmFirms } from '../src/app/risk/fcmPresentation.js';
 
 const firm = (overrides = {}) => ({
@@ -12,8 +12,8 @@ const firm = (overrides = {}) => ({
 });
 
 test('CFTC risk links restore standalone FCM and company context without requiring a ticker for FCM', () => {
-  assert.deepEqual(parseRiskLocation('?view=fcm&entity=firm-a'), { ticker: '', view: 'fcm', entity: 'firm-a', asOf: '' });
-  assert.deepEqual(parseRiskLocation('?symbol=jpm&view=cftc'), { ticker: 'JPM', view: 'cftc', entity: '', asOf: '' });
+  assert.deepEqual(parseRiskLocation('?view=fcm&entity=firm-a'), { ticker: '', view: 'fcm', basis: 'ttm', entity: 'firm-a', asOf: '' });
+  assert.deepEqual(parseRiskLocation('?symbol=jpm&view=cftc'), { ticker: 'JPM', view: 'cftc', basis: 'ttm', entity: '', asOf: '' });
   assert.equal(riskViewPath('?ticker=JPM&view=fcm&entity=firm-a', 'cftc'), '/risk?ticker=JPM&view=cftc&entity=firm-a');
   assert.equal(riskViewPath('?ticker=JPM&view=cftc', 'overview'), '/risk?ticker=JPM');
   assert.equal(normalizeRiskView('unrecognized'), 'overview');
@@ -23,16 +23,35 @@ test('disabled CFTC views fall back to company overview without losing the ticke
   assert.equal(normalizeRiskView('cftc', false), 'overview');
   assert.equal(normalizeRiskView('fcm', false), 'overview');
   assert.equal(normalizeRiskView('exposures', false), 'overview');
-  assert.equal(normalizeRiskView('stress', false), 'stress');
-  assert.deepEqual(parseRiskLocation('?ticker=BAC&view=cftc', false), { ticker: 'BAC', view: 'overview', entity: '', asOf: '' });
+  assert.equal(normalizeRiskView('stress', false), 'overview');
+  assert.deepEqual(parseRiskLocation('?ticker=BAC&view=cftc', false), { ticker: 'BAC', view: 'overview', basis: 'ttm', entity: '', asOf: '' });
   assert.equal(riskViewPath('?ticker=BAC&view=fcm', 'fcm', false), '/risk?ticker=BAC');
 });
 
 test('company exposure deep links preserve filing cutoff across risk views and browser restoration', () => {
-  assert.deepEqual(parseRiskLocation('?ticker=xom&view=exposures&asOf=2025-06-30'), { ticker: 'XOM', view: 'exposures', entity: '', asOf: '2025-06-30' });
-  assert.equal(riskViewPath('?ticker=XOM&view=exposures&asOf=2025-06-30', 'stress'), '/risk?ticker=XOM&view=stress&asOf=2025-06-30');
+  assert.deepEqual(parseRiskLocation('?ticker=xom&view=exposures&asOf=2025-06-30'), { ticker: 'XOM', view: 'exposures', basis: 'ttm', entity: '', asOf: '2025-06-30' });
+  assert.equal(riskViewPath('?ticker=XOM&view=exposures&asOf=2025-06-30', 'stress'), '/risk?ticker=XOM&asOf=2025-06-30');
   assert.equal(riskViewPath('?ticker=XOM&view=stress&asOf=2025-06-30', 'exposures'), '/risk?ticker=XOM&view=exposures&asOf=2025-06-30');
-  assert.deepEqual(parseRiskLocation('?ticker=XOM&view=exposures&asOf=2025-06-30', false), { ticker: 'XOM', view: 'overview', entity: '', asOf: '2025-06-30' });
+  assert.deepEqual(parseRiskLocation('?ticker=XOM&view=exposures&asOf=2025-06-30', false), { ticker: 'XOM', view: 'overview', basis: 'ttm', entity: '', asOf: '2025-06-30' });
+});
+
+test('retired risk tabs restore the profile without losing company or annual basis', () => {
+  for (const view of ['stress', 'disclosures', 'unknown']) {
+    const search = `?ticker=BRK-B&basis=annual&view=${view}&asOf=2025-06-30`;
+    const restored = parseRiskLocation(search);
+    assert.deepEqual(restored, { ticker: 'BRK-B', view: 'overview', basis: 'annual', entity: '', asOf: '2025-06-30' });
+    assert.equal(riskViewPath(search, restored.view), '/risk?ticker=BRK-B&basis=annual&asOf=2025-06-30');
+  }
+});
+
+test('risk basis is shareable and browser restoration defaults unsupported values to TTM', () => {
+  assert.equal(normalizeRiskBasis('annual'), 'annual');
+  for (const value of [undefined, '', 'ttm', 'quarter', 'ANNUAL']) assert.equal(normalizeRiskBasis(value), 'ttm');
+  const annualPath = riskViewPath('?ticker=JPM&basis=annual', 'cftc');
+  assert.equal(annualPath, '/risk?ticker=JPM&basis=annual&view=cftc');
+  assert.equal(parseRiskLocation(new URL(annualPath, 'https://secedgarterminal.com').search).basis, 'annual');
+  assert.equal(parseRiskLocation('?ticker=JPM&basis=quarter').basis, 'ttm');
+  assert.equal(parseRiskLocation('?symbol=%20brk-b%20').ticker, 'BRK-B');
 });
 
 test('capital presentation preserves zero, missing values, raw dollars and coverage multiples', () => {

@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { ArrowDownToLine, ArrowUpRight, CircleAlert, FileText, FlaskConical, Loader2, RotateCcw, Search } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowDownToLine, ArrowUpRight, CircleAlert, Search } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { PILLAR_LABELS, RISK_VERSION, formatRiskValue, riskDelta, riskHistoryCsv, riskPeriodLabel, runRiskStress } from '../../utils/riskWorkspace.js';
+import { PILLAR_LABELS, formatRiskValue, riskDelta, riskHistoryCsv, riskPeriodLabel } from '../../utils/riskWorkspace.js';
 import type { RiskData, RiskMetric, RiskProfile, RiskSource } from './riskTypes';
 import { downloadRiskFile } from './riskDownload';
 import s from './risk.module.css';
@@ -50,42 +50,4 @@ function MetricDetail({ metric: m, data, profile }: { metric: RiskMetric; data: 
       <h3>Reported source inputs <span>{sources.length}</span></h3><Sources sources={sources}/>
     </div> : <div className={s.tableWrap}><table><caption>{m.label} · {profile.basis === 'ttm' ? 'TTM flows and quarter-end balances' : 'Annual observations'}</caption><thead><tr><th>Reporting end</th><th>Value{m.id === 'loss_years' ? ' (loss flag)' : ''}</th><th>Source inputs</th></tr></thead><tbody>{[...m.series].reverse().map((p,i) => <tr key={p.end}><th scope="row">{p.end}</th><td>{formatRiskValue(p.value, m.format)}</td><td><button className={s.textButton} onClick={() => { setIndex(m.series.length - 1 - i); setDetail('evidence'); }}>Inspect {p.sources.length} inputs <ArrowUpRight size={13}/></button></td></tr>)}</tbody></table><p className={s.note}>Gaps are retained. Percentage-ratio changes are percentage points. SEC facts may reflect later revisions to the same reporting period.</p></div>}
   </article>;
-}
-
-export function RiskStress({ profile, controls, onControls }: { profile: RiskProfile; controls: Record<string,number>; onControls: (c: Record<string,number>) => void }) {
-  const result = runRiskStress(profile, controls);
-  const bank = profile.industry.isBank;
-  const insurer = profile.industry.isFinancial && !bank;
-  const fields = bank ? [{ key: 'runoff', label: 'Requested deposit withdrawal', max: 30, step: 0.5, detail: '% of reported deposits' }, { key: 'creditLoss', label: 'Additional unreserved credit loss', max: 5, step: 0.1, detail: '% of net loans, beyond existing allowances' }] : insurer ? [{ key: 'assetLoss', label: 'Illustrative asset loss', max: 10, step: 0.1, detail: '% of total assets, before tax' }] : [{ key: 'earningsDecline', label: 'Operating earnings decline', max: 100, step: 5, detail: '% of the absolute operating-income baseline' }, { key: 'interestIncrease', label: 'Interest expense increase', max: 100, step: 5, detail: '% above the reported or TTM interest expense' }];
-  return <section className={s.stress}>
-    <div className={s.detailHeader}><div><div className={s.eyebrow}><FlaskConical size={15}/> Scenario laboratory</div><h2>{bank ? 'How much pressure can the balance sheet absorb?' : insurer ? 'Test the sensitivity of book capital.' : 'How resilient is interest coverage?'}</h2><p>Move an assumption. See the arithmetic. Start at zero to reproduce the baseline.</p></div><button className={s.button} onClick={() => onControls({})}><RotateCcw size={15}/>Reset</button></div>
-    {!result.available ? <div className={s.empty}><CircleAlert/><h3>Scenario unavailable for this reporting period</h3><p>Required inputs: {result.missing.join(', ')}. Missing figures are not assumed to be zero.</p></div> : <>
-      <div className={s.stressGrid}><div className={s.controls}>{fields.map((field) => <div key={field.key} className={s.control}><label htmlFor={`stress-${field.key}`}>{field.label}<strong>{(controls[field.key] || 0).toFixed(field.step < 1 ? 1 : 0)}%</strong></label><p>{field.detail}</p><input id={`stress-${field.key}`} type="range" min={0} max={field.max} step={field.step} value={controls[field.key] || 0} onChange={(e) => onControls({ ...controls, [field.key]: Number(e.target.value) })}/><div><span>0%</span><span>{field.max}%</span></div></div>)}<div className={s.notice}><CircleAlert size={17}/><span>Illustrative sensitivity · {profile.periods[0]?.end}<br/>Before tax; not a forecast or regulatory stress test.{bank && <><br/><br/>Cash basis: {profile.stressInputs.cash?.formula || 'Reported cash'}. Other funding sources are excluded.</>}</span></div></div>
-        <div className={s.scenarioResults}><div className={s.resultHeader}><span>Outcome</span><span>Baseline</span><span>Your scenario</span></div>{result.rows.map((r) => <div className={s.resultRow} key={r.label}><span>{r.label}</span><span>{formatRiskValue(r.baseline,r.format)}</span><strong>{formatRiskValue(r.stressed,r.format)}</strong></div>)}</div></div>
-      <div className={s.assumptions}><h3>What this scenario assumes</h3><ul>{result.assumptions.map((a) => <li key={a}>{a}</li>)}</ul><details className={s.disclosure}><summary>Equations and reported scenario inputs</summary>{result.rows.map((r) => <p key={r.label}><strong>{r.label}:</strong> {r.formula}</p>)}<Sources sources={(result.inputs || []).flatMap((key) => profile.stressInputs[key].sources)}/></details></div>
-    </>}
-  </section>;
-}
-
-export function RiskDisclosures({ data }: { data: RiskData }) {
-  const [scan, setScan] = useState<any>(null);
-  const [error, setError] = useState('');
-  const [retry, setRetry] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController(); setScan(null); setError('');
-    fetch(`/api/risk?ticker=${encodeURIComponent(data.ticker)}&include=disclosures&v=${RISK_VERSION}`, { signal: controller.signal })
-      .then(async (res) => { const body = await res.json(); if (!res.ok) throw new Error(body.error || 'Could not read disclosures.'); return body; })
-      .then((body) => { if (!controller.signal.aborted) setScan(body.filingScan); })
-      .catch((err) => { if (!controller.signal.aborted) setError(err.message); });
-    return () => controller.abort();
-  }, [data.ticker, retry]);
-  const models = [['Altman Z″',data.annual.zScore],['Zmijewski index',data.annual.models.zmijewski],['Beneish M-Score',data.annual.models.beneish]] as const;
-  return <section className={s.disclosuresPanel}><div className={s.detailHeader}><div><div className={s.eyebrow}><FileText size={15}/> Read the original disclosure</div><h2>Risk language, in context.</h2><p>Literal mentions are reading aids. They do not establish a breach, a control failure, or a going-concern qualification.</p></div></div>
-    {!scan && !error && <p className={s.inlineLoading} role="status"><Loader2 size={18} className={s.spin}/> Locating and scanning the annual filing…</p>}
-    {(error || scan?.error) && <div className={s.notice} role="alert"><CircleAlert size={17}/><span>{error || scan.error} <button className={s.textButton} onClick={() => setRetry((n) => n + 1)}>Retry scan</button></span></div>}
-    {scan?.url && <a className={s.filingLink} href={scan.url} target="_blank" rel="noreferrer"><FileText size={20}/><span>{scan.form} · Period ended {scan.reportDate}<small>Filed {scan.filingDate} · {scan.accession}</small></span><ArrowUpRight size={17}/></a>}
-    {scan?.historyLimited && <p className={s.note}>The filing-history search was limited; a more recent annual filing may be outside the searched records.</p>}
-    {scan && !scan.error && <div className={s.termGrid}>{scan.terms.map((term: any) => <details key={term.term} className={s.term}><summary>{term.term}<span>{term.count} {term.count === 1 ? 'mention' : 'mentions'}</span></summary>{term.excerpts.map((excerpt: string,i: number) => <blockquote key={i}>{excerpt}</blockquote>)}{!term.count && <p>No literal matches in the extracted text. This does not establish absence of the underlying risk.</p>}</details>)}</div>}
-    <div className={s.models}><h2>Annual research models</h2><p>Historical academic screens using annual inputs. Model outputs are not current default probabilities, credit ratings, or findings of manipulation.</p>{data.annual.industry.isFinancial ? <div className={s.notice}>Altman, Zmijewski, and Beneish are not applied to banks or insurers. Use the sector-specific accounting metrics and original capital disclosures.</div> : models.map(([name, model]) => <details className={s.disclosure} key={name}><summary>{name}<span>{model?.value == null ? 'Unavailable' : model.value.toFixed(2)} · FY{model?.fiscalYear || '—'}</span></summary>{model ? <><p className={s.formula}>{String(model.formula || '').replace('P(distress)', 'Historical model transform')}</p>{model.missing?.length > 0 && <p>Missing inputs: {model.missing.join(', ')}</p>}{model.caution && <p>{model.caution}</p>}{model.assumptions?.map((a: string) => <p key={a}>{a}</p>)}{model.thresholds && <p>Published model cutoffs: {Object.entries(model.thresholds).map(([key,value]) => `${key} ${value}`).join(' · ')}</p>}<div className={s.tableWrap}><table><thead><tr><th>Input / index</th><th>Value</th><th>Coefficient</th><th>Contribution</th></tr></thead><tbody>{(model.inputs || model.indices || []).map((input: any) => <tr key={input.id}><th scope="row">{input.label}</th><td>{(input.ratio ?? input.value)?.toFixed(3) ?? '—'}</td><td>{input.weight ?? input.coefficient ?? '—'}</td><td>{input.contribution?.toFixed(3) ?? '—'}</td></tr>)}</tbody></table></div><Sources sources={model.sources || []}/></> : <p>No compatible annual inputs.</p>}</details>)}</div>
-  </section>;
 }
