@@ -10,23 +10,27 @@
 .columnLabels > :last-child { text-align:right; }
 .dimension { padding:15px 0 11px; border-bottom:1px solid var(--r-line); }
 .dimensionMain { display:grid; grid-template-columns:minmax(180px,1.6fr) minmax(80px,.8fr) minmax(90px,.8fr); gap:15px; align-items:center; width:100%; text-align:left; color:var(--r-text); }
-.dimensionMain:hover .dimensionTitle strong { color:var(--r-accent); }
-.dimensionTitle { display:flex; gap:12px; align-items:center; }
+.dimensionTitle:hover strong,.dimensionValue:hover > strong { color:var(--r-accent); }
+.dimensionTitle { display:flex; gap:12px; align-items:center; text-align:left; color:inherit; min-width:0; }
+.dimensionTitle:focus-visible,.dimensionValue:focus-visible { outline:2px solid var(--r-accent); outline-offset:4px; border-radius:2px; }
 .number { font:10px ui-monospace,monospace; color:var(--r-muted); }
 .dimensionTitle strong { display:block; font-size:15px; font-weight:550; }
 .dimensionTitle small { display:block; color:var(--r-muted); font-size:11px; margin-top:3px; }
-.dimensionValue { text-align:right; }
+.dimensionValue { text-align:right; color:inherit; min-width:0; }
 .dimensionValue > strong { font-size:26px; font-weight:550; letter-spacing:-.9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .dimensionValue > small { display:flex; align-items:center; justify-content:flex-end; gap:5px; font-size:10px; color:var(--r-muted); }
 .dimensionValue small[data-level="low"] { color:var(--r-good); }
 .dimensionValue small[data-level="moderate"],.dimensionValue small[data-level="elevated"] { color:var(--r-accent); }
 .dimensionValue small[data-level="high"] { color:var(--r-bad); }
+.observationDate { display:block; font-size:9px; color:var(--r-muted); margin-top:3px; font-variant-numeric:tabular-nums; }
 .comparison { display:flex; justify-content:space-between; gap:12px; padding-left:25px; color:var(--r-muted); font-size:10px; margin-top:9px; }
 .comparison b { color:var(--r-text); font-weight:450; font-variant-numeric:tabular-nums; }
 .sparkline { width:100%; height:45px; overflow:visible; }
 .guide { stroke:var(--r-line); stroke-width:1; }
 .trendLine { stroke:var(--profile-teal); stroke-width:1.7; }
 .trendDot { fill:var(--profile-teal); }
+.inspectionLine { stroke:var(--r-muted); stroke-width:1; stroke-dasharray:2 3; opacity:.75; }
+.noValues { fill:var(--r-muted); font-size:9px; }
 .noTrend { font-size:10px; color:var(--r-muted); text-align:center; }
 .caption { font-size:10px; line-height:1.7; color:var(--r-muted); margin-top:13px!important; }
 .balance { padding:22px 25px; background:linear-gradient(145deg,var(--r-tint),transparent 70%); border-left:1px solid var(--r-line); min-width:0; }
@@ -65,7 +69,7 @@
 .dimensionContext { font-size:10px; color:var(--r-muted); margin-top:8px!important; padding-left:25px; }
 .dimensionContext a { color:var(--r-accent); margin-left:5px; }
 .dimensionContext svg { display:inline; }
-.dimensionMain:disabled { opacity:1; cursor:default; }
+.dimensionTitle:disabled,.dimensionValue:disabled { opacity:1; cursor:default; }
 .coverage { display:flex; align-items:flex-start; gap:12px; margin-top:22px; color:var(--r-muted); }
 .coverage > svg { margin-top:3px; flex-shrink:0; }
 .coverage button { display:flex; align-items:center; gap:5px; color:var(--r-text); font-size:11px; margin-bottom:6px; }

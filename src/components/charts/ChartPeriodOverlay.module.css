@@ -1,0 +1,4 @@
+.control { outline: none; }
+.hitArea { fill: transparent; pointer-events: all; cursor: crosshair; }
+.focusRing { fill: none; stroke: transparent; pointer-events: none; }
+.control:focus-visible .focusRing { stroke: var(--r-accent, #ffcf54); stroke-width: 1.5; stroke-dasharray: 4 3; }
