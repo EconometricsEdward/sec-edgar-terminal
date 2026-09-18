@@ -9,3 +9,39 @@
 @media(max-width:680px) { .plotViewport .timeline { width:820px; min-width:820px; max-width:none; min-height:0; }.plotViewport .distributionPlot { width:760px; min-width:760px; max-width:none; min-height:0; } }
 
 .inspectionTools{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px}.inspectionTools>span{color:var(--cv-muted);font-size:10px;line-height:1.6}.distributionReadout{display:flex;align-items:baseline;gap:12px 22px;flex-wrap:wrap;margin-top:17px;font-size:11px;color:var(--cv-muted);font-variant-numeric:tabular-nums}.distributionReadout strong{color:var(--cv-text);font-size:20px;font-weight:550}.distributionReadout small{color:var(--cv-muted);font-size:10px;font-weight:400}
+
+/* Exposure research keeps one chart in focus; other consumers retain the full layout. */
+.compact .viewSwitcher { display:flex; gap:6px; flex-wrap:wrap; padding:0 0 16px; border-bottom:1px solid var(--cv-line); }
+.root .viewSwitcher button { padding:9px 14px; border:1px solid transparent; border-radius:6px; color:var(--cv-muted); background:transparent; font:inherit; font-size:14px; line-height:1.4; cursor:pointer; }
+.root .viewSwitcher button[aria-pressed="true"] { color:var(--cv-teal); background:var(--cv-tint); border-color:var(--cv-line); }
+.compact .history { padding:18px 0 8px; border:0; }
+.compact .history figcaption { gap:14px; }
+.compact h4 { font-size:21px; }
+.compact p,.compact .caption { font-size:13px; line-height:1.6; }
+.compact .kicker { font-size:11px; }
+.compact .switcher button { font-size:13px; padding:8px 10px; }
+.compact .readout,.compact .distributionReadout { font-size:13px; margin-top:16px; gap:8px 20px; min-height:30px; }
+.compact .readout strong,.compact .distributionReadout strong { font-size:24px; }
+.compact .readout small,.compact .distributionReadout small { font-size:13px; }
+.compact .timeline { max-height:320px; }
+.compact .inspectionTools>span,.compact .dateControl { font-size:13px; }
+.compact .comparisons { grid-template-columns:1fr; padding:20px 0 10px; gap:0; }
+.compact .comparisons figure+figure { border:0; padding:0; }
+.compact .comparisons figure { max-width:960px; }
+.compact .axis { font-size:13px; margin-top:18px; }
+.compact .group>span,.compact .change>span { font-size:14px; }
+.compact .group strong,.compact .change strong { font-size:15px; }
+.compact .track { height:15px; margin-top:8px; }
+.compact .change small { font-size:13px; }
+.compact .decomposition>span,.compact .decomposition dt { font-size:13px; }
+.compact .decomposition dd { font-size:15px; }
+.compact .distribution { padding:20px 0 10px; border:0; }
+.compact .distribution figcaption>strong small { font-size:13px; }
+.compact .distribution svg { max-height:150px; margin-top:20px; }
+@media(max-width:680px) {
+  .compact .viewSwitcher { gap:3px; }.compact .viewSwitcher button { padding:8px 10px; }
+  .compact .history figcaption { display:block; }.compact .switcher { margin-top:10px; }
+  .compact .plotViewport .timeline { max-height:none; }.compact .distributionPlot { max-height:none; }
+  .compact .decomposition dl { flex-wrap:wrap; gap:15px; }.compact .dateControl { margin-top:10px; }
+  .compact .readout strong,.compact .distributionReadout strong { font-size:21px; }
+}

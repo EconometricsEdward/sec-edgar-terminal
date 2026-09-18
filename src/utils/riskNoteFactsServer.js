@@ -44,7 +44,7 @@ async function loadHtml(filing, signal) {
  * substitutes an older readable filing when the selected document fails.
  */
 export async function discoverRiskNoteFacts(selection, { now = new Date(), signal, lookupTicker = getOperatingTicker,
-  loadSubmissions = (file, requestSignal) => secResearchJson(`/submissions/${file}`, requestSignal), loadFiling = loadHtml } = {}) {
+  loadSubmissions = (file, requestSignal) => secResearchJson(`/submissions/${file}`, requestSignal), loadFiling = loadHtml, extractFacts = extractRiskNoteFacts } = {}) {
   const checked = parseRiskNoteRequest(`https://example.test/?ticker=${encodeURIComponent(selection.ticker || '')}&basis=${encodeURIComponent(selection.basis || 'ttm')}${selection.asOf == null ? '' : `&asOf=${encodeURIComponent(selection.asOf)}`}`, now);
   const checkedAt = new Date(now).toISOString(), cutoff = checked.asOf || checkedAt.slice(0, 10);
   const entry = await lookupTicker(checked.ticker);
@@ -54,7 +54,7 @@ export async function discoverRiskNoteFacts(selection, { now = new Date(), signa
   const manifest = await loadSubmissions(`CIK${cik}.json`, signal);
   if (String(manifest?.cik).padStart(10, '0') !== cik || !completeRows(manifest?.filings?.recent)) throw fail('The SEC manifest did not verify the selected issuer.', 502);
   const result = { schemaVersion: RISK_NOTE_FACTS_VERSION, ...checked, cik, companyName: String(manifest.name || entry.name || checked.ticker).slice(0, 500),
-    checkedAt, status: 'no_filing', filing: null, rows: [], coverage: { historyFilesScanned: 0, historyLimited: false, documentBytesLimit: RISK_NOTE_MAX_BYTES }, limitations: RISK_NOTE_LIMITATIONS };
+    sic: String(manifest.sic || ''), checkedAt, status: 'no_filing', filing: null, rows: [], coverage: { historyFilesScanned: 0, historyLimited: false, documentBytesLimit: RISK_NOTE_MAX_BYTES }, limitations: RISK_NOTE_LIMITATIONS };
   let filings = companyExposureFilings(manifest.filings.recent, cik, cutoff);
   const archives = (Array.isArray(manifest.filings.files) ? manifest.filings.files : []).filter(file => new RegExp(`^CIK${cik}-submissions-\\d+\\.json$`).test(file.name)
     && validDate(file.filingFrom) && validDate(file.filingTo) && file.filingFrom <= cutoff && file.filingFrom <= file.filingTo)
@@ -71,7 +71,7 @@ export async function discoverRiskNoteFacts(selection, { now = new Date(), signa
   result.filing = selectRiskNoteFiling(filings, checked.basis);
   if (!result.filing) { result.message = 'No eligible original filing was located in the bounded SEC manifest search.'; return result; }
   const html = await loadFiling(result.filing, signal);
-  const extracted = extractRiskNoteFacts(html, { cik, filing: result.filing });
+  const extracted = extractFacts(html, { cik, filing: result.filing });
   result.rows = extracted.rows;
   result.coverage = { ...result.coverage, ...extracted.coverage };
   result.status = result.rows.length ? 'ready' : 'no_matches';
