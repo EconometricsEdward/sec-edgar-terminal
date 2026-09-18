@@ -87,9 +87,9 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
   const period = profile?.periods[0];
   const age = period && visibleData ? Math.floor((Date.parse(visibleData.generatedAt) - Date.parse(period.end)) / 86400000) : null;
 
-  return <div className={s.page}>
+  return <div className={s.page} data-exposures={isExposures || undefined}>
     <header className={s.pageHeader}>
-      <div><div className={s.eyebrow}><ShieldCheck size={15} /> Company risk research</div><h1>{isFcm ? 'Futures broker capital.' : 'Risk, in perspective.'}</h1><p>{isFcm ? 'Capital and customer funds, at the legal entity level.' : 'Capital. Cash. Business exposures. See how the pieces connect.'}</p></div>
+      <div><div className={s.eyebrow}><ShieldCheck size={15} /> Company risk research</div><h1>{isFcm ? 'Futures broker capital.' : isExposures ? 'Business exposures.' : 'Risk, in perspective.'}</h1><p>{isFcm ? 'Capital and customer funds, at the legal entity level.' : isExposures ? 'Revenue, funding, counterparties and the markets that connect them.' : 'Capital. Cash. Business exposures. See how the pieces connect.'}</p></div>
       {!isFcm && <form className={s.search} onSubmit={e => { e.preventDefault(); search(input); }}>
         <label htmlFor="risk-ticker">Explore a company</label><div><Search size={17} /><input id="risk-ticker" value={input} onChange={e => setInput(e.target.value)} placeholder="Enter ticker, e.g. BAC" maxLength={12} autoComplete="off" spellCheck={false} /><button type="submit" disabled={!input.trim()} aria-label="Load risk profile"><ArrowRight size={18} /></button></div>
       </form>}
@@ -100,7 +100,7 @@ export default function RiskClient({ initialTicker = '', initialView = 'overview
     </div>
     {isFcm && <FcmCapitalPanel initialEntity={initialEntity} />}
     {isCftc && query && <div className={s.marketContext}><CompanyCftcContext key={query} ticker={query} companyName={visibleData?.companyName} mode="risk" /></div>}
-    {isExposures && query && <CompanyExposureMap key={`${query}:${retry}:${basis}`} ticker={query} basis={basis} asOf={exposureAsOf} onAsOfChange={changeExposureAsOf} />}
+    {isExposures && query && <CompanyExposureMap key={`${query}:${retry}:${basis}`} ticker={query} basis={basis} asOf={exposureAsOf} onAsOfChange={changeExposureAsOf} onBasisChange={changeBasis} />}
     {!independent && loading && <div className={s.loading} role="status"><Loader2 className={s.spin} size={24} /><h2>Reading {query}’s financial position</h2><p>Matching reporting periods and tracing SEC source inputs.</p><div className={s.skeletons}>{[1,2,3,4].map(n => <span key={n} />)}</div></div>}
     {!independent && error && <div className={s.empty} role="alert"><CircleAlert /><h2>We couldn’t load this company</h2><p>{error}</p><button className={s.button} onClick={() => setRetry(n => n + 1)}>Try again</button></div>}
     {!isFcm && !query && <section className={s.riskLanding}>

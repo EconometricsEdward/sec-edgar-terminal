@@ -109,7 +109,7 @@ function describe(tag, dimensions, namespaces) {
   return { kind: 'derivative_notional', category, label: [name, status, ...extras].filter(Boolean).join(' · ') };
 }
 
-export function extractRiskNoteFacts(html, { cik, filing }) {
+function readInlineRiskDocument(html, { cik, filing, concepts = CONCEPTS }) {
   if (typeof html !== 'string' || html.trim().length < 30 || html.length > RISK_NOTE_MAX_BYTES || !/^\d{1,10}$/.test(String(cik)) || !validDate(filing?.reportDate))
     throw new Error('A bounded SEC document, verified issuer and reporting date are required.');
   if (/<title\b[^>]*>[^<]*(?:access denied|request rate threshold|undeclared automated tool)/i.test(html)
@@ -138,7 +138,7 @@ export function extractRiskNoteFacts(html, { cik, filing }) {
       continue;
     }
     const wanted = (namespace === XBRLI && ['context', 'unit'].includes(name))
-      || (INLINE.has(namespace) && name.toLowerCase() === 'nonfraction' && CONCEPTS.has(local(token.attrs.name)) && standard(token.attrs.name, namespaces));
+      || (INLINE.has(namespace) && name.toLowerCase() === 'nonfraction' && concepts.has(local(token.attrs.name)) && standard(token.attrs.name, namespaces));
     if (!stack.length && !wanted) continue;
     if (++capturedNodes > 200_000) throw new Error('The SEC note document exceeds parser limits.');
     const node = { ...token, local: name, namespace, children: [], parts: [] };
@@ -161,6 +161,31 @@ export function extractRiskNoteFacts(html, { cik, filing }) {
       }
     } else facts.push(node);
   }
+  return { namespaces, contexts, units, facts };
+}
+
+/** Namespace-verified standard USD facts for company concentration views.
+ * The caller supplies a fixed concept allowlist; dimensions retain the exact
+ * reported context. Conflicting duplicates are omitted, never picked at random.
+ */
+export function extractCompanyInlineFacts(html, { cik, filing, concepts }) {
+  const { namespaces, contexts, units, facts } = readInlineRiskDocument(html, { cik, filing, concepts });
+  const observations = new Map();
+  let rejectedFacts = 0;
+  for (const node of facts) {
+    const context = contexts.get(node.attrs.contextref), unit = units.get(node.attrs.unitref), value = numberValue(node, namespaces), tag = node.attrs.name;
+    if (!standard(tag, namespaces) || !context || unit !== 'USD' || value == null || context.end > filing.reportDate) { rejectedFacts++; continue; }
+    const id = JSON.stringify([local(tag), context.start, context.end, context.dimensions.map(({ axis, member }) => [axis, member])]);
+    const fact = { id, tag, concept: local(tag), unit, value, ...context, contextId: node.attrs.contextref, factId: node.attrs.id || null,
+      sourceUrl: `${filing.url}${node.attrs.id && /^[\w.-]+$/.test(node.attrs.id) ? `#${node.attrs.id}` : ''}` };
+    if (observations.has(id) && observations.get(id)?.value !== value) observations.set(id, null);
+    else if (!observations.has(id)) observations.set(id, fact);
+  }
+  return { rows: [...observations.values()].filter(Boolean), coverage: { inlineFactsFound: facts.length, rejectedFacts, dimensional: true } };
+}
+
+export function extractRiskNoteFacts(html, { cik, filing }) {
+  const { namespaces, contexts, units, facts } = readInlineRiskDocument(html, { cik, filing });
   const grouped = new Map();
   let rejectedFacts = 0;
   for (const node of facts) {

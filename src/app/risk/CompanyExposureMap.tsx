@@ -1,14 +1,21 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowRight, ArrowUpRight, BookOpen, Building2, CalendarDays, Check, ChevronDown, CircleAlert, FileText, Landmark, Link2, Loader2, Network, Search, ShoppingCart, TrendingUp, Wallet } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { ArrowDownToLine, ArrowRight, ArrowUpRight, BookOpen, CalendarDays, Check, ChevronDown, CircleAlert, FileText, Loader2, Search, SlidersHorizontal } from 'lucide-react';
 import ExposureMarketContext from './ExposureMarketContext';
-import RiskNoteEvidence from './RiskNoteEvidence';
-import { CFTC_FAMILIES, CFTC_LAUNCH_CATALOG } from '../../utils/cftc.js';
+import { CFTC_LAUNCH_CATALOG } from '../../utils/cftc.js';
 import { companyExposureMapCsv, companyExposureEvidenceMarkdown, exposureAmountLabel } from './exposurePresentation.js';
 import { downloadRiskFile } from './riskDownload';
 import { matchesExposureRequest, selectExposureEvidence } from './exposureSelection.js';
 import s from './CompanyExposureMap.module.css';
+
+const loadingPanel = () => <p className={s.loading} role="status"><Loader2 size={18} className={s.spin} /> Opening exposure view…</p>;
+const CompanyConcentrations = dynamic(() => import('./CompanyConcentrations'), { loading: loadingPanel });
+const ExposureInstruments = dynamic(() => import('./ExposureInstruments'), { loading: loadingPanel });
+const CompanyOwnership = dynamic(() => import('./CompanyOwnership'), { loading: loadingPanel });
+const PANELS = [['concentrations', 'Concentrations', 'Revenue & funding'], ['instruments', 'Credit & derivatives', 'Counterparties & contracts'], ['markets', 'Market links', 'SEC evidence + CFTC'], ['ownership', 'Funds & holders', 'Reported positions']] as const;
+function panelFromLocation() { const value = new URLSearchParams(window.location.search).get('exposurePanel'); return PANELS.some(([id]) => id === value) ? value! : 'concentrations'; }
 
 type Amount = { text: string; kind: string; context: string };
 type Filing = { url: string; accession: string; form: string; filed: string; reportDate: string; role: 'annual' | 'quarterly' };
@@ -24,154 +31,88 @@ type ExposureMap = {
 
 const TRANSMISSION: Record<string, string> = { revenue: 'Revenue & demand', 'input-costs': 'Operating costs & margins', borrowing: 'Interest expense & cash coverage', investments: 'Investment income & asset values', currencies: 'Cash flows & currency translation' };
 
-const CHANNELS = [
-  { id: 'revenue', label: 'Revenue', help: 'Selling prices & demand', Icon: TrendingUp },
-  { id: 'input-costs', label: 'Input costs', help: 'Materials & operating costs', Icon: ShoppingCart },
-  { id: 'borrowing', label: 'Borrowing', help: 'Debt & interest expense', Icon: Landmark },
-  { id: 'investments', label: 'Investments', help: 'Assets & investment income', Icon: Wallet },
-  { id: 'currencies', label: 'Currencies', help: 'Transactions & translation', Icon: Building2 },
-];
-
 function dateLabel(value: string | null | undefined) {
   if (!value || !/^\d{4}-\d{2}-\d{2}/.test(value)) return 'Not reported';
   const parsed = new Date(`${value.slice(0, 10)}T00:00:00Z`);
   return Number.isFinite(parsed.getTime()) ? parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : 'Not reported';
 }
-
-function quoteLink(evidence: Evidence) {
-  const quote = evidence.text.trim().slice(0, 160);
-  return `${evidence.url.split('#')[0]}${quote ? `#:~:text=${encodeURIComponent(quote)}` : ''}`;
-}
-
+function quoteLink(evidence: Evidence) { const quote = evidence.text.trim().slice(0, 160); return `${evidence.url.split('#')[0]}${quote ? `#:~:text=${encodeURIComponent(quote)}` : ''}`; }
 function validPayload(value: unknown): value is ExposureMap {
   if (!value || typeof value !== 'object') return false;
   const body = value as ExposureMap;
-  return body.schemaVersion === 'edgar.company-exposure-map.v1' && typeof body.ticker === 'string' && (typeof body.companyName === 'string' || body.companyName === null)
+  return body.schemaVersion === 'edgar.company-exposure-map.v1' && typeof body.ticker === 'string'
     && Array.isArray(body.rows) && Array.isArray(body.sources) && Array.isArray(body.limitations) && !!body.coverage
     && body.rows.every(row => typeof row.id === 'string' && typeof row.marketLabel === 'string' && Array.isArray(row.evidence)
       && row.evidence.every(evidence => typeof evidence.text === 'string' && typeof evidence.url === 'string' && Array.isArray(evidence.amounts)));
 }
 
-export default function CompanyExposureMap({ ticker, asOf = '', basis = 'ttm', onAsOfChange }: { ticker: string; asOf?: string; basis?: string; onAsOfChange: (value: string) => void }) {
-  const [data, setData] = useState<ExposureMap | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [retry, setRetry] = useState(0);
-  const [category, setCategory] = useState('all');
-  const [search, setSearch] = useState('');
-  const [sourceRole, setSourceRole] = useState(basis === 'annual' ? 'annual' : 'all');
-  const [selectedId, setSelectedId] = useState('');
+export default function CompanyExposureMap({ ticker, asOf = '', basis = 'ttm', onAsOfChange, onBasisChange }: { ticker: string; asOf?: string; basis?: string; onAsOfChange: (value: string) => void; onBasisChange: (value: string) => void }) {
+  const [panel, setPanel] = useState<string | null>(null);
   const [draftAsOf, setDraftAsOf] = useState(asOf);
-  const [exported, setExported] = useState('');
-  const detailRef = useRef<HTMLElement>(null);
-
+  useEffect(() => { const restore = () => setPanel(panelFromLocation()); restore(); window.addEventListener('popstate', restore); return () => window.removeEventListener('popstate', restore); }, []);
   useEffect(() => { setDraftAsOf(asOf); }, [asOf]);
+  function choosePanel(next: string) { setPanel(next); const url = new URL(window.location.href); if (next === 'concentrations') url.searchParams.delete('exposurePanel'); else url.searchParams.set('exposurePanel', next); window.history.pushState({}, '', url); }
+  return <section className={s.root} aria-label={`${ticker} business exposures`}>
+    <div className={s.toolbar}><p><strong>{ticker}</strong><span>Company exposure workspace</span></p><details className={s.settings}><summary><SlidersHorizontal size={15} /> Reporting settings {asOf && <span>· {asOf}</span>}<ChevronDown size={15} /></summary><div className={s.settingsBody}><label>SEC filing basis<select value={basis} onChange={event => onBasisChange(event.target.value)}><option value="ttm">Latest filing</option><option value="annual">Annual filing</option></select></label><form onSubmit={event => { event.preventDefault(); if (draftAsOf !== asOf) onAsOfChange(draftAsOf); }}><label htmlFor="exposure-cutoff">Filed on or before<input id="exposure-cutoff" type="date" min="1994-01-01" max={new Date().toISOString().slice(0, 10)} value={draftAsOf} onChange={event => setDraftAsOf(event.target.value)} /></label><div className={s.actions}><button type="submit" disabled={draftAsOf === asOf}>Apply cutoff</button>{asOf && <button type="button" onClick={() => onAsOfChange('')}>Use latest</button>}</div></form><p>Each chart shows its reporting period. Holdings use separately dated portfolio reports.</p></div></details></div>
+    <nav className={s.panelNav} aria-label="Business exposure views">{PANELS.map(([id, label, subtitle], index) => <button key={id} aria-current={panel === id ? 'page' : undefined} aria-controls="company-exposure-panel" onClick={() => choosePanel(id)}><span className={s.navNumber}>0{index + 1}</span><span><strong>{label}</strong><small>{subtitle}</small></span></button>)}</nav>
+    {asOf && <p className={s.notice}><CalendarDays size={17} /><span>SEC filing cutoff: {dateLabel(asOf)}. CFTC observations are separately dated and may be later.</span></p>}
+    <div id="company-exposure-panel" className={s.panel}>
+      {panel === null && loadingPanel()}
+      {panel === 'concentrations' && <CompanyConcentrations ticker={ticker} basis={basis} asOf={asOf} />}
+      {panel === 'instruments' && <ExposureInstruments ticker={ticker} basis={basis} asOf={asOf} />}
+      {panel === 'markets' && <MarketConnections ticker={ticker} basis={basis} asOf={asOf} />}
+      {panel === 'ownership' && <CompanyOwnership ticker={ticker} asOf={asOf} />}
+    </div>
+  </section>;
+}
+
+function MarketConnections({ ticker, basis, asOf }: { ticker: string; basis: string; asOf: string }) {
+  const [data, setData] = useState<ExposureMap | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(''), [retry, setRetry] = useState(0);
+  const [search, setSearch] = useState(''), [sourceRole, setSourceRole] = useState(basis === 'annual' ? 'annual' : 'all'), [selectedId, setSelectedId] = useState(''), [exported, setExported] = useState('');
   useEffect(() => {
-    const controller = new AbortController();
-    const deadline = AbortSignal.timeout(60_000);
-    const signal = AbortSignal.any([controller.signal, deadline]);
-    setLoading(true); setError(''); setData(null); setExported(''); setSelectedId('');
-    const params = new URLSearchParams({ ticker });
-    if (asOf) params.set('asOf', asOf);
-    fetch(`/api/v1/cftc/company-exposures?${params}`, { signal })
-      .then(async response => {
-        const body = await response.json();
-        if (!response.ok && !(validPayload(body) && body.status === 'unavailable')) throw new Error(body.error || body.message || 'Company filing evidence is temporarily unavailable.');
-        if (!validPayload(body)) throw new Error('The filing evidence could not be verified. Please retry.');
-        if (!matchesExposureRequest(body, ticker, asOf)) throw new Error('The returned filing evidence does not match the selected company and cutoff. Please retry.');
-        return body;
-      })
-      .then(body => { if (!controller.signal.aborted) { setData(body); if (body.status === 'unavailable') setError(body.message || 'The filing evidence is temporarily unavailable.'); } })
-      .catch(cause => { if (!controller.signal.aborted) setError(deadline.aborted ? 'The filing review took too long. Please retry.' : cause.message === 'Failed to fetch' ? 'The company evidence service could not be reached. Please retry.' : cause.message); })
+    const controller = new AbortController(), deadline = AbortSignal.timeout(60_000), signal = AbortSignal.any([controller.signal, deadline]);
+    setLoading(true); setError(''); setData(null); setSelectedId('');
+    const params = new URLSearchParams({ ticker }); if (asOf) params.set('asOf', asOf);
+    fetch(`/api/v1/cftc/company-exposures?${params}`, { signal }).then(async response => {
+      const body = await response.json();
+      if (!response.ok && !(validPayload(body) && body.status === 'unavailable')) throw new Error(body.error || body.message || 'Company evidence is temporarily unavailable.');
+      if (!validPayload(body) || !matchesExposureRequest(body, ticker, asOf)) throw new Error('The filing evidence could not be verified. Please retry.');
+      return body;
+    }).then(body => { if (!controller.signal.aborted) { setData(body); if (body.status === 'unavailable') setError(body.message || 'Filing evidence is unavailable.'); } })
+      .catch(cause => { if (!controller.signal.aborted) setError(deadline.aborted ? 'The filing review took too long. Please retry.' : cause.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [ticker, asOf, retry]);
-
   const sourceRows: Exposure[] = useMemo(() => selectExposureEvidence(data?.rows || [], sourceRole), [data, sourceRole]);
-  const filteredRows = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return sourceRows.filter(row => (category === 'all' || row.category === category) && (!term || `${row.categoryLabel} ${row.marketLabel} ${row.channelExplanation} ${row.benchmark?.label || ''} ${row.evidence.map(evidence => evidence.text).join(' ')}`.toLowerCase().includes(term)));
-  }, [sourceRows, category, search]);
-  const selected = filteredRows.find(row => row.id === selectedId) || filteredRows[0];
-  const selectedQualifyingOnly = selected?.evidence.every(evidence => evidence.disclosureDirection === 'qualifying-or-negative');
-  const selectedAmount = selected?.evidence.flatMap(evidence => evidence.amounts.map(amount => ({ ...amount, evidence })))[0];
-  const annualSource = data?.sources.find(source => source.role === 'annual');
-  const quarterSources = data?.sources.filter(source => source.role === 'quarterly') || [];
-  const readySourceCount = data?.sources.filter(source => source.status === 'ready').length || 0;
-  const reportedAmountCount = data?.rows.filter(row => row.evidence.some(evidence => evidence.amounts.length)).length || 0;
-  const mappedCount = data?.rows.filter(row => !!row.benchmark).length || 0;
-
-  function choose(row: Exposure) {
-    setSelectedId(row.id); setExported('');
-    requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }));
-  }
-
-  return <section className={s.root} aria-label={`${ticker} company exposure map`}>
-    <header className={s.hero}>
-      <div className={s.heroMain}><div className={s.eyebrow}><Network size={15} /> Company exposure map</div><h2>Follow the exposure.<br /><span className={s.heroAccent}>Understand the business impact.</span></h2><p>{data?.companyName || ticker}’s disclosed market connections, reported amounts, and relevant futures positioning in one research path.</p><div className={s.method}><span><FileText size={14} /> SEC establishes the connection</span><ArrowRight size={13} /><span><Link2 size={14} /> CFTC adds market context</span></div></div>
-      <form className={s.cutoff} onSubmit={event => { event.preventDefault(); if (draftAsOf !== asOf) onAsOfChange(draftAsOf); }}><label htmlFor="exposure-cutoff"><CalendarDays size={14} /> SEC filing cutoff</label><input id="exposure-cutoff" type="date" min="1994-01-01" max={new Date().toISOString().slice(0, 10)} value={draftAsOf} onChange={event => setDraftAsOf(event.target.value)} /><div className={s.cutoffActions}><button type="submit" disabled={draftAsOf === asOf}>Apply cutoff</button>{asOf && <button type="button" onClick={() => onAsOfChange('')}>Use latest</button>}</div><small>{asOf ? `Filings filed by ${dateLabel(asOf)}` : 'Latest available annual filing and eligible quarterly updates'}</small></form>
-    </header>
-
-    {asOf && <div className={s.notice}><CalendarDays size={17} /><p><strong>Historical SEC evidence through {dateLabel(asOf)}.</strong> CFTC panels show separately dated market observations available now; they can postdate this cutoff. This is not a reconstruction of information available on that historical date.</p></div>}
-    <RiskNoteEvidence ticker={ticker} asOf={asOf} basis={basis} />
-    {loading && <div className={s.loading} role="status"><Loader2 size={24} className={s.spin} /><div><h3>Tracing {ticker}’s market exposures</h3><p>Reading eligible filings and connecting passages to business channels. This can take about a minute on the first request.</p></div></div>}
-    {error && <div className={s.empty} role="alert"><CircleAlert size={25} /><h3>The exposure map could not be loaded</h3><p>{error}</p><button onClick={() => setRetry(value => value + 1)}>Retry filing review</button></div>}
-
+  const rows = useMemo(() => { const term = search.trim().toLowerCase(); return sourceRows.filter(row => !term || `${row.categoryLabel} ${row.marketLabel} ${row.evidence.map(item => item.text).join(' ')}`.toLowerCase().includes(term)); }, [sourceRows, search]);
+  const selected = rows.find(row => row.id === selectedId) || rows[0];
+  const qualifying = selected?.evidence.every(item => item.disclosureDirection === 'qualifying-or-negative');
+  const amount = selected?.evidence.flatMap(item => item.amounts.map(value => ({ ...value, filing: item })))[0];
+  return <section aria-label="Disclosed market connections">
+    <div className={s.sectionHeading}><div><h2>Markets connected to the business</h2><p>Select a disclosed connection, then inspect its market context.</p></div>{data && <button className={s.export} onClick={() => { downloadRiskFile(`${ticker}-exposure-map-${asOf || 'latest'}.csv`, companyExposureMapCsv(data), 'text/csv'); setExported('map'); }}>{exported === 'map' ? <Check size={15} /> : <ArrowDownToLine size={15} />}Export</button>}</div>
+    {loading && <div className={s.loading} role="status"><Loader2 size={22} className={s.spin} /><p>Reading {ticker}’s filing evidence. The first review can take about a minute.</p></div>}
+    {error && <div className={s.empty} role="alert"><CircleAlert size={22} /><p>{error}</p><button onClick={() => setRetry(value => value + 1)}>Retry filing review</button></div>}
     {data && data.status !== 'unavailable' && <>
-      <div className={s.sourceStrip}><span><BookOpen size={14} /> {readySourceCount} filing{readySourceCount === 1 ? '' : 's'} reviewed</span>{annualSource && <span>Annual period: <b>{dateLabel(annualSource.reportDate)}</b></span>}{quarterSources.length > 0 && <span>Quarterly updates: <b>{quarterSources.length}</b></span>}<span>Checked: <b>{dateLabel(data.checkedAt || data.generatedAt)}</b></span></div>
-      {(data.status === 'partial' || !data.coverage.searchComplete) && <div className={s.notice}><CircleAlert size={18} /><p><strong>Coverage is incomplete.</strong> {data.message || 'Some eligible filing evidence could not be reviewed. The map shows only the passages successfully retrieved.'} Inspect the source coverage below before drawing conclusions.{data.retryable && <button className={s.inlineButton} onClick={() => setRetry(value => value + 1)}>Retry review</button>}</p></div>}
-      {!data.coverage.annualAvailable && data.coverage.quarterlyAvailable && <div className={s.notice}><BookOpen size={18} /><p><strong>Quarterly evidence only for this SEC company identity.</strong> No complete annual baseline was available in the reviewed sources. A quarterly filing may omit exposures described in an annual report. Predecessor or related company filings have not been substituted.</p></div>}
-      {data.coverage.extractionLimited && <div className={s.notice}><BookOpen size={18} /><p><strong>The narrative review reached a coverage limit.</strong> Some text, connections, or additional passages fall outside the displayed map. The source coverage below identifies these limits; a missing connection is not proof of no exposure.</p></div>}
-
-      <div className={s.sectionHeading}><div><div className={s.eyebrow}>01 · Locate the business channel</div><h3>Where the market enters the company</h3><p>Counts identify connections found in reviewed text. They do not measure exposure size, risk severity, or completeness.</p></div><button aria-pressed={category === 'all'} onClick={() => setCategory('all')}>All channels <span>{sourceRows.length}</span></button></div>
-      <div className={s.channels} aria-label="Filter exposures by business channel">{CHANNELS.map(({ id, label, help, Icon }) => {
-        const count = sourceRows.filter(row => row.category === id).length;
-        return <button key={id} className={s.channel} aria-pressed={category === id} onClick={() => setCategory(category === id ? 'all' : id)}><span className={s.channelLabel}><Icon size={18} />{label}</span><strong>{count}<span className={s.srOnly}> disclosed topics</span></strong><small>{count ? help : 'No evidence found · not zero exposure'}</small></button>;
-      })}</div>
-
-      <section className={s.map} aria-labelledby="exposure-list-title">
-        <div className={s.mapHeading}><div><h3 id="exposure-list-title">Select a market connection</h3><p>{data.rows.length} evidence-linked connections · {reportedAmountCount} with reported amounts · {mappedCount} with supported CFTC context</p></div><button disabled={!data.rows.length} onClick={() => { downloadRiskFile(`${ticker}-exposure-map-${asOf || 'latest'}.csv`, companyExposureMapCsv(data), 'text/csv'); setExported('map'); }}>{exported === 'map' ? <Check size={14} /> : <ArrowDownToLine size={14} />}Export full map</button></div>
-        {filteredRows.length > 0 && <label className={s.connectionSelect}>Company connection<select value={selected?.id || ''} onChange={event => { const row = filteredRows.find(item => item.id === event.target.value); if (row) choose(row); }}>{filteredRows.map(row => <option key={row.id} value={row.id}>{row.categoryLabel} · {row.marketLabel}</option>)}</select></label>}
-        <details className={s.registerDisclosure}><summary><span>Browse exposure register <b>{filteredRows.length}</b></span><ChevronDown size={16} /></summary>
-        <div className={s.filters}><label className={s.search}><Search size={15} /><input aria-label="Search company exposure evidence" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search markets, amounts, or filing language…" /></label><label className={s.sourceFilter}>Filing evidence<select value={sourceRole} onChange={event => setSourceRole(event.target.value)}><option value="all">Annual + quarterly</option><option value="annual">Annual filing only</option><option value="quarterly">Quarterly updates only</option></select></label></div>
-        {filteredRows.length > 0 ? <><div className={s.tableWrap} role="region" tabIndex={0} aria-label="Exposure register; scroll horizontally for all columns"><table className={s.table}><thead><tr><th scope="col">Business channel / exposure</th><th scope="col">Reported amounts</th><th scope="col">Filing evidence</th><th scope="col">CFTC benchmark fit</th><th scope="col"><span className={s.srOnly}>Review evidence</span></th></tr></thead><tbody>{filteredRows.map(row => {
-          const amounts = row.evidence.flatMap(evidence => evidence.amounts.map(amount => ({ ...amount, evidence })));
-          const latest = row.evidence[0];
-          return <tr key={row.id} data-selected={selected?.id === row.id}><th scope="row"><small>{row.categoryLabel}</small>{row.evidence.every(evidence => evidence.disclosureDirection === 'qualifying-or-negative') && <span className={s.qualifier}>Qualifying disclosure</span>}<button className={s.rowTitle} onClick={() => choose(row)} aria-controls="company-exposure-detail" aria-pressed={selected?.id === row.id}>{row.marketLabel}</button></th><td>{amounts.length ? <><strong>{amounts[0].text}</strong><small>{exposureAmountLabel(amounts[0].kind)} · {amounts[0].evidence.form} filed {dateLabel(amounts[0].evidence.filed)}</small>{amounts.length > 1 && <small>+{amounts.length - 1} additional amount{amounts.length === 2 ? '' : 's'} in evidence</small>}</> : <><span>No amount safely extracted</span><small>Inspect the filing passage</small></>}</td><td><strong>{latest.form} · {dateLabel(latest.reportDate)}</strong><small>Filed {dateLabel(latest.filed)}</small><small>{row.evidence.length} passage{row.evidence.length === 1 ? '' : 's'}</small></td><td><span className={s.fit} data-fit={row.benchmark?.fit || 'unsupported'}>{row.benchmark?.fit === 'named-reference' ? 'Named reference' : row.benchmark ? 'Related proxy' : 'No supported benchmark'}</span>{row.benchmark && <small>{row.benchmark.label}</small>}</td><td><button className={s.reviewButton} onClick={() => choose(row)} aria-label={`Review ${row.categoryLabel}: ${row.marketLabel}`}><ArrowRight size={16} /></button></td></tr>;
-        })}</tbody></table></div><p className={s.registerNote}>Amounts retain their filing context and dates. Notionals, balances, sensitivities, and historical activity are not interchangeable and are never summed here.</p></> : <div className={s.empty}><Search size={23} /><h3>{data.rows.length ? 'No passages match these filters' : data.status === 'no_filing' ? 'No eligible filing found' : 'No supported exposure passages found'}</h3><p>{data.rows.length ? 'Try another business channel, filing type, or search phrase.' : data.message || 'The reviewed text did not establish a supported connection. This does not establish that the company has no market exposure.'}</p>{data.rows.length > 0 && <button onClick={() => { setCategory('all'); setSearch(''); setSourceRole('all'); }}>Clear filters</button>}</div>}
-        </details>
-      </section>
-
-      {selected && <section id="company-exposure-detail" ref={detailRef} className={s.detail} aria-labelledby="exposure-detail-title">
-        <div className={s.detailHeading}><div><div className={s.eyebrow}>02 · Inspect the company evidence</div><h3 id="exposure-detail-title">{selected.marketLabel}<span>{selected.categoryLabel}</span></h3><p>{selectedQualifyingOnly ? 'This filing selection contains qualifying wording about an exposure identified in another reviewed filing. Read the dated passage before interpreting whether the exposure changed.' : selected.channelExplanation}</p></div><button onClick={() => { downloadRiskFile(`${ticker}-${selected.id}-exposure-evidence.md`, companyExposureEvidenceMarkdown(data, selected)); setExported(`evidence:${selected.id}`); }}>{exported === `evidence:${selected.id}` ? <Check size={14} /> : <ArrowDownToLine size={14} />}Export evidence</button></div>
-        <ol className={s.transmission} aria-label="Disclosed market connection and business transmission">
-          <li><span className={s.transmissionStep}>Market driver</span><strong>{selected.marketLabel}</strong><small>{selected.benchmark?.label || 'No supported CFTC benchmark'}</small></li>
-          <li><ArrowRight size={18} aria-hidden="true" /><span className={s.transmissionStep}>{selectedQualifyingOnly ? 'Qualified company connection' : 'Company transmission'}</span><strong>{TRANSMISSION[selected.category] || selected.categoryLabel}</strong><small>{selectedQualifyingOnly ? 'Review dated limitations in the filing' : 'Potential financial effect to investigate'}</small></li>
-          <li><ArrowRight size={18} aria-hidden="true" /><span className={s.transmissionStep}>SEC reported measure</span><strong>{selectedAmount?.text || 'Narrative disclosure'}</strong><small>{selectedAmount ? `${exposureAmountLabel(selectedAmount.kind)} · ${selectedAmount.evidence.form} filed ${dateLabel(selectedAmount.evidence.filed)}` : 'No amount safely extracted'}</small></li>
-        </ol>
-        <p className={s.evidenceNote}>The pathway links disclosed topics to financial areas to review. It does not estimate the size or direction of a change in company results. Reported amounts keep their original filing context.</p>
-        <div className={s.benchmark}><div><div className={s.eyebrow}>Market fit</div><h3>{selected.benchmark ? selected.benchmark.label : 'The company evidence stands on its own'}</h3></div>{selected.benchmark ? <><span className={s.fit} data-fit={selected.benchmark.fit}>{selected.benchmark.fit === 'named-reference' ? 'Named reference in filing' : 'Related market proxy'}</span><p>{selected.benchmark.basisLimit}</p></> : <p>{selected.benchmarkUnavailableReason || 'This exposure has no supported CFTC benchmark in the current map.'} The SEC evidence remains useful; a futures contract is not substituted without a supported connection.</p>}</div>
-        {selected.benchmark ? <ExposureMarketContext key={`${ticker}:${selected.benchmark.family}:${selected.benchmark.contract}`} ticker={ticker} market={selected.benchmark} asOf={asOf} /> : <ReferenceMarketPicker key={`${ticker}:${selected.id}`} ticker={ticker} asOf={asOf} />}
-        <div className={s.evidenceTitle}><div className={s.eyebrow}>Read the company’s words</div><h3>Evidence behind the connection</h3><p>{selected.evidence.length} dated passage{selected.evidence.length === 1 ? '' : 's'} · Quoted amounts remain separate across reporting periods.</p></div>
-        <details className={s.evidenceDisclosure} key={selected.id}><summary><span>Read the SEC passages <b>{selected.evidence.length}</b></span><ChevronDown size={16} /></summary>
-        <div className={s.evidenceList}>{selected.evidence.map((evidence, index) => <article className={s.evidence} key={evidence.id}>
-          <div className={s.evidenceHeader}><span className={s.evidenceNumber}>{String(index + 1).padStart(2, '0')}</span><div><strong>{evidence.form} · {evidence.role === 'quarterly' ? 'Quarterly update' : 'Annual filing'}</strong>{evidence.disclosureDirection === 'qualifying-or-negative' && <span className={s.qualifier}>Qualifying disclosure — review dated passage</span>}<span>Fiscal period ended {dateLabel(evidence.reportDate)} · Filed {dateLabel(evidence.filed)}</span></div><a href={quoteLink(evidence)} target="_blank" rel="noreferrer">Open SEC passage <ArrowUpRight size={14} /></a></div>
-          <blockquote>{evidence.text}</blockquote>{evidence.disclosureDirection === 'qualifying-or-negative' && <p className={s.amountNote}>This passage qualifies or limits an earlier connection. Its wording is not treated as a new positive exposure, a measured reduction, or proof that the exposure has disappeared.</p>}
-          {evidence.amounts.length > 0 ? <div className={s.amounts}><h4>Reported amounts in this passage</h4>{evidence.amounts.map((amount, amountIndex) => <div className={s.amount} key={`${amount.text}:${amountIndex}`}><div><strong>{amount.text}</strong><span>{exposureAmountLabel(amount.kind)}</span></div><p>{amount.context}</p></div>)}<p className={s.amountNote}>These are quoted amounts from this filing, with the period and purpose stated in the text. They are not automatically the company’s current unhedged exposure.</p></div> : <p className={s.amountNote}>No qualifying amount was extracted from this passage. Read the filing’s tables and surrounding discussion for additional detail.</p>}
-          <div className={s.provenance}><span>Accession {evidence.accession}</span><a href={evidence.url} target="_blank" rel="noreferrer">Open full filing <ArrowUpRight size={12} /></a></div>
-        </article>)}</div></details>
-      </section>}
-
-
+      <div className={s.sourceStrip}><span>{data.sources.filter(item => item.status === 'ready').length} filings reviewed</span><span>Checked {dateLabel(data.checkedAt || data.generatedAt)}</span>{(data.coverage.extractionLimited || !data.coverage.searchComplete || data.status === 'partial') && <span className={s.limited}>Partial coverage · see sources below</span>}{!data.coverage.annualAvailable && <span className={s.limited}>No annual baseline available</span>}</div>
+      <div className={s.marketWorkspace}>
+        <aside className={s.connectionList} aria-label="Select a disclosed connection"><label className={s.search}><Search size={16} /><input value={search} onChange={event => setSearch(event.target.value)} aria-label="Search disclosed connections" placeholder="Find a market or exposure" /></label><label className={s.sourceFilter}>Filing evidence<select value={sourceRole} onChange={event => setSourceRole(event.target.value)}><option value="all">Annual + quarterly</option><option value="annual">Annual only</option><option value="quarterly">Quarterly only</option></select></label><div className={s.connectionItems}>{rows.map(row => <button key={row.id} className={s.connection} aria-pressed={selected?.id === row.id} onClick={() => { setSelectedId(row.id); setExported(''); }}><small>{row.categoryLabel}</small><strong>{row.marketLabel}</strong><span>{row.benchmark ? 'CFTC connection available' : 'SEC disclosure'}<ArrowRight size={15} /></span></button>)}</div>{!rows.length && <p className={s.noMatches}>No matching disclosed connections. Missing evidence does not establish zero exposure.</p>}</aside>
+        <div className={s.marketDetail}>{selected ? <>
+          <div className={s.detailHeading}><span className={s.eyebrow}>{selected.categoryLabel}</span><h3>{selected.marketLabel}</h3>{qualifying && <p className={s.notice}>Qualifying disclosure: read the dated passages before inferring a change in exposure.</p>}</div>
+          <div className={s.transmission}><div><small>Disclosed driver</small><strong>{selected.marketLabel}</strong></div><ArrowRight size={22} /><div><small>Financial channel</small><strong>{TRANSMISSION[selected.category] || selected.categoryLabel}</strong></div></div>
+          {amount && <p className={s.reportedAmount}><strong>{amount.text}</strong> {exposureAmountLabel(amount.kind)} · {amount.filing.form} · {dateLabel(amount.filing.reportDate)}</p>}
+          <details className={s.evidenceDisclosure} key={selected.id}><summary><BookOpen size={16} /><span>Filing evidence <b>{selected.evidence.length}</b></span><ChevronDown size={16} /></summary><div className={s.evidenceList}><p className={s.evidenceNote}>{qualifying ? 'These passages qualify an earlier connection; they do not quantify a reduction.' : selected.channelExplanation}</p>{selected.evidence.map(item => <article key={item.id} className={s.evidence}><header><strong>{item.form} · {dateLabel(item.reportDate)}</strong><a href={quoteLink(item)} target="_blank" rel="noreferrer">SEC passage <ArrowUpRight size={14} /></a></header><small>Filed {dateLabel(item.filed)}{item.disclosureDirection === 'qualifying-or-negative' ? ' · Qualifying disclosure' : ''}</small><blockquote>{item.text}</blockquote>{item.amounts.map((value, index) => <p key={index} className={s.amountContext}><strong>{value.text}</strong> · {exposureAmountLabel(value.kind)}<span>{value.context}</span></p>)}</article>)}<p className={s.evidenceNote}>Reported amounts retain their dates and purpose; they are not summed or treated as current unhedged exposure.</p><button className={s.export} onClick={() => downloadRiskFile(`${ticker}-${selected.id}-exposure-evidence.md`, companyExposureEvidenceMarkdown(data, selected))}><ArrowDownToLine size={15} /> Export evidence</button></div></details>
+          {selected.benchmark ? <><p className={s.marketFit}><strong>{selected.benchmark.fit === 'named-reference' ? 'Named filing reference' : 'Related market proxy'}</strong> · {selected.benchmark.basisLimit}</p><ExposureMarketContext key={`${ticker}:${selected.benchmark.family}:${selected.benchmark.contract}`} ticker={ticker} market={selected.benchmark} asOf={asOf} /></> : <><p className={s.marketFit}>The disclosure does not identify a supported CFTC benchmark. You can add a separately labelled market comparison.</p><ReferenceMarketPicker key={selected.id} ticker={ticker} asOf={asOf} category={selected.category} /></>}
+        </> : <div className={s.empty}><h3>No supported connection in this selection</h3><p>{data.message || 'Try another filing selection or search term.'}</p></div>}</div>
+      </div>
     </>}
     {data && <SourceCoverage data={data} ticker={ticker} />}
   </section>;
 }
-
-function ReferenceMarketPicker({ ticker, asOf }: { ticker: string; asOf: string }) {
+function ReferenceMarketPicker({ ticker, asOf, category }: { ticker: string; asOf: string; category: string }) {
   const [choice, setChoice] = useState('');
   const market = CFTC_LAUNCH_CATALOG.find(item => `${item.family}:${item.code}` === choice);
-  return <div className={s.referenceMarket}><div><span className={s.eyebrow}>Independent market comparison</span><h3>Add a CFTC reference market</h3><p>Choose a market to inspect trader positioning. Your selection does not establish a company exposure, hedge, or currency pair.</p></div><label>Reference market<select value={choice} onChange={event => setChoice(event.target.value)}><option value="">Choose a reference market</option>{['tff', 'disaggregated'].map(family => <optgroup key={family} label={CFTC_FAMILIES[family].label}>{CFTC_LAUNCH_CATALOG.filter(item => item.family === family).map(item => <option key={item.code} value={`${item.family}:${item.code}`}>{item.label}</option>)}</optgroup>)}</select></label>{market && <div className={s.referenceChart}><ExposureMarketContext ticker={ticker} asOf={asOf} market={{ family: market.family, contract: market.code, label: market.label, group: market.family === 'tff' ? 'leveraged-funds' : 'managed-money', fit: 'user-selected', basisLimit: 'User-selected market for independent comparison; no company connection is inferred.' }} /></div>}</div>;
+  const preferred = category === 'currencies' ? ['currencies'] : ['borrowing', 'investments'].includes(category) ? ['rates'] : ['energy', 'metals', 'agriculture'];
+  return <div className={s.referenceMarket}><label>Compare a reference market<select value={choice} onChange={event => setChoice(event.target.value)}><option value="">Choose a market</option>{[true, false].map(relevant => <optgroup key={String(relevant)} label={relevant ? 'Related market categories' : 'Other reference markets'}>{CFTC_LAUNCH_CATALOG.filter(item => preferred.includes(item.category) === relevant).map(item => <option key={item.code} value={`${item.family}:${item.code}`}>{item.label}</option>)}</optgroup>)}</select></label>{market && <ExposureMarketContext ticker={ticker} asOf={asOf} market={{ family: market.family, contract: market.code, label: market.label, group: market.family === 'tff' ? 'leveraged-funds' : 'managed-money', fit: 'user-selected', basisLimit: 'Independent market comparison; no company position or hedge is inferred.' }} />}</div>;
 }
 
 function SourceCoverage({ data, ticker }: { data: ExposureMap; ticker: string }) {
