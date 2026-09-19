@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMarketReport, createMarketReportLoader, createNativeMarketCftcReader } from '../src/utils/marketReport.js';
 import { MARKET_METRICS } from '../src/utils/marketResearch.js';
-import { CFTC_FAMILIES, CFTC_REPORT_BASIS, CFTC_SCHEMA_VERSION, normalizeCftcRow, cftcCatalog } from '../src/utils/cftc.js';
+import { CFTC_FAMILIES, CFTC_REPORT_BASIS, CFTC_SCHEMA_VERSION, normalizeCftcRow, cftcCatalog, cftcSeries } from '../src/utils/cftc.js';
+import { buildMarketMacroSummary, MARKET_SECTOR_METRICS } from '../src/utils/marketMacroSummary.js';
+import { buildMarketMacroPositioning } from '../src/utils/marketMacroPositioning.js';
 
 const CLOCK = '2026-09-19T18:00:00.000Z';
 const section = (report, id) => report.sections.find(row => row.id === id);
@@ -166,15 +168,16 @@ test('stale source clocks, incomplete requested coverage and older company perio
   assert.equal(report.coverage.status, 'partial');
 });
 
-test('retained snapshot age counts and company rows use the same report generation clock', () => {
+test('retained snapshot age counts and company rows match the Market page snapshot clock', () => {
   for (const [basis, end] of [['ttm', '2026-03-01'], ['annual', '2025-03-15']]) {
     const data = overview(); data.generatedAt = '2026-09-10T10:00:00Z';
     data.companies[0].reports[basis].end = end;
     const report = build({ overview: data }, { basis });
     const olderRows = section(report, 'market-companies').rows.filter(row => row.olderReport.startsWith('Older'));
-    assert.equal(olderRows.length, 1);
-    assert.match(section(report, 'market-coverage').rows[0].detail, /1 older or unavailable reporting periods/);
-    assert.match(report.highlights.find(item => item.title === 'Reporting dates and breadth').text, /1 issuers have older or unavailable/);
+    assert.equal(olderRows.length, 0);
+    assert.equal(report.marketBriefing.coverage.olderReports, buildMarketMacroSummary(data, basis).olderReports);
+    assert.match(section(report, 'market-coverage').rows[0].detail, /0 older or unavailable reporting periods/);
+    assert.match(report.highlights.find(item => item.title === 'Reporting dates and breadth').text, /0 issuers have older or unavailable/);
     assert.equal(report.period.asOf, '2026-09-10', 'Original source snapshot date stays unchanged');
     assert.equal(report.generatedAt, CLOCK);
     assert.equal(data.generatedAt, '2026-09-10T10:00:00Z', 'Projection does not update source provenance');
@@ -230,6 +233,8 @@ test('native CFTC rollback blocks the source reader while SEC market reports rem
     assert.equal(section(report, 'cftc-all-groups').rows.length, 0);
     assert.equal(report.summary.find(row => row.label === 'CFTC prepared markets').value, null);
     assert.equal(report.coverage.status, 'partial');
+    assert.equal(report.marketBriefing.positioning.cards.length, 6);
+    assert.ok(report.marketBriefing.positioning.cards.every(card => !card.available && card.netPctOi === null));
     assert.equal(report.notes.filter(note => note.includes('positioning is disabled')).length, 2);
     const publicCalls = [];
     const publicLoad = createMarketReportLoader({ now: () => CLOCK, loadOverview: async () => overview(),
@@ -241,5 +246,149 @@ test('native CFTC rollback blocks the source reader while SEC market reports rem
   } finally {
     if (previous === undefined) delete process.env.CFTC_ENABLED;
     else process.env.CFTC_ENABLED = previous;
+  }
+});
+
+test('rich market briefing agrees with the shared Market page statistics in both reporting bases', () => {
+  for (const basis of ['ttm', 'annual']) {
+    const data = overview(), report = build({ overview: data }, { basis });
+    const macro = buildMarketMacroSummary(data, basis), briefing = report.marketBriefing;
+    assert.deepEqual(briefing.sectorMetrics, MARKET_SECTOR_METRICS);
+    assert.deepEqual(briefing.sectors, macro.sectors);
+    assert.deepEqual(briefing.industries, macro.industries);
+    assert.deepEqual(briefing.coverage.reportRange, macro.reportRange);
+    for (const [index, key] of ['growth', 'profit', 'cash'].entries()) {
+      assert.equal(briefing.breadth[index].positive, macro[key].positive);
+      assert.equal(briefing.breadth[index].count, macro[key].count);
+      assert.equal(briefing.breadth[index].share, macro[key].positivePct / 100);
+    }
+    assert.equal(briefing.growthLeaders.highest.sector, 'Technology');
+    assert.equal(briefing.growthLeaders.highest.value, basis === 'ttm' ? 3 : 4);
+    for (const sector of macro.sectors) {
+      const row = section(report, 'sector-comparison').rows.find(item => item.sectorId === sector.id);
+      for (const metric of MARKET_SECTOR_METRICS) {
+        assert.equal(row[metric.key], sector.metrics[metric.key].median / 100);
+        assert.equal(row[`${metric.key}N`], sector.metrics[metric.key].count);
+      }
+      const industries = section(report, 'sector-industries').rows.filter(item => item.sectorId === sector.id);
+      assert.equal(industries.reduce((sum, item) => sum + item.companies, 0), sector.count - sector.missingIndustryCount);
+    }
+  }
+});
+
+test('distribution tables retain correct percent units, quartiles, singletons and missing-value denominators', () => {
+  const data = overview();
+  for (const item of data.companies) item.metrics.ttm.capexIntensity = null;
+  const report = build({ overview: data });
+  const techGrowth = section(report, 'sector-statistics').rows.find(row => row.sector === 'Technology' && row.metricKey === 'revenueGrowth');
+  assert.equal(techGrowth.median, 0.03); assert.equal(techGrowth.mean, 0.03);
+  assert.equal(techGrowth.min, -0.04); assert.equal(techGrowth.max, 0.1);
+  assert.ok(Math.abs(techGrowth.p25 - -0.005) < 1e-14);
+  assert.ok(Math.abs(techGrowth.p75 - 0.065) < 1e-14);
+  assert.equal(techGrowth.positive, 1); assert.equal(techGrowth.negative, 1); assert.equal(techGrowth.count, 2);
+  const single = section(report, 'sector-statistics').rows.find(row => row.sector === 'Technology' && row.metricKey === 'netMargin');
+  assert.equal(single.p25, 0.2); assert.equal(single.p75, 0.2); assert.equal(single.coverage, 0.5);
+  for (const empty of section(report, 'sector-statistics').rows.filter(row => row.metricKey === 'capexIntensity')) {
+    for (const key of ['median', 'mean', 'p25', 'p75', 'min', 'max']) assert.equal(empty[key], null);
+    assert.equal(empty.count, 0); assert.equal(empty.coverage, 0);
+  }
+});
+
+test('breadth distinguishes zero, negative and missing values and growth leaders require observed sectors', () => {
+  const data = overview();
+  data.companies = data.companies.slice(0, 2);
+  data.companies[0].metrics.ttm.revenueGrowth = 0;
+  data.companies[1].metrics.ttm.revenueGrowth = null;
+  for (const item of data.companies) {
+    item.metrics.ttm.netIncome = null;
+    item.metrics.ttm.cashFlowMargin = -5;
+  }
+  const briefing = build({ overview: data }).marketBriefing;
+  assert.deepEqual(briefing.breadth.map(({ positive, count, share }) => ({ positive, count, share })), [
+    { positive: 0, count: 1, share: 0 }, { positive: 0, count: 0, share: null }, { positive: 0, count: 2, share: 0 },
+  ]);
+  assert.equal(briefing.growthLeaders.highest.value, 0);
+  assert.equal(briefing.growthLeaders.lowest, null); assert.equal(briefing.growthLeaders.spreadPp, null);
+  data.companies[0].metrics.ttm.revenueGrowth = null;
+  assert.deepEqual(build({ overview: data }).marketBriefing.growthLeaders, { highest: null, lowest: null, spreadPp: null });
+});
+
+test('CFTC macro uses shared six-card definitions and units only after raw-position validation', () => {
+  const snapshots = [cftc(), cftc('disaggregated')];
+  const report = build({ cftcFamilies: snapshots });
+  const expected = buildMarketMacroPositioning(Object.fromEntries(snapshots.map(snapshot => [snapshot.report_family, snapshot])));
+  assert.deepEqual(report.marketBriefing.positioning.cards, expected.cards);
+  assert.equal(report.marketBriefing.positioning.cards.length, 6);
+  assert.equal(report.marketBriefing.positioning.availableCount, 2);
+  const equity = report.marketBriefing.positioning.cards.find(card => card.id === 'equities');
+  assert.equal(equity.netPctOi, 20); assert.equal(equity.weeklyChange, 1.25);
+  const flat = section(report, 'cftc-macro').rows.find(row => row.id === 'equities');
+  assert.equal(flat.netOi, 0.2); assert.equal(flat.oneWeekChangePp, 1.25);
+  const physical = cftc('disaggregated', '2026-09-08');
+  const different = build({ cftcFamilies: [snapshots[0], physical] }).marketBriefing.positioning;
+  assert.equal(different.differentReportDates, true); assert.equal(different.largestMove, null);
+  assert.equal(different.cards.find(card => card.id === 'energy').reportDate, '2026-09-08');
+  snapshots[0].latest[0].groups['leveraged-funds'].net = 999;
+  const rejected = build({ cftcFamilies: snapshots });
+  assert.equal(rejected.marketBriefing.positioning.cards.find(card => card.id === 'equities').netPctOi, null);
+  assert.equal(section(rejected, 'cftc-macro').rows.length, 6);
+  const absent = build({ cftcFamilies: [] });
+  assert.ok(absent.marketBriefing.positioning.cards.every(card => !card.available && !card.hasObservation && card.reportDate === null));
+});
+
+test('retained CFTC dates propagate effective source age to the macro cards without changing dates', () => {
+  const snapshot = cftc('tff', '2026-09-01');
+  const report = build({ cftcFamilies: [snapshot] });
+  const family = report.marketBriefing.positioning.families.find(item => item.family === 'tff');
+  assert.equal(family.sourceAgeDays, 18); assert.equal(family.aged, true);
+  const card = report.marketBriefing.positioning.cards.find(item => item.id === 'equities');
+  assert.equal(card.aged, true); assert.equal(card.reportDate, '2026-09-01');
+  assert.equal(section(report, 'cftc-macro').rows.find(item => item.id === 'equities').coverage, 'Retained or aged snapshot');
+  assert.equal(snapshot.freshness.source_currency, 'current', 'The original prepared input is unchanged');
+});
+
+test('conflicting duplicate-issuer industry and effective primary-sector assignments fail closed', () => {
+  for (const mutation of [copy => { copy.sic = 2834; }, copy => { copy.cohorts = ['sector-industrials']; }]) {
+    const data = overview(); data.companies[0].sector = '';
+    const duplicate = structuredClone(data.companies[0]); duplicate.ticker = 'A.B';
+    mutation(duplicate); data.companies.push(duplicate);
+    assert.throws(() => build({ overview: data }), /Conflicting share-class/);
+  }
+  const data = overview();
+  const duplicate = structuredClone(data.companies[0]); duplicate.ticker = 'A.B'; duplicate.sic = '7372';
+  data.companies.push(duplicate);
+  assert.equal(build({ overview: data }).marketBriefing.coverage.companyCount, 4);
+});
+
+test('CFTC ranks preserve exact prepared 1y/3y/5y windows and reject incompatible date or unit context', () => {
+  const snapshot = cftc('tff', '2026-09-15', false), selected = snapshot.latest[0];
+  const history = Array.from({ length: 261 }, (_, index) => {
+    const date = new Date(`${snapshot.report_date}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() - index * 7);
+    return normalizeCftcRow({ ...selected.raw, id: `history-${index}`, report_date_as_yyyy_mm_dd: date.toISOString().slice(0, 10) }, 'tff').value;
+  });
+  for (const group of CFTC_FAMILIES.tff.groups) {
+    const prepared = cftcSeries(history, group.id);
+    Object.assign(selected.groups[group.id], { percentile: prepared.percentile, shorterPercentiles: prepared.shorterPercentiles,
+      historyRange: prepared.historyRange });
+  }
+  const rowFor = input => section(build({ cftcFamilies: [input] }), 'cftc-all-groups').rows.find(row => row.groupId === 'leveraged-funds');
+  const row = rowFor(snapshot);
+  for (const [window, required] of [['1y', 52], ['3y', 156], ['5y', 260]]) {
+    assert.equal(row[`rank${window}`], 0.5); assert.equal(row[`rank${window}N`], required);
+    assert.equal(row[`rank${window}Required`], required); assert.equal(row[`rank${window}Status`], 'Available');
+    assert.equal(row[`rank${window}End`], '2026-09-08');
+  }
+  assert.equal(section(build({ cftcFamilies: [snapshot] }), 'cftc-heatmap').rows[0].rank5y, 0.5);
+  const shortOnly = structuredClone(snapshot);
+  delete shortOnly.latest[0].groups['leveraged-funds'].percentile;
+  assert.equal(rowFor(shortOnly).rank5y, null); assert.equal(rowFor(shortOnly).rank1y, 0.5);
+  for (const mutation of [group => { group.historyRange.compatibility.units = 'OTHER'; },
+    group => { group.percentile.comparisonRange.latest = snapshot.report_date; },
+    group => { group.percentile.observations = 52; }]) {
+    const invalid = structuredClone(snapshot); mutation(invalid.latest[0].groups['leveraged-funds']);
+    const rejected = rowFor(invalid);
+    assert.equal(rejected.rank5y, null); assert.equal(rejected.rank5yStatus, 'Unverified percentile context');
+    assert.equal(rejected.netOi, 0.2, 'Invalid historical ranks do not discard verified current positions');
   }
 });

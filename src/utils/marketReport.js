@@ -1,7 +1,9 @@
-import { buildMarketMacroSummary, MARKET_SECTOR_METRICS } from './marketMacroSummary.js';
-import { MARKET_METRICS, MARKET_ATLAS_FRESH_MS, isOlderReport } from './marketResearch.js';
+import { buildMarketMacroSummary, MARKET_SECTOR_METRICS, marketSicIndustry } from './marketMacroSummary.js';
+import { MARKET_METRICS, MARKET_ATLAS_FRESH_MS, isOlderReport, cftcPercentileForHistory } from './marketResearch.js';
 import { CFTC_FAMILIES, CFTC_REPORT_BASIS, CFTC_SCHEMA_VERSION, cftcDate, isCftcContractCode, normalizeCftcRow } from './cftc.js';
 import { isCftcEnabled } from './cftcFeature.js';
+import { buildMarketSectorCompanies } from './marketSectorCompanies.js';
+import { buildReportMarketBriefing } from './marketReportBriefing.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const number = value => finite(value) ? value : null;
@@ -32,11 +34,17 @@ function validOverview(input, generatedAt, basis) {
       metrics: { ...company.metrics, [basis]: Object.fromEntries(MARKET_METRICS.map(metric =>
         [metric.key, period ? number(company.metrics[basis]?.[metric.key]) : null])) } };
     const prior = issuers.get(id);
+    const classification = value => ({
+      industry: marketSicIndustry(value.sic)?.code || null,
+      sector: buildMarketSectorCompanies({ ...input, companies: [value] }).companies[0].sectorId,
+    });
     // Share classes identify one issuer. Identical observations collapse; a
     // conflicting copy cannot silently choose a different financial result.
     if (prior && (JSON.stringify(prior.metrics[basis]) !== JSON.stringify(normalized.metrics[basis])
       || JSON.stringify(prior.reports[basis]) !== JSON.stringify(normalized.reports[basis])
-      || prior.sector !== normalized.sector)) throw fail('Conflicting share-class observations prevent an issuer-level market comparison.');
+      || prior.sector !== normalized.sector
+      || JSON.stringify(classification(prior)) !== JSON.stringify(classification(normalized))))
+      throw fail('Conflicting share-class observations prevent an issuer-level market comparison.');
     if (!prior) issuers.set(id, normalized);
   }
   return { ...input, companies: [...issuers.values()] };
@@ -48,6 +56,39 @@ function officialCftcSource(value, family) {
     return url.origin === expected.origin && url.pathname === expected.pathname && !url.username && !url.password && !url.hash ? url.href : null;
   } catch { return null; }
 }
+
+/** Preserve only explicitly prepared, window-specific ranks with their own
+ * compatible prior-date range. A shorter window is never used for a longer one. */
+function percentileFields(analytics, position, date) {
+  return Object.fromEntries(['1y', '3y', '5y'].flatMap(window => {
+    const rank = cftcPercentileForHistory(analytics, window), prefix = `rank${window}`;
+    const range = rank.comparisonRange, n = rank.observations;
+    const required = { '1y': 52, '3y': 156, '5y': 260 }[window];
+    const candidates = [analytics?.percentile, ...(Array.isArray(analytics?.shorterPercentiles) ? analytics.shorterPercentiles : [])]
+      .filter(item => item?.required === required);
+    const history = analytics?.historyRange, compatible = position && history?.compatibility?.code === position.code
+      && history.compatibility.venueCode === position.venueCode && history.compatibility.units === position.units
+      && text(position.units) && Number.isSafeInteger(history.observations) && history.observations > n
+      && day(history.earliest) && history.latest === date && history.earliest <= range?.earliest;
+    const verified = candidates.length <= 1 && Number.isSafeInteger(n) && n >= 0 && n <= required
+      && rank.required === required && range?.observations === n
+      && (n === 0 ? range.earliest == null && range.latest == null
+        : compatible && day(range.earliest) && day(range.latest) && range.earliest <= range.latest && range.latest < date)
+      && (rank.value == null ? typeof rank.reason === 'string'
+        : compatible && rank.reason == null && finite(rank.value) && rank.value >= 0 && rank.value <= 100
+          && n === required && finite(position.groups[analytics.id]?.netPctOi));
+    return [[prefix, verified ? fraction(rank.value) : null], [`${prefix}N`, verified ? n : null],
+      [`${prefix}Required`, required], [`${prefix}Start`, verified ? range.earliest : null],
+      [`${prefix}End`, verified ? range.latest : null],
+      [`${prefix}Status`, !verified ? 'Unverified percentile context' : rank.value == null ? text(rank.reason) : 'Available']];
+  }));
+}
+
+const percentileColumns = () => ['1y', '3y', '5y'].flatMap(window => [
+  col(`rank${window}`, `${window} prior-report rank`, 'percent'), col(`rank${window}N`, `${window} prior observations`, 'number'),
+  col(`rank${window}Required`, `${window} required observations`, 'number'), col(`rank${window}Start`, `${window} range start`, 'date'),
+  col(`rank${window}End`, `${window} range end`, 'date'), col(`rank${window}Status`, `${window} rank coverage`),
+]);
 
 /** Validate the public snapshot and recalculate current positions from the raw
  * CFTC row. Catalog-only contracts remain explicit, with blank position cells. */
@@ -78,7 +119,7 @@ function cftcProjection(input, family, generatedAt) {
       throw fail(`The ${definition.label} contract units or market identity did not match its original CFTC row.`);
     for (const group of definition.groups) {
       const actual = row.groups[group.id], original = normalized.value.groups[group.id];
-      if (!actual || ['long', 'short', 'spreading', 'net', 'netPctOi'].some(key => actual[key] !== original[key]))
+      if (!actual || actual.id !== group.id || ['long', 'short', 'spreading', 'net', 'netPctOi'].some(key => actual[key] !== original[key]))
         throw fail(`The ${definition.label} position calculations did not reconcile to the original CFTC row.`);
     }
     latest.set(row.code, { ...row, ...normalized.value, analytics: row.groups });
@@ -106,15 +147,29 @@ function cftcProjection(input, family, generatedAt) {
         fourWeekChange: number(analytics?.fourWeekChange), fourWeekChangePp: number(analytics?.fourWeekNetPctChange),
         sourceRowId: text(position?.sourceRowId), sourceId: `cftc-${family}`, retrievedAt: input.retrieved_at,
         coverage: !position ? 'Catalog identity only; positions not prepared' : current?.net == null || position.openInterest == null
-          ? 'Position values incomplete' : position.reconciliation.status === 'mismatch' ? 'Source reconciliation difference' : 'Reported positions available' };
+          ? 'Position values incomplete' : position.reconciliation.status === 'mismatch' ? 'Source reconciliation difference' : 'Reported positions available',
+        ...percentileFields(analytics, position, date) };
       if (position && (row.net === null || row.openInterest === null || row.netOi === null)) missingValues++;
       rows.push(row);
       if (position && group.id === defaultGroup) defaultRows.push(row);
     }
   }
-  const stale = input.status === 'stale' || input.freshness?.source_currency === 'aged'
-    || String(input.freshness?.cache_status).startsWith('stale') || Date.parse(generatedAt) - Date.parse(date) > 11 * 86400000;
-  return { family, definition, date, sourceUrl, retrievedAt: input.retrieved_at, catalogCount: catalog.size,
+  const sourceAgeMs = Date.parse(generatedAt) - Date.parse(date);
+  const aged = input.freshness?.source_currency === 'aged' || sourceAgeMs > 11 * 86400000;
+  const stale = input.status === 'stale' || aged || String(input.freshness?.cache_status).startsWith('stale');
+  // The presentation helper sees only rows whose identity and current values
+  // reconciled above. Do not pass the unvalidated incoming snapshot around it.
+  const macroSnapshot = { report_family: family, report_basis: CFTC_REPORT_BASIS, report_date: date,
+    status: input.status, retrieved_at: input.retrieved_at, refresh_warning: text(input.refresh_warning),
+    freshness: { source_report_age_days: Math.floor(sourceAgeMs / 86400000),
+      source_currency: aged ? 'aged' : text(input.freshness?.source_currency), cache_status: text(input.freshness?.cache_status) },
+    latest: [...latest.values()].map(position => ({ code: position.code, family,
+      reportBasis: CFTC_REPORT_BASIS, reportDate: date, exchange: position.exchange, units: position.units,
+      openInterest: position.openInterest, groups: Object.fromEntries(definition.groups.map(group => [group.id, {
+        ...position.groups[group.id], oneWeekChange: number(position.analytics[group.id]?.oneWeekChange),
+        oneWeekNetPctChange: number(position.analytics[group.id]?.oneWeekNetPctChange),
+      }])) })) };
+  return { family, definition, date, sourceUrl, retrievedAt: input.retrieved_at, catalogCount: catalog.size, macroSnapshot,
     positionsCount: latest.size, available, missingValues, rows, defaultRows, categories: [...categories.values()],
     stale, partial: input.status !== 'ready' || stale || available !== catalog.size || missingValues > 0
       || (input.coverage.reconciliation_differences || 0) > 0,
@@ -130,10 +185,9 @@ export function buildMarketReport({ overview, cftcFamilies = [], failures = [] }
     throw Object.assign(new Error('Choose annual or TTM sector fundamentals.'), { status: 400 });
   generatedAt = timestamp(generatedAt);
   const data = validOverview(overview, generatedAt, basis), macro = buildMarketMacroSummary(data, basis);
-  // Snapshot provenance retains its original clock. Reporting-age statements
-  // and issuer rows both use this report's generation time, including retained
-  // snapshots whose fiscal periods have crossed the age threshold since capture.
-  macro.olderReports = data.companies.filter(company => isOlderReport(company, basis, generatedAt)).length;
+  // Match the Market page: reporting age is measured at the prepared snapshot,
+  // while generatedAt remains the independent download preparation clock.
+  const companySectors = new Map(buildMarketSectorCompanies(data).companies.map(company => [company.cik, company.sectorId]));
   const sources = [];
   const addSource = source => { sources.push(source); return source.id; };
   addSource({ id: 'market-snapshot', label: 'Prepared SEC Market research snapshot', url: 'https://secedgarterminal.com/api/market-research',
@@ -148,11 +202,11 @@ export function buildMarketReport({ overview, cftcFamilies = [], failures = [] }
       url: `https://www.sec.gov/Archives/edgar/data/${Number(company.cik)}/${period.accession.replaceAll('-', '')}/${period.accession}-index.html`,
       periodEnd: period.end, filed: day(period.filed) || undefined, accession: period.accession, form: text(period.form),
       note: 'Period-level filing reference; TTM and growth calculations can combine multiple filing contexts.' });
-    const sector = macro.sectors.find(row => row.id && company.cohorts.includes(row.id))?.label;
-    return { ticker: company.ticker, name: company.name, cik: company.cik, sector: text(company.sector) || sector || 'Unclassified',
+    const sectorId = companySectors.get(company.cik) || '', sector = macro.sectors.find(row => row.id === sectorId)?.label;
+    return { ticker: company.ticker, name: company.name, cik: company.cik, sectorId, sector: sector || 'Unclassified',
       sic: text(String(company.sic ?? '')), basis: basis.toUpperCase(), periodEnd: day(period?.end), filed: day(period?.filed),
       sourceRetrievedAt: timestamp(company.factsRetrievedAt || company.observedAt), sourceCheckedAt: timestamp(company.secCheckedAt || company.factsValidatedAt),
-      olderReport: isOlderReport(company, basis, generatedAt) ? 'Older or unavailable reporting period' : 'Within report-age window',
+      olderReport: isOlderReport(company, basis, data.generatedAt) ? 'Older or unavailable reporting period' : 'Within report-age window',
       revenueBasis: text(company.revenueBasis), sourceId: id, filingSourceId,
       ...Object.fromEntries(MARKET_METRICS.map(metric => [metric.key, metric.unit === 'pct'
         ? fraction(company.metrics[basis]?.[metric.key]) : number(company.metrics[basis]?.[metric.key])])) };
@@ -168,6 +222,8 @@ export function buildMarketReport({ overview, cftcFamilies = [], failures = [] }
     url: snapshot.sourceUrl, periodEnd: snapshot.date, note: `Dataset ${snapshot.definition.datasetId}. Retrieved ${snapshot.retrievedAt}. ${snapshot.positionsCount} contracts with prepared positions of ${snapshot.catalogCount} catalog identities.` });
   const requested = Number.isInteger(data.coverage?.target_issuers) ? data.coverage.target_issuers : Number.isInteger(data.requested) ? data.requested : null;
   const missingCompanies = requested !== null ? Math.max(0, requested - macro.companyCount) : Array.isArray(data.failures) ? data.failures.length : null;
+  const { marketBriefing, sections: briefingSections } = buildReportMarketBriefing({ data, macro, companies, positioning,
+    requestedCount: requested, missingCompanies });
   const cftcCatalog = positioning.reduce((sum, snapshot) => sum + snapshot.catalogCount, 0);
   const cftcPrepared = positioning.reduce((sum, snapshot) => sum + snapshot.positionsCount, 0);
   const stale = data.cache?.status === 'stale' || Date.parse(generatedAt) - Date.parse(data.generatedAt) > MARKET_ATLAS_FRESH_MS;
@@ -188,12 +244,15 @@ export function buildMarketReport({ overview, cftcFamilies = [], failures = [] }
   const notes = [
     'Sector performance describes SEC-reported business fundamentals: revenue growth, margins, cash generation, investment and book capital. This report contains no security-price returns or investment-performance estimates.',
     'Sector statistics are unweighted medians across distinct covered SEC issuers. Each metric excludes unavailable values and discloses its own observation count. Growth breadth is the share of companies with positive revenue growth among companies with an available growth value. Zero remains a valid observation.',
+    'Sector statistics also include arithmetic means, minima, maxima and inclusive quartiles. Quartiles interpolate linearly at (n − 1) × p in the sorted available issuer values; a single available observation defines both quartiles. These describe company distributions, not confidence intervals.',
+    `Older-report counts use the SEC snapshot date, matching the Market page: over ${basis === 'annual' ? '550' : '200'} days from fiscal period end to ${data.generatedAt.slice(0, 10)}, or an unavailable period. Report preparation time does not update that snapshot.`,
     'The prepared research universe is not the entire U.S. equity market or a market-cap-weighted index. Primary sector groups are disjoint; overlapping research themes do not enter sector totals. Coverage and membership can change between snapshots.',
     `${basis === 'ttm' ? 'Trailing-twelve-month' : 'Annual'} results combine companies with different fiscal reporting dates. Snapshot time is not a common financial period or a point-in-time backtest. Industry accounting, revenue definitions, financial-company balance sheets and unusual items limit cross-sector comparisons.`,
     'The company appendix includes every distinct issuer in this snapshot, all available screening metrics and reporting dates. Prepared overview inputs do not contain fact-by-fact provenance; use the separate company report for detailed financial-source observations.',
     'CFTC counts distinguish the broad contract catalog from contracts with prepared position values. Catalog-only contracts and unreported values remain blank. The detailed workbook preserves all catalog contracts and trader groups; PDF positioning tables contain every contract with available prepared rows for the stated family and trader group.',
     'CFTC figures are futures-only contract counts. Net equals long minus short; net/open interest is that difference divided by open interest. Contract units differ, so contract counts and net positions are never added across different markets. Trader positioning is not a forecast, a security holding, or a company exposure.',
     'CFTC weekly and four-week changes use compatible observations exactly 7 and 28 calendar days earlier. Net/open-interest changes are percentage points, not percentage growth. Missing comparisons remain unavailable; source report dates can differ between families.',
+    'CFTC historical ranks retain the prepared 52-, 156-, or 260-prior-report window, its compatible observation count and prior-date range. An unavailable long window is never replaced by a shorter rank. The report uses prepared snapshots, not newly requested contract histories.',
     ...(stale ? ['The SEC research snapshot is retained and its scheduled check is due; it may not contain the newest filings.'] : []),
     ...positioning.flatMap(snapshot => [snapshot.warning, snapshot.stale ? `${snapshot.definition.label}: source report or cache is aged.` : '',
       snapshot.reconciliation ? `${snapshot.definition.label}: ${snapshot.reconciliation} source contract reconciliation differences are disclosed by the prepared dataset.` : ''].filter(Boolean)),
@@ -210,7 +269,7 @@ export function buildMarketReport({ overview, cftcFamilies = [], failures = [] }
   const partial = stale || missingCompanies > 0 || macro.missingSectorCount > 0 || macro.olderReports > 0
     || availableMetrics < companies.length * MARKET_METRICS.length || issues.length > 0 || positioning.some(snapshot => snapshot.partial);
   return {
-    schema: 'edgar.report.v1', kind: 'market', generatedAt, entity: { id: 'MARKET', name: 'Market overview', cik: '' },
+    schema: 'edgar.report.v1', kind: 'market', generatedAt, entity: { id: 'MARKET', name: 'Market overview', cik: '' }, marketBriefing,
     title: 'Market overview | Sectors, fundamentals and CFTC positioning',
     subtitle: 'SEC issuer fundamentals and CFTC futures positioning · Independent market research report',
     period: { label: `${basis.toUpperCase()} fundamentals · SEC snapshot ${data.generatedAt.slice(0, 10)}`,
@@ -235,6 +294,7 @@ export function buildMarketReport({ overview, cftcFamilies = [], failures = [] }
     charts: [{ kind: 'bar', title: 'Median sector revenue growth', unit: 'percent', points: sectorRows.map(row => ({ label: row.sector, value: row.growth })) },
       { kind: 'bar', title: 'Median sector net margin', unit: 'percent', points: sectorRows.map(row => ({ label: row.sector, value: row.margin })) }],
     sections: [
+      ...briefingSections,
       { id: 'market-coverage', title: 'Coverage and source dates', description: 'SEC companies and CFTC contracts have separate universes, dates and coverage denominators.',
         columns: [col('dataset', 'Dataset'), col('observation', 'Snapshot / report date'), col('available', 'Available', 'number'), col('target', 'Universe', 'number'), col('detail', 'Coverage detail', 'text', 70)], rows: coverageRows },
       { id: 'sector-performance', title: 'Sector growth and profitability', description: `${basis.toUpperCase()} company fundamentals; unweighted issuer medians. No stock-price returns. n = available issuer observations.`,
@@ -249,12 +309,16 @@ export function buildMarketReport({ overview, cftcFamilies = [], failures = [] }
         description: `${snapshot.family === 'tff' ? 'Leveraged Funds' : 'Managed Money'} · Futures only · ${snapshot.date}. Every contract with prepared positions in this family; counts are contracts, not dollars.`,
         columns: [col('market', 'Contract market', 'text', 38), col('netOi', 'Net / open interest', 'percent'), col('long', 'Long', 'number'), col('short', 'Short', 'number'), col('oneWeekChangePp', '1-week change (pp)', 'number')], rows: snapshot.defaultRows, pdfRowLimit: 100,
         footnote: 'One-week change is the change in net/open-interest percentage points from the compatible report exactly seven days earlier. No cross-contract position totals are calculated.' })),
+      { id: 'cftc-heatmap', title: 'CFTC positioning and historical ranks', description: 'Prepared heatmap contracts: Leveraged Funds for TFF and Managed Money for Disaggregated. Ranks describe the same contract and trader group over their stated prior-report window.', pdfRowLimit: 0,
+        columns: [col('family', 'Report family'), col('market', 'Contract market'), col('group', 'Trader group'), col('reportDate', 'Report date', 'date'),
+          col('netOi', 'Net / open interest', 'percent'), col('oneWeekChangePp', '1-week change (pp)', 'number'), ...percentileColumns()],
+        rows: positioning.flatMap(snapshot => snapshot.defaultRows) },
       { id: 'market-companies', title: 'All covered SEC companies', description: `${basis.toUpperCase()} prepared observations for every distinct covered issuer. Missing metrics remain blank. Percent cells are fractional values.`, pdfRowLimit: 0,
         columns: [col('ticker', 'Ticker'), col('name', 'Company', 'text', 40), col('cik', 'SEC CIK'), col('sector', 'Primary sector'), col('sic', 'SIC'), col('basis', 'Basis'), col('periodEnd', 'Period end', 'date'), col('filed', 'Period filed', 'date'),
           ...MARKET_METRICS.map(metric => col(metric.key, metric.label, metric.unit === 'pct' ? 'percent' : metric.unit === 'ratio' ? 'ratio' : 'usd')),
           col('revenueBasis', 'Revenue basis'), col('sourceRetrievedAt', 'Source retrieved'), col('sourceCheckedAt', 'Source checked'), col('olderReport', 'Reporting age'), col('sourceId', 'Facts source ID'), col('filingSourceId', 'Period filing source ID')], rows: companies },
       { id: 'cftc-all-groups', title: 'All CFTC contracts and groups', description: 'Full returned catalog × family-specific trader groups. Catalog-only positions are blank. Current net values are recalculated from original long/short fields; source-derived weekly changes retain exact date scope.', pdfRowLimit: 0,
-        columns: [col('family', 'Report family'), col('basis', 'Report basis'), col('reportDate', 'Report date', 'date'), col('code', 'Contract code'), col('market', 'Market', 'text', 40), col('exchange', 'Exchange'), col('category', 'Category'), col('units', 'Contract units'), col('group', 'Trader group'), col('openInterest', 'Open interest', 'number'), col('long', 'Long contracts', 'number'), col('short', 'Short contracts', 'number'), col('spreading', 'Spreading contracts', 'number'), col('spreadingStatus', 'Spreading status'), col('net', 'Net contracts', 'number'), col('netOi', 'Net / open interest', 'percent'), col('oneWeekChange', '1-week net change', 'number'), col('oneWeekChangePp', '1-week change (pp)', 'number'), col('fourWeekChange', '4-week net change', 'number'), col('fourWeekChangePp', '4-week change (pp)', 'number'), col('coverage', 'Coverage'), col('retrievedAt', 'Source retrieved'), col('sourceRowId', 'Original source row'), col('sourceId', 'Source ID')], rows: fullPositionRows },
+        columns: [col('family', 'Report family'), col('basis', 'Report basis'), col('reportDate', 'Report date', 'date'), col('code', 'Contract code'), col('market', 'Market', 'text', 40), col('exchange', 'Exchange'), col('category', 'Category'), col('units', 'Contract units'), col('group', 'Trader group'), col('openInterest', 'Open interest', 'number'), col('long', 'Long contracts', 'number'), col('short', 'Short contracts', 'number'), col('spreading', 'Spreading contracts', 'number'), col('spreadingStatus', 'Spreading status'), col('net', 'Net contracts', 'number'), col('netOi', 'Net / open interest', 'percent'), col('oneWeekChange', '1-week net change', 'number'), col('oneWeekChangePp', '1-week change (pp)', 'number'), col('fourWeekChange', '4-week net change', 'number'), col('fourWeekChangePp', '4-week change (pp)', 'number'), ...percentileColumns(), col('coverage', 'Coverage'), col('retrievedAt', 'Source retrieved'), col('sourceRowId', 'Original source row'), col('sourceId', 'Source ID')], rows: fullPositionRows },
     ], sources, notes: [...new Set(notes)],
     coverage: { status: partial ? 'partial' : 'ready', recordCount: companies.length + fullPositionRows.length,
       availableMetrics, totalMetrics: companies.length * MARKET_METRICS.length,

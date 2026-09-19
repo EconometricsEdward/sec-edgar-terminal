@@ -1,5 +1,6 @@
 import { zipSync, strToU8 } from 'fflate';
 import { comparePairQuality } from './compareQuality.js';
+import { buildMarketWorkbookSheets } from './reportMarketWorkbook.js';
 
 const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -124,7 +125,7 @@ function sectionSheet(report, section, styles, references) {
   const columns = section.columns.filter((column) => !excludedColumn(column));
   if (!columns.length) return null;
   if (financial) columns.sort((a, b) => a.key === 'metric' ? -1 : b.key === 'metric' ? 1 : a.label.localeCompare(b.label));
-  const name = companyNames[section.id] || detailNames[section.id] || section.title || 'Detail';
+  const name = section.workbookName || companyNames[section.id] || detailNames[section.id] || section.title || 'Detail';
   const widths = [3, ...columns.map((column, i) => financial ? i === 0 ? 38 : 17 : Math.min(60, Math.max(14, column.width ? column.width < 10 ? column.width * 15 : column.width : column.format === 'text' ? i === 0 ? 35 : 26 : column.format === 'date' ? 18 : 20)))];
   const sheet = makeSheet(name, widths, styles);
   const context = financial ? 'USD millions, except per-share amounts, share counts and ratios. Percentages and multiples are shown as labeled.' : [cleanFootnote(section.description), 'Blank numeric values are unavailable.'].filter(Boolean).join(' ');
@@ -230,10 +231,24 @@ function companyCftcSheet(report, sections, styles) {
 function sheetXml(sheet) {
   const end = colName(sheet.widths.length - 1);
   const rows = [...sheet.rows.entries()].sort(([a], [b]) => a - b).map(([index, row]) => `<row r="${index}" ht="${row.height}" customHeight="1">${[...row.cells.entries()].sort(([a], [b]) => a - b).map(([, value]) => value).join('')}</row>`).join('');
-  return `${XML}<worksheet xmlns="${NS}" xmlns:r="${REL}"><sheetPr><tabColor rgb="FF${sheet.summary ? '17243B' : 'B8C5D5'}"/><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${end}${sheet.lastRow}"/><sheetViews><sheetView showGridLines="0" zoomScale="90" workbookViewId="0">${sheet.freeze ? `<pane xSplit="2" ySplit="${sheet.freeze}" topLeftCell="C${sheet.freeze + 1}" activePane="bottomRight" state="frozen"/>` : ''}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="23"/><cols>${sheet.widths.map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`).join('')}</cols><sheetData>${rows}</sheetData>${sheet.filter ? `<autoFilter ref="${sheet.filter}"/>` : ''}${sheet.merges.length ? `<mergeCells count="${sheet.merges.length}">${sheet.merges.map((ref) => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells>` : ''}<printOptions horizontalCentered="1"/><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.18" footer="0.18"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="${sheet.summary ? 1 : 0}"/><headerFooter><oddFooter>&amp;LEDGAR Terminal&amp;RPage &amp;P of &amp;N</oddFooter></headerFooter>${sheet.charts.length ? '<drawing r:id="rDrawing"/>' : ''}</worksheet>`;
+  const conditionalFormats = (sheet.conditionalFormats || []).map((rule, index) => `<conditionalFormatting sqref="${escape(rule.range)}"><cfRule type="${rule.kind}" priority="${index + 1}">${rule.kind === 'dataBar' ? `<dataBar><cfvo type="num" val="${rule.minimum}"/><cfvo type="num" val="${rule.maximum}"/><color rgb="FF${rule.color}"/></dataBar>` : `<colorScale><cfvo type="num" val="${rule.minimum}"/><cfvo type="num" val="${rule.midpoint}"/><cfvo type="num" val="${rule.maximum}"/>${rule.colors.map(color => `<color rgb="FF${color}"/>`).join('')}</colorScale>`}</cfRule></conditionalFormatting>`).join('');
+  return `${XML}<worksheet xmlns="${NS}" xmlns:r="${REL}"><sheetPr><tabColor rgb="FF${sheet.tabColor || (sheet.summary ? '17243B' : 'B8C5D5')}"/><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${end}${sheet.lastRow}"/><sheetViews><sheetView showGridLines="0" zoomScale="90" workbookViewId="0">${sheet.freeze ? `<pane xSplit="2" ySplit="${sheet.freeze}" topLeftCell="C${sheet.freeze + 1}" activePane="bottomRight" state="frozen"/>` : ''}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="23"/><cols>${sheet.widths.map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`).join('')}</cols><sheetData>${rows}</sheetData>${sheet.filter ? `<autoFilter ref="${sheet.filter}"/>` : ''}${sheet.merges.length ? `<mergeCells count="${sheet.merges.length}">${sheet.merges.map((ref) => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells>` : ''}${conditionalFormats}<printOptions horizontalCentered="1"/><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.18" footer="0.18"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="${sheet.summary ? 1 : 0}"/><headerFooter><oddFooter>&amp;LEDGAR Terminal&amp;RPage &amp;P of &amp;N</oddFooter></headerFooter>${sheet.charts.length ? '<drawing r:id="rDrawing"/>' : ''}</worksheet>`;
+}
+
+function barChartXml(chart, sheetName, index) {
+  const c = 'http://schemas.openxmlformats.org/drawingml/2006/chart', a = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+  const sheet = `'${sheetName.replaceAll("'", "''")}'`, categories = `${sheet}!$${chart.labelColumn}$${chart.firstRow}:$${chart.labelColumn}$${chart.lastRow}`, values = `${sheet}!$${chart.valueColumn}$${chart.firstRow}:$${chart.valueColumn}$${chart.lastRow}`;
+  const axis1 = 100000 + index * 2, axis2 = axis1 + 1;
+  const title = `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1100"/></a:pPr><a:r><a:rPr lang="en-US"/><a:t>${escape(chart.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`;
+  const labels = chart.points.map((point, i) => `<c:pt idx="${i}"><c:v>${escape(point.label)}</c:v></c:pt>`).join('');
+  const points = chart.points.map((point, i) => finite(point.value) ? `<c:pt idx="${i}"><c:v>${point.value}</c:v></c:pt>` : '').join('');
+  const colors = chart.points.map((point, i) => `<c:dPt><c:idx val="${i}"/><c:invertIfNegative val="0"/><c:spPr><a:solidFill><a:srgbClr val="${point.value < 0 ? 'D6B258' : '24797C'}"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr></c:dPt>`).join('');
+  const scale = chart.fixedScale ? `<c:max val="${chart.fixedScale[1]}"/><c:min val="${chart.fixedScale[0]}"/>` : '';
+  return `${XML}<c:chartSpace xmlns:c="${c}" xmlns:a="${a}" xmlns:r="${REL}"><c:lang val="en-US"/><c:chart>${title}<c:autoTitleDeleted val="0"/><c:plotArea><c:layout/><c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/><c:varyColors val="0"/><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>Net / open interest</c:v></c:tx><c:spPr><a:solidFill><a:srgbClr val="24797C"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr><c:invertIfNegative val="0"/>${colors}<c:cat><c:strRef><c:f>${escape(categories)}</c:f><c:strCache><c:ptCount val="${chart.points.length}"/>${labels}</c:strCache></c:strRef></c:cat><c:val><c:numRef><c:f>${escape(values)}</c:f><c:numCache><c:formatCode>0.0%</c:formatCode><c:ptCount val="${chart.points.length}"/>${points}</c:numCache></c:numRef></c:val></c:ser><c:gapWidth val="90"/><c:axId val="${axis1}"/><c:axId val="${axis2}"/></c:barChart><c:catAx><c:axId val="${axis1}"/><c:scaling><c:orientation val="maxMin"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:tickLblPos val="none"/><c:crossAx val="${axis2}"/><c:crosses val="min"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/></c:catAx><c:valAx><c:axId val="${axis2}"/><c:scaling><c:orientation val="minMax"/>${scale}</c:scaling><c:delete val="0"/><c:axPos val="b"/><c:majorGridlines><c:spPr><a:ln><a:solidFill><a:srgbClr val="E6EBF1"/></a:solidFill></a:ln></c:spPr></c:majorGridlines><c:numFmt formatCode="0%" sourceLinked="0"/><c:tickLblPos val="low"/><c:crossAx val="${axis1}"/><c:crosses val="min"/><c:crossBetween val="between"/></c:valAx></c:plotArea><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/><c:showDLblsOverMax val="0"/></c:chart><c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1000"><a:latin typeface="Arial"/></a:defRPr></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:chartSpace>`;
 }
 
 function chartXml(chart, sheetName, index) {
+  if (chart.kind === 'bar') return barChartXml(chart, sheetName, index);
   const c = 'http://schemas.openxmlformats.org/drawingml/2006/chart', a = 'http://schemas.openxmlformats.org/drawingml/2006/main';
   const sheet = `'${sheetName.replaceAll("'", "''")}'`, category = `${sheet}!$${chart.labelColumn}$${chart.firstRow}:$${chart.labelColumn}$${chart.lastRow}`, values = `${sheet}!$${chart.valueColumn}$${chart.firstRow}:$${chart.valueColumn}$${chart.lastRow}`;
   const axis1 = 100000 + index * 2, axis2 = axis1 + 1, numberFormat = chart.unit === 'usd' ? '#,##0.0,,' : chart.unit === 'percent' ? '0.0%' : '#,##0.0';
@@ -245,8 +260,9 @@ function chartXml(chart, sheetName, index) {
 /** Browser-worker workbook writer. Raw numeric values survive presentation scaling. */
 export async function createReportXlsx(report) {
   validate(report);
-  const styles = styleCatalog(), references = new Map(), sheets = [summarySheet(report, styles)];
-  let sections = report.sections.filter((section) => !excludedSection(section));
+  const styles = styleCatalog(), references = new Map(), marketEdition = report.kind === 'market' && report.marketBriefing;
+  const sheets = marketEdition ? buildMarketWorkbookSheets(report, { makeSheet, styles, wrappedHeight, titleBlock, excludedColumn, numericFormat, sectionSheet, colName }) : [summarySheet(report, styles)];
+  let sections = marketEdition ? [] : report.sections.filter((section) => !excludedSection(section));
   const companyCftc = report.kind === 'company' ? sections.filter((section) => section.id?.startsWith('cftc-') && section.id !== 'cftc-history') : [];
   if (companyCftc.length) sections = sections.filter((section) => !companyCftc.includes(section));
   if (report.kind === 'company') {

@@ -1,6 +1,7 @@
 export { createReportXlsx } from './reportWorkbook.js';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
+import { createMarketReportPdf } from './marketReportPdf.js';
 
 const FORMATS = new Set(['text', 'usd', 'number', 'percent', 'ratio', 'date']);
 const KIND_LABELS = { company: 'COMPANY FINANCIAL REPORT', nport: 'FUND PORTFOLIO REPORT · N-PORT', '13f': 'INSTITUTIONAL HOLDINGS REPORT · 13F', market: 'MARKET FUNDAMENTALS & CFTC REPORT' };
@@ -29,6 +30,7 @@ const COLORS = { navy: rgb(0.075, 0.13, 0.22), ink: rgb(0.11, 0.16, 0.23), muted
 /** Structured, paginated PDF with vector charts and searchable text. */
 export async function createReportPdf(report, options = {}) {
   validate(report);
+  if (report.kind === 'market' && report.marketBriefing) return createMarketReportPdf(report, options);
   const doc = await PDFDocument.create();
   doc.setTitle(`${report.entity.name} - ${report.title}`); doc.setAuthor('EDGAR Terminal'); doc.setSubject(report.subtitle); doc.setCreator('EDGAR Terminal Reports');
   const generated = new Date(report.generatedAt); if (Number.isFinite(generated.getTime())) doc.setCreationDate(generated);

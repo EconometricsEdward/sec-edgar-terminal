@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { createReportPdf, createReportXlsx, formatReportValue } from '../src/utils/reportExports.js';
 
 const report = (patch = {}) => ({
@@ -80,4 +80,64 @@ test('display formatting respects fractions, null and true zero', () => {
 test('both exporters reject unsupported report contracts', async () => {
   await assert.rejects(createReportPdf({ schema: 'old' }), /incomplete/);
   await assert.rejects(createReportXlsx(report({ sections: [{ columns: [], rows: [] }] })), /section/);
+});
+
+test('market PDF follows the Market briefing sections, preserves percentage scales and profiles every sector', async () => {
+  const keys = ['revenueGrowth', 'netMargin', 'cashFlowMargin', 'capexIntensity', 'equityToAssets'];
+  const sectors = Array.from({ length: 12 }, (_, i) => ({
+    id: `sector-${i + 1}`, label: `Sector ${i + 1}`, count: 6,
+    metrics: Object.fromEntries(keys.map((key, n) => [key, { median: n === 0 ? 33.3 : n === 1 ? 0 : null, count: n < 2 ? 6 : 0, positive: n === 0 ? 6 : 0, positivePct: n === 0 ? 100 : 0 }])),
+    industries: [{ code: '1234', label: `Industry ${i + 1}`, count: 6 }],
+  }));
+  const cards = Array.from({ length: 6 }, (_, i) => ({ id: String(i), category: `Lens ${i + 1}`, label: `Contract ${i + 1}`,
+    family: 'tff', familyLabel: 'TFF', groupLabel: 'Leveraged Funds', code: `04360${i}`, reportDate: '2026-09-15',
+    netPctOi: i === 0 ? -25 : i === 1 ? 0 : null, weeklyChange: i === 0 ? 1.5 : null }));
+  const fullUrl = 'https://publicreporting.cftc.gov/resource/gpe5-46if.json?%24select=market_and_exchange_names&%24where=report_date';
+  const base = report({ kind: 'market', entity: { id: 'MARKET', name: 'Market overview', cik: '' },
+    marketBriefing: {
+      coverage: { companyCount: 72, sectorCount: 12, industryCount: 12, requestedCount: 72, missingSectorCount: 0, missingIndustryCount: 0, olderReports: 0, snapshotAt: '2026-09-19' },
+      breadth: [{ id: 'revenue-growth', label: 'Growing revenue', positive: 54, count: 72, share: .75, context: 'Positive growth' }],
+      growthLeaders: { highest: { sector: 'Sector 1', value: 33.3, count: 6, companies: 6 }, lowest: { sector: 'Sector 2', value: 33.3, count: 6, companies: 6 }, spreadPp: 0 },
+      positioning: { cards, availableCount: 2, families: [{ label: 'TFF', valid: true, reportDate: '2026-09-15' }], largestMove: null },
+      sectorMetrics: keys.map(key => ({ key, label: key })), sectors,
+    },
+    sections: [{ id: 'market-companies', columns: [{ key: 'ticker', label: 'Ticker', format: 'text' }],
+      rows: sectors.flatMap((sector, i) => Array.from({ length: 6 }, (_, j) => ({ sectorId: sector.id, sector: sector.label, ticker: `S${i + 1}${j === 5 ? 'LOW' : `TOP${j + 1}`}`, name: `Company ${i + 1}.${j + 1}`, revenueGrowth: .125 - j / 100, periodEnd: '2026-06-30' }))) },
+    { id: 'cftc-tff', title: 'TFF positioning', description: 'Leveraged Funds / Futures only / 2026-09-15', columns: [{ key: 'netOi', label: 'Net / OI', format: 'percent' }],
+      rows: [{ familyId: 'tff', code: '043600', groupId: 'leveraged-funds', market: 'Contract 1', reportDate: '2026-09-15', netOi: -.25, oneWeekChangePp: 1.5 }] },
+    { id: 'cftc-heatmap', columns: [{ key: 'rank1y', label: 'Rank', format: 'percent' }], rows: [{ familyId: 'tff', code: '043600', groupId: 'leveraged-funds', reportDate: '2026-09-15', rank1y: .92, rank1yN: 52, rank1yRequired: 52 }] },
+    { id: 'cftc-all-groups', columns: [{ key: 'netOi', label: 'Net / OI', format: 'percent' }], rows: [
+      ...['Dealers', 'Asset Managers', 'Leveraged Funds', 'Other Reportables', 'Nonreportables'].map((group, i) => ({ familyId: 'tff', groupId: String(i), group, code: '043600', market: 'Contract 1', reportDate: '2026-09-15', openInterest: 1000, netOi: .11 - i / 10 })),
+      { familyId: 'tff', groupId: '0', group: 'Dealers', code: 'CATALOG', market: 'Catalog-only sentinel', reportDate: '2026-09-15', netOi: null },
+    ] }],
+    sources: [{ id: 'cftc-tff', label: 'CFTC financial futures', url: fullUrl }], notes: [],
+  });
+  const text = await pdfText(base);
+  assert.match(text, /75% of companies grew revenue/);
+  assert.match(text, /Six windows into the macro market/);
+  assert.match(text, /Who holds financial futures/);
+  assert.match(text, /Nonreportables/);
+  assert.match(text, /-29%/);
+  assert.doesNotMatch(text, /Catalog-only sentinel/);
+  assert.match(text, /Where is performance diverging/);
+  assert.match(text, /Find the dispersion/);
+  assert.match(text, /-25%/);
+  assert.match(text, /\+1\.5 pp/);
+  assert.match(text, /33\.3%/);
+  assert.match(text, /12\.5%/);
+  assert.match(text, /92%/);
+  assert.match(text, /52 \/ 52/);
+  assert.match(text, /Unavailable/);
+  assert.doesNotMatch(text, /-2,500%|3,330%|9,200%/);
+  assert.equal(text.match(/Inside the sectors\./g)?.length, 6);
+  assert.match(text, /S12TOP1/);
+  assert.doesNotMatch(text, /S12LOW/);
+  assert.match(text, /publicreporting.cftc.gov\/resource\/gpe5-46if.json/);
+  assert.doesNotMatch(text, /%24select|market_and_exchange_names/);
+  const pdf = await PDFDocument.load(await createReportPdf(base));
+  const targets = pdf.getPages().flatMap(page => {
+    const annotations = page.node.lookup(PDFName.of('Annots'));
+    return annotations ? annotations.asArray().map(ref => pdf.context.lookup(ref).lookup(PDFName.of('A')).lookup(PDFName.of('URI')).decodeText()) : [];
+  });
+  assert.ok(targets.includes(fullUrl), 'the concise source label still opens the full original dataset query');
 });
