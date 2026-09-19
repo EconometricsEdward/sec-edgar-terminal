@@ -19,7 +19,7 @@ function abortable(promise, signal) {
 export const readPreparedFund = (ticker, accession = '', options = {}) => fundResearchCache.readPrepared(ticker, accession, options);
 
 export function createFundLoader({ fundLookup = getFundTicker, operatingLookup = getOperatingTicker, fetchSec = secFetch,
-  cache = fundResearchCache, now = Date.now, maxPending = 4, deadlineMs = 50000 } = {}) {
+  cache = fundResearchCache, now = Date.now, maxPending = 4, deadlineMs = 50000, allowSeriesIdentity = false } = {}) {
   const inFlight = new Map();
   async function load(tickerInput, accessionInput = '', { signal } = {}) {
     const { ticker, accession } = normalizeFundRequest(tickerInput, accessionInput);
@@ -82,7 +82,11 @@ export function createFundLoader({ fundLookup = getFundTicker, operatingLookup =
       };
     signal.throwIfAborted();
     const cik = String(lookup.cik || '').padStart(10, '0');
-    if (!/^(?!0000000000)\d{10}$/.test(cik) || fund && (!/^S\d{9}$/.test(fund.seriesId) || !/^C\d{9}$/.test(fund.classId)))
+    // Report-only series lookups may identify a portfolio without selecting a
+    // share class. Ordinary ticker loading retains its class-identity check.
+    const directSeries = allowSeriesIdentity && /^S\d{9}$/.test(ticker)
+      && fund?.seriesId === ticker && fund?.classId === null;
+    if (!/^(?!0000000000)\d{10}$/.test(cik) || fund && (!/^S\d{9}$/.test(fund.seriesId) || !directSeries && !/^C\d{9}$/.test(fund.classId)))
       throw new Error('The SEC fund identity could not be verified. Retry this request.');
     // Once identity is known, the registrant metadata and series feed are
     // independent. Fetch both in the same bounded source window.
