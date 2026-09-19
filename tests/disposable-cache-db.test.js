@@ -69,6 +69,41 @@ async function database() {
   } catch (error) { await db.close(); throw error; }
 }
 
+test('Market capacity migration widens only bounded cache budgets and preserves records and access controls', async t => {
+  const db = await database();
+  t.after(() => db.close());
+  // Existing CFTC preparation reallocates 96 MiB out of research. Its dedicated
+  // family is outside this migration; reflect the current research allocation.
+  await db.exec("update edgar_private.cache_families set max_bytes=167772160 where family='research'");
+  const data = payload({ retained: 'prepared company', checkedAt: '2026-09-18T12:00:00Z' });
+  await put(db, 'checkpoint', '0000320193', data);
+  const before = (await db.query('select * from edgar_private.cache_families order by family')).rows;
+  const retained = await rows(db, 'checkpoint');
+  const schedules = (await db.query('select * from cron.job order by jobname')).rows;
+  const directory = new URL('../supabase/migrations/', import.meta.url);
+  const files = (await readdir(directory)).filter(name => name.endsWith('_edgar_market_capacity.sql'));
+  assert.equal(files.length, 1);
+  await db.exec(await readFile(new URL(files[0], directory), 'utf8'));
+  const after = (await db.query('select * from edgar_private.cache_families order by family')).rows;
+  assert.equal(after.reduce((sum, row) => sum + row.max_bytes, 0) - before.reduce((sum, row) => sum + row.max_bytes, 0), 224 * 1024 * 1024);
+  for (const prior of before) {
+    const expected = { ...prior };
+    if (prior.family === 'checkpoint') expected.max_rows = 20000;
+    if (prior.family === 'research') expected.max_bytes = 256 * 1024 * 1024;
+    if (prior.family === 'document') expected.max_bytes = 192 * 1024 * 1024;
+    assert.deepEqual(after.find(row => row.family === prior.family), expected);
+    await assert.rejects(db.query('update edgar_private.cache_families set max_rows=$1 where family=$2', [prior.family === 'checkpoint' ? 20001 : 10001, prior.family]), { code: '23514' });
+    await assert.rejects(db.query('update edgar_private.cache_families set max_rows=0 where family=$1', [prior.family]), { code: '23514' });
+  }
+  assert.equal(after.find(row => row.family === 'checkpoint').max_bytes, 96 * 1024 * 1024);
+  assert.deepEqual(await rows(db, 'checkpoint'), retained);
+  assert.deepEqual((await db.query('select * from cron.job order by jobname')).rows, schedules);
+  for (const role of ['anon', 'authenticated']) await assert.rejects(asRole(db, role, () => db.query('select * from edgar_private.cache_families')), { code: '42501' });
+  await assert.rejects(asRole(db, 'service_role', () => db.exec("update edgar_private.cache_families set max_rows=10000 where family='checkpoint'")), { code: '42501' });
+  await assert.rejects(asRole(db, 'service_role', () => db.exec("update edgar_private.cache_families set max_bytes=max_bytes+1 where family='document'")), { code: '42501' });
+  await assertAccounting(db);
+});
+
 test('private disposable cache exact SQL: security, budgets, expiry, replacement and maintenance', async t => {
   const db = await database();
   t.after(() => db.close());

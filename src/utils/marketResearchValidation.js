@@ -161,3 +161,78 @@ export function isMarketOverview(value) {
       && value.companies.every(company => typeof company.sector === 'string'
         && value.cohorts.filter(cohort => company.cohorts.includes(cohort.id)).length === 1)));
 }
+
+const BRIEFING_METRICS = ['revenueGrowth', 'netMargin', 'cashFlowMargin', 'capexIntensity', 'equityToAssets', 'netIncome'];
+const count = value => Number.isSafeInteger(value) && value >= 0;
+function validBriefingStats(stats, total) {
+  return record(stats) && stats.total === total && count(stats.count) && stats.count <= total
+    && count(stats.positive) && count(stats.negative) && stats.positive + stats.negative <= stats.count
+    && (stats.count === 0 ? stats.median === null && stats.mean === null && stats.positivePct === null
+      : Number.isFinite(stats.median) && Number.isFinite(stats.mean)
+        && Math.abs(stats.positivePct - stats.positive / stats.count * 100) < 1e-8);
+}
+function validBriefingMetrics(metrics, total) {
+  return record(metrics) && BRIEFING_METRICS.every(key => validBriefingStats(metrics[key], total));
+}
+function validIndustry(industry, withMetrics = false) {
+  return record(industry) && /^\d{4}$/.test(industry.code) && typeof industry.label === 'string'
+    && typeof industry.known === 'boolean' && count(industry.count) && industry.count > 0
+    && (!withMetrics || validBriefingMetrics(industry.metrics, industry.count));
+}
+function validBriefingSummary(summary, generatedAt) {
+  if (!record(summary) || summary.generatedAt !== generatedAt
+    || !['companyCount', 'sectorCount', 'industryCount', 'missingSectorCount', 'missingIndustryCount',
+      'unknownIndustryCount', 'unknownIndustryCompanyCount', 'olderReports'].every(key => count(summary[key]))
+    || summary.companyCount === 0 || summary.olderReports > summary.companyCount
+    || !Array.isArray(summary.sectors) || summary.sectors.length !== summary.sectorCount
+    || !Array.isArray(summary.industries) || summary.industries.length !== summary.industryCount
+    || !summary.industries.every(industry => validIndustry(industry))
+    || new Set(summary.industries.map(industry => industry.code)).size !== summary.industryCount
+    || !validBriefingMetrics(summary.metrics, summary.companyCount)
+    || !['growth', 'profit', 'cash'].every(key => validBriefingStats(summary[key], summary.companyCount))
+    || summary.classificationSource !== 'https://www.sec.gov/search-filings/standard-industrial-classification-sic-code-list') return false;
+  if (!summary.sectors.every(sector => record(sector) && /^sector-[a-z0-9-]+$/.test(sector.id)
+    && typeof sector.label === 'string' && count(sector.count) && sector.count > 0
+    && (sector.targetCount === null || count(sector.targetCount))
+    && count(sector.missingIndustryCount) && Array.isArray(sector.industries)
+    && sector.industries.every(industry => validIndustry(industry))
+    && sector.industries.reduce((sum, industry) => sum + industry.count, sector.missingIndustryCount) === sector.count
+    && validBriefingMetrics(sector.metrics, sector.count))) return false;
+  return new Set(summary.sectors.map(sector => sector.id)).size === summary.sectorCount
+    && summary.sectors.reduce((sum, sector) => sum + sector.count, summary.missingSectorCount) === summary.companyCount
+    && summary.industries.reduce((sum, industry) => sum + industry.count, summary.missingIndustryCount) === summary.companyCount
+    && (summary.reportRange === null || record(summary.reportRange) && validDate(summary.reportRange.earliest)
+      && validDate(summary.reportRange.latest) && summary.reportRange.earliest <= summary.reportRange.latest
+      && count(summary.reportRange.count) && summary.reportRange.count <= summary.companyCount);
+}
+
+/** A separate aggregate contract: thousands of company records never hydrate the page. */
+export function isMarketBriefing(value) {
+  return record(value) && value.version === 'market-briefing-v1' && validDate(value.generatedAt)
+    && count(value.requested) && value.requested > 0 && count(value.failureCount)
+    && record(value.summaries) && ['annual', 'ttm'].every(basis => validBriefingSummary(value.summaries[basis], value.generatedAt))
+    && value.summaries.annual.companyCount === value.summaries.ttm.companyCount
+    && value.summaries.ttm.companyCount <= value.requested
+    && (!value.coverage || record(value.coverage) && value.coverage.target_issuers === value.requested
+      && value.coverage.loaded_issuers === value.summaries.ttm.companyCount
+      && value.coverage.missing_issuers === value.requested - value.summaries.ttm.companyCount
+      && Array.isArray(value.coverage.sources) && value.coverage.sources.every(source => record(source)
+        && typeof source.fund === 'string' && validDate(source.as_of) && /^https:\/\//.test(source.url)));
+}
+
+export function isMarketDirectory(value) {
+  return record(value) && value.version === 'market-directory-v1' && validDate(value.generatedAt)
+    && count(value.failureCount) && Array.isArray(value.companies) && value.companies.length > 0
+    && value.companies.every(company => record(company) && /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(company.ticker)
+      && typeof company.name === 'string' && company.name.length > 0 && /^\d{1,10}$/.test(company.cik)
+      && Number(company.cik) > 0 && typeof company.sector === 'string' && typeof company.sectorId === 'string')
+    && new Set(value.companies.map(company => String(Number(company.cik)))).size === value.companies.length;
+}
+
+export function isMarketIndustries(value) {
+  return record(value) && value.version === 'market-industries-v1' && validDate(value.generatedAt)
+    && record(value.bases) && ['annual', 'ttm'].every(basis => Array.isArray(value.bases[basis])
+      && value.bases[basis].every(sector => record(sector) && /^sector-[a-z0-9-]+$/.test(sector.id)
+        && count(sector.missingIndustryCount) && Array.isArray(sector.industries)
+        && sector.industries.every(industry => validIndustry(industry, true))));
+}

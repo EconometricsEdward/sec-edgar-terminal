@@ -5,6 +5,7 @@ export const MARKET_OVERVIEW_VERSION = 'market-overview-v1';
 /** Display data only: full filing provenance remains in the research atlas. */
 export function buildMarketOverview(atlas, { membership = null, previous = null, persistHistory = false } = {}) {
   const expanded = Boolean(atlas.coverage);
+  const supplemental = Boolean(atlas.coverage?.sources?.some(source => source.fund === 'SEC'));
   const companies = atlas.companies.map(company => ({
     version: company.version, ticker: company.ticker, name: company.name, cik: company.cik,
     sic: String(company.sic), revenueBasis: company.revenueBasis, observedAt: company.observedAt,
@@ -21,11 +22,11 @@ export function buildMarketOverview(atlas, { membership = null, previous = null,
   })).sort((a, b) => a.ticker.localeCompare(b.ticker));
   const cohorts = expanded ? atlas.groups.map(group => ({
     id: group.id, label: group.label, title: `${group.label} companies`,
-    description: 'One primary sector per issuer, using the published fund classification.',
+    description: supplemental ? 'One primary research sector per issuer: published fund classifications and broad SEC SIC groups.' : 'One primary sector per issuer, using the published fund classification.',
     disclosureTerms: group.label,
-    tickers: membership ? membership.rows.filter(row => row.sector === group.label).map(row => row.ticker)
+    tickers: membership && !supplemental ? membership.rows.filter(row => row.sector === group.label).map(row => row.ticker)
       : companies.filter(company => company.cohorts.includes(group.id)).map(company => company.ticker),
-    targetKnown: Boolean(membership),
+    targetKnown: Boolean(membership) && !supplemental,
   })) : atlas.cohorts;
   const themes = expanded ? atlas.cohorts.map(cohort => ({ ...cohort,
     tickers: companies.filter(company => company.cohorts.includes(cohort.id)).map(company => company.ticker),

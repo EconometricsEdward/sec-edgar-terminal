@@ -120,7 +120,8 @@ function validKey(dataset, key, job = false) {
     || (dataset === 'cftc' && (key === 'refresh:tff-disaggregated' || /^history-refresh:futures-only:(?:tff|disaggregated):shard:(?:[0-2]\d|3[01])$/.test(key)));
   if (dataset === 'sec') return SEC_KEY.test(key);
   if (dataset === 'financial') {
-    if (key === 'research-market-overview-v1:latest') return true;
+    if (['research-market-overview-v1:latest', 'research-market-briefing-v1:latest',
+      'research-market-directory-v1:latest', 'research-market-industries-v1:latest'].includes(key)) return true;
     const match = FINANCIAL_KEY.exec(key) || COMPARE_KEY.exec(key) || PORTFOLIO_KEY.exec(key) || COMPANY_KEY.exec(key);
     return !!match && !SOURCE_ONLY.has(match[1]);
   }

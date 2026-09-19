@@ -18,8 +18,9 @@ const LOCAL_INTERVAL_MS = Math.ceil(1000 / STARTS_PER_SECOND);
 const MAX_RETRY_DELAY_MS = 10_000;
 const MAX_COOLDOWN_MS = 5 * 60_000;
 const MAX_GATE_WAIT_MS = 2_000;
+const MAX_LOCAL_GATE_QUEUE = 16;
+const MAX_LOCAL_GATE_WAIT_MS = 8_000;
 const START_LOCK_TTL_MS = 5_000;
-const START_LOCK_POLL_MS = 50;
 const START_LOCK_SAFETY_MS = 500;
 const MAX_HANDOFF_COOLDOWN_MS = 600000;
 const DEFAULT_USER_AGENT = 'EDGAR Terminal research@secedgarterminal.com';
@@ -129,6 +130,48 @@ export function createSecDispatchCoordinator({
   uuid = () => crypto.randomUUID(), wait = delay,
   transport = (...args) => fetch(...args),
 } = {}) {
+  // A single runtime often launches several SEC reads together. Only its next
+  // request should contend for the shared start lease; the rest wait locally
+  // without repeatedly invoking the database. This queue grants no permission:
+  // every request still needs its own independently verified global lease.
+  const queued = [];
+  let dispatching = false;
+  function advanceQueue() {
+    if (dispatching || !queued.length) return;
+    const entry = queued.shift();
+    entry.cleanup();
+    dispatching = true;
+    let released = false;
+    entry.resolve(() => {
+      if (released) return;
+      released = true;
+      dispatching = false;
+      advanceQueue();
+    });
+  }
+  function localTurn(signal) {
+    signal?.throwIfAborted();
+    if (queued.length >= MAX_LOCAL_GATE_QUEUE) throw new SecRequestError('SEC request coordination is temporarily saturated.', { code: 'SEC_RATE_GATE_SATURATED', status: 503 });
+    return new Promise((resolve, reject) => {
+      let timer;
+      const entry = { resolve, cleanup: () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', cancelled);
+      } };
+      function remove(error) {
+        const index = queued.indexOf(entry);
+        if (index < 0) return;
+        queued.splice(index, 1);
+        entry.cleanup();
+        reject(error);
+      }
+      function cancelled() { remove(abortError(signal)); }
+      queued.push(entry);
+      signal?.addEventListener('abort', cancelled, { once: true });
+      if (dispatching) timer = setTimeout(() => remove(new SecRequestError('SEC request coordination is temporarily saturated.', { code: 'SEC_RATE_GATE_SATURATED', status: 503 })), MAX_LOCAL_GATE_WAIT_MS);
+      advanceQueue();
+    });
+  }
   async function safeRelease(permit, cooldownMs = 0) {
     if (!permit?.owner) return false;
     try { return await release(permit.owner, { cooldownMs: Math.max(0, Math.ceil(cooldownMs)) }) === true; }
@@ -179,7 +222,9 @@ export function createSecDispatchCoordinator({
         if (reply.cooldown || left <= 0 || waitMs > left) throw new SecRequestError('SEC request coordination is temporarily saturated.', {
           code: reply.cooldown ? 'SEC_UPSTREAM_COOLDOWN' : 'SEC_RATE_GATE_SATURATED', status: 503,
         });
-        await wait(Math.min(waitMs, START_LOCK_POLL_MS, left), signal);
+        // Honor the server's spacing. Polling every 50 ms when it explicitly
+        // requests 143 ms only adds RPC contention and cannot grant sooner.
+        await wait(Math.min(waitMs, left), signal);
       }
     } catch (error) {
       if (uncertainReservation) await releaseUncertainReservation(owner);
@@ -194,24 +239,31 @@ export function createSecDispatchCoordinator({
     catch { return false; }
   }
   async function paced(input, init, signal) {
-    const permit = await reserve(signal), startedAt = now();
-    let request;
+    const requestSignal = signal && init.signal && signal !== init.signal
+      ? AbortSignal.any([signal, init.signal]) : signal || init.signal;
+    const releaseTurn = await localTurn(requestSignal);
+    let outcome;
     try {
-      signal?.throwIfAborted(); init.signal?.throwIfAborted();
-      // No asynchronous work is permitted between this check and dispatch.
-      if (now() >= permit.validUntil) throw new SecRequestError('SEC dispatch permission expired before use.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });
-      if (!takeSecRequestBudget()) throw new SecRequestError('The research task reached its SEC request allowance.', { code: 'SEC_REQUEST_BUDGET_EXHAUSTED', status: 429 });
-      request = transport(input, init);
-    } catch (error) { await safeRelease(permit); throw error; }
-    const outcome = Promise.resolve(request).then(response => ({ response }), error => ({ error }));
-    // Preserve early provider cooldown publication under the owned lease. The
-    // database also adds 143 ms at release: intentionally conservative spacing.
-    const hold = wait(Math.max(0, LOCAL_INTERVAL_MS - (now() - startedAt)));
-    const early = await Promise.race([outcome.then(settled => ({ settled })), hold.then(() => null)]);
-    const earlyResponse = early?.settled?.response;
-    const earlyCooldown = cooldownForResponse(earlyResponse) || 0;
-    await hold;
-    if (await safeRelease(permit, earlyCooldown) && earlyResponse && earlyCooldown > 0) cooldownPublished.add(earlyResponse);
+      const permit = await reserve(requestSignal), startedAt = now();
+      let request;
+      try {
+        requestSignal?.throwIfAborted();
+        // No asynchronous work is permitted between this check and dispatch.
+        if (now() >= permit.validUntil) throw new SecRequestError('SEC dispatch permission expired before use.', { code: 'SEC_RATE_GATE_UNAVAILABLE', status: 503 });
+        if (!takeSecRequestBudget()) throw new SecRequestError('The research task reached its SEC request allowance.', { code: 'SEC_REQUEST_BUDGET_EXHAUSTED', status: 429 });
+        request = transport(input, init);
+      } catch (error) { await safeRelease(permit); throw error; }
+      outcome = Promise.resolve(request).then(response => ({ response }), error => ({ error }));
+      // Preserve early provider cooldown publication under the owned lease. The
+      // database also adds 143 ms at release: intentionally conservative spacing.
+      const hold = wait(Math.max(0, LOCAL_INTERVAL_MS - (now() - startedAt)));
+      const early = await Promise.race([outcome.then(settled => ({ settled })), hold.then(() => null)]);
+      const earlyResponse = early?.settled?.response;
+      const earlyCooldown = cooldownForResponse(earlyResponse) || 0;
+      await hold;
+      if (await safeRelease(permit, earlyCooldown) && earlyResponse && earlyCooldown > 0) cooldownPublished.add(earlyResponse);
+    } finally { releaseTurn(); }
+    // Response downloads can overlap after start coordination is released.
     const settled = await outcome;
     if (settled.error) throw settled.error;
     return settled.response;

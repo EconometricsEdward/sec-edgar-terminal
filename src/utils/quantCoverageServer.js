@@ -1,14 +1,14 @@
 import { createHash } from 'node:crypto';
 import seed from '../data/quant-coverage.json' with { type: 'json' };
-import { QUANT_GROUPS, QUANT_BATCHES, QUANT_COVERAGE_VERSION, quantBatch } from './quantGroups.js';
-import { MEMBERSHIP_SOURCES, parseHoldingsCsv, buildMembership } from './quantMembership.js';
+import { QUANT_GROUPS, QUANT_BATCHES, QUANT_COVERAGE_VERSION, QUANT_MAX_CHECKS_PER_BATCH, quantBatch, quantSectorForSic } from './quantGroups.js';
+import { MEMBERSHIP_SOURCES, parseHoldingsCsv, buildMembership, buildExpandedMembership, retainedQuantBaseline, quantExcludedCandidates, isQuantMembership, EXPANDED_MEMBERSHIP_VERSION } from './quantMembership.js';
 import { MARKET_LENSES } from './marketCohorts.js';
 import { MARKET_VERSION } from './marketResearch.js';
 import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary, MARKET_REVENUE_VERSION } from './marketResearchData.js';
 import { isMarketAtlas } from './marketResearchValidation.js';
 import { secFetch } from './secClient.js';
 import { readPreparedSecDocument, refreshSecDocument, secDocumentIdentity } from './secDocumentStore.js';
-import { getOperatingTickers } from './tickerMap.js';
+import { getOperatingDirectorySnapshot } from './tickerMap.js';
 import { warmGet, warmSet, warmGetMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
 import { publishMarketOverview } from './marketOverviewServer.js';
@@ -22,6 +22,7 @@ export const QUANT_ATLAS_CACHE = `quant-atlas-v2:${scope}`;
 const LEGACY_MEMBERSHIP_CACHE = 'quant-coverage-v1';
 const LEGACY_COMPANY_CACHE = 'quant-company-v1';
 const LEGACY_ATLAS_CACHE = 'quant-atlas-v1';
+const LEGACY_CIKS = new Set(seed.rows.map(row => row.cik));
 const DAY = 86400000;
 const RETENTION = 8 * 86400;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24);
@@ -29,31 +30,49 @@ export const membershipId = membership => hash(membership.rows.map(r => [r.cik, 
 
 export async function readQuantMembership() {
   const [current, preservedLegacy] = await Promise.all([warmGet(QUANT_COVERAGE_CACHE, 'membership'), isProductionDeployment() ? warmGet(LEGACY_MEMBERSHIP_CACHE, 'membership') : null]);
-  const cached = [current, preservedLegacy].find(value => value?.version === seed.version && value.rows?.length >= 1450 && value.rows?.length <= 1600);
+  const cached = [current, preservedLegacy].find(isQuantMembership);
   return cached || seed;
 }
 
-/** Three small holdings downloads weekly, outside all page request paths. */
-export async function refreshQuantMembership({ signal } = {}) {
+/** Weekly membership discovery runs only in scheduled or bounded deployment work. */
+export async function refreshQuantMembership({ signal, deadline = Date.now() + 80000 } = {}) {
   if (!warmCacheEnabled()) throw new Error('Shared coverage storage is unavailable.');
   const previous = await readQuantMembership();
-  if (Date.now() - Date.parse(previous.checked_at) < 7 * DAY) return { retained: true, issuers: previous.issuers };
+  if (previous.version === EXPANDED_MEMBERSHIP_VERSION && Date.now() - Date.parse(previous.checked_at) < 7 * DAY) return { retained: true, issuers: previous.issuers };
   const lease = await warmAcquireLease(QUANT_COVERAGE_CACHE, 'membership', 90000);
   if (!lease) return { skipped: 'Membership refresh is already running.' };
   try {
-    const holdings = [];
-    for (const source of MEMBERSHIP_SOURCES) {
-      const response = await fetch(source.url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000), cache: 'no-store' });
-      if (!response.ok || Number(response.headers.get('content-length')) > 750000) throw new Error(`Holdings source unavailable: ${source.fund}.`);
-      const reader = response.body.getReader(); const chunks = []; let bytes = 0;
-      try { while (true) { const { done, value } = await reader.read(); if (done) break; bytes += value.byteLength; if (bytes > 750000) throw new Error('Holdings download exceeds the size limit.'); chunks.push(value); } }
-      finally { await reader.cancel().catch(() => {}); }
-      holdings.push(parseHoldingsCsv(Buffer.concat(chunks).toString('utf8'), source));
+    const holdings = []; let baseline, warning;
+    try {
+      for (const source of MEMBERSHIP_SOURCES) {
+        const response = await fetch(source.url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000), cache: 'no-store' });
+        if (!response.ok || Number(response.headers.get('content-length')) > 750000) throw new Error(`Holdings source unavailable: ${source.fund}.`);
+        const reader = response.body.getReader(); const chunks = []; let bytes = 0;
+        try { while (true) { const { done, value } = await reader.read(); if (done) break; bytes += value.byteLength; if (bytes > 750000) throw new Error('Holdings download exceeds the size limit.'); chunks.push(value); } }
+        finally { await reader.cancel().catch(() => {}); }
+        holdings.push(parseHoldingsCsv(Buffer.concat(chunks).toString('utf8'), source));
+      }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      baseline = retainedQuantBaseline(previous);
+      warning = 'Fund classifications are retained with their original source dates while the holdings provider is unavailable. Issuer identities are matched to the dated SEC directory.';
     }
-    const directory = await getOperatingTickers(holdings.flatMap(s => s.rows.map(r => r.ticker)));
-    const next = buildMembership(holdings, directory, previous.rows.map(r => r.ticker));
+    const directorySnapshot = await getOperatingDirectorySnapshot(), directory = directorySnapshot.data;
+    if (!baseline) {
+      try { baseline = buildMembership(holdings, directory, previous.rows.map(r => r.ticker)); }
+      catch {
+        baseline = retainedQuantBaseline(previous);
+        warning = 'Fund classifications retain their original source dates while updated holdings mappings are checked. Issuer identities are matched to the dated SEC directory.';
+      }
+    }
+    const supplemental = previous.rows.filter(row => row.fund === 'SEC');
+    const records = supplemental.length ? await readQuantCheckpoints(supplemental.map(row => row.cik), { signal, deadline }) : [];
+    const excludedCandidates = quantExcludedCandidates(previous, supplemental, records);
+    const next = buildExpandedMembership(baseline, directory, previous, new Date(), { excludedCandidates, directoryFetchedAt: directorySnapshot.fetchedAt });
+    if (directorySnapshot.stale) warning = [warning, `The SEC directory is retained from ${directorySnapshot.fetchedAt.slice(0, 10)} while its source is unavailable.`].filter(Boolean).join(' ');
+    if (warning) next.membership_warning = warning;
     if (!await warmSet(QUANT_COVERAGE_CACHE, 'membership', next, 90 * 86400)) throw new Error('Membership could not be stored.');
-    return { issuers: next.issuers, securities: next.securities, membership_id: membershipId(next), sources: next.sources };
+    return { issuers: next.issuers, securities: next.securities, excluded_candidates: excludedCandidates.length, membership_id: membershipId(next), sources: next.sources, ...(warning ? { warning } : {}) };
   } finally { await warmReleaseLease(QUANT_COVERAGE_CACHE, 'membership', lease); }
 }
 
@@ -65,10 +84,39 @@ export function filingFingerprint(submissions) {
 export function needsFactsRefresh(cached, fingerprint, now = Date.now()) {
   return cached?.needsReconciliation || cached?.company?.revenueVersion !== MARKET_REVENUE_VERSION || fingerprint !== cached.fingerprint || !Number.isFinite(Date.parse(cached.factsRetrievedAt)) || now - Date.parse(cached.factsRetrievedAt) >= 7 * DAY;
 }
+
+export function quantCheckpointFresh(record, now = Date.now()) {
+  const age = now - Date.parse(record?.checkedAt);
+  if (!Number.isFinite(age) || age < 0) return false;
+  if (record?.eligibility === 'unsupported') return age < 7 * DAY;
+  return Boolean(record?.company && !record.needsReconciliation && record.company.revenueVersion === MARKET_REVENUE_VERSION && age < 20 * 3600000);
+}
+
+/** Retired Redis checkpoints only existed for the original baseline universe. */
+export async function readQuantCheckpoints(ids, options = {}, { readMany = warmGetMany, production = isProductionDeployment() } = {}) {
+  const current = await readMany(QUANT_COMPANY_CACHE, ids, options);
+  const missing = production ? ids.flatMap((id, index) => !current[index] && LEGACY_CIKS.has(id) ? [{ id, index }] : []) : [];
+  if (missing.length) {
+    const legacy = await readMany(LEGACY_COMPANY_CACHE, missing.map(item => item.id), options);
+    missing.forEach((item, index) => { current[item.index] = legacy[index] || null; });
+  }
+  return current;
+}
+
+/** A directory ticker alone cannot admit funds or unsupported reporting taxonomies. */
+export function quantCandidateEligibility(entry, submissions, facts = null) {
+  if (Number(submissions?.cik) !== Number(entry.cik)) throw new Error('SEC submissions identity does not match the candidate issuer.');
+  if (entry.fund !== 'SEC') return null;
+  if (submissions.entityType && submissions.entityType !== 'operating') return 'SEC entity is not an operating company.';
+  if (!submissions.filings?.recent?.form?.some(form => /^(10-K|10-Q)(\/A)?$/.test(form)))
+    return 'No supported annual or quarterly operating-company report in recent SEC history.';
+  if (facts && !facts.facts?.['us-gaap']) return 'SEC financial taxonomy is not supported by this comparison model.';
+  return null;
+}
 async function secDocument(path, signal) {
   const prepared = await readPreparedSecDocument(path, { allowStale: false });
   if (prepared) return prepared;
-  const response = await secFetch(`https://data.sec.gov${path}`, { headers: { Accept: 'application/json' }, signal, timeoutMs: 15000, retries: 0, cache: 'no-store' });
+  const response = await secFetch(`https://data.sec.gov${path}`, { headers: { Accept: 'application/json' }, signal, timeoutMs: 15000, retries: 1, cache: 'no-store' });
   if (!response.ok) throw new Error(`SEC returned HTTP ${response.status}.`);
   const payload = await response.json(), fetchedAt = new Date().toISOString();
   return { payload, metadata: { fetchedAt, revalidatedAt: fetchedAt } };
@@ -78,14 +126,25 @@ async function secJson(path, signal) {
 }
 async function refreshCompany(entry, cached, signal) {
   const now = Date.now();
-  if (!cached?.needsReconciliation && cached?.company?.revenueVersion === MARKET_REVENUE_VERSION && cached?.checkedAt && now - Date.parse(cached.checkedAt) < 20 * 3600000) return { ...cached, reused: true };
+  if (quantCheckpointFresh(cached, now)) return { ...cached, reused: true };
   const submissions = await secJson(`/submissions/CIK${entry.cik}.json`, signal);
+  const unsupported = async reason => {
+    const record = { eligibility: 'unsupported', checkedAt: new Date().toISOString(), reason };
+    if (!await warmSet(QUANT_COMPANY_CACHE, entry.cik, record, 14 * 86400)) throw new Error('Candidate eligibility could not be persisted.');
+    return record;
+  };
+  const eligibility = quantCandidateEligibility(entry, submissions);
+  if (eligibility) return unsupported(eligibility);
   const fingerprint = filingFingerprint(submissions);
   let company = cached?.company, factsRetrievedAt = cached?.factsRetrievedAt, factsValidatedAt = cached?.factsValidatedAt;
   if (needsFactsRefresh(cached, fingerprint, now)) {
     const factsEnvelope = await secDocument(`/api/xbrl/companyfacts/CIK${entry.cik}.json`, signal), facts = factsEnvelope.payload;
     if (!facts.facts || !submissions.sic || Number(facts.cik) !== Number(entry.cik)) throw new Error('SEC facts or industry identity are unavailable.');
+    const taxonomy = quantCandidateEligibility(entry, submissions, facts);
+    if (taxonomy) return unsupported(taxonomy);
     company = marketCompanySummary(buildMarketCompany({ ticker: entry.ticker, cik: entry.cik, name: submissions.name || entry.name, sic: submissions.sic, facts: facts.facts, acceptanceTimes: marketAcceptanceTimes(submissions) }, MARKET_LENSES.filter(c => c.tickers.includes(entry.ticker)).map(c => c.id)));
+    if (entry.fund === 'SEC' && !['annual', 'ttm'].some(basis => company.reports?.[basis] && Object.values(company.metrics?.[basis] || {}).some(Number.isFinite)))
+      return unsupported('No supported SEC financial observations are available.');
     factsRetrievedAt = factsEnvelope.metadata.fetchedAt;
     factsValidatedAt = factsEnvelope.metadata.revalidatedAt || factsRetrievedAt;
   }
@@ -112,18 +171,21 @@ export async function refreshQuantBatch(batch, { signal, deadline = Date.now() +
     const selected = tickers ? new Set(tickers) : null;
     const membership = await readQuantMembership(), entries = membership.rows.filter(r => quantBatch(r.cik) === batch && (!selected || selected.has(r.ticker)));
     const ids = entries.map(r => r.cik);
-    const [current, legacy] = await Promise.all([
-      warmGetMany(QUANT_COMPANY_CACHE, ids, {signal,deadline}),
-      isProductionDeployment() ? warmGetMany(LEGACY_COMPANY_CACHE, ids, {signal,deadline}) : ids.map(() => null),
-    ]);
-    const cached = current.map((value, index) => value || legacy[index]);
-    const attempts = await warmGetMany(`${QUANT_COMPANY_CACHE}:attempts`, entries.map(r=>r.cik), {signal,deadline});
-    const queue = entries.map((entry, i) => ({ entry, cached: cached[i], attemptedAt: new Date(Math.max(Date.parse(attempts[i]?.at)||0,Date.parse(cached[i]?.attemptedAt)||0)).toISOString() })).sort((a, b) => (Date.parse(a.attemptedAt) || 0) - (Date.parse(b.attemptedAt) || 0));
-    const result = { batch, membership_id: membershipId(membership), requested: entries.length, checked: 0, failed: 0, skipped: 0, errors: [] };
+    const cached = await readQuantCheckpoints(ids, { signal, deadline });
+    const pending = entries.map((entry, index) => ({ entry, cached: cached[index] })).filter(item => !quantCheckpointFresh(item.cached));
+    const attempts = await warmGetMany(`${QUANT_COMPANY_CACHE}:attempts`, pending.map(item => item.entry.cik), {signal,deadline});
+    const due = pending.map((item, index) => ({ ...item, attemptedAt: new Date(Math.max(Date.parse(attempts[index]?.at)||0,Date.parse(item.cached?.attemptedAt)||0)).toISOString() }))
+      // Maintain already-published baseline coverage while first-time issuers
+      // warm gradually; a cold expansion cannot starve the existing service.
+      .sort((a, b) => Number(a.entry.fund === 'SEC') - Number(b.entry.fund === 'SEC')
+        || (Date.parse(a.attemptedAt) || 0) - (Date.parse(b.attemptedAt) || 0));
+    const queue = due.slice(0, QUANT_MAX_CHECKS_PER_BATCH);
+    const result = { batch, membership_id: membershipId(membership), requested: entries.length, checked: 0, unsupported: 0, reused: entries.length - due.length,
+      failed: 0, skipped: 0, errors: [] };
     await Promise.all(Array.from({ length: 2 }, async () => {
       while (queue.length && Date.now() < deadline - 22000 && !signal?.aborted) {
         const { entry, cached: prior } = queue.shift();
-        try { await refreshCompany(entry, prior, signal); result.checked++; }
+        try { const refreshed = await refreshCompany(entry, prior, signal); if (refreshed.eligibility === 'unsupported') result.unsupported++; else result.checked++; }
         catch (error) {
           result.failed++;
           if (result.errors.length < 8) result.errors.push({ ticker: entry.ticker, source: 'SEC', reason: error.message });
@@ -131,7 +193,7 @@ export async function refreshQuantBatch(batch, { signal, deadline = Date.now() +
         }
       }
     }));
-    result.skipped = queue.length;
+    result.skipped = queue.length + due.length - Math.min(due.length, QUANT_MAX_CHECKS_PER_BATCH);
     await warmSet(QUANT_COVERAGE_CACHE, `batch-${batch}`, { ...result, completed_at: new Date().toISOString() }, RETENTION);
     return result;
   } finally { await warmReleaseLease(QUANT_COVERAGE_CACHE, `batch-${batch}`, lease); }
@@ -152,11 +214,7 @@ export async function readQuantAtlas() {
 export async function prepareQuantAtlas({signal,deadline}={}) {
   const membership = await readQuantMembership();
   const ids = membership.rows.map(r => r.cik);
-  const [current, legacy] = await Promise.all([
-    warmGetMany(QUANT_COMPANY_CACHE, ids, {signal,deadline}),
-    isProductionDeployment() ? warmGetMany(LEGACY_COMPANY_CACHE, ids, {signal,deadline}) : ids.map(() => null),
-  ]);
-  const records = current.map((value, index) => value || legacy[index]);
+  const records = await readQuantCheckpoints(ids, {signal,deadline});
   return assembleQuantAtlas(membership, records);
 }
 export function assembleQuantAtlas(membership, records, now = Date.now()) {
@@ -164,24 +222,38 @@ export function assembleQuantAtlas(membership, records, now = Date.now()) {
   membership.rows.forEach((entry, i) => {
     const record = records[i], age = now - Date.parse(record?.checkedAt);
     if (!record?.company || !Number.isFinite(age) || age < 0 || age > 30 * 3600000) {
-      failures.push({ ticker: entry.ticker, reason: record?.lastError || 'A current SEC check is not available.', retryable: true }); return;
+      failures.push({ ticker: entry.ticker, reason: record?.reason || record?.lastError || 'A current SEC check is not available.', retryable: record?.eligibility !== 'unsupported' }); return;
     }
-    const group = QUANT_GROUPS.find(g => g.label === entry.sector);
-    companies.push({ ...record.company, ticker: entry.ticker, researchGroup: group, membershipFund: entry.fund, checkedAt: record.checkedAt, factsRetrievedAt: record.factsRetrievedAt,
+    const sector = entry.fund === 'SEC' ? quantSectorForSic(record.company.sic) : entry.sector;
+    const group = QUANT_GROUPS.find(g => g.label === sector);
+    companies.push({ ...record.company, ticker: entry.ticker, researchGroup: group, membershipFund: entry.fund,
+      sectorSource: entry.fund === 'SEC' ? 'SEC SIC broad research group' : 'Fund-reported sector', checkedAt: record.checkedAt, factsRetrievedAt: record.factsRetrievedAt,
       ...(record.factsValidatedAt ? { factsValidatedAt: record.factsValidatedAt } : {}) });
   });
-  if (companies.length < Math.ceil(membership.issuers * .95)) throw new Error(`Expanded SEC coverage is still preparing: ${companies.length} of ${membership.issuers} issuers checked. The prior snapshot remains available.`);
+  const baseline = membership.rows.filter(entry => entry.fund !== 'SEC');
+  const loadedBaseline = companies.filter(company => company.membershipFund !== 'SEC').length;
+  if (loadedBaseline < Math.ceil(baseline.length * .95)) throw new Error(`Baseline SEC coverage is still preparing: ${loadedBaseline} of ${baseline.length} issuers checked. The prior snapshot remains available.`);
   const checked = companies.map(c => c.checkedAt).sort();
-  const atlas = { version: MARKET_VERSION, generatedAt: new Date(now).toISOString(), requested: membership.issuers, companies, cohorts: MARKET_LENSES.map(c => ({ id: c.id, label: c.assetClass, title: c.title, description: c.description, tickers: c.tickers, disclosureTerms: c.disclosureTerms })), failures, observations: [], historyPersistence: true, groups: QUANT_GROUPS, coverage: { membership_id: membershipId(membership), target_issuers: membership.issuers, loaded_issuers: companies.length, missing_issuers: failures.length, source_securities: membership.securities, duplicate_share_classes: membership.securities - membership.issuers, sources: membership.sources, membership_checked_at: membership.checked_at, sec_checked_earliest: checked[0], sec_checked_latest: checked.at(-1), grouping: 'Fund-reported sectors; one primary sector and one representative security per SEC issuer.' } };
+  const atlas = { version: MARKET_VERSION, generatedAt: new Date(now).toISOString(), requested: membership.issuers, companies, cohorts: MARKET_LENSES.map(c => ({ id: c.id, label: c.assetClass, title: c.title, description: c.description, tickers: c.tickers, disclosureTerms: c.disclosureTerms })), failures, observations: [], historyPersistence: true, groups: QUANT_GROUPS, coverage: { membership_id: membershipId(membership), target_issuers: membership.issuers, loaded_issuers: companies.length, missing_issuers: failures.length, unsupported_issuers: failures.filter(failure => !failure.retryable).length, source_securities: membership.securities, duplicate_share_classes: membership.securities - membership.issuers, sources: membership.sources, ...(membership.membership_warning ? { membership_warning: membership.membership_warning } : {}), membership_checked_at: membership.checked_at, sec_checked_earliest: checked[0], sec_checked_latest: checked.at(-1), grouping: 'Fund-reported sectors for IVV/IJH/IJR; broad SEC SIC research groups for supplemental issuers. One representative security per SEC issuer. Directory candidates enter aggregates only after financial validation.' } };
   if (!isMarketAtlas(atlas, MARKET_VERSION)) throw new Error('Expanded SEC snapshot failed validation.');
   return atlas;
 }
 
+export function chooseQuantAtlasPublication(previous, next, now = Date.now()) {
+  const age = now - Date.parse(previous?.generatedAt);
+  if (isMarketAtlas(previous, MARKET_VERSION) && age >= 0 && age < 7 * DAY) {
+    const nextCiks = new Set(next.companies.map(company => company.cik));
+    if (previous.companies.filter(company => nextCiks.has(company.cik)).length < previous.companies.length * .95) return previous;
+  }
+  return next;
+}
+
 export async function publishQuantAtlas(atlas, options={}) {
-  if (!await writeSnapshot(QUANT_ATLAS_CACHE, 'atlas-last-good', atlas, 7*86400, options)) throw new Error('Expanded SEC snapshot could not be persisted.');
-  if (!await writeSnapshot(QUANT_ATLAS_CACHE, 'atlas', atlas, 7*86400, options)) throw new Error('Expanded SEC snapshot could not be published.');
+  const publication = chooseQuantAtlasPublication(await readQuantAtlas(), atlas);
+  if (!await writeSnapshot(QUANT_ATLAS_CACHE, 'atlas-last-good', publication, 7*86400, options)) throw new Error('Expanded SEC snapshot could not be persisted.');
+  if (!await writeSnapshot(QUANT_ATLAS_CACHE, 'atlas', publication, 7*86400, options)) throw new Error('Expanded SEC snapshot could not be published.');
   const membership = await readQuantMembership();
-  await publishMarketOverview(atlas, membershipId(membership) === atlas.coverage.membership_id ? membership : null, options);
+  await publishMarketOverview(publication, membershipId(membership) === publication.coverage.membership_id ? membership : null, options);
 }
 
 /** Deployment-only, bounded correction; source revalidation is explicitly opted in by the build. */

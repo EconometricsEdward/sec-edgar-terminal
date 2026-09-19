@@ -46,6 +46,86 @@ test('shared database permission plus actual dispatch hold spaces simultaneous r
   assert.equal(starts.length, 2); assert.ok(starts[1] - starts[0] >= 275, `dispatch gap was ${starts[1] - starts[0]} ms`);
 });
 
+test('a same-runtime burst queues locally instead of exhausting the shared acquisition deadline', async () => {
+  const gate = databaseGate(), originalAcquire = gate.acquire, starts = [];
+  let acquisitions = 0;
+  const coordinator = createSecDispatchCoordinator({ ...gate,
+    acquire: async owner => { acquisitions++; return originalAcquire(owner); },
+    transport: async () => { starts.push(performance.now()); return Response.json({ ok: true }); },
+  });
+  const responses = await Promise.all(Array.from({ length: 8 }, (_, index) => coordinator.fetch(`https://data.sec.gov/${index}.json`, {})));
+  assert.ok(responses.every(response => response.status === 200));
+  assert.equal(starts.length, 8);
+  // One grant and one spacing check per turn, allowing a timer to wake just
+  // before its boundary. Queued peers do not multiply the polling load.
+  assert.ok(acquisitions <= 24, `${acquisitions} database acquisitions for eight starts`);
+  for (let i = 1; i < starts.length; i++) assert.ok(starts[i] - starts[i - 1] >= 275);
+});
+
+test('cancelling a local queued request removes it without acquiring a permit or blocking followers', async () => {
+  const gate = databaseGate(), originalRelease = gate.release, controller = new AbortController();
+  let unblock, enteredRelease;
+  const heldRelease = new Promise(resolve => { unblock = resolve; });
+  const releaseStarted = new Promise(resolve => { enteredRelease = resolve; });
+  let releases = 0, starts = 0;
+  const coordinator = createSecDispatchCoordinator({ ...gate,
+    release: async (...args) => {
+      if (releases++ === 0) { enteredRelease(); await heldRelease; }
+      return originalRelease(...args);
+    },
+    transport: async () => { starts++; return Response.json({ ok: true }); },
+  });
+  const first = coordinator.fetch('https://data.sec.gov/first.json', {});
+  await releaseStarted;
+  const cancelled = coordinator.fetch('https://data.sec.gov/cancelled.json', { signal: controller.signal });
+  const rejected = assert.rejects(cancelled, { name: 'AbortError' });
+  const next = coordinator.fetch('https://data.sec.gov/next.json', {});
+  controller.abort();
+  await rejected;
+  assert.equal(gate.events.filter(event => event.event === 'acquire').length, 1);
+  unblock();
+  assert.equal((await first).status, 200);
+  assert.equal((await next).status, 200);
+  assert.equal(starts, 2);
+});
+
+test('response downloads overlap once dispatch coordination is released', async () => {
+  const gate = databaseGate();
+  let finishFirst, starts = 0;
+  const firstDownload = new Promise(resolve => { finishFirst = resolve; });
+  const coordinator = createSecDispatchCoordinator({ ...gate, transport: async () => {
+    if (++starts === 1) return firstDownload;
+    return Response.json({ ok: true });
+  } });
+  const first = coordinator.fetch('https://data.sec.gov/slow.json', {});
+  assert.equal((await coordinator.fetch('https://data.sec.gov/fast.json', {})).status, 200);
+  assert.equal(starts, 2);
+  finishFirst(Response.json({ ok: true }));
+  assert.equal((await first).status, 200);
+});
+
+test('the local queue has a fixed capacity and excess callers cannot contact the gate', async () => {
+  const controller = new AbortController();
+  let unblock, enteredRelease, acquisitions = 0;
+  const heldRelease = new Promise(resolve => { unblock = resolve; });
+  const releaseStarted = new Promise(resolve => { enteredRelease = resolve; });
+  const coordinator = createSecDispatchCoordinator({
+    acquire: async owner => { acquisitions++; return granted(owner); },
+    release: async () => { enteredRelease(); await heldRelease; return true; },
+    transport: async () => Response.json({ ok: true }),
+  });
+  const first = coordinator.fetch('https://data.sec.gov/first.json', {});
+  await releaseStarted;
+  const queued = Array.from({ length: 16 }, (_, index) => assert.rejects(
+    coordinator.fetch(`https://data.sec.gov/${index}.json`, { signal: controller.signal }), { name: 'AbortError' }));
+  await assert.rejects(coordinator.fetch('https://data.sec.gov/overflow.json', {}), { code: 'SEC_RATE_GATE_SATURATED' });
+  assert.equal(acquisitions, 1);
+  controller.abort();
+  await Promise.all(queued);
+  unblock();
+  assert.equal((await first).status, 200);
+});
+
 test('an early SEC throttle is published atomically with owner release and blocks the next dispatch', async () => {
   const gate = databaseGate(); let calls = 0;
   const coordinator = createSecDispatchCoordinator({ ...gate, transport: async () => { calls++; return new Response('slow down', { status: 429, headers: { 'Retry-After': '5' } }); } });
