@@ -3,6 +3,7 @@ import { withPeriodKind, daysBetween, selectFinancialFact, sumCompatibleFinancia
 import { classifyIndustry, INDUSTRY_GROUPS } from './industry.js';
 import { evidenceSources, evidenceCalculations } from './researchEvidence.js';
 import { MARKET_METRICS, MARKET_VERSION, isNumber } from './marketResearch.js';
+import { createAnalysisFinancialMapper } from './analysisFinancialMappings.js';
 
 const INPUTS = [...new Set(MARKET_METRICS.flatMap((m) => m.inputs))];
 const percent = (a, b) => isNumber(a) && isNumber(b) && b > 0 ? a / b * 100 : null;
@@ -13,6 +14,7 @@ const FACTOR_METRIC_KEYS = [
 ];
 const FACTOR_METRIC_KEY_SET = new Set(FACTOR_METRIC_KEYS);
 export const MARKET_REVENUE_VERSION = 'market-revenue-v2';
+export const MARKET_RISK_VERSION = 'market-risk-v1';
 const revenueFact = (facts, tags, period) => selectFinancialFact(facts, tags, period, 'USD', { guardAnnualRevenueContext: true });
 const unavailableRevenue = () => ({ value: null, classification: 'unavailable' });
 
@@ -61,9 +63,35 @@ export function marketRevenuePoint(facts, period, sic) {
   return revenueFact(facts, ['Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax',
     'RevenueFromContractWithCustomerIncludingAssessedTax', 'SalesRevenueNet', 'SalesRevenueGoodsNet'], period) || unavailableRevenue();
 }
-export function marketPeriodMetrics(inputs, priorInputs) {
+// Corporate liquidity/interest screens are not comparable for financial
+// intermediaries. Match Risk's narrower financial-company SIC treatment;
+// rental REITs and ordinary real-estate operators remain eligible.
+export function marketCorporateRiskApplicable(sicCode) {
+  const sic = Number(sicCode);
+  return !((sic >= 6000 && sic <= 6499) || sic === 6712
+    || (sic >= 6720 && sic <= 6739) || sic === 6799);
+}
+
+function compatibleRiskRatio(numerator, denominator, kind, period) {
+  if (!isNumber(numerator?.value) || !isNumber(denominator?.value) || denominator.value <= 0) return null;
+  const a = numerator.observationPeriod, b = denominator.observationPeriod;
+  if (!a?.end || a.end !== b?.end || (period?.end && a.end !== period.end)
+    || numerator.unit !== 'USD' || denominator.unit !== 'USD') return null;
+  if (kind === 'instant') {
+    if (a.start || b.start || numerator.value < 0) return null;
+  } else {
+    const duration = daysBetween(a.start, a.end) + 1;
+    if (!a.start || a.start !== b.start || !isNumber(duration) || duration < 300 || duration > 400) return null;
+  }
+  const value = numerator.value / denominator.value;
+  return isNumber(value) ? value : null;
+}
+
+export function marketPeriodMetrics(inputs, priorInputs, { sic, period } = {}) {
   const v = (key) => inputs[key]?.value ?? null;
   const previous = priorInputs?.revenue?.value;
+  const debtToAssets = compatibleRiskRatio(inputs.totalDebt, inputs.totalAssets, 'instant', period);
+  const corporateRisk = marketCorporateRiskApplicable(sic);
   return {
     revenueGrowth: isNumber(v('revenue')) && isNumber(previous) && previous > 0 ? (v('revenue') / previous - 1) * 100 : null,
     netMargin: percent(v('netIncome'), v('revenue')), operatingMargin: percent(v('operatingIncome'), v('revenue')),
@@ -72,14 +100,24 @@ export function marketPeriodMetrics(inputs, priorInputs) {
     capexIntensity: percent(isNumber(v('capex')) ? Math.abs(v('capex')) : null, v('revenue')),
     equityToAssets: percent(v('stockholdersEquity'), v('totalAssets')), liabilitiesToAssets: percent(v('totalLiabilities'), v('totalAssets')),
     cashToAssets: percent(v('cash'), v('totalAssets')), revenue: v('revenue'), totalAssets: v('totalAssets'), netIncome: v('netIncome'),
+    debtToAssets: debtToAssets === null ? null : debtToAssets * 100,
+    currentRatio: corporateRisk ? compatibleRiskRatio(inputs.currentAssets, inputs.currentLiabilities, 'instant', period) : null,
+    interestCoverage: corporateRisk ? compatibleRiskRatio(inputs.operatingIncome, inputs.interestExpense, 'duration', period) : null,
   };
 }
 
 function buildBasis(facts, periods, sic, limit) {
-  const rows = Object.fromEntries(INPUTS.map((key) => [key, key === 'revenue' ? periods.map((p) => marketRevenuePoint(facts, p, sic)) : buildMetricRow(facts, key, key, periods, 'currency', sic).values]));
+  // Use the same reconciled debt and scoped interest-concept fallbacks as
+  // Analysis, so a sector drilldown and its linked company page agree.
+  const mapper = createAnalysisFinancialMapper({ facts, sic });
+  const rows = Object.fromEntries(INPUTS.map((key) => [key, key === 'revenue' ? periods.map((p) => marketRevenuePoint(facts, p, sic))
+    : key === 'totalDebt' ? periods.map((p) => mapper.point(key, p, null))
+      : key === 'interestExpense' ? buildMetricRow(facts, key, key, periods, 'currency', sic).values.map((point, i) => mapper.point(key, periods[i], point))
+      : buildMetricRow(facts, key, key, periods, 'currency', sic).values]));
   const points = periods.map((period, i) => ({ period, inputs: Object.fromEntries(INPUTS.map((key) => {
     const point = rows[key][i];
     return [key, { value: point.value, classification: point.classification || 'unavailable', formula: point.formula || null,
+      observationPeriod: point.observationPeriod || null, unit: point.source?.unit || null,
       sources: evidenceSources(point), calculations: evidenceCalculations(point) }];
   })) }));
   return points.slice(0, limit).map((point) => {
@@ -88,7 +126,7 @@ function buildBasis(facts, periods, sic, limit) {
       return gap >= 350 && gap <= 380;
     });
     return { ...point, priorRevenue: prior ? { period: prior.period, ...prior.inputs.revenue } : null,
-      metrics: marketPeriodMetrics(point.inputs, prior?.inputs) };
+      metrics: marketPeriodMetrics(point.inputs, prior?.inputs, { sic, period: point.period }) };
   });
 }
 
@@ -233,7 +271,7 @@ export function buildMarketCompany({ ticker, cik, name, sic, facts, acceptanceTi
     : classifyIndustry(sic) === INDUSTRY_GROUPS.BANKING ? 'Bank net revenue after interest expense'
       : revenueTags.includes('RevenuesNetOfInterestExpense') || revenuePoints.some(point => point.formula === 'Net interest income + noninterest income')
         ? 'Financial net revenue after interest expense' : 'Reported total revenue';
-  return { version: MARKET_VERSION, revenueVersion: MARKET_REVENUE_VERSION, ticker, cik, name, sic, cohorts, observedAt, metrics, reports, filingComparisons,
+  return { version: MARKET_VERSION, revenueVersion: MARKET_REVENUE_VERSION, riskVersion: MARKET_RISK_VERSION, ticker, cik, name, sic, cohorts, observedAt, metrics, reports, filingComparisons,
     revenueBasis, evidence: { annual, ttm } };
 }
 

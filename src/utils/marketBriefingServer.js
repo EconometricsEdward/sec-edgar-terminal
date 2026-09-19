@@ -1,5 +1,6 @@
 import { buildMarketBriefing, buildMarketDirectory, buildMarketIndustries, MARKET_BRIEFING_VERSION, MARKET_DIRECTORY_VERSION, MARKET_INDUSTRIES_VERSION } from './marketBriefing.js';
-import { isMarketBriefing, isMarketDirectory, isMarketIndustries } from './marketResearchValidation.js';
+import { isMarketBriefing, isMarketDirectory, isMarketIndustries, isMarketSectorCompanies } from './marketResearchValidation.js';
+import { buildMarketSectorCompanies, MARKET_SECTOR_COMPANY_VERSION } from './marketSectorCompanies.js';
 import { getDataStoreMode, readDataset, beginDatasetWrite, publishDataset, releaseDatasetWrite } from './dataStore.js';
 import { preparedEnvelopeUsable } from './secDocumentStore.js';
 import { MARKET_ATLAS_FRESH_MS } from './marketResearch.js';
@@ -12,6 +13,7 @@ const definitions = {
   briefing: { key: MARKET_BRIEFING_KEY, version: MARKET_BRIEFING_VERSION, valid: isMarketBriefing, build: buildMarketBriefing },
   directory: { key: MARKET_DIRECTORY_KEY, version: MARKET_DIRECTORY_VERSION, valid: isMarketDirectory, build: buildMarketDirectory },
   industries: { key: 'research-market-industries-v1:latest', version: MARKET_INDUSTRIES_VERSION, valid: isMarketIndustries, build: buildMarketIndustries },
+  sectorCompanies: { key: 'research-market-sector-companies-v1:latest', version: MARKET_SECTOR_COMPANY_VERSION, valid: isMarketSectorCompanies, build: buildMarketSectorCompanies },
 };
 
 function retained(payload, valid, now = Date.now()) {

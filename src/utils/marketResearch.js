@@ -24,6 +24,9 @@ export const MARKET_METRICS = [
   { key: 'equityToAssets', label: 'Book equity / assets', unit: 'pct', formula: 'Stockholders’ equity / assets × 100', inputs: ['stockholdersEquity', 'totalAssets'] },
   { key: 'liabilitiesToAssets', label: 'Liabilities / assets', unit: 'pct', formula: 'Liabilities / assets × 100', inputs: ['totalLiabilities', 'totalAssets'] },
   { key: 'cashToAssets', label: 'Cash / assets', unit: 'pct', formula: 'Tagged cash and cash equivalents / assets × 100', inputs: ['cash', 'totalAssets'] },
+  { key: 'debtToAssets', label: 'Reported debt / assets', unit: 'pct', formula: 'Reported current and noncurrent debt / total assets × 100', inputs: ['totalDebt', 'totalAssets'] },
+  { key: 'currentRatio', label: 'Current ratio', unit: 'ratio', formula: 'Current assets / current liabilities', inputs: ['currentAssets', 'currentLiabilities'] },
+  { key: 'interestCoverage', label: 'Operating income / interest expense', unit: 'ratio', formula: 'Operating income / interest expense', inputs: ['operatingIncome', 'interestExpense'] },
   { key: 'revenue', label: 'Revenue', unit: 'usd', inputs: ['revenue'] },
   { key: 'totalAssets', label: 'Total assets', unit: 'usd', inputs: ['totalAssets'] },
   { key: 'netIncome', label: 'Net income', unit: 'usd', inputs: ['netIncome'] },
@@ -33,6 +36,7 @@ export const isNumber = (value) => typeof value === 'number' && Number.isFinite(
 export function formatMarket(value, unit = 'pct', digits = 1) {
   if (!isNumber(value)) return '—';
   if (unit === 'usd') return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  if (unit === 'ratio') return `${value.toFixed(digits)}×`;
   return `${value.toFixed(digits)}%`;
 }
 export function metricStats(companies, basis, key) {
@@ -56,15 +60,17 @@ export function isOlderReport(company, basis, observedAt) {
 export const DEFAULT_MARKET_VIEW = {
   tab: 'overview', basis: 'ttm', cohort: 'all', query: '', screen: 'all', sort: 'revenueGrowth', direction: 'desc',
   metric: 'revenueGrowth', statistic: 'median', selected: [], quantThreshold: 0,
+  companyMetric: 'revenueGrowth', companyDirection: 'desc', companyQuery: '', companyPage: 1,
   cftcFamily: 'tff', cftcContract: '13874A', cftcGroup: 'leveraged-funds', cftcDate: 'latest', cftcHistory: '5y', cftcDisplay: 'net-oi',
 };
 // Active sector controls are narrower than the legacy saved-data schema.
 export const MARKET_ACTIVE_METRIC_KEYS = Object.freeze(['revenueGrowth', 'netMargin', 'cashFlowMargin', 'capexIntensity', 'equityToAssets']);
+export const MARKET_COMPANY_SORT_KEYS = Object.freeze(['ticker', 'revenueGrowth', 'netMargin', 'operatingMargin', 'cashFlowMargin', 'freeCashFlowMargin', 'debtToAssets', 'liabilitiesToAssets', 'currentRatio', 'cashToAssets', 'interestCoverage', 'equityToAssets', 'totalAssets', 'revenue']);
 export function activeMarketMetric(metric) {
   return MARKET_ACTIVE_METRIC_KEYS.includes(metric) ? metric : DEFAULT_MARKET_VIEW.metric;
 }
 export const CFTC_HISTORY_REPORTS = Object.freeze({ '1y': 52, '3y': 156, '5y': 260 });
-const MARKET_VIEW_KEYS = new Set(['tab', 'basis', 'cohort', 'q', 'screen', 'sort', 'direction', 'metric', 'statistic', 'peers', 'cutoff', 'family', 'contract', 'group', 'date', 'history', 'display']);
+const MARKET_VIEW_KEYS = new Set(['tab', 'basis', 'cohort', 'q', 'screen', 'sort', 'direction', 'metric', 'statistic', 'peers', 'cutoff', 'family', 'contract', 'group', 'date', 'history', 'display', 'companyMetric', 'companyDirection', 'companyQuery', 'companyPage']);
 const RETIRED_PRICE_VIEW_KEYS = ['asset', 'window', 'proxy'];
 const RETIRED_COMPANY_VIEW_KEYS = ['q', 'screen', 'sort', 'direction', 'peers', 'cutoff'];
 const RETIRED_MARKET_VIEW_KEYS = [...RETIRED_PRICE_VIEW_KEYS, ...RETIRED_COMPANY_VIEW_KEYS];
@@ -87,6 +93,10 @@ export function parseMarketView(query, cohortIds = MARKET_COHORT_IDS) {
     cohort: legacySectorTab && !selectedCohort.startsWith('sector-') ? 'all' : selectedCohort, query: '',
     screen: 'all', sort: 'revenueGrowth', direction: 'desc', metric: activeMarketMetric(p.get('metric')),
     statistic: choice('statistic', ['median', 'mean'], 'median'),
+    companyMetric: choice('companyMetric', MARKET_COMPANY_SORT_KEYS, 'revenueGrowth'),
+    companyDirection: choice('companyDirection', ['asc', 'desc'], 'desc'),
+    companyQuery: (p.get('companyQuery') || '').trim().replace(/\s+/g, ' ').slice(0, 100),
+    companyPage: /^[1-9]\d{0,3}$/.test(p.get('companyPage') || '') ? Number(p.get('companyPage')) : 1,
     selected: [], quantThreshold: 0,
     cftcFamily: family, cftcContract: /^[A-Z0-9+]{3,12}$/.test(contract) ? contract : family === 'tff' ? '13874A' : '067651',
     cftcGroup: choice('group', groupOptions, family === 'tff' ? 'leveraged-funds' : 'managed-money'),
@@ -101,6 +111,14 @@ export function marketViewQuery(view) {
   for (const key of ['basis', 'cohort', 'metric', 'statistic']) {
     const value = key === 'metric' ? activeMarketMetric(view.metric) : view[key];
     if (value != null && value !== DEFAULT_MARKET_VIEW[key]) p.set(key, value);
+  }
+  if (tab === 'sectors') {
+    const sort = MARKET_COMPANY_SORT_KEYS.includes(view.companyMetric) ? view.companyMetric : 'revenueGrowth';
+    if (sort !== DEFAULT_MARKET_VIEW.companyMetric) p.set('companyMetric', sort);
+    if (view.companyDirection === 'asc') p.set('companyDirection', 'asc');
+    const companyQuery = String(view.companyQuery || '').trim().replace(/\s+/g, ' ').slice(0, 100);
+    if (companyQuery) p.set('companyQuery', companyQuery);
+    if (Number.isSafeInteger(view.companyPage) && view.companyPage > 1 && view.companyPage <= 9999) p.set('companyPage', String(view.companyPage));
   }
   if (view.tab === 'positioning') {
     p.set('family', view.cftcFamily);
@@ -193,11 +211,14 @@ function validSavedViewParams(params, cohortIds) {
     || !allowed('direction', ['asc', 'desc'])
     || !allowed('metric', MARKET_METRICS.map(metric => metric.key))
     || !allowed('statistic', ['median', 'mean'])
+    || !allowed('companyMetric', MARKET_COMPANY_SORT_KEYS)
+    || !allowed('companyDirection', ['asc', 'desc'])
     || !allowed('cutoff', ['0', '0.5', '1'])
     || !allowed('family', ['tff', 'disaggregated'])
     || !allowed('history', ['1y', '3y', '5y'])
     || !allowed('display', ['net-oi', 'percentile'])) return false;
-  if ((params.get('q') || '').length > 100) return false;
+  if ((params.get('q') || '').length > 100 || (params.get('companyQuery') || '').length > 100
+    || params.has('companyPage') && !/^[1-9]\d{0,3}$/.test(params.get('companyPage'))) return false;
   const peers = params.has('peers') ? params.get('peers').split(',') : [];
   if (peers.length > 5 || new Set(peers).size !== peers.length || peers.some(ticker => !/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(ticker))) return false;
   const family = params.get('family') || DEFAULT_MARKET_VIEW.cftcFamily;
@@ -337,6 +358,6 @@ export function marketCsv(companies, basis, observedAt, data = null) {
     const text = String(value ?? '');
     return `"${(/^[\s]*[=+@-]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
   };
-  return [['Ticker', 'Company', 'Basis', 'Report end', 'Filed', 'Data observed', 'Cohorts', ...(data?.coverage ? ['CIK', 'Primary sector', 'Coverage fund', 'SEC checked', 'Facts retrieved', 'Coverage membership'] : []), ...MARKET_METRICS.map((m) => `${m.label} (${m.unit === 'usd' ? 'USD' : '%'})`), 'SEC facts'],
+  return [['Ticker', 'Company', 'Basis', 'Report end', 'Filed', 'Data observed', 'Cohorts', ...(data?.coverage ? ['CIK', 'Primary sector', 'Coverage fund', 'SEC checked', 'Facts retrieved', 'Coverage membership'] : []), ...MARKET_METRICS.map((m) => `${m.label} (${m.unit === 'usd' ? 'USD' : m.unit === 'ratio' ? 'times' : '%'})`), 'SEC facts'],
     ...companies.map((c) => [c.ticker, c.name, basis, c.reports[basis]?.end, c.reports[basis]?.filed, observedAt, c.cohorts.join('; '), ...(data?.coverage ? [c.cik, c.sector, c.coverageFund, c.secCheckedAt, c.factsRetrievedAt, data.coverage.membership_id] : []), ...MARKET_METRICS.map((m) => c.metrics[basis]?.[m.key]), `https://data.sec.gov/api/xbrl/companyfacts/CIK${c.cik}.json`])].map((row) => row.map(cell).join(',')).join('\r\n');
 }

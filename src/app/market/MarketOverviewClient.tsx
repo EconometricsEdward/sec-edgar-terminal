@@ -77,10 +77,10 @@ export default function MarketOverviewClient({ initialData = null, initialQuery 
     const next = updateMarketView(current, patch) as MarketView;
     if (!cftcEnabled && next.tab === 'positioning') return;
     const mode = marketViewHistoryMode(current, next, push);
-    if (!mode) return;
+    if (!mode && next.companyQuery === current.companyQuery) return;
     viewRef.current = next;
     setView(next); setShareFallback('');
-    window.history[mode](null, '', marketViewPath(next));
+    if (mode) window.history[mode](null, '', marketViewPath(next));
   }, [cftcEnabled]);
 
   async function shareView() {
@@ -95,6 +95,9 @@ export default function MarketOverviewClient({ initialData = null, initialQuery 
     onStatistic: (statistic: MarketView['statistic']) => updateView({ statistic }),
     onSector: (cohort: string) => updateView({ cohort, tab: 'sectors' }, true),
     onMetric: (metric: string) => updateView({ metric }),
+    companyMetric: view.companyMetric, companyDirection: view.companyDirection,
+    companyQuery: view.companyQuery, companyPage: view.companyPage,
+    onCompanyViewChange: (patch: Partial<Pick<MarketView, 'companyMetric' | 'companyDirection' | 'companyQuery' | 'companyPage'>>) => updateView(patch),
   };
 
   return <div className={s.page}>

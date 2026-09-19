@@ -26,6 +26,14 @@ dates are separate from financial reporting dates.
   cancels obsolete requests, and keeps a bounded cache of recent pages.
 - `/api/market-industries` loads the selected sector's industry metrics on demand.
   Separate response dates remain visible when cached projections differ.
+- `/api/market-sector-companies` ranks all matching companies in the selected
+  sector before returning a 25-company page. Growth, profitability, cash flow,
+  debt, liquidity, interest coverage and equity measures retain their reporting
+  basis and dates. Missing values sort last in either direction. The prepared
+  scalar projection is separate from the initial briefing (about 1.65 MB raw
+  for the original 1,427-company snapshot; about 16.6 KB per browser page).
+  New risk mappings are upgraded from retained SEC documents and scheduled
+  checkpoints; old snapshots expose missing new metrics as unavailable.
 - CFTC positioning retains its independent loading path. Direct CFTC visits do
   not request the SEC briefing.
 - Public responses use short browser caching and shared CDN caching with stale

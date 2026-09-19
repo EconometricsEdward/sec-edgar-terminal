@@ -74,10 +74,10 @@ test('prepared projections publish with source dates, retain newer versions and 
     publish: async ({ key, payload, metadata }) => { writes++; saved.set(key, { payload, metadata }); },
     release: async () => { releases++; }, fallback: async () => { throw new Error('Public read should use prepared projection.'); } };
   await publishMarketServingViews(overview, dependencies);
-  assert.equal(writes, 3);
+  assert.equal(writes, 4);
   const briefing = await readMarketServingView('briefing', dependencies);
   assert.equal(briefing.generatedAt, overview.generatedAt); assert.equal(briefing.summaries.ttm.companyCount, 20);
   await publishMarketServingViews({ ...overview, generatedAt: new Date(Date.parse(overview.generatedAt) - 60000).toISOString() }, dependencies);
-  assert.equal(writes, 3); assert.equal(releases, 3);
+  assert.equal(writes, 4); assert.equal(releases, 4);
   assert.equal((await readMarketServingView('briefing', dependencies)).generatedAt, overview.generatedAt);
 });

@@ -10,7 +10,7 @@ import { readSnapshot, writeSnapshot } from '../src/utils/snapshotCache.js';
 import { buildUniverseSnapshot } from '../src/utils/marketUniverse.js';
 import { chooseUniversePublication } from '../src/utils/marketUniverseServer.js';
 import { GET as cron } from '../src/app/api/cron/quant-coverage/route.js';
-import { MARKET_REVENUE_VERSION } from '../src/utils/marketResearchData.js';
+import { MARKET_REVENUE_VERSION, MARKET_RISK_VERSION } from '../src/utils/marketResearchData.js';
 
 test('coverage manifest maps 1,505 exposures to 1,500 unique issuers in bounded stable shards', () => {
   assert.equal(seed.securities, 1505); assert.equal(seed.issuers, 1500);
@@ -48,7 +48,7 @@ test('filing fingerprint excludes unrelated reports but reconciliation cannot su
   const submissions = { filings: { recent: { accessionNumber: ['A', 'B'], form: ['10-Q', '4'], acceptanceDateTime: ['2026-09-01', '2026-09-02'], reportDate: ['2026-06-30', ''] } } };
   const fingerprint = filingFingerprint(submissions);
   submissions.filings.recent.accessionNumber[1] = 'C'; assert.equal(filingFingerprint(submissions), fingerprint);
-  const cached = { company: { revenueVersion: MARKET_REVENUE_VERSION }, fingerprint, factsRetrievedAt: '2026-09-09' };
+  const cached = { company: { revenueVersion: MARKET_REVENUE_VERSION, riskVersion: MARKET_RISK_VERSION }, fingerprint, factsRetrievedAt: '2026-09-09' };
   assert.equal(needsFactsRefresh(cached, fingerprint, Date.parse('2026-09-10')), false);
   assert.equal(needsFactsRefresh({ ...cached, company: {} }, fingerprint, Date.parse('2026-09-10')), true, 'an unchanged filing still needs corrected calculations');
   assert.equal(needsFactsRefresh({ ...cached, needsReconciliation: true }, fingerprint, Date.parse('2026-09-10')), true);
@@ -157,8 +157,9 @@ test('supplemental issuer eligibility verifies SEC identity, operating reports a
 
 test('fresh checkpoints and unsupported candidates avoid repeated SEC work without renewing observation time', () => {
   const now = Date.parse('2026-09-19T12:00:00Z');
-  const record = { company: { revenueVersion: MARKET_REVENUE_VERSION }, checkedAt: '2026-09-19T00:00:00Z' };
+  const record = { company: { revenueVersion: MARKET_REVENUE_VERSION, riskVersion: MARKET_RISK_VERSION }, checkedAt: '2026-09-19T00:00:00Z' };
   assert.equal(quantCheckpointFresh(record, now), true);
+  assert.equal(quantCheckpointFresh({ ...record, company: { ...record.company, riskVersion: undefined } }, now), false, 'a mapping upgrade becomes due without deleting old data');
   assert.equal(quantCheckpointFresh({ ...record, needsReconciliation: true }, now), false);
   assert.equal(quantCheckpointFresh({ ...record, checkedAt: '2026-09-18T00:00:00Z' }, now), false);
   assert.equal(quantCheckpointFresh({ eligibility: 'unsupported', checkedAt: '2026-09-14T00:00:00Z' }, now), true);
