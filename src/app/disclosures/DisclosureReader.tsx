@@ -11,9 +11,7 @@ import {
   Link2,
 } from "lucide-react";
 import { disclosureWordDiff } from "../../utils/disclosureResearch.js";
-import {
-  parseDisclosureQuery,
-} from "../../utils/disclosureQuery.js";
+import { parseDisclosureQuery } from "../../utils/disclosureQuery.js";
 import { passageEvidenceId } from "../../utils/disclosureNotebook.js";
 import {
   disclosureReaderFilters,
@@ -55,6 +53,44 @@ type ReaderFiling = Filing & {
 export { Highlight } from "./DisclosureHighlight";
 import { Highlight } from "./DisclosureHighlight";
 
+function WordChanges({
+  passage,
+  initiallyOpen,
+}: {
+  passage: Passage;
+  initiallyOpen: boolean;
+}) {
+  const [open, setOpen] = useState(initiallyOpen);
+  const parts = useMemo(
+    () =>
+      open ? disclosureWordDiff(passage.priorText || "", passage.text) : [],
+    [open, passage.priorText, passage.text],
+  );
+  return (
+    <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>Word changes against prior report</summary>
+      {open && (
+        <>
+          <div className={s.diff}>
+            {parts.map((part, i) =>
+              part.kind === "removed" ? (
+                <del key={i}>{part.text}</del>
+              ) : part.kind === "added" ? (
+                <ins key={i}>{part.text}</ins>
+              ) : (
+                <span key={i}>{part.text}</span>
+              ),
+            )}
+          </div>
+          <p className={s.muted}>
+            Underlined green = added · struck red = removed
+          </p>
+        </>
+      )}
+    </details>
+  );
+}
+
 export default function DisclosureReader({
   filing,
   settings,
@@ -69,14 +105,14 @@ export default function DisclosureReader({
   filing: Filing;
   settings: SearchSettings;
   changesOnly: boolean;
-  notebook: DisclosureNotebook;
-  onCollect: (
+  notebook?: DisclosureNotebook;
+  onCollect?: (
     filing: Filing,
     passage: Passage,
     settings: SearchSettings,
     collection: string,
   ) => void;
-  onLabel: (id: string, label: string) => void;
+  onLabel?: (id: string, label: string) => void;
   onReviewed?: (filing: Filing, settings?: SearchSettings) => void;
   initialState?: DisclosureReaderState;
   close: () => void;
@@ -87,7 +123,7 @@ export default function DisclosureReader({
   const [page, setPage] = useState(1);
   const [retry, setRetry] = useState(0);
   const [collection, setCollection] = useState(
-    notebook.collections[0]?.id || "default",
+    notebook?.collections[0]?.id || "default",
   );
   const [filters, setFilters] = useState<ReaderFilters>(() =>
     disclosureReaderFilters(
@@ -256,7 +292,7 @@ export default function DisclosureReader({
       ref={readerRef}
       tabIndex={-1}
       className={s.reader}
-      aria-label="Filing evidence reader"
+      aria-label="Filing reader"
       aria-busy={loading}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
@@ -286,7 +322,7 @@ export default function DisclosureReader({
     >
       <div className={s.readerTop}>
         <div>
-          <span className={s.eyebrow}>Evidence reader</span>
+          <span className={s.eyebrow}>Filing reader</span>
           <h2>
             {displayed.ticker || `CIK ${displayed.cik}`}{" "}
             <span>{displayed.form}</span>
@@ -466,21 +502,23 @@ export default function DisclosureReader({
       )}
       {data && (
         <>
-          <div className={s.readerControls}>
-            <label>
-              Save evidence to
-              <select
-                value={collection}
-                onChange={(e) => setCollection(e.target.value)}
-              >
-                {notebook.collections.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          {notebook && onCollect && (
+            <div className={s.readerControls}>
+              <label>
+                Save evidence to
+                <select
+                  value={collection}
+                  onChange={(e) => setCollection(e.target.value)}
+                >
+                  {notebook.collections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
           {target && data.requestedPassageFound === false && (
             <p role="status" className={s.error}>
               The linked passage was not found within this query and these
@@ -573,9 +611,9 @@ export default function DisclosureReader({
           )}
           {passages.map((passage, passagePosition) => {
             const id = passageEvidenceId(data, passage);
-            const reviewed = notebook.labels[id];
+            const reviewed = notebook?.labels[id];
             const label = reviewed?.label || passage.label;
-            const saved = notebook.collections
+            const saved = notebook?.collections
               .find((c) => c.id === collection)
               ?.items.some((item) => item.id === id);
             return (
@@ -677,74 +715,61 @@ export default function DisclosureReader({
                   </details>
                 )}
                 {["revised", "added", "removed"].includes(passage.change) && (
-                  <details open={changesOnly}>
-                    <summary>Word changes against prior report</summary>
-                    <div className={s.diff}>
-                      {disclosureWordDiff(
-                        passage.priorText || "",
-                        passage.text,
-                      ).map((part, i) =>
-                        part.kind === "removed" ? (
-                          <del key={i}>{part.text}</del>
-                        ) : part.kind === "added" ? (
-                          <ins key={i}>{part.text}</ins>
-                        ) : (
-                          <span key={i}>{part.text}</span>
-                        ),
-                      )}
-                    </div>
-                    <p className={s.muted}>
-                      Underlined green = added · struck red = removed
-                    </p>
-                  </details>
+                  <WordChanges passage={passage} initiallyOpen={changesOnly} />
                 )}
                 <DisclosureQuantities filing={displayed} passage={passage} />
                 <details>
                   <summary>
                     {label} ·{" "}
-                    {reviewed?.reviewed
+                    {onLabel && reviewed?.reviewed
                       ? "analyst reviewed"
-                      : "automated, review label"}
+                      : "automated wording label"}
                   </summary>
                   <p className={s.muted}>
                     A transparent wording heuristic, not verification of an
                     event or a risk score. Review the full passage and source.
                   </p>
-                  <label>
-                    Reviewed language label
-                    <select
-                      value={label}
-                      onChange={(e) => onLabel(id, e.target.value)}
-                    >
-                      {[
-                        "Reported-event wording",
-                        "Hypothetical wording",
-                        "Mixed language",
-                        "Unclassified wording",
-                      ].map((v) => (
-                        <option key={v}>{v}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <button onClick={() => onLabel(id, label)}>
-                    Confirm this label
-                  </button>
+                  {onLabel && (
+                    <>
+                      <label>
+                        Reviewed language label
+                        <select
+                          value={label}
+                          onChange={(e) => onLabel(id, e.target.value)}
+                        >
+                          {[
+                            "Reported-event wording",
+                            "Hypothetical wording",
+                            "Mixed language",
+                            "Unclassified wording",
+                          ].map((v) => (
+                            <option key={v}>{v}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <button onClick={() => onLabel(id, label)}>
+                        Confirm this label
+                      </button>
+                    </>
+                  )}
                 </details>
-                <button
-                  className={s.collectButton}
-                  disabled={saved}
-                  onClick={() =>
-                    onCollect(
-                      displayed,
-                      { ...passage, label },
-                      settings,
-                      collection,
-                    )
-                  }
-                >
-                  <BookmarkPlus size={15} />{" "}
-                  {saved ? "Saved to collection" : "Save this passage"}
-                </button>
+                {notebook && onCollect && (
+                  <button
+                    className={s.collectButton}
+                    disabled={saved}
+                    onClick={() =>
+                      onCollect(
+                        displayed,
+                        { ...passage, label },
+                        settings,
+                        collection,
+                      )
+                    }
+                  >
+                    <BookmarkPlus size={15} />{" "}
+                    {saved ? "Saved to collection" : "Save this passage"}
+                  </button>
+                )}
               </article>
             );
           })}

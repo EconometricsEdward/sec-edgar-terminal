@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { interpretDisclosureSearch, disclosureSearchSuggestions } from '../src/utils/disclosureSearchIntent.js';
+import { interpretDisclosureSearch, disclosureSearchSuggestions, disclosureCompanySuggestions } from '../src/utils/disclosureSearchIntent.js';
 import { parseDisclosureQuery, matchesQuery } from '../src/utils/disclosureQuery.js';
 import { disclosureSettings } from '../src/utils/disclosureResearchServer.js';
 
@@ -19,6 +19,12 @@ const companies = {
   GS: { cik: '886982', name: 'Goldman Sachs Group Inc.' },
   AMZN: { cik: '1018724', name: 'Amazon.com Inc.' },
   V: { cik: '1403161', name: 'Visa Inc.' },
+  F: { cik: '37996', name: 'Ford Motor Co.' },
+  FORD: { cik: '38264', name: 'Forward Industries Inc.' },
+  XOM: { cik: '34088', name: 'Exxon Mobil Corp.' },
+  KO: { cik: '21344', name: 'Coca Cola Co.' },
+  WMT: { cik: '104169', name: 'Walmart Inc.' },
+  'BRK-B': { cik: '1067983', name: 'Berkshire Hathaway Inc.' },
   AI: { cik: '1577526', name: 'C3.ai, Inc.' },
   ALL: { cik: '899051', name: 'ALLSTATE CORP' },
   NARA: { cik: '100', name: 'North American Alpha Inc.' },
@@ -270,4 +276,72 @@ test('AI topic shorthand preserves explicit company identities and possessive ti
   assert.throws(() => interpret('$AI'), /Add a disclosure topic/);
   assert.throws(() => interpret('NVIDIA'), /Add a disclosure topic/);
   assert.equal(disclosureSearchSuggestions('NVIDIA', { companies }).find(value => value.kind === 'company').ticker, 'NVDA');
+});
+
+test('issuer names outrank coincidental ticker words without overriding explicit ticker requests', () => {
+  for (const query of ['Ford credit risk', 'Ford Motor credit risk', 'FORD MOTOR credit risk', 'What did Ford Motor disclose about liquidity?']) {
+    const result = interpret(query);
+    assert.equal(result.settings.tickers, '0000037996', query);
+    assert.ok(!parseDisclosureQuery(result.query).terms.some(term => /ford|motor/i.test(term)), query);
+  }
+  assert.equal(interpret('FORD liquidity').settings.tickers, 'FORD');
+  assert.equal(interpret('$FORD liquidity').settings.tickers, 'FORD');
+  assert.equal(interpret('symbol: FORD liquidity').settings.tickers, 'FORD');
+});
+
+test('short verified symbols and share-class spellings retain a specific SEC identity', () => {
+  for (const [query, ticker] of [['V payment fraud', 'V'], ['F liquidity', 'F'], ['$V payment fraud', 'V'], ['BRK.B insurance risk', 'BRK-B'], ['$BRK.B insurance risk', 'BRK-B']]) {
+    assert.equal(interpret(query).settings.tickers, ticker, query);
+  }
+  assert.equal(interpret('v liquidity').settings.tickers, '');
+  assert.equal(interpret('a liquidity problem').settings.tickers, '');
+  const exactDirectory = { ...companies, 'BRK.B': { cik: '999', name: 'Different Exact Symbol Inc.' } };
+  assert.equal(interpret('BRK.B liquidity', { companies: exactDirectory }).settings.tickers, 'BRK.B');
+});
+
+test('explicit unknown companies cannot silently become all-company searches', () => {
+  for (const raw of ['$UNKNOWN liquidity', 'ticker: UNKNOWN liquidity', 'SYMBOL UNKNOWN liquidity']) {
+    assert.throws(() => interpret(raw), /No SEC company matched UNKNOWN/, raw);
+    const withoutDirectory = interpret(raw, { companies: undefined });
+    assert.match(withoutDirectory.warnings.join(' '), /has not been verified against the SEC directory/);
+  }
+  assert.equal(interpret('symbolic value').settings.tickers, '');
+});
+
+test('company and topic interpretation covers payments, automotive, energy, staples, and retail', () => {
+  for (const [query, cik, passage] of [
+    ['What does Visa say about payment fraud?', '0001403161', 'We monitor payment fraud across our network.'],
+    ['Ford Motor supply chain risks', '0000037996', 'Production depends on our supply chain.'],
+    ['Exxon Mobil oil reserves', '0000034088', 'Estimated oil reserves are subject to uncertainty.'],
+    ['Coca-Cola supply chain disruptions', '0000021344', 'We experienced supplier disruption.'],
+    ['Walmart cybersecurity in filings from last year', '0000104169', 'Our information security program is reviewed annually.'],
+  ]) {
+    const result = interpret(query);
+    assert.equal(result.settings.tickers, cik, query);
+    assert.equal(matches(passage, result), true, query);
+  }
+});
+
+test('company autocomplete consumes an issuer prefix and preserves the entire disclosure topic', () => {
+  for (const [raw, ticker, remaining] of [
+    ['Micro cybersecurity risks', 'MSFT', 'cybersecurity risks'],
+    ['Microsoft material weakness', 'MSFT', 'material weakness'],
+    ['Ford Motor credit risk', 'F', 'credit risk'],
+    ['Ford credit risk', 'F', 'credit risk'],
+    ['FORD credit risk', 'FORD', 'credit risk'],
+    ['V payment fraud', 'V', 'payment fraud'],
+    ['BRK.B insurance risk', 'BRK-B', 'insurance risk'],
+    ['Coca-Cola supply chain', 'KO', 'supply chain'],
+    ["Microsoft’s cybersecurity", 'MSFT', 'cybersecurity'],
+  ]) {
+    const result = disclosureCompanySuggestions(raw, { companies });
+    assert.equal(result[0]?.ticker, ticker, raw);
+    assert.equal(result[0]?.remainingQuery, remaining, raw);
+    assert.equal(result[0]?.query, `${ticker} ${remaining}`, raw);
+  }
+  for (const raw of ['liquidity', 'debt', 'AI risks', 'capital requirements', 'North American revenue', '"Microsoft" AND cybersecurity']) {
+    assert.deepEqual(disclosureCompanySuggestions(raw, { companies }), [], raw);
+  }
+  assert.equal(disclosureCompanySuggestions('$AI liquidity', { companies })[0].ticker, 'AI');
+  assert.equal(disclosureCompanySuggestions('Galaxy liquidity', { companies }).length, 2);
 });

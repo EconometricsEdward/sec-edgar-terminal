@@ -1,0 +1,91 @@
+.searchShell { position: relative; padding: 4px 0 22px; border-bottom: 1px solid var(--disc-border); min-width: 0; }
+.visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.searchLine { display: flex; gap: 10px; align-items: stretch; }
+.queryField { position: relative; flex: 1; min-width: 0; }
+.queryInput { display: flex; align-items: center; min-height: 62px; padding: 0 18px; gap: 13px; border: 1px solid var(--disc-border); border-radius: 9px; background: var(--disc-raised); transition: border-color .15s, box-shadow .15s; }
+.queryInput:focus-within { border-color: var(--disc-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--disc-accent) 10%, transparent); }
+.queryInput > svg { color: var(--disc-accent); flex: none; }
+.searchShell .queryInput input { width: 100%; min-width: 0; min-height: 60px; border: 0; outline: 0; padding: 8px 0; border-radius: 0; font-size: 17px; line-height: 1.5; background: transparent; box-shadow: none; }
+.searchShell .queryInput input:focus-visible { outline: 0; }
+.searchShell .queryInput input::placeholder { color: var(--disc-muted); opacity: .85; }
+.searchShell .clearQuery { padding: 7px; border: 0; background: transparent; color: var(--disc-muted); border-radius: 50%; flex: none; }
+.searchShell .searchButton { min-height: 62px; padding: 0 24px; border: 1px solid var(--disc-accent); border-radius: 9px; background: var(--disc-accent); color: #151c25; font-size: 13px; white-space: nowrap; }
+.searchShell .searchButton:hover { background: color-mix(in srgb, var(--disc-accent) 88%, white); }
+.searchShell .stopButton { align-self: center; min-height: 38px; padding: 8px 10px; background: transparent; }
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin-top: 12px; }
+.modes { display: inline-flex; gap: 3px; flex: none; }
+.searchShell .modes button { border: 0; padding: 6px 9px; background: transparent; color: var(--disc-muted); font-size: 11px; font-weight: 500; }
+.searchShell .modes button[aria-pressed="true"] { background: color-mix(in srgb, var(--disc-accent) 8%, transparent); color: var(--disc-accent); }
+.searchShell .help { margin: 0; color: var(--disc-muted); font-size: 11px; }
+.searchShell .filtersButton { margin-left: auto; border: 0; padding: 6px 3px 6px 8px; background: transparent; color: var(--disc-text); font-weight: 500; }
+.filtersButton > span { display: grid; place-items: center; min-width: 17px; height: 17px; border-radius: 50%; font-size: 10px; background: var(--disc-raised); }
+.filtersButton[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.scopeRow { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 14px; padding-top: 11px; }
+.searchShell .scopeLink { border: 0; border-radius: 3px; padding: 2px 0; background: transparent; color: var(--disc-muted); font-size: 11px; line-height: 1.5; font-weight: 400; }
+.searchShell .scopeLink:hover { color: var(--disc-accent); text-decoration: underline; text-underline-offset: 3px; }
+.scopeChip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--disc-border); border-radius: 5px; background: var(--disc-panel); }
+.searchShell .scopeChip button { border: 0; padding: 3px 6px; background: transparent; font-size: 11px; font-weight: 500; }
+.searchShell .scopeChip button:last-child { color: var(--disc-muted); padding-left: 2px; }
+.suggestions { position: absolute; top: calc(100% + 7px); left: 0; right: 0; z-index: 60; border: 1px solid var(--disc-border); border-radius: 9px; background: var(--disc-bg); box-shadow: 0 15px 40px #0005; overflow: hidden; }
+.suggestions ul { list-style: none; margin: 0; padding: 5px; }
+.searchShell .suggestions button { display: flex; text-align: left; width: 100%; gap: 12px; padding: 11px 12px; border: 0; border-radius: 5px; background: transparent; justify-content: flex-start; font-weight: 500; }
+.suggestions button > svg { flex: none; color: var(--disc-muted); }
+.suggestions button > svg:last-child { margin-left: auto; }
+.suggestions button > span { min-width: 0; overflow-wrap: anywhere; }
+.searchShell .suggestions button small { display: block; margin-top: 3px; font-size: 10px; font-weight: 400; }
+.searchShell .suggestions li[aria-selected="true"] > button,
+.searchShell .suggestions button:hover { background: var(--disc-raised); }
+.searchShell .error, .searchShell .warning, .searchShell .status { margin: 10px 0 0; font-size: 12px; line-height: 1.6; }
+.error { color: var(--disc-red); }
+.warning { color: var(--disc-accent); }
+.status { color: var(--disc-muted); }
+.corrections { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; }
+.searchShell .corrections button { border: 0; padding: 3px 0; background: transparent; color: var(--disc-link); font-size: 12px; }
+.filterPanel { margin-top: 16px; padding: 18px 0 2px; border-top: 1px solid var(--disc-border); }
+.filterPanel[hidden] { display: none; }
+.panelHeading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; gap: 12px; font-size: 13px; font-weight: 600; }
+.searchShell .panelHeading button { padding: 4px 0; background: transparent; border: 0; color: var(--disc-muted); font-size: 11px; font-weight: 400; text-decoration: underline; text-underline-offset: 3px; }
+.filterGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 15px; }
+.companyFilter { grid-column: span 2; }
+.filterGrid > label:nth-child(2) { grid-column: span 2; }
+.searchShell .filterPanel label { font-size: 12px; gap: 6px; }
+.searchShell .filterPanel input, .searchShell .filterPanel select { font-size: 12px; min-height: 40px; }
+.searchShell .companyFilter small { font-size: 10px; font-weight: 400; }
+.searchShell .checkbox { display: flex; flex-direction: row; align-items: center; gap: 8px; margin-top: 15px; font-weight: 400; font-size: 12px; }
+.searchShell .checkbox input { width: 15px; height: 15px; min-height: 0; accent-color: var(--disc-accent); }
+.advanced { margin-top: 16px; padding-top: 13px; border-top: 1px solid var(--disc-border); }
+.advanced > summary, .interpretation > summary { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; color: var(--disc-muted); cursor: pointer; list-style: none; }
+.advanced > summary::-webkit-details-marker, .interpretation > summary::-webkit-details-marker { display: none; }
+.advanced[open] > summary > svg, .interpretation[open] > summary > svg { transform: rotate(180deg); }
+.methodGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; margin-top: 15px; }
+.searchShell .detailNote { margin: 10px 0; font-size: 11px; color: var(--disc-muted); line-height: 1.65; }
+.builder { border-top: 1px solid var(--disc-border); padding-top: 15px; margin-top: 16px; }
+.searchShell .builder h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.builderActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.searchShell .builderActions button { padding: 7px 10px; font-size: 11px; }
+.expression { display: block; padding: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.interpretation { margin-top: 10px; }
+.searchShell .interpretation > button { font-size: 11px; padding: 5px 0; border: 0; border-radius: 0; color: var(--disc-link); background: transparent; }
+:global(html[data-theme-mode="light"]) .searchShell .searchButton,
+:global(.et-light) .searchShell .searchButton { color: #fff; }
+@media (max-width: 950px) {
+  .searchShell .help { display: none; }
+  .searchShell .searchButton { padding: 0 17px; }
+  .queryInput { padding: 0 13px; gap: 10px; }
+  .searchShell .queryInput input { font-size: 15px; }
+}
+@media (max-width: 650px) {
+  .searchLine { flex-wrap: wrap; gap: 8px; }
+  .queryField { flex-basis: 100%; }
+  .queryInput, .searchShell .queryInput input { min-height: 56px; }
+  .searchShell .searchButton { flex: 1; min-height: 42px; }
+  .searchShell .stopButton { min-height: 42px; }
+  .toolbar { gap: 8px; }
+  .searchShell .modes button { padding: 6px 7px; }
+  .scopeRow { gap: 5px 12px; }
+  .filterGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .methodGrid { grid-template-columns: 1fr; }
+  .searchShell .queryInput input { font-size: 16px; }
+  .searchShell .suggestions button { padding: 10px 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .queryInput { transition: none; } }

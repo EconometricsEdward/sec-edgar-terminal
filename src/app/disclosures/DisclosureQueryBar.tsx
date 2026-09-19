@@ -1,18 +1,16 @@
 "use client";
+
 import { useContext, useDeferredValue, useId, useMemo, useRef, useState } from "react";
-import { Search, SlidersHorizontal, Square, ArrowUpRight, Building2, Sparkles, X, ChevronDown } from "lucide-react";
+import { ArrowUpRight, Building2, Check, ChevronDown, Search, SlidersHorizontal, Square, X } from "lucide-react";
 import { buildAdvancedQuery, parseDisclosureQuery } from "../../utils/disclosureQuery.js";
 import { SECTION_OPTIONS } from "../../utils/disclosureResearch.js";
-import { DISCLOSURE_UNIVERSES, DISCLOSURE_MARKET_MAP } from "../../utils/disclosureUniverses.js";
-import { disclosureSearchSuggestions } from "../../utils/disclosureSearchIntent.js";
-import { getSuggestions } from "../../utils/searchRouter.js";
+import { disclosureCompanySuggestions, disclosureSearchSuggestions } from "../../utils/disclosureSearchIntent.js";
 import { TickerContext } from "../../contexts/TickerContext";
-import type { SearchSettings } from "./disclosureTypes";
-import DisclosureQueryCoach from "./DisclosureQueryCoach";
 import { inspectDisclosureQuery } from "../../utils/disclosureQueryCoach.js";
-import s from "./disclosures.module.css";
+import type { SearchSettings } from "./disclosureTypes";
+import s from "./DisclosureQueryBar.module.css";
 
-type Suggestion = { label: string; query: string; kind: string; ticker?: string };
+type Suggestion = { label: string; query: string; kind: string; ticker?: string; remainingQuery?: string };
 type Interpretation = {
   originalQuery: string;
   query: string;
@@ -22,15 +20,7 @@ type Interpretation = {
   suggestions: Suggestion[];
   warnings: string[];
 };
-
-const EXAMPLES = [
-  { label: "Microsoft cybersecurity risks", query: "Microsoft cybersecurity risks" },
-  { label: "Debt covenant breaches", query: "Companies mentioning debt covenant breaches" },
-  { label: "Apple supply chain in 2025", query: "Apple supply chain risks in filings from 2025" },
-];
-const BROAD_FORMS = "10-K,10-Q,8-K,S-1,S-3,S-4,DEF 14A,DEFM14A,20-F,40-F,N-CSR,NPORT-P";
-
-export default function DisclosureQueryBar({ settings, setSettings, onSearch, busy, stop, interpretation, interpreting = false, onApplySuggestion }: {
+type Props = {
   settings: SearchSettings;
   setSettings: (value: SearchSettings) => void;
   onSearch: (settings: SearchSettings) => void;
@@ -39,15 +29,32 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
   interpretation?: Interpretation | null;
   interpreting?: boolean;
   onApplySuggestion?: (query: string) => void;
-}) {
+};
+
+const DEFAULT_FORMS = "10-K,10-Q,8-K";
+const BROAD_FORMS = "10-K,10-Q,8-K,S-1,S-3,S-4,DEF 14A,DEFM14A,20-F,40-F,6-K,N-CSR,NPORT-P";
+const FORM_OPTIONS = [
+  [DEFAULT_FORMS, "Annual, quarterly & current reports"],
+  ["10-K", "Annual reports · 10-K"],
+  ["10-K,10-Q", "Annual & quarterly · 10-K / 10-Q"],
+  ["10-Q", "Quarterly reports · 10-Q"],
+  ["8-K", "Current reports · 8-K"],
+  ["20-F,40-F,6-K", "Foreign issuers · 20-F / 40-F / 6-K"],
+  ["DEF 14A,DEFM14A", "Proxy statements"],
+  [BROAD_FORMS, "All supported filing forms"],
+];
+
+export default function DisclosureQueryBar({ settings, setSettings, onSearch, busy, stop, interpretation, interpreting = false, onApplySuggestion }: Props) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [builder, setBuilder] = useState({ any: "", required: "", exclude: "" });
   const [builderError, setBuilderError] = useState("");
   const [previousQuery, setPreviousQuery] = useState<string | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const [activeSuggestionKey, setActiveSuggestionKey] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const filtersRef = useRef<HTMLDetailsElement>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const filtersId = useId();
   const context = useContext(TickerContext);
   const tickerMap = context?.tickerMap;
   const smart = settings.searchStyle !== "exact";
@@ -57,74 +64,90 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
   const queryInspection = useMemo(() => inspectDisclosureQuery(expression), [expression]);
   const builderQuery = useMemo(() => buildAdvancedQuery(builder), [builder]);
   const displayedSettings = currentInterpretation ? { ...settings, ...currentInterpretation.settings, mode: settings.mode } : settings;
-  const materialized = () => currentInterpretation ? { ...displayedSettings, query: currentInterpretation.query, searchStyle: "exact" as const } : settings;
-  const update = (key: keyof SearchSettings, value: string | number | boolean) => setSettings({ ...(key === "query" || key === "searchStyle" ? settings : materialized()), [key]: value });
   const today = new Date().toISOString().slice(0, 10);
+  const defaultStart = `${Number(today.slice(0, 4)) - 1}-01-01`;
   const canSearch = Boolean(settings.query.trim()) && (smart || queryInspection.valid);
-  const suggestions = useMemo((): Suggestion[] => {
-    if (!smart) return [];
-    const topics = disclosureSearchSuggestions(deferredQuery).slice(0, 4) as Suggestion[];
-    const words = deferredQuery.trim().split(/\s+/).filter(Boolean);
-    if (!tickerMap || !words.length || /["()]/.test(deferredQuery)) return topics;
-    // Reuse the shared directory; autocomplete never starts a filing search.
-    for (let length = Math.min(4, words.length); length > 0; length--) {
-      const prefix = words.slice(0, length).join(" ");
-      if (prefix.length < 2) continue;
-      const companies = getSuggestions(prefix, tickerMap, 6).suggestions.filter(item => item.type === "company" || item.type === "fund");
-      if (companies.length) return [
-        ...companies.slice(0, 3).map(item => ({ label: `${item.ticker} · ${item.name}`, query: words.slice(length).join(" "), kind: "company", ticker: item.ticker })),
-        ...topics,
-      ].slice(0, 6);
+  const suggestions = useMemo(() => smart ? [
+    ...disclosureCompanySuggestions(deferredQuery, { companies: tickerMap, limit: 3 }),
+    ...disclosureSearchSuggestions(deferredQuery),
+  ].slice(0, 6) as Suggestion[] : [], [deferredQuery, smart, tickerMap]);
+  const suggestionKey = (item: Suggestion) => `${item.kind}:${item.query}:${item.label}`;
+  const activeSuggestion = suggestions.findIndex(item => suggestionKey(item) === activeSuggestionKey);
+  // Never let an Enter key select an item belonging to the previous input value.
+  const showSuggestions = suggestionsOpen && deferredQuery === settings.query && suggestions.length > 0;
+  const companyIds = displayedSettings.tickers.split(",").map(value => value.trim()).filter(Boolean);
+  const companyLabels = useMemo(() => {
+    const labels = new Map<string, { short: string; name: string }>();
+    const ids = displayedSettings.tickers.split(",").map(value => value.trim()).filter(Boolean);
+    const entries = ids.some(id => /^\d+$/.test(id)) ? Object.values(tickerMap || {}) : [];
+    for (const id of ids) {
+      const company = tickerMap?.[id.toUpperCase()] || entries.find(entry => /^\d+$/.test(id) && Number(entry.cik) === Number(id));
+      if (company) labels.set(id, { short: company.ticker, name: company.name });
     }
-    return topics;
-  }, [deferredQuery, tickerMap, smart]);
-  const showSuggestions = suggestionsOpen && suggestions.length > 0 && !busy;
-  function focusSearch() {
-    inputRef.current?.focus();
+    return labels;
+  }, [displayedSettings.tickers, tickerMap]);
+  const sectionName = SECTION_OPTIONS.find(([id]) => id === displayedSettings.section)?.[1] || displayedSettings.section;
+  const formLabel = displayedSettings.forms === BROAD_FORMS ? "All supported forms" : displayedSettings.forms.replaceAll(",", " · ");
+  const activeFilterCount = [
+    companyIds.length > 0, displayedSettings.forms !== DEFAULT_FORMS,
+    displayedSettings.start !== defaultStart || displayedSettings.end !== today,
+    displayedSettings.section !== "all", displayedSettings.scope !== "paragraph",
+    displayedSettings.amendments, displayedSettings.mode !== "index",
+    displayedSettings.comparison !== "none",
+  ].filter(Boolean).length;
+
+  function materialized(): SearchSettings {
+    return currentInterpretation ? { ...displayedSettings, query: currentInterpretation.query, searchStyle: "exact" } : settings;
+  }
+  function update(key: keyof SearchSettings, value: string | number | boolean) {
+    setSettings({ ...(key === "query" || key === "searchStyle" ? settings : materialized()), [key]: value });
   }
   function chooseSuggestion(item: Suggestion) {
-    setSuggestionsOpen(false);
-    setActiveSuggestion(-1);
-    if (item.ticker) {
-      setSettings({ ...settings, query: item.query, tickers: item.ticker, mode: "index" });
+    if (item.ticker && typeof item.remainingQuery === "string") {
+      // Company autocomplete owns a verified prefix; only that prefix is removed.
+      // Ambiguous-company suggestions returned by interpretation keep a full query.
+      setSettings({ ...settings, query: item.remainingQuery, tickers: item.ticker, mode: "index", searchStyle: "smart" });
     } else if (onApplySuggestion) onApplySuggestion(item.query);
     else update("query", item.query);
-    focusSearch();
+    inputRef.current?.focus();
+    setSuggestionsOpen(false);
+    setActiveSuggestionKey("");
   }
-  function showFilters(key?: string) {
-    if (currentInterpretation) setSettings(materialized());
-    if (key === "query") return focusSearch();
-    if (filtersRef.current) filtersRef.current.open = true;
-    const field = key === "company" ? "tickers" : key;
-    if (field) requestAnimationFrame(() => filtersRef.current?.querySelector<HTMLElement>(`[data-setting="${field}"]`)?.focus());
+  function showFilters(field?: string) {
+    setFiltersOpen(true);
+    setSuggestionsOpen(false);
+    if (field) requestAnimationFrame(() => {
+      const input = filtersRef.current?.querySelector<HTMLElement>(`[data-setting="${field}"]`);
+      const parent = input?.closest("details");
+      if (parent) parent.open = true;
+      input?.focus();
+    });
   }
-  function removeChip(key: string, value: string) {
-    const resolved = materialized();
-    const field = key === "company" ? "tickers" : key;
-    const defaults: Record<string, string> = { tickers: "", forms: BROAD_FORMS, start: "2001-01-01", end: today, section: "all", scope: "paragraph" };
-    if (!(field in defaults)) return showFilters(field);
-    const nextValue = field === "tickers" ? resolved.tickers.split(",").filter(ticker => !value.split(",").includes(ticker)).join(",") : defaults[field];
-    setSettings({ ...resolved, [field]: nextValue, ...(field === "tickers" ? { mode: "index" as const } : {}) });
+  function removeCompany(identifier: string) {
+    setSettings({ ...materialized(), tickers: companyIds.filter(value => value !== identifier).join(",") });
   }
-  const chips = currentInterpretation?.chips || [];
-  const playbooks = [
-    { name: "Bank liquidity", query: "liquidity AND (funding OR deposits)", tickers: "JPM,BAC,WFC", section: "mda", forms: "10-K" },
-    { name: "Covenant pressure", query: "(covenant OR liquidity) AND (breach OR waiver)", tickers: "F,CCL,AAL", section: "all", forms: "10-K,10-Q,8-K" },
-    { name: "Cyber incidents", query: 'cybersecurity OR "data breach" OR ransomware', tickers: "MSFT,UNH,GOOGL", section: "all", forms: "10-K,10-Q,8-K" },
-  ];
+  function applyBuilder(combine: boolean) {
+    const query = combine ? `(${expression}) AND (${builderQuery})` : builderQuery;
+    try {
+      parseDisclosureQuery(query);
+      setPreviousQuery(expression);
+      setSettings({ ...materialized(), query, searchStyle: "exact" });
+      setBuilderError("");
+    } catch (error) {
+      setBuilderError(error instanceof Error ? error.message : "Check the search expression.");
+    }
+  }
+  function resetFilters() {
+    setSettings({ ...materialized(), tickers: "", forms: DEFAULT_FORMS, start: defaultStart, end: today, section: "all", scope: "paragraph", amendments: false, mode: "index", depth: 4, comparison: "none" });
+  }
+
   return (
-    <form className={s.searchBox} onSubmit={(event) => { event.preventDefault(); setSuggestionsOpen(false); if (canSearch) onSearch(settings); }}>
-      <div className={s.searchModeRow}>
-        <label htmlFor="disclosure-search-query" className={s.searchPrompt}>What are you researching?</label>
-        <div className={s.searchModes} role="group" aria-label="Search style">
-          <button type="button" aria-pressed={smart} onClick={() => update("searchStyle", "smart")}><Sparkles size={13} /> Smart search</button>
-          <button type="button" aria-pressed={!smart} onClick={() => { setSettings({ ...materialized(), searchStyle: "exact" }); setSuggestionsOpen(false); }}>Exact search</button>
-        </div>
-      </div>
-      <div className={s.searchTop}>
-        <div className={s.queryField} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setSuggestionsOpen(false); }}>
+    <form className={s.searchShell} role="search" aria-label="Search SEC disclosures" onSubmit={event => { event.preventDefault(); setSuggestionsOpen(false); if (canSearch) onSearch(settings); }}>
+      <label className={s.visuallyHidden} htmlFor="disclosure-search-query">Search SEC disclosures</label>
+      <div className={s.searchLine}>
+        <div className={s.queryField} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setSuggestionsOpen(false); }}>
           <div className={s.queryInput}>
-            <Search size={21} aria-hidden="true" />
+            <Search size={23} aria-hidden="true" />
             <input
               ref={inputRef}
               id="disclosure-search-query"
@@ -139,333 +162,114 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
               autoComplete="off"
               maxLength={1000}
               value={settings.query}
-              onChange={(e) => { update("query", e.target.value); setSuggestionsOpen(true); setActiveSuggestion(-1); }}
-              onFocus={() => { setSuggestionsOpen(true); if (context?.directoryStatus === "idle") void context.refreshTickerMap(); }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") { setSuggestionsOpen(false); setActiveSuggestion(-1); }
+              placeholder={smart ? "Company, topic, or question about a filing…" : '"material weakness" AND remediation'}
+              onChange={event => { update("query", event.target.value); setSuggestionsOpen(true); setActiveSuggestionKey(""); }}
+              onFocus={() => { setSuggestionsOpen(true); if (smart && context?.directoryStatus === "idle") void context.refreshTickerMap(); }}
+              onKeyDown={event => {
+                if (event.key === "Escape") { event.preventDefault(); setSuggestionsOpen(false); setActiveSuggestionKey(""); }
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                  if (!suggestions.length) return;
-                  event.preventDefault(); setSuggestionsOpen(true);
-                  setActiveSuggestion(current => event.key === "ArrowDown" ? (current + 1) % suggestions.length : (current <= 0 ? suggestions.length - 1 : current - 1));
+                  if (!suggestions.length || deferredQuery !== settings.query) return;
+                  event.preventDefault();
+                  setSuggestionsOpen(true);
+                  const nextIndex = event.key === "ArrowDown" ? (activeSuggestion + 1) % suggestions.length : (activeSuggestion <= 0 ? suggestions.length - 1 : activeSuggestion - 1);
+                  setActiveSuggestionKey(suggestionKey(suggestions[nextIndex]));
                 }
-                if (event.key === "Enter" && showSuggestions && activeSuggestion >= 0 && suggestions[activeSuggestion]) { event.preventDefault(); chooseSuggestion(suggestions[activeSuggestion]); }
+                if (event.key === "Enter" && showSuggestions && activeSuggestion >= 0 && suggestions[activeSuggestion]) {
+                  event.preventDefault(); chooseSuggestion(suggestions[activeSuggestion]);
+                }
               }}
-              placeholder={smart ? "Ask about a company, topic, or disclosure…" : '"material weakness" AND remediation'}
             />
-            {settings.query && <button className={s.clearQuery} type="button" aria-label="Clear search query" onClick={() => { update("query", ""); setActiveSuggestion(-1); focusSearch(); }}><X size={16} /></button>}
+            {settings.query && <button className={s.clearQuery} type="button" aria-label="Clear search query" onClick={() => { update("query", ""); setActiveSuggestionKey(""); inputRef.current?.focus(); }}><X size={18} /></button>}
           </div>
           {showSuggestions && <div className={s.suggestions}>
-            <span className={s.suggestionHeading}>Suggested searches</span>
             <ul role="listbox" id={listId} aria-label="Disclosure search suggestions">
-              {suggestions.map((item, index) => <li key={`${item.kind}:${item.label}`} role="option" id={`${listId}-${index}`} aria-selected={activeSuggestion === index} onMouseDown={(event) => event.preventDefault()}>
-                <button type="button" tabIndex={-1} onClick={() => chooseSuggestion(item)}>{item.ticker ? <Building2 size={16} /> : <Search size={16} />}<span>{item.label}<small>{item.ticker ? "Search this company's disclosures" : item.kind === "spelling" ? "Suggested spelling · select to use" : "Disclosure topic"}</small></span><ArrowUpRight size={14} /></button>
+              {suggestions.map((item, index) => <li key={`${item.kind}:${item.label}`} role="option" id={`${listId}-${index}`} aria-selected={activeSuggestion === index} onMouseDown={event => event.preventDefault()}>
+                <button type="button" tabIndex={-1} onClick={() => chooseSuggestion(item)}>
+                  {item.ticker ? <Building2 size={17} /> : <Search size={17} />}
+                  <span>{item.label}<small>{item.ticker ? "SEC company" : item.kind === "spelling" ? "Suggested spelling · select to use" : "Disclosure topic"}</small></span>
+                  <ArrowUpRight size={15} />
+                </button>
               </li>)}
             </ul>
           </div>}
         </div>
-        <button className={s.primary} type="submit" disabled={busy || !canSearch}><Search size={16} />{busy ? "Searching…" : "Search disclosures"}</button>
-        {busy && <button type="button" onClick={stop}><Square size={14} /> Stop</button>}
+        <button className={s.searchButton} type="submit" disabled={!canSearch}><Search size={17} />Search disclosures</button>
+        {busy && <button className={s.stopButton} type="button" onClick={stop} aria-label="Stop disclosure search"><Square size={13} />Stop</button>}
       </div>
-      <div className={s.searchHelpRow}>
-        <p id="disclosure-search-help" className={s.searchHelp}>{smart ? "Use everyday language, company names, dates, or precise phrases." : "Use AND, OR, NOT, parentheses, and quoted phrases. Terms are matched literally."}</p>
-        <span className={s.searchScope}>{displayedSettings.tickers ? <><Building2 size={12} /> {displayedSettings.tickers}</> : "Across SEC filers"}</span>
+      <div className={s.toolbar}>
+        <div className={s.modes} role="group" aria-label="Search style">
+          <button type="button" aria-pressed={smart} onClick={() => update("searchStyle", "smart")}>{smart && <Check size={12} />}Smart search</button>
+          <button type="button" aria-pressed={!smart} onClick={() => { setSettings({ ...materialized(), searchStyle: "exact" }); setSuggestionsOpen(false); }}>{!smart && <Check size={12} />}Exact search</button>
+        </div>
+        <p id="disclosure-search-help" className={s.help}>{smart ? "Use company names, topics, and filing dates." : 'Use AND, OR, NOT, or "exact phrases".'}</p>
+        <button className={s.filtersButton} type="button" aria-expanded={filtersOpen} aria-controls={filtersId} onClick={() => { setFiltersOpen(value => !value); setSuggestionsOpen(false); }}><SlidersHorizontal size={14} />Filters{activeFilterCount > 0 && <span>{activeFilterCount}</span>}<ChevronDown size={13} /></button>
       </div>
-      {!smart && settings.query && !queryInspection.valid && <p role="alert" className={s.queryError}>{queryInspection.error}</p>}
-      {(chips.length > 0 || interpreting) && <div className={s.interpretation} aria-live="polite">
-        <span className={s.interpretLabel}>{interpreting ? "Understanding your search…" : "Searching for"}</span>
-        {chips.map((chip) => <span className={s.filterChip} key={`${chip.key}:${chip.value}`}>
-          <button type="button" onClick={() => showFilters(chip.key)} title={`Edit ${chip.label}`}>{chip.label}<ChevronDown size={11} /></button>
-          {chip.value && (["tickers", "company", "forms", "start", "end", "section", "scope"].includes(chip.key)) && <button type="button" aria-label={`Remove ${chip.label} filter`} onClick={() => removeChip(chip.key, chip.value)}><X size={11} /></button>}
-        </span>)}
+      {!smart && settings.query && !queryInspection.valid && <p role="alert" className={s.error}>{queryInspection.error}</p>}
+      <div className={s.scopeRow} aria-label="Current search scope">
+        {companyIds.length ? companyIds.map(identifier => <span className={s.scopeChip} key={identifier}>
+          <button type="button" onClick={() => showFilters("tickers")} title={`Edit company filter: ${companyLabels.get(identifier)?.name || identifier}`}><Building2 size={12} />{companyLabels.get(identifier)?.short || identifier}</button>
+          <button type="button" aria-label={`Remove ${companyLabels.get(identifier)?.short || identifier} company filter`} onClick={() => removeCompany(identifier)}><X size={11} /></button>
+        </span>) : <button className={s.scopeLink} type="button" onClick={() => showFilters("tickers")}><Building2 size={12} />All companies</button>}
+        <button className={s.scopeLink} type="button" onClick={() => showFilters("forms")} title="Edit filing forms">{formLabel}</button>
+        <button className={s.scopeLink} type="button" onClick={() => showFilters("start")} title="Edit filing dates">Filed {displayedSettings.start} – {displayedSettings.end === today ? "today" : displayedSettings.end}</button>
+        {displayedSettings.section !== "all" && <button className={s.scopeLink} type="button" onClick={() => showFilters("section")}>{sectionName}</button>}
+        {displayedSettings.scope !== "paragraph" && <button className={s.scopeLink} type="button" onClick={() => showFilters("scope")}>Across document text</button>}
+        {displayedSettings.amendments && <button className={s.scopeLink} type="button" onClick={() => showFilters("amendments")}>Amendments included</button>}
+        {displayedSettings.mode === "companies" && <button className={s.scopeLink} type="button" onClick={() => showFilters("mode")}>{displayedSettings.depth} filings / company</button>}
+        {displayedSettings.comparison !== "none" && <button className={s.scopeLink} type="button" onClick={() => showFilters("comparison")}>{displayedSettings.comparison === "annual-season" ? "Annual comparison" : "Previous-report comparison"}</button>}
+      </div>
+      {interpreting && <p className={s.status} role="status">Understanding your search…</p>}
+      {currentInterpretation?.warnings?.[0] && <p className={s.warning} role="status">{currentInterpretation.warnings[0]}</p>}
+      {currentInterpretation?.suggestions?.some(item => item.kind === "spelling" || item.kind === "company") && <div className={s.corrections}>
+        {currentInterpretation.suggestions.filter(item => item.kind === "spelling" || item.kind === "company").slice(0, 3).map(item => <button type="button" key={`${item.kind}:${item.query}`} onClick={() => chooseSuggestion(item)}>{item.label}<ArrowUpRight size={12} /></button>)}
       </div>}
-      {currentInterpretation?.warnings?.[0] && <p className={s.searchWarning}>{currentInterpretation.warnings[0]}</p>}
-      {currentInterpretation?.suggestions?.some(item => item.kind === "spelling" || item.kind === "company") && <div className={s.searchExamples}>
-        <span>Suggestions</span>{currentInterpretation.suggestions.filter(item => item.kind === "spelling" || item.kind === "company").slice(0, 3).map(item => <button type="button" key={`${item.kind}:${item.query}`} onClick={() => chooseSuggestion(item)}>{item.label}<ArrowUpRight size={11} /></button>)}
-      </div>}
-      {currentInterpretation && (currentInterpretation.expansions?.length > 0 || currentInterpretation.warnings?.length > 0) && <details className={s.searchInterpretationDetail}>
-        <summary>How this search is interpreted{currentInterpretation.expansions?.length ? ` · ${currentInterpretation.expansions.length} related term group${currentInterpretation.expansions.length > 1 ? "s" : ""}` : ""}</summary>
-        <p className={s.muted}><code>{currentInterpretation.query}</code></p>
-        {currentInterpretation.expansions?.map(item => <p className={s.muted} key={item.term}><strong>{item.term}</strong>: {item.alternatives.join(", ")}</p>)}
-        {currentInterpretation.warnings?.map(warning => <p className={s.warning} key={warning}>{warning}</p>)}
-        <button type="button" onClick={() => setSettings({ ...materialized(), searchStyle: "exact" })}>Edit the exact search</button>
-      </details>}
-      <div className={s.filterRow}>
-        <label className={s.companyInput}>Company · optional<input aria-label="Companies" placeholder="Any company, or tickers / CIKs" value={displayedSettings.tickers} onChange={(e) => update("tickers", e.target.value)} /></label>
-        <label>Filing forms<select value={displayedSettings.forms} onChange={(e) => update("forms", e.target.value)}>
-          <option value="10-K,10-Q,8-K">Annual, quarterly & current reports</option><option value="10-K">Annual · 10-K</option><option value="10-K,10-Q">Annual & quarterly · 10-K / 10-Q</option><option value="10-Q">Quarterly · 10-Q</option><option value="8-K">Current reports · 8-K</option><option value="20-F,40-F">Foreign annual · 20-F / 40-F</option><option value="20-F,40-F,6-K">Foreign issuers</option><option value={BROAD_FORMS}>Broad filings</option>
-          {!["10-K,10-Q,8-K", "10-K", "10-K,10-Q", "10-Q", "8-K", "20-F,40-F", "20-F,40-F,6-K", BROAD_FORMS].includes(displayedSettings.forms) && <option value={displayedSettings.forms}>{displayedSettings.forms}</option>}
-        </select></label>
-        <details className={s.filters} ref={filtersRef}>
-          <summary><SlidersHorizontal size={15} /> Filters & tools</summary>
-          <div className={s.advanced}>
-            <div className={s.filterRow}>
-              <label>Company filter<input data-setting="tickers" aria-label="Advanced company filter" placeholder="Tickers or SEC CIKs" value={displayedSettings.tickers} onChange={(e) => update("tickers", e.target.value)} /></label>
-              <label>Retrieval mode<select data-setting="mode" value={displayedSettings.mode} onChange={(e) => update("mode", e.target.value)}><option value="index">Fast discovery across SEC filings</option><option value="companies">Detailed company review</option></select></label>
-              <label>Filing form filter<input data-setting="forms" value={displayedSettings.forms} onChange={(e) => update("forms", e.target.value)} /></label>
+      <div className={s.filterPanel} ref={filtersRef} id={filtersId} hidden={!filtersOpen}>
+        <div className={s.panelHeading}><span>Refine your search</span><button type="button" onClick={resetFilters}>Reset filters</button></div>
+        <div className={s.filterGrid}>
+          <label className={s.companyFilter}>Companies<input data-setting="tickers" aria-label="Companies" placeholder="Tickers or SEC CIKs, separated by commas" maxLength={500} value={displayedSettings.tickers} onChange={event => update("tickers", event.target.value)} /><small>Up to 5 companies. Company names also work in the main search.</small></label>
+          <label>Filing forms<select data-setting="forms" value={displayedSettings.forms} onChange={event => update("forms", event.target.value)}>
+            {FORM_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {!FORM_OPTIONS.some(([value]) => value === displayedSettings.forms) && <option value={displayedSettings.forms}>{displayedSettings.forms}</option>}
+          </select></label>
+          <label>Filed from<input data-setting="start" aria-label="Filed from" type="date" min="2001-01-01" max={displayedSettings.end || today} value={displayedSettings.start} onChange={event => update("start", event.target.value)} /></label>
+          <label>Filed through<input data-setting="end" aria-label="Filed through" type="date" min={displayedSettings.start} max={today} value={displayedSettings.end} onChange={event => update("end", event.target.value)} /></label>
+          <label>Search section<select data-setting="section" value={displayedSettings.section} onChange={event => update("section", event.target.value)}>{SECTION_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+          <label>Term scope<select data-setting="scope" value={displayedSettings.scope} onChange={event => update("scope", event.target.value)}><option value="paragraph">Same paragraph</option><option value="document">Across selected document text</option></select></label>
+        </div>
+        <label className={s.checkbox}><input data-setting="amendments" type="checkbox" checked={displayedSettings.amendments} onChange={event => update("amendments", event.target.checked)} />Include amended filings</label>
+        <details className={s.advanced}>
+          <summary>Search method & query tools<ChevronDown size={12} /></summary>
+          <div className={s.methodGrid}>
+            <label>Search method<select data-setting="mode" value={displayedSettings.mode} onChange={event => update("mode", event.target.value)}><option value="index">Search SEC filing index</option><option value="companies">Detailed company review</option></select></label>
+            <label>Filings per company<select data-setting="depth" value={displayedSettings.depth} onChange={event => update("depth", Number(event.target.value))}>{[1, 2, 4, 6, 8, 12].map(value => <option key={value} value={value}>{value} latest in date window</option>)}</select></label>
+            <label>Compare language with<select data-setting="comparison" value={displayedSettings.comparison || "none"} onChange={event => update("comparison", event.target.value)}><option value="none">No comparison · search only</option><option value="annual-season">Comparable annual season</option><option value="previous-report">Previous reporting period</option></select></label>
+          </div>
+          <p className={s.detailNote}>Detailed review reads the selected companies’ filings. Comparisons use the same filing form and reporting season; unavailable sections or reports stay visibly unavailable.</p>
+          <div className={s.builder}>
+            <h3>Build an exact search</h3>
+            <div className={s.methodGrid}>
+              <label>Any of these<input value={builder.any} placeholder="liquidity, covenant" onChange={event => setBuilder({ ...builder, any: event.target.value })} /></label>
+              <label>Also require<input value={builder.required} placeholder="waiver" onChange={event => setBuilder({ ...builder, required: event.target.value })} /></label>
+              <label>Exclude<input value={builder.exclude} placeholder="hypothetical" onChange={event => setBuilder({ ...builder, exclude: event.target.value })} /></label>
             </div>
-            <div className={s.filterRow}>
-              <label>
-                Filed from
-                <input
-                  type="date"
-                  data-setting="start" aria-label="Filed from"
-                  min="2001-01-01"
-                  max={today}
-                  value={displayedSettings.start}
-                  onChange={(e) => update("start", e.target.value)}
-                />
-              </label>
-              <label>
-                Filed through
-                <input
-                  type="date"
-                  data-setting="end" aria-label="Filed through"
-                  min={displayedSettings.start}
-                  max={today}
-                  value={displayedSettings.end}
-                  onChange={(e) => update("end", e.target.value)}
-                />
-              </label>
-              <label>
-                Search section
-                <select
-                  data-setting="section" value={displayedSettings.section}
-                  onChange={(e) => update("section", e.target.value)}
-                >
-                  {SECTION_OPTIONS.map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Term scope
-                <select
-                  data-setting="scope" value={displayedSettings.scope}
-                  onChange={(e) => update("scope", e.target.value)}
-                >
-                  <option value="paragraph">Same paragraph</option>
-                  <option value="document">
-                    Across selected document text
-                  </option>
-                </select>
-              </label>
-              <label>
-                Compare language against
-                <select
-                  value={displayedSettings.comparison || "none"}
-                  onChange={(e) => update("comparison", e.target.value)}
-                >
-                  <option value="annual-season">
-                    Comparable annual season
-                  </option>
-                  <option value="previous-report">
-                    Previous reporting period
-                  </option>
-                  <option value="none">No comparison · search only</option>
-                </select>
-              </label>
-              <label>
-                Filings per company
-                <select
-                  value={displayedSettings.depth}
-                  onChange={(e) => update("depth", Number(e.target.value))}
-                >
-                  {[1, 2, 4, 6, 8, 12].map((n) => (
-                    <option key={n} value={n}>
-                      {n} latest in date window
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <p className={s.detailNote}>Separate terms with commas. Use quotes for an exact phrase.</p>
+            {builderQuery && <code className={s.expression}>{builderQuery}</code>}
+            <div className={s.builderActions}>
+              <button type="button" disabled={!builderQuery.trim()} onClick={() => applyBuilder(false)}>Use this query<ArrowUpRight size={12} /></button>
+              <button type="button" disabled={!builderQuery.trim() || !queryInspection.valid || !expression.trim()} onClick={() => applyBuilder(true)}>Add with AND</button>
+              {previousQuery !== null && <button type="button" onClick={() => { update("query", previousQuery); setPreviousQuery(null); }}>Undo query change</button>}
             </div>
-            <label className={s.check}>
-              <input
-                type="checkbox"
-                checked={displayedSettings.amendments}
-                onChange={(e) => update("amendments", e.target.checked)}
-              />{" "}
-              Include amendments as separate evidence
-            </label>
-            <p className={s.muted}>
-              Exclusions apply to the selected scope. A section that cannot be
-              identified is recorded as unavailable. Index discovery returns
-              candidates; the reader verifies these filters.
-            </p>
-            <p className={s.muted}>
-              Comparable annual season pairs quarterly reports with the same
-              fiscal season in the prior year. Previous reporting period uses
-              the preceding same-form report for a different period. Annual
-              reports use the prior annual period; amendments are identified
-              separately. An unavailable comparison stays visibly unavailable.
-            </p>
-            <DisclosureQueryCoach query={expression} scope={displayedSettings.scope} onQueryChange={(query) => setSettings({ ...materialized(), query, searchStyle: "exact" })} />
-            <div className={s.builder}>
-              <h3>Build an expression</h3>
-              <div className={s.filterRow}>
-                <label>
-                  Any of these · comma-separated
-                  <input
-                    value={builder.any}
-                    placeholder="liquidity, covenant"
-                    onChange={(e) =>
-                      setBuilder({ ...builder, any: e.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  Also require · comma-separated
-                  <input
-                    value={builder.required}
-                    placeholder="waiver"
-                    onChange={(e) =>
-                      setBuilder({ ...builder, required: e.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  Exclude · comma-separated
-                  <input
-                    value={builder.exclude}
-                    placeholder="hypothetical"
-                    onChange={(e) =>
-                      setBuilder({ ...builder, exclude: e.target.value })
-                    }
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={!builderQuery.trim()}
-                  onClick={() => {
-                    try {
-                      parseDisclosureQuery(builderQuery);
-                      setPreviousQuery(expression);
-                      setSettings({ ...materialized(), query: builderQuery, searchStyle: "exact" });
-                      setBuilderError("");
-                    } catch (error) {
-                      setBuilderError(error.message);
-                    }
-                  }}
-                >
-                  Replace query with builder <ArrowUpRight size={14} />
-                </button>
-                <button
-                  type="button"
-                  disabled={!builderQuery.trim() || !queryInspection.valid}
-                  onClick={() => {
-                    try {
-                      const combined = `(${expression}) AND (${builderQuery})`;
-                      parseDisclosureQuery(combined);
-                      setPreviousQuery(expression);
-                      setSettings({ ...materialized(), query: combined, searchStyle: "exact" });
-                      setBuilderError("");
-                    } catch (error) {
-                      setBuilderError(error.message);
-                    }
-                  }}
-                >
-                  Add builder with AND
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBuilder({ any: "", required: "", exclude: "" });
-                    setBuilderError("");
-                  }}
-                >
-                  Clear builder
-                </button>
-              </div>
-              {builderQuery && (
-                <p className={s.muted}>
-                  Builder preview: <code>{builderQuery}</code>
-                </p>
-              )}
-              {previousQuery !== null && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    update("query", previousQuery);
-                    setPreviousQuery(null);
-                  }}
-                >
-                  Undo last builder change
-                </button>
-              )}
-              {builderError && (
-                <p role="alert" className={s.error}>
-                  {builderError}
-                </p>
-              )}
-              <p className={s.muted}>
-                Use AND, OR, NOT, parentheses, and &quot;exact phrases&quot;.
-                Adjacent words imply AND; commas imply OR. Matching is
-                case-insensitive. No wildcards.
-              </p>
-            </div>
+            {builderError && <p role="alert" className={s.error}>{builderError}</p>}
           </div>
         </details>
       </div>
-      {smart && !busy && !currentInterpretation && <div className={s.searchExamples}><span>Try</span>{EXAMPLES.map(item => <button type="button" key={item.query} onClick={() => { setSettings({ ...settings, query: item.query, tickers: "", mode: "index", searchStyle: "smart", comparison: "none" }); focusSearch(); }}>{item.label}<ArrowUpRight size={11} /></button>)}</div>}
-      <details className={s.playbooks}>
-        <summary>Research playbooks & company groups</summary>
-        <div className={s.filterRow}>
-          {playbooks.map((p) => (
-            <button
-              type="button"
-              key={p.name}
-              onClick={() =>
-                setSettings({ ...settings, ...p, mode: "companies", searchStyle: "exact" })
-              }
-            >
-              {p.name} <ArrowUpRight size={13} />
-            </button>
-          ))}
-          <label>
-            Company group
-            <select
-              defaultValue=""
-              onChange={(e) => {
-                const group = DISCLOSURE_UNIVERSES.find(
-                  (g) => g.id === e.target.value,
-                );
-                if (group)
-                  setSettings({
-                    ...settings,
-                    tickers: group.tickers.join(","),
-                    mode: "companies",
-                    searchStyle: "exact",
-                  });
-                e.target.value = "";
-              }}
-            >
-              <option value="" disabled>
-                Choose a group…
-              </option>
-              {DISCLOSURE_UNIVERSES.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.label} · {g.tickers.length}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() =>
-              setSettings({
-                ...settings,
-                tickers: DISCLOSURE_MARKET_MAP.tickers.join(","),
-                depth: 2,
-                mode: "companies",
-                searchStyle: "exact",
-              })
-            }
-          >
-            Cross-sector sample · 40 companies
-          </button>
-        </div>
-      </details>
+      {currentInterpretation && (currentInterpretation.expansions?.length > 0 || currentInterpretation.warnings?.length > 0) && <details className={s.interpretation}>
+        <summary>How this search is interpreted<ChevronDown size={11} /></summary>
+        <code className={s.expression}>{currentInterpretation.query}</code>
+        {currentInterpretation.expansions?.map(item => <p className={s.detailNote} key={item.term}><strong>{item.term}</strong>: {item.alternatives.join(", ")}</p>)}
+        {currentInterpretation.warnings?.slice(1).map(warning => <p className={s.warning} key={warning}>{warning}</p>)}
+        <button type="button" onClick={() => { setSettings({ ...materialized(), searchStyle: "exact" }); inputRef.current?.focus(); }}>Edit exact search<ArrowUpRight size={12} /></button>
+      </details>}
     </form>
   );
 }

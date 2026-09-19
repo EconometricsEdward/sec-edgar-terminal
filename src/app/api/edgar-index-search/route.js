@@ -177,7 +177,7 @@ function documentNameFromHit(hit) {
 }
 
 function buildDocumentUrl(cik, accession, documentName) {
-  if (!/^\d{1,10}$/.test(cik) || !/^\d{10}-\d{2}-\d{6}$/.test(accession)
+  if (!/^\d{1,10}$/.test(cik) || Number(cik) <= 0 || !/^\d{10}-\d{2}-\d{6}$/.test(accession)
     || !/^[\w][\w.\/-]*$/.test(documentName) || documentName.includes('..')
     || documentName.includes('//')) return null;
   const cikInt = Number.parseInt(cik, 10);
@@ -194,7 +194,8 @@ function normalizeHit(hit, rank, focusTerms = []) {
   const display = parseDisplayName(displayName, cik);
   const accession = source.adsh || '';
   const documentName = documentNameFromHit(hit);
-  const documentUrl = buildDocumentUrl(cik, accession, documentName);
+  const documentUrl = String(hit?._id || '').split(':')[0] === accession
+    ? buildDocumentUrl(cik, accession, documentName) : null;
   const form = source.form || source.root_forms?.[0] || '';
 
   return {
@@ -401,11 +402,16 @@ export async function GET(request) {
     const totalRelation = data?.hits?.total?.relation === 'gte' ? 'gte' : 'eq';
     const seen = new Set();
     const requestedForms = new Set(forms);
-    let excludedFormHits = 0;
+    let excludedFormHits = 0, excludedIdentityHits = 0, excludedDateHits = 0;
+    const requestedCiks = new Set(focusTerms.map(f => f.cik));
     const results = rawHits.map((hit, index) => normalizeHit(hit, from + index + 1, focusTerms)).filter(hit => {
       // The SEC forms filter can also include amendments implicitly. Only
       // explicitly requested forms belong in this result set.
       if (!requestedForms.has(hit.form)) { excludedFormHits++; return false; }
+      // Preserve a focused issuer/date window even if upstream returns an
+      // unexpected hit. An invalid pointer must never become a source link.
+      if ((requestedCiks.size && !requestedCiks.has(hit.cik)) || !hit.documentUrl) { excludedIdentityHits++; return false; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(hit.filingDate) || hit.filingDate < startDate || hit.filingDate > endDate) { excludedDateHits++; return false; }
       const key = `${hit.cik}:${hit.accession}:${hit.documentName}`;
       if (!hit.documentUrl || seen.has(key)) return false;
       seen.add(key);
@@ -414,6 +420,8 @@ export async function GET(request) {
     const timedOut = Boolean(data?.timed_out);
     const page = disclosureIndexPageCoverage({ from, limit, rawHits: rawHits.length, totalHits, totalRelation, returnedHits: results.length, timedOut });
     page.coverage.excludedFormHits = excludedFormHits;
+    page.coverage.excludedIdentityHits = excludedIdentityHits;
+    page.coverage.excludedDateHits = excludedDateHits;
     page.coverage.upstreamHitsReceived = upstreamHits.length;
     page.coverage.totalHitsScope = 'SEC index total before exact form filtering; amendments are returned only when explicitly requested.';
     return Response.json({

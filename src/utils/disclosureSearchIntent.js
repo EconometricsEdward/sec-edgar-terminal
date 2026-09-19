@@ -3,7 +3,7 @@ import { SECTION_OPTIONS } from './disclosureResearch.js';
 
 // Deliberately deterministic: suggestions never silently replace a company or
 // spelling, and every expanded term is returned with the interpreted query.
-export const DISCLOSURE_SEARCH_INTENT_VERSION = 1;
+export const DISCLOSURE_SEARCH_INTENT_VERSION = 2;
 const FORMS = ['10-K', '10-Q', '8-K', '20-F', '40-F', '6-K', 'S-1', 'S-3', 'S-4', 'DEF 14A', 'DEFM14A', 'N-CSR', 'NPORT-P'];
 const SECTIONS = new Set(SECTION_OPTIONS.map(([id]) => id));
 const RESERVED_SYMBOLS = new Set('A AI ALL AM AN AND ARE AS AT BE BOND BONDS BY CAN CASH CEO CFO CHAIN CLOSE CO COST CREDIT DAY DAYS DEBT DO EPS EQUITY FOR FROM FUND FUNDS GAAP GAS GO GOLD HAS IN INCOME IPO IS IT LOSS LOW MAY MONTH NET NEW NO NOT NOW OF OIL ON ONE OPEN OR OUT PRICE PRICES RATE RATES RISK ROE RUN SEC SEE SHARE SHARES SILVER SO STOCK STOCKS SUPPLY TAX TAXES THE TO TOTAL TRUE UNIT UNITS VALUE WAS WE WITH YEAR YIELD'.split(' '));
@@ -39,10 +39,10 @@ export const DISCLOSURE_SEARCH_TOPICS = [
 const directoryIndexes = new WeakMap();
 const TOPIC_WORDS = new Set(DISCLOSURE_SEARCH_TOPICS.flatMap(topic => topic.aliases.flatMap(alias => alias.split(' '))).concat('earnings revenue margin default credit debt annual quarterly financial statements impairment'.split(' ')));
 function companyIndex(companies) {
-  if (!companies || typeof companies !== 'object') return { symbols: new Map(), names: new Map(), records: [] };
+  if (!companies || typeof companies !== 'object') return { symbols: new Map(), names: new Map(), records: [], searchRecords: [] };
   if (directoryIndexes.has(companies)) return directoryIndexes.get(companies);
   const entries = Array.isArray(companies) ? companies.map(value => [value?.ticker, value]) : Object.entries(companies);
-  const symbols = new Map(), names = new Map(), prefixes = new Map(), records = [];
+  const symbols = new Map(), names = new Map(), prefixes = new Map(), records = [], searchRecords = [];
   function addName(alias, entry, target = names) {
     if (alias.length < 4 || GENERIC_NAMES.has(alias)) return;
     if (!target.has(alias)) target.set(alias, new Map());
@@ -56,13 +56,14 @@ function companyIndex(companies) {
     const entry = { ticker, cik: cik.padStart(10, '0'), name };
     symbols.set(ticker, entry); records.push(entry);
     const full = normalized(name);
+    searchRecords.push({ entry, name: full });
     addName(full, entry);
     let core = full, previous;
     do { previous = core; core = core.replace(SUFFIXES, '').trim(); } while (previous !== core);
     addName(core, entry);
     // Distinctive first names are useful, but collisions stay unresolved.
     const coreWords = core.split(' '), first = coreWords[0];
-    if (first.length >= 5 && !GENERIC_NAMES.has(first) && !TOPIC_WORDS.has(first)) addName(first, entry, prefixes);
+    if (first.length >= 4 && !GENERIC_NAMES.has(first) && !TOPIC_WORDS.has(first) && !RESERVED_SYMBOLS.has(first.toUpperCase())) addName(first, entry, prefixes);
     for (let count = 2; count < coreWords.length; count++) {
       const words = coreWords.slice(0, count);
       if (words.some(word => word.length >= 4 && !GENERIC_NAMES.has(word) && !TOPIC_WORDS.has(word) && !RESERVED_SYMBOLS.has(word.toUpperCase()))) addName(words.join(' '), entry, prefixes);
@@ -71,9 +72,15 @@ function companyIndex(companies) {
   // An exact issuer name wins over another issuer's inferred first-word alias:
   // Apple Inc. must not become ambiguous with Apple Hospitality REIT.
   for (const [alias, entries] of prefixes) if (!names.has(alias)) names.set(alias, entries);
-  const index = { symbols, names, records };
+  const index = { symbols, names, records, searchRecords };
   directoryIndexes.set(companies, index);
   return index;
+}
+
+// SEC share-class symbols use hyphens. Prefer an exact directory entry, then
+// accept the common dotted spelling only when that verified SEC symbol exists.
+function companyForTicker(index, ticker) {
+  return index.symbols.get(ticker) || (ticker.includes('.') ? index.symbols.get(ticker.replaceAll('.', '-')) : undefined);
 }
 
 function baseSettings(settings, today) {
@@ -162,7 +169,7 @@ function extractFormsAndSection(text, settings) {
   return text;
 }
 
-function extractCompanies(text, index, settings, chips, suggestions, warnings) {
+function extractCompanies(text, index, settings, chips, suggestions, warnings, unresolvedTickers) {
   const selected = [], identities = new Set();
   const add = (identity, identifier) => {
     if (identities.has(identity.cik)) return;
@@ -175,13 +182,19 @@ function extractCompanies(text, index, settings, chips, suggestions, warnings) {
     if (Number(value) <= 0) fail('Enter a positive SEC CIK.');
     const cik = value.padStart(10, '0'); add({ cik }, cik); return ' ';
   });
-  text = text.replace(/(?:\$([A-Za-z][A-Za-z0-9.-]{0,19})|\b(?:ticker|symbol)\s*[:=]?\s*([A-Za-z][A-Za-z0-9.-]{0,19})|\b([A-Za-z][A-Za-z0-9.-]{1,19})\b)(?:[’']s\b)?/g, (match, dollar, labelled, bare, offset) => {
-    const ticker = String(dollar || labelled || bare).toUpperCase(), entry = index.symbols.get(ticker);
-    if (!entry) return match;
-    const explicit = dollar || labelled;
-    if (!explicit && (RESERVED_SYMBOLS.has(ticker) || bare !== ticker && (ticker.length < 3 || text.slice(0, offset).trim()))) return match;
-    add(entry, ticker); return ' ';
+  text = text.replace(/(?:\$([A-Za-z][A-Za-z0-9.-]{0,19})|\b(?:ticker|symbol)\b\s*[:=]?\s*([A-Za-z][A-Za-z0-9.-]{0,19}))(?:[’']s\b)?/gi, (match, dollar, labelled) => {
+    const ticker = String(dollar || labelled).toUpperCase(), entry = companyForTicker(index, ticker);
+    if (!entry) {
+      if (index.symbols.size) fail(`No SEC company matched ${ticker}. Check the symbol or use its SEC CIK.`);
+      unresolvedTickers.push(ticker);
+      warnings.push(`The company symbol ${ticker} has not been verified against the SEC directory. Enter its CIK in the company filter to keep the search company-specific.`);
+      return match;
+    }
+    add(entry, entry.ticker); return ' ';
   });
+  // Resolve full issuer names before bare symbols: "Ford Motor" is the auto
+  // company, not FORD (Forward Industries). An isolated all-caps symbol still
+  // takes priority over a guessed one-word issuer prefix.
   const words = [...text.matchAll(/[\p{L}\p{N}]+/gu)], occupied = new Set(), spans = [];
   for (let i = 0; i < words.length; i++) {
     if (occupied.has(i)) continue;
@@ -190,6 +203,7 @@ function extractCompanies(text, index, settings, chips, suggestions, warnings) {
       if (Array.from({ length: count }, (_, offset) => i + offset).some(value => occupied.has(value))) continue;
       const alias = words.slice(i, end).map(word => normalized(word[0])).join(' '), matches = index.names.get(alias);
       if (!matches) continue;
+      if (count === 1 && words[i][0] === words[i][0].toUpperCase() && companyForTicker(index, words[i][0])) continue;
       if (matches.size !== 1) {
         for (const entry of [...matches.values()].slice(0, 3)) suggestions.push({ kind: 'company', label: `${entry.name} (${entry.ticker})`, query: text.replace(new RegExp(`\\b${escape(alias)}\\b`, 'i'), entry.ticker), ...entry });
         warnings.push(`“${alias}” matches more than one SEC issuer. Select a company or use its ticker; it remains a search term.`);
@@ -202,6 +216,16 @@ function extractCompanies(text, index, settings, chips, suggestions, warnings) {
     }
   }
   for (const [start, end] of spans.reverse()) text = `${text.slice(0, start)} ${text.slice(end).replace(/^[’']s\b/i, '')}`;
+  text = text.replace(/\b([A-Za-z][A-Za-z0-9.-]{0,19})\b(?:[’']s\b)?/g, (match, bare, offset) => {
+    const ticker = bare.toUpperCase(), entry = companyForTicker(index, ticker);
+    if (!entry && !index.symbols.size && bare === ticker && /^[A-Z][A-Z0-9.-]{0,4}$/.test(ticker)
+      && !RESERVED_SYMBOLS.has(ticker) && !TOPIC_WORDS.has(ticker.toLowerCase()) && !GENERIC_NAMES.has(ticker.toLowerCase())) {
+      unresolvedTickers.push(ticker);
+      warnings.push(`“${ticker}” may be a company symbol but cannot be verified without the SEC directory. Use Exact search if it is a literal term.`);
+    }
+    if (!entry || RESERVED_SYMBOLS.has(ticker) || bare !== ticker && (ticker.length < 3 || text.slice(0, offset).trim())) return match;
+    add(entry, entry.ticker); return ' ';
+  });
   if (selected.length > 5) fail('Search up to 5 companies at a time.');
   if (selected.length) settings.tickers = selected.join(',');
   return text;
@@ -246,6 +270,38 @@ function editDistance(a, b) {
   return row[b.length];
 }
 
+/**
+ * Company autocomplete consumes only the matching issuer prefix, never its topic.
+ * @param {string} raw
+ * @param {{ companies?: Record<string, { ticker?: string, cik?: string | number, cik_str?: string | number, name?: string, title?: string }> | Array<{ ticker?: string, cik?: string | number, cik_str?: string | number, name?: string, title?: string }> | null, limit?: number }} options
+ */
+export function disclosureCompanySuggestions(raw, { companies, limit = 4 } = {}) {
+  if (typeof raw !== 'string' || raw.length > 1000 || preservesDisclosureSearchSyntax(raw)) return [];
+  const text = raw.trim(), index = companyIndex(companies), cap = Math.max(1, Math.min(8, Number(limit) || 4));
+  if (!text || !index.records.length) return [];
+  const explicit = text.match(/^(?:\$|(?:ticker|symbol)\b\s*[:=]?\s*)([A-Za-z][A-Za-z0-9.-]{0,19})(?:[’']s\b)?/i);
+  const words = [...text.matchAll(/[\p{L}\p{N}]+(?:[.-][\p{L}\p{N}]+)*/gu)];
+  const candidates = explicit ? [{ prefix: explicit[1], end: explicit[0].length, explicit: true }]
+    : words.slice(0, 10).map(word => ({ prefix: text.slice(0, word.index + word[0].length), end: word.index + word[0].length })).reverse();
+  for (const candidate of candidates) {
+    const alias = normalized(candidate.prefix), symbol = candidate.prefix.toUpperCase();
+    if (!candidate.explicit && alias.split(' ').every(word => GENERIC_NAMES.has(word) || TOPIC_WORDS.has(word) || RESERVED_SYMBOLS.has(word.toUpperCase()))) continue;
+    const ticker = companyForTicker(index, symbol), named = index.names.get(alias);
+    const preferred = ticker && (candidate.explicit || candidate.prefix === symbol || !named) ? [ticker] : named ? [...named.values()] : [];
+    const partial = preferred.length ? [] : index.searchRecords.filter(record =>
+      (alias.length >= 2 || candidate.explicit) && (record.name.startsWith(alias) || record.entry.ticker.startsWith(symbol)),
+    ).map(record => record.entry);
+    const seen = new Set(), selected = [...preferred, ...partial].filter(entry => {
+      if (seen.has(entry.cik)) return false;
+      seen.add(entry.cik); return true;
+    }).slice(0, cap);
+    if (!selected.length) continue;
+    const remainingQuery = text.slice(candidate.end).replace(/^[’']s\b/i, '').replace(/^[\s,.:;]+/, '').trim();
+    return selected.map(entry => ({ kind: 'company', label: `${entry.name} (${entry.ticker})`, ...entry, remainingQuery, query: `${entry.ticker} ${remainingQuery}` }));
+  }
+  return [];
+}
+
 /** Lightweight local suggestions; choosing one is always an explicit UI action. */
 export function disclosureSearchSuggestions(raw, { companies } = {}) {
   if (typeof raw !== 'string' || raw.length > 1000 || preservesDisclosureSearchSyntax(raw)) return [];
@@ -276,7 +332,7 @@ export function disclosureSearchSuggestions(raw, { companies } = {}) {
 export function interpretDisclosureSearch(raw, { companies, now = new Date(), settings: current = {}, style = 'smart' } = {}) {
   if (typeof raw !== 'string' || !raw.trim() || raw.length > 1000 || /[\u0000-\u001f\u007f<>]/.test(raw)) fail('Enter a disclosure question or search expression using at most 1,000 characters.');
   if (!['smart', 'exact'].includes(style)) fail('Choose smart or exact search.');
-  const today = dateString(now), settings = baseSettings(current, today), warnings = [], chips = [], expansions = [];
+  const today = dateString(now), settings = baseSettings(current, today), warnings = [], chips = [], expansions = [], unresolvedTickers = [];
   const originalQuery = raw.trim();
   const normalizedQuery = originalQuery.replace(/[“”]/g, '"');
   if (normalizedQuery !== originalQuery) warnings.push('Curly quotation marks were normalized to exact phrase quotes.');
@@ -293,7 +349,7 @@ export function interpretDisclosureSearch(raw, { companies, now = new Date(), se
   text = extractDateWindow(text, settings, today, warnings);
   text = extractFormsAndSection(text, settings);
   text = simplifyLanguage(text);
-  text = extractCompanies(text, companyIndex(companies), settings, chips, suggestions, warnings);
+  text = extractCompanies(text, companyIndex(companies), settings, chips, suggestions, warnings, unresolvedTickers);
   if (chips.length) text = simplifyResolvedQuestion(text, originalQuery);
   text = simplifyLanguage(text);
   const naturalBranches = text.split(/\s+or\s+/i);
@@ -338,7 +394,7 @@ export function interpretDisclosureSearch(raw, { companies, now = new Date(), se
     } else throw error;
   }
   settings.query = query;
-  return { version: DISCLOSURE_SEARCH_INTENT_VERSION, originalQuery, query, settings, chips: settingsChips(settings, chips), expansions, suggestions: suggestions.slice(0, 8), warnings: unique(warnings), style: 'smart' };
+  return { version: DISCLOSURE_SEARCH_INTENT_VERSION, originalQuery, query, settings, chips: settingsChips(settings, chips), expansions, suggestions: suggestions.slice(0, 8), warnings: unique(warnings), unresolvedTickers: unique(unresolvedTickers), style: 'smart' };
 }
 
 function settingsChips(settings, companyChips) {

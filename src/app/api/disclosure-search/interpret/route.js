@@ -38,6 +38,10 @@ export async function GET(request) {
     try { companies = await boundedDirectory(signal); }
     catch {
       request.signal.throwIfAborted();
+      if (validated.unresolvedTickers?.length) return Response.json({
+        error: 'The SEC company directory is temporarily unavailable, so the requested company could not be verified. Retry or enter its SEC CIK in the company filter.',
+        code: 'COMPANY_DIRECTORY_UNAVAILABLE',
+      }, { status: 503, headers: HEADERS });
       validated.warnings.push('The SEC company directory is temporarily unavailable. Company names remain literal search terms; retry or enter a CIK in the company filter.');
       return Response.json(validated, { headers: HEADERS });
     }

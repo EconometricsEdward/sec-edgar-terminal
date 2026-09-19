@@ -164,3 +164,33 @@ test('implicit SEC amendments are filtered locally without losing their raw curs
     assert.ok(amended.results.some(hit => hit.form === '8-K/A'));
   } finally { global.fetch = original; }
 });
+
+
+test('focused source links reject mismatched CIKs, accessions and dates without moving the raw cursor', async () => {
+  const original = global.fetch, cik = '0000999932';
+  const hits = Array.from({ length: 6 }, (_, i) => ({
+    _id: `${cik}-26-${String(i + 1).padStart(6, '0')}:report.htm`,
+    _source: { ciks: [cik], display_names: [`Source identity fixture (CIK ${cik})`],
+      adsh: `${cik}-26-${String(i + 1).padStart(6, '0')}`, form: '10-K', file_date: '2026-02-02' },
+  }));
+  hits[1]._source.ciks = ['0000999933'];
+  hits[2]._source.ciks = [];
+  hits[3]._source.adsh = `${cik}-26-999999`;
+  hits[4]._source.file_date = '2024-12-31';
+  // A requested co-registrant must use its own aligned display name and CIK.
+  hits[5]._source.ciks = ['0000999934', cik];
+  hits[5]._source.display_names = ['Unrelated co-registrant', `Requested registrant (CIK ${cik})`];
+  global.fetch = async () => Response.json({ hits: { total: { value: 20, relation: 'eq' }, hits } });
+  try {
+    const response = await GET(new Request(`https://example.test/api/edgar-index-search?expression=liquidity&focus=${cik}&forms=10-K&startdt=2025-01-01&enddt=2026-09-19&limit=6`));
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.returnedHits, 2);
+    assert.equal(result.nextFrom, 6);
+    assert.deepEqual(result.results.map(hit => hit.rank), [1, 6]);
+    assert.equal(result.results[1].companyName, 'Requested registrant');
+    assert.ok(result.results.every(hit => hit.cik === cik && hit.documentUrl.includes(`/999932/`)));
+    assert.equal(result.coverage.excludedIdentityHits, 3);
+    assert.equal(result.coverage.excludedDateHits, 1);
+  } finally { global.fetch = original; }
+});

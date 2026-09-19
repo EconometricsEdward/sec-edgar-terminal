@@ -6,9 +6,9 @@ import type { SearchSettings } from "./disclosureTypes";
 
 export const metadata: Metadata = {
   ...buildPageMetadata({
-    title: "SEC Disclosure Research — Search, Compare & Collect Evidence",
+    title: "SEC Disclosure Search — Company Filings & Original Passages",
     description:
-      "Search SEC disclosures by company, topic, or research question. Find ranked filing passages, inspect original sources, compare wording, and collect evidence.",
+      "Search SEC filings by company, ticker, topic, or exact phrase. Read matching passages in context, compare wording, and trace results to original SEC sources.",
     path: "/disclosures",
   }),
 };

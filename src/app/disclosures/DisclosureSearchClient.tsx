@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { mapDisclosureWork, mergeDisclosureSearchFilings } from "../../utils/disclosureSearchFlow.js";
 import {
   FileSearch,
-  BookmarkPlus,
   Link as LinkIcon,
   CheckCircle2,
   AlertCircle,
@@ -14,21 +13,11 @@ import {
   legacyDisclosureQuery,
   parseDisclosureQuery,
 } from "../../utils/disclosureQuery.js";
-import {
-  emptyDisclosureNotebook,
-  readDisclosureNotebook,
-  writeDisclosureNotebook,
-  DISCLOSURE_NOTEBOOK_KEY,
-  filingEvidenceId,
-  collectDisclosureEvidence,
-  updateDisclosureMonitor,
-  passageEvidenceId,
-} from "../../utils/disclosureNotebook.js";
+import { filingEvidenceId } from "../../utils/disclosureNotebook.js";
 import DisclosureQueryBar from "./DisclosureQueryBar";
 const DisclosureReader = dynamic(() => import("./DisclosureReader"));
 import DisclosureResults from "./DisclosureResults";
 import DisclosureCoverageDesk from "./DisclosureCoverageDesk";
-const DisclosureInbox = dynamic(() => import("./DisclosureInbox").then((module) => module.DisclosureInbox));
 import { parseDisclosureReaderState } from "../../utils/disclosureReaderState.js";
 import {
   DISCLOSURE_SESSION_KEY,
@@ -40,15 +29,11 @@ import {
 } from "../../utils/disclosureCoverage.js";
 const DisclosureMatrix = dynamic(() => import("./DisclosureComparisons").then((module) => module.DisclosureMatrix));
 const DisclosureTrends = dynamic(() => import("./DisclosureComparisons").then((module) => module.DisclosureTrends));
-const DisclosureCollections = dynamic(() => import("./DisclosureLibrary").then((module) => module.DisclosureCollections));
 import {
   companyInputs,
   queryParams,
   type CompanyScan,
-  type DisclosureNotebook,
   type Filing,
-  type Passage,
-  type SavedSearch,
   type SearchSettings,
 } from "./disclosureTypes";
 import s from "./disclosures.module.css";
@@ -156,21 +141,13 @@ export default function DisclosureSearchClient({
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState("evidence");
+  const [tab, setTab] = useState("results");
   const [reader, setReader] = useState<{
     filing: Filing;
     settings: SearchSettings;
     initialState?: any;
   } | null>(null);
   const [readerChoices, setReaderChoices] = useState<Filing[]>([]);
-  const [notebook, setNotebook] = useState<DisclosureNotebook>(
-    emptyDisclosureNotebook,
-  );
-  const [storageReady, setStorageReady] = useState(false);
-  const [storageError, setStorageError] = useState("");
-  const [collectionsOpened, setCollectionsOpened] = useState(false);
-  const [saveName, setSaveName] = useState("");
-  const [checking, setChecking] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -289,7 +266,7 @@ export default function DisclosureSearchClient({
       }
     } catch (error) {
       setNotice(
-        `The previous result session could not be restored: ${error.message}. Run a new search; saved collections remain separate.`,
+        `The previous result session could not be restored: ${error.message}. Run a new search.`,
       );
     }
     setSessionReady(true);
@@ -305,7 +282,7 @@ export default function DisclosureSearchClient({
           sessionStorage.setItem(DISCLOSURE_SESSION_KEY, serialized);
       } catch {
         setNotice(
-          "Results remain on this page, but this browser could not retain them across reload. Export the coverage ledger or save the query before leaving.",
+          "Results remain on this page, but this browser could not retain them across reload. Copy the search link before leaving.",
         );
       }
     };
@@ -317,55 +294,13 @@ export default function DisclosureSearchClient({
     };
   }, [sessionReady, active, companies, aliases]);
   const running = useRef(false);
-  const notebookRef = useRef(notebook);
-  useEffect(() => {
-    notebookRef.current = notebook;
-  }, [notebook]);
-  useEffect(() => {
-    const load = () => {
-      try {
-        setNotebook(
-          readDisclosureNotebook(localStorage.getItem(DISCLOSURE_NOTEBOOK_KEY)),
-        );
-        setStorageReady(true);
-        setStorageError("");
-      } catch (error) {
-        setStorageError(error.message);
-      }
-    };
-    load();
-    const changed = (event: StorageEvent) => {
-      if (event.key === DISCLOSURE_NOTEBOOK_KEY) load();
-    };
-    window.addEventListener("storage", changed);
-    return () => {
-      window.removeEventListener("storage", changed);
-      abortRef.current?.abort();
-    };
-  }, []);
-  const changeNotebook = useCallback(
-    (update: (current: DisclosureNotebook) => DisclosureNotebook) => {
-      if (!storageReady) {
-        setStorageError(
-          "Browser storage is unavailable. Your changes were not saved.",
-        );
-        return false;
-      }
-      try {
-        const next = writeDisclosureNotebook(localStorage, update);
-        setNotebook(next);
-        notebookRef.current = next;
-        setStorageError("");
-        return true;
-      } catch (error) {
-        setStorageError(
-          `Could not save: ${error.message}. Existing saved research has been retained.`,
-        );
-        return false;
-      }
-    },
-    [storageReady],
-  );
+  const draftRevision = useRef(0);
+  const updateDraft = (next: SearchSettings) => {
+    draftRevision.current++;
+    setSettings(next);
+    setInterpretation(null);
+  };
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
   const enrichCandidates = async (candidates: Filing[], next: SearchSettings, signal: AbortSignal, startedAt?: number) => {
     let completed = 0;
     await mapDisclosureWork(candidates, async (filing: Filing) => {
@@ -388,14 +323,16 @@ export default function DisclosureSearchClient({
     requestedSettings: SearchSettings,
     options: { resume?: boolean; targets?: string[]; after?: string; view?: string } = {},
   ) => {
-    if (running.current) return;
+    if (running.current) abortRef.current?.abort();
     running.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
+    const requestedRevision = ++draftRevision.current;
     const startedAt = Date.now();
     // Show the requested question immediately. A later response must not overwrite
     // a new draft the user has typed while this search was running.
     setSettings({ ...requestedSettings, comparison: requestedSettings.comparison || "none", searchStyle: requestedSettings.searchStyle || "exact" });
+    setInterpretation(null);
     setBusy(true);
     setError("");
     setNotice("");
@@ -410,7 +347,9 @@ export default function DisclosureSearchClient({
       activeRef.current = next;
       // Inferred filters belong to this result set; editable settings retain
       // only the explicit controls from the requested question.
-      setInterpretation(currentInterpretation);
+      // A completed request may describe the result set, but must never replace
+      // filters or query text the user has edited since submitting it.
+      setInterpretation(draftRevision.current === requestedRevision ? currentInterpretation : null);
       setRestoredAt("");
       if (!continuing) {
         setCompanies([]);
@@ -422,7 +361,7 @@ export default function DisclosureSearchClient({
         setPreparedCoverage(null);
         setPreparedPage(null);
         setReader(null);
-        setTab(options.view || "evidence");
+        setTab(options.view || "results");
         setSearchTiming(next.mode === "index" ? { firstResult: Date.now() - startedAt } : {});
       }
       const params = queryParams(next);
@@ -523,6 +462,7 @@ export default function DisclosureSearchClient({
     } catch (error) {
       if (!controller.signal.aborted) setError(error.message);
     } finally {
+      if (abortRef.current !== controller) return;
       running.current = false;
       setBusy(false);
       setInterpreting(false);
@@ -541,6 +481,7 @@ export default function DisclosureSearchClient({
     );
     try {
       const result = await verifyFiling(filing, active, controller.signal);
+      if (controller.signal.aborted) return;
       const updated = replaceDisclosureFiling(companiesRef.current, result);
       companiesRef.current = updated;
       setCompanies(updated);
@@ -555,11 +496,12 @@ export default function DisclosureSearchClient({
           `Retry failed: ${error.message}. The previous result remains available.`,
         );
     } finally {
+      if (abortRef.current !== controller) return;
       running.current = false;
       setBusy(false);
       setProgress(
         controller.signal.aborted
-          ? "Retry stopped; previous evidence retained."
+          ? "Retry stopped; previous results retained."
           : "Document retry finished.",
       );
     }
@@ -573,143 +515,15 @@ export default function DisclosureSearchClient({
     if (initial.query && !activeRef.current && !parseDisclosureReaderState(new URLSearchParams(window.location.search)))
       void runRef.current(settings);
   }, [sessionReady, initial.query, settings]);
-  const checkSaved = useCallback(
-    async (saved: SavedSearch) => {
-      if (running.current) return;
-      running.current = true;
-      setChecking(saved.id);
-      setError("");
-      const controller = new AbortController();
-      abortRef.current = controller;
-      const next = {
-        ...saved.settings,
-        end: saved.followLatest
-          ? new Date().toISOString().slice(0, 10)
-          : saved.settings.end,
-      };
-      const results: CompanyScan[] = [];
-      try {
-        if (next.mode === "index") {
-          const data = await indexSearch(next, controller.signal);
-          const filings: Filing[] = [];
-          for (const hit of data.results.slice(0, 12)) {
-            const filing = indexFiling(hit);
-            try {
-              filings.push(await verifyFiling(filing, next, controller.signal));
-            } catch (error) {
-              if (controller.signal.aborted) throw error;
-              filings.push({
-                ...filing,
-                status: "fetch-failed",
-                reason: error.message,
-              });
-            }
-          }
-          results.push({
-            ticker: "Index candidate sample",
-            filings,
-            reviewed: filings.filter((f) => f.status === "reviewed").length,
-            fetchFailed: filings.filter((f) => f.status === "fetch-failed")
-              .length,
-            sectionUnavailable: filings.filter(
-              (f) => f.status === "section-unavailable",
-            ).length,
-            limited: data.totalHits > 12,
-          });
-        } else {
-          const seenCiks = new Set();
-          for (const ticker of companyInputs(next.tickers)) {
-            try {
-              const params = queryParams(next);
-              params.set("ticker", ticker);
-              const result = await jsonResponse(
-                await fetch(`/api/disclosure-research?${params}`, {
-                  signal: controller.signal,
-                }),
-              );
-              if (!seenCiks.has(result.cik)) {
-                seenCiks.add(result.cik);
-                results.push(result);
-              }
-            } catch (error) {
-              if (controller.signal.aborted) throw error;
-              results.push({ ticker, filings: [], error: error.message });
-            }
-          }
-        }
-        let applied = false;
-        const stored = changeNotebook((current) => ({
-          ...current,
-          searches: current.searches.map((item) => {
-            if (
-              item.id !== saved.id ||
-              disclosureSearchIdentity(item.settings) !==
-                disclosureSearchIdentity(saved.settings)
-            )
-              return item;
-            applied = true;
-            return updateDisclosureMonitor(
-              item,
-              results,
-              new Date().toISOString(),
-              next,
-            );
-          }),
-        }));
-        if (stored)
-          setNotice(
-            applied
-              ? `Checked “${saved.name}”. New verified matches and coverage are in the inbox.`
-              : "The saved query changed or was removed during this check. Its current monitoring history was retained; run the updated query to check it.",
-          );
-      } catch (error) {
-        if (!controller.signal.aborted)
-          setError(
-            `Monitoring check failed: ${error.message}. The previous baseline is retained.`,
-          );
-      } finally {
-        setChecking("");
-        running.current = false;
-      }
-    },
-    [changeNotebook],
-  );
-  useEffect(() => {
-    if (!storageReady) return;
-    const check = async () => {
-      if (document.visibilityState !== "visible" || running.current) return;
-      for (const saved of notebookRef.current.searches) {
-        if (
-          saved.autoCheck &&
-          Date.now() - Date.parse(saved.lastChecked || saved.createdAt) >
-            15 * 60000
-        )
-          await checkSaved(saved);
-      }
-    };
-    void check();
-    const timer = setInterval(check, 60000);
-    return () => clearInterval(timer);
-  }, [storageReady, checkSaved]);
   const requested = useMemo(() => {
     return active
       ? [...new Set(companyInputs(active.tickers).map((t) => aliases[t] || t))]
       : [];
   }, [active, aliases]);
-  const filings = companies.flatMap((c) => c.filings);
-  const reviewed = filings.filter((f) => f.status === "reviewed");
-  const matching = reviewed.filter((f) => f.matched);
+  const filings = useMemo(() => companies.flatMap((c) => c.filings), [companies]);
   const allResults: Filing[] = useMemo(() => active?.mode === "index"
     ? mergeDisclosureSearchFilings((index?.results || []).map(indexFiling), prepared, verified)
     : filings, [active?.mode, index, prepared, verified, filings]);
-  const unread = notebook.searches.reduce(
-    (n, saved) => n + saved.inbox.filter((i) => !i.reviewed).length,
-    0,
-  );
-  const evidenceCount = notebook.collections.reduce(
-    (n, c) => n + c.items.length,
-    0,
-  );
   const open = (
     filing: Filing,
     next: SearchSettings,
@@ -722,60 +536,6 @@ export default function DisclosureSearchClient({
     setReader(null);
     evidenceTrigger.current?.focus({ preventScroll: true });
   };
-  const markResult = (id: string, reviewed: boolean) =>
-    changeNotebook((current) => {
-      const map = { ...current.reviewedFilings };
-      if (reviewed) map[id] = new Date().toISOString();
-      else delete map[id];
-      const entries = Object.entries(map)
-        .sort((a, b) => b[1].localeCompare(a[1]))
-        .slice(0, 2000);
-      return { ...current, reviewedFilings: Object.fromEntries(entries) };
-    });
-  const collect = (
-    filing: Filing,
-    passage: Passage,
-    next: SearchSettings,
-    collection: string,
-  ) => {
-    const item = collectDisclosureEvidence(filing, passage, next);
-    item.labelReviewed = Boolean(
-      notebook.labels[passageEvidenceId(filing, passage)]?.reviewed,
-    );
-    changeNotebook((current) => ({
-      ...current,
-      collections: current.collections.map((c) =>
-        c.id === collection && !c.items.some((e) => e.id === item.id)
-          ? { ...c, items: [...c.items, item] }
-          : c,
-      ),
-    }));
-  };
-  const save = () => {
-    if (!active || !saveName.trim()) return;
-    const seen = (active.mode === "index" ? verified : reviewed)
-      .filter((f) => f.status === "reviewed")
-      .map(filingEvidenceId);
-    const now = new Date().toISOString();
-    const saved = changeNotebook((current) => ({
-      ...current,
-      searches: [
-        ...current.searches,
-        {
-          id: crypto.randomUUID(),
-          name: saveName.trim(),
-          settings: { ...active },
-          seen,
-          createdAt: now,
-          lastChecked: now,
-          inbox: [],
-          autoCheck: false,
-          followLatest: active.end === now.slice(0, 10),
-        },
-      ],
-    }));
-    if (saved) setSaveName("");
-  };
   const verifyCandidates = async () => {
     if (!active || running.current) return;
     running.current = true;
@@ -785,9 +545,10 @@ export default function DisclosureSearchClient({
     const candidates = allResults.filter((f) => f.status === "index-candidate" || f.status === "fetch-failed" || active.comparison !== "none" && f.status === "indexed-match").slice(0, 8);
     try { await enrichCandidates(candidates, active, controller.signal); }
     finally {
+      if (abortRef.current !== controller) return;
       setBusy(false);
       running.current = false;
-      setProgress(controller.signal.aborted ? "Verification stopped; completed passages retained." : "Source checks finished. Open any result to read the full evidence.");
+      setProgress(controller.signal.aborted ? "Verification stopped; completed passages retained." : "Source checks finished. Open any result to read the full passage.");
     }
   };
   const loadMoreIndex = async () => {
@@ -807,6 +568,7 @@ export default function DisclosureSearchClient({
     } catch (error) {
       if (!controller.signal.aborted) setError(`Could not load more filings: ${error.message}. Your current results remain available.`);
     } finally {
+      if (abortRef.current !== controller) return;
       running.current = false;
       setBusy(false);
       setProgress(controller.signal.aborted ? "Stopped. Earlier results retained." : "More filings are ready to read.");
@@ -831,409 +593,104 @@ export default function DisclosureSearchClient({
     } catch (error) {
       if (!controller.signal.aborted) setError(`Additional passages could not be loaded: ${error.message}. Current results remain available.`);
     } finally {
+      if (abortRef.current !== controller) return;
       running.current = false;
       setBusy(false);
       setProgress(controller.signal.aborted ? "Stopped. Earlier results retained." : "Prepared passage search finished.");
     }
   };
-  const setLabel = (id: string, label: string) =>
-    changeNotebook((current) => ({
-      ...current,
-      labels: { ...current.labels, [id]: { label, reviewed: true } },
-      collections: current.collections.map((c) => ({
-        ...c,
-        items: c.items.map((item) =>
-          item.id === id
-            ? { ...item, languageLabel: label, labelReviewed: true }
-            : item,
-        ),
-      })),
-    }));
-  return (
-    <div className={s.page} ref={pageRef} data-research-view={tab}>
-      <header className={s.header}>
-        <div>
-          <span className={s.eyebrow}>
-            <FileSearch size={15} /> SEC disclosure research
-          </span>
-        <h1>Search the disclosures.</h1>
-          <p>
-            Find what companies say. Read the evidence behind it.
-          </p>
-        </div>
-        <span className={s.sourceBadge}>
-          <span /> SEC originals linked
-        </span>
-      </header>
-      <DisclosureQueryBar
-        settings={settings}
-        setSettings={(next) => { setSettings(next); setInterpretation(null); }}
-        onSearch={run}
-        busy={busy || Boolean(checking)}
-        interpreting={interpreting}
-        interpretation={interpretation}
-        onApplySuggestion={(query) => { setSettings({ ...settings, query }); setInterpretation(null); }}
-        stop={() => abortRef.current?.abort()}
-      />
-      {(error || storageError) && (
-        <div role="alert" className={s.error}>
-          <AlertCircle size={17} /> {error} {storageError}
-        </div>
-      )}
-      {notice && (
-        <div role="status" className={s.notice}>
-          <CheckCircle2 size={16} /> {notice}
-        </div>
-      )}
-      {progress && (
-        <p role="status" className={s.progress}>
-          {busy && <span className={s.pulse} />}
-          {progress}
-        </p>
-      )}
-      <nav className={s.tabs} aria-label="Disclosure research views">
-        {[
-          ["evidence", "Evidence"],
-          ["changes", "Changes"],
-          ["matrix", "Topic matrix"],
-          ["trends", "Trends"],
-          ["inbox", `Inbox${unread ? ` · ${unread}` : ""}`],
-          [
-            "collections",
-            `Collections${evidenceCount ? ` · ${evidenceCount}` : ""}`,
-          ],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            aria-current={tab === id ? "page" : undefined}
-            onClick={() => {
-              setTab(id);
-              if (id === "collections") setCollectionsOpened(true);
-              setReader(null);
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      {active && !["inbox", "collections"].includes(tab) && (
-        <>
-          <div className={s.summaryCards}>
-            {(active.mode === "companies"
-              ? [
-                  [
-                    reviewed.length,
-                    "Documents reviewed",
-                    `${filings.length} selected · ${requested.length} companies`,
-                  ],
-                  [
-                    matching.length,
-                    "Filings with matches",
-                    "Full query verified in selected scope",
-                  ],
-                  [
-                    filings.filter((f) => f.status !== "reviewed").length +
-                      companies.filter(
-                        (c) => c.error || c.limited || c.historyLimited,
-                      ).length +
-                      Math.max(0, requested.length - companies.length),
-                    "Coverage gaps",
-                    "Source gaps, pending issuers & bounded histories",
-                  ],
-                ]
-              : [
-                  [
-                    index?.totalHits ?? "—",
-                    "SEC index candidates",
-                    "Matching filing candidates in the SEC index",
-                  ],
-                  [
-                    allResults.filter((f) => f.matched).length,
-                    "Filings with passages",
-                    "Original excerpts matching your search",
-                  ],
-                  [
-                    allResults.length,
-                    "Filings loaded",
-                    index?.hasMore ? "More filings available below" : "See search coverage for scope",
-                  ],
-                ]
-            ).map(([value, label, detail]) => (
-              <div key={String(label)}>
-                <strong>
-                  {typeof value === "number" ? value.toLocaleString() : value}
-                  {label === "SEC index candidates" &&
-                  index?.totalRelation === "gte"
-                    ? "+"
-                    : ""}
-                </strong>
-                <span>{label}</span>
-                <small>{detail}</small>
-              </div>
-            ))}
+  const resultsView = tab === "results" || tab === "changes";
+  const sourceCoverage = active && <details className={s.searchCoverage}>
+    <summary>Search coverage & source checks</summary>
+    {active.mode === "companies" ? <DisclosureCoverageDesk
+      settings={active} companies={companies} aliases={aliases} busy={busy} restoredAt={restoredAt}
+      onResume={() => run(active, { resume: true })}
+      onRetry={(ticker) => run(active, { resume: true, targets: [ticker] })}
+      onMore={(company) => run(active, { resume: true, targets: [company.ticker], after: company.nextCursor })}
+      onRetryFiling={retryDocument}
+    /> : <>
+      <p>{index?.totalHits != null ? `${index.totalHits.toLocaleString()}${index.totalRelation === "gte" ? "+" : ""} SEC index candidates. ` : ""}{index?.results?.length || 0} candidates loaded; {verified.filter((f) => f.status === "reviewed").length} documents checked against their filing text. Candidate counts do not establish matching passages or disclosure prevalence.</p>
+      {index?.query?.notes?.map((note: string) => <p key={note}>{note}</p>)}
+      {index?.coverage?.totalHitsScope && <p>{index.coverage.totalHitsScope}</p>}
+      {preparedCoverage && <p>{preparedCoverage.available === false ? "Prepared passages are unavailable for this search. SEC discovery and full filing review remain available." : `Prepared passage coverage: ${preparedCoverage.documentCount ?? preparedCoverage.documents ?? "recent indexed"} documents. ${preparedCoverage.note || "This is a bounded selection, not the complete EDGAR archive."}`}</p>}
+      {searchTiming.firstResult != null && <p>First results in {(searchTiming.firstResult / 1000).toFixed(1)} seconds{searchTiming.firstPassage != null ? ` · first matching passage in ${(searchTiming.firstPassage / 1000).toFixed(1)} seconds` : ""}.</p>}
+      {verified.filter((f) => f.status !== "reviewed" || f.comparisonError).map((f) => <p key={filingEvidenceId(f)}>{f.ticker} · {f.form} · {f.filingDate}: {f.reason || f.status}{f.comparisonError ? ` · ${f.comparisonError}` : ""}</p>)}
+    </>}
+  </details>;
+  return <div className={`${s.page} ${s.searchPage}`} ref={pageRef} data-research-view={tab} data-has-results={Boolean(active)}>
+    <header className={s.searchHeader}>
+      <div><span className={s.eyebrow}><FileSearch size={14} /> SEC disclosure search</span>
+        <h1>Find what companies <em>say.</em></h1>
+        <p>Search filing text by company, topic, or exact phrase. Read the original passage in context.</p>
+      </div>
+      <span className={s.sourceBadge}><span /> Original SEC filings</span>
+    </header>
+    <DisclosureQueryBar settings={settings} setSettings={updateDraft}
+      onSearch={run} busy={busy} interpreting={interpreting} interpretation={interpretation}
+      onApplySuggestion={(query) => updateDraft({ ...settings, query })}
+      stop={() => abortRef.current?.abort()} />
+    {error && <div role="alert" className={s.error}><AlertCircle size={17} /> {error}</div>}
+    {notice && <div role="status" className={s.notice}><CheckCircle2 size={16} /> {notice}</div>}
+    {progress && (busy || /stopped/i.test(progress)) && <p role="status" className={s.progress}>{busy && <span className={s.pulse} />}{progress}</p>}
+    {!active && !reader && <section className={s.searchStart} aria-label="Example disclosure searches">
+      <span>Try a search</span>
+      <div>{[
+        ["Microsoft cybersecurity risks", "Microsoft cybersecurity risks"],
+        ["Bank deposit concentrations", "JPMorgan deposit concentrations"],
+        ["Supply chain disclosures", "Apple supply chain risks in filings from 2025"],
+      ].map(([label, query]) => <button type="button" key={query} onClick={() => run({ ...settings, query, tickers: "", mode: "index", searchStyle: "smart" })}>{label}<ArrowUpRight size={13} /></button>)}</div>
+      <p>Start with a topic across companies, or include a name or ticker to narrow your search. Use quotation marks for a precise phrase.</p>
+    </section>}
+    {active && <div className={s.resultContext}>
+      <div><span>Results for</span><strong>{interpretation?.originalQuery || active.query}</strong><small>{active.tickers || "All companies"} · {active.forms.replaceAll(",", " / ")} · filed {active.start} to {active.end}</small></div>
+      <div className={s.resultTools}>
+        <label>View<select aria-label="Disclosure result view" value={tab} onChange={(event) => { setTab(event.target.value); setReader(null); }}>
+          <option value="results">Search results</option><option value="changes">Wording changes</option>
+          {active.mode === "companies" && <><option value="matrix">Topic matrix</option><option value="trends">Trends</option></>}
+        </select></label>
+        <button type="button" aria-label="Copy complete search link" onClick={async () => {
+          try {
+            const params = queryParams(active); params.set("tickers", active.tickers); params.set("mode", active.mode); params.set("style", "exact");
+            await navigator.clipboard.writeText(`${location.origin}/disclosures?${params}`); setNotice("Search link copied.");
+          } catch { setError("The browser could not copy the link. Use the address bar to share this search."); }
+        }}><LinkIcon size={14} /><span>Share search</span></button>
+      </div>
+    </div>}
+    {resultsView && <div className={s.workspace} data-reader={Boolean(reader)}>
+      <section className={s.resultsPanel} aria-label="Disclosure search results">
+        {active && <>
+          {tab === "changes" && active.comparison === "none" && <div className={s.notice}><span>Compare wording with earlier reports to see additions and revisions.</span><button disabled={busy} onClick={() => run({ ...active, comparison: "annual-season", searchStyle: "exact" }, { view: "changes" })}>Compare earlier wording</button></div>}
+          <DisclosureResults key={disclosureSearchIdentity(active)} filings={allResults} settings={active} changesOnly={tab === "changes"}
+            open={open} onVerifyCandidates={active.mode === "index" ? verifyCandidates : undefined} busy={busy} selectedId={reader ? filingEvidenceId(reader.filing) : ""} />
+          <div className={s.moreResults}>
+            {active.mode === "index" && index?.hasMore && <button className={s.loadMore} disabled={busy} onClick={loadMoreIndex}>{busy ? "Loading…" : "Load more SEC filings"}</button>}
+            {active.mode === "index" && preparedPage?.hasMore && <button className={s.loadMore} disabled={busy} onClick={loadMorePrepared}>Load more indexed passages</button>}
           </div>
-          <div className={s.researchActions}>
-            <div className={s.currentQuery}>
-              <span className={s.eyebrow}>Current result set</span>
-              <code>{interpretation?.originalQuery || active.query}</code>
-              <small>
-                {active.forms} · {active.start} to {active.end} ·{" "}
-                {active.section} · {active.scope}
-              </small>
-            </div>
+          {!busy && !allResults.some((filing) => filing.matched || filing.status === "index-candidate") && <div className={s.searchRecovery}>
+            <strong>Broaden your search</strong><p>Try a related term, expand the filing dates, or allow words to appear across the document.</p>
             <div className={s.actions}>
-              <input
-                aria-label="Saved search name"
-                value={saveName}
-                onChange={(e) => setSaveName(e.target.value)}
-                placeholder="Name this research…"
-                maxLength={100}
-              />
-              <button
-                disabled={busy || !saveName.trim() || !storageReady}
-                onClick={save}
-              >
-                <BookmarkPlus size={15} /> Save search
-              </button>
-              <button
-                aria-label="Copy complete search link"
-                onClick={async () => {
-                  try {
-                    const params = queryParams(active);
-                    params.set("tickers", active.tickers);
-                    params.set("mode", active.mode);
-                    params.set("style", "exact");
-                    await navigator.clipboard.writeText(
-                      `${location.origin}/disclosures?${params}`,
-                    );
-                    setNotice("Complete search link copied.");
-                  } catch {
-                    setError(
-                      "The browser could not copy the link. Use the address bar to share this search.",
-                    );
-                  }
-                }}
-              >
-                <LinkIcon size={15} /> Share
-              </button>
+              {interpretation?.suggestions?.filter((item: any) => item.kind === "spelling").slice(0, 2).map((item: any) => <button key={item.query} onClick={() => run({ ...settings, query: item.query, searchStyle: "smart" })}>{item.label}</button>)}
+              {active.scope === "paragraph" && <button onClick={() => run({ ...active, scope: "document", searchStyle: "exact" })}>Search across the document</button>}
+              <button onClick={() => run({ ...active, start: `${new Date().getUTCFullYear() - 5}-01-01`, searchStyle: "exact" })}>Search the past five years</button>
             </div>
-          </div>
-          {active.mode === "companies" ? (
-            <DisclosureCoverageDesk
-              settings={active}
-              companies={companies}
-              aliases={aliases}
-              busy={busy || Boolean(checking)}
-              restoredAt={restoredAt}
-              onResume={() => run(active, { resume: true })}
-              onRetry={(ticker) =>
-                run(active, { resume: true, targets: [ticker] })
-              }
-              onMore={(company) =>
-                run(active, {
-                  resume: true,
-                  targets: [company.ticker],
-                  after: company.nextCursor,
-                })
-              }
-              onRetryFiling={retryDocument}
-            />
-          ) : (
-            <details className={s.coverage}>
-              <summary>Search coverage & source checks</summary>
-              <p>
-                {index?.results?.length || 0} SEC candidates loaded. {verified.filter((f) => f.status === "reviewed").length} documents fully checked.
-                Candidate listings require passage verification; search results do not measure how common a disclosure is across all companies.
-              </p>
-              {index?.query?.notes?.map((note: string) => <p key={note}>{note}</p>)}
-              {index?.coverage?.totalHitsScope && <p>{index.coverage.totalHitsScope}</p>}
-              {preparedCoverage && <p>{preparedCoverage.available === false ? "Prepared passages are unavailable for this search. SEC discovery and full filing review remain available." : `Prepared passage coverage: ${preparedCoverage.documentCount ?? preparedCoverage.documents ?? "recent indexed"} documents. ${preparedCoverage.note || "This is a bounded selection, not the complete EDGAR archive."}`}</p>}
-              {searchTiming.firstResult != null && <p>First results in {(searchTiming.firstResult / 1000).toFixed(1)} seconds{searchTiming.firstPassage != null ? ` · first matching passage in ${(searchTiming.firstPassage / 1000).toFixed(1)} seconds` : ""}. Times include this browser’s requests.</p>}
-              {verified.map((f) => (
-                <p key={filingEvidenceId(f)}>
-                  {f.ticker} · {f.form} · {f.filingDate}: {f.status}
-                  {f.reason ? ` — ${f.reason}` : ""}
-                </p>
-              ))}
-            </details>
-          )}
-        </>
-      )}
-      {tab === "inbox" && (
-        <DisclosureInbox
-          notebook={notebook}
-          change={changeNotebook}
-          check={checkSaved}
-          checking={busy ? "active-search" : checking}
-          ready={storageReady && !storageError}
-          open={open}
-          load={(next) => {
-            setSettings(next);
-            setTab("evidence");
-            setReader(null);
-            setNotice(
-              "Saved settings loaded. Select Search filings to run them.",
-            );
-          }}
-        />
-      )}
-      {collectionsOpened && (
-        <div hidden={tab !== "collections"}>
-          <DisclosureCollections
-            notebook={notebook}
-            change={changeNotebook}
-            notice={setNotice}
-          />
-        </div>
-      )}
-      {["matrix", "trends"].includes(tab) &&
-        (!active || active.mode === "index" ? (
-          <div className={s.empty}>
-            <h2>Build a company sample first</h2>
-            <p>
-              Index candidates are selected because they contain search terms.
-              That sample cannot establish company prevalence or reliable
-              no-match cells. Run Company evidence with your issuer group to
-              populate this view.
-            </p>
-          </div>
-        ) : tab === "matrix" ? (
-          <DisclosureMatrix
-            companies={companies}
-            requested={requested}
-            inspect={(ticker, query, accessions) => {
-              const company = companies.find((c) => c.ticker === ticker);
-              const choices = (company?.filings || []).filter((f) =>
-                accessions.length
-                  ? accessions.includes(f.accession)
-                  : f.status === "reviewed",
-              );
-              setReaderChoices(choices);
-              if (choices[0])
-                open(choices[0], { ...active, query, scope: "paragraph" });
-            }}
-          />
-        ) : (
-          <DisclosureTrends companies={companies} requested={requested} />
-        ))}
-      {["evidence", "changes"].includes(tab) && (
-        <div className={s.workspace} data-reader={Boolean(reader)}>
-          <section
-            className={s.resultsPanel}
-            aria-label="Disclosure search results"
-          >
-            {!active ? (
-              <div className={s.welcome}>
-                <span className={s.eyebrow}>Start exploring</span>
-                <h2>What are you researching?</h2>
-                <p>Search a company, a disclosure topic, or a question. Add dates and filing types naturally.</p>
-                <div className={s.welcomeSteps}>
-                  {[
-                    ["Company risks", "Microsoft cybersecurity risks"],
-                    ["Across companies", "Companies mentioning debt covenant breaches"],
-                    ["A specific period", "Apple supply chain risks in filings from 2025"],
-                  ].map(([label, query]) => <button key={query} onClick={() => run({ ...settings, query, tickers: "", mode: "index", searchStyle: "smart" })}>
-                    <strong>{label}</strong><span>{query}</span><ArrowUpRight size={15} />
-                  </button>)}
-                </div>
-              </div>
-            ) : (
-              <>
-              {tab === "changes" && active.comparison === "none" && <div className={s.notice}>
-                <span>Compare wording with earlier reports to see additions and revisions.</span>
-                <button disabled={busy} onClick={() => run({ ...active, comparison: "annual-season", searchStyle: "exact" }, { view: "changes" })}>Compare earlier wording</button>
-              </div>}
-              <DisclosureResults
-                key={disclosureSearchIdentity(active)}
-                filings={allResults}
-                settings={active}
-                changesOnly={tab === "changes"}
-                reviewedFilings={notebook.reviewedFilings || {}}
-                onReview={markResult}
-                open={open}
-                onVerifyCandidates={
-                  active.mode === "index" ? verifyCandidates : undefined
-                }
-                busy={busy || Boolean(checking)}
-                selectedId={reader ? filingEvidenceId(reader.filing) : ""}
-              />
-              {active.mode === "index" && index?.hasMore && <button className={s.loadMore} disabled={busy} onClick={loadMoreIndex}>
-                {busy ? "Loading…" : "Load more SEC filings"}
-              </button>}
-              {active.mode === "index" && preparedPage?.hasMore && <button className={s.loadMore} disabled={busy} onClick={loadMorePrepared}>Search more prepared passages</button>}
-              {!busy && !allResults.some((filing) => filing.matched || filing.status === "index-candidate") && <div className={s.coverage}>
-                <strong>Adjust this search</strong>
-                <p>Try a related term, widen the filing dates, or allow words to appear across the document.</p>
-                <div className={s.actions}>
-                  {interpretation?.suggestions?.filter((item: any) => item.kind === "spelling").slice(0, 2).map((item: any) => <button key={item.query} onClick={() => run({ ...settings, query: item.query, searchStyle: "smart" })}>{item.label}</button>)}
-                  {active.scope === "paragraph" && <button onClick={() => run({ ...active, scope: "document", searchStyle: "exact" })}>Search across the document</button>}
-                  <button onClick={() => run({ ...active, start: `${new Date().getUTCFullYear() - 5}-01-01`, searchStyle: "exact" })}>Search the past five years</button>
-                </div>
-              </div>}
-              </>
-            )}
-          </section>
-          {reader && (
-            <DisclosureReader
-              key={`${filingEvidenceId(reader.filing)}:${disclosureSearchIdentity(reader.settings)}:${reader.initialState?.side}:${reader.initialState?.index}:${tab}`}
-              filing={reader.filing}
-              settings={reader.settings}
-              changesOnly={tab === "changes"}
-              onReviewed={recordVerified}
-              initialState={reader.initialState}
-              notebook={notebook}
-              onCollect={collect}
-              onLabel={setLabel}
-              close={closeReader}
-            />
-          )}
-        </div>
-      )}
-      {!["evidence", "changes"].includes(tab) && reader && (
-        <div className={s.standaloneReader}>
-          {tab === "matrix" && readerChoices.length > 1 && (
-            <label>
-              Supporting filings in this cell
-              <select
-                aria-label="Matrix supporting filing"
-                value={reader.filing.accession}
-                onChange={(event) => {
-                  const filing = readerChoices.find(
-                    (f) => f.accession === event.target.value,
-                  );
-                  if (filing) open(filing, reader.settings);
-                }}
-              >
-                {readerChoices.map((filing) => (
-                  <option value={filing.accession} key={filing.accession}>
-                    {filing.form} · filed {filing.filingDate} · period{" "}
-                    {filing.reportDate}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <DisclosureReader
-            key={`${filingEvidenceId(reader.filing)}:${disclosureSearchIdentity(reader.settings)}:${reader.initialState?.side}:${reader.initialState?.index}`}
-            filing={reader.filing}
-            settings={reader.settings}
-            changesOnly={false}
-            initialState={reader.initialState}
-            onReviewed={recordVerified}
-            notebook={notebook}
-            onCollect={collect}
-            onLabel={setLabel}
-            close={closeReader}
-          />
-        </div>
-      )}
-      <footer className={s.footer}>
-        SEC source text · Transparent query logic · Local saved research{" "}
-        <span>
-          Coverage is bounded by the selected filing window, review depth, and
-          source availability.
-        </span>
-      </footer>
-    </div>
-  );
+          </div>}
+          {sourceCoverage}
+        </>}
+      </section>
+      {reader && <DisclosureReader key={`${filingEvidenceId(reader.filing)}:${disclosureSearchIdentity(reader.settings)}:${reader.initialState?.side}:${reader.initialState?.index}:${tab}`}
+        filing={reader.filing} settings={reader.settings} changesOnly={tab === "changes"} onReviewed={recordVerified} initialState={reader.initialState} close={closeReader} />}
+    </div>}
+    {active?.mode === "companies" && !resultsView && <>
+      {tab === "matrix" ? <DisclosureMatrix companies={companies} requested={requested} inspect={(ticker, query, accessions) => {
+        const choices = (companies.find((c) => c.ticker === ticker)?.filings || []).filter((f) => accessions.length ? accessions.includes(f.accession) : f.status === "reviewed");
+        setReaderChoices(choices); if (choices[0]) open(choices[0], { ...active, query, scope: "paragraph" });
+      }} /> : <DisclosureTrends companies={companies} requested={requested} />}
+      {reader && <div className={s.standaloneReader}>
+        {tab === "matrix" && readerChoices.length > 1 && <label>Filings in this sample<select aria-label="Matrix supporting filing" value={reader.filing.accession} onChange={(event) => { const filing = readerChoices.find((f) => f.accession === event.target.value); if (filing) open(filing, reader.settings); }}>{readerChoices.map((filing) => <option value={filing.accession} key={filing.accession}>{filing.form} · filed {filing.filingDate} · period {filing.reportDate}</option>)}</select></label>}
+        <DisclosureReader key={`${filingEvidenceId(reader.filing)}:${disclosureSearchIdentity(reader.settings)}:${reader.initialState?.side}:${reader.initialState?.index}`} filing={reader.filing} settings={reader.settings} changesOnly={false} initialState={reader.initialState} onReviewed={recordVerified} close={closeReader} />
+      </div>}
+      {sourceCoverage}
+    </>}
+    <footer className={s.footer}>SEC filing text · Original sources linked<span>Results reflect the selected dates, search scope, and available source text.</span></footer>
+  </div>;
 }

@@ -473,12 +473,15 @@ test("Request validation rejects invalid dates, sections, forms and depth", () =
       ),
     );
 });
-test("Issuer resolution preserves JPM even when another security alias sorts first", async () => {
+test("Issuer resolution preserves exact symbols and accepts only verified dotted share-class aliases", async () => {
   const original = global.fetch;
   global.fetch = async () =>
     Response.json({
       0: { ticker: "AMJB", cik_str: 19617, title: "JPMORGAN CHASE & CO" },
       1: { ticker: "JPM", cik_str: 19617, title: "JPMORGAN CHASE & CO" },
+      2: { ticker: "BRK-B", cik_str: 1067983, title: "BERKSHIRE HATHAWAY INC" },
+      3: { ticker: "XYZ.A", cik_str: 9999801, title: "EXACT DOTTED FIXTURE" },
+      4: { ticker: "XYZ-A", cik_str: 9999802, title: "DIFFERENT HYPHEN FIXTURE" },
     });
   try {
     const resolved = await resolveDisclosureCompany("JPM");
@@ -486,6 +489,12 @@ test("Issuer resolution preserves JPM even when another security alias sorts fir
     assert.equal(resolved.cik, "0000019617");
     const name = await resolveDisclosureCompany("JPMORGAN CHASE & CO");
     assert.equal(name.ticker, "0000019617");
+    const classAlias = await resolveDisclosureCompany("brk.b");
+    assert.equal(classAlias.ticker, "BRK-B");
+    assert.equal(classAlias.cik, "0001067983");
+    assert.equal((await resolveDisclosureCompany("XYZ.A")).cik, "0009999801");
+    assert.equal((await resolveDisclosureCompany("XYZ-A")).cik, "0009999802");
+    await assert.rejects(resolveDisclosureCompany("BRK.C"), /unresolved/);
   } finally {
     global.fetch = original;
   }
