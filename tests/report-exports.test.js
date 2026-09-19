@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { unzipSync, strFromU8 } from 'fflate';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { createReportPdf, createReportXlsx, formatReportValue } from '../src/utils/reportExports.js';
 
 const report = (patch = {}) => ({
@@ -19,6 +19,15 @@ const report = (patch = {}) => ({
 });
 
 const files = async (document) => Object.fromEntries(Object.entries(unzipSync(await createReportXlsx(document))).map(([key, value]) => [key, strFromU8(value)]));
+// Standard-font PDFs store each drawn line as a hex string in a content stream.
+const pdfText = async (document) => {
+  const pdf = await PDFDocument.load(await createReportPdf(document));
+  return pdf.context.enumerateIndirectObjects().flatMap(([, object]) => {
+    if (!(object instanceof PDFRawStream)) return [];
+    const content = new TextDecoder().decode(decodePDFRawStream(object).decode());
+    return [...content.matchAll(/<([0-9A-F]+)>\s*Tj/g)].map((match) => Buffer.from(match[1], 'hex').toString('latin1'));
+  }).join(' ').replace(/\s+/g, ' ');
+};
 
 test('Excel preserves typed fractions, zero and dates, leaves null blank, and cannot execute string formulas', async () => {
   const workbook = await files(report()), sheet = workbook['xl/worksheets/sheet2.xml'];
@@ -82,6 +91,26 @@ test('PDF table uses readable metric widths when the builder supplies relative s
   base.sections[0].rows = Array.from({ length: 12 }, (_, i) => ({ label: `Meaningful reported financial metric ${i}`, p0: 1500000, p1: 1600000, p2: 1700000, p3: 1800000, p4: 1900000 }));
   const pdf = await PDFDocument.load(await createReportPdf(base));
   assert.ok(pdf.getPageCount() <= 3, `unexpected layout inflation: ${pdf.getPageCount()} pages`);
+});
+
+test('PDF grouped filing sources retain every distinct observation period', async () => {
+  const base = report({ charts: [], highlights: [] }), source = base.sources[0];
+  base.sources = [source, { ...source, id: 'S2', periodEnd: '2023-12-31' }, { ...source, id: 'S3', periodEnd: '2024-12-31' }, { ...source, id: 'S4' }];
+  const text = await pdfText(base);
+  assert.match(text, /Source IDs: S1, S2, S3, S4/);
+  assert.match(text, /Observation period ends: 2023-12-31, 2024-12-31, 2025-12-31/);
+  assert.doesNotMatch(text, /Period ending 2025-12-31 \| Filed 2026-02-19/);
+  assert.equal(text.split(source.url).length - 1, 1);
+  const single = await pdfText(report({ charts: [], highlights: [] }));
+  assert.match(single, /Period ending 2025-12-31 \| Filed 2026-02-19/);
+  assert.doesNotMatch(single, /Observation period ends:/);
+});
+
+test('PDF company tables direct metric and period provenance to the workbook appendix', async () => {
+  const base = report({ charts: [], highlights: [] });
+  base.sections[0].rows[0].sourcesByPeriod = [{ period: '2025-12-31', sourceIds: ['S1'] }];
+  const text = await pdfText(base);
+  assert.match(text, /For each metric and period, see the Excel workbook table "Metric methodology and source references" for calculations and Source IDs\. Its Sources sheet links those IDs to the original disclosures\./);
 });
 
 test('display formatting respects fractions, null and true zero', () => {

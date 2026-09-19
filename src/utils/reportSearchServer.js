@@ -95,7 +95,8 @@ function abortable(work, signal) {
 }
 
 export function createReportSearch({ operatingDirectory = getOperatingDirectory, fundDirectory = getFundDirectory,
-  filerSearch = searchSecFilers, fetchSec = secFetch, now = Date.now, ttlMs = 300000, maxEntries = 100, maxPending = 12 } = {}) {
+  filerSearch = searchSecFilers, fetchSec = secFetch, now = Date.now, ttlMs = 300000, maxEntries = 100, maxPending = 12,
+  companySupplementMs = 8000 } = {}) {
   const cache = new Map(), pending = new Map();
   async function discover({ query, kind, cik }) {
     const signal = AbortSignal.timeout(26000);
@@ -119,15 +120,38 @@ export function createReportSearch({ operatingDirectory = getOperatingDirectory,
       matches.sort((a, b) => a.rank - b.rank || a.entry.name.length - b.entry.name.length || a.ticker.localeCompare(b.ticker));
       base.results = matches.slice(0, LIMIT).map(({ ticker, entry }) => ({ kind, id: ticker, ticker, name: entry.name, cik: entry.cik, detail: `SEC company · CIK ${entry.cik}` }));
       base.truncated = matches.length > LIMIT;
-      // CIK/name discovery also reaches issuers without an exchange ticker.
-      // Preserve the actual filer identity and check financial availability later.
-      if (!base.results.length && (cik || query.length >= 2)) {
+      // Exact ticker/CIK choices keep the directory-only fast path. A company
+      // name must also discover untickered issuers even when listed names match.
+      const exactTicker = matches.some(({ ticker }) => ticker === query.toUpperCase());
+      if (!exactTicker && !(cik && base.results.length) && (cik || query.length >= 2)) {
         const fundCiks = new Set(Object.values(funds).map(item => item.cik));
         for (const ticker of KNOWN_ETFS) if (companies[ticker]) fundCiks.add(companies[ticker].cik);
-        const found = await abortable(filerSearch(cik || query), signal);
-        base.results = found.results.filter(item => !fundCiks.has(item.cik)).map(item => ({ kind, id: item.cik, name: item.name, cik: item.cik, detail: 'SEC filer · Company financial-data availability will be checked' }));
-        base.truncated = found.truncated;
-        if (found.warning) base.warning = found.warning;
+        try {
+          // Existing choices stay useful when the broader SEC name index is
+          // slow. Its supplementary check shares the overall search deadline.
+          const supplementSignal = base.results.length
+            ? AbortSignal.any([signal, AbortSignal.timeout(companySupplementMs)]) : signal;
+          const found = await abortable(filerSearch(cik || query), supplementSignal);
+          const choices = matches.map(({ ticker, entry }) => ({ kind, id: ticker, ticker, name: entry.name, cik: entry.cik, detail: `SEC company · CIK ${entry.cik}` }));
+          const coveredCiks = new Set(matches.map(({ entry }) => entry.cik));
+          for (const item of found.results) {
+            // Keep the directory's individual share-class tickers; add a CIK
+            // result only when that issuer has no existing matching choice.
+            if (fundCiks.has(item.cik) || coveredCiks.has(item.cik)) continue;
+            coveredCiks.add(item.cik);
+            choices.push({ kind, id: item.cik, name: item.name, cik: item.cik,
+              detail: 'SEC filer · Company financial-data availability will be checked' });
+          }
+          choices.sort((a, b) => affinity(a.name, query, a.ticker) - affinity(b.name, query, b.ticker)
+            || a.name.length - b.name.length || a.id.localeCompare(b.id));
+          base.results = choices.slice(0, LIMIT);
+          base.truncated ||= Boolean(found.truncated || found.warning || choices.length > LIMIT);
+          if (found.warning) base.warning = found.warning;
+        } catch (error) {
+          if (!base.results.length) throw error;
+          base.truncated = true;
+          base.warning = 'Additional SEC company names could not be checked. Directory matches are shown; results may be incomplete. Retry or enter the company’s CIK.';
+        }
       }
       return base;
     }

@@ -1,5 +1,6 @@
 import { parseReportSearch, searchReports } from '../../../../utils/reportSearchServer.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../../utils/rateLimit.js';
+import { usesPublicReportSources, searchPublicReportSources } from '../../../../utils/reportPreviewSources.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -9,7 +10,7 @@ export async function GET(request) {
     const input = parseReportSearch(new URL(request.url).searchParams);
     const limit = await checkRateLimit({ key: `rl:report-search:${getClientIp(request)}`, windowMs: 60000, max: 40 });
     if (!limit.allowed) return rateLimitedResponse(limit);
-    const result = await searchReports(input);
+    const result = await (usesPublicReportSources() ? searchPublicReportSources(input) : searchReports(input));
     return Response.json(result, { headers: { 'Cache-Control': result.warning ? 'private, no-store' : 'public, max-age=30, s-maxage=300', 'X-Robots-Tag': 'noindex, nofollow' } });
   } catch (failure) {
     const status = [400, 404, 429, 502, 503].includes(failure.status) ? failure.status : 502;

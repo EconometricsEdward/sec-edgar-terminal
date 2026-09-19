@@ -274,6 +274,7 @@ export async function createReportPdf(report, options = {}) {
     y -= 12;
     if (section.rows.length > rows.length) paragraph(`Showing ${rows.length.toLocaleString()} of ${section.rows.length.toLocaleString()} records. The Excel workbook includes every available row.`, { size: 8, after: 8 });
     if (columns.length > 6) paragraph('Large currency amounts are abbreviated for readability. The Excel workbook retains exact values.', { size: 7.5, after: 8 });
+    if (report.kind === 'company' && rows.some((row) => row.sourcesByPeriod?.length)) paragraph('For each metric and period, see the Excel workbook table "Metric methodology and source references" for calculations and Source IDs. Its Sources sheet links those IDs to the original disclosures.', { size: 7.5, after: 8 });
     if (section.footnote) paragraph(section.footnote, { size: 7.5, after: 16 });
   }
   if (report.notes.length) { heading('Reading this report', 'Methodology & coverage'); for (const note of report.notes) paragraph(note, { size: 8, after: 8 }); }
@@ -282,13 +283,17 @@ export async function createReportPdf(report, options = {}) {
   const groupedSources = new Map();
   for (const source of report.sources) {
     const key = source.url || source.id;
-    if (!groupedSources.has(key)) groupedSources.set(key, { ...source, ids: [] });
-    groupedSources.get(key).ids.push(source.id);
+    if (!groupedSources.has(key)) groupedSources.set(key, { ...source, ids: [], periodEnds: new Set() });
+    const grouped = groupedSources.get(key);
+    grouped.ids.push(source.id);
+    if (source.periodEnd) grouped.periodEnds.add(source.periodEnd);
   }
   for (const source of groupedSources.values()) {
     ensure(62); paragraph(`${source.form || 'Source document'}${source.accession ? ` · ${source.accession}` : ` · ${source.label}`}`, { size: 8, font: bold, color: COLORS.navy, after: 2 });
     paragraph(`Source IDs: ${source.ids.join(', ')}`, { size: 7, after: 2 });
-    const metadata = [source.form, source.periodEnd && `Period ${source.periodEnd}`, source.filed && `Filed ${source.filed}`, source.accession].filter(Boolean).join('  |  ');
+    const periodEnds = [...source.periodEnds].sort();
+    const periodLabel = periodEnds.length === 1 ? `Period ending ${periodEnds[0]}` : periodEnds.length > 1 ? `Observation period ends: ${periodEnds.join(', ')}` : '';
+    const metadata = [source.form, periodLabel, source.filed && `Filed ${source.filed}`, source.accession].filter(Boolean).join('  |  ');
     if (metadata) paragraph(metadata, { size: 7, after: 2 });
     paragraph(source.url, { size: 6.8, color: COLORS.teal, after: 8 });
   }

@@ -18,6 +18,12 @@ Search uses the SEC company and fund directories and SEC filer discovery, rather
 - Missing values remain missing. Percent cells contain fractions and monetary cells contain whole USD. Reporting period, source filing date, source retrieval time, and report generation time are distinct.
 - The preview page is marked noindex. There is no notebook, collection, saved-report account system, or automatic report publication.
 
+## Preview data access
+
+Vercel Preview runtimes use the site's existing anonymous public research endpoints through `reportPreviewSources.js`. This keeps the production database credential restriction and shared SEC request gate intact. The adapter permits only the fixed public site origin and the SEC document paths needed for reports, rejects redirects, applies deadlines and response-size limits, and forwards no visitor cookies or credentials. Production continues to use the normal prepared loaders.
+
+N-PORT downloads parse complete original filing XML, rather than exporting the first page of positions. Multiword N-PORT name searches use a distinctive word through the public SEC reader and then filter the full name; the preview explains this search limitation and supports exact tickers and series IDs. Public source cache delivery is identified in report notes. Stale company sources retain their original source clocks and are marked as partial coverage.
+
 ## Acceptance checks
 
 1. Search by company name, ticker, single-letter ticker, and CIK. Check annual/quarter/TTM labels and source identities.

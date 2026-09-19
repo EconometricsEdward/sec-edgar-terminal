@@ -39,6 +39,81 @@ test('company CIK lookup keeps unlisted issuer CIK without inventing a ticker', 
   assert.equal((await search({ query: 'Unlisted Issuer', kind: 'company' })).results[0].id, '0000123456');
 });
 
+test('company name discovery supplements listed matches and deduplicates CIKs while preserving share-class choices', async () => {
+  const calls = [], listedCik = '0000000001', privateCik = '0000000002';
+  const search = setup({ operatingDirectory: async () => ({
+    'APC.A': { cik: listedCik, name: 'Acme Public Corp' },
+    'APC.B': { cik: listedCik, name: 'Acme Public Corp' },
+  }), filerSearch: async query => {
+    calls.push(query);
+    return { results: [
+      { cik: listedCik, name: 'Acme Public Corp', formTypes: [] },
+      { cik: privateCik, name: 'Acme Private Holdings', formTypes: [] },
+      { cik: privateCik, name: 'Acme Private Holdings Alias', formTypes: [] },
+      { cik: CIK, name: 'Acme Fund', formTypes: [] },
+    ], truncated: false };
+  } });
+  const result = await search({ query: 'Acme', kind: 'company' });
+  assert.deepEqual(calls, ['Acme']);
+  assert.deepEqual(result.results.map(item => item.id), ['APC.A', 'APC.B', privateCik]);
+  assert.equal(result.results[2].ticker, undefined);
+  assert.equal(result.truncated, false);
+});
+
+test('exact company ticker and directory CIK retain their fast path without supplementary discovery', async () => {
+  const search = setup({ filerSearch: async () => assert.fail('An exact directory identity must not trigger SEC name discovery') });
+  assert.equal((await search({ query: 'tt', kind: 'company' })).results[0].ticker, 'TT');
+  assert.equal((await search({ query: 'F', kind: 'company' })).results[0].ticker, 'F');
+  assert.equal((await search({ query: 'CIK 1466258', kind: 'company' })).results[0].ticker, 'TT');
+});
+
+test('supplementary discovery failures preserve company matches with a retryable incomplete-search warning', async () => {
+  let calls = 0;
+  const search = setup({ filerSearch: async () => {
+    if (++calls === 1) throw new Error('Name index unavailable');
+    return { results: [{ cik: '0000000002', name: 'Trane Private Holdings', formTypes: [] }], truncated: false };
+  } });
+  const first = await search({ query: 'Trane', kind: 'company' });
+  assert.deepEqual(first.results.map(item => item.id), ['TT']);
+  assert.equal(first.truncated, true);
+  assert.match(first.warning, /Additional SEC company names could not be checked/);
+  assert.deepEqual(first.warnings, [first.warning]);
+  const retried = await search({ query: 'Trane', kind: 'company' });
+  assert.equal(calls, 2, 'A failed supplemental check must not suppress retry through the query cache');
+  assert.equal(retried.results.length, 2);
+  assert.equal(retried.warning, undefined);
+  const unavailable = setup({ filerSearch: async () => { throw new Error('Name index unavailable'); } });
+  await assert.rejects(unavailable({ query: 'Unlisted Issuer', kind: 'company' }), /Name index unavailable/);
+});
+
+test('a slow supplementary name source cannot hold available company matches beyond its bounded wait', async () => {
+  const search = setup({ companySupplementMs: 10, filerSearch: () => new Promise(() => {}) });
+  let watchdog;
+  try {
+    const result = await Promise.race([
+      search({ query: 'Trane', kind: 'company' }),
+      new Promise((_, reject) => { watchdog = setTimeout(() => reject(new Error('Supplementary search did not time out')), 1000); }),
+    ]);
+    assert.deepEqual(result.results.map(item => item.id), ['TT']);
+    assert.equal(result.truncated, true);
+    assert.match(result.warning, /results may be incomplete/);
+  } finally { clearTimeout(watchdog); }
+});
+
+test('merged company name matches retain the result cap and upstream coverage warnings', async () => {
+  const entries = Object.fromEntries(Array.from({ length: 19 }, (_, index) => [`APC${index}`, {
+    cik: String(index + 1).padStart(10, '0'), name: `Acme Public ${index}`,
+  }]));
+  const found = { results: Array.from({ length: 3 }, (_, index) => ({
+    cik: String(index + 100).padStart(10, '0'), name: `Acme Private ${index}`, formTypes: [],
+  })), truncated: false, warning: 'One SEC name source could not be checked.' };
+  const result = await setup({ operatingDirectory: async () => entries, filerSearch: async () => found })({ query: 'Acme', kind: 'company' });
+  assert.equal(result.results.length, 20);
+  assert.equal(result.truncated, true);
+  assert.equal(result.warning, found.warning);
+  assert.ok(result.results.some(item => item.id === '0000000100'));
+});
+
 test('every mapped N-PORT ticker works without curated names or a fund-name fetch', async () => {
   const search = setup({ fetchSec: async () => { throw new Error('Exact ticker must not trigger name search'); } });
   const result = await search({ query: 'testx', kind: 'nport' });

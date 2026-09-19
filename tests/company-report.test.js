@@ -144,6 +144,45 @@ test('company report loader uses a matching prepared result and avoids interacti
   assert.equal(loads, 0);
 });
 
+test('retained company models preserve source clocks and disclose stale coverage without refreshing', async () => {
+  const payload = history('annual');
+  const fetchedAt = '2026-09-01T10:00:00.000Z', revalidatedAt = '2026-09-17T11:00:00.000Z';
+  const snapshots = [
+    { stale: true, metadata: { fetchedAt, revalidatedAt, expiresAt: '2026-09-20T12:00:00.000Z' } },
+    { stale: false, metadata: { fetchedAt, revalidatedAt, expiresAt: '2026-09-18T12:00:00.000Z' } },
+    { metadata: { fetchedAt, revalidatedAt, expiresAt: generatedAt } },
+  ];
+  for (const snapshot of snapshots) {
+    const before = structuredClone(snapshot);
+    const load = createCompanyReportLoader({ readPrepared: async () => ({ ...snapshot, payload }),
+      loadInteractive: async () => assert.fail('A retained model must not cause an automatic refresh'), now: () => generatedAt });
+    const report = await load({ ticker: payload.ticker });
+    assert.equal(report.generatedAt, generatedAt);
+    assert.equal(report.coverage.status, 'partial');
+    assert.equal(report.coverage.availableMetrics, report.coverage.totalMetrics, 'Freshness must be independent of numeric coverage');
+    assert.match(report.coverage.message, /Source check is due/);
+    assert.ok(report.notes.some(note => note.includes(`Financial inputs retrieved: ${fetchedAt}`)));
+    assert.ok(report.notes.some(note => note.includes(`Financial inputs last checked: ${revalidatedAt}`)));
+    assert.ok(report.notes.some(note => note.includes('may not include a newer filing or amendment')));
+    assert.equal(report.notes.some(note => note.includes(`last checked: ${generatedAt}`)), false);
+    assert.deepEqual(snapshot, before);
+  }
+});
+
+test('fresh company snapshots retain their check date without claiming a new retrieval at export time', async () => {
+  const payload = history('annual'), fetchedAt = '2026-09-01T10:00:00.000Z';
+  const revalidatedAt = '2026-09-19T11:00:00.000Z';
+  const load = createCompanyReportLoader({ readPrepared: async () => ({ payload, stale: false,
+    metadata: { fetchedAt, revalidatedAt, expiresAt: '2026-09-20T12:00:00.000Z' } }), now: () => generatedAt });
+  const report = await load({ ticker: payload.ticker });
+  assert.equal(report.coverage.status, 'ready');
+  assert.equal(report.generatedAt, generatedAt);
+  assert.ok(report.notes.some(note => note.includes(`Financial inputs last checked: ${revalidatedAt}`)));
+  assert.equal(report.notes.some(note => note.includes('source check is due')), false);
+  const undated = buildCompanyReport(payload, { generatedAt });
+  assert.equal(undated.notes.some(note => note.startsWith('Financial inputs last checked:')), false);
+});
+
 test('company report loader falls back for nonprepared issuers and rejects wrong identity, basis and cancellation', async () => {
   const load = createCompanyReportLoader({ readPrepared: async () => null,
     loadInteractive: async selection => { assert.equal(selection.ticker, 'UNLISTED'); return { payload: company() }; }, now: () => generatedAt });

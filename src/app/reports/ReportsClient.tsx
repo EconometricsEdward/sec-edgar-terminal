@@ -8,11 +8,11 @@ import styles from "./reports.module.css";
 
 type ExportFormat = "pdf" | "xlsx";
 type Basis = "annual" | "ttm" | "quarter";
-type SearchResponse = { query: string; kind: ReportKind; results: ReportSearchResult[]; warning?: string };
+type SearchResponse = { query: string; kind: ReportKind; results: ReportSearchResult[]; warning?: string; truncated?: boolean };
 
 const KINDS = [
   { id: "company" as const, label: "Company", Icon: Building2, placeholder: "Search a company name, ticker or CIK", detail: "Financial statements, performance and financial risk" },
-  { id: "nport" as const, label: "N-PORT fund", Icon: Layers3, placeholder: "Search a fund name or ticker", detail: "A fund’s reported portfolio and concentration" },
+  { id: "nport" as const, label: "N-PORT fund", Icon: Layers3, placeholder: "Search a fund name, ticker or SEC series", detail: "A fund’s reported portfolio and concentration" },
   { id: "13f" as const, label: "13F manager", Icon: Landmark, placeholder: "Search an institutional manager name or CIK", detail: "An institutional manager’s disclosed securities" },
 ];
 
@@ -116,7 +116,7 @@ export default function ReportsClient() {
         if (payload.kind !== kind || !Array.isArray(payload.results)) throw new Error("The search response could not be verified. Please retry.");
         const valid = payload.results.filter(item => item.kind === kind && typeof item.id === "string" && typeof item.name === "string" && /^\d{1,10}$/.test(item.cik));
         setResults(valid.slice(0, 20));
-        setSearchWarning(payload.warning || "");
+        setSearchWarning([payload.warning, payload.truncated ? "More matches are available. Refine the name or enter an exact ticker, CIK or fund series." : ""].filter(Boolean).join(" "));
         setSearchState("ready");
       } catch (error) {
         if (request !== searchRequest.current) return;

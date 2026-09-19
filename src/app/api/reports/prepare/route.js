@@ -2,6 +2,7 @@ import { loadCompanyReport } from '../../../../utils/companyReport.js';
 import { loadFundReport } from '../../../../utils/fundReport.js';
 import { normalizeReportRequest, reportMatchesSelection } from '../../../../utils/reportRequest.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../../utils/rateLimit.js';
+import { usesPublicReportSources, preparePublicReportSources } from '../../../../utils/reportPreviewSources.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -13,7 +14,7 @@ export async function GET(request) {
     const limit = await checkRateLimit({ key: `rl:reports:${getClientIp(request)}`, windowMs: 60000, max: 12 });
     if (!limit.allowed) return rateLimitedResponse(limit, { 'Cache-Control': 'private, no-store' });
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(110000)]);
-    const report = selection.kind === 'company'
+    const report = usesPublicReportSources() ? await preparePublicReportSources(selection, signal) : selection.kind === 'company'
       ? await loadCompanyReport({ ticker: selection.id, basis: selection.basis }, signal)
       : await loadFundReport(selection, signal);
     if (!reportMatchesSelection(report, selection)) throw new Error('The prepared report did not match the selected entity. Please retry.');

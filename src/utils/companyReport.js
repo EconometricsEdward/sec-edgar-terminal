@@ -23,6 +23,7 @@ const HEADLINES = {
 const formatMap = { currency: 'usd', percent: 'percent', decimal: 'ratio', eps: 'number', shares: 'number', days: 'number', number: 'number' };
 const cleanText = (value, max = 500) => typeof value === 'string' ? value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, max) : '';
 const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
+const sourceTime = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
 function date(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value ? value : null;
@@ -61,12 +62,17 @@ function display(value, format) {
 
 /** A finished report projection of the same SEC mapping used by Analysis.
  * It neither fetches data nor replaces missing observations with estimates. */
-export function buildCompanyReport(analysis, { generatedAt = new Date().toISOString() } = {}) {
+export function buildCompanyReport(analysis, { generatedAt = new Date().toISOString(), sourceSnapshot = null } = {}) {
   if (!analysis || !Array.isArray(analysis.periods) || !Array.isArray(analysis.definitions)
     || !analysis.metrics || !BASES.has(analysis.basis)
     || !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(analysis.ticker || '')
     || !/^\d{1,10}$/.test(String(analysis.cik || '')) || Number(analysis.cik) <= 0
     || !Number.isFinite(Date.parse(generatedAt))) throw Object.assign(new Error('A verified company financial model is required to build this report.'), { status: 422 });
+  const generated = new Date(generatedAt).toISOString();
+  const sourceRetrievedAt = sourceTime(sourceSnapshot?.metadata?.fetchedAt);
+  const sourceCheckedAt = sourceTime(sourceSnapshot?.metadata?.revalidatedAt) || sourceRetrievedAt;
+  const sourceExpiresAt = sourceTime(sourceSnapshot?.metadata?.expiresAt);
+  const sourceStale = sourceSnapshot?.stale === true || Boolean(sourceExpiresAt && sourceExpiresAt <= generated);
   const data = unpackAnalysisCompany(analysis), basis = data.basis;
   const selectedPeriods = data.periods.map((period, index) => ({ period, index }))
     .filter(({ period }) => period?.kind === basis && date(period.end)
@@ -180,6 +186,9 @@ export function buildCompanyReport(analysis, { generatedAt = new Date().toISOStr
   const notes = [
     'This report is a normalized SEC financial extract, not a complete reproduction of the filed statements. USD monetary observations are used; other currencies are not silently converted.',
     'The latest filed values available to the financial model are used. Comparative filings can revise earlier values. Financial period end, filing date and report generation time are different dates.',
+    ...(sourceRetrievedAt ? [`Financial inputs retrieved: ${sourceRetrievedAt} (oldest canonical source).`] : []),
+    ...(sourceCheckedAt ? [`Financial inputs last checked: ${sourceCheckedAt} (oldest canonical source check). Generating this report does not perform a new SEC source check.`] : []),
+    ...(sourceStale ? ['The source check is due. This report uses a retained financial model that may not include a newer filing or amendment. Report generation time is not a new source check.'] : []),
     'Unavailable values are not zero. Custom issuer tags, nonpublic data and incompatible reporting contexts can leave gaps. Metrics with no verified values in the included history are omitted from the financial tables and retained in the workbook observation appendix.',
     basis === 'annual' ? 'History includes up to five annual periods. Balance-sheet values are period-end amounts; earnings and cash flows cover the stated annual duration.'
       : basis === 'ttm' ? 'History includes up to eight trailing-twelve-month periods. Flow calculations require four compatible standalone quarters; balance-sheet values remain period-end amounts.'
@@ -192,7 +201,6 @@ export function buildCompanyReport(analysis, { generatedAt = new Date().toISOStr
   if (data.lensNote) notes.push(cleanText(data.lensNote, 1000));
   if (data.sourceCoverage?.filingFallback?.status === 'unavailable' || data.sourceCoverage?.continuity?.status === 'partial')
     notes.push('Some supplemental filing or historical continuity inputs were unavailable when the financial model was retrieved. Retry later or inspect the source filing for missing items.');
-  const generated = new Date(generatedAt).toISOString();
   return {
     schema: REPORT_SCHEMA, kind: 'company', generatedAt: generated,
     entity: { id: data.ticker, ...(/^\d+$/.test(data.ticker) ? {} : { ticker: data.ticker }), name: cleanText(data.name, 240) || data.ticker, cik: String(data.cik).padStart(10, '0') },
@@ -206,8 +214,8 @@ export function buildCompanyReport(analysis, { generatedAt = new Date().toISOStr
       points: [...normalized.get(key)].reverse().map(point => ({ label: point.period.end, value: point.value })),
     })),
     sources, notes,
-    coverage: { status: available < latestObservations.length ? 'partial' : 'ready',
-      message: `${available} of ${latestObservations.length} financial metrics have verified values for ${latest.end}. ${selectedPeriods.length} reporting periods are included.`,
+    coverage: { status: sourceStale || available < latestObservations.length ? 'partial' : 'ready',
+      message: `${available} of ${latestObservations.length} financial metrics have verified values for ${latest.end}. ${selectedPeriods.length} reporting periods are included.${sourceStale ? ' Source check is due; the retained model may not include a newer filing or amendment.' : ''}`,
       recordCount: observations.length, availableMetrics: available, totalMetrics: latestObservations.length },
   };
 }
@@ -274,7 +282,7 @@ export function createCompanyReportLoader({ readPrepared, loadInteractive, loadC
     if (result?.payload?.ticker !== ticker || result?.payload?.basis !== basis
       || /^\d+$/.test(ticker) && normalizedCik(result?.payload?.cik) !== normalizedCik(ticker))
       throw Object.assign(new Error('The financial response did not match the selected company and reporting basis.'), { status: 502 });
-    return buildCompanyReport(result.payload, { generatedAt: now() });
+    return buildCompanyReport(result.payload, { generatedAt: now(), sourceSnapshot: result });
   };
 }
 export const loadCompanyReport = createCompanyReportLoader();
