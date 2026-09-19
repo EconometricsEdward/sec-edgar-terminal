@@ -30,6 +30,15 @@ export const DISCLOSURE_FORMS = [
 ];
 const textCache = new Map();
 const inflight = new Map();
+// A search checks several documents from the same issuer. Share its small,
+// normalized submissions metadata without sharing a reader's cancellation.
+const submissionsCache = new Map();
+const submissionsPending = new Map();
+let submissionsBytes = 0;
+const forgetSubmissions = (key) => {
+  const cached = submissionsCache.get(key);
+  if (cached) { submissionsBytes -= cached.bytes; submissionsCache.delete(key); }
+};
 // Bound optional legacy-cache refreshes independently of foreground research.
 // SEC dispatch itself remains governed across instances by secClient.
 const legacyIndexRefreshes = new Map();
@@ -119,40 +128,109 @@ function rows(recent, cik) {
   });
 }
 
+async function recentDisclosureSubmissions(cik, signal) {
+  signal?.throwIfAborted();
+  const cached = submissionsCache.get(cik);
+  if (cached?.expires > Date.now()) {
+    submissionsCache.delete(cik); submissionsCache.set(cik, cached);
+    return cached.value;
+  }
+  forgetSubmissions(cik);
+  let entry = submissionsPending.get(cik);
+  if (!entry) {
+    if (submissionsPending.size >= 24) throw new Error("Issuer history is busy. Please retry.");
+    entry = { controller: new AbortController(), subscribers: 0, settled: false, task: null };
+    const shared = entry;
+    shared.task = (async () => {
+      const response = await secFetch(`https://data.sec.gov/submissions/CIK${cik}.json`, shared.controller.signal);
+      const data = await response.json();
+      shared.controller.signal.throwIfAborted();
+      if (!data?.filings || !Array.isArray(data.filings.recent?.accessionNumber))
+        throw new Error("SEC returned no usable issuer filing history.");
+      if (data.cik != null && String(data.cik).padStart(10, "0") !== cik)
+        throw new Error("SEC filing history does not match the requested issuer.");
+      const value = { companyName: data.name || "", checkedAt: new Date().toISOString(), filings: rows(data.filings.recent, cik),
+        archives: (data.filings.files || []).filter(file =>
+          new RegExp(`^CIK${cik}-submissions-\\d+\\.json$`).test(file.name)
+          && /^\d{4}-\d{2}-\d{2}$/.test(file.filingFrom || "")
+          && /^\d{4}-\d{2}-\d{2}$/.test(file.filingTo || "")) };
+      const bytes = Buffer.byteLength(JSON.stringify(value));
+      // Never extend freshness by reading the local cache; all entries expire
+      // five minutes after their actual submissions request completes.
+      for (const [key, item] of submissionsCache) if (item.expires <= Date.now()) forgetSubmissions(key);
+      if (bytes <= 4_000_000) {
+        while (submissionsCache.size && (submissionsCache.size >= 24 || submissionsBytes + bytes > 4_000_000))
+          forgetSubmissions(submissionsCache.keys().next().value);
+        submissionsCache.set(cik, { value, bytes, expires: Date.now() + 300_000 });
+        submissionsBytes += bytes;
+      }
+      return value;
+    })().finally(() => {
+      shared.settled = true;
+      if (submissionsPending.get(cik) === shared) submissionsPending.delete(cik);
+    });
+    submissionsPending.set(cik, shared);
+  }
+  const shared = entry;
+  shared.subscribers++;
+  return new Promise((resolve, reject) => {
+    let released = false;
+    const finish = (callback, value) => {
+      if (released) return;
+      released = true;
+      signal?.removeEventListener("abort", abort);
+      shared.subscribers--;
+      if (!shared.settled && !shared.subscribers) {
+        if (submissionsPending.get(cik) === shared) submissionsPending.delete(cik);
+        shared.controller.abort();
+      }
+      callback(value);
+    };
+    const abort = () => finish(reject, signal.reason || new DOMException("Disclosure review cancelled.", "AbortError"));
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    shared.task.then(value => finish(resolve, value), error => finish(reject, error));
+  });
+}
+
 export async function disclosureCompanyHistory(input, settings, options = {}) {
   const { signal, accession = "" } = options;
   signal?.throwIfAborted();
   const identity = await resolveDisclosureCompany(input);
   signal?.throwIfAborted();
-  const key = `${identity.cik}:${settings.start}`;
-  const cached = await warmGet("disclosure-history-v1", key);
-  signal?.throwIfAborted();
-  if (cached) return { ...cached, ticker: identity.ticker };
-  // A standalone passage does not need every historical submissions archive.
+  // A standalone passage needs recent metadata, not the assembled multi-year
+  // history cache. This also avoids writing unconfigured :recent cache keys.
   const recentOnly = options.recentOnly || (accession && settings.comparison === "none");
-  const recentCached = recentOnly ? await warmGet("disclosure-history-v1", `${key}:recent`) : null;
-  if (recentCached && (!accession || recentCached.filings.some(f => f.accession === accession))) return { ...recentCached, ticker: identity.ticker };
-  const submissions = await (
-    await secFetch(`https://data.sec.gov/submissions/CIK${identity.cik}.json`, signal)
-  ).json();
-  let filings = rows(submissions.filings?.recent, identity.cik);
+  const key = `${identity.cik}:${settings.start}`;
+  const cached = recentOnly ? null : await warmGet("disclosure-history-v1", key);
+  signal?.throwIfAborted();
+  if (cached && (!accession || cached.filings.some(f => f.accession === accession))) return { ...cached, ticker: identity.ticker };
+  const submissions = await recentDisclosureSubmissions(identity.cik, signal);
+  let filings = [...submissions.filings];
   const since = new Date(Date.parse(settings.start) - 410 * 86400000)
     .toISOString()
     .slice(0, 10);
-  const archives = (submissions.filings?.files || [])
-    .filter((f) => f.filingTo >= since)
-    .sort((a, b) => b.filingTo.localeCompare(a.filingTo));
+  const accessionYear = accession ? `20${accession.slice(11, 13)}` : "";
+  const containsAccessionYear = file => accessionYear && file.filingFrom <= `${accessionYear}-12-31`
+    && file.filingTo >= `${accessionYear}-01-01`;
+  const archives = submissions.archives
+    .filter((f) => f.filingTo >= since || (recentOnly && containsAccessionYear(f)))
+    .sort((a, b) => (recentOnly ? Number(containsAccessionYear(b)) - Number(containsAccessionYear(a)) : 0)
+      || b.filingTo.localeCompare(a.filingTo));
   const issues = [];
   const targetIsRecent = recentOnly && (!accession || filings.some(f => f.accession === accession));
   const selectedArchives = targetIsRecent ? [] : archives.slice(0, 6);
+  let reviewedArchives = 0;
   for (const file of selectedArchives) {
     signal?.throwIfAborted();
     if (!/^CIK\d{10}-submissions-\d+\.json$/.test(file.name)) continue;
     try {
+      reviewedArchives++;
       const data = await (
         await secFetch(`https://data.sec.gov/submissions/${file.name}`, signal)
       ).json();
       filings.push(...rows(data, identity.cik));
+      if (recentOnly && accession && filings.some(f => f.accession === accession)) break;
     } catch (error) {
       signal?.throwIfAborted();
       issues.push(
@@ -167,15 +245,18 @@ export async function disclosureCompanyHistory(input, settings, options = {}) {
   );
   const result = {
     ...identity,
-    companyName: submissions.name || identity.name,
+    companyName: submissions.companyName || identity.name,
     filings,
-    historyLimited: archives.length > selectedArchives.length || issues.length > 0,
+    historyLimited: archives.length > reviewedArchives || issues.length > 0,
     historyIssues: issues,
-    historyArchivesReviewed: selectedArchives.length,
+    historyArchivesReviewed: reviewedArchives,
     historyArchivesAvailable: archives.length,
+    historyCheckedAt: submissions.checkedAt,
   };
   signal?.throwIfAborted();
-  if (!issues.length) await warmSet("disclosure-history-v1", targetIsRecent ? `${key}:recent` : key, result, 300);
+  const remainingTtl = Math.floor((Date.parse(submissions.checkedAt) + 300_000 - Date.now()) / 1000);
+  if (!issues.length && !recentOnly && remainingTtl > 0)
+    await warmSet("disclosure-history-v1", key, result, Math.min(300, remainingTtl));
   return result;
 }
 

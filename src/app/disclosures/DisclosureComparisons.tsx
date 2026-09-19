@@ -25,14 +25,14 @@ export function DisclosureMatrix({
     <section className={s.panel}>
       <div className={s.panelHeading}>
         <div>
-          <span className={s.eyebrow}>Compare the evidence</span>
+          <span className={s.eyebrow}>Compare company disclosures</span>
           <h2>Company × topic</h2>
         </div>
         <span className={s.badge}>Same search window & section</span>
       </div>
       <p className={s.muted}>
         Cells count successfully reviewed filings mentioning each topic,
-        independently of your main query. Click a cell to read its evidence. A
+        independently of your main query. Click a cell to read its passages. A
         partial sample is always labeled.
       </p>
       <div className={s.tableScroll}>
@@ -70,7 +70,7 @@ export function DisclosureMatrix({
                         : `${cell.hits} / ${row.reviewed}`}
                       <small>
                         {cell.state === "match"
-                          ? "View evidence ↗"
+                          ? "Read passages ↗"
                           : cell.state === "no-match"
                             ? "No matches in reviewed files"
                             : "Coverage unavailable"}

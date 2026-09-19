@@ -4,7 +4,7 @@ import { ArrowUpRight, CheckCircle2, Download, ExternalLink, RefreshCw, Search, 
 import { parseDisclosureQuery } from "../../utils/disclosureQuery.js";
 import { filingEvidenceId } from "../../utils/disclosureNotebook.js";
 import { safeDisclosureSourceUrl } from "../../utils/disclosureCollections.js";
-import { buildDisclosureResults, defaultDisclosureResultFilters, disclosurePreviewText, disclosureResultPreviews, disclosureReviewId, exportDisclosureResultsCsv } from "../../utils/disclosureResults.js";
+import { buildDisclosureResults, defaultDisclosureResultFilters, disclosurePreviewText, disclosureResultPreviews, exportDisclosureResultsCsv } from "../../utils/disclosureResults.js";
 import { Highlight } from "./DisclosureHighlight";
 import { downloadDisclosure } from "./disclosureDownload";
 import type { Filing, Passage, SearchSettings } from "./disclosureTypes";
@@ -16,8 +16,6 @@ type Props = {
   filings: Filing[];
   settings: SearchSettings;
   changesOnly: boolean;
-  reviewedFilings?: Record<string, string>;
-  onReview: (id: string, reviewed: boolean) => void;
   open: (filing: Filing, settings: SearchSettings, passage?: { index: number; side: "current" | "prior" }) => void;
   onVerifyCandidates?: () => void;
   selectedId?: string;
@@ -32,19 +30,20 @@ function PassagePreview({ passage, terms, read }: { passage: Passage; terms: str
   </button>;
 }
 
-export default function DisclosureResults({ filings, settings, changesOnly, reviewedFilings = {}, onReview, open, onVerifyCandidates, selectedId, busy = false }: Props) {
+const reviewedFilings = {};
+
+export default function DisclosureResults({ filings, settings, changesOnly, open, onVerifyCandidates, selectedId, busy = false }: Props) {
   const [filters, setFilters] = useState(defaultDisclosureResultFilters);
   const [visibleCount, setVisibleCount] = useState(24);
   const deferredText = useDeferredValue(filters.text);
   const terms = useMemo(() => { try { return parseDisclosureQuery(settings.query).positive; } catch { return []; } }, [settings.query]);
-  const model = useMemo(() => buildDisclosureResults(filings, { ...filters, text: deferredText }, settings, reviewedFilings, changesOnly), [filings, filters, deferredText, settings, reviewedFilings, changesOnly]);
+  const model = useMemo(() => buildDisclosureResults(filings, { ...filters, text: deferredText }, settings, reviewedFilings, changesOnly), [filings, filters, deferredText, settings, changesOnly]);
   function patch(key: keyof Filters, value: string) { setFilters(current => ({ ...current, [key]: value })); setVisibleCount(24); }
   const activeFilters = Object.entries(filters).some(([key, value]) => key !== "sort" && value !== defaultDisclosureResultFilters()[key]);
-  const facetLabels = { company: "Company", form: "Filing form", change: "Language change", language: "Automated wording", review: "My review queue" };
-  return <>
-    <div className={s.panelHeading}>
+  const facetLabels = { company: "Company", form: "Filing form", change: "Language change", language: "Automated wording" };
+  return <div className={r.results}>
+    <div className={`${s.panelHeading} ${r.resultsHeading}`}>
       <div>
-        <span className={s.eyebrow}>{changesOnly ? "Disclosure changes" : "Search results"}</span>
         <h2>{model.results.length.toLocaleString()} filing{model.results.length === 1 ? "" : "s"}{busy ? " so far" : " in view"}</h2>
         <p className={r.resultSummary} aria-live="polite">
           {model.summary.verified > 0 && <span><CheckCircle2 size={12} />{model.summary.verified} verified document{model.summary.verified === 1 ? "" : "s"}</span>}
@@ -54,35 +53,27 @@ export default function DisclosureResults({ filings, settings, changesOnly, revi
         </p>
       </div>
       <div className={r.actions}>
-        {onVerifyCandidates && filings.some(f => ["index-candidate", "fetch-failed"].includes(f.status || "") || settings.comparison !== "none" && f.status === "indexed-match") && <button disabled={busy} onClick={onVerifyCandidates}><RefreshCw size={14} /> Verify next 8</button>}
+        {onVerifyCandidates && filings.some(f => ["index-candidate", "fetch-failed"].includes(f.status || "") || settings.comparison !== "none" && f.status === "indexed-match") && <button disabled={busy} onClick={onVerifyCandidates}><RefreshCw size={14} /> Check more passages</button>}
         <button disabled={!model.results.length} title="Export filtered filing manifest with sources and loaded excerpts" onClick={() => downloadDisclosure("disclosure-result-manifest.csv", exportDisclosureResultsCsv(model.results, settings, reviewedFilings, { ...filters, changesOnly }), "text/csv;charset=utf-8")}><Download size={14} /> Export results</button>
       </div>
     </div>
     <div className={r.toolbar}>
       <label>Sort by<select value={filters.sort} onChange={e => patch("sort", e.target.value)}><option value="relevance">Most relevant</option><option value="date">Newest filing</option><option value="added">Newly added language</option><option value="section">Recognized section</option><option value="proximity">Term proximity</option><option value="specificity">Amounts & dates</option></select></label>
-      <label>Show<select value={filters.scope} onChange={e => patch("scope", e.target.value)}>{model.facets.scope.map(f => <option key={f.value} value={f.value}>{f.label} ({f.count})</option>)}</select></label>
       <details className={r.refine}>
         <summary><SlidersHorizontal size={14} /> Refine results{activeFilters ? " · active" : ""}</summary>
         <div className={r.refineBody}>
-          <div className={r.filters}>{(["company", "form", "change", "language", "review"] as const).map(key => <label key={key}>{facetLabels[key]}<select value={filters[key]} onChange={e => patch(key, e.target.value)}>{model.facets[key].map(f => <option key={f.value} value={f.value}>{f.label} ({f.count})</option>)}</select></label>)}</div>
+      <label>Show<select value={filters.scope} onChange={e => patch("scope", e.target.value)}>{model.facets.scope.map(f => <option key={f.value} value={f.value}>{f.label} ({f.count})</option>)}</select></label>
+
+          <div className={r.filters}>{(["company", "form", "change", "language"] as const).map(key => <label key={key}>{facetLabels[key]}<select value={filters[key]} onChange={e => patch(key, e.target.value)}>{model.facets[key].map(f => <option key={f.value} value={f.value}>{f.label} ({f.count})</option>)}</select></label>)}</div>
           <label className={r.previewFilter}><span><Search size={12} /> Filter loaded excerpts</span><input type="search" placeholder="Words within the loaded previews" value={filters.text} onChange={e => patch("text", e.target.value)} aria-describedby="disclosure-preview-filter-help" /></label>
           <p id="disclosure-preview-filter-help" className={r.help}>Checks up to three loaded excerpts per document. Use the main search to search filing text.</p>
-          <p className={r.help}>{model.summary.personallyReviewed} of {model.summary.verified} searched documents marked reviewed by you. Review marks stay in this browser and reopen when the query or evidence changes.</p>
         </div>
       </details>
       {activeFilters && <button className={r.reset} onClick={() => { setFilters(defaultDisclosureResultFilters()); setVisibleCount(24); }}>Clear filters</button>}
     </div>
-    <details className={r.searchMethod}>
-      <summary>About relevance & coverage</summary>
-      <p>Search relevance combines the positions returned by SEC discovery and prepared passage search. A match in both sources moves up the list. Within either source, its original relevance order is retained as the full filing is verified. Detailed company searches use term proximity, recognized sections, and concrete amounts or dates. Ranking is a reading aid and does not measure risk.</p>
-      <p>Verified documents were searched in the selected scope. Prepared passage matches come from a previously indexed subset; open the full filing to verify complete coverage. SEC candidates have no verified passage yet. Wording labels are automated; read the quotation in context, including qualifications and negations.</p>
-      {changesOnly && <p>Repeated wording is suppressed in this view. A passage that no longer matches the query may still exist in revised form. Candidates need a filing comparison before any change is established.</p>}
-    </details>
     {!model.results.length && <div className={s.empty}>{busy ? "Finding matching filings. Results appear as soon as they are available." : "No filings meet these result filters. Clear filters, try a shorter topic, broaden the date range, or inspect coverage gaps."}</div>}
     {model.results.slice(0, visibleCount).map(filing => {
       const id = filingEvidenceId(filing);
-      const reviewId = disclosureReviewId(filing, settings);
-      const reviewedAt = reviewedFilings[reviewId];
       const candidate = filing.status === "index-candidate";
       const indexed = filing.status === "indexed-match";
       const searched = filing.status === "reviewed";
@@ -117,16 +108,20 @@ export default function DisclosureResults({ filings, settings, changesOnly, revi
             {previews.some(passage => passage.label) && <p>Automated wording: {[...new Set(previews.map(passage => passage.label).filter(Boolean))].join("; ")}. This describes language, not a risk conclusion.</p>}
           </details>}
           <div className={r.footer}>
-            <div className={r.readActions}><button onClick={() => open(filing, settings)}>{candidate ? "Verify & read" : indexed ? "Open full filing" : searched ? "Read evidence" : "Retry in reader"}<ArrowUpRight size={13} /></button>
+            <div className={r.readActions}><button onClick={() => open(filing, settings)}>{candidate ? "Read & check filing" : indexed ? "Open full filing" : searched ? "Read filing" : "Retry in reader"}<ArrowUpRight size={13} /></button>
               {(searched || indexed) && (settings.comparison === "none" || !settings.comparison) && <button onClick={() => open(filing, { ...settings, comparison: "annual-season" })}>Compare wording</button>}
               {source && <a href={source} target="_blank" rel="noopener noreferrer">SEC source <ExternalLink size={12} /></a>}
             </div>
-            {searched && <button className={r.reviewButton} aria-pressed={Boolean(reviewedAt)} onClick={() => onReview(reviewId, !reviewedAt)}>{reviewedAt && <CheckCircle2 size={13} />}{reviewedAt ? "Reviewed · undo" : "Mark reviewed"}</button>}
           </div>
-          {reviewedAt && searched && <small>Reviewed {new Date(reviewedAt).toLocaleString()}.</small>}
         </div>
       </article>;
     })}
+    <details className={r.searchMethod}>
+      <summary>About relevance & coverage</summary>
+      <p>Search relevance combines the positions returned by SEC discovery and prepared passage search. A match in both sources moves up the list. Within either source, its original relevance order is retained as the full filing is verified. Detailed company searches use term proximity, recognized sections, and concrete amounts or dates. Ranking is a reading aid and does not measure risk.</p>
+      <p>Verified documents were searched in the selected scope. Prepared passage matches come from a previously indexed subset; open the full filing to verify complete coverage. SEC candidates have no verified passage yet. Wording labels are automated; read the quotation in context, including qualifications and negations.</p>
+      {changesOnly && <p>Repeated wording is suppressed in this view. A passage that no longer matches the query may still exist in revised form. Candidates need a filing comparison before any change is established.</p>}
+    </details>
     {model.results.length > visibleCount && <button className={s.loadMore} onClick={() => setVisibleCount(n => n + 24)}>Show {Math.min(24, model.results.length - visibleCount)} more filings ({model.results.length - visibleCount} remaining)</button>}
-  </>;
+  </div>;
 }

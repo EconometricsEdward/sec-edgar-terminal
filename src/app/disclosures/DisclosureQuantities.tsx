@@ -17,17 +17,25 @@ export default function DisclosureQuantities({
   const [open, setOpen] = useState(false);
   const comparison = useMemo(
     () =>
-      disclosureQuantityComparison(passage.priorText || "", passage.text || ""),
-    [passage.priorText, passage.text],
+      open
+        ? disclosureQuantityComparison(
+            passage.priorText || "",
+            passage.text || "",
+          )
+        : { prior: [], current: [] },
+    [open, passage.priorText, passage.text],
   );
   const count = comparison.prior.length + comparison.current.length;
-  if (!count) return null;
+  if (!/\d/.test(`${passage.priorText || ""} ${passage.text || ""}`)) return null;
   return (
     <details
       className={s.quantities}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary>Inspect amounts, percentages & dates · {count} mentions</summary>
+      <summary>
+        Inspect amounts, percentages & dates
+        {open ? ` · ${count} mentions` : ""}
+      </summary>
       {open && (
         <>
           <p className={s.note}>

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { disclosureSettings, readDisclosureDocument, scanDisclosureCompany, prewarmDisclosureCompany } from '../src/utils/disclosureResearchServer.js';
+import { disclosureSettings, readDisclosureDocument, scanDisclosureCompany, prewarmDisclosureCompany, disclosureCompanyHistory } from '../src/utils/disclosureResearchServer.js';
 
 const prose = 'Our liquidity arrangements include a revolving credit facility available to fund operating expenses and capital projects. We evaluate the facility and covenant conditions throughout each financial reporting period.';
 const settings = (extra = {}) => disclosureSettings(new URLSearchParams({ query: 'liquidity', forms: '10-K', start: '2025-01-01', comparison: 'none', ...extra }));
@@ -105,5 +105,98 @@ test('scheduled preparation is bounded and does not download old submissions arc
     assert.equal(calls.length, 2);
     assert.ok(calls[1].endsWith('report3.htm'));
     await assert.rejects(prewarmDisclosureCompany(cik, { maxDocuments: 50 }), /one or two/);
+  } finally { global.fetch = original; }
+});
+
+
+test('concurrent source checks share issuer metadata without sharing cancellation', async () => {
+  const original = global.fetch, cik = '0000999830';
+  const first = new AbortController(), second = new AbortController();
+  let calls = 0, transport, release, markStarted;
+  const started = new Promise(resolve => { markStarted = resolve; });
+  global.fetch = async (url, options) => {
+    calls++; transport = options.signal;
+    markStarted();
+    return new Promise(resolve => { release = () => resolve(Response.json(submissions(cik))); });
+  };
+  try {
+    const pendingFirst = disclosureCompanyHistory(cik, settings(), { signal: first.signal, recentOnly: true });
+    const pendingSecond = disclosureCompanyHistory(cik, settings(), { signal: second.signal, recentOnly: true });
+    const cancelled = assert.rejects(pendingFirst, { name: 'AbortError' });
+    await started;
+    first.abort();
+    await cancelled;
+    assert.equal(transport.aborted, false, 'Another reader still needs the shared source.');
+    release();
+    const result = await pendingSecond;
+    assert.equal(result.cik, cik);
+    assert.equal(result.filings.length, 1);
+    assert.equal(calls, 1, 'Two simultaneous readers share one submissions request.');
+    await disclosureCompanyHistory(cik, settings(), { recentOnly: true });
+    assert.equal(calls, 1, 'A later document reuses fresh issuer metadata.');
+  } finally { global.fetch = original; }
+});
+
+test('last metadata reader cancellation stops the transport and allows an immediate retry', async () => {
+  const original = global.fetch, cik = '0000999831', controller = new AbortController();
+  let calls = 0, transport, markStarted;
+  const started = new Promise(resolve => { markStarted = resolve; });
+  global.fetch = async (url, options) => {
+    calls++;
+    if (calls > 1) return Response.json(submissions(cik));
+    transport = options.signal;
+    markStarted();
+    return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+  };
+  try {
+    const pending = disclosureCompanyHistory(cik, settings(), { signal: controller.signal, recentOnly: true });
+    const cancelled = assert.rejects(pending, { name: 'AbortError' });
+    await started;
+    controller.abort();
+    await cancelled;
+    assert.equal(transport.aborted, true);
+    const result = await disclosureCompanyHistory(cik, settings(), { recentOnly: true });
+    assert.equal(result.cik, cik);
+    assert.equal(calls, 2);
+  } finally { global.fetch = original; }
+});
+
+test('old accession selects its archive first and stops after matching the requested source', async () => {
+  const original = global.fetch, cik = '0000999832', accession = `${cik}-18-000001`, calls = [];
+  const data = submissions(cik);
+  data.filings.files = Array.from({ length: 10 }, (_, i) => ({
+    name: `CIK${cik}-submissions-${String(i + 1).padStart(3, '0')}.json`,
+    filingFrom: `${2026 - i}-01-01`, filingTo: `${2026 - i}-12-31`,
+  }));
+  const archive = { accessionNumber: [accession], form: ['10-K'], filingDate: ['2018-02-01'], reportDate: ['2017-12-31'], primaryDocument: ['old-report.htm'] };
+  global.fetch = async url => {
+    calls.push(String(url));
+    if (String(url).endsWith(`/CIK${cik}.json`)) return Response.json(data);
+    if (String(url).endsWith('-submissions-009.json')) return Response.json(archive);
+    if (String(url).endsWith('/old-report.htm')) return new Response(`<p>${prose}</p>`);
+    throw new Error('Unrelated archive should not be downloaded for a standalone reader.');
+  };
+  try {
+    const result = await readDisclosureDocument(cik, accession, 'old-report.htm', settings({ start: '2017-01-01' }));
+    assert.equal(result.accession, accession);
+    assert.equal(result.filingDate, '2018-02-01');
+    assert.equal(result.matches.length, 1);
+    assert.equal(calls.length, 3, 'Only submissions, the matching archive and the source document are fetched.');
+    assert.ok(calls[1].endsWith('-submissions-009.json'));
+  } finally { global.fetch = original; }
+});
+
+test('mismatched issuer metadata is rejected and never retained as a successful source', async () => {
+  const original = global.fetch, cik = '0000999833';
+  let calls = 0;
+  global.fetch = async () => {
+    calls++;
+    return Response.json({ ...submissions(cik), cik: calls === 1 ? '999834' : Number(cik) });
+  };
+  try {
+    await assert.rejects(disclosureCompanyHistory(cik, settings(), { recentOnly: true }), /does not match/);
+    const result = await disclosureCompanyHistory(cik, settings(), { recentOnly: true });
+    assert.equal(result.cik, cik);
+    assert.equal(calls, 2);
   } finally { global.fetch = original; }
 });

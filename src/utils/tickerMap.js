@@ -207,6 +207,10 @@ export async function resolveDisclosureCompany(value) {
   const index = await getCached("operating");
   const ticker = requested.toUpperCase();
   if (index[ticker]) return { ...index[ticker], ticker };
+  // Accept common dotted share-class input only through an existing SEC symbol.
+  // Exact symbols above always win; punctuation never creates a new identity.
+  const secClassTicker = ticker.includes('.') ? ticker.replaceAll('.', '-') : '';
+  if (secClassTicker && index[secClassTicker]) return { ...index[secClassTicker], ticker: secClassTicker };
   const normalized = requested.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (normalized.length < 3)
     throw new Error(
