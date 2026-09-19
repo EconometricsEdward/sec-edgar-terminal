@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import CompareClient from "./[tickers]/CompareClient";
 import { buildPageMetadata } from "../../utils/siteMetadata";
+import { COMPARE_DESCRIPTION } from "../../utils/comparePublicMetadata.js";
 
 // ============================================================================
 // Metadata — static, since this page has no ticker list yet
@@ -8,8 +9,7 @@ import { buildPageMetadata } from "../../utils/siteMetadata";
 export const metadata: Metadata = {
   ...buildPageMetadata({
     title: "Peer Comparison — Compare SEC Filings & Financials",
-    description:
-      "Compare up to 12 public companies using aligned annual, quarterly, and trailing-year financials, industry-aware metrics, peer medians, trends, source evidence, and exportable research.",
+    description: COMPARE_DESCRIPTION,
     path: "/compare",
   }),
 };

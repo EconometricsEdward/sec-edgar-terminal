@@ -170,6 +170,27 @@ test("peer medians share a paired sample and median changes are not differences 
   );
 });
 
+test("movement medians never pool annual and trailing-year series", () => {
+  const result = movementComparison([
+    entry("ANNUAL", [120, 100]),
+    entry("TTM", [140, 100], [period(2025), period(2024)].map((p) => ({ ...p, kind: "ttm" }))),
+  ], "revenue", settings);
+  assert.equal(result.pairedCount, 2, "each issuer's own change remains inspectable");
+  assert.equal(result.medianChange, null);
+  assert.match(result.reason, /reporting bases differ/);
+});
+
+test("movement medians count padded CIK aliases once", () => {
+  const a = entry("FIRST", [120, 100]);
+  const b = entry("ALIAS", [120, 100]);
+  a.data.cik = "1";
+  b.data.cik = "0000000001";
+  const result = movementComparison([a, b, entry("OTHER", [140, 100])], "revenue", settings);
+  assert.deepEqual(result.members, ["FIRST", "OTHER"]);
+  assert.equal(result.total, 2);
+  assert.equal(result.medianChange, 30);
+});
+
 test("peer summaries are withheld for incompatible reporting endpoints", () => {
   const result = movementComparison(
     [

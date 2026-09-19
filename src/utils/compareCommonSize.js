@@ -49,9 +49,9 @@ export function commonSizeDenominator(entry, mode = "balance") {
   if (entry.data?.lens === "banking")
     return {
       key: "bankRevenue",
-      label: "Net interest + noninterest income",
+      label: "Revenue, net of interest expense",
       definition:
-        "Net interest income before provision plus noninterest income for the same duration. This is not gross interest income or corporate sales.",
+        "Reported revenue net of interest expense, or net interest income before provision plus noninterest income for the same duration. This is not gross interest income or corporate sales.",
     };
   return {
     key: null,

@@ -1,4 +1,5 @@
 "use client";
+import { memo } from "react";
 import { researchMetricComparison } from "../../../utils/compareBenchmarks.js";
 import { ArrowUpRight, Search } from "lucide-react";
 import { historicGrowth } from "../../../utils/compareResearch.js";
@@ -11,7 +12,7 @@ import {
 } from "../compareTypes";
 import styles from "../compare.module.css";
 
-export default function CompareTable({
+function CompareTable({
   entries,
   metrics,
   settings,
@@ -292,3 +293,5 @@ export function GrowthTable({
     </div>
   );
 }
+
+export default memo(CompareTable);

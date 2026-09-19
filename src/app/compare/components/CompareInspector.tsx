@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { BookmarkPlus, Copy, ExternalLink, Link2, X } from "lucide-react";
+import { Copy, ExternalLink, Link2, X } from "lucide-react";
 import { buildSourceUrl } from "../../../utils/xbrlParser.js";
 import {
   compareEvidenceCitation,
@@ -53,12 +53,10 @@ const exact = (value: unknown) =>
 export default function CompareInspector({
   evidence,
   close,
-  save,
   tickers = [],
 }: {
   evidence: CompareEvidence;
   close: () => void;
-  save: () => void;
   tickers?: string[];
 }) {
   const { cell, metric } = evidence;
@@ -179,23 +177,7 @@ export default function CompareInspector({
             </dd>
           </>
         )}
-        {evidence.capturedAt && (
-          <>
-            <dt>Snapshot</dt>
-            <dd>
-              {evidence.snapshotName || "Saved research checkpoint"}
-              <br />
-              Captured {new Date(evidence.capturedAt).toLocaleString()}
-            </dd>
-          </>
-        )}
       </dl>
-      {evidence.capturedAt && (
-        <p className={extra.notice}>
-          This is the frozen observation captured in the snapshot. Its values
-          and filing cutoff are preserved when you save evidence.
-        </p>
-      )}
       <h3>Metric definition</h3>
       <p>{definition}</p>
       {metric.inputs?.length > 0 && (
@@ -216,9 +198,6 @@ export default function CompareInspector({
               "Direct reported SEC XBRL value, with its original context below."}
           </p>
           {point.note && <p>{point.note}</p>}
-          <button className={styles.primary} onClick={save}>
-            <BookmarkPlus size={15} /> Save evidence to collection
-          </button>
         </>
       )}
       <div className={extra.share}>
@@ -251,8 +230,7 @@ export default function CompareInspector({
       {link && (
         <small>
           Observation links verify the original input fingerprint when reopened.
-          If later SEC data differs, the link reports the mismatch. Private
-          notes and snapshot names are excluded from the URL.
+          If later SEC data differs, the link reports the mismatch.
         </small>
       )}
       {feedback.key === key && (

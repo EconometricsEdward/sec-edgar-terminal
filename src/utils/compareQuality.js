@@ -16,6 +16,7 @@ const INSTANT_METRICS = new Set([
   "allowanceLoans",
   "shortTermDebt",
   "longTermDebt",
+  "totalDebt",
   "currentAssets",
   "currentLiabilities",
   "allowanceForLoanLoss",

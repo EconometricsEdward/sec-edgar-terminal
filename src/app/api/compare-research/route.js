@@ -1,15 +1,7 @@
-import { gzipSync, gunzipSync } from "node:zlib";
 import { NextResponse } from "next/server";
-import { loadResearchCompany } from "../../../utils/secResearchData.js";
 import { validTicker } from "../../../utils/researchWorkspace.js";
-import {
-  buildCompareCompany,
-  COMPARE_VERSION,
-} from "../../../utils/compareResearch.js";
-import { warmGet, warmSet } from "../../../utils/warmCache.js";
-import { packAnalysisCompany } from "../../../utils/analysisResearch.js";
-import { readPreparedCompare } from "../../../utils/preparedResearchStore.js";
-import { preparedDataHeaders, preparedCacheControl } from "../../../utils/secDocumentStore.js";
+import { unpackAnalysisCompany } from "../../../utils/analysisResearch.js";
+import { loadCompareResearch } from "../../../utils/compareResearchServer.js";
 import {
   checkRateLimit,
   getClientIp,
@@ -18,7 +10,6 @@ import {
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-const PUBLIC_RESEARCH_CACHE = "public, max-age=60, s-maxage=300, stale-while-revalidate=3600, stale-if-error=86400";
 export async function GET(request) {
   const params = new URL(request.url).searchParams;
   const ticker = (params.get("ticker") || "").trim().toUpperCase();
@@ -50,35 +41,9 @@ export async function GET(request) {
   });
   if (!limit.allowed) return rateLimitedResponse(limit);
   try {
-    const prepared = await readPreparedCompare({ ticker, basis, asOf, format });
-    if (prepared) return NextResponse.json(prepared.payload, {
-      headers: { "Cache-Control": preparedCacheControl(prepared), ...preparedDataHeaders(prepared, prepared.cacheSource) },
-    });
-    const id = `${COMPARE_VERSION}:${ticker}:${basis}:${asOf}`;
-    const cached = await warmGet("compare-research", id);
-    if (typeof cached?.gzip === 'string' && cached.gzip.length <= 8 * 1024 * 1024) {
-      try {
-        const payload = JSON.parse(gunzipSync(Buffer.from(cached.gzip, "base64"), { maxOutputLength: 32 * 1024 * 1024 }).toString("utf8"));
-        return NextResponse.json(
-          format === "packed" ? packAnalysisCompany(payload) : payload,
-          { headers: { "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": "warm" } },
-        );
-      } catch {
-        /* A corrupt cache entry falls through to public SEC data. */
-      }
-    }
-    const company = await loadResearchCompany(ticker, {
-      signal: AbortSignal.timeout(25000),
-    });
-    const result = buildCompareCompany(company, { basis, asOf });
-    await warmSet(
-      "compare-research",
-      id,
-      { gzip: gzipSync(JSON.stringify(result)).toString("base64") },
-      300,
-    );
-    return NextResponse.json(format === "packed" ? packAnalysisCompany(result) : result, {
-      headers: { "Cache-Control": PUBLIC_RESEARCH_CACHE, "X-Cache-Source": "upstream" },
+    const result = await loadCompareResearch({ ticker, basis, asOf }, request.signal);
+    return new NextResponse(format === "packed" ? result.serializedPayload : JSON.stringify(unpackAnalysisCompany(result.payload)), {
+      headers: { "Content-Type": "application/json", ...result.headers },
     });
   } catch (error) {
     return NextResponse.json(

@@ -20,8 +20,7 @@
   overflow-x: clip;
   overflow-y: visible;
 }
-:global(html[data-theme-mode="light"]) .page,
-:global(.et-light) .page {
+:global(html[data-theme-mode="light"]) .page {
   --compare-bg: #f4f7fb;
   --compare-raised: #fff;
   --compare-panel: #edf3f8;
@@ -279,23 +278,6 @@
 }
 .suggestions li[aria-selected="true"] button {
   outline: 1px solid var(--compare-accent);
-}
-.saveForm {
-  display: flex;
-  align-items: end;
-  gap: 12px;
-  padding: 15px;
-  background: var(--compare-panel);
-  border-radius: 8px;
-  margin-bottom: 15px;
-  flex-wrap: wrap;
-}
-.saveForm label {
-  flex: 1;
-  min-width: 220px;
-}
-.saveForm small {
-  flex-basis: 100%;
 }
 .status,
 .error {
@@ -777,55 +759,6 @@
   margin-top: 15px;
   padding: 12px 0;
 }
-.notebookGrid {
-  display: grid;
-  grid-template-columns: 0.8fr 1.2fr;
-  gap: 25px;
-  padding: 0 20px 24px;
-}
-.notebookGrid h3 svg {
-  display: inline;
-  vertical-align: -2px;
-  margin-right: 4px;
-}
-.field {
-  margin-bottom: 14px;
-}
-.field textarea {
-  resize: vertical;
-}
-.saved {
-  background: var(--compare-panel);
-  padding: 15px;
-  border: 1px solid var(--compare-border);
-  border-radius: 9px;
-  margin-bottom: 12px;
-}
-.saved > strong,
-.saved > small {
-  display: block;
-  margin-bottom: 9px;
-}
-.saved .sectionHead {
-  padding: 0;
-}
-.saved .sectionHead > strong {
-  color: var(--compare-accent);
-  white-space: nowrap;
-  font-size: 18px;
-}
-.saved .field {
-  margin-top: 12px;
-}
-.evidenceGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 15px;
-  padding: 0 20px 20px;
-}
-.withInspector .notebookGrid {
-  grid-template-columns: 1fr;
-}
 .empty {
   padding: 48px 32px;
   text-align: center;
@@ -844,14 +777,6 @@
 }
 .empty .actions {
   justify-content: center;
-}
-.emptySmall {
-  color: var(--compare-muted);
-  font-size: 12px;
-  padding: 15px 0;
-}
-.panel > .emptySmall {
-  padding: 20px;
 }
 .methodology {
   margin-top: 22px;
@@ -894,9 +819,6 @@
   }
   .heroMark {
     display: none;
-  }
-  .notebookGrid {
-    grid-template-columns: 1fr;
   }
   .withInspector .sectionHead {
     flex-direction: column;
@@ -1006,13 +928,6 @@
     height: 310px;
     padding: 0;
   }
-  .evidenceGrid {
-    grid-template-columns: 1fr;
-    padding: 0 12px 12px;
-  }
-  .notebookGrid {
-    padding: 0 15px 20px;
-  }
   .desktopLabel {
     display: none;
   }
@@ -1024,10 +939,6 @@
   flex-wrap: wrap;
   gap: 9px;
   flex: 1 1 100%;
-}
-
-.staticControls {
-  position: static;
 }
 .peerManager {
   margin: 16px 0;

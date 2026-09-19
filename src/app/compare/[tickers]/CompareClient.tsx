@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 import {
   GitCompareArrows,
   Plus,
@@ -15,12 +16,10 @@ import {
   RefreshCw,
   Download,
   Link as LinkIcon,
-  BookmarkPlus,
   SlidersHorizontal,
   Table2,
   TrendingUp,
   ScatterChart,
-  NotebookPen,
   Loader2,
   CheckCircle2,
   ShieldCheck,
@@ -35,7 +34,6 @@ import { unpackAnalysisCompany } from "../../../utils/analysisResearch.js";
 import {
   COMPARE_METRICS,
   METRIC_BY_KEY,
-  COMPARE_VERSION,
   MAX_COMPARE_COMPANIES,
   inferLens,
   defaultMetrics,
@@ -44,35 +42,33 @@ import {
   uniqueIssuerCompanies,
 } from "../../../utils/compareResearch.js";
 import {
-  COMPARE_STORAGE_KEY,
   DEFAULT_COMPARE_SETTINGS,
   normalizeCompareTickers,
   normalizeCompareSettings,
   readCompareUrl,
   comparePath,
-  emptyCompareNotebook,
-  parseCompareNotebook,
-  writeCompareNotebook,
-  comparisonPin,
-  exportCompareCsv,
-} from "../../../utils/compareNotebook.js";
-import { RESEARCH_STORAGE_EVENT } from "../../../utils/researchVault.js";
+} from "../../../utils/compareSettings.js";
+import { exportCompareTableCsv } from "../../../utils/compareCsv.js";
+import { createCompareClientCache } from "../../../utils/compareClientCache.js";
+import { matchingCompareResult } from "../../../utils/compareResponseValidation.js";
+import { buildCompareCompanyIndex, compareCompanySuggestions } from "../../../utils/compareCompanySearch.js";
 import { planComparePeers } from "../../../utils/compareWorkspace.js";
 import { researchMetricComparison } from "../../../utils/compareBenchmarks.js";
 import {
   readCompareEvidencePointer,
   resolveCompareEvidencePointer,
 } from "../../../utils/compareEvidenceLinks.js";
-import CompareQualityDesk from "../components/CompareQualityDesk";
-import CompareBenchmarks from "../components/CompareBenchmarks";
-import CompareMovements from "../components/CompareMovements";
-import CompareCommonSize from "../components/CompareCommonSize";
-import CompareFormula from "../components/CompareFormula";
-import CompareSnapshots from "../components/CompareSnapshots";
 import CompareTable from "../components/CompareTable";
-import { CompareTrends, CompareMap } from "../components/CompareCharts";
-import CompareInspector from "../components/CompareInspector";
-import CompareNotebook from "../components/CompareNotebook";
+import CompareGuide from "../CompareGuide";
+const loadingView = () => <p role="status">Loading comparison view…</p>;
+const CompareQualityDesk = dynamic(() => import("../components/CompareQualityDesk"), { loading: loadingView });
+const CompareBenchmarks = dynamic(() => import("../components/CompareBenchmarks"), { loading: loadingView });
+const CompareMovements = dynamic(() => import("../components/CompareMovements"), { loading: loadingView });
+const CompareCommonSize = dynamic(() => import("../components/CompareCommonSize"), { loading: loadingView });
+const CompareFormula = dynamic(() => import("../components/CompareFormula"), { loading: loadingView });
+const CompareTrends = dynamic(() => import("../components/CompareCharts").then((module) => module.CompareTrends), { loading: loadingView });
+const CompareMap = dynamic(() => import("../components/CompareCharts").then((module) => module.CompareMap), { loading: loadingView });
+const CompareInspector = dynamic(() => import("../components/CompareInspector"), { loading: loadingView });
 import {
   COLORS,
   displayValue,
@@ -99,7 +95,6 @@ const VIEWS = [
   { key: "quality", label: "Comparability", icon: ShieldCheck },
   { key: "trends", label: "Trends & growth", icon: TrendingUp },
   { key: "map", label: "Peer map", icon: ScatterChart },
-  { key: "notebook", label: "Research notebook", icon: NotebookPen },
 ];
 export default function CompareClient({
   initialTickers,
@@ -124,17 +119,13 @@ export default function CompareClient({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [evidence, setEvidence] = useState<CompareEvidence | null>(null);
-  const [notebook, setNotebook] = useState<any>(emptyCompareNotebook);
-  const [saveName, setSaveName] = useState("");
-  const [showSave, setShowSave] = useState(false);
   const [retry, setRetry] = useState(0);
   const [groupMode, setGroupMode] = useState("replace");
-  const [notebookOpened, setNotebookOpened] = useState(false);
   const [pointer, setPointer] = useState<any>(null);
   const [pointerResolved, setPointerResolved] = useState(false);
   const colorMap = useRef(new Map<string, string>());
   const pageRef = useRef<HTMLDivElement>(null);
-  const cache = useRef(new Map<string, any>());
+  const cache = useRef(createCompareClientCache());
   const peerKey = tickers.join(",");
   const { basis, asOf } = settings;
 
@@ -149,15 +140,6 @@ export default function CompareClient({
     setSettings(readCompareUrl(window.location.search));
     setPointer(readCompareEvidencePointer(window.location.search));
     setPointerResolved(false);
-    try {
-      setNotebook(
-        parseCompareNotebook(localStorage.getItem(COMPARE_STORAGE_KEY)),
-      );
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Saved data could not be loaded.",
-      );
-    }
     setReady(true);
     const pop = () => {
       setTickers(
@@ -170,37 +152,8 @@ export default function CompareClient({
       setPointerResolved(false);
       setEvidence(null);
     };
-    const storage = (event: StorageEvent) => {
-      if (event.key === COMPARE_STORAGE_KEY)
-        try {
-          setNotebook(parseCompareNotebook(event.newValue));
-        } catch {
-          setError(
-            "Another tab saved unreadable comparison data. Existing data is preserved.",
-          );
-        }
-    };
-    const restored = () => {
-      try {
-        setNotebook(
-          parseCompareNotebook(localStorage.getItem(COMPARE_STORAGE_KEY)),
-        );
-      } catch (e) {
-        setError(
-          e instanceof Error
-            ? e.message
-            : "Restored notebook could not be read.",
-        );
-      }
-    };
-    window.addEventListener(RESEARCH_STORAGE_EVENT, restored);
     window.addEventListener("popstate", pop);
-    window.addEventListener("storage", storage);
-    return () => {
-      window.removeEventListener(RESEARCH_STORAGE_EVENT, restored);
-      window.removeEventListener("popstate", pop);
-      window.removeEventListener("storage", storage);
-    };
+    return () => window.removeEventListener("popstate", pop);
   }, []);
   useEffect(() => {
     if (ready) {
@@ -217,9 +170,6 @@ export default function CompareClient({
       window.history.replaceState(null, "", url.pathname + url.search);
     }
   }, [ready, tickers, settings, pointer]);
-  useEffect(() => {
-    if (settings.view === "notebook") setNotebookOpened(true);
-  }, [settings.view]);
   useEffect(() => {
     const page = pageRef.current,
       header = document.querySelector("body > div > header"),
@@ -246,11 +196,6 @@ export default function CompareClient({
     const peers = normalizeCompareTickers(peerKey),
       controller = new AbortController();
     const cacheKey = (ticker: string) => `${ticker}:${basis}:${asOf}`;
-    for (const ticker of peers) {
-      const old = cache.current.get(cacheKey(ticker));
-      if (old && Date.now() - Date.parse(old.observedAt) > 300000)
-        cache.current.delete(cacheKey(ticker));
-    }
     for (const ticker of peers)
       if (!colorMap.current.has(ticker)) {
         const used = new Set(colorMap.current.values());
@@ -260,38 +205,41 @@ export default function CompareClient({
             COLORS[colorMap.current.size % COLORS.length],
         );
       }
+    const available = new Map(peers.map((ticker) => [ticker, cache.current.get(cacheKey(ticker))]));
     setCompanies(
       peers.map((ticker) => ({
         ticker,
         color: colorMap.current.get(ticker),
-        data: cache.current.get(cacheKey(ticker)) || null,
+        data: available.get(ticker),
         error: null,
-        loading: !cache.current.has(cacheKey(ticker)),
+        loading: !available.get(ticker),
       })),
     );
-    const queue = peers.filter(
-      (ticker) => !cache.current.has(cacheKey(ticker)),
-    );
+    const queue = peers.filter((ticker) => !available.get(ticker));
     const run = async () => {
       while (queue.length && !controller.signal.aborted) {
         const ticker = queue.shift()!;
         try {
+          const requestStartedAt = Date.now();
           const response = await fetch(
             `/api/compare-research?${new URLSearchParams({ ticker, basis, asOf, format: "packed" })}`,
             { signal: controller.signal },
           );
-          const body = await response.json();
+          const payload = await response.text();
+          const body = JSON.parse(payload);
           if (!response.ok)
             throw new Error(
               body.error || `SEC request failed (${response.status}).`,
             );
-          const result = unpackAnalysisCompany(body);
-          if (result.version !== COMPARE_VERSION || result.ticker !== ticker)
+          if (!matchingCompareResult(body, { ticker, basis, asOf }))
             throw new Error(
               "An incompatible company response was returned. Retry this issuer.",
             );
           if (controller.signal.aborted) return;
-          cache.current.set(cacheKey(ticker), result);
+          const result = unpackAnalysisCompany(body);
+          cache.current.set(cacheKey(ticker), result, payload.length * 2, {
+            headers: response.headers, requestStartedAt,
+          });
           setCompanies((prior) =>
             prior.map((c) =>
               c.ticker === ticker
@@ -337,17 +285,6 @@ export default function CompareClient({
     },
     [settings],
   );
-  const mutate = useCallback((change: (n: any) => any) => {
-    try {
-      setNotebook(writeCompareNotebook(localStorage, change));
-      return true;
-    } catch (e) {
-      setError(
-        `Could not save: ${e instanceof Error ? e.message : "Browser storage is unavailable."}`,
-      );
-      return false;
-    }
-  }, []);
   const issuerCompanies = useMemo(
     () => uniqueIssuerCompanies(companies),
     [companies],
@@ -364,10 +301,14 @@ export default function CompareClient({
     () => COMPARE_METRICS.filter((m) => m.lenses.includes(lens)),
     [lens],
   );
-  const selectedKeys = settings.metrics.length
-    ? settings.metrics
-    : defaultMetrics(lens);
-  const metrics = metricOptions.filter((m) => selectedKeys.includes(m.key));
+  const selectedKeys = useMemo(
+    () => settings.metrics.length ? settings.metrics : defaultMetrics(lens),
+    [settings.metrics, lens],
+  );
+  const metrics = useMemo(
+    () => metricOptions.filter((metric) => selectedKeys.includes(metric.key)),
+    [metricOptions, selectedKeys],
+  );
   const selection = useMemo(
     () => comparisonSelection(companies, settings),
     [companies, settings],
@@ -407,34 +348,17 @@ export default function CompareClient({
     ],
     [metricOptions, settings.metric, settings.x, settings.y],
   );
-  const suggestions = useMemo(() => {
-    const query = input.trim().toUpperCase();
-    if (
-      !query ||
-      (/[,;\s]/.test(query) &&
-        normalizeCompareTickers(query).length > 1 &&
-        query.split(/[ ,;]+/).every((t) => tickerMap?.[t]))
-    )
-      return [];
-    return Object.values(tickerMap || {})
-      .filter(
-        (c: any) =>
-          !tickers.includes(c.ticker) &&
-          (c.ticker.includes(query) || c.name?.toUpperCase().includes(query)),
-      )
-      .sort(
-        (a: any, b: any) =>
-          Number(b.ticker === query) - Number(a.ticker === query) ||
-          Number(b.ticker.startsWith(query)) -
-            Number(a.ticker.startsWith(query)) ||
-          a.ticker.localeCompare(b.ticker),
-      )
-      .slice(0, 6) as any[];
-  }, [input, tickerMap, tickers]);
+  const companyIndex = useMemo(() => buildCompareCompanyIndex(tickerMap), [tickerMap]);
+  const suggestions = useMemo(
+    () => compareCompanySuggestions(companyIndex, input, tickers),
+    [companyIndex, input, tickers],
+  );
   const addTickers = (value: string | string[]) => {
     const plan = planComparePeers(
       tickers,
-      value,
+      (Array.isArray(value) ? value : value.split(/[\s,;]+/)).map(
+        (ticker) => companyIndex.resolveTicker(ticker)?.ticker || ticker,
+      ),
       "append",
       MAX_COMPARE_COMPANIES,
     );
@@ -450,10 +374,10 @@ export default function CompareClient({
     setEvidence(null);
   };
   const submitInput = () => {
-    if (suggestions.length && !input.includes(",") && !input.includes(";"))
-      addTickers(
-        suggestions[Math.min(suggestionIndex, suggestions.length - 1)].ticker,
-      );
+    const exact = companyIndex.resolveTicker(input);
+    if (exact) addTickers(exact.ticker);
+    else if (suggestions.length && !input.includes(",") && !input.includes(";"))
+      addTickers(suggestions[Math.max(0, Math.min(suggestionIndex, suggestions.length - 1))].ticker);
     else addTickers(input);
   };
   const preset = (group: any) => {
@@ -478,81 +402,14 @@ export default function CompareClient({
       sort: "peers",
     });
     setError("");
-    setSaveName(group.label);
-  };
-  const saveSearch = () => {
-    if (!saveName.trim()) {
-      setError("Give this comparison a name.");
-      return;
-    }
-    const saved = mutate((n) => ({
-      ...n,
-      searches: [
-        {
-          id: crypto.randomUUID(),
-          name: saveName.trim(),
-          tickers,
-          settings,
-          savedAt: new Date().toISOString(),
-        },
-        ...n.searches,
-      ].slice(0, 50),
-    }));
-    if (saved) {
-      setShowSave(false);
-      setMessage("Comparison saved in this browser.");
-    }
-  };
-  const saveEvidence = () => {
-    if (!evidence?.cell.point || !evidence.cell.period) return;
-    const pin = comparisonPin(
-      evidence.cell,
-      evidence.metric,
-      evidence.settings || settings,
-    );
-    const saved = mutate((n) => {
-      if (n.pins.some((p: any) => p.id === pin.id)) return n;
-      if (n.pins.length >= 100)
-        throw new Error(
-          "The collection holds 100 observations. Export it and remove an observation to save more.",
-        );
-      return { ...n, pins: [pin, ...n.pins] };
-    });
-    if (saved)
-      setMessage(
-        "Evidence saved. Add notes and export it from the Research notebook.",
-      );
   };
   const exportTable = () => {
-    const pins = metrics.flatMap((metric) =>
-      researchMetricComparison(entries, metric.key, settings).cells.map(
-        (cell) => ({
-          ...comparisonPin(
-            {
-              ...cell,
-              period: cell.period || { end: "", kind: settings.basis },
-              point: cell.point || {
-                period: cell.period || { kind: settings.basis },
-                value: null,
-                reason: cell.status,
-              },
-            },
-            metric,
-            settings,
-          ),
-          notes:
-            cell.delta == null
-              ? "Peer benchmark unavailable."
-              : `${cell.delta} ${metric.format === "percent" ? "percentage points" : metric.format === "currency" ? "USD" : "times"} versus ${settings.benchmark}; numeric rank ${cell.rank}.`,
-        }),
-      ),
+    const observations = metrics.flatMap((metric) =>
+      researchMetricComparison(entries, metric.key, settings).cells.map((cell) => ({ cell, metric })),
     );
     downloadFile(
       "peer-comparison-table.csv",
-      exportCompareCsv(pins, {
-        collectionName: saveName || "Current peer comparison",
-        notes: `Requested peers: ${tickers.join(", ")}. Excluded peers: ${settings.excluded.join(", ") || "None"}. One row per original input; metric values repeat for multi-input calculations.`,
-      }),
+      exportCompareTableCsv(observations, { tickers, settings }),
       "text/csv;charset=utf-8",
     );
     setMessage(
@@ -571,12 +428,12 @@ export default function CompareClient({
       );
     }
   };
-  const coverage = metrics.reduce(
-    (sum, m) => sum + metricComparison(entries, m.key).count,
-    0,
+  const coverage = useMemo(
+    () => metrics.reduce((sum, metric) => sum + metricComparison(entries, metric.key).count, 0),
+    [metrics, entries],
   );
   const totalCells = entries.length * metrics.length;
-  const roe = researchMetricComparison(entries, "roe", settings);
+  const roe = useMemo(() => researchMetricComparison(entries, "roe", settings), [entries, settings]);
 
   useEffect(() => {
     if (
@@ -601,14 +458,6 @@ export default function CompareClient({
           "The linked observation could not be verified. Inspect the current evidence before using it.",
       );
   }, [pointer, pointerResolved, ready, entries, metrics, settings]);
-  const loadSaved = (item: any) => {
-    cache.current.clear();
-    setRetry((value) => value + 1);
-    setTickers(normalizeCompareTickers(item.tickers));
-    update({ ...normalizeCompareSettings(item.settings), view: "table" });
-    setSaveName(item.name);
-    setMessage(`Loaded ${item.name}; SEC data will refresh as needed.`);
-  };
   const reorderPeer = (index: number, direction: number) => {
     setTickers((old) => {
       const next = [...old];
@@ -628,7 +477,7 @@ export default function CompareClient({
           <span className={styles.eyebrow}>
             <GitCompareArrows size={15} /> Research workspace / Peer comparison
           </span>
-          <h1>Put performance in perspective.</h1>
+          <h1>{tickers.length ? `Compare ${tickers.join(", ")}` : "Put performance in perspective."}</h1>
           <p>
             Comparable periods. Industry-aware metrics. A clear path from every
             number to its SEC evidence.
@@ -644,7 +493,7 @@ export default function CompareClient({
         </div>
       </div>
       <section
-        className={`${styles.controls} ${settings.view === "notebook" ? styles.staticControls : ""}`}
+        className={styles.controls}
         data-compare-controls
         aria-label="Comparison controls"
       >
@@ -669,7 +518,7 @@ export default function CompareClient({
               aria-controls="compare-suggestions"
               aria-activedescendant={
                 focused && suggestions.length
-                  ? `compare-suggestion-${suggestionIndex}`
+                  ? `compare-suggestion-${Math.min(suggestionIndex, suggestions.length - 1)}`
                   : undefined
               }
               value={input}
@@ -686,13 +535,13 @@ export default function CompareClient({
                 setFocused(true);
               }}
               onKeyDown={(e) => {
-                if (e.key === "ArrowDown") {
+                if (e.key === "ArrowDown" && suggestions.length) {
                   e.preventDefault();
                   setSuggestionIndex((i) =>
                     Math.min(i + 1, suggestions.length - 1),
                   );
                 }
-                if (e.key === "ArrowUp") {
+                if (e.key === "ArrowUp" && suggestions.length) {
                   e.preventDefault();
                   setSuggestionIndex((i) => Math.max(0, i - 1));
                 }
@@ -746,12 +595,6 @@ export default function CompareClient({
               }}
             >
               <RefreshCw size={15} />
-            </button>
-            <button
-              onClick={() => setShowSave((v) => !v)}
-              disabled={!tickers.length}
-            >
-              <BookmarkPlus size={15} /> Save comparison
             </button>
             <button onClick={copyLink} aria-label="Copy comparison link">
               <LinkIcon size={15} />
@@ -838,36 +681,6 @@ export default function CompareClient({
           </label>
         </div>
       </section>
-      {showSave && (
-        <form
-          className={styles.saveForm}
-          onSubmit={(e) => {
-            e.preventDefault();
-            saveSearch();
-          }}
-        >
-          <label>
-            Comparison name
-            <input
-              autoFocus
-              value={saveName}
-              maxLength={100}
-              onChange={(e) => setSaveName(e.target.value)}
-              placeholder="Bank funding review"
-            />
-          </label>
-          <button className={styles.primary} type="submit">
-            Save setup
-          </button>
-          <button type="button" onClick={() => setShowSave(false)}>
-            Cancel
-          </button>
-          <small>
-            Stored in this browser. Share links preserve settings; private notes
-            stay here.
-          </small>
-        </form>
-      )}
       <div aria-live="polite" role="status">
         {message && (
           <div className={styles.status}>
@@ -1051,7 +864,8 @@ export default function CompareClient({
                 const name =
                   data?.name ||
                   preloadedCompanies.find((c) => c.ticker === ticker)?.name ||
-                  "Resolving SEC issuer…";
+                  tickerMap?.[ticker]?.name ||
+                  (company?.error ? "SEC issuer unavailable" : "Resolving SEC issuer…");
                 return (
                   <article
                     key={ticker}
@@ -1258,7 +1072,7 @@ export default function CompareClient({
           )}
           {!metrics.length && (
             <p className={styles.notice}>
-              The saved metric selection does not apply to this financial lens.{" "}
+              The selected metric set does not apply to this financial lens.{" "}
               <button onClick={() => update({ metrics: [] })}>
                 Use lens defaults
               </button>
@@ -1274,9 +1088,6 @@ export default function CompareClient({
                 >
                   <Icon size={15} />
                   {label}
-                  {key === "notebook" && notebook.pins.length > 0 && (
-                    <span>{notebook.pins.length}</span>
-                  )}
                 </button>
               ))}
             </nav>
@@ -1286,7 +1097,7 @@ export default function CompareClient({
           </div>
         </>
       )}
-      {!tickers.length && settings.view !== "notebook" ? (
+      {!tickers.length ? (
         <section className={styles.empty}>
           <GitCompareArrows size={38} />
           <h2>Start with the right peers.</h2>
@@ -1301,9 +1112,6 @@ export default function CompareClient({
             </button>
             <button onClick={() => preset(PEER_GROUPS[2])}>
               Compare technology leaders
-            </button>
-            <button onClick={() => update({ view: "notebook" })}>
-              Open research notebook
             </button>
           </div>
         </section>
@@ -1376,46 +1184,14 @@ export default function CompareClient({
               />
             )}
             {settings.view === "changes" && (
-              <>
-                <nav className={styles.subviews} aria-label="Change analysis">
-                  {[
-                    ["periods", "Between reporting periods"],
-                    ["snapshots", "Since a saved snapshot"],
-                  ].map(([key, label]) => (
-                    <button
-                      key={key}
-                      aria-current={
-                        settings.changeMode === key ? "page" : undefined
-                      }
-                      onClick={() => update({ changeMode: key })}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </nav>
-                {settings.changeMode === "periods" && (
-                  <CompareMovements
-                    companies={companies}
-                    entries={entries}
-                    metrics={optionsWithSelected}
-                    settings={settings}
-                    update={update}
-                    inspect={inspectEvidence}
-                  />
-                )}
-                {settings.changeMode === "snapshots" && (
-                  <CompareSnapshots
-                    notebook={notebook}
-                    mutate={mutate}
-                    entries={entries}
-                    metrics={metrics}
-                    settings={settings}
-                    tickers={tickers}
-                    inspect={inspectEvidence}
-                    load={loadSaved}
-                  />
-                )}
-              </>
+              <CompareMovements
+                companies={companies}
+                entries={entries}
+                metrics={optionsWithSelected}
+                settings={settings}
+                update={update}
+                inspect={inspectEvidence}
+              />
             )}
             {settings.view === "trends" && (
               <CompareTrends
@@ -1435,17 +1211,6 @@ export default function CompareClient({
                 inspect={inspectEvidence}
               />
             )}
-            {(notebookOpened || settings.view === "notebook") && (
-              <div hidden={settings.view !== "notebook"}>
-                <CompareNotebook
-                  notebook={notebook}
-                  mutate={mutate}
-                  load={loadSaved}
-                  inspect={inspectEvidence}
-                  notice={setMessage}
-                />
-              </div>
-            )}
           </div>
           {evidence && (
             <CompareInspector
@@ -1455,7 +1220,6 @@ export default function CompareClient({
                 setPointer(null);
               }}
               tickers={tickers}
-              save={saveEvidence}
             />
           )}
         </div>
@@ -1498,10 +1262,11 @@ export default function CompareClient({
           “Latest” uses the most recently filed compatible observation, which
           may revise prior results. The filing cutoff limits observations to
           filings available by that date. SEC data is cached for up to five
-          minutes; changing a saved setup can retrieve updated observations.
-          Saved evidence retains its captured values until removed.
+          minutes; refreshing the comparison can retrieve updated observations.
+          Share links preserve your settings and verify original source inputs.
         </p>
       </details>
+      <CompareGuide tickers={tickers} />
     </div>
   );
 }

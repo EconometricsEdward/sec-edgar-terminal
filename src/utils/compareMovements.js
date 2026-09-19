@@ -103,6 +103,7 @@ function aligned(cells, side, key) {
     .map((cell) => comparePointQuality(cell[side], key).durationDays)
     .filter(Number.isFinite);
   return (
+    new Set(periods.map((period) => period.kind)).size === 1 &&
     daysBetween(ends[0], ends.at(-1)) <= 45 &&
     (!durations.length || Math.max(...durations) - Math.min(...durations) <= 14)
   );
@@ -113,7 +114,9 @@ export function movementComparison(entries, key, settings) {
   const seen = new Set();
   const cells = entries
     .filter((entry) => {
-      const identity = entry.data?.cik || entry.ticker;
+      const identity = entry.data?.cik != null
+        ? String(entry.data.cik).replace(/^0+/, "") || entry.ticker
+        : entry.ticker;
       if (
         seen.has(identity) ||
         entry.duplicate ||
@@ -129,7 +132,7 @@ export function movementComparison(entries, key, settings) {
     paired.length < 2
       ? "At least two issuers with valid current and prior observations are required."
       : !aligned(paired, "current", key) || !aligned(paired, "prior", key)
-        ? "Peer changes are withheld: current or prior reporting ends differ by more than 45 days, or durations by more than 14 days."
+        ? "Peer changes are withheld: reporting bases differ, current or prior reporting ends differ by more than 45 days, or durations by more than 14 days."
         : null;
   const metric = METRIC_BY_KEY[key];
   const completeRates = paired.filter((cell) => cell.rate != null);

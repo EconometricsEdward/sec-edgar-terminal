@@ -2,15 +2,18 @@ import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { getDataStoreMode, readDataset, readDatasetManifests, beginDatasetWrite, publishDataset,
   revalidateDataset, releaseDatasetWrite, stableDataStoreJson } from './dataStore.js';
-import { buildCompareCompany, COMPARE_VERSION } from './compareResearch.js';
+import { buildCompareCompany, COMPARE_VERSION, COMPARE_MAPPING_VERSION } from './compareResearch.js';
 import { packAnalysisCompany, ANALYSIS_VERSION } from './analysisResearch.js';
 import { packPortfolioCompany } from './portfolioEvidenceCodec.js';
 import { buildPortfolioCompanyFromDocuments } from './portfolioResearchServer.js';
 import { preparedEnvelopeUsable, secDocumentIdentity } from './secDocumentStore.js';
 import { warmReserveGeneration, warmSetGeneration } from './warmCache.js';
 import { researchPreparedKey, RESEARCH_VIEW_BASES, RESEARCH_SERVING_NAMESPACE, researchHotCacheEligible } from './preparedResearchStore.js';
+import { enrichAnalysisCompanySources, loadAnalysisCompanyFacts, loadAnalysisFiling } from './analysisResearchSources.js';
+import { analysisSourcesDegraded } from './analysisSourceCoverage.js';
 
 const digest = (value) => createHash('sha256').update(stableDataStoreJson(value)).digest('hex');
+const COMPARE_SOURCE_VERSION = 'compare-sources-v1';
 
 /** Reuse the canonical documents and established calculators, preserving every source and period. */
 export async function prepareResearchViews(company, sourceEnvelopes, {
@@ -20,6 +23,8 @@ export async function prepareResearchViews(company, sourceEnvelopes, {
   bases = ['annual', 'quarter', 'ytd', 'ttm'],
   signal, deadline = Infinity,
   supportingSources = [],
+  enrichCompany = enrichAnalysisCompanySources,
+  loadCompanyFacts = loadAnalysisCompanyFacts, loadFiling = loadAnalysisFiling,
 } = {}) {
   if (mode === 'off') return { status: 'off', ticker: company.ticker, bases: [] };
   if (!Array.isArray(bases) || bases.length > 4 || bases.some((basis) => !RESEARCH_VIEW_BASES.portfolio.includes(basis)))
@@ -46,8 +51,9 @@ export async function prepareResearchViews(company, sourceEnvelopes, {
     contentHash: source.metadata.documentContentHash || source.metadata.contentHash,
     generation: source.metadata.generation, versionId: source.metadata.versionId,
     fetchedAt: source.metadata.fetchedAt }));
-  const financialInputHash = digest({ company, inputs: inputDocuments.map(({ key, contentHash }) => ({ key, contentHash })),
-    compareVersion: COMPARE_VERSION, analysisVersion: ANALYSIS_VERSION, projectionVersion: RESEARCH_SERVING_NAMESPACE });
+  const financialBaseInputHash = digest({ company, inputs: inputDocuments.map(({ key, contentHash }) => ({ key, contentHash })),
+    compareVersion: COMPARE_VERSION, compareMappingVersion: COMPARE_MAPPING_VERSION,
+    analysisVersion: ANALYSIS_VERSION, projectionVersion: RESEARCH_SERVING_NAMESPACE });
   const claims = [], results = [];
   const hotEligible = researchHotCacheEligible(company.cik);
   const mirror = (key, claim, payload, metadata) => hotEligible ? hotWrite(RESEARCH_SERVING_NAMESPACE, key,
@@ -78,13 +84,47 @@ export async function prepareResearchViews(company, sourceEnvelopes, {
       throw new Error('SEC inputs changed before research preparation acquired its publication claims. Retry this company.');
     const documents = Object.fromEntries(paths.map((path, index) => [path, sources[index].payload]));
     const priorViews = await manifests('financial', claims.map(({ key }) => key));
+    // Quarter and TTM use the same eligible primary filing. Share the enrichment
+    // and document reads within this preparation, retaining source hashes.
+    const augmented = new Map(), extraDocuments = new Map();
+    const reuse = (key, load) => {
+      if (!extraDocuments.has(key)) extraDocuments.set(key, Promise.resolve().then(load));
+      return extraDocuments.get(key);
+    };
+    const enrich = (basis) => {
+      const sourceBasis = basis === 'annual' ? 'annual' : 'quarter';
+      if (!augmented.has(sourceBasis)) augmented.set(sourceBasis, enrichCompany(company, { basis: sourceBasis, asOf: '' }, {
+        signal,
+        loadCompanyFacts: (cik, requestSignal) => reuse(`companyfacts:${cik}`, () =>
+          documents[`/api/xbrl/companyfacts/CIK${cik}.json`] || loadCompanyFacts(cik, requestSignal)),
+        loadFiling: (filing, requestSignal) => reuse(`filing:${filing.url}`, () => loadFiling(filing, requestSignal)),
+      }));
+      return augmented.get(sourceBasis);
+    };
     for (const [index, { kind, basis, key, claim }] of claims.entries()) {
       if (signal?.aborted || Date.now() > deadline - 25000) {
         await release('financial', key, claim);
         results.push({ kind, basis, status: 'busy', reason: 'The scheduled preparation deadline was reached.' });
         continue;
       }
-      if (priorViews[index]?.metadata?.financialInputHash === financialInputHash) {
+      const prior = priorViews[index]?.metadata;
+      let financialInputHash = financialBaseInputHash, enrichedCompany, supplementalDocuments = [];
+      const reusableCompare = kind === 'compare' && prior?.financialBaseInputHash === financialBaseInputHash
+        && prior.compareMappingVersion === COMPARE_MAPPING_VERSION && prior.sourceEnrichmentVersion === COMPARE_SOURCE_VERSION
+        && prior.sourceCoverage && !analysisSourcesDegraded(prior)
+        && !prior.supplementalDocuments?.some(document => document.kind === 'companyfacts');
+      if (kind === 'compare' && !reusableCompare) {
+        enrichedCompany = await enrich(basis);
+        if (signal?.aborted || Date.now() > deadline - 25000 || analysisSourcesDegraded(enrichedCompany)) {
+          await release('financial', key, claim);
+          results.push({ kind, basis, status: 'busy', reason: 'Supplemental SEC evidence could not be verified within the preparation budget; the last good prepared view was retained.' });
+          continue;
+        }
+        supplementalDocuments = enrichedCompany.sourceCoverage?.sourceDocuments || [];
+        financialInputHash = digest({ financialBaseInputHash, supplementalDocuments,
+          compareMappingVersion: COMPARE_MAPPING_VERSION, sourceEnrichmentVersion: COMPARE_SOURCE_VERSION });
+      }
+      if (reusableCompare || prior?.financialInputHash === financialInputHash) {
         if (await revalidate('financial', key, { claim, revalidatedAt, expiresAt }) !== true)
           throw new Error('Research revalidation lost its publication claim.');
         // Only the tiny original pilot has Redis mirrors. The broad cohort can
@@ -96,7 +136,7 @@ export async function prepareResearchViews(company, sourceEnvelopes, {
         continue;
       }
       let payload;
-      if (kind === 'compare') payload = packAnalysisCompany(buildCompareCompany(company, { basis }));
+      if (kind === 'compare') payload = packAnalysisCompany(buildCompareCompany(enrichedCompany, { basis }));
       else {
         const result = await buildPortfolioCompanyFromDocuments({ cik: company.cik, ticker: company.ticker }, basis,
           documents, { retrievedAt: fetchedAt });
@@ -111,7 +151,9 @@ export async function prepareResearchViews(company, sourceEnvelopes, {
         entityId: company.cik, fetchedAt, revalidatedAt, expiresAt, publishedAt: null,
         reportPeriod: kind === 'compare' ? payload.periods[0]?.end || null : payload.period?.end || null,
         parserVersion: RESEARCH_SERVING_NAMESPACE, calculationVersion: kind === 'compare' ? COMPARE_VERSION : ANALYSIS_VERSION,
-        financialInputHash, inputDocuments, basis, view: kind };
+        financialInputHash, inputDocuments, basis, view: kind,
+        ...(kind === 'compare' ? { financialBaseInputHash, compareMappingVersion: COMPARE_MAPPING_VERSION,
+          sourceEnrichmentVersion: COMPARE_SOURCE_VERSION, sourceCoverage: enrichedCompany.sourceCoverage, supplementalDocuments } : {}) };
       const stored = await publish({ dataset: 'financial', key, claim, payload, metadata,
         identityInputs: { financialInputHash, kind, basis } });
       const hotStored = await mirror(key, claim, payload, stored?.metadata || metadata);
