@@ -17,6 +17,55 @@ test("legacy notebook and snapshot URLs open the current comparison without losi
   assert.deepEqual(readCompareUrl(url.split("?")[1]), settings);
 });
 
+test("retired comparison views migrate to the unified comparison and retain selected inputs", () => {
+  for (const view of ["quality", "benchmarks"]) {
+    const settings = readCompareUrl(`?view=${view}&basis=quarter&metric=revenue&focus=RIVN&benchmark=peers&excluded=GM&metrics=revenue,netIncome`);
+    assert.equal(settings.view, "table");
+    assert.equal(settings.tableMode, "reported");
+    assert.equal(settings.metric, "revenue");
+    assert.equal(settings.focus, "RIVN");
+    assert.equal(settings.benchmark, "peers");
+    assert.deepEqual(settings.excluded, ["GM"]);
+    assert.deepEqual(settings.metrics, ["revenue", "netIncome"]);
+    const url = comparePath(["RIVN", "TSLA", "F", "GM"], settings);
+    assert.ok(!url.includes(`view=${view}`));
+    assert.deepEqual(readCompareUrl(url.split("?")[1]), settings);
+  }
+});
+
+test("legacy Changes links open the period changes tool with the same comparison period and metric", () => {
+  const settings = readCompareUrl("?view=changes&tableMode=formula&changeMode=snapshots&basis=quarter&period=2026-Q1&movementFrom=2025-Q1&movementMetric=revenue");
+  assert.equal(settings.view, "table");
+  assert.equal(settings.tableMode, "changes");
+  assert.equal(settings.changeMode, "periods");
+  assert.equal(settings.basis, "quarter");
+  assert.equal(settings.period, "2026-Q1");
+  assert.equal(settings.movementFrom, "2025-Q1");
+  assert.equal(settings.movementMetric, "revenue");
+  const url = comparePath(["RIVN", "TSLA"], settings);
+  assert.ok(url.includes("tableMode=changes"));
+  assert.ok(!url.includes("view=") && !url.includes("snapshots"));
+  assert.deepEqual(readCompareUrl(url.split("?")[1]), settings);
+});
+
+test("current comparison views and tools round-trip while invalid settings use stable defaults", () => {
+  for (const view of ["table", "trends", "map"]) {
+    for (const tableMode of ["reported", "common-size", "formula", "changes"]) {
+      const settings = normalizeCompareSettings({ view, tableMode, metric: "netIncome", movementFrom: "2025", movementMetric: "revenue" });
+      assert.equal(settings.view, view);
+      assert.equal(settings.tableMode, tableMode);
+      assert.deepEqual(readCompareUrl(comparePath(["AAPL", "MSFT"], settings).split("?")[1]), settings);
+    }
+  }
+  const settings = normalizeCompareSettings({ view: "unknown", tableMode: "snapshots", metric: "not-a-metric", movementFrom: "2025-Q9", movementMetric: "not-a-metric" });
+  assert.equal(settings.view, "table");
+  assert.equal(settings.tableMode, "reported");
+  assert.equal(settings.metric, "roe");
+  assert.equal(settings.movementFrom, "previous");
+  assert.equal(settings.movementMetric, "netIncome");
+  assert.equal(comparePath(["AAPL", "MSFT"], settings), "/compare/AAPL,MSFT");
+});
+
 test("CSV retains each source input and keeps missing observations distinct from zero", () => {
   const source = { tag: "us-gaap:Revenues", value: 5, unit: "USD", start: "2025-01-01", end: "2025-12-31", filed: "2026-02-01", accession: "0000000001-26-000001", documentUrl: "https://www.sec.gov/Archives/edgar/data/1/000000000126000001/report.htm" };
   const metric = { key: "revenue", label: "Revenue", format: "currency" };

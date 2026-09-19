@@ -21,10 +21,7 @@ import {
   TrendingUp,
   ScatterChart,
   Loader2,
-  CheckCircle2,
   ShieldCheck,
-  History,
-  Target,
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
@@ -58,20 +55,19 @@ import {
   readCompareEvidencePointer,
   resolveCompareEvidencePointer,
 } from "../../../utils/compareEvidenceLinks.js";
-import CompareTable from "../components/CompareTable";
+import CompareOverview from "../components/CompareOverview";
 import CompareGuide from "../CompareGuide";
 const loadingView = () => <p role="status">Loading comparison view…</p>;
 const CompareQualityDesk = dynamic(() => import("../components/CompareQualityDesk"), { loading: loadingView });
-const CompareBenchmarks = dynamic(() => import("../components/CompareBenchmarks"), { loading: loadingView });
 const CompareMovements = dynamic(() => import("../components/CompareMovements"), { loading: loadingView });
 const CompareCommonSize = dynamic(() => import("../components/CompareCommonSize"), { loading: loadingView });
 const CompareFormula = dynamic(() => import("../components/CompareFormula"), { loading: loadingView });
 const CompareTrends = dynamic(() => import("../components/CompareCharts").then((module) => module.CompareTrends), { loading: loadingView });
 const CompareMap = dynamic(() => import("../components/CompareCharts").then((module) => module.CompareMap), { loading: loadingView });
+const CompareMarketContext = dynamic(() => import("../components/CompareMarketContext"), { loading: loadingView });
 const CompareInspector = dynamic(() => import("../components/CompareInspector"), { loading: loadingView });
 import {
   COLORS,
-  displayValue,
   downloadFile,
   type CompareCompany,
   type CompareSettings,
@@ -89,10 +85,7 @@ const LENSES = {
   insurance: "Insurance",
 };
 const VIEWS = [
-  { key: "table", label: "Comparison", icon: Table2 },
-  { key: "benchmarks", label: "Focus & peers", icon: Target },
-  { key: "changes", label: "Changes", icon: History },
-  { key: "quality", label: "Comparability", icon: ShieldCheck },
+  { key: "table", label: "Compare", icon: Table2 },
   { key: "trends", label: "Trends & growth", icon: TrendingUp },
   { key: "map", label: "Peer map", icon: ScatterChart },
 ];
@@ -121,12 +114,16 @@ export default function CompareClient({
   const [evidence, setEvidence] = useState<CompareEvidence | null>(null);
   const [retry, setRetry] = useState(0);
   const [groupMode, setGroupMode] = useState("replace");
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [checksOpen, setChecksOpen] = useState(false);
+  const [marketOpen, setMarketOpen] = useState(false);
   const [pointer, setPointer] = useState<any>(null);
   const [pointerResolved, setPointerResolved] = useState(false);
   const colorMap = useRef(new Map<string, string>());
   const pageRef = useRef<HTMLDivElement>(null);
   const cache = useRef(createCompareClientCache());
   const peerKey = tickers.join(",");
+  const hasPeers = tickers.length > 0;
   const { basis, asOf } = settings;
 
   useEffect(() => {
@@ -138,6 +135,7 @@ export default function CompareClient({
       ),
     );
     setSettings(readCompareUrl(window.location.search));
+    setChecksOpen(new URLSearchParams(window.location.search).get("view") === "quality");
     setPointer(readCompareEvidencePointer(window.location.search));
     setPointerResolved(false);
     setReady(true);
@@ -148,6 +146,7 @@ export default function CompareClient({
         ),
       );
       setSettings(readCompareUrl(window.location.search));
+      setChecksOpen(new URLSearchParams(window.location.search).get("view") === "quality");
       setPointer(readCompareEvidencePointer(window.location.search));
       setPointerResolved(false);
       setEvidence(null);
@@ -190,7 +189,7 @@ export default function CompareClient({
     observer.observe(controls);
     measure();
     return () => observer.disconnect();
-  }, []);
+  }, [hasPeers]);
   useEffect(() => {
     if (!ready) return;
     const peers = normalizeCompareTickers(peerKey),
@@ -433,7 +432,17 @@ export default function CompareClient({
     [metrics, entries],
   );
   const totalCells = entries.length * metrics.length;
-  const roe = useMemo(() => researchMetricComparison(entries, "roe", settings), [entries, settings]);
+  const marketCompanies = useMemo(() => entries.filter(entry => entry.data && !entry.loading && !entry.error).map(entry => ({
+    ticker: entry.ticker, cik: entry.data.cik, companyName: entry.data.name,
+    companyType: entry.data.lens, sic: entry.data.sic, businessModel: entry.data.businessModel,
+    secIdentity: companyIndex.resolveTicker(entry.ticker),
+  })), [entries, companyIndex]);
+  const loadingCount = companies.filter(company => company.loading).length;
+  const removeCompany = (ticker: string) => {
+    setTickers(previous => previous.filter(value => value !== ticker));
+    update({ excluded: settings.excluded.filter(value => value !== ticker),
+      benchmark: settings.benchmark === ticker ? "median" : settings.benchmark });
+  };
 
   useEffect(() => {
     if (
@@ -472,800 +481,173 @@ export default function CompareClient({
 
   return (
     <div ref={pageRef} className={styles.page}>
-      <div className={styles.hero}>
+      <header className={styles.hero}>
         <div>
-          <span className={styles.eyebrow}>
-            <GitCompareArrows size={15} /> Research workspace / Peer comparison
-          </span>
-          <h1>{tickers.length ? `Compare ${tickers.join(", ")}` : "Put performance in perspective."}</h1>
-          <p>
-            Comparable periods. Industry-aware metrics. A clear path from every
-            number to its SEC evidence.
-          </p>
+          <span className={styles.eyebrow}>Company comparisons</span>
+          <h1>{tickers.length ? `Compare ${tickers.join(", ")}` : "See what sets companies apart."}</h1>
+          <p>Performance, financial strength, and growth. Side by side.</p>
         </div>
-        <div className={styles.heroMark}>
-          <CheckCircle2 size={18} />
-          <span>
-            Source-linked
-            <br />
-            <strong>by design</strong>
-          </span>
+        <div className={styles.actions}>
+          <button onClick={copyLink} aria-label="Copy comparison link"><LinkIcon size={15} /> Share</button>
+          <button aria-label="Refresh SEC comparison data" title="Refresh SEC data"
+            disabled={!tickers.length || loadingCount > 0}
+            onClick={() => { cache.current.clear(); setRetry(value => value + 1); setEvidence(null); }}>
+            <RefreshCw size={15} />
+          </button>
         </div>
-      </div>
-      <section
-        className={styles.controls}
-        data-compare-controls
-        aria-label="Comparison controls"
-      >
+      </header>
+
+      <section className={styles.selectionArea} aria-label="Choose companies">
         <div className={styles.searchRow}>
-          <form
-            className={styles.searchForm}
-            onSubmit={(e) => {
-              e.preventDefault();
-              submitInput();
-            }}
-          >
-            <label className={styles.srOnly} htmlFor="compare-company-input">
-              Add ticker or company
-            </label>
+          <form className={styles.searchForm} onSubmit={event => { event.preventDefault(); submitInput(); }}>
+            <label className={styles.srOnly} htmlFor="compare-company-input">Add ticker or company</label>
             <GitCompareArrows size={18} />
-            <input
-              id="compare-company-input"
-              role="combobox"
-              autoComplete="off"
-              aria-autocomplete="list"
-              aria-expanded={focused && suggestions.length > 0}
-              aria-controls="compare-suggestions"
-              aria-activedescendant={
-                focused && suggestions.length
-                  ? `compare-suggestion-${Math.min(suggestionIndex, suggestions.length - 1)}`
-                  : undefined
-              }
-              value={input}
-              placeholder="Add company or paste tickers: JPM, BAC…"
-              onFocus={() => {
-                if (["idle", "error"].includes(ctx?.directoryStatus || ""))
-                  void ctx?.refreshTickerMap(ctx.directoryStatus === "error");
-                setFocused(true);
-              }}
+            <input id="compare-company-input" role="combobox" autoComplete="off" aria-autocomplete="list"
+              aria-expanded={focused && suggestions.length > 0} aria-controls="compare-suggestions"
+              aria-activedescendant={focused && suggestions.length ? `compare-suggestion-${Math.min(suggestionIndex, suggestions.length - 1)}` : undefined}
+              value={input} placeholder="Add companies by name or ticker…"
+              onFocus={() => { if (["idle", "error"].includes(ctx?.directoryStatus || "")) void ctx?.refreshTickerMap(ctx.directoryStatus === "error"); setFocused(true); }}
               onBlur={() => setTimeout(() => setFocused(false), 150)}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setSuggestionIndex(0);
-                setFocused(true);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "ArrowDown" && suggestions.length) {
-                  e.preventDefault();
-                  setSuggestionIndex((i) =>
-                    Math.min(i + 1, suggestions.length - 1),
-                  );
-                }
-                if (e.key === "ArrowUp" && suggestions.length) {
-                  e.preventDefault();
-                  setSuggestionIndex((i) => Math.max(0, i - 1));
-                }
-                if (e.key === "Escape") setFocused(false);
-              }}
-            />
-            <button
-              className={styles.primary}
-              type="submit"
-              disabled={
-                !input.trim() || tickers.length >= MAX_COMPARE_COMPANIES
-              }
-            >
-              <Plus size={15} /> Add
-            </button>
-            {focused && suggestions.length > 0 && (
-              <ul
-                id="compare-suggestions"
-                role="listbox"
-                className={styles.suggestions}
-              >
-                {suggestions.map((s, i) => (
-                  <li
-                    id={`compare-suggestion-${i}`}
-                    key={s.ticker}
-                    role="option"
-                    aria-selected={suggestionIndex === i}
-                  >
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => addTickers(s.ticker)}
-                    >
-                      <strong>{s.ticker}</strong>
-                      <span>{s.name}</span>
-                      <small>CIK {s.cik}</small>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+              onChange={event => { setInput(event.target.value); setSuggestionIndex(0); setFocused(true); }}
+              onKeyDown={event => {
+                if (event.key === "ArrowDown" && suggestions.length) { event.preventDefault(); setSuggestionIndex(value => Math.min(value + 1, suggestions.length - 1)); }
+                if (event.key === "ArrowUp" && suggestions.length) { event.preventDefault(); setSuggestionIndex(value => Math.max(0, value - 1)); }
+                if (event.key === "Escape") setFocused(false);
+              }} />
+            <button className={styles.primary} type="submit" disabled={!input.trim() || tickers.length >= MAX_COMPARE_COMPANIES}><Plus size={15} /> Add</button>
+            {focused && suggestions.length > 0 && <ul id="compare-suggestions" role="listbox" className={styles.suggestions}>
+              {suggestions.map((suggestion, index) => <li id={`compare-suggestion-${index}`} key={suggestion.ticker} role="option" aria-selected={suggestionIndex === index}>
+                <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => addTickers(suggestion.ticker)}>
+                  <strong>{suggestion.ticker}</strong><span>{suggestion.name}</span><small>CIK {suggestion.cik}</small>
+                </button>
+              </li>)}
+            </ul>}
           </form>
-          <div className={styles.actions}>
-            <button
-              aria-label="Refresh SEC comparison data"
-              disabled={!tickers.length || companies.some((c) => c.loading)}
-              onClick={() => {
-                cache.current.clear();
-                setRetry((v) => v + 1);
-                setEvidence(null);
-              }}
-            >
-              <RefreshCw size={15} />
-            </button>
-            <button onClick={copyLink} aria-label="Copy comparison link">
-              <LinkIcon size={15} />
-              <span className={styles.desktopLabel}> Share</span>
-            </button>
-          </div>
-        </div>
-        <div className={styles.filterRow}>
-          <label>
-            Basis
-            <select
-              value={settings.basis}
-              onChange={(e) =>
-                update({ basis: e.target.value, period: "latest" })
-              }
-            >
-              <option value="annual">Annual</option>
-              <option value="quarter">Standalone quarter</option>
-              <option value="ttm">Trailing 12 months</option>
-            </select>
-          </label>
-          <label>
-            Alignment
-            <select
-              value={settings.alignment}
-              onChange={(e) =>
-                update({ alignment: e.target.value, period: "latest" })
-              }
-            >
-              <option value="common">Latest shared end bucket</option>
-              <option value="latest">Latest for each issuer</option>
-            </select>
-          </label>
-          <label>
-            Period ends in
-            <select
-              value={settings.period}
-              onChange={(e) => update({ period: e.target.value })}
-            >
-              <option value="latest">
-                Automatic{selection.bucket ? ` · ${selection.bucket}` : ""}
-              </option>
-              {selection.buckets.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                  {selection.shared.includes(b) ? " · shared" : " · partial"}
-                </option>
-              ))}
-              {settings.period !== "latest" &&
-                !selection.buckets.includes(settings.period) && (
-                  <option value={settings.period}>
-                    {settings.period} · unavailable
-                  </option>
-                )}
-            </select>
-          </label>
-          <label>
-            Financial lens
-            <select
-              value={settings.lens}
-              onChange={(e) => update({ lens: e.target.value, metrics: [] })}
-            >
-              {Object.entries(LENSES).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Benchmark
-            <select
-              value={settings.benchmark}
-              onChange={(e) => update({ benchmark: e.target.value })}
-            >
-              <option value="median">Selected-issuer median</option>
-              <option value="peers">Other peers (excludes focus)</option>
-              {tickers.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </section>
-      <div aria-live="polite" role="status">
-        {message && (
-          <div className={styles.status}>
-            {message}
-            <button aria-label="Dismiss status" onClick={() => setMessage("")}>
-              <X size={13} />
-            </button>
-          </div>
-        )}
-      </div>
-      {error && (
-        <div className={styles.error} role="alert">
-          {error}
-          <button aria-label="Dismiss error" onClick={() => setError("")}>
-            <X size={13} />
-          </button>
-        </div>
-      )}
-      <div className={styles.setupRow}>
-        <details className={styles.playbooks} open={!tickers.length}>
-          <summary>
-            Curated peer groups <span>12 starting points</span>
-          </summary>
-          <label className={styles.groupMode}>
-            Apply a peer group
-            <select
-              value={groupMode}
-              onChange={(e) => setGroupMode(e.target.value)}
-            >
-              <option value="replace">Replace current companies</option>
-              <option value="append">Add to current companies</option>
-            </select>
-          </label>
-          <div className={styles.presetGrid}>
-            {PEER_GROUPS.map((g) => (
-              <button
-                key={g.id}
-                onClick={() => preset(g)}
-                title={g.description}
-              >
-                <span>{g.icon}</span>
-                <strong>{g.label}</strong>
-                <small>{g.tickers.join(" · ")}</small>
-              </button>
-            ))}
-          </div>
-          <small>
-            Groups are research starting points. Current SEC identity and data
-            availability are checked on loading.
-          </small>
-        </details>
-        <details className={styles.advanced}>
-          <summary>
-            <SlidersHorizontal size={14} /> Metrics & research settings
-          </summary>
-          <div className={styles.inlineControls}>
-            <form
-              className={styles.cutoffForm}
-              onSubmit={(event) => {
-                event.preventDefault();
-                const date = String(
-                  new FormData(event.currentTarget).get("asOf") || "",
-                );
-                const normalized = normalizeCompareSettings({
-                  ...settings,
-                  asOf: date,
-                });
-                if (date && normalized.asOf !== date) {
-                  setError("Choose a valid filing cutoff no later than today.");
-                  return;
-                }
-                update({ asOf: date, period: "latest" });
-              }}
-            >
-              <label>
-                Only facts filed by
-                <input
-                  key={settings.asOf}
-                  name="asOf"
-                  type="date"
-                  defaultValue={settings.asOf}
-                  max={new Date().toISOString().slice(0, 10)}
-                />
-              </label>
-              <button type="submit">Apply cutoff</button>
-              <button type="button" onClick={() => update({ asOf: "" })}>
-                Use latest filings
-              </button>
-            </form>
-            <label>
-              Order companies by
-              <select
-                value={settings.sort}
-                onChange={(e) => update({ sort: e.target.value })}
-              >
-                <option value="peers">Peer set order</option>
-                {metricOptions.map((m) => (
-                  <option key={m.key} value={m.key}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Sort direction
-              <select
-                value={settings.descending ? "descending" : "ascending"}
-                onChange={(e) =>
-                  update({ descending: e.target.value === "descending" })
-                }
-              >
-                <option value="descending">Largest first</option>
-                <option value="ascending">Smallest first</option>
-              </select>
-            </label>
-          </div>
-          <p>
-            Reporting buckets use calendar end dates, not fiscal-year labels.
-            The filing cutoff applies to each original input, including
-            comparative revisions.
-          </p>
-          <div className={styles.metricPicker}>
-            {metricOptions.map((m) => (
-              <label key={m.key}>
-                <input
-                  type="checkbox"
-                  checked={selectedKeys.includes(m.key)}
-                  onChange={() => {
-                    const next = selectedKeys.includes(m.key)
-                      ? selectedKeys.filter((k) => k !== m.key)
-                      : [...selectedKeys, m.key];
-                    if (!next.length) {
-                      setMessage("Keep at least one metric selected.");
-                      return;
-                    }
-                    update({ metrics: next });
-                  }}
-                />
-                {m.label}
-              </label>
-            ))}
-          </div>
-          <button onClick={() => update({ metrics: [] })}>
-            Restore lens defaults
-          </button>
-        </details>
-      </div>
-      {!!tickers.length && (
-        <>
-          <details className={styles.peerManager} open={tickers.length <= 5}>
-            <summary>
-              Manage {tickers.length} / {MAX_COMPARE_COMPANIES} companies{" "}
-              <span>
-                {companies.filter((company) => company.loading).length} loading
-                · {companies.filter((company) => company.error).length} failed ·{" "}
-                {
-                  settings.excluded.filter((ticker) => tickers.includes(ticker))
-                    .length
-                }{" "}
-                excluded
-              </span>
-            </summary>
-            <div className={styles.peerActions}>
-              <button
-                onClick={() => update({ excluded: [] })}
-                disabled={!settings.excluded.length}
-              >
-                Include all companies
-              </button>
-              <span>
-                Move peers to set table order. Duplicate SEC issuers count once.
-              </span>
-            </div>
-            <div className={styles.companyGrid}>
-              {tickers.map((ticker, i) => {
-                const company = issuerCompanies.find(
-                  (c) => c.ticker === ticker,
-                );
-                const data = company?.data;
-                const excluded = settings.excluded.includes(ticker);
-                const name =
-                  data?.name ||
-                  preloadedCompanies.find((c) => c.ticker === ticker)?.name ||
-                  tickerMap?.[ticker]?.name ||
-                  (company?.error ? "SEC issuer unavailable" : "Resolving SEC issuer…");
-                return (
-                  <article
-                    key={ticker}
-                    className={`${styles.companyCard} ${excluded || company?.duplicate ? styles.excluded : ""}`}
-                    style={{
-                      borderTopColor:
-                        company?.color || COLORS[i % COLORS.length],
-                    }}
-                  >
-                    <div className={styles.companyTitle}>
-                      <strong>{ticker}</strong>
-                      <button
-                        aria-label={`Remove ${ticker}`}
-                        onClick={() => {
-                          setTickers((old) => old.filter((t) => t !== ticker));
-                          update({
-                            excluded: settings.excluded.filter(
-                              (t) => t !== ticker,
-                            ),
-                            benchmark:
-                              settings.benchmark === ticker
-                                ? "median"
-                                : settings.benchmark,
-                          });
-                        }}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                    <div className={styles.peerOrder}>
-                      <button
-                        aria-label={`Move ${ticker} earlier`}
-                        disabled={i === 0}
-                        onClick={() => reorderPeer(i, -1)}
-                      >
-                        <ArrowLeft size={13} />
-                      </button>
-                      <span>Position {i + 1}</span>
-                      <button
-                        aria-label={`Move ${ticker} later`}
-                        disabled={i === tickers.length - 1}
-                        onClick={() => reorderPeer(i, 1)}
-                      >
-                        <ArrowRight size={13} />
-                      </button>
-                    </div>
-                    <p>{name}</p>
-                    {company?.loading ? (
-                      <small>
-                        <Loader2 size={12} className={styles.spin} /> Loading
-                        SEC data…
-                      </small>
-                    ) : company?.error ? (
-                      <>
-                        <p className={styles.warning}>{company.error}</p>
-                        <button
-                          onClick={() => {
-                            cache.current.delete(`${ticker}:${basis}:${asOf}`);
-                            setRetry((v) => v + 1);
-                          }}
-                        >
-                          <RefreshCw size={13} /> Retry {ticker}
-                        </button>
-                      </>
-                    ) : (
-                      data && (
-                        <>
-                          <small>
-                            CIK {data.cik} · SIC {data.sic || "Unknown"}
-                          </small>
-                          <small>
-                            {LENSES[data.lens]} · {data.periods.length} periods
-                          </small>
-                          <small>
-                            Retrieved{" "}
-                            {new Date(data.observedAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </small>
-                          {company?.duplicate ? (
-                            <p className={styles.warning}>
-                              Same CIK as an earlier ticker. This alias is
-                              excluded from peer statistics.
-                            </p>
-                          ) : (
-                            <label className={styles.include}>
-                              <input
-                                type="checkbox"
-                                checked={!excluded}
-                                onChange={() =>
-                                  update({
-                                    excluded: excluded
-                                      ? settings.excluded.filter(
-                                          (t) => t !== ticker,
-                                        )
-                                      : [...settings.excluded, ticker],
-                                  })
-                                }
-                              />{" "}
-                              Include in comparison
-                            </label>
-                          )}
-                        </>
-                      )
-                    )}
-                  </article>
-                );
-              })}
+          <details className={styles.groupPicker}>
+            <summary>Choose a peer group</summary>
+            <div className={styles.groupMenu}>
+              {!!tickers.length && <label>Apply group<select value={groupMode} onChange={event => setGroupMode(event.target.value)}>
+                <option value="replace">Replace companies</option><option value="append">Add to companies</option>
+              </select></label>}
+              {PEER_GROUPS.map(group => <button key={group.id} onClick={event => { preset(group); event.currentTarget.closest("details")?.removeAttribute("open"); }}>
+                <strong>{group.label}</strong><small>{group.tickers.join(" · ")}</small><ArrowRight size={14} />
+              </button>)}
             </div>
           </details>
-          <div className={styles.focusRow}>
-            <label>
-              Focus company
-              <select
-                value={
-                  entries.some((entry) => entry.ticker === settings.focus)
-                    ? settings.focus
-                    : entries[0]?.ticker || ""
-                }
-                onChange={(e) => update({ focus: e.target.value })}
-              >
-                {entries.map((entry) => (
-                  <option key={entry.ticker} value={entry.ticker}>
-                    {entry.ticker}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p>
-              Use Focus & peers to see a benchmark that excludes this company,
-              its exact sample, and sensitivity to each peer.
-            </p>
-            <button
-              onClick={() => update({ view: "benchmarks", benchmark: "peers" })}
-            >
-              Study other peers
-            </button>
-          </div>
-          <div className={styles.summaryGrid}>
-            <div>
-              <small>Issuers with periods</small>
-              <strong>
-                {selection.ready}
-                <span> / {selection.requested}</span>
-              </strong>
+        </div>
+        {!!tickers.length && <div className={styles.companyStrip} aria-label="Selected companies">
+          {tickers.map((ticker, index) => {
+            const company = issuerCompanies.find(value => value.ticker === ticker);
+            const data = company?.data;
+            const excluded = settings.excluded.includes(ticker);
+            const name = data?.name || preloadedCompanies.find(value => value.ticker === ticker)?.name || tickerMap?.[ticker]?.name || ticker;
+            const model = data?.businessModel === "broker-dealer" ? "Broker-dealer financials" : LENSES[data?.lens] || "SEC financials";
+            return <details key={ticker} className={`${styles.companyChip} ${excluded || company?.duplicate ? styles.excluded : ""}`} name="compare-company-details">
+              <summary title={`${name}${excluded ? " · Excluded" : ""}`}>
+                <span className={styles.dot} style={{ background: company?.color || COLORS[index % COLORS.length] }} />
+                <strong>{ticker}</strong><span className={styles.chipName}>{name === ticker ? "" : name}</span>
+                {company?.loading ? <Loader2 size={12} className={styles.spin} /> : company?.error ? <span className={styles.warning}>Retry</span> : excluded ? <small>Excluded</small> : company?.duplicate ? <small>Same issuer</small> : null}
+              </summary>
+              <div className={styles.companyPopover}>
+                <div className={styles.companyPopoverHeading}><strong>{ticker}</strong><button aria-label={`Remove ${ticker}`} onClick={() => removeCompany(ticker)}><X size={14} /></button></div>
+                <p>{name}</p>
+                {company?.loading ? <p role="status">Loading SEC financials…</p> : company?.error ? <>
+                  <p className={styles.warning}>{company.error}</p>
+                  <button onClick={() => { cache.current.delete(`${ticker}:${basis}:${asOf}`); setRetry(value => value + 1); }}><RefreshCw size={13} /> Retry {ticker}</button>
+                </> : data ? <>
+                  <small>{model} · {data.periods.length} periods</small>
+                  <small>CIK {data.cik} · Retrieved {new Date(data.observedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
+                  {company?.duplicate ? <p className={styles.warning}>This share class has the same SEC issuer as an earlier company and is excluded from peer statistics.</p> : <label className={styles.include}>
+                    <input type="checkbox" checked={!excluded} onChange={() => update({ excluded: excluded ? settings.excluded.filter(value => value !== ticker) : [...settings.excluded, ticker] })} />Include {ticker} in comparison
+                  </label>}
+                </> : null}
+                <div className={styles.peerOrder}>
+                  <button aria-label={`Move ${ticker} earlier`} disabled={index === 0} onClick={() => reorderPeer(index, -1)}><ArrowLeft size={13} /></button>
+                  <span>Position {index + 1}</span>
+                  <button aria-label={`Move ${ticker} later`} disabled={index === tickers.length - 1} onClick={() => reorderPeer(index, 1)}><ArrowRight size={13} /></button>
+                </div>
+              </div>
+            </details>;
+          })}
+          <small className={styles.companyCount}>{tickers.length} / {MAX_COMPARE_COMPANIES}</small>
+        </div>}
+      </section>
+
+      <div aria-live="polite" role="status">{message && <div className={styles.status}>{message}<button aria-label="Dismiss status" onClick={() => setMessage("")}><X size={13} /></button></div>}</div>
+      {error && <div className={styles.error} role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError("")}><X size={13} /></button></div>}
+
+      {!!tickers.length && <>
+        <section className={styles.controls} data-compare-controls aria-label="Comparison controls">
+          <div className={styles.filterRow}>
+            <label>Reporting basis<select value={settings.basis} onChange={event => update({ basis: event.target.value, period: "latest" })}>
+              <option value="annual">Annual</option><option value="quarter">Standalone quarter</option><option value="ttm">Trailing 12 months</option>
+            </select></label>
+            <label>Period ending<select value={settings.period} onChange={event => update({ period: event.target.value })}>
+              <option value="latest">{selection.bucket ? `Latest · ${selection.bucket}` : "Latest available"}</option>
+              {selection.buckets.map(bucket => <option key={bucket} value={bucket}>{bucket}{selection.shared.includes(bucket) ? " · shared" : " · partial"}</option>)}
+              {settings.period !== "latest" && !selection.buckets.includes(settings.period) && <option value={settings.period}>{settings.period} · unavailable</option>}
+            </select></label>
+            <button className={styles.settingsButton} aria-expanded={optionsOpen} aria-controls="compare-options" onClick={() => setOptionsOpen(value => !value)}><SlidersHorizontal size={15} /> Settings{settings.asOf ? " · cutoff active" : ""}</button>
+            <div className={styles.coverageLine}>
+              <span>{loadingCount ? `${loadingCount} loading…` : `${selection.ready} of ${selection.requested} companies ready`}</span>
+              <button aria-expanded={checksOpen} aria-controls="compare-data-checks" onClick={() => setChecksOpen(value => !value)}><ShieldCheck size={13} /> {coverage}/{totalCells} values · Data checks</button>
             </div>
-            <div>
-              <small>Metric coverage</small>
-              <strong>
-                {coverage}
-                <span> / {totalCells}</span>
-              </strong>
-            </div>
-            <div>
-              <small>Reporting-end spread</small>
-              <strong>
-                {selection.span == null ? "—" : selection.span}
-                <span>{selection.span == null ? "" : " days"}</span>
-              </strong>
-            </div>
-            <div>
-              <small>
-                {settings.benchmark === "peers"
-                  ? "Other-peer median ROE"
-                  : "Selected-issuer median ROE"}
-              </small>
-              <strong>{displayValue(roe.peerMedian, "percent")}</strong>
-            </div>
-          </div>
-          <div className={styles.contextLine}>
-            <span className={styles.badge}>{LENSES[lens]}</span>
-            <span>
-              {settings.basis === "quarter"
-                ? "Standalone quarters; return ratios annualized."
-                : settings.basis === "ttm"
-                  ? "Four consecutive quarters; balance-sheet values at period end."
-                  : "Annual flow values; balance-sheet values at period end."}
-            </span>
-            {lens === "banking" && (
-              <span>
-                Net loans are used in credit ratios. Equity / assets is not
-                regulatory capital. Bank and broker business models differ.
-              </span>
-            )}
-            {lens === "insurance" && (
-              <span>
-                Life and P&C insurers differ. Combined ratios are omitted when
-                underwriting inputs are not consistently defined.
-              </span>
-            )}
-            {lens === "common" && (
-              <span>
-                Mixed or unresolved industries: shared financial measures only.
-              </span>
-            )}
-          </div>
-          {selection.span != null && selection.span > 45 && (
-            <p className={styles.notice}>
-              Fiscal calendars differ by {selection.span} days. Incompatible
-              metric benchmarks are paused. Quarterly or trailing-year periods
-              may provide closer reporting dates.
-            </p>
-          )}
-          {!metrics.length && (
-            <p className={styles.notice}>
-              The selected metric set does not apply to this financial lens.{" "}
-              <button onClick={() => update({ metrics: [] })}>
-                Use lens defaults
-              </button>
-            </p>
-          )}
-          <div className={styles.viewBar}>
-            <nav aria-label="Comparison views">
-              {VIEWS.map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key}
-                  aria-current={settings.view === key ? "page" : undefined}
-                  onClick={() => update({ view: key })}
-                >
-                  <Icon size={15} />
-                  {label}
-                </button>
-              ))}
-            </nav>
-            <button onClick={exportTable} disabled={!coverage}>
-              <Download size={14} /> Export reported table
-            </button>
-          </div>
-        </>
-      )}
-      {!tickers.length ? (
-        <section className={styles.empty}>
-          <GitCompareArrows size={38} />
-          <h2>Start with the right peers.</h2>
-          <p>
-            Choose a group above or add up to 12 companies. Your comparison will
-            include aligned financials, peer benchmarks, historical trends, and
-            the evidence behind every value.
-          </p>
-          <div className={styles.actions}>
-            <button onClick={() => preset(PEER_GROUPS[0])}>
-              Compare large banks
-            </button>
-            <button onClick={() => preset(PEER_GROUPS[2])}>
-              Compare technology leaders
-            </button>
           </div>
         </section>
-      ) : (
-        <div
-          className={`${styles.workspace} ${evidence ? styles.withInspector : ""}`}
-        >
-          <div className={styles.results}>
-            {settings.view === "table" && (
-              <>
-                <nav className={styles.subviews} aria-label="Comparison format">
-                  {[
-                    ["reported", "Reported metrics"],
-                    ["common-size", "Common size"],
-                    ["formula", "Custom metric"],
-                  ].map(([key, label]) => (
-                    <button
-                      key={key}
-                      aria-current={
-                        settings.tableMode === key ? "page" : undefined
-                      }
-                      onClick={() => update({ tableMode: key })}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </nav>
-                {settings.tableMode === "reported" && (
-                  <CompareTable
-                    entries={entries}
-                    metrics={metrics}
-                    settings={settings}
-                    inspect={inspectEvidence}
-                  />
-                )}
-                {settings.tableMode === "common-size" && (
-                  <CompareCommonSize
-                    entries={entries}
-                    metrics={optionsWithSelected}
-                    settings={settings}
-                    update={update}
-                    inspect={inspectEvidence}
-                  />
-                )}
-                {settings.tableMode === "formula" && (
-                  <CompareFormula
-                    entries={entries}
-                    settings={settings}
-                    update={update}
-                    inspect={inspectEvidence}
-                  />
-                )}
-              </>
-            )}
-            {settings.view === "quality" && (
-              <CompareQualityDesk
-                entries={entries}
-                metrics={metrics}
-                settings={settings}
-                inspect={inspectEvidence}
-              />
-            )}
-            {settings.view === "benchmarks" && (
-              <CompareBenchmarks
-                entries={entries}
-                metrics={optionsWithSelected}
-                settings={settings}
-                update={update}
-                inspect={inspectEvidence}
-              />
-            )}
-            {settings.view === "changes" && (
-              <CompareMovements
-                companies={companies}
-                entries={entries}
-                metrics={optionsWithSelected}
-                settings={settings}
-                update={update}
-                inspect={inspectEvidence}
-              />
-            )}
-            {settings.view === "trends" && (
-              <CompareTrends
-                entries={entries}
-                metrics={optionsWithSelected}
-                settings={settings}
-                update={update}
-                inspect={inspectEvidence}
-              />
-            )}
-            {settings.view === "map" && (
-              <CompareMap
-                entries={entries}
-                metrics={optionsWithSelected}
-                settings={settings}
-                update={update}
-                inspect={inspectEvidence}
-              />
-            )}
+        {optionsOpen && <section id="compare-options" className={styles.optionsPanel} aria-label="Comparison settings">
+          <div className={styles.optionsHead}><h2>Fine-tune your comparison</h2><button aria-label="Close comparison settings" onClick={() => setOptionsOpen(false)}><X size={15} /></button></div>
+          <div className={styles.optionsGrid}>
+            <label>Reporting alignment<select value={settings.alignment} onChange={event => update({ alignment: event.target.value, period: "latest" })}><option value="common">Latest shared period</option><option value="latest">Latest for each company</option></select></label>
+            <label>Financial lens<select value={settings.lens} onChange={event => update({ lens: event.target.value, metrics: [] })}>{Object.entries(LENSES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+            <label>Compare values with<select value={settings.benchmark} onChange={event => update({ benchmark: event.target.value })}><option value="median">Selected-company median</option><option value="peers">Other peers, excluding focus</option>{tickers.map(ticker => <option key={ticker} value={ticker}>{ticker}</option>)}</select></label>
+            {settings.benchmark === "peers" && <label>Focus company<select value={entries.some(entry => entry.ticker === settings.focus) ? settings.focus : entries[0]?.ticker || ""} onChange={event => update({ focus: event.target.value })}>{entries.map(entry => <option key={entry.ticker} value={entry.ticker}>{entry.ticker}</option>)}</select></label>}
+            <label>Order companies by<select value={settings.sort} onChange={event => update({ sort: event.target.value })}><option value="peers">Selected order</option>{metricOptions.map(metric => <option key={metric.key} value={metric.key}>{metric.label}</option>)}</select></label>
+            {settings.sort !== "peers" && <label>Sort direction<select value={settings.descending ? "descending" : "ascending"} onChange={event => update({ descending: event.target.value === "descending" })}><option value="descending">Largest first</option><option value="ascending">Smallest first</option></select></label>}
           </div>
-          {evidence && (
-            <CompareInspector
-              evidence={evidence}
-              close={() => {
-                setEvidence(null);
-                setPointer(null);
-              }}
-              tickers={tickers}
-            />
-          )}
+          <details className={styles.optionDetails}><summary>Choose table metrics · {metrics.length} selected</summary><div className={styles.metricPicker}>
+            {metricOptions.map(metric => <label key={metric.key}><input type="checkbox" checked={selectedKeys.includes(metric.key)} onChange={() => {
+              const next = selectedKeys.includes(metric.key) ? selectedKeys.filter(key => key !== metric.key) : [...selectedKeys, metric.key];
+              if (!next.length) { setMessage("Keep at least one metric selected."); return; } update({ metrics: next });
+            }} />{metric.label}</label>)}
+          </div><button onClick={() => update({ metrics: [] })}>Restore defaults</button></details>
+          <details className={styles.optionDetails}><summary>Historical filing cutoff{settings.asOf ? ` · ${settings.asOf}` : ""}</summary>
+            <form className={styles.cutoffForm} onSubmit={event => { event.preventDefault(); const date = String(new FormData(event.currentTarget).get("asOf") || ""); const normalized = normalizeCompareSettings({ ...settings, asOf: date }); if (date && normalized.asOf !== date) { setError("Choose a valid filing cutoff no later than today."); return; } update({ asOf: date, period: "latest" }); }}>
+              <label>Only facts filed by<input key={settings.asOf} name="asOf" type="date" defaultValue={settings.asOf} max={new Date().toISOString().slice(0, 10)} /></label><button type="submit">Apply cutoff</button><button type="button" onClick={() => update({ asOf: "" })}>Use latest filings</button>
+            </form><p>Limits each financial input to filings available by this date, including later comparative revisions.</p>
+          </details>
+        </section>}
+        {selection.span != null && selection.span > 45 && <p className={styles.notice}>Reporting dates span {selection.span} days. Benchmarks pause where the selected periods are not comparable.</p>}
+        {!metrics.length && <p className={styles.notice}>These metrics do not apply to the selected financial lens. <button onClick={() => update({ metrics: [] })}>Use suggested metrics</button></p>}
+        <div className={styles.viewBar}>
+          <nav aria-label="Comparison views">{VIEWS.map(({ key, label, icon: Icon }) => <button key={key} aria-current={settings.view === key ? "page" : undefined} onClick={() => update({ view: key, ...(key === "table" ? { tableMode: "reported" } : {}) })}><Icon size={16} />{label}</button>)}</nav>
+          <div className={styles.actions}>
+            <label className={styles.toolSelect}><span className={styles.srOnly}>More comparison tools</span><select value="" onChange={event => { update({ view: "table", tableMode: event.target.value }); }}><option value="" disabled>More tools</option><option value="common-size">Common-size statements</option><option value="formula">Custom metric</option><option value="changes">Period changes</option></select></label>
+            <button onClick={exportTable} disabled={!coverage} aria-label="Export reported table"><Download size={14} /><span className={styles.desktopLabel}>Export</span></button>
+          </div>
         </div>
-      )}
-      <details className={styles.methodology}>
-        <summary>Coverage, comparability, and methodology</summary>
-        <p>
-          Data is drawn from SEC company facts in USD. Unsupported custom tags,
-          other reporting currencies, failed fetches, and missing periods remain
-          visibly distinct from numeric zero. SEC data can be incomplete for
-          foreign issuers. A company's fiscal year may differ from the calendar
-          year shown in a reporting-end bucket.
-        </p>
-        <p>
-          Returns use average beginning and ending balances. Quarter income is
-          annualized for ROE, ROA, and provision rates. Percent changes require
-          a positive year-earlier base; ratio changes use percentage points or
-          multiples. CAGR requires positive endpoints about three years apart.
-          These are accounting comparisons, not valuation or investment
-          rankings.
-        </p>
-        <p>
-          Bank income is net interest before provision plus noninterest income;
-          both inputs are required. Loan ratios use reported net loans. Cash
-          definitions can vary by issuer. Reported debt ratios require both
-          current and noncurrent components and may omit debt categories outside
-          the selected standard tags. Free cash flow is operating cash flow less
-          reported PP&E purchases.
-        </p>
-        <p>
-          A common end bucket does not guarantee identical business models or
-          reporting durations. The selected-issuer median includes compatible
-          available values. The other-peer benchmark excludes the focus company
-          and requires two other issuers. The Comparability desk shows
-          source-level coverage. Statistics pause for date spreads greater than
-          45 days or duration differences greater than 14 days. Original source
-          tags and dates remain reviewable.
-        </p>
-        <p>
-          “Latest” uses the most recently filed compatible observation, which
-          may revise prior results. The filing cutoff limits observations to
-          filings available by that date. SEC data is cached for up to five
-          minutes; refreshing the comparison can retrieve updated observations.
-          Share links preserve your settings and verify original source inputs.
-        </p>
-      </details>
+      </>}
+
+      {!tickers.length ? <section className={styles.discovery}>
+        <div className={styles.discoveryIntro}><span className={styles.eyebrow}>Start with a question</span><h2>Who is growing?<br />Who has room to move?</h2><p>Choose up to 12 companies to compare financial performance, follow their trajectories, and find the differences that matter.</p></div>
+        <div className={styles.starterGroups}>{["mega-tech", "ev-autos", "big-banks", "big-oil"].map(id => { const group = PEER_GROUPS.find(value => value.id === id)!; return <button key={group.id} onClick={() => preset(group)}><div><strong>{group.label}</strong><small>{group.tickers.join(" · ")}</small></div><ArrowRight size={20} /></button>; })}</div>
+      </section> : <div className={`${styles.workspace} ${evidence ? styles.withInspector : ""}`}>
+        <div className={styles.results}>
+          {checksOpen && <section id="compare-data-checks" className={styles.dataChecks} aria-label="Comparison data checks"><div className={styles.optionsHead}><span>Reporting dates, definitions, and coverage</span><button aria-label="Close data checks" onClick={() => setChecksOpen(false)}><X size={15} /></button></div><CompareQualityDesk entries={entries} metrics={metrics} settings={settings} inspect={inspectEvidence} /></section>}
+          {settings.view === "table" && <>
+            {settings.tableMode !== "reported" && <button className={styles.backButton} onClick={() => update({ tableMode: "reported" })}><ArrowLeft size={14} />Back to comparison</button>}
+            {settings.tableMode === "reported" && <CompareOverview entries={entries} metrics={metrics} settings={settings} inspect={inspectEvidence} update={update} />}
+            {settings.tableMode === "common-size" && <CompareCommonSize entries={entries} metrics={optionsWithSelected} settings={settings} update={update} inspect={inspectEvidence} />}
+            {settings.tableMode === "formula" && <CompareFormula entries={entries} settings={settings} update={update} inspect={inspectEvidence} />}
+            {settings.tableMode === "changes" && <CompareMovements companies={companies} entries={entries} metrics={optionsWithSelected} settings={settings} update={update} inspect={inspectEvidence} />}
+          </>}
+          {settings.view === "trends" && <CompareTrends entries={entries} metrics={optionsWithSelected} settings={settings} update={update} inspect={inspectEvidence} />}
+          {settings.view === "map" && <CompareMap entries={entries} metrics={optionsWithSelected} settings={settings} update={update} inspect={inspectEvidence} />}
+          {marketCompanies.length > 1 && <div className={styles.marketSection}>
+            {marketOpen ? <CompareMarketContext companies={marketCompanies} asOf={asOf} basis={basis} initiallyOpen /> : <button className={styles.marketTrigger} onClick={() => setMarketOpen(true)}><span><strong>Shared market drivers</strong><small>Connect company disclosures with CFTC positioning</small></span><Plus size={18} /></button>}
+          </div>}
+        </div>
+        {evidence && <CompareInspector evidence={evidence} close={() => { setEvidence(null); setPointer(null); }} tickers={tickers} />}
+      </div>}
       <CompareGuide tickers={tickers} />
     </div>
   );

@@ -76,14 +76,7 @@ export function normalizeCompareSettings(input = {}) {
       ),
     ],
     excluded: normalizeCompareTickers(input.excluded),
-    view: choose("view", [
-      "table",
-      "trends",
-      "map",
-      "quality",
-      "benchmarks",
-      "changes",
-    ]),
+    view: choose("view", ["table", "trends", "map"]),
     metric: metric("metric"),
     x: metric("x"),
     y: metric("y"),
@@ -95,7 +88,12 @@ export function normalizeCompareSettings(input = {}) {
         : "peers",
     descending: input.descending !== false && input.descending !== "false",
     focus: validTicker(input.focus || "") ? input.focus : "",
-    tableMode: choose("tableMode", ["reported", "common-size", "formula"]),
+    // Older links opened period changes as a separate page. Keep the tool and
+    // its selected inputs while moving it under the main comparison view.
+    tableMode:
+      input.view === "changes"
+        ? "changes"
+        : choose("tableMode", ["reported", "common-size", "formula", "changes"]),
     changeMode: "periods",
     movementFrom: /^(19|20)\d{2}(-Q[1-4])?$/.test(input.movementFrom || "")
       ? input.movementFrom

@@ -1,183 +1,88 @@
 "use client";
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { researchMetricComparison } from "../../../utils/compareBenchmarks.js";
 import { ArrowUpRight, Search } from "lucide-react";
 import { historicGrowth } from "../../../utils/compareResearch.js";
 import {
   displayValue,
-  displayDelta,
   COLORS,
   type CompareSettings,
   type CompareEvidence,
 } from "../compareTypes";
 import styles from "../compare.module.css";
+import overview from "./CompareOverview.module.css";
 
-function CompareTable({
-  entries,
-  metrics,
-  settings,
-  inspect,
-}: {
+function CompareTable({ entries, metrics, settings, inspect }: {
   entries: any[];
   metrics: any[];
   settings: CompareSettings;
   inspect: (e: CompareEvidence) => void;
 }) {
+  const comparisons = useMemo(() => metrics.map((metric) => ({
+    metric, comparison: researchMetricComparison(entries, metric.key, settings),
+  })), [entries, metrics, settings]);
   return (
-    <section className={styles.panel} aria-labelledby="comparison-table-title">
-      <div className={styles.sectionHead}>
-        <div>
-          <span className={styles.eyebrow}>01 / Financial comparison</span>
-          <h2 id="comparison-table-title">The numbers, in context.</h2>
-          <p>
-            Choose a value to inspect its evidence. Differences are against{" "}
-            {settings.benchmark === "median"
-              ? "the selected-issuer median"
-              : settings.benchmark === "peers"
-                ? `other peers (excluding ${settings.focus || entries[0]?.ticker || "focus"})`
-                : settings.benchmark}
-            .
-          </p>
-        </div>
-        <span className={styles.badge}>USD · SEC XBRL</span>
+    <section className={overview.tableSection} aria-labelledby="comparison-table-title">
+      <div className={overview.tableHead}>
+        <h2 id="comparison-table-title">Side by side</h2>
+        <p>SEC financials · Select any value to inspect its source.</p>
       </div>
-      <div
-        className={styles.tableScroll}
-        tabIndex={0}
-        role="region"
-        aria-label="Financial comparison table, scroll horizontally for all peers"
-      >
-        <table className={styles.table}>
+      <div className={overview.tableScroll} tabIndex={0} role="region" aria-label="Financial comparison table, scroll horizontally for all peers">
+        <table className={overview.table}>
           <thead>
             <tr>
-              <th scope="col">Metric / coverage</th>
-              {entries.map((c, i) => (
-                <th key={c.ticker} scope="col">
-                  <span
-                    className={styles.dot}
-                    style={{ background: c.color || COLORS[i % COLORS.length] }}
-                  />
-                  {c.ticker}
-                  <small>{c.period?.end || "No matching period"}</small>
-                  <small>
-                    {c.period
-                      ? `${c.period.fp} · ${c.period.kind}`
-                      : c.error
-                        ? "Fetch failed"
-                        : c.loading
-                          ? "Loading"
-                          : "Unavailable"}
-                  </small>
+              <th scope="col">Metric</th>
+              {entries.map((company, index) => (
+                <th key={company.ticker} scope="col">
+                  <span className={overview.companyDot} style={{ background: company.color || COLORS[index % COLORS.length] }} aria-hidden="true" />
+                  {company.ticker}
+                  <small>{company.period?.end || (company.error ? "Fetch failed" : company.loading ? "Loading…" : "No matching period")}</small>
                 </th>
               ))}
               <th scope="col">
                 Peer median
-                <small>
-                  {settings.benchmark === "peers"
-                    ? `Excludes ${settings.focus || entries[0]?.ticker || "focus"}`
-                    : "Includes selected issuers"}
-                </small>
+                <small>{settings.benchmark === "peers" ? `Excludes ${settings.focus || entries[0]?.ticker || "focus"}` : "Selected issuers"}</small>
               </th>
             </tr>
           </thead>
           <tbody>
-            {metrics.map((metric) => {
-              const comparison = researchMetricComparison(
-                entries,
-                metric.key,
-                settings,
-              );
-              return (
-                <tr key={metric.key}>
-                  <th scope="row">
-                    <span>{metric.label}</span>
-                    <small>
-                      {metric.category} · {comparison.count}/{comparison.total}{" "}
-                      reported values · {comparison.eligibleCount} eligible
-                    </small>
-                    {comparison.definitionNote && (
-                      <small className={styles.warning}>
-                        {comparison.definitionNote}
-                      </small>
-                    )}
-                    {comparison.reason && (
-                      <small className={styles.warning}>
-                        {comparison.reason}
-                      </small>
-                    )}
-                  </th>
-                  {comparison.cells.map((cell) => (
-                    <td key={cell.ticker}>
-                      <button
-                        className={styles.valueButton}
-                        onClick={() => inspect({ cell, metric })}
-                        aria-label={`Inspect ${cell.ticker} ${metric.label}`}
-                      >
-                        <strong>
-                          {displayValue(cell.point?.value, metric.format)}
-                        </strong>
-                        <Search size={12} />
-                      </button>
-                      <small>
-                        {cell.point?.value != null
-                          ? cell.point.classification
-                          : cell.status === "reviewed"
-                            ? "Input unavailable"
-                            : cell.status}
-                      </small>
-                      {cell.quality &&
-                        !cell.quality.valid &&
-                        cell.point?.value != null && (
-                          <small className={styles.warning}>
-                            {cell.quality.reason}
-                          </small>
-                        )}
-                      {cell.delta != null && (
-                        <small className={styles.difference}>
-                          {displayDelta(cell.delta, metric.format)} vs{" "}
-                          {settings.benchmark === "median"
-                            ? "median"
-                            : settings.benchmark === "peers"
-                              ? "other peers"
-                              : settings.benchmark}
-                        </small>
-                      )}
-                      {cell.rank != null && (
-                        <small>
-                          Numeric rank {cell.rank}/
-                          {comparison.rankCount ?? comparison.eligibleCount}
-                        </small>
-                      )}
-                    </td>
-                  ))}
-                  <td>
-                    <strong>
-                      {displayValue(comparison.peerMedian, metric.format)}
-                    </strong>
-                    <small>
-                      {comparison.peerMedian == null
-                        ? "Comparison paused"
-                        : `${comparison.benchmarkCount} comparable issuers`}
-                    </small>
-                    {comparison.peerMedian != null && (
-                      <small>{comparison.benchmarkMembers.join(" · ")}</small>
-                    )}
-                  </td>
-                </tr>
-              );
+            {comparisons.map(({ metric, comparison }) => {
+              const review = comparison.definitionNote || comparison.reason || comparison.excludedCount;
+              return <tr key={metric.key}>
+                <th scope="row">
+                  {metric.label}
+                  <details className={overview.rowNotes} data-review={Boolean(review)}>
+                    <summary aria-label={`${metric.label}: coverage and comparability`}>
+                      {comparison.count}/{comparison.total} values{comparison.definitionNote ? " · Definitions differ" : comparison.reason ? " · Benchmark paused" : comparison.excludedCount ? " · Review inputs" : " · Details"}
+                    </summary>
+                    <div>
+                      {comparison.definitionNote && <p>{comparison.definitionNote}</p>}
+                      {comparison.reason && <p>{comparison.reason}</p>}
+                      <p>{comparison.peerMedian == null ? "No median is shown for this selection." : `Median sample (${comparison.benchmarkCount}): ${comparison.benchmarkMembers.join(", ")}.`}</p>
+                      {comparison.cells.filter((cell) => !cell.quality?.valid).map((cell) => <p key={cell.ticker}><strong>{cell.ticker}:</strong> {cell.quality?.reason || cell.status}</p>)}
+                    </div>
+                  </details>
+                </th>
+                {entries.map((entry) => {
+                  const cell = comparison.cells.find((item) => item.ticker === entry.ticker);
+                  if (!cell) return <td key={entry.ticker}><span aria-label="Same SEC issuer, counted once">—</span><small>Same issuer</small></td>;
+                  return <td key={cell.ticker}>
+                    <button type="button" className={overview.inspectValue} onClick={() => inspect({ cell, metric })} aria-label={`Inspect ${cell.ticker} ${metric.label}: ${displayValue(cell.point?.value, metric.format)}`}>
+                      <strong>{displayValue(cell.point?.value, metric.format)}</strong><Search size={11} aria-hidden="true" />
+                    </button>
+                    {cell.point?.value == null ? <small>{cell.status === "reviewed" ? "Unavailable" : cell.status}</small> : !cell.quality?.valid && <small className={overview.qualityMark}>Review inputs</small>}
+                  </td>;
+                })}
+                <td>
+                  <strong>{displayValue(comparison.peerMedian, metric.format)}</strong>
+                  <small>{comparison.peerMedian == null ? "Unavailable" : `${comparison.benchmarkCount} issuers`}</small>
+                </td>
+              </tr>;
             })}
           </tbody>
         </table>
       </div>
-      <div className={styles.panelFoot}>
-        Ranks show largest to smallest values, including ties. They do not
-        identify the best company or imply a risk score. Benchmarks require two
-        {settings.benchmark === "peers"
-          ? " other issuers (excluding focus)"
-          : " issuers"}
-        , reporting ends within 45 days, and duration differences within 14
-        days.
-      </div>
+      <p className={overview.tableFoot}>Missing inputs stay unavailable. Open a metric’s details for definitions and the companies included in its median.</p>
     </section>
   );
 }

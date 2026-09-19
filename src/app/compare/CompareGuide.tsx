@@ -5,7 +5,7 @@ import styles from "./CompareGuide.module.css";
 export default function CompareGuide({ tickers = [] }: { tickers?: string[] }) {
   return (
     <details className={styles.guide}>
-      <summary>About these comparisons &amp; related research</summary>
+      <summary>How to read this comparison &amp; SEC sources</summary>
       <div className={styles.body}>
         <section>
           <h2>Compare the reporting periods as well as the numbers.</h2>
@@ -15,6 +15,18 @@ export default function CompareGuide({ tickers = [] }: { tickers?: string[] }) {
             metrics before comparing companies with different fiscal calendars
             or business models. Open a figure to inspect its calculation and
             original filing. An unavailable figure is a coverage gap, not zero.
+          </p>
+          <p>
+            Peer statistics count each SEC issuer once. They require compatible
+            currencies, reporting ends within 45 days, and flow durations within
+            14 days. Matching dates do not make accounting definitions identical;
+            open a metric’s coverage notes to check differences. Return ratios
+            use average balances and annualize standalone quarters.
+          </p>
+          <p>
+            Shared market drivers connect SEC disclosures to CFTC futures
+            positioning. Those positions describe the market’s trader groups,
+            not the selected companies’ holdings or a measured price sensitivity.
           </p>
           <a href="/about">Sources and methodology</a>
         </section>
