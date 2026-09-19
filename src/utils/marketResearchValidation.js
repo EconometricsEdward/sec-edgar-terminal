@@ -1,3 +1,6 @@
+import { MARKET_SECTOR_COMPANY_VERSION, MARKET_SECTOR_COMPANY_METRICS,
+  MARKET_SECTOR_COMPANY_SORTS, MARKET_SECTOR_COMPANY_PAGE_SIZE } from './marketSectorCompanies.js';
+
 const FACTOR_METRIC_KEYS = [
   'revenueGrowth', 'netMargin', 'operatingMargin', 'freeCashFlowMargin', 'equityToAssets', 'cashToAssets',
 ];
@@ -235,4 +238,64 @@ export function isMarketIndustries(value) {
       && value.bases[basis].every(sector => record(sector) && /^sector-[a-z0-9-]+$/.test(sector.id)
         && count(sector.missingIndustryCount) && Array.isArray(sector.industries)
         && sector.industries.every(industry => validIndustry(industry, true))));
+}
+
+function validSectorCompanyIdentity(company) {
+  return record(company) && /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(company.ticker)
+    && typeof company.name === 'string' && company.name.length > 0
+    && /^\d{10}$/.test(company.cik) && Number(company.cik) > 0
+    && typeof company.sic === 'string' && company.sic.length <= 4
+    && typeof company.sectorId === 'string' && /^(|sector-[a-z0-9-]{1,70})$/.test(company.sectorId)
+    && (company.revenueBasis === undefined || typeof company.revenueBasis === 'string');
+}
+function validSectorCompanyMetrics(metrics) {
+  return record(metrics) && Object.keys(metrics).length === MARKET_SECTOR_COMPANY_METRICS.length
+    && MARKET_SECTOR_COMPANY_METRICS.every(key => Object.hasOwn(metrics, key)
+      && (metrics[key] === null || Number.isFinite(metrics[key])));
+}
+function validSectorCompanyReport(report) {
+  return report === null || record(report) && validDate(report.end)
+    && (report.filed === null || validDate(report.filed))
+    && (report.form === null || typeof report.form === 'string' && report.form.length > 0 && report.form.length <= 40)
+    && (report.accession === null || /^\d{10}-\d{2}-\d{6}$/.test(report.accession));
+}
+
+/** Durable scalar-only contract, kept separate from the full filing research atlas. */
+export function isMarketSectorCompanies(value) {
+  return record(value) && value.version === MARKET_SECTOR_COMPANY_VERSION && validDate(value.generatedAt)
+    && Array.isArray(value.companies) && value.companies.length > 0
+    && value.companies.every(company => validSectorCompanyIdentity(company)
+      && record(company.metrics) && record(company.reports)
+      && ['ttm', 'annual'].every(basis => validSectorCompanyMetrics(company.metrics[basis])
+        && validSectorCompanyReport(company.reports[basis])))
+    && new Set(value.companies.map(company => company.cik)).size === value.companies.length;
+}
+
+/** Validate a page and bind it to the exact request so stale sector/basis responses cannot render. */
+export function isMarketSectorCompaniesPage(value, selection) {
+  if (!record(value) || value.version !== MARKET_SECTOR_COMPANY_VERSION || !validDate(value.generatedAt)
+    || !/^sector-[a-z0-9-]{1,70}$/.test(value.sector) || !['ttm', 'annual'].includes(value.basis)
+    || typeof value.query !== 'string' || value.query.length > 100
+    || !MARKET_SECTOR_COMPANY_SORTS.includes(value.sort) || !['asc', 'desc'].includes(value.direction)
+    || value.pageSize !== MARKET_SECTOR_COMPANY_PAGE_SIZE || !count(value.total)
+    || !count(value.sectorTotal) || value.sectorTotal === 0 || value.total > value.sectorTotal
+    || !count(value.availableCount) || value.availableCount > value.total
+    || !Number.isSafeInteger(value.page) || value.page < 1
+    || value.page > Math.max(1, Math.ceil(value.total / MARKET_SECTOR_COMPANY_PAGE_SIZE))
+    || !Array.isArray(value.companies)
+    || value.companies.length !== Math.min(MARKET_SECTOR_COMPANY_PAGE_SIZE,
+      Math.max(0, value.total - (value.page - 1) * MARKET_SECTOR_COMPANY_PAGE_SIZE))
+    || !value.companies.every(company => validSectorCompanyIdentity(company) && company.sectorId === value.sector
+      && validSectorCompanyMetrics(company.metrics) && validSectorCompanyReport(company.report))
+    || new Set(value.companies.map(company => company.cik)).size !== value.companies.length) return false;
+  if (value.sort === 'ticker') {
+    if (value.range !== null || value.availableCount !== value.total) return false;
+  } else if (value.availableCount === 0) {
+    if (value.range !== null) return false;
+  } else if (!record(value.range) || !['min', 'max', 'median'].every(key => Number.isFinite(value.range[key]))
+    || value.range.min > value.range.median || value.range.median > value.range.max) return false;
+  return !selection || value.sector === selection.sector && value.basis === selection.basis
+    && value.query === (selection.query || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    && value.sort === selection.sort && value.direction === selection.direction
+    && value.page === Math.min(selection.page, Math.max(1, Math.ceil(value.total / MARKET_SECTOR_COMPANY_PAGE_SIZE)));
 }

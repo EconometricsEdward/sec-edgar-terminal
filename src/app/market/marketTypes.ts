@@ -1,6 +1,6 @@
 export type Basis = 'annual' | 'ttm';
 export type MarketTab = 'overview' | 'positioning' | 'sectors';
-export type MarketView = { tab: MarketTab; basis: Basis; cohort: string; query: string; screen: string; sort: string; direction: string; metric: string; statistic: string; selected: string[]; quantThreshold: number; cftcFamily: 'tff' | 'disaggregated'; cftcContract: string; cftcGroup: string; cftcDate: string; cftcHistory: '1y' | '3y' | '5y'; cftcDisplay: 'net-oi' | 'percentile' };
+export type MarketView = { tab: MarketTab; basis: Basis; cohort: string; query: string; screen: string; sort: string; direction: string; metric: string; statistic: string; companyMetric: string; companyDirection: 'asc' | 'desc'; companyQuery: string; companyPage: number; selected: string[]; quantThreshold: number; cftcFamily: 'tff' | 'disaggregated'; cftcContract: string; cftcGroup: string; cftcDate: string; cftcHistory: '1y' | '3y' | '5y'; cftcDisplay: 'net-oi' | 'percentile' };
 export type Period = { end: string; start?: string | null; filed: string; form: string; accession: string; fy: number; fp: string };
 export type FilingMetricSource = { accession: string; filed: string; acceptedAt: string | null; form: string | null; start: string | null; end: string; taxonomy: string | null; tag: string | null; unit: string | null; value: number; source: string };
 type FilingComparisonPointBase = { end: string; filed: string; acceptedAt: string | null; form: string; accession: string; source?: string | null; metrics: Record<string, number | null> };

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { revenueCorrectionPriority, recalculatePreparedMarketRevenue, withholdUncorrectedRevenue } from '../src/utils/marketRevenueCorrections.js';
 import { refreshQuantRevenueCorrections, applyPreparedRevenueCorrections } from '../src/utils/quantCoverageServer.js';
-import { MARKET_REVENUE_VERSION } from '../src/utils/marketResearchData.js';
+import { MARKET_REVENUE_VERSION, MARKET_RISK_VERSION } from '../src/utils/marketResearchData.js';
 
 const date = '2026-09-17T09:00:00.000Z';
 const company = (extra = {}) => ({ version: 'market-research-v3', ticker: 'IBKR', cik: '0001381197', name: 'Broker', sic: '6211',
@@ -154,7 +154,7 @@ test('final publisher rejects older or invalid facts clocks despite a newer subm
 });
 
 test('final publisher clears the withholding flag on corrected revenue and repairs already-published flags', async () => {
-  const corrected = company({ revenueVersion: MARKET_REVENUE_VERSION, metrics: { annual: { revenue: 100 }, ttm: {} } });
+  const corrected = company({ revenueVersion: MARKET_REVENUE_VERSION, riskVersion: MARKET_RISK_VERSION, metrics: { annual: { revenue: 100 }, ttm: {} } });
   const record = { company: corrected, checkedAt: date, factsRetrievedAt: date };
   for (const previous of [withholdUncorrectedRevenue(company()), { ...corrected, revenueQuality: 'awaiting-compatible-source' }]) {
     const published = await applyPreparedRevenueCorrections({ generatedAt: date, companies: [previous] }, { readMany: async () => [record] });

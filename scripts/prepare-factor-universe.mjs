@@ -1,7 +1,7 @@
 // Production build hook: publish only SEC-derived Market/Fundamental snapshots.
 import { warmCacheEnabled } from '../src/utils/warmCache.js';
 import { refreshUniverseSnapshot } from '../src/utils/marketUniverseServer.js';
-import { refreshQuantMembership, refreshQuantBatch, refreshQuantRevenueCorrections } from '../src/utils/quantCoverageServer.js';
+import { refreshQuantMembership, refreshQuantBatch, refreshQuantRevenueCorrections, refreshQuantRiskMappings } from '../src/utils/quantCoverageServer.js';
 
 if (process.env.VERCEL_ENV === 'production' && warmCacheEnabled()) {
   // Recompute only the affected mappings; conditionally revalidate their two
@@ -10,6 +10,10 @@ if (process.env.VERCEL_ENV === 'production' && warmCacheEnabled()) {
   try { console.log('[Market] Prepared revenue correction checkpoints:', JSON.stringify(await refreshQuantRevenueCorrections({ signal: correctionController.signal, deadline: Date.now() + 300000, revalidateSources: true, refreshUnprepared: true }))); }
   catch (error) { console.warn('[Market] Revenue correction publication deferred:', error.message); }
   finally { clearTimeout(correctionTimer); }
+  const riskController = new AbortController(), riskTimer = setTimeout(() => riskController.abort(), 30000);
+  try { console.log('[Market] Prepared sector risk mappings:', JSON.stringify(await refreshQuantRiskMappings({ signal: riskController.signal, deadline: Date.now() + 30000 }))); }
+  catch (error) { console.warn('[Market] Risk mappings retained for scheduled completion:', error.message); }
+  finally { clearTimeout(riskTimer); }
   // Activate the reviewed candidate directory, but never crawl thousands of
   // companies in a deployment. Resumable scheduled shards own SEC ingestion.
   let activatedMembership = false;

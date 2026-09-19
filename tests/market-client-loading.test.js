@@ -14,7 +14,7 @@ function component(path, overrides = {}, exported = 'default') {
   const compiled = require('typescript').transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
     compilerOptions: { module: require('typescript').ModuleKind.CommonJS, jsx: require('typescript').JsxEmit.ReactJSX },
   }).outputText;
-  const module = { exports: {} };
+  const loaded = { exports: {} };
   new Function('require', 'module', 'exports', compiled)(name => {
     if (name in overrides) return overrides[name];
     if (name.endsWith('.css')) return {};
@@ -24,8 +24,8 @@ function component(path, overrides = {}, exported = 'default') {
     if (name.endsWith('quantGroups.js')) return quant;
     if (name.startsWith('./Market')) return { default: () => null };
     return require(name);
-  }, module, module.exports);
-  return module.exports[exported];
+  }, loaded, loaded.exports);
+  return loaded.exports[exported];
 }
 
 function hooks() {
@@ -67,7 +67,7 @@ test('direct CFTC URL restores before SEC loading; navigating to sectors makes o
   } finally { harness.dispose(); globalThis.window = originalWindow; globalThis.fetch = originalFetch; }
 });
 
-test('overview sector table mounts no industry request; full sector view opens one selected breakdown', () => {
+test('overview mounts no constituent request; sector view opens companies while industry details stay closed', () => {
   let mounts = 0;
   const Sector = component('../src/app/market/MarketSectorPerformance.tsx', { 'next/dynamic': () => () => { mounts++; return null; } });
   const props = { summary: summary(), basis: 'ttm', statistic: 'median', selectedSector: 'all', metric: 'revenueGrowth', onStatistic() {}, onSector() {}, onMetric() {} };

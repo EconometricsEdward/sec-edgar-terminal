@@ -1,22 +1,34 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useState } from 'react';
 import { ArrowUpRight, BarChart3, Layers3 } from 'lucide-react';
 import { MARKET_SECTOR_METRICS } from '../../utils/marketMacroSummary.js';
 import { formatMarket } from '../../utils/marketResearch.js';
 import type { Basis, MarketSummary, Stats } from './marketTypes';
+import type { CompanyViewPatch } from './MarketSectorCompanies';
 import s from './marketSectorPerformance.module.css';
 
 const MarketSectorIndustries = dynamic(() => import('./MarketSectorIndustries'), { loading: () => <p role="status">Loading industry breakdown…</p> });
+const MarketSectorCompanies = dynamic(() => import('./MarketSectorCompanies'), { loading: () => <p role="status">Loading sector companies…</p> });
 
 type Props = {
   summary: MarketSummary; basis: Basis; statistic: string; onStatistic: (value: string) => void;
   selectedSector: string; onSector: (value: string) => void; metric: string; onMetric: (value: string) => void;
   compact?: boolean;
+  companyMetric?: string; companyDirection?: 'asc' | 'desc'; companyQuery?: string; companyPage?: number;
+  onCompanyViewChange?: (patch: CompanyViewPatch) => void;
 };
 const statisticValue = (stats: Stats | undefined, statistic: string) => (statistic === 'mean' ? stats?.mean : stats?.median) ?? null;
 
-export function MarketSectorPerformance({ summary, basis, statistic, onStatistic, selectedSector, onSector, metric, onMetric, compact = false }: Props) {
+function IndustryDisclosure({ children, count }: { children: React.ReactNode; count: number }) {
+  const [open, setOpen] = useState(false);
+  return <details className={s.industryDisclosure} onToggle={event => setOpen(event.currentTarget.open)}><summary>Industry composition<span>{count} SEC SIC industries</span></summary>{open && children}</details>;
+}
+
+export function MarketSectorPerformance({ summary, basis, statistic, onStatistic, selectedSector, onSector, metric, onMetric, compact = false, companyMetric, companyDirection, companyQuery, companyPage, onCompanyViewChange }: Props) {
+  const [companyView, setCompanyView] = useState({ companyMetric: 'revenueGrowth', companyDirection: 'desc' as 'asc' | 'desc', companyQuery: '', companyPage: 1 });
+  const changeCompanyView = (patch: CompanyViewPatch) => { setCompanyView(previous => ({ ...previous, ...patch })); onCompanyViewChange?.(patch); };
   const currentMetric = MARKET_SECTOR_METRICS.find(row => row.key === metric) || MARKET_SECTOR_METRICS[0];
   const statLabel = statistic === 'mean' ? 'Mean' : 'Median';
   const ranked = [...summary.sectors].sort((a, b) => {
@@ -28,6 +40,7 @@ export function MarketSectorPerformance({ summary, basis, statistic, onStatistic
   const range = Math.max(1, ...ranked.map(sector => Math.abs(statisticValue(sector.metrics[currentMetric.key], statistic) ?? 0)));
   const select = (id: string, key?: string) => {
     onSector(id);
+    changeCompanyView({ companyPage: 1 });
     if (key) onMetric(key);
   };
   const statisticControl = <div className={s.segmented} role="group" aria-label="Sector statistic">{['median', 'mean'].map(value => <button key={value} type="button" aria-pressed={statistic === value} onClick={() => onStatistic(value)}>{value === 'mean' ? 'Mean' : 'Median'}</button>)}</div>;
@@ -47,7 +60,7 @@ export function MarketSectorPerformance({ summary, basis, statistic, onStatistic
               const stats = sector.metrics[currentMetric.key];
               const value = statisticValue(stats, statistic);
               const width = value == null ? 0 : Math.abs(value) / range * 48;
-              return <button type="button" key={sector.id} className={s.rankRow} aria-pressed={selected?.id === sector.id} onClick={() => select(sector.id)} aria-label={`${sector.label}: ${formatMarket(value)}, ${stats.count} of ${sector.count} companies with data. View industry breakdown.`}>
+              return <button type="button" key={sector.id} className={s.rankRow} aria-pressed={selected?.id === sector.id} onClick={() => select(sector.id)} aria-label={`${sector.label}: ${formatMarket(value)}, ${stats.count} of ${sector.count} companies with data. Explore sector companies.`}>
                 <span className={s.rankNumber}>{String(index + 1).padStart(2, '0')}</span><span className={s.rankName}>{sector.label}<small>{stats.count}/{sector.count} with data</small></span>
                 <span className={s.barTrack} aria-hidden="true"><i className={value != null && value < 0 ? s.negativeBar : s.positiveBar} style={{ width: `${width}%`, left: `${value != null && value < 0 ? 50 - width : 50}%` }} /></span>
                 <strong className={value != null && value < 0 ? s.negative : ''}>{formatMarket(value)}</strong>
@@ -61,13 +74,16 @@ export function MarketSectorPerformance({ summary, basis, statistic, onStatistic
           <h3 id="market-sector-detail-title">{selected.label}</h3>
           <div className={s.detailValue}><strong>{formatMarket(statisticValue(selected.metrics[currentMetric.key], statistic))}</strong><span>{statLabel} {currentMetric.label.toLowerCase()}<small>{selected.metrics[currentMetric.key].count} of {selected.count} companies with comparable data</small></span></div>
           <div className={s.breadth}><div><span>Companies with growing revenue</span><b>{formatMarket(selected.metrics.revenueGrowth.positivePct, 'pct', 0)}</b></div><div className={s.breadthTrack}><i style={{ width: `${selected.metrics.revenueGrowth.positivePct || 0}%` }} /></div><small>{selected.metrics.revenueGrowth.positive} of {selected.metrics.revenueGrowth.count} with comparable revenue</small></div>
-          <MarketSectorIndustries sector={selected} basis={basis} statistic={statistic} metric={currentMetric.key} generatedAt={summary.generatedAt || ''} />
+          <a className={s.exploreCompanies} href="#sector-companies">Explore {selected.count.toLocaleString()} companies<ArrowUpRight size={15} /></a>
+          <p className={s.note}>Sort this sector’s companies by growth, profitability, cash generation, or financial risk below.</p>
+          <IndustryDisclosure key={selected.id} count={selected.industries.length}><MarketSectorIndustries sector={selected} basis={basis} statistic={statistic} metric={currentMetric.key} generatedAt={summary.generatedAt || ''} /></IndustryDisclosure>
         </section>}
       </div>
+      {selected && <MarketSectorCompanies key={`${selected.id}:${basis}`} sector={selected} basis={basis} generatedAt={summary.generatedAt || ''} metric={companyMetric ?? companyView.companyMetric} direction={companyDirection ?? companyView.companyDirection} query={companyQuery ?? companyView.companyQuery} page={companyPage ?? companyView.companyPage} onChange={changeCompanyView} />}
     </>}
     <section className={s.panel} aria-labelledby={`market-dispersion-title${compact ? '-compact' : ''}`}>
       <div className={s.heading}><div><span className={s.eyebrow}>Sector comparison</span><h2 id={`market-dispersion-title${compact ? '-compact' : ''}`}>Find the dispersion</h2></div>{statisticControl}</div>
-      <p className={s.description}>Read across a sector to connect growth, profits and investment. Select any figure to explore its industry composition.</p>
+      <p className={s.description}>Read across a sector to connect growth, profits and investment. Select any figure to explore its companies and industries.</p>
       <div className={s.tableScroll} tabIndex={0} aria-label="Sector financial comparison"><table className={s.comparison}><caption className={s.srOnly}>{statLabel} sector fundamentals and metric-specific company counts. Colors represent numeric levels, not risk ratings.</caption><thead><tr><th scope="col">Sector</th>{MARKET_SECTOR_METRICS.map(row => <th key={row.key} scope="col">{row.label}</th>)}<th scope="col">Loaded</th></tr></thead><tbody>{summary.sectors.map(sector => <tr key={sector.id} data-selected={selectedSector === sector.id}><th scope="row"><button type="button" onClick={() => select(sector.id)}><span>{sector.label}</span><small>{sector.industries.length} industries <ArrowUpRight size={11} /></small></button></th>{MARKET_SECTOR_METRICS.map(row => {
         const stats = sector.metrics[row.key];
         const value = statisticValue(stats, statistic);

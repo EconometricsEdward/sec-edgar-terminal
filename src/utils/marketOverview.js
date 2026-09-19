@@ -10,6 +10,7 @@ export function buildMarketOverview(atlas, { membership = null, previous = null,
     version: company.version, ticker: company.ticker, name: company.name, cik: company.cik,
     sic: String(company.sic), revenueBasis: company.revenueBasis, observedAt: company.observedAt,
     ...(company.revenueVersion ? { revenueVersion: company.revenueVersion } : {}),
+    ...(company.riskVersion ? { riskVersion: company.riskVersion } : {}),
     ...(company.revenueQuality ? { revenueQuality: company.revenueQuality } : {}),
     ...(company.factsValidatedAt ? { factsValidatedAt: company.factsValidatedAt } : {}),
     cohorts: [...new Set([...(expanded ? [company.researchGroup.id] : []), ...company.cohorts])],
@@ -48,12 +49,13 @@ export function buildMarketOverview(atlas, { membership = null, previous = null,
   };
 }
 
-/** Keep the macro view shareable while retiring company-screen controls. */
+/** Keep macro and sector-company views shareable without reviving legacy screens. */
 export function updateMarketView(view, patch) {
   const next = { ...view, ...patch };
   const legacyTab = ['fundamentals', 'factors', 'companies'].includes(next.tab);
   next.tab = activeMarketTab(next.tab);
   next.metric = activeMarketMetric(next.metric);
+  if (['cohort', 'basis', 'companyMetric', 'companyDirection', 'companyQuery'].some(key => patch[key] !== undefined && patch[key] !== view[key])) next.companyPage = 1;
   if (legacyTab && next.cohort !== 'all' && !next.cohort.startsWith('sector-')) next.cohort = 'all';
   for (const key of ['query', 'screen', 'sort', 'direction', 'selected', 'quantThreshold']) next[key] = DEFAULT_MARKET_VIEW[key];
   return next;

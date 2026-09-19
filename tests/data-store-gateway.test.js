@@ -156,6 +156,7 @@ test('gateway permits only approved dataset/resource/cohort formats', async () =
     ['financial', 'research-market-briefing-v1:latest'],
     ['financial', 'research-market-directory-v1:latest'],
     ['financial', 'research-market-industries-v1:latest'],
+    ['financial', 'research-market-sector-companies-v1:latest'],
     ['financial', 'research-company-v1:CIK0000320193'],
     ['cftc', 'markets:disaggregated:latest'], ['cftc', 'markets:tff:2026-09-08'],
     ['cftc', 'history:tff:098662:asset-manager:2026-09-08:5y'],

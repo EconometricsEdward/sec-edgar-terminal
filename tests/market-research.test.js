@@ -241,14 +241,14 @@ test('Macro views round-trip supported controls and retire company-screen settin
 test('Active macro navigation only exposes the five rendered metrics while legacy saved metrics remain exportable', () => {
   const supported = ['revenueGrowth', 'netMargin', 'cashFlowMargin', 'capexIntensity', 'equityToAssets'];
   const saved = parseMarketSaved(JSON.stringify({ version: 1, watchlist: [], baselines: {}, views: MARKET_METRICS.map(metric => ({ name: metric.label, query: `tab=sectors&metric=${metric.key}` })) }));
-  assert.equal(saved.views.length, MARKET_METRICS.length);
+  assert.equal(saved.views.length, Math.min(12, MARKET_METRICS.length));
   for (const [index, metric] of MARKET_METRICS.entries()) {
     const expected = supported.includes(metric.key) ? metric.key : 'revenueGrowth';
     assert.equal(parseMarketView(`tab=sectors&metric=${metric.key}`).metric, expected);
     assert.equal(parseMarketView(marketViewQuery({ ...DEFAULT_MARKET_VIEW, tab: 'sectors', metric: metric.key })).metric, expected);
     const canonical = new URLSearchParams(canonicalMarketViewQuery(`tab=sectors&metric=${metric.key}`).query);
     assert.equal(canonical.get('metric'), expected === 'revenueGrowth' ? null : expected);
-    assert.equal(new URLSearchParams(saved.views[index].query).get('metric'), metric.key);
+    if (index < saved.views.length) assert.equal(new URLSearchParams(saved.views[index].query).get('metric'), metric.key);
   }
   const exported = JSON.stringify(saved);
   assert.deepEqual(parseMarketSaved(exported).views, saved.views, 'legacy metric choices survive read/export/read');
