@@ -38,7 +38,9 @@ function fixture() {
 test("comparison routes preserve peer order and normalize case without dropping invalid peers", () => {
   assert.deepEqual(publicMetadata.comparePageSelection(" msft,aapl,MSFT ").tickers, ["MSFT", "AAPL"]);
   assert.equal(publicMetadata.comparePageSelection(" msft,aapl ").path, "/compare/MSFT,AAPL");
-  for (const raw of ["", "AAPL,", "JPM,,BAC", "AAPL/<script>", "AAPL;MSFT", "JPM,0001747057", "AAPL,%2f", "A,B,C,D,E,F,G,H,I,J,K,L,M"]) {
+  assert.deepEqual(publicMetadata.comparePageSelection("GS%2CBAC"), publicMetadata.comparePageSelection("GS,BAC"));
+  assert.deepEqual(publicMetadata.comparePageSelection("gs%2cbac"), publicMetadata.comparePageSelection("GS,BAC"));
+  for (const raw of ["", "AAPL,", "JPM,,BAC", "AAPL/<script>", "AAPL;MSFT", "JPM,0001747057", "AAPL,%2f", "GS%252CBAC", "AAPL%", "A,B,C,D,E,F,G,H,I,J,K,L,M"]) {
     assert.equal(publicMetadata.comparePageSelection(raw), null, raw);
   }
   assert.equal(publicMetadata.comparePageSelection("F,V,BRK.B,BRK-B").path, "/compare/F,V,BRK.B,BRK-B");
@@ -81,6 +83,15 @@ test("invalid routes are unavailable rather than silently changing a comparison"
   const props = { params: Promise.resolve({ tickers: "AAPL,INVALID!" }), searchParams: Promise.resolve({}) };
   await assert.rejects(() => page.default(props), /NOT_FOUND/);
   assert.equal((await page.generateMetadata(props)).robots.index, false);
+});
+
+test("page accepts encoded peer separators supplied by the production router", async () => {
+  const f = fixture(), page = f.compile("../src/app/compare/[tickers]/page.tsx");
+  const params = Promise.resolve({ tickers: "GS%2CBAC" });
+  renderToStaticMarkup(await page.default({ params }));
+  assert.deepEqual(f.clientProps[0].initialTickers, ["GS", "BAC"]);
+  const metadata = await page.generateMetadata({ params, searchParams: Promise.resolve({}) });
+  assert.equal(metadata.alternates.canonical, "https://secedgarterminal.com/compare/GS,BAC");
 });
 
 test("comparison guide renders native disclosure and ordinary links without JavaScript or financial acquisition", () => {

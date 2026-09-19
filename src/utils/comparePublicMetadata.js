@@ -13,7 +13,12 @@ export const COMPARE_DESCRIPTION = `Compare up to ${MAX_COMPARE_COMPANIES} publi
 /** Route validation must not silently discard malformed or excess peers. */
 export function comparePageSelection(raw) {
   if (typeof raw !== "string" || !raw.trim() || raw.length > 300) return null;
-  const tokens = raw.split(",").map(value => value.trim().toUpperCase());
+  // Next can pass the page an encoded path segment while metadata receives its
+  // decoded value. Decode once before validating; encoded slashes and double
+  // encodings still fail the ticker grammar below.
+  let decoded;
+  try { decoded = decodeURIComponent(raw); } catch { return null; }
+  const tokens = decoded.split(",").map(value => value.trim().toUpperCase());
   if (tokens.some(value => !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(value) || !/[A-Z]/.test(value))) return null;
   const tickers = [...new Set(tokens)];
   if (tickers.length > MAX_COMPARE_COMPANIES) return null;
