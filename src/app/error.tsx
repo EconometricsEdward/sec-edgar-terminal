@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { RotateCcw, FolderOpen, CircleHelp } from "lucide-react";
-import styles from "./help/help.module.css";
+import styles from "../components/site/ResearchRecovery.module.css";
 
 export default function ErrorPage({
   error,
@@ -29,7 +29,7 @@ export default function ErrorPage({
             <FolderOpen size={17} aria-hidden="true" />
             Open workspace
           </Link>
-          <Link href="/help#recovery">
+          <Link href="/about#recovery">
             <CircleHelp size={17} aria-hidden="true" />
             Get help
           </Link>

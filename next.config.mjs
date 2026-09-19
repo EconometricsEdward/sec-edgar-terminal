@@ -35,6 +35,11 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        source: '/help',
+        destination: '/about',
+        permanent: true,
+      },
+      {
         source: '/crypto',
         destination: 'https://secedgarterminal.com/disclosures',
         permanent: true,

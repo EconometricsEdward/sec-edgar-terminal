@@ -6,7 +6,7 @@ EDGAR Terminal is a free, source-linked research application for SEC filings, co
 
 - [Home](https://secedgarterminal.com/): public research directory linking company financial analysis, filings, Portfolio, Market Briefing, Funds and institutional managers, and disclosure research. The main directory and source explanations are available in server-rendered HTML; no account is required.
 - Prefer a company, fund or manager's canonical research brief for a specific reported fact. The home page is a navigation and product overview, not a live dataset or a source for current company figures.
-- Use [About & methodology](https://secedgarterminal.com/about) and the [Research guide](https://secedgarterminal.com/help) for scope and interpretation. Company financials and fund holdings originate in SEC records; futures positioning originates in separately labeled CFTC reports.
+- Use [About EDGAR Terminal](https://secedgarterminal.com/about) for the site's purpose, audience, history, data sources and methodology. Company financials and fund holdings originate in SEC records; futures positioning originates in separately labeled CFTC reports.
 
 ## Main research surfaces
 

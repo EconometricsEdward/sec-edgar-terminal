@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Search, Home, FolderOpen } from "lucide-react";
-import styles from "./help/help.module.css";
+import styles from "../components/site/ResearchRecovery.module.css";
 
 export default function NotFound() {
   return (
@@ -28,9 +28,9 @@ export default function NotFound() {
           </Link>
         </div>
         <p>
-          For source coverage and research tips, visit the{" "}
-          <Link href="/help" style={{ textDecoration: "underline" }}>
-            research guide
+          Learn about the tools and public data on{" "}
+          <Link href="/about" style={{ textDecoration: "underline" }}>
+            About EDGAR Terminal
           </Link>
           .
         </p>

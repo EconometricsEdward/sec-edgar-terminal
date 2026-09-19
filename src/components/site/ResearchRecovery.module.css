@@ -1,0 +1,72 @@
+.page { --recovery-text: #e9eef6; --recovery-muted: #afbdd0; --recovery-bg: #141e2d; --recovery-line: #344256; --recovery-accent: #ffd36a; color: var(--recovery-text); max-width: 1280px; margin-inline: auto; }
+.eyebrow { font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .16em; color: var(--recovery-accent); }
+.page :is(a, button):focus-visible { outline: 2px solid var(--recovery-accent); outline-offset: 5px; }
+.recovery {
+  max-width: 850px;
+  margin: 40px auto;
+  padding: clamp(25px, 5vw, 55px);
+  border: 1px solid var(--recovery-line);
+  border-radius: 20px;
+  background: var(--recovery-bg);
+}
+.recovery h1 {
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.12;
+  font-weight: 780;
+  letter-spacing: -0.035em;
+  margin-block: 17px;
+}
+.recovery > p:not(.eyebrow) {
+  color: var(--recovery-muted);
+  line-height: 1.8;
+  margin-top: 16px;
+}
+.recoveryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 27px;
+}
+.recoveryActions :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--recovery-line);
+  padding: 12px 17px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.recoveryActions > :first-child {
+  background: var(--recovery-accent);
+  color: #182434;
+  border-color: var(--recovery-accent);
+}
+.recovery small {
+  color: var(--recovery-muted);
+  display: block;
+  margin-top: 26px;
+  overflow-wrap: anywhere;
+}
+.skeleton {
+  margin-top: 35px;
+  display: grid;
+  gap: 14px;
+}
+.skeleton span {
+  display: block;
+  height: 22px;
+  border-radius: 7px;
+  background: var(--recovery-line);
+}
+.skeleton span:nth-child(2) {
+  width: 76%;
+}
+.skeleton span:nth-child(3) {
+  width: 57%;
+}
+
+
+:global(html[data-theme-mode="light"]) .page { --recovery-text: #172c43; --recovery-muted: #425a72; --recovery-bg: #f3f7fc; --recovery-line: #c3d0df; --recovery-accent: #815600; }
+:global(html[data-theme-mode="light"]) .recoveryActions > :first-child { background: #1b4e87; color: #fff; border-color: #1b4e87; }
+@media (max-width: 540px) { .recovery { margin-block: 18px; } }

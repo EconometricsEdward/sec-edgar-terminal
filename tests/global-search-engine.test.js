@@ -187,11 +187,21 @@ test('registered-fund holdings do not route to operating-company analysis', () =
 });
 
 test('tool navigation works without waiting for a company directory', () => {
-  const cases = [['research hub', '/workspace'], ['Open the research hub', '/workspace'], ['stock screener', '/market?tab=sectors'], ['sector performance', '/market?tab=sectors'], ['macro', '/market'], ['market briefing', '/market'], ['13F', '/fund?view=13f'], ['compare managers', '/fund?view=13f&managerView=compare'], ['SEC filings', '/filings'], ['help', '/help'], ['funds', '/fund']];
+  const cases = [['research hub', '/workspace'], ['Open the research hub', '/workspace'], ['stock screener', '/market?tab=sectors'], ['sector performance', '/market?tab=sectors'], ['macro', '/market'], ['market briefing', '/market'], ['13F', '/fund?view=13f'], ['compare managers', '/fund?view=13f&managerView=compare'], ['SEC filings', '/filings'], ['help', '/about'], ['funds', '/fund']];
   for (const [query, expected] of cases) {
     const result = buildGlobalSearch(query, null);
     assert.equal(result.directPath, expected, query);
     assert.equal(result.needsDirectory, false);
+  }
+});
+
+test('About and legacy Guide searches navigate to the replacement page without company lookups', () => {
+  for (const query of ['about', 'About the site', 'about EDGAR Terminal', 'about SEC EDGAR Terminal', 'help', 'guide', 'research guide', 'how to use', 'Open the guide']) {
+    const result = buildGlobalSearch(query, null);
+    assert.equal(result.directPath, '/about', query);
+    assert.equal(result.needsDirectory, false, query);
+    assert.equal(result.lookupQuery, '', query);
+    assert.equal(result.items[0].label, 'About', query);
   }
 });
 

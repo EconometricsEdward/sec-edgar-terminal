@@ -13,7 +13,6 @@ const MAIN_PAGES: Array<
 > = [
   ["/", "weekly", 1],
   ["/about", "monthly", 0.6],
-  ["/help", "monthly", 0.7],
   ["/market", "weekly", 0.8],
   ["/filings", "weekly", 0.8],
   ["/analysis", "weekly", 0.8],

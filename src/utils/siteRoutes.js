@@ -57,10 +57,10 @@ export const SITE_TOOLS = Object.freeze([
     description: "Search and collect filing passages",
   },
   {
-    id: "help",
-    label: "Guide",
-    href: "/help",
-    description: "Understand the data and research tools",
+    id: "about",
+    label: "About",
+    href: "/about",
+    description: "About the site, who it serves and its public data sources",
   },
 ]);
 
@@ -147,6 +147,8 @@ export function safeInternalPath(value) {
   )
     return null;
   const path = pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname;
+  // Keep saved Guide links usable after retiring the page.
+  if (path === "/help") return `/about${url.search}${url.hash}`;
   if (LANDINGS.has(path)) return `${path}${url.search}${url.hash}`;
   const match = path.match(/^\/(analysis|filings|fund|compare)\/([^/]+)$/);
   if (!match) return null;

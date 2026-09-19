@@ -1,204 +1,93 @@
 import Link from "next/link";
-import { ArrowUpRight, Database, FileCheck, FolderOpen } from "lucide-react";
+import { ArrowRight, ArrowUpRight, FileText, Landmark } from "lucide-react";
 import { buildPageMetadata } from "../../utils/siteMetadata";
-import styles from "../help/help.module.css";
+import styles from "./about.module.css";
 
 export const metadata = buildPageMetadata({
-  title: "About EDGAR Terminal — Purpose & Methodology",
-  description:
-    "Source-linked SEC filing research, financial calculations, and separately presented official CFTC positioning. Understand how EDGAR Terminal presents evidence.",
+  title: "About EDGAR Terminal — Purpose, Origins & Public Data Sources",
+  description: "EDGAR Terminal makes public financial research easier to explore. Learn who it is for, its beginnings in April 2026, and how SEC filings and CFTC reports power the site.",
   path: "/about",
 });
+
+const AUDIENCES = [
+  { name: "Analysts", description: "Investigate earnings, cash flow, funding and business exposures, with a path back to the reported inputs." },
+  { name: "Investors", description: "Compare companies, understand fund holdings and explore the businesses behind a portfolio." },
+  { name: "Students & educators", description: "Connect financial concepts to real statements, reporting periods and company disclosures." },
+  { name: "Journalists & curious readers", description: "Find what a company reported, examine changes and check the original document." },
+];
 
 export default function AboutPage() {
   return (
     <div className={styles.page}>
       <header className={styles.hero}>
         <p className={styles.eyebrow}>About EDGAR Terminal</p>
-        <h1>
-          Research that leads
-          <br />
-          <span>back to the filing.</span>
-        </h1>
-        <p>
-          EDGAR Terminal is a free tool for exploring public SEC filings,
-          financial data, and separately presented official CFTC positioning. It
-          helps analysts, students, journalists, and curious investors connect a
-          question to the evidence behind it.
-        </p>
-        <nav className={styles.sectionLinks} aria-label="About navigation">
-          <Link href="/help">Read the research guide</Link>
-          <Link href="/workspace">Open your workspace</Link>
-          <a
-            href="https://github.com/EconometricsEdward/sec-edgar-terminal"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            View the source code ↗
-          </a>
-        </nav>
+        <h1>Public information.<br /><span>A clearer view.</span></h1>
+        <div className={styles.intro}>
+          <p>EDGAR Terminal is a free financial research platform that brings company filings, financial statements, portfolio holdings and futures market context into one place.</p>
+          <p>The goal is simple: make public information easier to find, compare and understand, while keeping the original sources close at hand.</p>
+        </div>
+        <div className={styles.heroFooter}>
+          <Link href="/analysis" prefetch={false}>Explore company research <ArrowRight size={18} aria-hidden="true" /></Link>
+          <p>Free access <span aria-hidden="true">/</span> No account required <span aria-hidden="true">/</span> Public sources</p>
+        </div>
       </header>
-      <section className={styles.section}>
-        <div className={styles.sectionTitle}>
-          <Database size={23} aria-hidden="true" />
-          <h2>Primary evidence, with calculations made explicit</h2>
+
+      <section className={styles.purpose} aria-labelledby="purpose-title" id="tools">
+        <div><p className={styles.eyebrow}>Why it exists</p><h2 id="purpose-title">Less time gathering.<br />More time understanding.</h2></div>
+        <div className={styles.prose}>
+          <p>Public filings contain a wealth of information, but answering a question often means moving between reports, reconciling dates and rebuilding the same comparisons. EDGAR Terminal brings that work together in a connected research workspace.</p>
+          <p>Use it to read financial statements, compare peers, search disclosure language, explore company risk and look inside reported fund portfolios. Portfolio tools connect those company insights to a group of holdings; CFTC data adds relevant market context.</p>
+          <p>The site helps you investigate a question and form your own judgment. Financial figures, calculations and passages stay connected to their reporting context and source documents.</p>
         </div>
-        <div className={styles.cards}>
-          <article>
-            <h3>SEC financial facts and documents</h3>
-            <p>
-              Company submissions, structured XBRL facts, and public filing
-              documents supply the financial and disclosure evidence. The site
-              parses source documents and calculates metrics, comparisons, and
-              summaries. Those calculations are the application’s interpretation
-              of the reported inputs.
-            </p>
-          </article>
-          <article>
-            <h3>Official CFTC positioning, kept separate</h3>
-            <p>
-              Futures positioning comes from the U.S. Commodity Futures Trading
-              Commission&apos;s futures-only Commitments of Traders datasets. TFF
-              and Disaggregated categories remain separate, and every observation
-              retains its contract, venue, units, report date, retrieval time,
-              formula, and source. Positioning is not an equity-price feed, a
-              measure of investor flows, or a trade signal.
-            </p>
-          </article>
-          <article>
-            <h3>Period and industry context</h3>
-            <p>
-              A ratio is only useful with its units, formula, and reporting
-              basis. Financial views expose period and source context,
-              distinguish missing values, and adapt supported metrics to the
-              company’s industry. A classification or model does not replace a
-              review of the company.
-            </p>
-          </article>
-          <article>
-            <h3>Visible coverage limits</h3>
-            <p>
-              Recent submission feeds, older archives, searchable document
-              sections, and supported public fund reports have different scopes.
-              The relevant tool reports its available coverage. A missing result
-              is not evidence that no filing, exposure, or event exists.
-            </p>
-          </article>
-        </div>
-        <p>
-          <Link href="/help#sources">
-            Learn how reporting dates, filing dates, and retrieval times differ.
-          </Link>
-        </p>
       </section>
-      <section className={styles.section}>
-        <div className={styles.sectionTitle}>
-          <FileCheck size={23} aria-hidden="true" />
-          <h2>From discovery to a reviewable conclusion</h2>
-        </div>
-        <div className={styles.twoColumns}>
-          <div>
-            <h3>Discover and investigate</h3>
-            <p>
-              <Link href="/market">Market</Link> provides a macro briefing,
-              sector performance from reported fundamentals, and official{" "}
-              <Link href="/market?tab=positioning">CFTC positioning</Link>.{" "}
-              <Link href="/analysis">Analysis</Link>,{" "}
-              <Link href="/risk">Risk</Link>, and{" "}
-              <Link href="/compare">Compare</Link> connect financial questions
-              to reported inputs and peer context.
-            </p>
-            <p>
-              <Link href="/filings">Filings</Link> and{" "}
-              <Link href="/disclosures">Disclosures</Link> let you find
-              documents, inspect relevant language, and compare supported
-              periods. <Link href="/fund">Funds</Link> explores historical
-              portfolio snapshots from public N-PORT reports and{" "}
-              <Link href="/fund?view=13f">13F institutional manager holdings</Link>,
-              with concentration, quarterly position comparisons, and source filings.
-            </p>
+
+      <section className={styles.section} aria-labelledby="audience-title">
+        <div className={styles.sectionHeader}><p className={styles.eyebrow}>Who it is for</p><h2 id="audience-title">For anyone who wants to look closer.</h2><p>You do not need an institutional terminal to begin asking better questions.</p></div>
+        <div className={styles.audiences}>{AUDIENCES.map(item => <article key={item.name}><h3>{item.name}</h3><p>{item.description}</p></article>)}</div>
+      </section>
+
+      <section className={styles.origin} aria-labelledby="origin-title">
+        <div className={styles.date}><p className={styles.eyebrow}>The beginning</p><span>April</span><strong>2026</strong><p>First recorded version<br /><time dateTime="2026-04-18">April 18, 2026</time></p></div>
+        <div className={styles.prose}><h2 id="origin-title">Built from a question about access.</h2><p>How can public financial data become easier to use for everyday research?</p><p>The project’s recorded history begins on April 18, 2026, with company filings and financial analysis. It has since expanded into peer comparisons, disclosure search, portfolio research, fund holdings and CFTC market context.</p><p>Development continues around the same priorities: useful analysis, clearer presentation, reliable data mapping and free access to public information.</p><a className={styles.textLink} href="https://github.com/EconometricsEdward/sec-edgar-terminal/commit/346786e4c4231787dae0a336c0e1794234808e7e" target="_blank" rel="noopener noreferrer">View the first recorded version <ArrowUpRight size={15} aria-hidden="true" /></a></div>
+      </section>
+
+      <section id="sources" className={styles.section} aria-labelledby="sources-title">
+        <div className={styles.sectionHeader}><p className={styles.eyebrow}>Where the data comes from</p><h2 id="sources-title">Public records. Original sources.</h2><p>The core data comes from the U.S. Securities and Exchange Commission and the U.S. Commodity Futures Trading Commission.</p></div>
+        <div className={styles.sourceRow}>
+          <div className={styles.sourceIdentity}><FileText size={24} aria-hidden="true" /><h3>SEC EDGAR</h3><p>Company disclosures<br />& reported holdings</p></div>
+          <div className={styles.sourceBody}>
+            <div><h4>Filings & financial facts</h4><p>SEC submission records, structured XBRL financial data and filing documents supply company statements, reporting history and disclosure text, including annual, quarterly and current reports.</p></div>
+            <div><h4>Funds & institutional managers</h4><p>Public N-PORT filings supply fund portfolio snapshots. Form 13F filings supply institutional managers’ holdings of reportable securities. These describe historical positions with their own reporting dates and coverage.</p></div>
+            <div className={styles.sourceLinks}><a href="https://www.sec.gov/search-filings/edgar-application-programming-interfaces" target="_blank" rel="noopener noreferrer">SEC data APIs <ArrowUpRight size={14} aria-hidden="true" /></a><a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener noreferrer">Original SEC filings <ArrowUpRight size={14} aria-hidden="true" /></a></div>
           </div>
-          <div>
-            <h3>Keep sources with your notes</h3>
-            <p>
-              Evidence collections, saved views, review queues, and exports help
-              preserve the source accession, period, and quotation beside your
-              interpretation. Keyword relevance and model indicators are prompts
-              for further review, not a recommendation to buy or sell a
-              security.
-            </p>
-            <p>
-              Verify consequential figures and excerpts against the original SEC
-              document or CFTC source, as applicable. Extracted text can lose
-              table structure, and company-specific tagging or restatements can
-              affect comparisons.
-            </p>
+        </div>
+        <div className={styles.sourceRow}>
+          <div className={styles.sourceIdentity}><Landmark size={24} aria-hidden="true" /><h3>CFTC</h3><p>Futures positioning<br />& broker financial reports</p></div>
+          <div className={styles.sourceBody}>
+            <div><h4>Commitments of Traders</h4><p>Official futures-only Traders in Financial Futures and Disaggregated reports show positioning by participant group. The site uses these as dated market context, keeping the report categories distinct.</p></div>
+            <div><h4>Futures broker financial data</h4><p>CFTC financial reports provide reported capital and customer-funds information for the futures broker capital view. These firm-level financial reports are separate from market-wide positioning.</p></div>
+            <div className={styles.sourceLinks}><a href="https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm" target="_blank" rel="noopener noreferrer">CFTC positioning reports <ArrowUpRight size={14} aria-hidden="true" /></a><a href="https://www.cftc.gov/MarketReports/financialfcmdata/index.htm" target="_blank" rel="noopener noreferrer">CFTC financial reports <ArrowUpRight size={14} aria-hidden="true" /></a></div>
           </div>
         </div>
       </section>
-      <section className={styles.section}>
-        <div className={styles.sectionTitle}>
-          <FolderOpen size={23} aria-hidden="true" />
-          <h2>Free to use. Your research in your browser.</h2>
+
+      <section id="coverage" className={styles.section} aria-labelledby="method-title">
+        <div className={styles.sectionHeader}><p className={styles.eyebrow}>What the site adds</p><h2 id="method-title">From reported inputs to useful context.</h2></div>
+        <div className={styles.methods}>
+          <article><span>01</span><h3>Organize</h3><p>Connect companies and funds to their SEC identities, filings, reporting periods and supported data fields.</p></article>
+          <article><span>02</span><h3>Calculate & compare</h3><p>Turn reported inputs into ratios, growth measures, peer comparisons and portfolio summaries, with formulas and source context available.</p></article>
+          <article><span>03</span><h3>Keep the context</h3><p>Show reporting dates, distinguish reported figures from calculations, and leave unsupported or incompatible inputs unavailable.</p></article>
         </div>
-        <p>
-          No account is required. Saved research and preferences use browser
-          storage; they do not automatically synchronize across devices.
-          Portfolio lets you upload holdings or explore a demo, then research
-          companies and concentration.
-          Keep an export before clearing site data.
-        </p>
-        <p>
-          Research requests go to the application to retrieve public data.
-          Vercel Analytics and Speed Insights measure page usage and
-          performance. Portfolio research refreshes run on request and do not send
-          background notifications or emails.
-        </p>
-        <Link href="/help#workspace" className={styles.actionLink}>
-          Read the storage and review guide{" "}
-          <ArrowUpRight size={15} aria-hidden="true" />
-        </Link>
+        <p className={styles.contextNote}>Reporting periods, filing dates and retrieval times mean different things. Company definitions can differ, fund holdings are historical, and CFTC positioning does not reveal an individual company’s exposure. The original record remains the place to verify a consequential figure or claim.</p>
       </section>
-      <section className={styles.section}>
-        <h2>Source documentation</h2>
-        <div className={styles.tools}>
-          <a
-            href="https://www.sec.gov/search-filings/edgar-application-programming-interfaces"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h3>
-              SEC EDGAR APIs <ArrowUpRight size={15} aria-hidden="true" />
-            </h3>
-            <p>Submissions and structured financial facts.</p>
-          </a>
-          <a
-            href="https://www.sec.gov/structureddata"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h3>
-              SEC structured data <ArrowUpRight size={15} aria-hidden="true" />
-            </h3>
-            <p>Reporting formats and structured data resources.</p>
-          </a>
-          <a
-            href="https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h3>
-              CFTC Commitments of Traders <ArrowUpRight size={15} aria-hidden="true" />
-            </h3>
-            <p>Official report definitions, explanatory notes, and release context.</p>
-          </a>
-        </div>
-        <p>
-          EDGAR Terminal is a research and educational tool, not investment
-          advice. No guarantee is made about the completeness, accuracy, or
-          timeliness of displayed data.
-        </p>
+
+      <section className={styles.detailsSection} aria-label="Access, storage and support" id="workspace">
+        <span id="keyboard" className={styles.anchor} />
+        <details><summary>Free access & browser storage</summary><div><p>No account is required. Saved portfolios and preferences use this browser profile and do not automatically sync across devices. Share links preserve supported page selections, while an export provides a separate record of the results. Export local work before clearing site data.</p><p>Research requests are sent to the application to retrieve public data. Vercel Analytics and Speed Insights measure page usage and performance.</p></div></details>
+        <details id="recovery"><summary>Availability & research limitations</summary><div><p>Coverage depends on the company, filing, reporting period and supported data fields. A missing value is not zero, and an empty search result does not establish that an event or exposure is absent. Retry failed requests and check dates and source coverage when something does not load.</p><p>EDGAR Terminal is an independent research and educational project, not an SEC or CFTC service. Its calculations and scenarios support research and do not constitute investment advice.</p></div></details>
       </section>
+
+      <footer className={styles.closing}><div><p className={styles.eyebrow}>Public data. Traceable research.</p><h2>Bring your next question.</h2></div><div><Link href="/" prefetch={false}>Explore EDGAR Terminal <ArrowRight size={17} aria-hidden="true" /></Link><a href="https://github.com/EconometricsEdward/sec-edgar-terminal" target="_blank" rel="noopener noreferrer">View the project on GitHub <ArrowUpRight size={15} aria-hidden="true" /></a></div></footer>
     </div>
   );
 }

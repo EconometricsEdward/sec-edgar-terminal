@@ -103,7 +103,7 @@ const TOOL_ALIASES = [
   ['fund', /^(?:funds?|etfs?|fund holdings|fund research|mutual funds?)$/],
   ['disclosures', /^(?:disclosures?|disclosure research|disclosure search|search disclosures)$/],
   ['market', /^(?:market|markets|market research|market overview|market briefing|macro|macroeconomics|macro market)$/],
-  ['help', /^(?:help|guide|research guide|how to use|help me get started)$/],
+  ['about', /^(?:about(?: (?:the )?(?:site|edgar terminal|sec edgar terminal))?|help|guide|research guide|how to use|help me get started)$/],
   ['home', /^(?:home|homepage|start)$/],
 ];
 function toolMatch(raw, cftcEnabled) {

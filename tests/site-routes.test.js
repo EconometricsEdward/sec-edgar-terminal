@@ -50,6 +50,15 @@ test("saved routes reject script, external, encoded-separator and invalid resear
   }
 });
 
+test("About replaces Guide navigation and preserves old bookmarked anchors", () => {
+  assert.ok(SITE_TOOLS.some(tool => tool.id === "about" && tool.label === "About" && tool.href === "/about"));
+  assert.ok(SITE_TOOLS.every(tool => tool.id !== "help" && tool.href !== "/help"));
+  assert.equal(activeTool("/about"), "about");
+  assert.equal(safeInternalPath("/help"), "/about");
+  assert.equal(safeInternalPath("/help/#sources"), "/about#sources");
+  assert.equal(safeInternalPath("/help?from=search#recovery"), "/about?from=search#recovery");
+});
+
 test("single-company peer-comparison starting views remain safe saved destinations", () => {
   assert.equal(safeInternalPath("/compare/JPM"), "/compare/JPM");
   assert.equal(

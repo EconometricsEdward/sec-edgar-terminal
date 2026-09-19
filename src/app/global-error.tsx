@@ -55,7 +55,7 @@ export default function GlobalError({
             <a href="/workspace" style={{ color: "#e5edfa" }}>
               Open workspace
             </a>
-            <a href="/help#recovery" style={{ color: "#e5edfa" }}>
+            <a href="/about#recovery" style={{ color: "#e5edfa" }}>
               Research help
             </a>
           </div>
