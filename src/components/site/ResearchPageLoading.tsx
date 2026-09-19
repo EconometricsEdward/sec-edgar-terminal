@@ -1,4 +1,4 @@
-import styles from "../../app/help/help.module.css";
+import styles from "./ResearchRecovery.module.css";
 
 export default function ResearchPageLoading() {
   return (

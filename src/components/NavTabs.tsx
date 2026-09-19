@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import {
   Activity,
   BarChart3,
-  BookOpen,
+  Info,
   FileSearch,
   FileText,
   GitCompare,
@@ -34,7 +34,7 @@ const ICONS: Record<string, LucideIcon> = {
   risk: ShieldAlert,
   compare: GitCompare,
   fund: Wallet,
-  help: BookOpen,
+  about: Info,
   disclosures: FileSearch,
 };
 

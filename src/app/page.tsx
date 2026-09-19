@@ -71,7 +71,7 @@ export default function HomePage() {
       <section aria-labelledby="explore-title">
         <div className={styles.sectionHeading}>
           <div><p className={styles.eyebrow}>Widen your perspective</p><h2 id="explore-title">Every company has a wider context.</h2></div>
-          <Link href="/help" prefetch={false}>Find your starting point <ArrowUpRight size={16} aria-hidden="true" /></Link>
+          <Link href="/about" prefetch={false}>About EDGAR Terminal <ArrowUpRight size={16} aria-hidden="true" /></Link>
         </div>
         <div className={styles.featureGrid}>
           <article className={`${styles.feature} ${styles.marketFeature}`}>
@@ -121,7 +121,7 @@ export default function HomePage() {
       <section className={styles.sourceNote} aria-labelledby="sources-title">
         <BookOpen size={27} strokeWidth={1.5} aria-hidden="true" />
         <div><h2 id="sources-title">Good research keeps the source in view.</h2><p>Financials and filings come from SEC records. Fund holdings reflect historical reporting dates{cftcEnabled && "; CFTC data describes futures positioning"}. Sector performance here means reported business fundamentals, not stock returns. Sources, dates and coverage matter.</p></div>
-        <Link href="/help#coverage" prefetch={false}>How the data works <ArrowUpRight size={16} aria-hidden="true" /></Link>
+        <Link href="/about#sources" prefetch={false}>How the data works <ArrowUpRight size={16} aria-hidden="true" /></Link>
       </section>
     </div>
   );

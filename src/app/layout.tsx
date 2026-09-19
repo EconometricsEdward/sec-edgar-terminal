@@ -193,11 +193,8 @@ export default function RootLayout({
                   <Link href="/workspace" prefetch={false}>
                     Portfolio
                   </Link>
-                  <Link href="/help" prefetch={false}>
-                    Research guide
-                  </Link>
                   <Link href="/about" prefetch={false}>
-                    About &amp; methodology
+                    About
                   </Link>
                   <a
                     href="https://www.sec.gov/edgar/search/"

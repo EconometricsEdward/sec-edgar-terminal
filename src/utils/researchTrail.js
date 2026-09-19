@@ -87,7 +87,7 @@ export function recordResearchVisit(
   const path = migrateMarketPath(safePath).path;
   const url = new URL(path, "https://secedgarterminal.com");
   const tool = activeTool(url.pathname);
-  if (!tool || ["home", "workspace", "help"].includes(tool))
+  if (!tool || ["home", "workspace", "about"].includes(tool))
     return readResearchTrail(storage);
   const title = visitTitle(path);
   const next = [
