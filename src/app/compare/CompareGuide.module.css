@@ -1,0 +1,22 @@
+.guide {
+  max-width: 1440px;
+  margin: 24px auto 36px;
+  border-top: 1px solid var(--border-color, #303d4d);
+  padding: 20px 0 0;
+  color: var(--text-secondary, #9dabbc);
+  font-size: 12px;
+}
+.guide summary { cursor: pointer; width: fit-content; }
+.guide summary:focus-visible, .guide a:focus-visible { outline: 2px solid var(--accent, #f8cd46); outline-offset: 4px; }
+.body { display: flex; flex-wrap: wrap; gap: 28px 40px; margin-top: 22px; line-height: 1.65; }
+.body section { flex: 1 1 340px; max-width: 620px; }
+.body nav { flex: 1 1 240px; }
+.body h2 { font-size: 13px; margin: 0 0 10px; color: var(--text-primary, #e8edf4); }
+.body p { margin: 0 0 10px; }
+.body ul { list-style: none; margin: 0; padding: 0; }
+.body li { display: flex; flex-wrap: wrap; column-gap: 12px; padding: 3px 0; }
+.body li strong { width: 70px; color: var(--text-primary, #e8edf4); }
+.body a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.body a:hover { color: var(--accent, #f8cd46); }
+.body li small { display: block; flex-basis: 100%; font-size: 11px; }
+@media (max-width: 600px) { .guide { margin-inline: 4px; } .body { gap: 22px; } }

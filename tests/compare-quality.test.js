@@ -100,6 +100,21 @@ test("benchmarks reject mixed annual and TTM bases even when source dates are id
   }
 });
 
+test("retained values for loading or failed issuers cannot enter benchmark ranks and deltas", () => {
+  const comparison = metricComparison([
+    entry("A", point(10)), entry("B", point(20)),
+    { ...entry("FAILED", point(100)), error: "SEC request failed" },
+    { ...entry("LOADING", point(200)), loading: true },
+  ], "netIncome");
+  assert.equal(comparison.peerMedian, 15);
+  assert.equal(comparison.eligibleCount, 2);
+  for (const cell of comparison.cells.slice(2)) {
+    assert.equal(cell.quality.valid, false);
+    assert.equal(cell.rank, null);
+    assert.equal(cell.delta, null);
+  }
+});
+
 test("balance-only comparisons do not inherit annual flow duration mismatches", () => {
   const a = point(10, period(), [source(null, "2025-12-31", "Assets")]);
   const b = point(20, period("2025-12-31", "2025-03-01"), [

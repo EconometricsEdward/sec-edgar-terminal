@@ -1,7 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { getDataStoreMode, readDataset } from './dataStore.js';
 import { ANALYSIS_VERSION, unpackAnalysisCompany } from './analysisResearch.js';
-import { COMPARE_VERSION } from './compareResearch.js';
+import { COMPARE_VERSION, COMPARE_MAPPING_VERSION } from './compareResearch.js';
 import { unpackPortfolioCompany } from './portfolioEvidenceCodec.js';
 import { warmGet } from './warmCache.js';
 import { preparedEnvelopeUsable, PreparedSecUnavailableError, isSecPreparedReadEnabled, getActiveSecPreparedCompany, SEC_MIGRATION_COHORT } from './secDocumentStore.js';
@@ -28,7 +28,8 @@ function validView(envelope, kind, cik, basis) {
   return preparedEnvelopeUsable(envelope) && value?.cik === cik && value.basis === basis
     && value.metrics && typeof value.metrics === 'object'
     && (kind === 'compare'
-      ? value.version === COMPARE_VERSION && !value.asOf && Array.isArray(value.periods) && value.packed === true
+      ? value.version === COMPARE_VERSION && value.mappingVersion === COMPARE_MAPPING_VERSION
+        && !value.asOf && Array.isArray(value.periods) && value.packed === true
       : value.analysisVersion === ANALYSIS_VERSION && Array.isArray(value.filings) && Array.isArray(value.warnings));
 }
 

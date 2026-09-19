@@ -47,8 +47,6 @@ export type CompareEvidence = {
   cell: any;
   metric: any;
   settings?: CompareSettings;
-  snapshotName?: string;
-  capturedAt?: string;
 };
 export const COLORS = [
   "#e8b548",

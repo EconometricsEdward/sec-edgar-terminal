@@ -8,6 +8,7 @@ import { packAnalysisCompany, unpackAnalysisCompany } from '../src/utils/analysi
 import { packPortfolioCompany, unpackPortfolioCompany } from '../src/utils/portfolioEvidenceCodec.js';
 import { buildPortfolioCompanyFromDocuments, loadCachedPortfolioCompany, loadFreshPortfolioCompany } from '../src/utils/portfolioResearchServer.js';
 import { isSecPreparedReadEnabled } from '../src/utils/secDocumentStore.js';
+import { enrichAnalysisCompanySources } from '../src/utils/analysisResearchSources.js';
 
 function fixture(ticker = 'AAPL', cik = '0000320193') {
   const now = Date.now(), fetchedAt = new Date(now - 60000).toISOString();
@@ -54,7 +55,10 @@ test('seven prepared views retain the existing financial engines and evidence wi
     assert.equal(write.metadata.fetchedAt, metadata.fetchedAt);
     assert.equal(write.metadata.inputDocuments.length, 2);
     if (write.metadata.view === 'compare') {
-      assert.deepEqual(stable(write.payload), stable(packAnalysisCompany(buildCompareCompany(company, { basis: write.metadata.basis }))));
+      const enriched = await enrichAnalysisCompanySources(company, { basis: write.metadata.basis });
+      assert.deepEqual(stable(write.payload), stable(packAnalysisCompany(buildCompareCompany(enriched, { basis: write.metadata.basis }))));
+      assert.ok(write.metadata.sourceCoverage);
+      assert.equal(write.metadata.compareMappingVersion, write.payload.mappingVersion);
     } else {
       const existing = await loadFreshPortfolioCompany(company, write.metadata.basis, {
         retrievedAt: metadata.fetchedAt, secJson: async (path) => { assert.ok(documents[path]); return documents[path]; },
@@ -210,4 +214,48 @@ test('an interrupted scheduled worker releases all acquired view claims without 
   const result = await prepareResearchViews(company, sources, { ...state.dependencies, signal: controller.signal });
   assert.equal(result.status, 'busy'); assert.equal(state.claims.length, 7);
   assert.equal(state.released.length, 7); assert.equal(state.writes.length, 0);
+});
+
+test('prepared Compare shares source enrichment and skips it when unchanged verified inputs are reusable', async () => {
+  const { company, sources } = fixture(), state = storage(sources), calls = [];
+  let filingReads = 0;
+  const dependencies = { ...state.dependencies,
+    loadFiling: async () => { filingReads++; return 'verified document'; },
+    enrichCompany: async (value, settings, options) => {
+      calls.push(settings.basis);
+      await options.loadFiling({ url: 'https://www.sec.gov/Archives/verified-primary.htm' });
+      return { ...value, sourceCoverage: { filingFallback: { status: 'applied' }, continuity: { status: 'not-applicable' },
+        sourceDocuments: [{ kind: 'inline-filing', contentHash: 'verified-hash', url: 'https://www.sec.gov/Archives/verified-primary.htm' }] } };
+    },
+  };
+  await prepareResearchViews(company, sources, dependencies);
+  assert.deepEqual(calls, ['annual', 'quarter']);
+  assert.equal(filingReads, 1);
+  const written = state.writes.filter(write => write.metadata.view === 'compare');
+  assert.equal(written.length, 3);
+  assert.ok(written.every(write => write.metadata.supplementalDocuments[0].contentHash === 'verified-hash'));
+  await prepareResearchViews(company, sources, dependencies);
+  assert.equal(calls.length, 2);
+  assert.equal(state.writes.length, 7);
+});
+
+test('unavailable supplemental evidence does not publish a degraded prepared comparison', async () => {
+  const { company, sources } = fixture(), state = storage(sources);
+  const result = await prepareResearchViews(company, sources, { ...state.dependencies,
+    enrichCompany: async value => ({ ...value, sourceCoverage: { filingFallback: { status: 'unavailable' } } }),
+  });
+  assert.equal(result.status, 'busy');
+  assert.equal(state.writes.filter(write => write.metadata.view === 'compare').length, 0);
+  assert.equal(state.writes.filter(write => write.metadata.view === 'portfolio').length, 4);
+  assert.equal(state.released.length, 3);
+});
+
+test('old Compare mapping payloads are rejected even if the storage schema version is current', async () => {
+  const { company, metadata } = fixture();
+  const payload = packAnalysisCompany(buildCompareCompany(company, { basis: 'annual' }));
+  delete payload.mappingVersion;
+  await assert.rejects(readPreparedCompare({ ticker: 'AAPL', format: 'packed' }, {
+    mode: 'supabase', enabled: () => true, lookup: () => company, loadRegistry: async () => {},
+    hotRead: async () => null, read: async () => ({ payload, metadata }),
+  }), /validation|refresh/);
 });

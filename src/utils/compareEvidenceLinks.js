@@ -8,7 +8,7 @@ import {
   comparePath,
   normalizeCompareSettings,
   normalizeCompareTickers,
-} from "./compareNotebook.js";
+} from "./compareSettings.js";
 import {
   financialObservationContext,
   financialSourcePeriodLabel,

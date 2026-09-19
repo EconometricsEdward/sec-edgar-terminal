@@ -12,9 +12,13 @@ import {
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
 import { classifyIndustry } from "./industry.js";
 import { comparePointQuality, comparePairQuality } from "./compareQuality.js";
+import { createAnalysisFinancialMapper } from "./analysisFinancialMappings.js";
+import { ANALYSIS_MAPPING_VERSION } from "./analysisVersion.js";
 export { MAX_COMPARE_COMPANIES } from "./compareLimits.js";
 
 export const COMPARE_VERSION = `compare-v2:${FINANCIAL_DATA_VERSION}`;
+// Keep the reviewed storage namespace stable while rejecting older mappings.
+export const COMPARE_MAPPING_VERSION = `compare-mappings-v2:${ANALYSIS_MAPPING_VERSION}`;
 const raw = (key, label, lenses, category = "Scale") => ({
   key,
   label,
@@ -105,8 +109,8 @@ export const COMPARE_METRICS = [
   ratio(
     "debtAssets",
     "Reported debt / assets",
-    ["shortTermDebt", "longTermDebt", "totalAssets"],
-    "(Reported current debt + noncurrent debt) / assets × 100; both debt components required",
+    ["totalDebt", "totalAssets"],
+    "Reported combined debt or reconciled current plus noncurrent debt / positive total assets × 100",
     ["corporate", "insurance"],
     "Capital",
   ),
@@ -114,9 +118,9 @@ export const COMPARE_METRICS = [
   raw("noninterestIncome", "Noninterest income", ["banking"]),
   ratio(
     "bankRevenue",
-    "Net interest + noninterest income",
+    "Revenue, net of interest expense",
     ["netInterestIncome", "noninterestIncome"],
-    "Net interest income before provision + noninterest income",
+    "Reported revenue net of interest expense, or net interest income before provision + noninterest income",
     ["banking"],
     "Scale",
     "currency",
@@ -150,8 +154,8 @@ export const COMPARE_METRICS = [
   ratio(
     "efficiency",
     "Efficiency ratio",
-    ["noninterestExpense", "netInterestIncome", "noninterestIncome"],
-    "Noninterest expense / (net interest income before provision + noninterest income) × 100",
+    ["noninterestExpense", "bankRevenue"],
+    "Noninterest expense / revenue net of interest expense × 100",
     ["banking"],
   ),
   raw("premiumsEarned", "Net premiums earned", ["insurance"]),
@@ -253,7 +257,12 @@ function derived(metric, period, points, beginning) {
       period,
       `A required input is incompatible: ${inputIssue.reason}`,
     );
-  const [a, b, c] = points.map((p) => p.value);
+  if (beginning) {
+    const openingQuality = comparePointQuality(beginning, metric.inputs[1]);
+    if (!openingQuality.valid)
+      return unavailable(period, `The required opening balance is incompatible: ${openingQuality.reason}`);
+  }
+  const [a, b] = points.map((p) => p.value);
   const factor =
     ["quarter", "ytd"].includes(period.kind) && period.start
       ? 365 / (daysBetween(period.start, period.end) + 1)
@@ -266,10 +275,6 @@ function derived(metric, period, points, beginning) {
     value = average > 0 && factor != null ? (a / average) * factor * 100 : null;
   } else if (metric.key === "freeCashFlow") value = a - b;
   else if (metric.key === "bankRevenue") value = a + b;
-  else if (metric.key === "efficiency")
-    value = b + c > 0 ? (a / (b + c)) * 100 : null;
-  else if (metric.key === "debtAssets")
-    value = c > 0 ? ((a + b) / c) * 100 : null;
   else
     value =
       b > 0
@@ -316,6 +321,7 @@ export function buildCompareCompany(
 ) {
   const facts = company.facts;
   const lens = companyLens(company.sic);
+  const financialMapper = createAnalysisFinancialMapper(company);
   const periods = (
     basis === "annual"
       ? extractAnnualPeriods(facts, asOf)
@@ -334,14 +340,14 @@ export function buildCompareCompany(
     if (!cache.has(id))
       cache.set(
         id,
-        buildMetricRow(
-          facts,
-          key,
-          key,
-          [period],
-          "currency",
-          lens === "banking" ? "banking" : company.sic,
-        ).values[0],
+        financialMapper.point(key, period, buildMetricRow(
+            facts,
+            key,
+            key,
+            [period],
+            "currency",
+            lens === "banking" ? "banking" : company.sic,
+          ).values[0]),
       );
     return cache.get(id);
   };
@@ -360,7 +366,7 @@ export function buildCompareCompany(
             "Four consecutive standalone quarters are required for this trailing-year period.",
           );
         let point;
-        if (!metric.inputs) point = get(metric.key, period);
+        if (!metric.inputs || metric.key === "bankRevenue") point = get(metric.key, period);
         else {
           const inputs = metric.inputs.map((key) => get(key, period));
           const beginning = ["roe", "roa"].includes(metric.key)
@@ -368,11 +374,17 @@ export function buildCompareCompany(
               ? get(metric.inputs[1], {
                   ...period,
                   end: dayBefore(period.start),
+                  start: null,
                 })
               : unavailable(period)
             : null;
           point = derived(metric, period, inputs, beginning);
         }
+        // A value tagged to a longer or incomplete duration must not appear as
+        // a standalone quarter simply because its reporting endpoint matches.
+        const quality = comparePointQuality(point, metric.key, period);
+        if (Number.isFinite(point?.value) && !quality.valid)
+          point = { ...point, value: null, classification: "unavailable", reason: quality.reason };
         const sources = evidenceSources(point).map((s) => ({
           ...s,
           documentUrl:
@@ -394,6 +406,7 @@ export function buildCompareCompany(
   );
   return {
     version: COMPARE_VERSION,
+    mappingVersion: COMPARE_MAPPING_VERSION,
     ticker: company.ticker,
     name: company.companyName,
     cik: company.cik,
@@ -412,6 +425,7 @@ export function buildCompareCompany(
     observedAt: new Date().toISOString(),
     periods,
     metrics,
+    ...(company.sourceCoverage ? { sourceCoverage: company.sourceCoverage } : {}),
     note: "USD only. Latest available reported context within the selected filing cutoff; subsequent comparative filings can revise earlier periods. Missing custom-tag data remains unavailable.",
   };
 }
@@ -424,7 +438,7 @@ export function periodBucket(period, basis = "annual") {
 export function uniqueIssuerCompanies(companies) {
   const seen = new Set();
   return companies.map((c) => {
-    const cik = c.data?.cik;
+    const cik = c.data?.cik != null ? String(c.data.cik).replace(/^0+/, "") : "";
     const duplicate = cik && seen.has(cik);
     if (cik) seen.add(cik);
     return { ...c, duplicate: !!duplicate };
@@ -496,20 +510,23 @@ export function metricComparison(entries, key, benchmark = "median") {
   const metric = METRIC_BY_KEY[key];
   const cells = entries.map((c) => {
     const point = c.index >= 0 ? c.data?.metrics[key]?.[c.index] : null;
+    const status = c.error
+      ? "fetch failed"
+      : c.loading
+        ? "loading"
+        : c.period
+          ? "reviewed"
+          : "period unavailable";
+    const quality = comparePointQuality(point, key, c.period);
     return {
       ticker: c.ticker,
       cik: c.data?.cik,
       name: c.data?.name,
       period: c.period,
       point,
-      quality: comparePointQuality(point, key, c.period),
-      status: c.error
-        ? "fetch failed"
-        : c.loading
-          ? "loading"
-          : c.period
-            ? "reviewed"
-            : "period unavailable",
+      quality: status === "reviewed" ? quality : { ...quality, valid: false,
+        reason: status === "fetch failed" ? "The company request failed; retry it before comparing." : status },
+      status,
     };
   });
   const available = cells.filter((c) => Number.isFinite(c.point?.value));

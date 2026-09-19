@@ -305,9 +305,9 @@ export default function CompareFormula({
         </table>
       </div>
       <div className={shared.panelFoot}>
-        Open a calculated result to inspect its formula and original sources,
-        then save it to your collection. The shared setup retains this
-        definition; saved evidence keeps the calculation as it was reviewed.
+        Open a calculated result to inspect its formula and original sources
+        or copy a source citation. Share the comparison to retain this metric
+        definition in the link.
       </div>
     </section>
   );
