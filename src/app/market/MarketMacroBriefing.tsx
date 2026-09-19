@@ -1,15 +1,12 @@
 'use client';
-import { useMemo } from 'react';
 import { ArrowUpRight, MoveRight } from 'lucide-react';
-import { buildMarketMacroSummary } from '../../utils/marketMacroSummary.js';
 import { formatMarket } from '../../utils/marketResearch.js';
-import type { Basis, MarketData } from './marketTypes';
+import type { Basis, MarketSummary } from './marketTypes';
 import m from './marketMacro.module.css';
 
 type Sector = { id: string; label: string; count: number; metrics: Record<string, { median: number | null; count: number }> };
 
-export default function MarketMacroBriefing({ data, basis, onSector, cftcEnabled = true }: { data: MarketData; basis: Basis; cftcEnabled?: boolean; onSector: (id: string) => void }) {
-  const summary = useMemo(() => buildMarketMacroSummary(data, basis), [data, basis]);
+export default function MarketMacroBriefing({ summary, basis, onSector, cftcEnabled = true }: { summary: MarketSummary; basis: Basis; cftcEnabled?: boolean; onSector: (id: string) => void }) {
   const ranked = (summary.sectors as Sector[]).filter(sector => Number.isFinite(sector.metrics.revenueGrowth?.median)).sort((a, b) => b.metrics.revenueGrowth.median! - a.metrics.revenueGrowth.median!);
   const strongest = ranked[0];
   const weakest = ranked.length > 1 ? ranked[ranked.length - 1] : null;

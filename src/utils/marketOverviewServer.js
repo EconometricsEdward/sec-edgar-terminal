@@ -6,6 +6,7 @@ import { warmGet } from './warmCache.js';
 import { getDataStoreMode, readDataset, beginDatasetWrite, publishDataset, releaseDatasetWrite } from './dataStore.js';
 import { preparedEnvelopeUsable } from './secDocumentStore.js';
 import { MARKET_DURABLE_KEY } from './preparedResearchStore.js';
+import { publishMarketServingViews } from './marketBriefingServer.js';
 
 const RETENTION = 7 * 86400;
 let memory = null, pending = null;
@@ -65,6 +66,7 @@ export async function publishMarketOverview(atlas, membership, options = {}) {
   if (!isMarketOverview(next)) throw new Error('Market overview failed validation.');
   const published = await publishDurableMarketOverview(next, options.durable || {});
   if (!await writeSnapshot(MARKET_OVERVIEW_VERSION, 'atlas', published, RETENTION, options)) throw new Error('Market overview publication failed.');
+  await publishMarketServingViews(published, options.durable || {});
   memory = { value: published, until: Date.now() + 60000 };
   return published;
 }

@@ -31,6 +31,17 @@ test('directory outage fallback never retains identities past seven days from re
   await assert.rejects(cache.get('operating'), /SEC down/);
 });
 
+test('membership callers retain the original directory retrieval clock during a source outage', async () => {
+  const prior = envelope('operating', company, instant - 3 * DAY);
+  const cache = createTickerDirectoryCache({ now: () => instant, read: async () => prior,
+    fetchSec: async () => { throw new Error('SEC down'); }, write: async () => { throw new Error('no stale writes'); } });
+  const snapshot = await cache.getSnapshot('operating');
+  assert.equal(snapshot.data.ZZZZ.cik, company.ZZZZ.cik);
+  assert.equal(snapshot.fetchedAt, prior.fetchedAt);
+  assert.equal(snapshot.expiresAt, prior.expiresAt);
+  assert.equal(snapshot.stale, true);
+});
+
 test('fund directory preserves registrant, series and class identity and rejects ambiguous tickers', async () => {
   const row = [1234567, 'S000000001', 'C000000002', 'ABCFX'];
   let raw = { fields: ['cik', 'seriesId', 'classId', 'symbol'], data: [row] };

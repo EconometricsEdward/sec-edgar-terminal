@@ -1,21 +1,22 @@
 'use client';
 
-import { useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { ArrowUpRight, BarChart3, Layers3 } from 'lucide-react';
-import { buildMarketMacroSummary, MARKET_SECTOR_METRICS } from '../../utils/marketMacroSummary.js';
+import { MARKET_SECTOR_METRICS } from '../../utils/marketMacroSummary.js';
 import { formatMarket } from '../../utils/marketResearch.js';
-import type { Basis, MarketData, Stats } from './marketTypes';
+import type { Basis, MarketSummary, Stats } from './marketTypes';
 import s from './marketSectorPerformance.module.css';
 
+const MarketSectorIndustries = dynamic(() => import('./MarketSectorIndustries'), { loading: () => <p role="status">Loading industry breakdown…</p> });
+
 type Props = {
-  data: MarketData; basis: Basis; statistic: string; onStatistic: (value: string) => void;
+  summary: MarketSummary; basis: Basis; statistic: string; onStatistic: (value: string) => void;
   selectedSector: string; onSector: (value: string) => void; metric: string; onMetric: (value: string) => void;
   compact?: boolean;
 };
 const statisticValue = (stats: Stats | undefined, statistic: string) => (statistic === 'mean' ? stats?.mean : stats?.median) ?? null;
 
-export function MarketSectorPerformance({ data, basis, statistic, onStatistic, selectedSector, onSector, metric, onMetric, compact = false }: Props) {
-  const summary = useMemo(() => buildMarketMacroSummary(data, basis), [data, basis]);
+export function MarketSectorPerformance({ summary, basis, statistic, onStatistic, selectedSector, onSector, metric, onMetric, compact = false }: Props) {
   const currentMetric = MARKET_SECTOR_METRICS.find(row => row.key === metric) || MARKET_SECTOR_METRICS[0];
   const statLabel = statistic === 'mean' ? 'Mean' : 'Median';
   const ranked = [...summary.sectors].sort((a, b) => {
@@ -60,9 +61,7 @@ export function MarketSectorPerformance({ data, basis, statistic, onStatistic, s
           <h3 id="market-sector-detail-title">{selected.label}</h3>
           <div className={s.detailValue}><strong>{formatMarket(statisticValue(selected.metrics[currentMetric.key], statistic))}</strong><span>{statLabel} {currentMetric.label.toLowerCase()}<small>{selected.metrics[currentMetric.key].count} of {selected.count} companies with comparable data</small></span></div>
           <div className={s.breadth}><div><span>Companies with growing revenue</span><b>{formatMarket(selected.metrics.revenueGrowth.positivePct, 'pct', 0)}</b></div><div className={s.breadthTrack}><i style={{ width: `${selected.metrics.revenueGrowth.positivePct || 0}%` }} /></div><small>{selected.metrics.revenueGrowth.positive} of {selected.metrics.revenueGrowth.count} with comparable revenue</small></div>
-          <div className={s.industryHeading}><h4>Industry composition</h4><span>{selected.industries.length} SEC SIC industries</span></div>
-          {selected.industries.length ? <div className={s.industryScroll} tabIndex={0} aria-label={`${selected.label} industry composition`}><table className={s.industryTable}><caption className={s.srOnly}>{selected.label} industries: {statLabel.toLowerCase()} {currentMetric.label.toLowerCase()}, with company coverage.</caption><thead><tr><th scope="col">SEC industry</th><th scope="col">{statLabel}</th><th scope="col">Coverage</th></tr></thead><tbody>{selected.industries.map(industry => <tr key={industry.code}><th scope="row"><span>{industry.label}</span><small>SIC {industry.code} · {industry.count} {industry.count === 1 ? 'company' : 'companies'}</small></th><td>{formatMarket(statisticValue(industry.metrics?.[currentMetric.key], statistic))}</td><td>{industry.metrics?.[currentMetric.key]?.count ?? 0}/{industry.count}</td></tr>)}</tbody></table></div> : <p className={s.description}>SEC industry classifications are unavailable for this sector.</p>}
-          <p className={s.note}>Industry rows use the same {statLabel.toLowerCase()} and metric as the chart. {selected.missingIndustryCount > 0 && `${selected.missingIndustryCount} companies lack a valid SEC SIC code and are excluded from industry rows. `}Small industry samples may be dominated by individual companies.</p>
+          <MarketSectorIndustries sector={selected} basis={basis} statistic={statistic} metric={currentMetric.key} generatedAt={summary.generatedAt || ''} />
         </section>}
       </div>
     </>}

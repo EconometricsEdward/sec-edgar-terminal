@@ -83,6 +83,11 @@ function validDirectory(value, kind, now) {
 export function createTickerDirectoryCache({ fetchSec = secFetch, read = warmGet, write = warmSet, now = Date.now } = {}) {
   const memory = new Map(), pending = new Map(), retryAfter = new Map();
   return Object.freeze({
+    async getSnapshot(kind) {
+      const data = await this.get(kind);
+      const envelope = memory.get(kind);
+      return { data, fetchedAt: envelope.fetchedAt, expiresAt: envelope.expiresAt, stale: Date.parse(envelope.expiresAt) <= now() };
+    },
     async get(kind) {
       if (!['operating', 'funds'].includes(kind)) throw new Error('Unknown SEC directory.');
       let previous = memory.get(kind);
@@ -177,6 +182,11 @@ export async function getOperatingTickers(tickers) {
 /** The same cached SEC directories support security-first fund discovery. */
 export async function getOperatingDirectory() {
   return getCached("operating");
+}
+
+/** Membership jobs preserve the directory's source clock even during outages. */
+export async function getOperatingDirectorySnapshot() {
+  return directories.getSnapshot('operating');
 }
 
 /** Public SEC fund identities; portfolio imports keep funds separate from issuers. */
