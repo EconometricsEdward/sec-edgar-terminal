@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMarketReport, createMarketReportLoader } from '../src/utils/marketReport.js';
+import { buildMarketReport, createMarketReportLoader, createNativeMarketCftcReader } from '../src/utils/marketReport.js';
 import { MARKET_METRICS } from '../src/utils/marketResearch.js';
 import { CFTC_FAMILIES, CFTC_REPORT_BASIS, CFTC_SCHEMA_VERSION, normalizeCftcRow, cftcCatalog } from '../src/utils/cftc.js';
 
@@ -212,4 +212,34 @@ test('loader propagates caller cancellation and rejects missing SEC fundamentals
   await assert.rejects(load({}, cancelled.signal), { name: 'AbortError' });
   const missing = createMarketReportLoader({ loadOverview: async () => { throw new Error('Missing'); }, loadCftcMarkets: async ({ family }) => cftc(family) });
   await assert.rejects(missing({}), /prepared SEC market snapshot is unavailable/);
+});
+
+test('native CFTC rollback blocks the source reader while SEC market reports remain available', async () => {
+  let sourceCalls = 0;
+  const reader = createNativeMarketCftcReader({ enabled: () => false,
+    load: async () => { sourceCalls++; return cftc(); } });
+  await assert.rejects(reader({ family: 'tff', preparedOnly: true }), { code: 'CFTC_DISABLED' });
+  assert.equal(sourceCalls, 0);
+  const previous = process.env.CFTC_ENABLED;
+  process.env.CFTC_ENABLED = 'false';
+  try {
+    const load = createMarketReportLoader({ now: () => CLOCK, loadOverview: async () => overview() });
+    const report = await load({ basis: 'annual' });
+    assert.equal(report.period.basis, 'annual');
+    assert.equal(section(report, 'market-companies').rows.length, 4);
+    assert.equal(section(report, 'cftc-all-groups').rows.length, 0);
+    assert.equal(report.summary.find(row => row.label === 'CFTC prepared markets').value, null);
+    assert.equal(report.coverage.status, 'partial');
+    assert.equal(report.notes.filter(note => note.includes('positioning is disabled')).length, 2);
+    const publicCalls = [];
+    const publicLoad = createMarketReportLoader({ now: () => CLOCK, loadOverview: async () => overview(),
+      loadCftcMarkets: async ({ family }) => { publicCalls.push(family); return cftc(family); } });
+    const preview = await publicLoad();
+    assert.deepEqual(publicCalls.sort(), ['disaggregated', 'tff']);
+    assert.ok(section(preview, 'cftc-tff'));
+    assert.ok(section(preview, 'cftc-disaggregated'));
+  } finally {
+    if (previous === undefined) delete process.env.CFTC_ENABLED;
+    else process.env.CFTC_ENABLED = previous;
+  }
 });

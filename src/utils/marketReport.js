@@ -1,6 +1,7 @@
 import { buildMarketMacroSummary, MARKET_SECTOR_METRICS } from './marketMacroSummary.js';
 import { MARKET_METRICS, MARKET_ATLAS_FRESH_MS, isOlderReport } from './marketResearch.js';
 import { CFTC_FAMILIES, CFTC_REPORT_BASIS, CFTC_SCHEMA_VERSION, cftcDate, isCftcContractCode, normalizeCftcRow } from './cftc.js';
+import { isCftcEnabled } from './cftcFeature.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const number = value => finite(value) ? value : null;
@@ -261,6 +262,15 @@ export function buildMarketReport({ overview, cftcFamilies = [], failures = [] }
   };
 }
 
+/** Match the public CFTC endpoints' rollback switch before loading any source. */
+export function createNativeMarketCftcReader({ enabled = isCftcEnabled, load } = {}) {
+  return async options => {
+    if (!enabled()) throw Object.assign(new Error('CFTC positioning is disabled.'), { code: 'CFTC_DISABLED' });
+    const reader = load || (await import('./cftcServer.js')).loadCftcMarkets;
+    return reader(options);
+  };
+}
+
 /** Only prepared public readers. These callbacks never force an upstream
  * rebuild; preview callers can inject anonymous fixed-origin public GETs. */
 export function createMarketReportLoader({ loadOverview, loadCftcMarkets, now = () => new Date().toISOString() } = {}) {
@@ -268,7 +278,7 @@ export function createMarketReportLoader({ loadOverview, loadCftcMarkets, now = 
     if (!['annual', 'ttm'].includes(basis)) throw Object.assign(new Error('Choose annual or TTM sector fundamentals.'), { status: 400 });
     signal?.throwIfAborted();
     const overviewReader = loadOverview || (async () => (await import('./marketOverviewServer.js')).readMarketOverview());
-    const cftcReader = loadCftcMarkets || (async options => (await import('./cftcServer.js')).loadCftcMarkets(options));
+    const cftcReader = loadCftcMarkets || createNativeMarketCftcReader();
     const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(45000)]);
     const bounded = work => new Promise((resolve, reject) => {
       const abort = () => reject(deadline.reason || fail('Prepared market research timed out.'));
@@ -283,7 +293,7 @@ export function createMarketReportLoader({ loadOverview, loadCftcMarkets, now = 
     if (results[0].status !== 'fulfilled') throw fail('The prepared SEC market snapshot is unavailable. Retry the market report.');
     const cftcFamilies = results.slice(1).filter(result => result.status === 'fulfilled').map(result => result.value);
     const failures = results.slice(1).flatMap((result, index) => result.status === 'rejected'
-      ? [`${Object.values(CFTC_FAMILIES)[index].label}: prepared source could not be loaded.`] : []);
+      ? [`${Object.values(CFTC_FAMILIES)[index].label}: ${result.reason?.code === 'CFTC_DISABLED' ? 'positioning is disabled.' : 'prepared source could not be loaded.'}`] : []);
     return buildMarketReport({ overview: results[0].value, cftcFamilies, failures }, { basis, generatedAt: new Date(now()).toISOString() });
   };
 }

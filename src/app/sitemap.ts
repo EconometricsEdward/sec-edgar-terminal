@@ -21,6 +21,7 @@ const MAIN_PAGES: Array<
   ["/compare", "weekly", 0.8],
   ["/fund", "weekly", 0.8],
   ["/disclosures", "weekly", 0.8],
+  ["/reports", "weekly", 0.8],
   ["/workspace", "weekly", 0.8],
   ["/workspace/demo", "monthly", 0.6],
   ["/workspace/demo/changes", "daily", 0.75],

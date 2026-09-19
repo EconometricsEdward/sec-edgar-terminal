@@ -59,7 +59,7 @@ function reportMatches(value: unknown, selected: ReportSearchResult, basis: Basi
     && ["ready", "partial"].includes(report.coverage?.status) && !!report.period;
 }
 
-export default function ReportsClient() {
+export default function ReportsClient({ preview = false }: { preview?: boolean }) {
   const [kind, setKind] = useState<ReportKind>("company");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ReportSearchResult[]>([]);
@@ -269,7 +269,7 @@ export default function ReportsClient() {
     <div className={styles.page}>
       <header className={styles.hero}>
         <div>
-          <p className={styles.eyebrow}>EDGAR Terminal reports <span>Preview</span></p>
+          <p className={styles.eyebrow}>EDGAR Terminal reports {preview && <span>Preview</span>}</p>
           <h1>Research you can<br /><em>take with you.</em></h1>
           <p className={styles.lead}>Build a company, fund or market report. Download a structured PDF and an Excel workbook with clear financial statements, trends and reporting dates.</p>
         </div>
