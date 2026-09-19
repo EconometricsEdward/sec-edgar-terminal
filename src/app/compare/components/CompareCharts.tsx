@@ -11,7 +11,9 @@ import {
   ScatterChart,
   Scatter,
   ReferenceLine,
-  LabelList,
+  usePlotArea,
+  useXAxisScale,
+  useYAxisScale,
 } from "recharts";
 import { ArrowUpRight } from "lucide-react";
 import {
@@ -27,6 +29,7 @@ import {
   type CompareEvidence,
 } from "../compareTypes";
 import { compatibleMapSample } from "../../../utils/compareBenchmarks.js";
+import { layoutCompareMapLabels } from "../../../utils/compareMapLabels.js";
 import styles from "./CompareCharts.module.css";
 
 type Props = {
@@ -207,6 +210,26 @@ const MAP_PRESETS = [
   { label: "Bank funding & returns", x: "loanDeposits", y: "roe" },
 ];
 
+function MapLabels({ points }: { points: any[] }) {
+  const plot = usePlotArea();
+  const xScale = useXAxisScale();
+  const yScale = useYAxisScale();
+  if (!plot || !xScale || !yScale) return null;
+  const labels = layoutCompareMapLabels(points.map((point) => ({
+    ticker: point.ticker, x: xScale(point.x), y: yScale(point.y),
+  })), plot);
+  return <g aria-hidden="true" pointerEvents="none">
+    {labels.map((label) => <g key={label.ticker}>
+      {Math.hypot(label.x - label.pointX, label.y - label.pointY) > 25 &&
+        <line x1={label.pointX} y1={label.pointY} x2={label.x} y2={label.y}
+          stroke="var(--compare-muted)" strokeOpacity={0.45} strokeWidth={1} />}
+      <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="central"
+        fill="var(--compare-text)" fontFamily="monospace" fontSize={12} fontWeight={650}
+        stroke="var(--compare-bg)" strokeWidth={4} paintOrder="stroke">{label.ticker}</text>
+    </g>)}
+  </g>;
+}
+
 export function CompareMap({ entries, metrics, settings, update, inspect }: Props) {
   const xMetric = METRIC_BY_KEY[settings.x], yMetric = METRIC_BY_KEY[settings.y];
   const sample = compatibleMapSample(entries, settings.x, settings.y);
@@ -248,8 +271,9 @@ export function CompareMap({ entries, metrics, settings, update, inspect }: Prop
                     aria-label={`${point.ticker}: ${xMetric.label} ${displayValue(point.x, xMetric.format)}, ${yMetric.label} ${displayValue(point.y, yMetric.format)}. Inspect ${yMetric.label}.`}
                     onClick={() => inspect(evidence(point.company, yMetric, point.yPoint))}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); inspect(evidence(point.company, yMetric, point.yPoint)); } }} />}
-                ><LabelList dataKey="ticker" position="top" offset={12} fill="var(--compare-text)" fontSize={12} fontWeight={650} /></Scatter>
+                />
               ))}
+              <MapLabels points={plotted} />
             </ScatterChart>
           </ResponsiveContainer>
         </figure>

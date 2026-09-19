@@ -377,6 +377,12 @@ export default function CompareClient({
     if (exact) addTickers(exact.ticker);
     else if (suggestions.length && !input.includes(",") && !input.includes(";"))
       addTickers(suggestions[Math.max(0, Math.min(suggestionIndex, suggestions.length - 1))].ticker);
+    else if (/\s/.test(input.trim()) && !/[,;]/.test(input)
+      && !input.trim().split(/\s+/).every(ticker => companyIndex.resolveTicker(ticker))) {
+      setError(ctx?.directoryStatus === "ready"
+        ? "No matching company. Try a shorter company name, or separate ticker symbols with commas."
+        : "Company search is still loading or unavailable. Try again in a moment, or enter a ticker symbol.");
+    }
     else addTickers(input);
   };
   const preset = (group: any) => {
