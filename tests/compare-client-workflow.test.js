@@ -161,3 +161,32 @@ test("company suggestions preserve exact ticker identity and verified share clas
   const exactDot = buildCompareCompanyIndex({ "BRK.B": { ticker: "BRK.B", name: "Exact entry" }, "BRK-B": { ticker: "BRK-B", name: "Dash entry" } });
   assert.equal(exactDot.resolveTicker("BRK.B").name, "Exact entry");
 });
+
+test("company name search prioritizes operating issuers and removes funds and duplicate share classes", () => {
+  const directory = buildCompareCompanyIndex({
+    AAAU: { name: "Goldman Sachs Physical Gold ETF", cik: "0001708646" },
+    GS: { name: "Goldman Sachs Group Inc", cik: "0000886982" },
+    "GS-PA": { name: "Goldman Sachs Group Inc", cik: "886982" },
+    "GS-PC": { name: "Goldman Sachs Group Inc", cik: "0000886982" },
+    GSG: { name: "Goldman Sachs Funds", cik: "0000000040", isFund: true },
+    GSF: { name: "Goldman Sachs Managed Income", cik: "0000000050", seriesId: "S000000001", classId: "C000000001" },
+    GST: { name: "Goldman Sachs Exchange-Traded Fund", cik: "0000000060" },
+    GSBD: { name: "Goldman Sachs BDC Inc", cik: "0001572694" },
+  });
+  assert.deepEqual(compareCompanySuggestions(directory, "Goldman Sachs").map((row) => row.ticker), ["GS", "GSBD"]);
+  assert.deepEqual(compareCompanySuggestions(directory, "Goldman Sachs", ["GS"]).map((row) => row.ticker), ["GSBD"]);
+  assert.equal(compareCompanySuggestions(directory, "GS-PA")[0].ticker, "GS-PA");
+  assert.equal(compareCompanySuggestions(directory, "GS-PA", ["GS"])[0].ticker, "GS-PA");
+  assert.equal(compareCompanySuggestions(directory, "AAAU")[0].ticker, "AAAU");
+  assert.equal(compareCompanySuggestions(directory, "GSG")[0].ticker, "GSG");
+  assert.equal(directory.resolveTicker("GS-PA").ticker, "GS-PA");
+});
+
+test("company name search only collapses verified issuer identities", () => {
+  const directory = buildCompareCompanyIndex({
+    XX: { name: "Example Holdings", cik: "invalid" },
+    YY: { name: "Example Holdings" },
+    ZZ: { name: "Example Holdings", cik: "0" },
+  });
+  assert.deepEqual(compareCompanySuggestions(directory, "Example").map((row) => row.ticker), ["XX", "YY", "ZZ"]);
+});
