@@ -9,6 +9,7 @@ import {
   Info,
   FileSearch,
   FileText,
+  FileDown,
   GitCompare,
   Home,
   LayoutDashboard,
@@ -36,6 +37,7 @@ const ICONS: Record<string, LucideIcon> = {
   fund: Wallet,
   about: Info,
   disclosures: FileSearch,
+  reports: FileDown,
 };
 
 export default function NavTabs() {
