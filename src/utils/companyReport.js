@@ -10,10 +10,10 @@ const REPORT_SCHEMA = 'edgar.report.v1';
 const BASES = new Set(['annual', 'quarter', 'ttm']);
 const normalizedCik = value => /^\d{1,10}$/.test(String(value || '')) && Number(value) > 0 ? String(value).padStart(10, '0') : null;
 const CATEGORIES = [
-  ['income', 'Financial results', 'Revenue and earnings for the selected reporting duration.'],
-  ['balance', 'Balance sheet and funding', 'Reported balances at each period end.'],
-  ['cashflow', 'Cash generation and allocation', 'Operating, investing and financing cash flows for the selected duration.'],
-  ['ratios', 'Profitability, liquidity and capital', 'Ratios use compatible reported inputs; unavailable inputs remain blank.'],
+  ['income', 'Income Statement', 'Revenue and earnings for the selected reporting duration.'],
+  ['balance', 'Balance Sheet', 'Reported balances at each period end.'],
+  ['cashflow', 'Cash Flow', 'Operating, investing and financing cash flows for the selected duration.'],
+  ['ratios', 'Ratios', 'Profitability, liquidity and capital ratios use compatible reported inputs; unavailable inputs remain blank.'],
 ];
 const HEADLINES = {
   corporate: ['revenue', 'netIncome', 'operatingCashFlow', 'freeCashFlow', 'totalAssets', 'equityAssets'],
@@ -148,7 +148,7 @@ export function buildCompanyReport(analysis, { generatedAt = new Date().toISOStr
         : 'USD; EPS and share counts are labeled separately. Missing figures are unavailable, not zero.',
   })).filter(section => section.rows.length);
   sections.push({ id: 'observations', title: 'Metric methodology and source references',
-    description: 'Complete observation detail is included in the Excel workbook. Source IDs join to the source catalog.',
+    description: 'Supporting observation detail retained for calculations and validation.',
     columns: [
       { key: 'metric', label: 'Metric', format: 'text' }, { key: 'period', label: 'Period end', format: 'date' },
       { key: 'start', label: 'Period start', format: 'date' }, { key: 'basis', label: 'Basis', format: 'text' },
@@ -189,14 +189,14 @@ export function buildCompanyReport(analysis, { generatedAt = new Date().toISOStr
     ...(sourceRetrievedAt ? [`Financial inputs retrieved: ${sourceRetrievedAt} (oldest canonical source).`] : []),
     ...(sourceCheckedAt ? [`Financial inputs last checked: ${sourceCheckedAt} (oldest canonical source check). Generating this report does not perform a new SEC source check.`] : []),
     ...(sourceStale ? ['The source check is due. This report uses a retained financial model that may not include a newer filing or amendment. Report generation time is not a new source check.'] : []),
-    'Unavailable values are not zero. Custom issuer tags, nonpublic data and incompatible reporting contexts can leave gaps. Metrics with no verified values in the included history are omitted from the financial tables and retained in the workbook observation appendix.',
+    'Unavailable values are not zero. Custom issuer tags, nonpublic data and incompatible reporting contexts can leave gaps. Metrics with no verified values in the included history are omitted from the financial tables.',
     basis === 'annual' ? 'History includes up to five annual periods. Balance-sheet values are period-end amounts; earnings and cash flows cover the stated annual duration.'
       : basis === 'ttm' ? 'History includes up to eight trailing-twelve-month periods. Flow calculations require four compatible standalone quarters; balance-sheet values remain period-end amounts.'
-        : 'History includes up to eight standalone quarters. A quarter can be derived from cumulative reported amounts; input facts and formulas remain in the workbook.',
+        : 'History includes up to eight standalone quarters. A quarter can be derived from compatible cumulative reported amounts.',
     lens === 'banking' ? 'Bank revenue is net of interest expense. Deposits, lending and regulatory capital needs make industrial-company liquidity and free-cash-flow comparisons less useful.'
       : lens === 'insurance' ? 'Premiums and investment income are shown separately. Insurance reserves and investment portfolios require review of the original disclosures.'
         : 'Debt uses the mapped reported combined amount or compatible current and noncurrent components. Interest coverage does not measure every fixed charge or refinancing obligation.',
-    'The Excel workbook contains the full observation and source appendices, including reported input values, XBRL concepts, formulas and original filing links.',
+    'The Excel workbook organizes financial statements, ratios and trends. Original filing links are listed in this PDF’s source register.',
   ];
   if (data.lensNote) notes.push(cleanText(data.lensNote, 1000));
   if (data.sourceCoverage?.filingFallback?.status === 'unavailable' || data.sourceCoverage?.continuity?.status === 'partial')

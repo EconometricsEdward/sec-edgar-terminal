@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowDownToLine, ArrowRight, ArrowUpRight, Building2, Check, ChevronDown, FileSpreadsheet, FileText, Landmark, Layers3, LoaderCircle, Search, X } from "lucide-react";
+import { ArrowDownToLine, ArrowRight, ArrowUpRight, Building2, ChartNoAxesCombined, Check, ChevronDown, FileSpreadsheet, FileText, Landmark, Layers3, LoaderCircle, Search, X } from "lucide-react";
 import type { ReportDocument, ReportFormat, ReportKind, ReportSearchResult } from "../../utils/reportTypes";
 import { reportMatchesSelection } from "../../utils/reportRequest.js";
 import styles from "./reports.module.css";
@@ -14,7 +14,9 @@ const KINDS = [
   { id: "company" as const, label: "Company", Icon: Building2, placeholder: "Search a company name, ticker or CIK", detail: "Financial statements, performance and financial risk" },
   { id: "nport" as const, label: "N-PORT fund", Icon: Layers3, placeholder: "Search a fund name, ticker or SEC series", detail: "A fund’s reported portfolio and concentration" },
   { id: "13f" as const, label: "13F manager", Icon: Landmark, placeholder: "Search an institutional manager name or CIK", detail: "An institutional manager’s disclosed securities" },
+  { id: "market" as const, label: "Market report", Icon: ChartNoAxesCombined, placeholder: "Market report", detail: "Sector fundamentals and CFTC positioning across financial and commodity markets" },
 ];
+const MARKET_SELECTION: ReportSearchResult = { kind: "market", id: "MARKET", name: "Market overview", cik: "", detail: "Sector fundamentals and futures positioning" };
 
 const compactNumber = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
 const plainNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
@@ -42,7 +44,7 @@ function formatValue(value: unknown, unit: ReportFormat = "text") {
 function safeSourceUrl(value: string) {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "sec.gov" || url.hostname.endsWith(".sec.gov")) ? url.href : null;
+    return url.protocol === "https:" && ["sec.gov", "cftc.gov", "secedgarterminal.com"].some(host => url.hostname === host || url.hostname.endsWith(`.${host}`)) ? url.href : null;
   } catch { return null; }
 }
 
@@ -86,12 +88,15 @@ export default function ReportsClient() {
   const listId = useId();
   const config = KINDS.find(item => item.id === kind)!;
   const searchVisible = open && !selected && canSearchIdentity(query, kind);
+  const displayedSources = report?.kind === "market"
+    ? report.sources.filter(source => source.id === "market-snapshot" || source.id.startsWith("cftc-"))
+    : report?.sources || [];
 
   useEffect(() => {
     const normalized = query.trim();
     const request = ++searchRequest.current;
     setActiveIndex(-1);
-    if (selected || !canSearchIdentity(normalized, kind)) {
+    if (kind === "market" || selected || !canSearchIdentity(normalized, kind)) {
       setResults([]);
       setSearchState("idle");
       setSearchWarning("");
@@ -161,7 +166,8 @@ export default function ReportsClient() {
     searchController.current?.abort();
     setKind(next);
     setQuery("");
-    setSelected(null);
+    setSelected(next === "market" ? MARKET_SELECTION : null);
+    setBasis(next === "market" ? "ttm" : "annual");
     setResults([]);
     setOpen(false);
     inputRef.current?.focus();
@@ -238,7 +244,7 @@ export default function ReportsClient() {
         const link = document.createElement("a");
         const identity = (currentReport.entity.ticker || currentReport.entity.name || currentReport.entity.cik).replace(/[^a-z0-9._-]+/gi, "-").slice(0, 90);
         link.href = url;
-        const reportingBasis = currentReport.kind === "company" ? `-${currentReport.period.basis}` : "";
+        const reportingBasis = ["company", "market"].includes(currentReport.kind) ? `-${currentReport.period.basis}` : "";
         link.download = `${identity}-${currentReport.kind}${reportingBasis}-${currentReport.period.asOf || currentReport.generatedAt.slice(0, 10)}.${format}`;
         document.body.appendChild(link);
         link.click();
@@ -265,11 +271,11 @@ export default function ReportsClient() {
         <div>
           <p className={styles.eyebrow}>EDGAR Terminal reports <span>Preview</span></p>
           <h1>Research you can<br /><em>take with you.</em></h1>
-          <p className={styles.lead}>Turn a company or fund’s public disclosures into a structured PDF report and an Excel workbook, with reporting dates and sources included.</p>
+          <p className={styles.lead}>Build a company, fund or market report. Download a structured PDF and an Excel workbook with clear financial statements, trends and reporting dates.</p>
         </div>
         <div className={styles.formatIntro} aria-label="Two download formats">
           <div><FileText size={22} aria-hidden="true" /><span><strong>A report to read</strong><small>PDF · financial overview, charts & context</small></span></div>
-          <div><FileSpreadsheet size={22} aria-hidden="true" /><span><strong>A workbook to use</strong><small>Excel · structured data, holdings & sources</small></span></div>
+          <div><FileSpreadsheet size={22} aria-hidden="true" /><span><strong>A workbook to use</strong><small>Excel · financial statements, ratios & trends</small></span></div>
         </div>
       </header>
 
@@ -279,7 +285,7 @@ export default function ReportsClient() {
           {KINDS.map(item => <button key={item.id} type="button" aria-pressed={kind === item.id} onClick={() => changeKind(item.id)}><item.Icon size={17} aria-hidden="true" />{item.label}</button>)}
         </div>
         <p className={styles.kindDescription}>{config.detail}</p>
-        <div className={styles.searchArea} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
+        {kind !== "market" && <><div className={styles.searchArea} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
           <div className={styles.searchInput}>
             <Search size={22} aria-hidden="true" />
             <input
@@ -320,16 +326,17 @@ export default function ReportsClient() {
             {searchWarning && <p className={styles.searchMessage}>{searchWarning}</p>}
           </div>}
         </div>
-        <div className={styles.searchHint}><span>{kind === "nport" ? "Select the fund and share class. Holdings are reported at the portfolio series level." : kind === "13f" ? "Search the filing manager, which can represent more than one underlying fund." : "Search across SEC company identities, beyond the site’s example companies."}</span><span>Public SEC records</span></div>
+        <div className={styles.searchHint}><span>{kind === "nport" ? "Select the fund and share class. Holdings are reported at the portfolio series level." : kind === "13f" ? "Search the filing manager, which can represent more than one underlying fund." : "Search across SEC company identities, beyond the site’s example companies."}</span><span>Public SEC records</span></div></>}
+        {kind === "market" && <div className={styles.marketIntro}><ChartNoAxesCombined size={28} aria-hidden="true" /><div><h3>The market, in one report</h3><p>Compare sector revenue growth, margins and financial strength, alongside CFTC futures positioning. Sector performance reflects business fundamentals; stock-price returns are not included.</p><p>The report shows the available company universe, fiscal periods and positioning dates so you can assess its coverage.</p></div></div>}
 
         {selected && <div className={styles.selection}>
-          <div className={styles.selectedIdentity}><Check size={18} aria-hidden="true" /><div><strong>{selected.ticker ? `${selected.ticker} · ` : ""}{selected.name}</strong><p>CIK {selected.cik}{selected.seriesId ? ` · Series ${selected.seriesId}` : ""}</p></div></div>
+          <div className={styles.selectedIdentity}><Check size={18} aria-hidden="true" /><div><strong>{selected.ticker ? `${selected.ticker} · ` : ""}{selected.name}</strong><p>{kind === "market" ? "SEC sector fundamentals and CFTC Commitments of Traders" : `CIK ${selected.cik}${selected.seriesId ? ` · Series ${selected.seriesId}` : ""}`}</p></div></div>
           <div className={styles.buildControls}>
-            {kind === "company" && <label>Reporting basis<select value={basis} onChange={event => { clearReport(); setBasis(event.target.value as Basis); }}><option value="annual">Latest annual</option><option value="ttm">Trailing twelve months</option><option value="quarter">Latest standalone quarter</option></select></label>}
+            {(kind === "company" || kind === "market") && <label>Reporting basis<select value={basis} onChange={event => { clearReport(); setBasis(event.target.value as Basis); }}><option value="annual">Latest annual</option><option value="ttm">Trailing twelve months</option>{kind === "company" && <option value="quarter">Latest standalone quarter</option>}</select></label>}
             <button type="button" className={styles.buildButton} disabled={preparing} onClick={buildReport}>{preparing ? <><LoaderCircle size={17} className={styles.spinner} aria-hidden="true" />Preparing report</> : <>{report ? "Rebuild report" : "Build report"}<ArrowRight size={17} aria-hidden="true" /></>}</button>
           </div>
         </div>}
-        {preparing && <div className={styles.preparing} role="status"><div><strong>Bringing the report together</strong><p>Retrieving reported figures, checking the portfolio or company identity, and attaching source references. Large portfolios can take longer.</p></div><button type="button" onClick={clearReport}>Cancel</button></div>}
+        {preparing && <div className={styles.preparing} role="status"><div><strong>Bringing the report together</strong><p>{kind === "market" ? "Compiling sector fundamentals, checking reporting periods and retrieving CFTC positioning." : "Retrieving reported figures and checking the selected identity. Company reports also check for relevant CFTC market context."}</p></div><button type="button" onClick={clearReport}>Cancel</button></div>}
         {prepareError && <div className={styles.error} role="alert"><p>{prepareError}</p><button type="button" onClick={buildReport}>Try again <ArrowRight size={15} aria-hidden="true" /></button></div>}
       </section>
 
@@ -340,19 +347,19 @@ export default function ReportsClient() {
 
       {report && <section className={styles.report} aria-labelledby="prepared-report-title">
         <header className={styles.reportHeader}><div><p className={styles.eyebrow}>02 / Your report</p><h2 id="prepared-report-title" ref={resultHeading} tabIndex={-1}>{report.title}</h2><p>{report.subtitle}</p></div><span className={`${styles.status} ${report.coverage.status === "partial" ? styles.partial : ""}`}><span aria-hidden="true" />{report.coverage.status === "partial" ? "Ready with coverage gaps" : "Ready to download"}</span></header>
-        <div className={styles.reportDates}><p><span>Reporting period</span><strong>{report.period.label}</strong></p><p><span>Period ending</span><strong>{formatValue(report.period.asOf, "date")}</strong></p><p><span>{report.kind === "company" ? "Latest source filing" : "Filed"}</span><strong>{formatValue(report.period.filingDate, "date")}</strong></p><p><span>Prepared</span><strong>{formatValue(report.generatedAt, "date")}</strong></p></div>
+        <div className={styles.reportDates}><p><span>Reporting period</span><strong>{report.period.label}</strong></p><p><span>{report.kind === "market" ? "Snapshot date" : "Period ending"}</span><strong>{formatValue(report.period.asOf, "date")}</strong></p><p><span>{report.kind === "market" ? "Scope" : report.kind === "company" ? "Latest source filing" : "Filed"}</span><strong>{report.kind === "market" ? "Sector fundamentals & CFTC" : formatValue(report.period.filingDate, "date")}</strong></p><p><span>Prepared</span><strong>{formatValue(report.generatedAt, "date")}</strong></p></div>
         <p className={styles.coverage}>{report.coverage.message}</p>
         <div className={styles.downloads}>
           <button type="button" disabled={!!exporting} onClick={() => downloadReport("pdf")}><FileText size={27} aria-hidden="true" /><span><strong>{exporting === "pdf" ? "Creating PDF…" : "Download PDF"}</strong><small>Structured report · ready to read</small></span>{exporting === "pdf" ? <LoaderCircle className={styles.spinner} size={20} aria-hidden="true" /> : downloaded.includes("pdf") ? <Check size={20} aria-label="Downloaded" /> : <ArrowDownToLine size={20} aria-hidden="true" />}</button>
-          <button type="button" disabled={!!exporting} onClick={() => downloadReport("xlsx")}><FileSpreadsheet size={27} aria-hidden="true" /><span><strong>{exporting === "xlsx" ? "Creating workbook…" : "Download Excel"}</strong><small>Structured figures · positions & sources</small></span>{exporting === "xlsx" ? <LoaderCircle className={styles.spinner} size={20} aria-hidden="true" /> : downloaded.includes("xlsx") ? <Check size={20} aria-label="Downloaded" /> : <ArrowDownToLine size={20} aria-hidden="true" />}</button>
+          <button type="button" disabled={!!exporting} onClick={() => downloadReport("xlsx")}><FileSpreadsheet size={27} aria-hidden="true" /><span><strong>{exporting === "xlsx" ? "Creating workbook…" : "Download Excel"}</strong><small>Clean summary · structured financial data</small></span>{exporting === "xlsx" ? <LoaderCircle className={styles.spinner} size={20} aria-hidden="true" /> : downloaded.includes("xlsx") ? <Check size={20} aria-label="Downloaded" /> : <ArrowDownToLine size={20} aria-hidden="true" />}</button>
         </div>
         {exporting && <p className={styles.downloadStatus} role="status">Creating your {exporting === "pdf" ? "PDF report" : "Excel workbook"}…</p>}
         {!exporting && downloaded.length > 0 && <p className={styles.downloadStatus} role="status">{downloaded.map(format => format === "pdf" ? "PDF" : "Excel").join(" and ")} download started. You can download either file again.</p>}
         {exportError && <p className={styles.error} role="alert">{exportError}</p>}
         <div className={styles.metrics}>{report.summary.slice(0, 6).map((metric, index) => <div key={`${metric.label}:${index}`}><span>{metric.label}</span><strong>{formatValue(metric.value, metric.unit)}</strong>{metric.detail && <small>{metric.detail}</small>}</div>)}</div>
         {report.highlights.length > 0 && <div className={styles.highlights}>{report.highlights.slice(0, 4).map((highlight, index) => <article key={index}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{highlight.title}</h3><p>{highlight.text}</p></div></article>)}</div>}
-        <div className={styles.contents}><div className={styles.contentsHeading}><h3>Inside the report</h3><p>Open a section for a short preview. Download the workbook for the full exported tables.</p></div>{report.sections.map(section => <details key={section.id}><summary><span>{section.title}<small>{section.rows.length.toLocaleString()} {section.rows.length === 1 ? "row" : "rows"}</small></span><ChevronDown size={17} aria-hidden="true" /></summary><div className={styles.sectionPreview}>{section.description && <p>{section.description}</p>}{section.rows.length ? <div className={styles.tableScroll}><table><thead><tr>{section.columns.slice(0, 6).map(column => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead><tbody>{section.rows.slice(0, 5).map((row, index) => <tr key={index}>{section.columns.slice(0, 6).map(column => <td key={column.key}>{formatValue(row[column.key], column.formatKey ? row[column.formatKey] as ReportFormat : column.format)}</td>)}</tr>)}</tbody></table></div> : <p>No supported rows were available for this section.</p>}{(section.rows.length > 5 || section.columns.length > 6) && <p className={styles.previewNote}>Preview shows up to five rows and six columns. The workbook includes the full exported table.</p>}{section.footnote && <p className={styles.previewNote}>{section.footnote}</p>}</div></details>)}</div>
-        <details className={styles.sources}><summary>Sources & reporting notes <span>{report.sources.length.toLocaleString()} references</span></summary><div>{report.notes.map((note, index) => <p key={index}>{note}</p>)}<ul>{report.sources.slice(0, 8).map((source, index) => { const url = safeSourceUrl(source.url); return <li key={`${source.id}:${index}`}>{url ? <a href={url} target="_blank" rel="noopener noreferrer">{source.label}<ArrowUpRight size={14} aria-hidden="true" /></a> : <span>{source.label}</span>}{source.periodEnd && <small>Period ending {formatValue(source.periodEnd, "date")}</small>}</li>; })}</ul>{report.sources.length > 8 && <p>All {report.sources.length.toLocaleString()} source references are included in the downloads.</p>}</div></details>
+        <div className={styles.contents}><div className={styles.contentsHeading}><h3>Inside the report</h3><p>Open a section for a short preview. Download the workbook for the full exported tables.</p></div>{report.sections.filter(section => section.id !== "observations").map(section => <details key={section.id}><summary><span>{section.title}<small>{section.rows.length.toLocaleString()} {section.rows.length === 1 ? "row" : "rows"}</small></span><ChevronDown size={17} aria-hidden="true" /></summary><div className={styles.sectionPreview}>{section.description && <p>{section.description}</p>}{section.rows.length ? <div className={styles.tableScroll}><table><thead><tr>{section.columns.slice(0, 6).map(column => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead><tbody>{section.rows.slice(0, 5).map((row, index) => <tr key={index}>{section.columns.slice(0, 6).map(column => <td key={column.key}>{formatValue(row[column.key], column.formatKey ? row[column.formatKey] as ReportFormat : column.format)}</td>)}</tr>)}</tbody></table></div> : <p>No supported rows were available for this section.</p>}{(section.rows.length > 5 || section.columns.length > 6) && <p className={styles.previewNote}>Preview shows up to five rows and six columns. The workbook includes the full exported table.</p>}{section.footnote && <p className={styles.previewNote}>{section.footnote}</p>}</div></details>)}</div>
+        <details className={styles.sources}><summary>Sources & reporting notes <span>{displayedSources.length.toLocaleString()} references</span></summary><div>{report.notes.map((note, index) => <p key={index}>{note}</p>)}<ul>{displayedSources.slice(0, 8).map((source, index) => { const url = safeSourceUrl(source.url); return <li key={`${source.id}:${index}`}>{url ? <a href={url} target="_blank" rel="noopener noreferrer">{source.label}<ArrowUpRight size={14} aria-hidden="true" /></a> : <span>{source.label}</span>}{source.periodEnd && <small>Period ending {formatValue(source.periodEnd, "date")}</small>}</li>; })}</ul>{displayedSources.length > 8 && <p>Source references are retained in the PDF report.</p>}</div></details>
       </section>}
       <footer className={styles.footerNote}>Reports reflect available public disclosures and their reporting dates. Unsupported figures remain unavailable. N-PORT portfolios and 13F holdings have different coverage; neither is a live portfolio.</footer>
     </div>

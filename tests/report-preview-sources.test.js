@@ -73,6 +73,11 @@ test('company public analysis retains source clocks and rejects mismatched ticke
   const payload = buildAnalysisCompany({ ticker: 'ZZZ', cik: '0000000001', companyName: 'Independent Company', sic: 3571,
     filings: [], facts: { 'us-gaap': { Revenues: { units: { USD: [fact] } } } } }, { basis: 'annual' });
   const sources = createPublicReportSources({ now: () => NOW, fetchPublic: async input => {
+    if (new URL(input).pathname === '/api/v1/cftc/company-exposures') {
+      assert.equal(new URL(input).searchParams.get('ticker'), 'ZZZ');
+      assert.equal(new URL(input).searchParams.has('cik'), false);
+      return Response.json({ error: 'Unavailable' }, { status: 503 });
+    }
     assert.equal(new URL(input).pathname, '/api/analysis-research');
     return Response.json(payload, { headers: { 'X-Data-Fetched-At': '2026-09-01T12:00:00Z', 'X-Data-Revalidated-At': '2026-09-18T12:00:00Z', 'X-Data-Stale': 'true' } });
   } });
@@ -80,6 +85,7 @@ test('company public analysis retains source clocks and rejects mismatched ticke
   assert.equal(report.coverage.status, 'partial');
   assert.ok(report.notes.some(note => note.includes('2026-09-01')));
   assert.ok(report.notes.some(note => note.includes('2026-09-18')));
+  assert.ok(report.sections.some(section => section.id === 'cftc-coverage'));
   await assert.rejects(sources.prepareReport({ kind: 'company', id: 'OTHER', basis: 'annual' }), /did not match/);
   await assert.rejects(sources.prepareReport({ kind: 'company', id: 'ZZZ', basis: 'quarter' }), /did not match/);
 });
@@ -109,4 +115,43 @@ test('source errors, declared oversized bodies and invalid input fail before rep
   await assert.rejects(sources.prepareReport({ kind: 'company', id: 'ZZZ', basis: 'annual' }), { status: 503 });
   const big = createPublicReportSources({ fetchPublic: async () => new Response('{}', { headers: { 'content-length': String(41 * 1024 * 1024) } }) });
   await assert.rejects(big.prepareReport({ kind: 'company', id: 'ZZZ', basis: 'annual' }), { status: 413 });
+});
+
+test('market preview reads only the fixed anonymous public snapshot routes and retains a partial report during CFTC outage', async () => {
+  const { CFTC_FAMILIES, CFTC_SCHEMA_VERSION, CFTC_REPORT_BASIS, normalizeCftcRow, cftcCatalog } = await import('../src/utils/cftc.js');
+  const family = CFTC_FAMILIES.tff;
+  const raw = { id: 'public-market-fixture', market_and_exchange_names: 'Example futures - EXCHANGE', contract_market_name: 'Example futures',
+    report_date_as_yyyy_mm_dd: '2026-09-15', cftc_contract_market_code: '13874A', cftc_market_code: 'EXAMPLE',
+    contract_units: 'Contracts', futonly_or_combined: 'FutOnly', open_interest_all: '500' };
+  family.groups.forEach(group => { raw[group.long] = '100'; raw[group.short] = '100'; if (group.spread) raw[group.spread] = '0'; });
+  const row = normalizeCftcRow(raw, 'tff').value;
+  const cftc = { schema_version: CFTC_SCHEMA_VERSION, report_family: 'tff', report_basis: CFTC_REPORT_BASIS,
+    report_date: '2026-09-15', retrieved_at: '2026-09-18T22:30:00Z', status: 'ready', latest: [row],
+    catalog: cftcCatalog([row], 'tff'), coverage: { catalog_rows: 1 }, source: { url: family.sourceUrl, dataset_id: family.datasetId } };
+  const overview = { generatedAt: '2026-09-19T12:00:00Z', requested: 1, failures: [],
+    cohorts: [{ id: 'sector-technology', label: 'Technology', tickers: ['ZZZ'] }],
+    companies: [{ ticker: 'ZZZ', name: 'Independent issuer', cik: '0000000001', sector: 'Technology', sic: '7372', cohorts: ['sector-technology'],
+      reports: { annual: { end: '2025-12-31', filed: '2026-02-01' }, ttm: { end: '2026-06-30', filed: '2026-08-01' } },
+      metrics: { annual: { revenueGrowth: 5 }, ttm: { revenueGrowth: 10 } } }] };
+  const calls = [];
+  const sources = createPublicReportSources({ now: () => NOW, fetchPublic: async (input, options) => {
+    const url = new URL(input); calls.push(url);
+    assert.equal(url.origin, 'https://secedgarterminal.com');
+    assert.equal(options.method, 'GET'); assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'error');
+    assert.deepEqual(Object.keys(options.headers), ['Accept']); assert.ok(options.signal);
+    if (url.pathname === '/api/market-research') { assert.equal(url.search, ''); return Response.json(overview); }
+    assert.equal(url.pathname, '/api/v1/cftc/markets');
+    assert.deepEqual([...url.searchParams.keys()], ['family']);
+    return url.searchParams.get('family') === 'tff' ? Response.json(cftc) : Response.json({ error: 'Unavailable' }, { status: 503 });
+  } });
+  const report = await sources.prepareReport({ kind: 'market', id: 'MARKET', basis: 'ttm' });
+  assert.equal(report.kind, 'market'); assert.equal(report.entity.id, 'MARKET'); assert.equal(report.entity.cik, '');
+  assert.equal(report.period.basis, 'ttm'); assert.equal(report.coverage.status, 'partial');
+  assert.equal(report.sections.find(section => section.id === 'market-companies').rows.length, 1);
+  assert.equal(report.sections.find(section => section.id === 'cftc-tff').rows[0].net, 0);
+  assert.equal(report.sections.some(section => section.id === 'cftc-disaggregated'), false);
+  assert.equal(calls.length, 3);
+  await assert.rejects(sources.prepareReport({ kind: 'market', id: 'https://evil.example', basis: 'ttm' }), { status: 400 });
+  await assert.rejects(sources.prepareReport({ kind: 'market', id: 'MARKET', basis: 'quarter' }), { status: 400 });
+  assert.equal(calls.length, 3, 'Invalid selections never issue additional requests');
 });

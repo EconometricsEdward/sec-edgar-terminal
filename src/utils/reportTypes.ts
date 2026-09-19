@@ -1,4 +1,4 @@
-export type ReportKind = 'company' | 'nport' | '13f';
+export type ReportKind = 'company' | 'nport' | '13f' | 'market';
 export type ReportFormat = 'text' | 'usd' | 'number' | 'percent' | 'ratio' | 'date';
 // Percent values are fractions: 0.125 means 12.5%. USD values are whole dollars.
 export type ReportSource = { id: string; label: string; url: string; form?: string; periodEnd?: string; filed?: string; accession?: string; concept?: string; unit?: string; value?: number | null; start?: string; note?: string };

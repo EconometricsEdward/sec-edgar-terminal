@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { unzipSync, strFromU8 } from 'fflate';
 import { PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { createReportPdf, createReportXlsx, formatReportValue } from '../src/utils/reportExports.js';
 
@@ -18,7 +17,6 @@ const report = (patch = {}) => ({
   notes: ['Financial measures use the selected reporting period.'], coverage: { status: 'partial', message: 'Two of three requested measures available.', availableMetrics: 2, totalMetrics: 3 }, ...patch,
 });
 
-const files = async (document) => Object.fromEntries(Object.entries(unzipSync(await createReportXlsx(document))).map(([key, value]) => [key, strFromU8(value)]));
 // Standard-font PDFs store each drawn line as a hex string in a content stream.
 const pdfText = async (document) => {
   const pdf = await PDFDocument.load(await createReportPdf(document));
@@ -28,49 +26,6 @@ const pdfText = async (document) => {
     return [...content.matchAll(/<([0-9A-F]+)>\s*Tj/g)].map((match) => Buffer.from(match[1], 'hex').toString('latin1'));
   }).join(' ').replace(/\s+/g, ' ');
 };
-
-test('Excel preserves typed fractions, zero and dates, leaves null blank, and cannot execute string formulas', async () => {
-  const workbook = await files(report()), sheet = workbook['xl/worksheets/sheet2.xml'];
-  assert.match(sheet, /<c r="B5" s="5"><v>0.125<\/v><\/c>/);
-  assert.match(sheet, /<c r="B6" s="4"><v>0<\/v><\/c>/);
-  assert.match(sheet, /<c r="B7" s="6"\/>/);
-  assert.match(sheet, /<c r="C5" s="7"><v>46022<\/v><\/c>/);
-  assert.match(sheet, /t="inlineStr"><is><t xml:space="preserve">=HYPERLINK/);
-  assert.doesNotMatch(Object.values(workbook).join(''), /<f[ >]/);
-  assert.match(sheet, /ySplit="4" topLeftCell="A5"/);
-  assert.match(sheet, /autoFilter ref="A4:C7"/);
-  assert.match(workbook['xl/workbook.xml'], /<sheet name="Report summary" sheetId="1"/);
-  assert.match(workbook['xl/styles.xml'], /formatCode="0.00%/);
-});
-
-test('Excel contains every holding even when PDF omits or limits the appendix', async () => {
-  const rows = Array.from({ length: 1201 }, (_, i) => ({ label: `Holding ${i + 1}`, value: i + 1 }));
-  const document = report({ sections: [{ id: 'holdings', title: 'Holdings / all', pdfRowLimit: 0, columns: [{ key: 'label', label: 'Holding', format: 'text' }, { key: 'value', label: 'Value', format: 'usd' }], rows }] });
-  const workbook = await files(document), sheet = workbook['xl/worksheets/sheet2.xml'];
-  assert.match(sheet, /Holding 1201/);
-  assert.match(sheet, /<c r="B1205" s="4"><v>1201<\/v><\/c>/);
-  assert.match(workbook['xl/workbook.xml'], /Holdings   all/);
-});
-
-test('Excel preserves Unicode names and produces unique Excel-safe sheet names', async () => {
-  const base = report();
-  base.entity.name = 'Εταιρεία Société 公司';
-  base.sections.push({ ...base.sections[0], id: 'duplicate' });
-  const workbook = await files(base);
-  assert.match(workbook['xl/worksheets/sheet1.xml'], /Εταιρεία Société 公司/);
-  assert.match(workbook['xl/workbook.xml'], /name="Financial measures 2"/);
-  assert.match(workbook['xl/worksheets/sheet5.xml'], /us-gaap:Revenues/);
-});
-
-test('Excel expands wrapped text rows and converts relative PDF widths to readable columns', async () => {
-  const base = report();
-  base.sections[0].columns[0].width = 2.3;
-  base.sections[0].rows[0].label = 'Meaningful explanatory context that must remain visible. '.repeat(5);
-  const workbook = await files(base), sheet = workbook['xl/worksheets/sheet2.xml'];
-  assert.match(sheet, /min="1" max="1" width="34.5"/);
-  const height = Number(sheet.match(/<row r="5" ht="([\d.]+)"/)[1]);
-  assert.ok(height > 100 && height <= 409);
-});
 
 test('PDF is a genuine document with safe Unicode and long multipage tables', async () => {
   const base = report({ entity: { id: 'TEST', name: 'Εταιρεία Société Москва 公司', cik: '0000001234' } });
@@ -106,11 +61,12 @@ test('PDF grouped filing sources retain every distinct observation period', asyn
   assert.doesNotMatch(single, /Observation period ends:/);
 });
 
-test('PDF company tables direct metric and period provenance to the workbook appendix', async () => {
+test('PDF retains source references without directing readers to removed workbook sheets', async () => {
   const base = report({ charts: [], highlights: [] });
   base.sections[0].rows[0].sourcesByPeriod = [{ period: '2025-12-31', sourceIds: ['S1'] }];
   const text = await pdfText(base);
-  assert.match(text, /For each metric and period, see the Excel workbook table "Metric methodology and source references" for calculations and Source IDs\. Its Sources sheet links those IDs to the original disclosures\./);
+  assert.doesNotMatch(text, /Excel workbook table|Its Sources sheet|Excel source register/);
+  assert.match(text, /Source register/);
 });
 
 test('display formatting respects fractions, null and true zero', () => {

@@ -1,15 +1,10 @@
-import { zipSync, strToU8 } from 'fflate';
+export { createReportXlsx } from './reportWorkbook.js';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 
 const FORMATS = new Set(['text', 'usd', 'number', 'percent', 'ratio', 'date']);
-const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
-const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-const PKG = 'http://schemas.openxmlformats.org/package/2006/relationships';
-const KIND_LABELS = { company: 'COMPANY FINANCIAL REPORT', nport: 'FUND PORTFOLIO REPORT · N-PORT', '13f': 'INSTITUTIONAL HOLDINGS REPORT · 13F' };
+const KIND_LABELS = { company: 'COMPANY FINANCIAL REPORT', nport: 'FUND PORTFOLIO REPORT · N-PORT', '13f': 'INSTITUTIONAL HOLDINGS REPORT · 13F', market: 'MARKET FUNDAMENTALS & CFTC REPORT' };
 const finite = (value) => typeof value === 'number' && Number.isFinite(value);
-const xml = (value) => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]);
 
 function validate(report) {
   if (report?.schema !== 'edgar.report.v1' || !KIND_LABELS[report.kind] || !report.entity?.name || !Array.isArray(report.sections) || !Array.isArray(report.sources) || !Array.isArray(report.summary)) throw new Error('The prepared report is incomplete. Prepare the report again.');
@@ -29,93 +24,6 @@ export function formatReportValue(value, format = 'text', compact = false) {
 }
 
 const columnFormat = (column, row) => column.formatKey && FORMATS.has(row[column.formatKey]) ? row[column.formatKey] : column.format;
-const colName = (index) => { let value = ''; for (index++; index; index = Math.floor((index - 1) / 26)) value = String.fromCharCode(65 + ((index - 1) % 26)) + value; return value; };
-const isoSerial = (value) => {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value)) return null;
-  const day = value.slice(0, 10), parsed = Date.parse(`${day}T00:00:00Z`);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === day ? (parsed - Date.UTC(1899, 11, 30)) / 86400000 : null;
-};
-const styleFor = (format) => ({ text: 0, usd: 4, number: 3, percent: 5, ratio: 6, date: 7 })[format] ?? 0;
-
-function worksheet({ title, description, columns, rows, footnote }) {
-  const width = Math.max(columns.length, 2), last = colName(width - 1);
-  const columnWidths = columns.map((column, i) => {
-    const requested = column.width || (column.format === 'text' ? (i === 0 ? 34 : 40) : 22);
-    return Math.min(80, Math.max(12, requested < 10 ? requested * 15 : requested));
-  });
-  const textHeight = (value, characterWidth, minimum = 29) => {
-    if (value == null || typeof value === 'number') return minimum;
-    const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    const lines = text.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / Math.max(1, characterWidth - 3))), 0);
-    return Math.min(409, Math.max(minimum, lines * 15 + 12));
-  };
-  const fullWidth = columnWidths.reduce((sum, value) => sum + value, 0);
-  const cell = (value, reference, format = 'text', override) => {
-    let numeric = finite(value), prepared = value, style = override ?? styleFor(format);
-    if (format === 'date' && value != null) {
-      const serial = isoSerial(value);
-      if (serial !== null) { numeric = true; prepared = serial; }
-    }
-    if (value == null || value === '' || (typeof value === 'number' && !finite(value))) return `<c r="${reference}" s="${style}"/>`;
-    if (numeric) return `<c r="${reference}" s="${style}"><v>${prepared}</v></c>`;
-    // Literal inline strings are deliberately used even for values beginning with =, +, - or @.
-    const text = typeof prepared === 'object' ? JSON.stringify(prepared) : String(prepared);
-    return `<c r="${reference}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xml(text.slice(0, 32767))}</t></is></c>`;
-  };
-  const rowXML = [
-    `<row r="1" ht="32" customHeight="1">${cell(title, 'A1', 'text', 1)}</row>`,
-    `<row r="2" ht="${textHeight(description, fullWidth, 34)}" customHeight="1">${cell(description, 'A2', 'text', 8)}</row>`,
-    '<row r="3" ht="8" customHeight="1"/>',
-    `<row r="4" ht="28" customHeight="1">${columns.map((column, i) => cell(column.label, `${colName(i)}4`, 'text', 2)).join('')}</row>`,
-  ];
-  rows.forEach((row, index) => rowXML.push(`<row r="${index + 5}" ht="${Math.max(...columns.map((column, i) => textHeight(row[column.key], columnWidths[i])))}" customHeight="1">${columns.map((column, i) => cell(row[column.key], `${colName(i)}${index + 5}`, columnFormat(column, row))).join('')}</row>`));
-  if (footnote) rowXML.push(`<row r="${rows.length + 6}" ht="${textHeight(footnote, fullWidth, 42)}" customHeight="1">${cell(footnote, `A${rows.length + 6}`, 'text', 8)}</row>`);
-  const merges = [`A1:${last}1`, `A2:${last}2`, ...(footnote ? [`A${rows.length + 6}:${last}${rows.length + 6}`] : [])];
-  return `${XML}<worksheet xmlns="${NS}"><dimension ref="A1:${last}${rows.length + (footnote ? 6 : 4)}"/><sheetViews><sheetView showGridLines="0" workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="24"/><cols>${columns.map((column, i) => `<col min="${i + 1}" max="${i + 1}" width="${columnWidths[i]}" customWidth="1"/>`).join('')}</cols><sheetData>${rowXML.join('')}</sheetData><autoFilter ref="A4:${colName(columns.length - 1)}${rows.length + 4}"/><mergeCells count="${merges.length}">${merges.map((ref) => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells><printOptions horizontalCentered="1"/><pageMargins left="0.3" right="0.3" top="0.45" bottom="0.45" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/><headerFooter><oddFooter>&amp;LEDGAR Terminal&amp;RPage &amp;P of &amp;N</oddFooter></headerFooter></worksheet>`;
-}
-
-function stylesXML() {
-  const formats = [[164, '#,##0.00;[Red](#,##0.00);0.00'], [165, '$#,##0;[Red]($#,##0);$0'], [166, '0.00%;[Red](0.00%);0.00%'], [167, '0.00"x";[Red](0.00"x");0.00"x"'], [168, 'yyyy-mm-dd']];
-  const xf = (font = 0, fill = 0, num = 0, vertical = 'top') => `<xf numFmtId="${num}" fontId="${font}" fillId="${fill}" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1"><alignment vertical="${vertical}" wrapText="1"/></xf>`;
-  return `${XML}<styleSheet xmlns="${NS}"><numFmts count="5">${formats.map(([id, code]) => `<numFmt numFmtId="${id}" formatCode="${xml(code)}"/>`).join('')}</numFmts><fonts count="4"><font><sz val="11"/><color rgb="FF17243B"/><name val="Calibri"/></font><font><b/><sz val="19"/><color rgb="FF17243B"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><sz val="10"/><color rgb="FF526178"/><name val="Calibri"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF17243B"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF0F4F8"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="9">${xf()}${xf(1)}${xf(2, 2, 0, 'center')}${xf(0, 0, 164)}${xf(0, 0, 165)}${xf(0, 0, 166)}${xf(0, 0, 167)}${xf(0, 0, 168)}${xf(3, 3)}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
-}
-
-/** XLSX is generated inside the export worker. All holdings remain in the workbook. */
-export async function createReportXlsx(report) {
-  validate(report);
-  const summaryRows = [
-    { item: 'Entity', value: report.entity.name }, { item: 'Report type', value: KIND_LABELS[report.kind] },
-    { item: 'Ticker / identifier', value: report.entity.ticker || report.entity.id }, { item: 'SEC CIK', value: report.entity.cik },
-    ...(report.entity.seriesId ? [{ item: 'SEC series', value: report.entity.seriesId }] : []),
-    { item: 'Reporting basis', value: report.period.basis || report.period.label },
-    { item: 'Period ending', value: report.period.asOf, format: 'date' }, { item: report.kind === 'company' ? 'Latest source filing' : 'Filed', value: report.period.filingDate, format: 'date' },
-    { item: 'Generated at (UTC)', value: report.generatedAt }, { item: 'Coverage', value: report.coverage.status, detail: report.coverage.message },
-    ...report.summary.map((metric) => ({ item: metric.label, value: metric.value, format: metric.unit, detail: metric.detail, sources: metric.sourceIds?.join(', ') })),
-    ...report.highlights.map((item) => ({ item: item.title, value: item.text })),
-    ...report.notes.map((note, i) => ({ item: `Note ${i + 1}`, value: note })),
-  ];
-  const sheets = [{ title: 'Report summary', description: `${report.title} | ${report.entity.name}. Blank numeric cells mean unavailable, never zero. Currency values are whole USD; percent cells contain fractions.`, columns: [{ key: 'item', label: 'Item', format: 'text', width: 38 }, { key: 'value', label: 'Value', format: 'text', formatKey: 'format', width: 55 }, { key: 'detail', label: 'Context', format: 'text', width: 70 }, { key: 'sources', label: 'Source IDs', format: 'text', width: 26 }], rows: summaryRows }, ...report.sections];
-  if (report.charts?.length) sheets.push({ title: 'Chart data', description: 'Underlying reported or calculated observations used in the PDF charts.', columns: [{ key: 'chart', label: 'Chart', format: 'text', width: 42 }, { key: 'label', label: 'Observation', format: 'text', width: 35 }, { key: 'value', label: 'Value', format: 'number', formatKey: 'format' }, { key: 'format', label: 'Unit', format: 'text', width: 15 }], rows: report.charts.flatMap((chart) => chart.points.map((point) => ({ chart: chart.title, ...point, format: chart.unit }))) });
-  sheets.push({ title: 'Sources', description: 'Original source register. Match these IDs to metric and section references. Reporting dates and filing dates are distinct.', columns: [{ key: 'id', label: 'Source ID', format: 'text', width: 18 }, { key: 'label', label: 'Source', format: 'text', width: 45 }, { key: 'url', label: 'Original URL', format: 'text', width: 72 }, { key: 'form', label: 'Form', format: 'text', width: 14 }, { key: 'periodEnd', label: 'Period ending', format: 'date', width: 18 }, { key: 'filed', label: 'Filed', format: 'date', width: 18 }, { key: 'accession', label: 'Accession', format: 'text', width: 28 }, { key: 'concept', label: 'Source concept', format: 'text', width: 58 }, { key: 'unit', label: 'Source unit', format: 'text', width: 16 }, { key: 'value', label: 'Source value', format: 'number', width: 25 }, { key: 'start', label: 'Period start', format: 'date', width: 18 }, { key: 'note', label: 'Notes', format: 'text', width: 65 }], rows: report.sources });
-  const names = new Set(), files = {}, entries = [], relationships = [], overrides = [];
-  sheets.forEach((sheet, index) => {
-    const base = String(sheet.title || `Section ${index + 1}`).replace(/[\\/?*:[\]]/g, ' ').replace(/^'+|'+$/g, '').trim().slice(0, 31) || 'Section';
-    let name = base;
-    for (let suffix = 2; names.has(name.toLowerCase()); suffix++) name = `${base.slice(0, 27)} ${suffix}`.slice(0, 31);
-    names.add(name.toLowerCase());
-    files[`xl/worksheets/sheet${index + 1}.xml`] = strToU8(worksheet(sheet));
-    entries.push(`<sheet name="${xml(name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`);
-    relationships.push(`<Relationship Id="rId${index + 1}" Type="${REL}/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`);
-    overrides.push(`<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`);
-  });
-  files['xl/workbook.xml'] = strToU8(`${XML}<workbook xmlns="${NS}" xmlns:r="${REL}"><bookViews><workbookView activeTab="0"/></bookViews><sheets>${entries.join('')}</sheets><calcPr calcId="191029" fullCalcOnLoad="0"/></workbook>`);
-  files['xl/_rels/workbook.xml.rels'] = strToU8(`${XML}<Relationships xmlns="${PKG}">${relationships.join('')}<Relationship Id="rStyles" Type="${REL}/styles" Target="styles.xml"/></Relationships>`);
-  files['_rels/.rels'] = strToU8(`${XML}<Relationships xmlns="${PKG}"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
-  files['xl/styles.xml'] = strToU8(stylesXML());
-  files['[Content_Types].xml'] = strToU8(`${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${overrides.join('')}</Types>`);
-  return zipSync(files, { level: 6 });
-}
-
 const COLORS = { navy: rgb(0.075, 0.13, 0.22), ink: rgb(0.11, 0.16, 0.23), muted: rgb(0.36, 0.41, 0.48), gold: rgb(0.84, 0.63, 0.16), pale: rgb(0.94, 0.96, 0.975), line: rgb(0.82, 0.86, 0.90), teal: rgb(0.12, 0.48, 0.48), red: rgb(0.70, 0.27, 0.27), white: rgb(1, 1, 1) };
 
 /** Structured, paginated PDF with vector charts and searchable text. */
@@ -194,9 +102,11 @@ export async function createReportPdf(report, options = {}) {
   draw(KIND_LABELS[report.kind], M, y, 8, bold, COLORS.gold); y -= 26;
   paragraph(report.entity.name, { size: 27, font: bold, color: COLORS.navy, after: 6 });
   paragraph(report.subtitle, { size: 10, after: 14 });
-  const identity = [report.entity.ticker, `CIK ${report.entity.cik}`, report.entity.seriesId].filter(Boolean).join('  |  ');
-  paragraph(identity, { size: 8, after: 9 });
-  paragraph(`${report.period.label}  |  Period ending ${report.period.asOf || 'unavailable'}  |  ${report.kind === 'company' ? 'Latest source filing' : 'Filed'} ${report.period.filingDate || 'unavailable'}`, { size: 8, font: bold, after: 16 });
+  const identity = [report.entity.ticker, report.entity.cik && `CIK ${report.entity.cik}`, report.entity.seriesId].filter(Boolean).join('  |  ');
+  if (identity) paragraph(identity, { size: 8, after: 9 });
+  paragraph(report.kind === 'market'
+    ? `${report.period.label}  |  Snapshot ${report.period.asOf || 'unavailable'}  |  Observation dates shown by dataset`
+    : `${report.period.label}  |  Period ending ${report.period.asOf || 'unavailable'}  |  ${report.kind === 'company' ? 'Latest source filing' : 'Filed'} ${report.period.filingDate || 'unavailable'}`, { size: 8, font: bold, after: 16 });
   rule(y); y -= 18;
   const cards = report.summary.slice(0, 6), cardGap = 13, cardWidth = (CONTENT - 2 * cardGap) / 3;
   for (let index = 0; index < cards.length; index += 3) {
@@ -220,7 +130,7 @@ export async function createReportPdf(report, options = {}) {
     }
   }
   for (const chart of report.charts || []) {
-    const points = chart.kind === 'bar' ? chart.points.filter((point) => finite(point.value)).slice(0, 12) : chart.points.slice(-12);
+    const points = chart.kind === 'bar' ? chart.points.filter((point) => finite(point.value)).slice(0, 12) : chart.points.slice(-60);
     if (!points.some((point) => finite(point.value))) continue;
     const height = chart.kind === 'bar' ? 50 + points.length * 26 : 190;
     ensure(height + 36); heading(chart.title); const top = y;
@@ -257,7 +167,7 @@ export async function createReportPdf(report, options = {}) {
     ensure(headerHeight + 34); header();
     if (!rows.length) { paragraph('No compatible observations were available for this section.', { size: 8, after: 12 }); }
     for (const [rowIndex, row] of rows.entries()) {
-      const lines = columns.map((column, i) => fit(formatReportValue(row[column.key], columnFormat(column, row), columns.length > 6 && columnFormat(column, row) === 'usd'), widths[i] - pad * 2, size));
+      const lines = columns.map((column, i) => fit(formatReportValue(row[column.key], columnFormat(column, row), columns.length > 4 && columnFormat(column, row) === 'usd'), widths[i] - pad * 2, size));
       // Continue unusually long cells over multiple pages without clipping or losing text.
       let offset = 0, maxLines = Math.max(...lines.map((item) => item.length));
       while (offset < maxLines) {
@@ -273,15 +183,16 @@ export async function createReportPdf(report, options = {}) {
     }
     y -= 12;
     if (section.rows.length > rows.length) paragraph(`Showing ${rows.length.toLocaleString()} of ${section.rows.length.toLocaleString()} records. The Excel workbook includes every available row.`, { size: 8, after: 8 });
-    if (columns.length > 6) paragraph('Large currency amounts are abbreviated for readability. The Excel workbook retains exact values.', { size: 7.5, after: 8 });
-    if (report.kind === 'company' && rows.some((row) => row.sourcesByPeriod?.length)) paragraph('For each metric and period, see the Excel workbook table "Metric methodology and source references" for calculations and Source IDs. Its Sources sheet links those IDs to the original disclosures.', { size: 7.5, after: 8 });
+    if (columns.length > 4 && rows.some(row => columns.some(column => columnFormat(column, row) === 'usd'))) paragraph('Currency values use K, M or B for thousands, millions or billions. The Excel workbook retains exact values.', { size: 7.5, after: 8 });
     if (section.footnote) paragraph(section.footnote, { size: 7.5, after: 16 });
   }
   if (report.notes.length) { heading('Reading this report', 'Methodology & coverage'); for (const note of report.notes) paragraph(note, { size: 8, after: 8 }); }
   heading('Source register', 'Original public records');
-  paragraph('Source IDs connect measures to the original disclosures. The Excel source register includes the source concept, original unit and observation where available.', { size: 8 });
+  paragraph('Original disclosures and public datasets used for this report are listed below. Reporting dates identify the observations included; they can differ from the preparation date.', { size: 8 });
   const groupedSources = new Map();
-  for (const source of report.sources) {
+  const registerSources = report.kind === 'market' ? report.sources.filter(source => source.id === 'market-snapshot' || source.id.startsWith('cftc-')) : report.sources;
+  if (report.kind === 'market') paragraph('This register lists the market datasets. The workbook includes the covered company identities and reporting periods; a separate company report provides its financial details and filing references.', { size: 8 });
+  for (const source of registerSources) {
     const key = source.url || source.id;
     if (!groupedSources.has(key)) groupedSources.set(key, { ...source, ids: [], periodEnds: new Set() });
     const grouped = groupedSources.get(key);

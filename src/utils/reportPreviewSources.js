@@ -3,6 +3,8 @@ import { createReportSearch } from './reportSearchServer.js';
 import { buildCompanyReport, createReportCikCompanyLoader } from './companyReport.js';
 import { buildNportReport, buildThirteenFReport } from './fundReport.js';
 import { normalizeReportRequest, reportMatchesSelection } from './reportRequest.js';
+import { enrichCompanyReportCftc, createReportCompanyExposureDiscovery } from './companyReportCftc.js';
+import { createMarketReportLoader } from './marketReport.js';
 
 const ORIGIN = 'https://secedgarterminal.com';
 const MAX_BYTES = 40 * 1024 * 1024;
@@ -25,8 +27,8 @@ export function reportPreviewSecUrl(input) {
   let path = source.pathname;
   const plain = !source.search && (source.hostname === 'www.sec.gov'
     ? /^\/files\/company_tickers(?:_mf)?\.json$/.test(path)
-      || /^\/Archives\/edgar\/data\/[1-9]\d{0,9}\/\d{18}\/[\w][\w.-]{0,239}\.(?:xml|json|htm|html)$/i.test(path)
-    : /^\/submissions\/CIK(?!0000000000)\d{10}\.json$/.test(path)
+      || /^\/Archives\/edgar\/data\/[1-9]\d{0,9}\/\d{18}\/[\w][\w.-]{0,239}\.(?:xml|json|htm|html|txt)$/i.test(path)
+    : /^\/submissions\/CIK(?!0000000000)\d{10}(?:-submissions-\d+)?\.json$/.test(path)
       || /^\/api\/xbrl\/companyfacts\/CIK(?!0000000000)\d{10}\.json$/.test(path));
   if (!plain) {
     const p = source.searchParams;
@@ -71,7 +73,8 @@ async function boundedResponse(response, maxBytes, signal) {
 
 export function createPublicReportSources({ fetchPublic = fetch, now = Date.now } = {}) {
   async function request(url, { signal, maxBytes = MAX_BYTES, timeoutMs = 85000 } = {}) {
-    if (url.origin !== ORIGIN || !['/api/sec', '/api/sec-filers', '/api/analysis-research', '/api/fund-13f'].includes(url.pathname))
+    if (url.origin !== ORIGIN || !['/api/sec', '/api/sec-filers', '/api/analysis-research', '/api/fund-13f',
+      '/api/market-research', '/api/v1/cftc/markets', '/api/v1/cftc/company-exposures', '/api/v1/cftc/history'].includes(url.pathname))
       throw fail('This report endpoint is outside the public preview allowlist.', 400);
     const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(Math.min(timeoutMs, 90000))]);
     deadline.throwIfAborted();
@@ -122,7 +125,13 @@ export function createPublicReportSources({ fetchPublic = fetch, now = Date.now 
       clocks.push(response.headers); return response;
     };
     let report;
-    if (kind === 'company' && !/^\d+$/.test(id)) {
+    if (kind === 'market') {
+      const load = createMarketReportLoader({ now,
+        loadOverview: async ({ signal: s }) => (await request(endpoint('/api/market-research', {}), { signal: s, timeoutMs: 45000 })).json(),
+        loadCftcMarkets: async ({ family, signal: s }) => (await request(endpoint('/api/v1/cftc/markets', { family }), { signal: s, timeoutMs: 45000 })).json(),
+      });
+      report = await load({ basis }, signal);
+    } else if (kind === 'company' && !/^\d+$/.test(id)) {
       const response = await request(endpoint('/api/analysis-research', { ticker: id, basis }), { signal });
       const analysis = await response.json();
       if (analysis?.ticker !== id || analysis?.basis !== basis) throw fail('The public financial model did not match this company and reporting basis.');
@@ -160,12 +169,22 @@ export function createPublicReportSources({ fetchPublic = fetch, now = Date.now 
       }
       report = buildNportReport(await load(id, '', { signal }), { generatedAt: new Date(now()).toISOString() });
     }
+    if (kind === 'company') report = await enrichCompanyReportCftc(report, { signal, now,
+      loadContext: async ({ cik }, { signal: s }) => {
+        const ticker = report.entity.ticker && !/^\d+$/.test(report.entity.ticker) ? report.entity.ticker
+          : Object.entries(await directories.get('operating')).find(([, entry]) => String(entry.cik).padStart(10, '0') === cik)?.[0];
+        if (!ticker) return createReportCompanyExposureDiscovery({ fetchSec: trackedSec, now })({ cik, asOf: null }, { signal: s });
+        return (await request(endpoint('/api/v1/cftc/company-exposures', { ticker }), { signal: s, timeoutMs: 22000 })).json();
+      },
+      loadHistory: async ({ family, code, group, reportDate, window, signal: s }) =>
+        (await request(endpoint('/api/v1/cftc/history', { family, contract: code, group, date: reportDate, window }), { signal: s, timeoutMs: 22000 })).json(),
+    });
     if (!reportMatchesSelection(report, selection)) throw fail('The public report did not match the selected entity.');
     if (clocks.some(headers => headers.get('X-Data-Stale') === 'true')) {
       report.coverage.status = 'partial';
       report.notes.push('A public source was marked stale. The retained figures may not include the newest filing or amendment.');
     }
-    report.notes.push('Preview source delivery: existing public EDGAR Terminal research endpoints. Public cache delivery time does not establish when SEC records were last revalidated. Original SEC filing links remain attached to the report.');
+    report.notes.push('Preview source delivery: existing public EDGAR Terminal research endpoints. Public cache delivery time does not establish when the underlying records were last revalidated. Original public source links remain in the PDF report.');
     return report;
   }
   return { searchReports, prepareReport };

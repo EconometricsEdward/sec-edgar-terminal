@@ -3,6 +3,8 @@ import { loadFundReport } from '../../../../utils/fundReport.js';
 import { normalizeReportRequest, reportMatchesSelection } from '../../../../utils/reportRequest.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../../../../utils/rateLimit.js';
 import { usesPublicReportSources, preparePublicReportSources } from '../../../../utils/reportPreviewSources.js';
+import { loadMarketReport } from '../../../../utils/marketReport.js';
+import { enrichCompanyReportCftc } from '../../../../utils/companyReportCftc.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -14,8 +16,9 @@ export async function GET(request) {
     const limit = await checkRateLimit({ key: `rl:reports:${getClientIp(request)}`, windowMs: 60000, max: 12 });
     if (!limit.allowed) return rateLimitedResponse(limit, { 'Cache-Control': 'private, no-store' });
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(110000)]);
-    const report = usesPublicReportSources() ? await preparePublicReportSources(selection, signal) : selection.kind === 'company'
-      ? await loadCompanyReport({ ticker: selection.id, basis: selection.basis }, signal)
+    const report = usesPublicReportSources() ? await preparePublicReportSources(selection, signal) : selection.kind === 'market'
+      ? await loadMarketReport({ basis: selection.basis }, signal) : selection.kind === 'company'
+      ? await enrichCompanyReportCftc(await loadCompanyReport({ ticker: selection.id, basis: selection.basis }, signal), { signal })
       : await loadFundReport(selection, signal);
     if (!reportMatchesSelection(report, selection)) throw new Error('The prepared report did not match the selected entity. Please retry.');
     const bytes = new TextEncoder().encode(JSON.stringify(report));
@@ -32,7 +35,7 @@ export async function GET(request) {
     } }), { headers });
   } catch (error) {
     return Response.json({ error: ['AbortError', 'TimeoutError'].includes(error.name)
-      ? 'SEC report preparation took too long. Please retry; previously retrieved source data can be reused.'
+      ? 'Report preparation took too long. Please retry; previously retrieved source data can be reused.'
       : error.message || 'This report could not be prepared. Please retry.',
       code: error.code || 'REPORT_UNAVAILABLE' },
     { status: Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? error.status : 502,

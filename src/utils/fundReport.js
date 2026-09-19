@@ -180,7 +180,7 @@ export function buildThirteenFReport(data, { generatedAt } = {}) {
     'Put and call options remain separate from shares and principal-amount positions. Their reported values represent underlying securities, not premiums or net directional exposure.',
     'All monetary values are normalized to whole USD using the source filing’s applicable value units. Percentages use reconciled public 13F holdings value.',
     'The latest restatement replaces superseded filings; eligible new-holdings amendments supplement the baseline. The filing sequence is retained below.',
-    'Separate source rows for the same CUSIP, option type and quantity type are combined by the source loader. Source row counts and aggregated voting authority remain in Excel.',
+    'Separate rows for the same CUSIP, option type and quantity type are combined. The Excel workbook retains each assembled position and its aggregated voting authority.',
     'The PDF summarizes the largest reported positions. The Excel workbook contains every available assembled position for this quarter.',
     ...(confidential ? ['This filing explicitly omits confidential holdings. Values and weights describe only the public information table.'] : []),
     ...(portfolio.reportType === '13F COMBINATION REPORT' ? ['This is a combination report. Other reporting managers can hold additional reportable positions outside the included table.'] : []),

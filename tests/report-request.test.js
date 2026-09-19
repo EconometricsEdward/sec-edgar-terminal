@@ -16,3 +16,14 @@ test('report response binds identity and reporting basis to the request', () => 
   assert.equal(reportMatchesSelection(report, { kind: 'company', id: 'KO', basis: 'ttm' }), false);
   assert.equal(reportMatchesSelection(report, { kind: 'nport', id: 'KO' }), false);
 });
+
+test('market reports require their own identity and a supported fundamentals basis', () => {
+  assert.deepEqual(normalizeReportRequest(new URLSearchParams('kind=market&id=market&basis=ttm')), { kind: 'market', id: 'MARKET', basis: 'ttm' });
+  for (const query of ['kind=market&id=AAPL', 'kind=market&id=MARKET&basis=quarter', 'kind=market&id=MARKET&id=AAPL']) {
+    assert.throws(() => normalizeReportRequest(new URLSearchParams(query)), { status: 400 });
+  }
+  const report = { schema: 'edgar.report.v1', kind: 'market', entity: { id: 'MARKET', name: 'Market overview', cik: '' }, generatedAt: '2026-09-19T00:00:00Z', period: { basis: 'ttm' }, summary: [], sections: [], sources: [], highlights: [], notes: [], coverage: { status: 'partial' } };
+  assert.equal(reportMatchesSelection(report, { kind: 'market', id: 'MARKET', basis: 'ttm' }), true);
+  assert.equal(reportMatchesSelection(report, { kind: 'market', id: 'MARKET', basis: 'annual' }), false);
+  assert.equal(reportMatchesSelection({ ...report, entity: { ...report.entity, cik: '123' } }, { kind: 'market', id: 'MARKET', basis: 'ttm' }), false);
+});
