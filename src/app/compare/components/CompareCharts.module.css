@@ -1,0 +1,102 @@
+.workspace {
+  min-width: 0;
+  padding: 26px 0 0;
+}
+.heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 22px;
+  margin-bottom: 20px;
+}
+.eyebrow {
+  color: var(--compare-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  font-weight: 650;
+}
+.workspace .heading h2 { font-size: clamp(24px, 2.5vw, 32px); margin: 5px 0 7px; }
+.workspace .heading p { color: var(--compare-muted); margin: 0; font-size: 13px; }
+.controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+.controls label { min-width: 112px; }
+.controls label:first-child { min-width: min(240px, 100%); }
+.controls select { max-width: 280px; }
+.companyLegend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0 8px; }
+.companyLegend > span { color: var(--compare-muted); font-size: 11px; margin-left: 10px; }
+.workspace .companyKey { border-color: transparent; background: transparent; padding: 7px 9px; border-radius: 4px; }
+.workspace .companyKey[aria-pressed="true"] { border-color: var(--company-color); background: color-mix(in srgb, var(--company-color) 8%, transparent); }
+.companyKey i, .companyName i { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--company-color); }
+.companyName { display: inline-flex; align-items: center; gap: 8px; }
+.chart { height: 410px; width: 100%; min-width: 0; margin: 0; }
+.mapChart { height: 450px; }
+.workspace .note { color: var(--compare-muted); font-size: 11px; margin: 12px 0 18px; max-width: 1050px; }
+.growthSummary { margin-top: 30px; }
+.summaryHeading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; }
+.workspace .summaryHeading h3 { margin: 0; }
+.summaryHeading > span { font-size: 11px; color: var(--compare-muted); }
+.tableScroll { overflow-x: auto; max-width: 100%; }
+.table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.table th, .table td { border-bottom: 1px solid color-mix(in srgb, var(--compare-border) 65%, transparent); padding: 12px 14px; vertical-align: top; }
+.table th:first-child, .table td:first-child { text-align: left; padding-left: 0; }
+.table th:last-child, .table td:last-child { padding-right: 0; }
+.table thead th { color: var(--compare-muted); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.table tbody th { font-weight: 650; min-width: 90px; }
+.table small { display: block; margin-top: 4px; max-width: 255px; margin-left: auto; }
+.table th small { margin-left: 0; font-weight: 400; }
+.workspace .value { border: 0; background: transparent; padding: 0; border-radius: 2px; font-size: 14px; font-weight: 650; justify-content: flex-end; white-space: nowrap; min-height: 22px; }
+.workspace .value svg { color: var(--compare-muted); }
+.workspace .value:hover { color: var(--compare-link); }
+.workspace .value:disabled { opacity: 1; color: var(--compare-muted); }
+.workspace .value:disabled svg { display: none; }
+.details { margin-top: 28px; border-top: 1px solid var(--compare-border); }
+.workspace .details summary { padding: 17px 0; font-weight: 550; }
+.details summary > span { display: inline-block; color: var(--compare-muted); font-size: 11px; font-weight: 400; margin-left: 12px; }
+.details[open] summary { margin-bottom: 8px; }
+.tooltip { background: var(--compare-panel); color: var(--compare-text); border: 1px solid var(--compare-border); box-shadow: 0 12px 40px #0003; padding: 14px 16px; border-radius: 6px; font-size: 12px; max-width: min(380px, 85vw); }
+.tooltip > strong { display: block; font-size: 12px; margin-bottom: 8px; }
+.tooltip > small { display: block; }
+.tooltipRow { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 10px; }
+.tooltipRow > span { min-width: 0; }
+.tooltipRow i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; }
+.tooltipRow small { display: block; }
+.tooltipRow b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mapToolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 30px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.workspace .presets button { background: transparent; border-color: transparent; padding: 7px 10px; font-size: 11px; color: var(--compare-muted); }
+.workspace .presets button[aria-pressed="true"] { background: var(--compare-panel); border-color: var(--compare-border); color: var(--compare-text); }
+.sampleCount { color: var(--compare-muted); font-size: 12px; }
+.sampleCount b { color: var(--compare-text); font-size: 21px; font-weight: 600; }
+.workspace .axisCaption { color: var(--compare-muted); margin: 0; font-size: 12px; }
+.axisCaption > span { color: var(--compare-accent); margin-left: 5px; }
+.workspace .horizontalCaption { text-align: right; margin: 0 40px 12px 0; }
+.mapPoint { cursor: pointer; }
+.mapPoint:focus-visible { outline: none; stroke: var(--compare-text); stroke-width: 4px; }
+.mapFootnote { display: flex; justify-content: space-between; align-items: baseline; gap: 10px 24px; flex-wrap: wrap; }
+.mapFootnote > span { color: var(--compare-muted); font-size: 11px; }
+.workspace .mapFootnote .note { margin: 10px 0; }
+.dashedKey { display: inline-block; width: 19px; border-top: 1px dashed var(--compare-muted); margin-right: 7px; vertical-align: middle; }
+.coverage { color: var(--compare-muted); font-size: 11px; max-width: 300px; }
+.empty { min-height: 260px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 8px; padding: 35px 20px; color: var(--compare-muted); }
+.empty strong { color: var(--compare-text); font-size: 16px; font-weight: 550; }
+.empty p { max-width: 600px; font-size: 13px; }
+@media (min-width: 1500px) { .chart { height: 450px; } .mapChart { height: 490px; } }
+@media (max-width: 700px) {
+  .workspace { padding-top: 20px; }
+  .heading { gap: 16px; }
+  .controls { width: 100%; gap: 9px; }
+  .controls label { flex: 1; min-width: 115px; }
+  .controls label:first-child { flex-basis: 100%; }
+  .controls select { max-width: none; }
+  .companyLegend > span { flex-basis: 100%; margin: 4px 0 0 9px; }
+  .chart, .mapChart { height: 340px; }
+  .table { min-width: 510px; }
+  .table th, .table td { padding: 10px; }
+  .workspace .value { font-size: 13px; }
+  .mapToolbar { gap: 18px; margin-bottom: 20px; }
+  .mapToolbar .controls label { flex-basis: 100%; }
+  .details summary > span { display: block; margin: 4px 0 0 15px; }
+  .workspace .horizontalCaption { margin-right: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { .workspace * { transition: none !important; } }
