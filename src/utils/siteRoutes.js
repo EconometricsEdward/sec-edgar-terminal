@@ -57,6 +57,12 @@ export const SITE_TOOLS = Object.freeze([
     description: "Search and collect filing passages",
   },
   {
+    id: "reports",
+    label: "Reports",
+    href: "/reports",
+    description: "Build company and fund reports to download as PDF and Excel",
+  },
+  {
     id: "about",
     label: "About",
     href: "/about",
