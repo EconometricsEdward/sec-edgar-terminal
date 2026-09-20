@@ -96,6 +96,14 @@
 .messageText strong { font-weight: 750; }
 .messageText code { font-size: 0.9em; background: var(--chat-panel); padding: 1px 4px; border-radius: 3px; }
 .messageText a { color: var(--chat-teal); text-decoration: underline; text-underline-offset: 3px; }
+.tableScroll { max-width: 100%; overflow-x: auto; margin: 12px 0; border: 1px solid var(--chat-line); border-radius: 8px; scrollbar-width: thin; scrollbar-color: var(--chat-line) transparent; }
+.tableScroll:focus-visible { outline: 2px solid var(--chat-teal); outline-offset: 2px; }
+.comparisonTable { width: 100%; border-collapse: collapse; font-size: 11px; line-height: 1.65; }
+.comparisonTable th, .comparisonTable td { min-width: 100px; padding: 8px 10px; border-bottom: 1px solid var(--chat-line); vertical-align: top; font-variant-numeric: tabular-nums; }
+.comparisonTable th:first-child, .comparisonTable td:first-child { min-width: 130px; }
+.comparisonTable th { background: var(--chat-panel); color: var(--chat-text); font-weight: 750; }
+.comparisonTable tbody tr:last-child td { border-bottom: 0; }
+.comparisonTable tbody tr:nth-child(even) { background: color-mix(in srgb, var(--chat-panel) 45%, transparent); }
 .messageNote { color: var(--chat-muted); font-size: 11px; margin: 12px 0 0; }
 .messageError { font-size: 12px; line-height: 1.7; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--chat-accent) 38%, var(--chat-line)); background: color-mix(in srgb, var(--chat-accent) 6%, transparent); border-radius: 7px; margin: 12px 0 0; }
 .sources { margin-top: 15px; border-top: 1px solid var(--chat-line); padding-top: 10px; }

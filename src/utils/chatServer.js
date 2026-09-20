@@ -118,7 +118,9 @@ export function createChatAgent({ context, research, grounding, mode = 'fast', s
       const stepMessages = stepNumber === 0 ? omitUnverifiedAssistantHistory(messages) : messages;
       const stepInstructions = `${instructions}\n${policy.requiresResearch
         ? 'This question requires fresh source research in this turn. Earlier assistant answers have been removed because they are not evidence. Retrieve substantive financial or filing data before answering. An entity search only establishes identity, not financial facts.'
-        : 'This turn is a generic page-help or definition question. Explain only controls, methodology, or the generic definition. Do not repeat company figures, dates, factual entity claims, or citations from earlier conversation. Do not perform research for this turn.'}`;
+        : 'This turn is a generic page-help or definition question. Explain only controls, methodology, or the generic definition. Do not repeat company figures, dates, factual entity claims, or citations from earlier conversation. Do not perform research for this turn.'}${policy.hasEvidence()
+        ? '\nBefore giving your final answer: attach the exact retrieved [S#] citation IDs to financial figures and factual paragraphs, including comparison-table rows. Do not omit inline citations just because supporting links are shown separately. Explain numeric differences using the retrieved inputs; business causes (such as the purpose of capital spending) require retrieved disclosure evidence. If only statement figures were retrieved, say the figures show the difference but do not establish its business cause. Keep periods and calculated figures explicit. End with the material limitation, not an unsupported explanation from general knowledge.'
+        : ''}`;
       // JSON UTF-8 bytes overestimate byte-fallback tokenizer input. An extra
       // 4096 tokens/step covers provider chat/schema formatting. At the guarded
       // $0.15/$0.60 per million rates, even Reasoning's combined reasoning+text
