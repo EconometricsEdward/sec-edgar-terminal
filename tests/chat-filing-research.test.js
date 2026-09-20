@@ -47,6 +47,8 @@ test('filing history filters exact forms and filing dates, preserves report date
   // SEC filing-agent accession prefixes need not equal the reporting issuer CIK.
   assert.match(api.getSources().find(row => row.url.endsWith('annual.htm')).url, /\/data\/1\/000099999926000003\//);
   assert.ok(result.filings[0].sourceIds.length);
+  assert.equal(api.getSources().find(row => row.id === result.pageSourceIds[0]).url, result.pageUrl);
+  assert.ok(!result.filings[0].sourceIds.includes(result.pageSourceIds[0]));
 });
 
 test('filing tools reject arbitrary URLs, extra URL fields, malformed dates and reversed date filters', async () => {
@@ -122,6 +124,14 @@ test('same-company page selections retain exact accession, section, phrase and h
   assert.equal(result.query, 'covenant');
   assert.equal(calls.find(row => row[0] === 'document')[1].accession, historical.accession);
   assert.equal(calls.find(row => row[0] === 'document')[1].page, 6);
+  const pageSource = api.getSources().find(row => row.url === result.pageUrl);
+  assert.ok(pageSource);
+  assert.deepEqual(result.pageSourceIds, [pageSource.id]);
+  assert.equal(new URL(pageSource.url).searchParams.get('accession'), historical.accession);
+  assert.equal(new URL(pageSource.url).searchParams.get('query'), 'covenant');
+  assert.equal(new URL(pageSource.url).searchParams.get('page'), '6');
+  assert.ok(result.passages[0].sourceIds.every(id => id !== pageSource.id));
+  assert.ok(api.getSources().filter(row => result.passages[0].sourceIds.includes(row.id)).every(row => new URL(row.url).hostname === 'www.sec.gov'));
 });
 
 test('a different company page never substitutes its selected accession or filing filters', async () => {
@@ -218,7 +228,7 @@ test('malicious document URLs are never forwarded or published, citations derive
   data.filings = data.filings.map(row => ({ ...row, documentUrl: 'https://evil.example/instructions', indexUrl: 'http://localhost/private' }));
   const result = await api.tools.filings_list.execute(listInput());
   assert.equal(result.status, 'ready');
-  assert.ok(api.getSources().every(row => ['www.sec.gov', 'data.sec.gov'].includes(new URL(row.url).hostname)));
+  assert.ok(api.getSources().every(row => ['www.sec.gov', 'data.sec.gov', 'secedgarterminal.com'].includes(new URL(row.url).hostname)));
   assert.doesNotMatch(JSON.stringify(result), /evil|localhost/);
 });
 
