@@ -27,6 +27,34 @@ const enumeration = values => ({ type: 'string', enum: values });
 const schema = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 const sourcePeriod = ({ filingDate, ...period }) => ({ ...period, latestSourceFilingDate: filingDate || null });
 const FILING_DATE_NOTE = 'latestSourceFilingDate is the latest filing among the supporting inputs, not the filing date of every metric or of an annual report. Use each metric’s sourceIds and sourceMetadata for its actual form and filing date. Later quarterly filings can supply comparative annual balances.';
+const QUARTER_DIFFERENCE = 'Current cumulative value − prior cumulative value';
+const validDay = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+  && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+
+/** Expose only the exact two-input quarter derivation the SEC mapper already
+ * performed. No formula parsing, inferred inputs or other recalculations. */
+function latestQuarterCalculation(point, catalog, ids) {
+  if (point?.basis !== 'quarter' || point.classification !== 'calculated' || point.formula !== QUARTER_DIFFERENCE
+    || point.unit !== 'usd' || finite(point.value) === null || !validDay(point.period) || !validDay(point.start)
+    || !Array.isArray(point.sourceIds) || point.sourceIds.length !== 2 || new Set(point.sourceIds).size !== 2) return undefined;
+  const inputs = point.sourceIds.map(id => ({ ...catalog.get(id), sourceIds: ids([id]) }));
+  if (inputs.some(input => finite(input.value) === null || input.unit !== 'USD' || !validDay(input.start)
+    || !validDay(input.periodEnd) || !validDay(input.filed) || !input.sourceIds.length || typeof input.concept !== 'string' || !input.concept)) return undefined;
+  inputs.sort((a, b) => b.periodEnd.localeCompare(a.periodEnd));
+  const [current, prior] = inputs;
+  const days = (start, end) => (Date.parse(end) - Date.parse(start)) / 86400000;
+  if (current.concept !== prior.concept || current.start !== prior.start || current.periodEnd !== point.period
+    || prior.periodEnd >= current.periodEnd || days(prior.periodEnd, point.start) !== 1 || prior.start > prior.periodEnd
+    || days(current.start, current.periodEnd) + 1 <= 120 || days(current.start, current.periodEnd) + 1 > 400
+    || days(prior.periodEnd, current.periodEnd) < 60 || days(prior.periodEnd, current.periodEnd) > 120
+    || prior.filed > current.filed || current.filed < current.periodEnd || prior.filed < prior.periodEnd) return undefined;
+  const tolerance = Math.max(1e-8, Number.EPSILON * 8 * Math.max(1, Math.abs(current.value), Math.abs(prior.value), Math.abs(point.value)));
+  if (Math.abs(current.value - prior.value - point.value) > tolerance) return undefined;
+  return { classification: 'calculated', formula: QUARTER_DIFFERENCE, operation: 'subtract', result: point.value, unit: 'USD',
+    start: point.start, end: point.period, concept: current.concept,
+    inputs: inputs.map((input, index) => ({ role: index ? 'prior cumulative' : 'current cumulative', value: input.value, unit: input.unit,
+      start: input.start, end: input.periodEnd, sourceIds: input.sourceIds })) };
+}
 
 function usedSourceMetadata(value) {
   if (!value.sourceMetadata) return value;
@@ -281,6 +309,7 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
         });
         if (report.kind !== 'company' || cikOf(report.entity?.cik) !== identity.cik || report.period?.basis !== basis) throw fail('The financial source did not match the requested SEC company and reporting basis.');
         const { ids: sourceIds, metadata: sourceMetadata } = reportSources(report);
+        const sourceCatalog = new Map((report.sources || []).map(source => [source.id, source]));
         const observations = report.sections?.find(section => section.id === 'observations')?.rows || [];
         const periods = [...new Set(observations.filter(row => row.basis === basis && /^\d{4}-\d{2}-\d{2}$/.test(row.period)).map(row => row.period))].sort().reverse().slice(0, 5);
         const metrics = FINANCIAL_KEYS.flatMap(key => {
@@ -292,7 +321,9 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
               return { period, start: point?.start || null, value, status: value === null ? 'unavailable' : point.classification,
                 ...(value === null ? { reason: txt(point?.reason, 180) || 'Compatible verified inputs unavailable.' } : {}), sourceIds: ids };
             });
+          const latestCalculation = latestQuarterCalculation(rows.find(row => row.period === periods[0]), sourceCatalog, sourceIds);
           return [{ key, label: txt(rows[0].metric, 100), unit: rows[0].unit, formula: txt(rows[0].formula, 200) || undefined,
+            ...(latestCalculation ? { latestCalculation } : {}),
             values: points.map(point => point.value), status: points.map(point => point.status), sourceIds: points.map(point => point.sourceIds),
             ...(points.some(point => point.start) ? { startDates: points.map(point => point.start) } : {}),
             ...(points.some(point => point.reason) ? { missingReasons: Object.fromEntries(points.filter(point => point.reason).map(point => [point.period, point.reason])) } : {}) }];

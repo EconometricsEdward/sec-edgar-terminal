@@ -238,3 +238,54 @@ test('only exact report-builder 422 coverage failures identify an unavailable ba
     assert.doesNotMatch(JSON.stringify(result), /private arbitrary/);
   }
 });
+
+function quarterCashFlowReport() {
+  const report = companyReport('BOBS', '0000000001', 'quarter');
+  report.period.asOf = '2026-06-28';
+  report.sources = [
+    { id: 'ytd-current', url: sourceUrl, form: '10-Q', filed: '2026-08-06', start: '2025-12-29', periodEnd: '2026-06-28',
+      value: 93146000, unit: 'USD', concept: 'us-gaap:NetCashProvidedByUsedInOperatingActivities' },
+    { id: 'ytd-prior', url: 'https://www.sec.gov/Archives/edgar/data/1/000000000126000002/quarter.htm', form: '10-Q', filed: '2026-05-07', start: '2025-12-29', periodEnd: '2026-03-29',
+      value: 28853000, unit: 'USD', concept: 'us-gaap:NetCashProvidedByUsedInOperatingActivities' },
+  ];
+  report.sections[0].rows = [
+    { key: 'operatingCashFlow', metric: 'Operating Cash Flow', basis: 'quarter', period: '2026-06-28', start: '2026-03-30', value: 64293000,
+      unit: 'usd', classification: 'calculated', formula: 'Current cumulative value − prior cumulative value', sourceIds: ['ytd-current', 'ytd-prior'] },
+    { key: 'operatingCashFlow', metric: 'Operating Cash Flow', basis: 'quarter', period: '2026-03-29', start: '2025-12-29', value: 28853000,
+      unit: 'usd', classification: 'reported', formula: '', sourceIds: ['ytd-prior'] },
+  ];
+  return report;
+}
+
+test('latest quarter derivation exposes exact verified cumulative inputs, dates, unit and filing citations', async () => {
+  const result = await research({ company: async () => quarterCashFlowReport() }).tools.company_financials.execute({ identifier: 'BOBS', basis: 'quarter' });
+  const metric = result.metrics.find(row => row.key === 'operatingCashFlow');
+  assert.deepEqual(metric.values, [64293000, 28853000]);
+  assert.equal(metric.latestCalculation.classification, 'calculated'); assert.equal(metric.latestCalculation.operation, 'subtract');
+  assert.equal(metric.latestCalculation.result, 64293000); assert.equal(metric.latestCalculation.start, '2026-03-30');
+  assert.deepEqual(metric.latestCalculation.inputs.map(input => input.value), [93146000, 28853000]);
+  assert.deepEqual(metric.latestCalculation.inputs.map(input => [input.start, input.end]), [['2025-12-29', '2026-06-28'], ['2025-12-29', '2026-03-29']]);
+  assert.deepEqual(metric.latestCalculation.inputs.map(input => input.sourceIds), [['S1'], ['S2']]);
+  assert.ok(metric.latestCalculation.inputs.every(input => input.unit === 'USD'));
+  assert.equal(result.sourceMetadata.S1.filed, '2026-08-06'); assert.equal(result.sourceMetadata.S2.filed, '2026-05-07');
+  assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 12000);
+});
+
+test('quarter derivation is omitted for mismatched values, concepts, units, fiscal starts, dates, classification or another formula', async () => {
+  const changes = [
+    report => { report.sources[0].value += 1; },
+    report => { report.sources[1].concept = 'us-gaap:NetIncomeLoss'; },
+    report => { report.sources[1].unit = 'EUR'; },
+    report => { report.sources[1].start = '2026-01-01'; },
+    report => { report.sources[1].periodEnd = '2026-03-28'; },
+    report => { report.sources[0].periodEnd = '2026-06-27'; },
+    report => { report.sections[0].rows[0].classification = 'reported'; },
+    report => { report.sections[0].rows[0].formula = 'Operating cash flow minus capital expenditures'; },
+    report => { report.sources[1].url = 'https://invalid.example/source'; },
+  ];
+  for (const change of changes) {
+    const report = quarterCashFlowReport(); change(report);
+    const result = await research({ company: async () => report }).tools.company_financials.execute({ identifier: 'BOBS', basis: 'quarter' });
+    assert.equal(Object.hasOwn(result.metrics[0], 'latestCalculation'), false);
+  }
+});
