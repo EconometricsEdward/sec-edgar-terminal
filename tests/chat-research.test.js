@@ -375,3 +375,21 @@ test('quarter derivation is omitted for mismatched values, concepts, units, fisc
     assert.equal(Object.hasOwn(result.metrics[0], 'latestCalculation'), false);
   }
 });
+
+
+test('financial selections inherit only the matching company and reject a newer fallback or look-ahead filing', async () => {
+  const seen = [];
+  const api = createChatResearch({ context: { company: 'EXAMPLE', end: '2024-12-31', asOf: '2025-04-01' }, dependencies: {
+    search: async ({ query, kind }) => ({ results: [identity(query, kind)] }),
+    company: async selection => { seen.push(selection); return companyReport(selection.id); },
+  } });
+  const result = await api.tools.company_financials.execute({ identifier: 'EXAMPLE', basis: 'annual' });
+  assert.equal(result.status, 'unavailable');
+  assert.deepEqual(seen[0], { id: 'EXAMPLE', basis: 'annual', end: '2024-12-31', asOf: '2025-04-01' });
+  const other = await api.tools.company_financials.execute({ identifier: 'OTHER', basis: 'annual' });
+  assert.equal(other.status, 'ready');
+  assert.deepEqual(seen[1], { id: 'OTHER', basis: 'annual' });
+  const current = await api.tools.company_financials.execute({ identifier: 'EXAMPLE', basis: 'annual', end: '', asOf: '' });
+  assert.equal(current.status, 'ready');
+  assert.deepEqual(seen[2], { id: 'EXAMPLE', basis: 'annual' });
+});

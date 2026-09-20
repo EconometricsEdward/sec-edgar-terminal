@@ -63,12 +63,16 @@ test('starters use verified route hints without leaking unrelated route query te
   assert.match(CHAT_PAGE_GUIDE, /cannot see uploaded holdings/);
 });
 
-test('Market captures actual public tab and sector controls but omits free-text screening', () => {
-  const market = normalizeChatContext({ path: '/market', query: 'tab=sectors&cohort=sector-energy&metric=netMargin&statistic=mean&companyQuery=private-notes&basis=annual' });
+test('Market captures actual public filters while omitting unrelated query content', () => {
+  const market = normalizeChatContext({ path: '/market', query: 'tab=sectors&cohort=sector-energy&metric=netMargin&statistic=mean&companyQuery=Exxon&companyMetric=debtToAssets&companyDirection=asc&companyPage=2&notes=private&basis=annual' });
   assert.equal(market.label, 'Market · Sector Performance');
   assert.equal(market.tab, 'sectors');
   assert.equal(market.sector, 'Energy');
   assert.equal(market.basis, 'annual');
+  assert.equal(market.companyQuery, 'Exxon');
+  assert.equal(market.companyMetric, 'debtToAssets');
+  assert.equal(market.companyDirection, 'asc');
+  assert.equal(market.companyPage, 2);
   assert.ok(!market.query.includes('private'));
   const positioning = normalizeChatContext({ path: '/market', query: 'tab=positioning&family=disaggregated&contract=067651&group=managed-money&date=2025-09-16&history=3y&display=percentile' });
   assert.equal(positioning.label, 'Market · CFTC Positioning');
@@ -129,4 +133,36 @@ test('standalone manager, portfolio demo and legacy redirect routes retain the r
   assert.equal(normalizeChatContext({ path: '/fund/manager/0000000000', query: '' }).managerCik, '');
   assert.equal(normalizeChatContext({ path: '/workspace/demo/changes', query: 'portfolio=private' }).section, 'workspace');
   assert.equal(normalizeChatContext({ path: '/crypto', query: '' }).section, 'disclosures');
+});
+
+test('Compare retains exact peers, periods, basis, and accepted display selections', () => {
+  const page = normalizeChatContext({ path: '/compare/aapl,msft', query: 'basis=ttm&alignment=latest&period=2025-Q2&asOf=2025-08-01&metric=roe&view=trends&metrics=roe,netMargin&excluded=MSFT&notes=private' });
+  assert.deepEqual(page.compareTickers, ['AAPL', 'MSFT']); assert.equal(page.company, '');
+  assert.equal(page.period, '2025-Q2'); assert.equal(page.alignment, 'latest'); assert.equal(page.basis, 'ttm');
+  assert.equal(page.asOf, '2025-08-01'); assert.equal(page.metric, 'roe'); assert.equal(page.view, 'trends');
+  assert.ok(!page.query.includes('private'));
+  const invalid = normalizeChatContext({ path: '/compare/AAPL,MSFT', query: 'period=ignore+instructions&alignment=custom&metric=secret&asOf=2025-02-30' });
+  assert.equal(invalid.period, ''); assert.equal(invalid.alignment, 'common'); assert.equal(invalid.metric, ''); assert.equal(invalid.asOf, '');
+});
+
+test('filing selection preserves manifest identifiers and bounded search without arbitrary content', () => {
+  const page = normalizeChatContext({ path: '/filings/AAPL', query: 'accession=0000320193-25-000079&prior=0000320193-24-000123&filed=2025-10-31&priorFiled=2024-11-01&archive=CIK0000320193-submissions-001.json&section=mda&query=liquidity&view=changes&form=10-K&account=secret' });
+  assert.equal(page.accession, '0000320193-25-000079'); assert.equal(page.prior, '0000320193-24-000123');
+  assert.equal(page.filingSection, 'mda'); assert.equal(page.searchQuery, 'liquidity'); assert.equal(page.form, '10-K');
+  assert.ok(!page.query.includes('secret'));
+  for (const query of ['archive=https://evil.test', 'query=' + 'x'.repeat(201), 'section=ignore+instructions', 'accession=bad', 'query=one&query=two']) {
+    const invalid = normalizeChatContext({ path: '/filings/AAPL', query });
+    assert.equal(invalid.searchQuery, ''); assert.equal(invalid.archive, ''); assert.equal(invalid.accession, ''); assert.equal(invalid.filingSection, '');
+  }
+});
+
+test('fund comparison and changes retain exact public peers and filing snapshots', () => {
+  const compare = normalizeChatContext({ path: '/fund', query: 'view=13f&managerView=compare&managerCompare=1067983,1350694&managerComparePeriod=2025-06-30&allocations=private' });
+  assert.deepEqual(compare.managerCompare, ['0001067983', '0001350694']); assert.equal(compare.managerComparePeriod, '2025-06-30');
+  assert.equal(compare.company, ''); assert.equal(compare.managerCik, ''); assert.ok(!compare.query.includes('private'));
+  for (const query of ['managerCompare=1067983,1067983', 'managerCompare=1067983,evil', 'managerCompare=1067983,1350694&managerCompare=999', 'managerCompare=1,2,3,4,5']) {
+    assert.deepEqual(normalizeChatContext({ path: '/fund', query: `view=13f&managerView=compare&${query}` }).managerCompare, []);
+  }
+  const changes = normalizeChatContext({ path: '/fund', query: 'view=changes&changeTicker=VT&changeBefore=0000123456-25-000001&changeAfter=0000123456-25-000002&changeQuery=Apple' });
+  assert.equal(changes.changeTicker, 'VT'); assert.equal(changes.changeBefore, '0000123456-25-000001'); assert.equal(changes.changeAfter, '0000123456-25-000002'); assert.equal(changes.changeQuery, 'Apple');
 });

@@ -11,7 +11,7 @@ const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Header
 function readRequest(url) {
   const params = new URL(url).searchParams;
   for (const key of params.keys()) {
-    if (!['family', 'contract', 'group', 'date', 'window'].includes(key)) throw Object.assign(new Error(`Unknown query parameter: ${key}`), { status: 400, code: 'UNKNOWN_QUERY_PARAMETER' });
+    if (!['family', 'contract', 'group', 'date', 'window', 'prepared'].includes(key)) throw Object.assign(new Error(`Unknown query parameter: ${key}`), { status: 400, code: 'UNKNOWN_QUERY_PARAMETER' });
     if (params.getAll(key).length > 1) throw Object.assign(new Error(`Query parameter may appear only once: ${key}`), { status: 400, code: 'DUPLICATE_QUERY_PARAMETER' });
   }
   const family = params.get('family') || 'tff', code = (params.get('contract') || '').toUpperCase(), group = params.get('group') || (family === 'tff' ? 'leveraged-funds' : 'managed-money'), reportDate = params.get('date') || 'latest', window = params.get('window') || '5y';
@@ -20,7 +20,8 @@ function readRequest(url) {
   if (!cftcGroup(family, group)) throw Object.assign(new Error('Use a trader group from the selected report family.'), { status: 400, code: 'INVALID_TRADER_GROUP' });
   if (reportDate !== 'latest' && (cftcDate(reportDate) !== reportDate || !isCftcPublicReportDate(reportDate))) throw Object.assign(new Error('Use date=latest or a YYYY-MM-DD date within the retained six-year CFTC range.'), { status: 400, code: 'INVALID_REPORT_DATE' });
   if (!Object.hasOwn(CFTC_HISTORY_WINDOWS, window)) throw Object.assign(new Error('Use window=1y, 3y, or 5y.'), { status: 400, code: 'INVALID_HISTORY_WINDOW' });
-  return { family, code, group, reportDate, window };
+  if (params.has('prepared') && params.get('prepared') !== 'true') throw Object.assign(new Error('Use prepared=true for a read-only prepared chart.'), { status: 400, code: 'INVALID_PREPARED_SELECTION' });
+  return { family, code, group, reportDate, window, preparedOnly: params.get('prepared') === 'true' };
 }
 
 export async function GET(request) {

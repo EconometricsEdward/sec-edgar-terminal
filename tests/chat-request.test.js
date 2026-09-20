@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ChatRequestError, readChatRequest } from '../src/utils/chatRequest.js';
+import { SCENARIO_DEFAULTS } from '../src/utils/analysisScenarios.js';
 
 const BASE = 'https://secedgarterminal.com';
 const valid = () => ({ messages: [{ role: 'user', content: 'Explain this page.' }], context: { path: '/market', query: 'basis=annual' } });
@@ -45,6 +46,21 @@ test('mode defaults to fast and accepts only the two explicit server-controlled 
     { providerOptions: { mistral: { reasoningEffort: 'high' } } }, { reasoning: 'high' }]) {
     await rejected(req({ ...valid(), mode: 'reasoning', ...settings }), 400, 'CHAT_INVALID_REQUEST');
   }
+});
+
+test('private snapshots require explicit strict attachment and matching public page context', async () => {
+  assert.equal((await readChatRequest(req())).sharedContext, null);
+  const sharedContext = { kind: 'portfolio', holdings: [{ ticker: 'AAPL', weight: null }], totalHoldings: 1, coverageWeight: null };
+  const input = { ...valid(), context: { path: '/workspace', query: 'view=portfolios&portfolio=secret-account' }, sharedContext };
+  const result = await readChatRequest(req(input));
+  assert.deepEqual(result.sharedContext, sharedContext); assert.ok(!JSON.stringify(result).includes('secret-account'));
+  await rejected(req({ ...input, context: { path: '/market', query: '' } }), 400, 'CHAT_INVALID_SHARED_CONTEXT');
+  await rejected(req({ ...input, sharedContext: { ...sharedContext, account: 'secret' } }), 400, 'CHAT_INVALID_SHARED_CONTEXT');
+  await rejected(req({ ...input, sharedContext: null }), 400, 'CHAT_INVALID_SHARED_CONTEXT');
+  const scenario = { kind: 'analysis-scenario', ticker: 'AAPL', basis: 'annual', end: '2025-09-27', asOf: '', assumptions: { ...SCENARIO_DEFAULTS } };
+  const analysis = { ...valid(), context: { path: '/analysis/AAPL', query: 'view=scenarios' }, mode: 'reasoning', sharedContext: scenario };
+  assert.deepEqual((await readChatRequest(req(analysis))).sharedContext, scenario);
+  for (const context of [{ path: '/analysis/MSFT', query: 'view=scenarios' }, { path: '/analysis/AAPL', query: 'view=statements' }]) await rejected(req({ ...analysis, context }), 400, 'CHAT_INVALID_SHARED_CONTEXT');
 });
 
 test('origin must exactly match the request origin; missing, null, suffix and cross-site origins fail before reading', async () => {
