@@ -175,6 +175,92 @@ test('research deadline starts on first lookup, interrupts an unresponsive reade
   assert.match((await cancelled.tools.market_summary.execute({ basis: 'ttm', sector: '' })).reason, /cancelled/); assert.equal(reads, 0);
 });
 
+test('model thinking between research rounds pauses the budget and preserves one reader signal', async t => {
+  let clock = 0;
+  t.mock.method(performance, 'now', () => clock);
+  const signals = [];
+  const api = research({ deadlineMs: 100, search: async ({ query, kind }, signal) => {
+    signals.push(signal); clock += 20;
+    return { results: [identity(query, kind)] };
+  } });
+  assert.equal((await api.tools.search_entities.execute({ query: 'AAA', kind: 'company' })).status, 'ready');
+  // This idle interval is longer than the entire research budget. A live timer
+  // must be cleared as well as excluding the gap from elapsed-time accounting.
+  clock += 1000;
+  await new Promise(resolve => setTimeout(resolve, 120));
+  assert.equal((await api.tools.search_entities.execute({ query: 'BBB', kind: 'company' })).status, 'ready');
+  assert.equal(signals[0], signals[1]);
+  assert.equal(signals[0].aborted, false);
+});
+
+test('separate research rounds share one cumulative budget and exhaustion stays permanent', async t => {
+  let clock = 0, reads = 0;
+  t.mock.method(performance, 'now', () => clock);
+  const signals = [];
+  const api = research({ deadlineMs: 100, search: async ({ query, kind }, signal) => {
+    signals.push(signal); reads++; clock += reads === 1 ? 60 : 50;
+    return { results: [identity(query, kind)] };
+  } });
+  assert.equal((await api.tools.search_entities.execute({ query: 'AAA', kind: 'company' })).status, 'ready');
+  clock += 1000;
+  assert.equal((await api.tools.search_entities.execute({ query: 'BBB', kind: 'company' })).code, 'RESEARCH_TIMEOUT');
+  clock += 1000;
+  assert.equal((await api.tools.search_entities.execute({ query: 'CCC', kind: 'company' })).code, 'RESEARCH_TIMEOUT');
+  assert.equal(reads, 2);
+  assert.equal(signals[0], signals[1]);
+  assert.equal(signals[0].aborted, true);
+});
+
+test('overlapping and duplicate tools spend active wall time once instead of multiplying it', async t => {
+  let clock = 0, reads = 0;
+  t.mock.method(performance, 'now', () => clock);
+  const release = new Map(), signals = [];
+  const api = research({ deadlineMs: 100, search: async ({ query, kind }, signal) => {
+    reads++; signals.push(signal);
+    if (query === 'CCC') clock += 20;
+    else await new Promise(resolve => release.set(query, resolve));
+    return { results: [identity(query, kind)] };
+  } });
+  const first = api.tools.search_entities.execute({ query: 'AAA', kind: 'company' });
+  const duplicate = api.tools.search_entities.execute({ query: 'AAA', kind: 'company' });
+  const second = api.tools.search_entities.execute({ query: 'BBB', kind: 'company' });
+  await new Promise(resolve => setImmediate(resolve));
+  clock = 40; release.get('AAA')();
+  assert.equal((await first).status, 'ready'); assert.deepEqual(await duplicate, await first);
+  clock = 60; release.get('BBB')();
+  assert.equal((await second).status, 'ready');
+  clock += 1000;
+  assert.equal((await api.tools.search_entities.execute({ query: 'CCC', kind: 'company' })).status, 'ready');
+  assert.equal(reads, 3); assert.ok(signals.every(signal => signal === signals[0]));
+  assert.equal(signals[0].aborted, false);
+});
+
+test('parent cancellation and budget expiry prevent uncancellable readers from publishing late sources', async () => {
+  for (const reason of ['parent', 'budget']) {
+    const controller = new AbortController(), published = [];
+    let resolveRead, entered;
+    const started = new Promise(resolve => { entered = resolve; });
+    const api = createChatResearch({ signal: controller.signal, onSources: sources => published.push(sources), dependencies: {
+      deadlineMs: reason === 'budget' ? 15 : 1000,
+      market: async () => { entered(); return new Promise(resolve => { resolveRead = resolve; }); },
+    } });
+    // Keep the test process alive while the deliberately unref'ed budget timer
+    // aborts an otherwise unresponsive reader.
+    const keepAlive = setTimeout(() => {}, 1000);
+    try {
+      const pending = api.tools.market_summary.execute({ basis: 'ttm', sector: '' });
+      await started;
+      if (reason === 'parent') controller.abort();
+      assert.equal((await pending).code, reason === 'parent' ? 'REQUEST_CANCELLED' : 'RESEARCH_TIMEOUT');
+      resolveRead(market());
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(api.getSources(), []); assert.deepEqual(published, []);
+      assert.equal((await api.tools.market_summary.execute({ basis: 'annual', sector: '' })).code,
+        reason === 'parent' ? 'REQUEST_CANCELLED' : 'RESEARCH_TIMEOUT');
+    } finally { clearTimeout(keepAlive); }
+  }
+});
+
 test('failure diagnostics expose only fixed category, stage and numeric HTTP status, never private error detail', async () => {
   const api = research({ company: async () => { throw Object.assign(new Error('private gateway secret and SQL response'), { status: 503, code: 'PRIVATE_GATEWAY_SECRET' }); } });
   const result = await api.tools.company_financials.execute({ identifier: 'EXAMPLE', basis: 'annual' });

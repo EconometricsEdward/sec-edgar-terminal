@@ -87,6 +87,7 @@
 .messageLabel strong { font-size: 11px; font-weight: 750; color: var(--chat-teal); }
 .userMessage .messageLabel strong { color: var(--chat-muted); }
 .messageLabel > span { color: var(--chat-muted); }
+.messageLabel > .modeBadge { padding: 1px 6px; border: 1px solid var(--chat-line); border-radius: 4px; color: var(--chat-teal); font-size: 9px; line-height: 1.6; }
 .messageText { font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
 .messageText p { margin: 0 0 12px; white-space: pre-wrap; }
 .messageText p:last-child { margin-bottom: 0; }
@@ -95,6 +96,14 @@
 .messageText strong { font-weight: 750; }
 .messageText code { font-size: 0.9em; background: var(--chat-panel); padding: 1px 4px; border-radius: 3px; }
 .messageText a { color: var(--chat-teal); text-decoration: underline; text-underline-offset: 3px; }
+.tableScroll { max-width: 100%; overflow-x: auto; margin: 12px 0; border: 1px solid var(--chat-line); border-radius: 8px; scrollbar-width: thin; scrollbar-color: var(--chat-line) transparent; }
+.tableScroll:focus-visible { outline: 2px solid var(--chat-teal); outline-offset: 2px; }
+.comparisonTable { width: 100%; border-collapse: collapse; font-size: 11px; line-height: 1.65; }
+.comparisonTable th, .comparisonTable td { min-width: 100px; padding: 8px 10px; border-bottom: 1px solid var(--chat-line); vertical-align: top; font-variant-numeric: tabular-nums; }
+.comparisonTable th:first-child, .comparisonTable td:first-child { min-width: 130px; }
+.comparisonTable th { background: var(--chat-panel); color: var(--chat-text); font-weight: 750; }
+.comparisonTable tbody tr:last-child td { border-bottom: 0; }
+.comparisonTable tbody tr:nth-child(even) { background: color-mix(in srgb, var(--chat-panel) 45%, transparent); }
 .messageNote { color: var(--chat-muted); font-size: 11px; margin: 12px 0 0; }
 .messageError { font-size: 12px; line-height: 1.7; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--chat-accent) 38%, var(--chat-line)); background: color-mix(in srgb, var(--chat-accent) 6%, transparent); border-radius: 7px; margin: 12px 0 0; }
 .sources { margin-top: 15px; border-top: 1px solid var(--chat-line); padding-top: 10px; }
@@ -112,6 +121,15 @@
 .retry { font-size: 11px; margin-top: 12px; color: var(--chat-accent); padding: 6px 10px; border: 1px solid var(--chat-line); border-radius: 6px; cursor: pointer; }
 .retry:disabled { opacity: 0.45; cursor: wait; }
 .composer { padding: 14px 22px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--chat-line); flex-shrink: 0; }
+.modeControls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 10px; }
+.modeChoice { display: inline-flex; flex-shrink: 0; min-width: 0; margin: 0; padding: 3px; border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-panel); }
+.modeOption { position: relative; cursor: pointer; }
+.modeOption > span { display: block; min-width: 61px; padding: 6px 10px; border-radius: 5px; color: var(--chat-muted); font-size: 11px; font-weight: 650; line-height: 1.4; text-align: center; }
+.modeOption input:checked + span { background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-bg)); color: var(--chat-accent); }
+.modeOption input:focus-visible + span { outline: 2px solid var(--chat-teal); outline-offset: 1px; }
+.modeChoice:disabled { opacity: 0.6; }
+.modeChoice:disabled .modeOption { cursor: default; }
+.modeHelp { flex: 1 1 160px; margin: 0; color: var(--chat-muted); font-size: 10px; line-height: 1.55; }
 .inputBox { border: 1px solid var(--chat-line); background: var(--chat-panel); border-radius: 12px; padding: 12px; }
 .inputBox:focus-within { border-color: var(--chat-teal); }
 .dialog .inputBox textarea { display: block; width: 100%; min-height: 64px; max-height: 160px; resize: vertical; padding: 0; border: 0; background: transparent !important; color: var(--chat-text) !important; font-family: inherit; font-size: 13px; line-height: 1.65; box-shadow: none; }

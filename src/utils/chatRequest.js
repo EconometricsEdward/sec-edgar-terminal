@@ -110,7 +110,13 @@ export async function readChatRequest(request, { env = process.env } = {}) {
   const encoding = request.headers.get('content-encoding');
   if (encoding && encoding.toLowerCase() !== 'identity') fail(415, 'CHAT_UNSUPPORTED_CONTENT_TYPE', 'Compressed chat requests are not supported.');
   const input = await readBoundedJson(request);
-  if (!exactKeys(input, ['messages', 'context'])) fail(400, 'CHAT_INVALID_REQUEST', 'The chat request is invalid. Please try again.');
+  // Older open tabs still send the original shape. Mode is an enum only: the
+  // browser cannot set a model, token allowance, or provider options.
+  if (!exactKeys(input, ['messages', 'context']) && !exactKeys(input, ['messages', 'context', 'mode'])) {
+    fail(400, 'CHAT_INVALID_REQUEST', 'The chat request is invalid. Please try again.');
+  }
+  const mode = Object.hasOwn(input, 'mode') ? input.mode : 'fast';
+  if (mode !== 'fast' && mode !== 'reasoning') fail(400, 'CHAT_INVALID_MODE', 'Choose Fast or Reasoning mode and try again.');
 
   if (!Array.isArray(input.messages) || input.messages.length < 1 || input.messages.length > 10) {
     fail(400, 'CHAT_INVALID_MESSAGES', 'Send a question with a short recent conversation.');
@@ -137,5 +143,5 @@ export async function readChatRequest(request, { env = process.env } = {}) {
     || typeof input.context.query !== 'string' || input.context.query.length > 2000) {
     fail(400, 'CHAT_INVALID_CONTEXT', 'The current page could not be identified. Reopen chat and try again.');
   }
-  return { messages, context: normalizeChatContext(input.context) };
+  return { messages, context: normalizeChatContext(input.context), mode };
 }

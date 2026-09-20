@@ -33,6 +33,20 @@ test('only text messages survive and current page metadata is recomputed server-
   assert.equal(current.context.section, 'market');
 });
 
+test('mode defaults to fast and accepts only the two explicit server-controlled choices', async () => {
+  assert.equal((await readChatRequest(req())).mode, 'fast');
+  for (const mode of ['fast', 'reasoning']) {
+    assert.equal((await readChatRequest(req({ ...valid(), mode }))).mode, mode);
+  }
+  for (const mode of [null, true, 1, '', 'high', 'auto', 'REASONING', ' reasoning ', [], { reasoningEffort: 'high' }]) {
+    await rejected(req({ ...valid(), mode }), 400, 'CHAT_INVALID_MODE');
+  }
+  for (const settings of [{ model: 'other/model' }, { reasoningEffort: 'high' }, { maxOutputTokens: 100000 },
+    { providerOptions: { mistral: { reasoningEffort: 'high' } } }, { reasoning: 'high' }]) {
+    await rejected(req({ ...valid(), mode: 'reasoning', ...settings }), 400, 'CHAT_INVALID_REQUEST');
+  }
+});
+
 test('origin must exactly match the request origin; missing, null, suffix and cross-site origins fail before reading', async () => {
   for (const headers of [
     { origin: '' }, { origin: 'null' }, { origin: 'https://secedgarterminal.com.evil.test' },
