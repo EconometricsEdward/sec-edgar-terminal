@@ -180,8 +180,34 @@ function defaultDependencies() {
 export function createChatResearch({ context = {}, signal, onSources = () => {}, onStatus = () => {}, dependencies = {} } = {}) {
   const deps = { ...defaultDependencies(), ...dependencies };
   const calls = new Map(), reads = new Map(), companies = new Set(), sources = [], sourceUrls = new Map();
-  let callCount = 0, returnedBytes = 0, deadline;
-  const turnSignal = () => deadline ||= AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(Math.min(18000, Math.max(1, dependencies.deadlineMs || 18000)))]);
+  let callCount = 0, returnedBytes = 0, activeResearch = 0, activeSince = 0, researchTimer;
+  let remainingResearchMs = Math.min(18000, Math.max(1, dependencies.deadlineMs || 18000));
+  const budgetController = new AbortController();
+  // Keep one signal for the entire turn so exhausted/cancelled work can never
+  // publish late sources. The timer counts the union of active tool intervals;
+  // model reasoning between tool rounds does not consume the research budget.
+  const deadline = AbortSignal.any([...(signal ? [signal] : []), budgetController.signal]);
+  const exhaustResearch = () => budgetController.abort(new DOMException('Research timed out.', 'TimeoutError'));
+  const turnSignal = () => {
+    if (activeResearch && performance.now() - activeSince >= remainingResearchMs) exhaustResearch();
+    return deadline;
+  };
+  function beginResearch() {
+    turnSignal().throwIfAborted();
+    if (activeResearch++ === 0) {
+      activeSince = performance.now();
+      researchTimer = setTimeout(exhaustResearch, Math.ceil(remainingResearchMs));
+      researchTimer.unref?.();
+    }
+  }
+  function endResearch() {
+    if (--activeResearch === 0) {
+      remainingResearchMs -= performance.now() - activeSince;
+      clearTimeout(researchTimer);
+      researchTimer = undefined;
+      if (remainingResearchMs <= 0) exhaustResearch();
+    }
+  }
   const read = (key, work) => {
     if (!reads.has(key)) reads.set(key, bounded(() => work(turnSignal()), turnSignal()).catch(error => {
       const stage = key.split(':')[0];
@@ -191,7 +217,7 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
     return reads.get(key);
   };
   function addSource(title, rawUrl, asOf) {
-    if (deadline?.aborted || signal?.aborted) return null;
+    if (turnSignal().aborted) return null;
     const url = citationUrl(rawUrl);
     if (!url) return null;
     if (sourceUrls.has(url)) return sourceUrls.get(url);
@@ -265,9 +291,14 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
       callCount++;
       if (calls.has(key)) return finish(await calls.get(key));
       const work = (async () => {
+        let started = false;
         try {
+          beginResearch();
+          started = true;
           onStatus(status);
-          return await bounded(() => execute(input), turnSignal());
+          const result = await bounded(() => execute(input), turnSignal());
+          turnSignal().throwIfAborted();
+          return result;
         } catch (error) {
           const httpStatus = Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? error.status : undefined;
           const code = signal?.aborted ? 'REQUEST_CANCELLED' : turnSignal().aborted ? 'RESEARCH_TIMEOUT'
@@ -277,6 +308,8 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
             { ...(httpStatus ? { httpStatus } : {}), ...(RESEARCH_STAGES.has(error.researchStage) ? { stage: error.researchStage } : {}),
               ...(code === 'SOURCE_BASIS_UNAVAILABLE' && BASES.includes(error.researchBasis) ? { requestedBasis: error.researchBasis,
                 suggestedBasis: error.researchBasis === 'quarter' ? 'annual' : 'quarter', suggestedBasisAvailable: null } : {}) });
+        } finally {
+          if (started) endResearch();
         }
       })();
       calls.set(key, work); return finish(await work);

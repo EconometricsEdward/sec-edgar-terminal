@@ -4,6 +4,7 @@ import { safeChatMessageUrl } from "./chatClient.js";
 import styles from "./Chat.module.css";
 
 export type ChatSource = { id: string; title: string; url: string; asOf?: string };
+export type ChatMode = "fast" | "reasoning";
 export type ChatMessageData = {
   id: string;
   role: "user" | "assistant";
@@ -11,6 +12,7 @@ export type ChatMessageData = {
   sources?: ChatSource[];
   state?: "streaming" | "complete" | "stopped" | "error";
   page?: string;
+  mode?: ChatMode;
   error?: string;
 };
 
@@ -42,6 +44,7 @@ function ChatMessage({ message }: { message: ChatMessageData }) {
     <article className={message.role === "user" ? styles.userMessage : styles.answer} aria-label={message.role === "user" ? "Your question" : "EDGAR Terminal answer"}>
       <div className={styles.messageLabel}>
         <strong>{message.role === "user" ? "You" : "EDGAR Terminal"}</strong>
+        {message.role === "assistant" && message.mode ? <span className={styles.modeBadge}>{message.mode === "reasoning" ? "Reasoning" : "Fast"}</span> : null}
         {message.page ? <span>{message.page}</span> : null}
       </div>
       <div className={styles.messageText}>

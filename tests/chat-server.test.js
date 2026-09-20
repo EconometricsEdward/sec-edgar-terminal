@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ToolLoopAgent, isStepCount, jsonSchema, tool } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
-import { createChatAgent, handleChatPost, verifyChatModelPrice, CHAT_MODEL, CHAT_RESERVED_MICRODOLLARS } from '../src/utils/chatServer.js';
+import { createChatAgent, handleChatPost, verifyChatModelPrice, CHAT_MODEL, CHAT_RESERVED_MICRODOLLARS, CHAT_MAX_PROMPT_BYTES } from '../src/utils/chatServer.js';
 import { chatRequiresResearch } from '../src/utils/chatGrounding.js';
 
-const request = (messages = [{ role: 'user', content: 'Explain this page.' }], context = { path: '/market', query: '' }) => new Request('https://secedgarterminal.com/api/chat', { method: 'POST', headers: { origin: 'https://secedgarterminal.com', 'content-type': 'application/json' },
-  body: JSON.stringify({ messages, context }) });
+const request = (messages = [{ role: 'user', content: 'Explain this page.' }], context = { path: '/market', query: '' }, mode) => new Request('https://secedgarterminal.com/api/chat', { method: 'POST', headers: { origin: 'https://secedgarterminal.com', 'content-type': 'application/json' },
+  body: JSON.stringify({ messages, context, ...(mode === undefined ? {} : { mode }) }) });
 const chunks = values => new ReadableStream({ start(controller) { values.forEach(value => controller.enqueue(value)); controller.close(); } });
 function fake(overrides = {}) {
   const state = { reservations: 0, releases: 0, agents: 0, signal: null };
@@ -36,7 +36,7 @@ test('streams only public text, sources and validated current page; releases usa
   assert.equal(response.headers.get('content-type'), 'application/x-ndjson; charset=utf-8');
   assert.match(response.headers.get('cache-control'), /no-store/);
   const frames = (await response.text()).trim().split('\n').map(JSON.parse);
-  assert.deepEqual(frames[0], { type: 'meta', page: { path: '/market', label: 'Market' } });
+  assert.deepEqual(frames[0], { type: 'meta', page: { path: '/market', label: 'Market' }, mode: 'fast' });
   assert.ok(frames.some(frame => frame.text === 'SEC fundamentals.'));
   assert.equal(JSON.stringify(frames).includes('private reasoning'), false);
   assert.equal(frames.at(-1).type, 'done');
@@ -129,6 +129,38 @@ test('invalid requests and unavailable spend controls never reach a model', asyn
   assert.equal(response.status, 503); assert.equal(response.headers.get('retry-after'), '30'); assert.equal(second.state.agents, 0);
 });
 
+test('invalid modes and injected provider settings are rejected before spending or model access', async () => {
+  for (const mode of ['high', 'auto', null, { reasoningEffort: 'high' }]) {
+    const { state, dependencies } = fake();
+    const response = await handleChatPost(request(undefined, undefined, mode), dependencies);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).code, 'CHAT_INVALID_MODE');
+    assert.equal(state.reservations, 0); assert.equal(state.agents, 0);
+  }
+  for (const settings of [{ model: 'other/model' }, { maxOutputTokens: 100000 }, { providerOptions: { gateway: { only: ['other'] } } }]) {
+    const { state, dependencies } = fake();
+    const invalid = new Request(request(), { body: JSON.stringify({
+      messages: [{ role: 'user', content: 'Explain this page.' }], context: { path: '/market', query: '' }, mode: 'reasoning', ...settings,
+    }) });
+    const response = await handleChatPost(invalid, dependencies);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).code, 'CHAT_INVALID_REQUEST');
+    assert.equal(state.reservations, 0); assert.equal(state.agents, 0);
+  }
+});
+
+test('both modes honor unavailable usage controls and the shared budget before invoking a model', async () => {
+  for (const mode of ['fast', 'reasoning']) for (const code of ['CHAT_LIMITS_UNAVAILABLE', 'CHAT_BUDGET_EXHAUSTED']) {
+    const { state, dependencies } = fake({ reserve: async (_request, options) => {
+      assert.equal(options.reservedMicrodollars, CHAT_RESERVED_MICRODOLLARS);
+      return { allowed: false, code, status: 503, retryAfter: 30, release: async () => {} };
+    } });
+    const response = await handleChatPost(request(undefined, undefined, mode), dependencies);
+    assert.equal((await response.json()).code, code);
+    assert.equal(state.agents, 0);
+  }
+});
+
 test('provider failures preserve partial answer and hide sensitive SDK error bodies', async () => {
   const { state, dependencies } = fake({ agent: () => ({ stream: async () => ({ fullStream: chunks([
     { type: 'text-delta', text: 'Partial.' }, { type: 'error', error: new Error('SECRET_TOKEN full prompt body') },
@@ -165,22 +197,26 @@ test('token exhaustion and filtered finishes never mark a truncated answer compl
   }
 });
 
-test('browser cancellation aborts model and data work and releases its lease', async () => {
-  let stopped = false;
-  const { state, dependencies } = fake({ agent: () => ({ stream: async ({ abortSignal }) => ({ fullStream: (async function* () {
-    await new Promise(resolve => abortSignal.addEventListener('abort', () => { stopped = true; resolve(); }, { once: true }));
-    yield { type: 'abort' };
-  })() }) }) });
-  const response = await handleChatPost(request(), dependencies);
-  const reader = response.body.getReader(); await reader.read(); await reader.cancel();
-  assert.ok(stopped); assert.ok(state.signal.aborted); assert.ok(state.releases >= 1);
+test('browser cancellation aborts both modes and data work and releases each lease', async () => {
+  for (const mode of ['fast', 'reasoning']) {
+    let stopped = false;
+    const { state, dependencies } = fake({ agent: () => ({ stream: async ({ abortSignal }) => ({ fullStream: (async function* () {
+      await new Promise(resolve => abortSignal.addEventListener('abort', () => { stopped = true; resolve(); }, { once: true }));
+      yield { type: 'abort' };
+    })() }) }) });
+    const response = await handleChatPost(request(undefined, undefined, mode), dependencies);
+    const reader = response.body.getReader(); await reader.read(); await reader.cancel();
+    assert.ok(stopped); assert.ok(state.signal.aborted); assert.equal(state.releases, 1);
+  }
 });
 
 const endpoint = () => ({ data: { id: CHAT_MODEL, endpoints: [{ provider_name: 'mistral', status: 0, has_zdr: true, has_no_training: true,
   pricing: { prompt: '0.00000015', completion: '0.0000006', request: '0', image: '0', image_output: '0', web_search: '0', internal_reasoning: '0', input_cache_read: '0.000000015', discount: 0 } }] } });
 test('price guard accepts audited provider and rejects changed pricing, hidden extras and missing privacy terms', async () => {
   await verifyChatModelPrice({ fresh: true, fetchImpl: async url => { assert.match(url, /mistral\/mistral-small\/endpoints$/); return Response.json(endpoint()); } });
-  for (const alter of [p => { p.pricing.prompt = '0.00000016'; }, p => { p.pricing.request = '0.001'; }, p => { p.pricing.tiers = []; }, p => { delete p.pricing.completion; }, p => { p.has_zdr = false; }]) {
+  for (const alter of [p => { p.pricing.prompt = '0.00000016'; }, p => { p.pricing.completion = '0.00000061'; },
+    p => { p.pricing.request = '0.001'; }, p => { p.pricing.internal_reasoning = '0.00000001'; },
+    p => { p.pricing.tiers = []; }, p => { delete p.pricing.completion; }, p => { p.has_zdr = false; }, p => { p.has_no_training = false; }]) {
     const data = endpoint(); alter(data.data.endpoints[0]);
     await assert.rejects(verifyChatModelPrice({ fresh: true, fetchImpl: async () => Response.json(data) }), { code: 'CHAT_MODEL_UNAVAILABLE' });
   }
@@ -218,10 +254,11 @@ test('installed agent forwards the error handler without logging provider prompt
 
 const testUsage = { inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 20, text: 20, reasoning: 0 } };
 const textParts = text => [{ type: 'text-start', id: 'text' }, { type: 'text-delta', id: 'text', delta: text }, { type: 'text-end', id: 'text' }];
+const reasoningParts = text => [{ type: 'reasoning-start', id: 'thinking' }, { type: 'reasoning-delta', id: 'thinking', delta: text }, { type: 'reasoning-end', id: 'thinking' }];
 const modelStep = (parts, reason = 'stop') => ({ stream: chunks([{ type: 'stream-start', warnings: [] }, ...parts,
   { type: 'finish', finishReason: { unified: reason, raw: reason }, usage: testUsage }]) });
 const callPart = (toolName, id = 'lookup') => ({ type: 'tool-call', toolName, toolCallId: id, input: '{"identifier":"BOBS"}' });
-async function groundedRun({ steps, results = {}, messages = [{ role: 'user', content: 'Compare those quarterly figures with the prior quarter.' }], sources = [{ id: 'S1', title: 'SEC filing', url: 'https://www.sec.gov/Archives/edgar/data/100/filing.htm' }] }) {
+async function groundedRun({ steps, results = {}, mode, messages = [{ role: 'user', content: 'Compare those quarterly figures with the prior quarter.' }], sources = [{ id: 'S1', title: 'SEC filing', url: 'https://www.sec.gov/Archives/edgar/data/100/filing.htm' }] }) {
   const model = new MockLanguageModelV4({ doStream: steps });
   const calls = [];
   const research = { getSources: () => sources, tools: Object.fromEntries(Object.entries(results).map(([name, value]) => [name, {
@@ -231,10 +268,92 @@ async function groundedRun({ steps, results = {}, messages = [{ role: 'user', co
   const { dependencies, state } = fake({ research: () => research,
     agent: options => createChatAgent({ ...options, sdk: { ToolLoopAgent, gateway: () => model, isStepCount, jsonSchema, tool } }),
   });
-  const response = await handleChatPost(request(messages, { path: '/analysis/BOBS', query: 'basis=quarter' }), dependencies);
+  const response = await handleChatPost(request(messages, { path: '/analysis/BOBS', query: 'basis=quarter' }, mode), dependencies);
   const frames = (await response.text()).trim().split('\n').map(JSON.parse);
   return { frames, text: frames.filter(frame => frame.type === 'text').map(frame => frame.text).join(''), model, calls, state };
 }
+
+for (const mode of ['fast', 'reasoning']) {
+  test(`${mode} mode preserves internal SDK reasoning across tools while exposing only a grounded answer`, async t => {
+    const logs = [];
+    t.mock.method(console, 'info', (...args) => logs.push(args));
+    t.mock.method(console, 'warn', (...args) => logs.push(args));
+    const result = await groundedRun({ mode,
+      messages: [{ role: 'user', content: 'Summarize BOBS cash flow.' },
+        { role: 'assistant', content: 'Unverified earlier cash flow was $999 million.' },
+        { role: 'user', content: 'Compare those quarterly figures with the prior quarter.' }],
+      results: { search_entities: { status: 'ready', identity: { id: 'BOBS' } },
+        company_financials: { status: 'ready', current: 64.293, prior: 28.853, sourceIds: ['S1'] } },
+      steps: [
+        modelStep([...reasoningParts('PRIVATE_IDENTITY_DELIBERATION'), ...textParts('Unsupported preamble 999.'), callPart('search_entities', 'identify')], 'tool-calls'),
+        modelStep([...reasoningParts('PRIVATE_LOOKUP_DELIBERATION'), callPart('company_financials', 'financials')], 'tool-calls'),
+        modelStep([...reasoningParts('PRIVATE_COMPARISON_DELIBERATION'), ...textParts('Quarterly operating cash flow was $64.293 million versus $28.853 million [S1].')]),
+      ],
+    });
+    assert.deepEqual(result.calls, ['search_entities', 'company_financials']);
+    assert.equal(result.model.doStreamCalls.length, 3);
+    assert.deepEqual(result.model.doStreamCalls.map(call => call.toolChoice), [{ type: 'required' }, { type: 'required' }, { type: 'none' }]);
+    for (const call of result.model.doStreamCalls) {
+      assert.equal(call.maxOutputTokens, mode === 'reasoning' ? 4000 : 1800);
+      assert.deepEqual(call.providerOptions.gateway, { only: ['mistral'], zeroDataRetention: true, disallowPromptTraining: true });
+      assert.deepEqual(call.providerOptions.mistral, { reasoningEffort: mode === 'reasoning' ? 'high' : 'none', parallelToolCalls: false });
+    }
+    assert.doesNotMatch(JSON.stringify(result.model.doStreamCalls[0].prompt), /999/);
+    assert.match(JSON.stringify(result.model.doStreamCalls[1].prompt), /PRIVATE_IDENTITY_DELIBERATION/);
+    assert.match(JSON.stringify(result.model.doStreamCalls[2].prompt), /PRIVATE_LOOKUP_DELIBERATION/);
+    assert.match(JSON.stringify(result.model.doStreamCalls[2].prompt), /28\.853/);
+    assert.equal(result.frames[0].mode, mode);
+    assert.ok(result.frames.some(frame => frame.type === 'status' && frame.message === 'Thinking through your question…'));
+    assert.ok(result.frames.some(frame => frame.type === 'status' && frame.message === 'Thinking through the evidence…'));
+    assert.doesNotMatch(JSON.stringify(result.frames), /PRIVATE_|999|Unsupported preamble/);
+    assert.doesNotMatch(JSON.stringify(logs), /PRIVATE_|999/);
+    assert.ok(result.frames.every(frame => ['meta', 'status', 'text', 'sources', 'done'].includes(frame.type)));
+    assert.match(result.text, /64\.293.*28\.853.*\[S1\]/);
+    assert.equal(result.frames.at(-1).type, 'done');
+    assert.equal(result.state.reservations, 1); assert.equal(result.state.releases, 1);
+    // Evaluate the actual three-step output settings against the guarded
+    // per-token prices and full prompt allowance, including provider overhead.
+    const maximumMicrodollars = result.model.doStreamCalls.reduce((sum, call) =>
+      sum + (CHAT_MAX_PROMPT_BYTES + 4096) * 0.15 + call.maxOutputTokens * 0.6, 0);
+    assert.ok(maximumMicrodollars < CHAT_RESERVED_MICRODOLLARS);
+  });
+
+  test(`${mode} mode cannot substitute reasoning or uncited tool results for financial evidence`, async () => {
+    for (const output of [{ status: 'unavailable', reason: 'PRIVATE_PROVIDER 999' }, { status: 'ready', sourceIds: ['UNREGISTERED'], revenue: 999 }]) {
+      const result = await groundedRun({ mode, results: { company_financials: output }, steps: [
+        modelStep([...reasoningParts('PRIVATE_REASONING 999'), ...textParts('Invented revenue 999.'), callPart('company_financials')], 'tool-calls'),
+      ] });
+      assert.equal(result.model.doStreamCalls.length, 1);
+      assert.match(result.text, /could not retrieve verified source data/);
+      assert.doesNotMatch(JSON.stringify(result.frames), /PRIVATE_|999|Invented/);
+      assert.equal(result.frames.at(-1).type, 'done');
+      assert.equal(result.state.releases, 1);
+    }
+  });
+
+  test(`${mode} mode never releases a grounded answer truncated by its completion budget`, async () => {
+    const result = await groundedRun({ mode, results: { company_financials: { status: 'ready', revenue: 42, sourceIds: ['S1'] } }, steps: [
+      modelStep([callPart('company_financials')], 'tool-calls'),
+      modelStep([...reasoningParts('PRIVATE_UNFINISHED_REASONING'), ...textParts('Incomplete interpretation [S1].')], 'length'),
+    ] });
+    assert.equal(result.text, '');
+    assert.equal(result.frames.at(-1).type, 'error');
+    assert.equal(result.frames.at(-1).code, 'CHAT_ANSWER_LIMIT');
+    if (mode === 'reasoning') assert.match(result.frames.at(-1).message, /Reasoning reached its limit.*switch to Fast/);
+    assert.doesNotMatch(JSON.stringify(result.frames), /PRIVATE_|Incomplete interpretation/);
+    assert.equal(result.state.releases, 1);
+  });
+}
+
+test('reasoning kept inside the SDK still counts against the next-step prompt bound', async () => {
+  const result = await groundedRun({ mode: 'reasoning', results: { company_financials: { status: 'ready', revenue: 42, sourceIds: ['S1'] } }, steps: [
+    modelStep([...reasoningParts('x'.repeat(CHAT_MAX_PROMPT_BYTES)), callPart('company_financials')], 'tool-calls'),
+  ] });
+  assert.equal(result.model.doStreamCalls.length, 1);
+  assert.equal(result.frames.at(-1).code, 'CHAT_CONTEXT_LIMIT');
+  assert.equal(result.text, '');
+  assert.equal(result.state.releases, 1);
+});
 
 test('lookup-free exceptions match only whole generic questions, never quantitative or appended follow-ups', () => {
   for (const question of ['Explain this page.', 'Explain what this page shows.', 'How do I use EDGAR Terminal?', 'What is free cash flow?', 'Define current ratio.', 'Hi', 'Hello!', 'Thanks.', 'Thank you', 'What can you help me with?']) {

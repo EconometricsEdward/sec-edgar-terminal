@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowUp, BookOpen, MessageSquare, Plus, Square, X } from "lucide-react";
 import { getChatStarters, normalizeChatContext } from "../../utils/chatContext.js";
-import ChatMessage, { type ChatMessageData } from "./ChatMessage";
+import ChatMessage, { type ChatMessageData, type ChatMode } from "./ChatMessage";
 import { buildChatMessages, CHAT_ANSWER_LIMIT, CHAT_HISTORY_LIMIT, CHAT_USER_LIMIT, chatRetrySeconds, cleanChatSources, readChatStream } from "./chatClient.js";
 import styles from "./Chat.module.css";
 
@@ -20,6 +20,7 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
   const pageEntity = context.company || context.fund || context.managerCik;
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [draft, setDraft] = useState("");
+  const [mode, setMode] = useState<ChatMode>("fast");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [retryUntil, setRetryUntil] = useState(0);
@@ -107,13 +108,14 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
     if (!content || active.current || Date.now() < retryUntil) return;
     // Read the URL at send time, including client-side navigation since opening.
     const current = normalizeChatContext({ path: window.location.pathname, query: window.location.search });
+    const requestMode = mode;
     const userMessage: ChatMessageData = { id: crypto.randomUUID(), role: "user", content };
     const answerId = crypto.randomUUID();
     const conversation = [...previous, userMessage];
     const request: ActiveRequest = { id: answerId, controller: new AbortController(), content: "", frame: null };
     active.current = request;
     keepAtBottom.current = true;
-    updateMessages(() => [...conversation, { id: answerId, role: "assistant", content: "", page: current.label, state: "streaming" }]);
+    updateMessages(() => [...conversation, { id: answerId, role: "assistant", content: "", page: current.label, mode: requestMode, state: "streaming" }]);
     setDraft("");
     setBusy(true);
     setStatus("Connecting to EDGAR Terminal…");
@@ -129,7 +131,7 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
-        body: JSON.stringify({ messages: buildChatMessages(conversation), context: { path: current.path, query: current.query } }),
+        body: JSON.stringify({ messages: buildChatMessages(conversation), context: { path: current.path, query: current.query }, mode: requestMode }),
         signal: request.controller.signal,
       });
       if (!response.ok) {
@@ -142,7 +144,10 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
       await readChatStream(response.body, frame => {
         if (active.current !== request) return;
         if (frame.type === "status") setStatus(typeof frame.message === "string" ? frame.message.slice(0, 180) : "Reading the available data…");
-        if (frame.type === "meta" && typeof frame.page?.label === "string") patchAnswer({ page: frame.page.label.slice(0, 100) });
+        if (frame.type === "meta") {
+          if (typeof frame.page?.label === "string") patchAnswer({ page: frame.page.label.slice(0, 100) });
+          if (frame.mode === "fast" || frame.mode === "reasoning") patchAnswer({ mode: frame.mode });
+        }
         if (frame.type === "sources") patchAnswer({ sources: cleanChatSources(frame.sources) });
         if (frame.type === "text") {
           if (request.content.length + frame.text.length > CHAT_ANSWER_LIMIT) throw new Error("The answer reached its length limit. Ask a more focused follow-up question.");
@@ -248,6 +253,18 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
           {!busy && latest?.state === "error" ? <button type="button" className={styles.retry} disabled={cooldown > 0} onClick={retry}>Try this question again</button> : null}
         </div>
         <form className={styles.composer} onSubmit={event => { event.preventDefault(); void send(draft); }}>
+          <div className={styles.modeControls}>
+            <fieldset className={styles.modeChoice} aria-describedby="edgar-chat-mode-help" disabled={busy}>
+              <legend className={styles.visuallyHidden}>Answer mode</legend>
+              {(["fast", "reasoning"] as const).map(value => (
+                <label key={value} className={styles.modeOption}>
+                  <input className={styles.visuallyHidden} type="radio" name="edgar-chat-mode" value={value} checked={mode === value} disabled={busy} onChange={() => setMode(value)} />
+                  <span>{value === "reasoning" ? "Reasoning" : "Fast"}</span>
+                </label>
+              ))}
+            </fieldset>
+            <p id="edgar-chat-mode-help" className={styles.modeHelp}>{mode === "reasoning" ? "Takes longer; useful for comparisons and analysis." : "Quick answers from the available data."}</p>
+          </div>
           <div className={styles.inputBox}>
             <label htmlFor="edgar-chat-question" className={styles.visuallyHidden}>Ask EDGAR Terminal</label>
             <textarea id="edgar-chat-question" ref={inputRef} value={draft} rows={3} maxLength={CHAT_USER_LIMIT} placeholder={`Ask about ${pageEntity || context.label.toLowerCase()}…`} onChange={event => setDraft(event.target.value)} onKeyDown={event => {
