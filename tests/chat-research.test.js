@@ -215,3 +215,26 @@ test('annual financial values retain per-metric filing dates when a later quarte
   assert.equal(result.period.asOf, '2025-12-31'); assert.equal(result.period.latestSourceFilingDate, '2026-08-06');
   assert.equal(Object.hasOwn(result.period, 'filingDate'), false); assert.match(result.filingDateNote, /not the filing date of every metric/);
 });
+
+test('only exact report-builder 422 coverage failures identify an unavailable basis without automatically switching', async () => {
+  const known = [
+    'No supported reporting periods are available for this company and basis.',
+    'No supported SEC financial values could be verified for this company and reporting basis. Try another basis or inspect the original company filings.',
+  ];
+  for (const message of known) {
+    const calls = [];
+    const api = research({ company: async selection => { calls.push(selection); throw Object.assign(new Error(message), { status: 422 }); } });
+    const result = await api.tools.company_financials.execute({ identifier: 'EXAMPLE', basis: 'annual' });
+    assert.equal(result.status, 'unavailable'); assert.equal(result.code, 'SOURCE_BASIS_UNAVAILABLE');
+    assert.equal(result.stage, 'company'); assert.equal(result.requestedBasis, 'annual'); assert.equal(result.suggestedBasis, 'quarter');
+    assert.equal(result.suggestedBasisAvailable, null); assert.equal(Object.hasOwn(result, 'httpStatus'), false);
+    assert.match(result.reason, /another basis has not been checked/); assert.doesNotMatch(result.reason, /temporarily unavailable/);
+    assert.deepEqual(calls, [{ id: 'EXAMPLE', basis: 'annual' }]);
+  }
+  for (const error of [Object.assign(new Error('private arbitrary provider failure'), { status: 422 }),
+    Object.assign(new Error(known[0]), { status: 500 })]) {
+    const result = await research({ company: async () => { throw error; } }).tools.company_financials.execute({ identifier: 'EXAMPLE', basis: 'quarter' });
+    assert.notEqual(result.code, 'SOURCE_BASIS_UNAVAILABLE'); assert.equal(Object.hasOwn(result, 'suggestedBasis'), false);
+    assert.doesNotMatch(JSON.stringify(result), /private arbitrary/);
+  }
+});

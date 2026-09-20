@@ -11,7 +11,7 @@ export const CHAT_RESERVED_MICRODOLLARS = 40000;
 export const CHAT_MAX_PROMPT_BYTES = 65536;
 const MAX_OUTPUT_TOKENS = 1800;
 const MAX_STEPS = 3;
-const RESEARCH_CODES = new Set(['TOOL_INVALID_INPUT', 'TOOL_CALL_LIMIT', 'RESEARCH_TIMEOUT', 'REQUEST_CANCELLED', 'SOURCE_HTTP_ERROR', 'SOURCE_NETWORK_ERROR', 'SOURCE_RESPONSE_INVALID', 'SOURCE_RESPONSE_TOO_LARGE', 'SOURCE_IDENTITY_MISMATCH', 'RESEARCH_DATA_INVALID', 'SOURCE_UNAVAILABLE']);
+const RESEARCH_CODES = new Set(['TOOL_INVALID_INPUT', 'TOOL_CALL_LIMIT', 'RESEARCH_TIMEOUT', 'REQUEST_CANCELLED', 'SOURCE_HTTP_ERROR', 'SOURCE_NETWORK_ERROR', 'SOURCE_RESPONSE_INVALID', 'SOURCE_RESPONSE_TOO_LARGE', 'SOURCE_IDENTITY_MISMATCH', 'SOURCE_BASIS_UNAVAILABLE', 'RESEARCH_DATA_INVALID', 'SOURCE_UNAVAILABLE']);
 const HEADERS = { 'Cache-Control': 'private, no-store, max-age=0', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' };
 let priceCheckedAt = 0, priceCheck;
 
@@ -135,12 +135,21 @@ export async function handleChatPost(request, dependencies = {}) {
     research: createChatResearch, agent: createChatAgent, ...dependencies };
   const controller = new AbortController();
   const signal = AbortSignal.any([request.signal, controller.signal, AbortSignal.timeout(85000)]);
-  let lease;
+  let lease, releasePromise;
+  const releaseLease = () => releasePromise ||= Promise.resolve().then(() => lease?.release()).catch(() => {
+    // The production limiter already handles transport failures. Keep this
+    // final lifecycle boundary safe without exposing an unexpected error body.
+    console.warn('edgar_chat_release_failed');
+  });
   try {
     const { messages, context } = await deps.readRequest(request);
     if (process.env.CHAT_ENABLED === 'false') throw safeError('Chat is temporarily unavailable.', 'CHAT_DISABLED');
     lease = await deps.reserve(request, { reservedMicrodollars: CHAT_RESERVED_MICRODOLLARS, signal });
     if (!lease.allowed) throw limitError(lease);
+    // Next after() keeps the invocation alive if the browser disconnects before
+    // the stream's normal cleanup finishes. Completion and cancellation share
+    // one release promise, so this never sends a duplicate Redis command.
+    deps.after?.(async () => { controller.abort(); await releaseLease(); });
     await deps.verifyPrice();
     signal.throwIfAborted();
     const encoder = new TextEncoder();
@@ -154,7 +163,7 @@ export async function handleChatPost(request, dependencies = {}) {
         // The returned promise is intentionally owned by start(): completion,
         // cancellation and errors all release the same expiring lease.
         return (async () => {
-          let emitted = 0, succeeded = false, separateStep = false;
+          let emitted = 0, succeeded = false, separateStep = false, terminal;
           try {
             send({ type: 'status', message: 'Preparing your answer…' });
             const result = await deps.agent({ context, research }).stream({ messages, abortSignal: signal });
@@ -177,27 +186,35 @@ export async function handleChatPost(request, dependencies = {}) {
               }
             }
             if (!succeeded || !emitted) throw safeError('An answer could not be completed. Please try a narrower question.', 'CHAT_INCOMPLETE');
-            send({ type: 'sources', sources: research.getSources() }); send({ type: 'done' });
+            send({ type: 'sources', sources: research.getSources() });
+            terminal = { type: 'done' };
           } catch (error) {
             if (!signal.aborted) console.warn('edgar_chat_failure', { status: Number.isInteger(error?.statusCode) ? error.statusCode : 0 });
             const code = error?.safeMessage ? error.code : 'CHAT_UNAVAILABLE';
             // Never return SDK exception bodies: they can contain prompts,
             // provider details or internal request metadata.
             const message = error?.safeMessage || 'The model could not finish this answer. Please try again later.';
-            if (!closed) {
-              try { stream.enqueue(encoder.encode(`${JSON.stringify({ type: 'error', code, message: signal.aborted ? 'The answer timed out or was stopped. Please try again.' : message, retryAfter: 30 })}\n`)); } catch { /* disconnected */ }
-            }
+            terminal = { type: 'error', code, message: signal.aborted ? 'The answer timed out or was stopped. Please try again.' : message, retryAfter: 30 };
           } finally {
             controller.abort();
-            if (!closed) { closed = true; try { stream.close(); } catch { /* disconnected */ } }
-            await lease.release();
+            // A terminal frame makes the browser enable its composer and cancel
+            // the response reader. Finish cleanup before that frame or EOF so
+            // Vercel cannot freeze an unawaited release behind a closed response.
+            await releaseLease();
+            if (!closed) {
+              try {
+                if (terminal) stream.enqueue(encoder.encode(`${JSON.stringify(terminal)}\n`));
+                stream.close();
+              } catch { /* disconnected */ }
+              closed = true;
+            }
           }
         })();
       },
-      cancel() { closed = true; controller.abort(); return lease.release(); },
+      cancel() { closed = true; controller.abort(); return releaseLease(); },
     });
     return new Response(body, { headers: { ...HEADERS, 'Content-Type': 'application/x-ndjson; charset=utf-8' } });
   } catch (error) {
-    controller.abort(); await lease?.release(); return jsonError(error);
+    controller.abort(); await releaseLease(); return jsonError(error);
   }
 }
