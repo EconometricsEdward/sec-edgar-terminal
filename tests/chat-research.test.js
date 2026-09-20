@@ -36,7 +36,9 @@ test('company financials preserve periods, source mapping, stale coverage, fract
   } });
   const result = await api.tools.company_financials.execute({ identifier: 'EXAMPLE', basis: 'annual' });
   assert.equal(result.status, 'ready');
-  assert.equal(result.period.filingDate, '2026-02-01');
+  assert.equal(result.period.latestSourceFilingDate, '2026-02-01');
+  assert.equal(Object.hasOwn(result.period, 'filingDate'), false);
+  assert.deepEqual(result.sourceMetadata.S1, { form: '10-K', filed: '2026-02-01' });
   assert.deepEqual(result.periods, ['2025-12-31', '2024-12-31', '2023-12-31']);
   assert.deepEqual(result.metrics.find(metric => metric.key === 'revenue').values, [300, 200, 0]);
   assert.deepEqual(result.metrics.find(metric => metric.key === 'netIncome').values, [300, null, 0]);
@@ -198,4 +200,18 @@ test('preview name lookup uses the bounded existing public report search route f
     assert.equal(url.searchParams.get('q'), 'Independent Entity'); assert.equal(url.searchParams.has('query'), false);
     assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'error'); assert.ok(options.signal);
   }
+});
+
+test('annual financial values retain per-metric filing dates when a later quarterly filing supplies comparative balances', async () => {
+  const report = companyReport();
+  report.period.filingDate = '2026-08-06';
+  report.sources.push({ id: 'quarterly', url: 'https://www.sec.gov/Archives/edgar/data/1/000000000126000002/quarterly.htm', form: '10-Q', filed: '2026-08-06', periodEnd: '2025-12-31' });
+  report.sections[0].rows.filter(row => row.key === 'stockholdersEquity').forEach(row => { row.sourceIds = ['quarterly']; });
+  const result = await research({ company: async () => report }).tools.company_financials.execute({ identifier: 'EXAMPLE', basis: 'annual' });
+  const incomeSource = result.metrics.find(metric => metric.key === 'netIncome').sourceIds[0][0];
+  const equitySource = result.metrics.find(metric => metric.key === 'stockholdersEquity').sourceIds[0][0];
+  assert.deepEqual(result.sourceMetadata[incomeSource], { form: '10-K', filed: '2026-02-01' });
+  assert.deepEqual(result.sourceMetadata[equitySource], { form: '10-Q', filed: '2026-08-06' });
+  assert.equal(result.period.asOf, '2025-12-31'); assert.equal(result.period.latestSourceFilingDate, '2026-08-06');
+  assert.equal(Object.hasOwn(result.period, 'filingDate'), false); assert.match(result.filingDateNote, /not the filing date of every metric/);
 });

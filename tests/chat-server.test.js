@@ -58,6 +58,19 @@ test('empty or disconnected model stream is not reported as a completed answer',
   assert.match(text, /CHAT_INCOMPLETE/); assert.doesNotMatch(text, /"type":"done"/);
 });
 
+test('model steps remain readable without emitting beyond the answer bound', async () => {
+  for (const first of ['Initial thought.', 'A'.repeat(7999)]) {
+    const { dependencies } = fake({ agent: () => ({ stream: async () => ({ fullStream: chunks([
+      { type: 'start-step' }, { type: 'text-delta', text: first }, { type: 'start-step' },
+      { type: 'text-delta', text: 'Verified answer.' }, { type: 'finish', finishReason: 'stop' },
+    ]) }) }) });
+    const frames = (await (await handleChatPost(request(), dependencies)).text()).trim().split('\n').map(JSON.parse);
+    const emitted = frames.filter(frame => frame.type === 'text').map(frame => frame.text).join('');
+    if (first.length < 100) { assert.equal(emitted, `${first}\n\nVerified answer.`); assert.equal(frames.at(-1).type, 'done'); }
+    else { assert.equal(emitted, first); assert.equal(frames.at(-1).code, 'CHAT_ANSWER_LIMIT'); }
+  }
+});
+
 test('token exhaustion and filtered finishes never mark a truncated answer complete', async () => {
   for (const finishReason of ['length', 'content-filter', 'tool-calls', 'error']) {
     const { dependencies } = fake({ agent: () => ({ stream: async () => ({ fullStream: chunks([{ type: 'text-delta', text: 'Partial' }, { type: 'finish', finishReason }]) }) }) });

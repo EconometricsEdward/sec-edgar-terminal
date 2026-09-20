@@ -21,6 +21,24 @@ const RESEARCH_STAGES = new Set(['search', 'company', 'fund', 'market', 'cftc', 
 const stringSchema = (description, maxLength = 160) => ({ type: 'string', minLength: 1, maxLength, description });
 const enumeration = values => ({ type: 'string', enum: values });
 const schema = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
+const sourcePeriod = ({ filingDate, ...period }) => ({ ...period, latestSourceFilingDate: filingDate || null });
+const FILING_DATE_NOTE = 'latestSourceFilingDate is the latest filing among the supporting inputs, not the filing date of every metric or of an annual report. Use each metric’s sourceIds and sourceMetadata for its actual form and filing date. Later quarterly filings can supply comparative annual balances.';
+
+function usedSourceMetadata(value) {
+  if (!value.sourceMetadata) return value;
+  const used = new Set();
+  const visit = input => {
+    if (!input || typeof input !== 'object') return;
+    if (Array.isArray(input)) { input.forEach(visit); return; }
+    for (const [key, content] of Object.entries(input)) {
+      if (key === 'sourceMetadata') continue;
+      if (key === 'sourceIds' && Array.isArray(content)) content.flat(2).forEach(id => used.add(id));
+      else visit(content);
+    }
+  };
+  visit(value);
+  return { ...value, sourceMetadata: Object.fromEntries(Object.entries(value.sourceMetadata).filter(([id]) => used.has(id))) };
+}
 
 /** No source URL is accepted from model arguments. URLs returned by existing
  * readers still pass this narrow public citation allowlist before publication. */
@@ -151,12 +169,18 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
     sourceUrls.set(url, id); onSources(sources.map(source => ({ ...source }))); return id;
   }
   function reportSources(report) {
-    const map = new Map();
+    const map = new Map(), metadata = {};
     for (const source of report.sources || []) {
       const id = addSource(`${report.entity.name} · ${source.form || 'SEC filing'}${source.filed ? ` · filed ${source.filed}` : ''}`, source.url, source.periodEnd);
-      if (id) map.set(source.id, id);
+      if (id) {
+        map.set(source.id, id);
+        // A single filed document can contain many comparative financial
+        // periods. Preserve its filing identity without labeling those periods
+        // as the document's own annual reporting period.
+        metadata[id] ||= { form: txt(source.form, 20) || null, filed: /^\d{4}-\d{2}-\d{2}$/.test(source.filed || '') ? source.filed : null };
+      }
     }
-    return ids => [...new Set((ids || []).map(id => map.get(id)).filter(Boolean))];
+    return { metadata, ids: ids => [...new Set((ids || []).map(id => map.get(id)).filter(Boolean))] };
   }
   function rememberCompany(identity) {
     const cik = cikOf(identity.cik);
@@ -188,14 +212,14 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
     // Leave space for a final explicit budget message even if four tools finish
     // concurrently or return the same deduplicated lookup more than once.
     const remaining = Math.max(0, MAX_TOTAL - returnedBytes), cap = Math.min(MAX_RESULT, Math.max(0, remaining - 250));
-    let value = result;
+    let value = usedSourceMetadata(result);
     // Trim complete optional rows, never individual financial points or passage
     // text. Truncation is explicit; a lost row can never become a zero value.
     const arrays = ['contracts', 'metrics', 'sectors', 'passages', 'industries', 'topPositions', 'allocations', 'choices'];
     while (bytes(value) > cap && arrays.some(key => Array.isArray(value[key]) && value[key].length)) {
       const key = arrays.filter(key => Array.isArray(value[key]) && value[key].length)
         .sort((a, b) => bytes(value[b]) - bytes(value[a]))[0];
-      value = { ...value, [key]: value[key].slice(0, -1), truncated: true, truncationNote: 'Some complete rows are omitted from this bounded chat summary. Open the linked research page for detail.' };
+      value = usedSourceMetadata({ ...value, [key]: value[key].slice(0, -1), truncated: true, truncationNote: 'Some complete rows are omitted from this bounded chat summary. Open the linked research page for detail.' });
     }
     if (bytes(value) > cap) value = unavailable('The research summary exceeded this message’s data budget. Ask a narrower follow-up.');
     returnedBytes += bytes(value);
@@ -239,7 +263,7 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
         const identity = rememberCompany(resolved.identity);
         const report = await read(`company:${identity.id}:${basis}`, s => deps.company({ id: identity.id, basis }, s));
         if (report.kind !== 'company' || cikOf(report.entity?.cik) !== identity.cik || report.period?.basis !== basis) throw fail('The financial source did not match the requested SEC company and reporting basis.');
-        const sourceIds = reportSources(report);
+        const { ids: sourceIds, metadata: sourceMetadata } = reportSources(report);
         const observations = report.sections?.find(section => section.id === 'observations')?.rows || [];
         const periods = [...new Set(observations.filter(row => row.basis === basis && /^\d{4}-\d{2}-\d{2}$/.test(row.period)).map(row => row.period))].sort().reverse().slice(0, 5);
         const metrics = FINANCIAL_KEYS.flatMap(key => {
@@ -258,7 +282,7 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
         });
         const pageUrl = /^\d+$/.test(identity.id) ? `${ORIGIN}/filings/${identity.cik}` : `${ORIGIN}/analysis/${encodeURIComponent(identity.id)}?basis=${basis}`;
         const page = addSource(`${report.entity.name} · ${/^\d+$/.test(identity.id) ? 'SEC filings' : 'Analysis'}`, pageUrl, report.period.asOf);
-        return { status: 'ready', entity: report.entity, basis, period: report.period, coverage: report.coverage, periods, metrics,
+        return { status: 'ready', entity: report.entity, basis, period: sourcePeriod(report.period), filingDateNote: FILING_DATE_NOTE, coverage: report.coverage, periods, metrics, sourceMetadata,
           units: 'Each metric’s values, status, sourceIds and startDates arrays follow periods in the same order. USD is whole dollars; percent values are fractions (0.125 = 12.5%). Balance sheet amounts are period-end; flows cover their labeled durations.',
           notes: (report.notes || []).filter(note => !/Excel|PDF/.test(note)).map(note => txt(note, 600)), sourceIds: page ? [page] : [], warning: resolved.warning };
       }),
@@ -305,8 +329,9 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
         const { identity } = resolved;
         const report = await read(`fund:${kind}:${identity.id}`, s => deps.fund({ id: identity.id, kind }, s));
         if (report.kind !== kind || cikOf(report.entity?.cik) !== identity.cik || report.entity?.id !== identity.id) throw fail('The portfolio source did not match the selected fund or manager.');
-        const ids = reportSources(report);
-        return { status: 'ready', kind, entity: report.entity, period: report.period, coverage: report.coverage,
+        const { ids, metadata: sourceMetadata } = reportSources(report);
+        return { status: 'ready', kind, entity: report.entity, period: sourcePeriod(report.period), sourceMetadata,
+          filingDateNote: 'latestSourceFilingDate is the most recent supporting filing date, including amendments. It differs from the portfolio date. See sourceMetadata for each filing’s form and filed date.', coverage: report.coverage,
           summary: (report.summary || []).map(row => ({ ...row, sourceIds: ids(row.sourceIds) })),
           topPositions: (report.sections.find(section => section.id === 'top-positions')?.rows || []).slice(0, 10),
           allocations: report.sections.filter(section => ['asset-allocation', 'position-mix'].includes(section.id)).map(section => ({ title: section.title, rows: section.rows.slice(0, 8), note: section.footnote })),

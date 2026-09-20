@@ -101,7 +101,7 @@ export function normalizeChatContext(input = {}) {
     path, query: clean.toString(), label, section,
     company: entity?.kind === 'company' || section !== 'fund' && entity?.kind === 'filer' ? entity.ticker : '',
     fund: entity?.kind === 'fund' ? entity.ticker : '',
-    managerCik, basis: clean.get('basis') || '', view: directManager ? '13f' : clean.get('view') || '', sector,
+    managerCik, basis: clean.get('basis') || (section === 'market' ? 'ttm' : section === 'analysis' ? 'annual' : ''), view: directManager ? '13f' : clean.get('view') || '', sector,
     tab: clean.get('tab') || '', end: clean.get('end') || '', asOf: clean.get('asOf') || '',
     managerPeriod: clean.get('managerPeriod') || clean.get('period') || '', managerView: clean.get('managerView') || '',
     accession: clean.get('accession') || '', family: clean.get('family') || '', date: clean.get('date') || '',

@@ -12,6 +12,8 @@ test('chat identifies the current public route independently of stale client lab
   const market = normalizeChatContext({ path: '/market', query: '', company: 'AAPL' });
   assert.equal(market.company, '');
   assert.equal(market.section, 'market');
+  assert.equal(market.basis, 'ttm');
+  assert.equal(normalizeChatContext({ path: '/analysis/MSFT', query: '' }).basis, 'annual');
 });
 
 test('fund portfolios and 13F manager identities never become company context', () => {
