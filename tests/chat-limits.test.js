@@ -43,7 +43,7 @@ test('one atomic shared reservation applies conservative caps, fixed UTC expirie
   assert.deepEqual(args.slice(0, 9), [
     Date.parse('2026-09-20T12:34:00Z'), Date.parse('2026-09-20T00:00:00Z'), Date.parse('2026-09-01T00:00:00Z'),
     Date.parse('2026-09-20T12:35:00Z'), Date.parse('2026-09-21T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'),
-    1000, 500000, 5000000,
+    1000, 1000000, 5000000,
   ]);
   assert.match(args[9], /^[a-f0-9-]{36}$/);
   assert.deepEqual(args.slice(10), [120000, 5, 30, 1000]);
@@ -92,7 +92,7 @@ test('budget configuration can only decrease the hard ceiling, including zero to
   await valid.reserve();
   assert.deepEqual(valid.calls[0].command.slice(17, 19), [0, 25000]);
   for (const [name, values] of [
-    ['CHAT_DAILY_BUDGET_MICRODOLLARS', ['500001', '-1', 'Infinity', 'NaN', '1e3', '12.5', '', ' 10', 100]],
+    ['CHAT_DAILY_BUDGET_MICRODOLLARS', ['1000001', '-1', 'Infinity', 'NaN', '1e3', '12.5', '', ' 10', 100]],
     ['CHAT_MONTHLY_BUDGET_MICRODOLLARS', ['5000001', '9007199254740992']],
   ]) for (const value of values) {
     const { reserve, calls } = setup({ env: { ...ENV, [name]: value } });
@@ -105,7 +105,7 @@ test('budget configuration can only decrease the hard ceiling, including zero to
 
 test('invalid provider cost never reaches storage', async () => {
   const { reserve, calls } = setup();
-  for (const reservedMicrodollars of [undefined, null, 0, -1, 1.5, '1000', NaN, Infinity, 500001, Number.MAX_SAFE_INTEGER]) {
+  for (const reservedMicrodollars of [undefined, null, 0, -1, 1.5, '1000', NaN, Infinity, 1000001, Number.MAX_SAFE_INTEGER]) {
     await assert.rejects(reserve(request(), { reservedMicrodollars }), /chat_invalid_reservation/);
   }
   assert.equal(calls.length, 0);
@@ -227,7 +227,7 @@ end
 KEYS = ${lua(payload.slice(3, 10))}
 ARGV = ${lua(payload.slice(10))}
 local reserve = assert(load(${lua(payload[1])}))
-local function clear() db = {}; now = ${NOW}; ARGV[7] = 1000; ARGV[8] = 500000; ARGV[9] = 5000000 end
+local function clear() db = {}; now = ${NOW}; ARGV[7] = 1000; ARGV[8] = 1000000; ARGV[9] = 5000000 end
 local function count(key) return item(key) and item(key).value or 0 end
 local function release() redis.call('ZREM', KEYS[6], ARGV[10]); redis.call('ZREM', KEYS[7], ARGV[10]) end
 local function preset(index, value) db[KEYS[index]] = {kind = 'string', value = value, expires = ARGV[index == 1 and 4 or index == 5 and 6 or 5]} end
@@ -240,10 +240,10 @@ assert(reserve()[2] == 1, 'Five accepted requests per minute')
 assert(count(KEYS[4]) == 5000)
 clear(); preset(2, 30); assert(reserve()[2] == 2); assert(not item(KEYS[4]))
 clear(); preset(3, 1000); assert(reserve()[2] == 3); assert(not item(KEYS[4]))
-clear(); preset(4, 499001); assert(reserve()[2] == 4); assert(not item(KEYS[1]))
+clear(); preset(4, 999001); assert(reserve()[2] == 4); assert(not item(KEYS[1]))
 clear(); preset(5, 4999001); assert(reserve()[2] == 5); assert(not item(KEYS[1]))
 clear(); ARGV[8] = 0; assert(reserve()[2] == 4)
-clear(); preset(4, 499000); assert(reserve()[1] == 1); assert(count(KEYS[4]) == 500000)
+clear(); preset(4, 999000); assert(reserve()[1] == 1); assert(count(KEYS[4]) == 1000000)
 assert(db[KEYS[1]].expires == ARGV[4]); assert(db[KEYS[2]].expires == ARGV[5]); assert(db[KEYS[5]].expires == ARGV[6])
 clear(); for n = 1, 4 do redis.call('ZADD', KEYS[7], now + 120000, 'other-' .. n) end
 assert(reserve()[2] == 6, 'Four global concurrent leases'); assert(not item(KEYS[1]))

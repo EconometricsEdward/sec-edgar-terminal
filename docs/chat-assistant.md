@@ -28,8 +28,8 @@ The assistant distinguishes sector business fundamentals from price returns, agg
 
 - Five requests/minute and 30/day per client IP; one active request per IP.
 - Four active requests and 1,000 requests/day globally. Successful/error completion releases the shared concurrency lease before publishing its terminal frame. Next.js `after` also retains cancellation cleanup after a browser disconnect; all completion paths await the same idempotent release promise.
-- Shared production/preview reservation caps: $0.50 per UTC day and $5 per UTC month.
-- Each accepted turn conservatively reserves $0.04, with no refund. This allows at most 12 accepted turns/day and 125/month under the initial shared beta budget, even though actual model usage is usually much lower. Failed or cancelled requests also consume reservations.
+- Shared production/preview reservation caps: $1 per UTC day and $5 per UTC month.
+- Each accepted turn conservatively reserves $0.04, with no refund. This allows at most 25 accepted turns/day and 125/month under the initial shared beta budget, even though actual model usage is usually much lower. Failed or cancelled requests also consume reservations. The daily allowance leaves room for initial user testing after deployment checks; the total monthly ceiling is unchanged.
 
 The reservation bounds three calls at $0.15/M input and $0.60/M output, counting one input token per UTF-8 byte plus 4,096 formatting tokens per call. A bounded 32 KB model-endpoint metadata check verifies exact provider prices, zero additional charges and privacy properties before inference. Successful checks cache for one hour per warm server; a price increase or unknown pricing field pauses chat. This is a conservative application reservation, not a billing reconciliation or cap on unrelated Vercel/Redis usage. For a contractual billing limit use the provider's project budget as well. No credits are purchased or automatic top-up enabled by this feature.
 
