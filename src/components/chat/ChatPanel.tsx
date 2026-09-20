@@ -195,6 +195,15 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
       aria-describedby="edgar-chat-description"
       data-visible="false"
       onCancel={event => { event.preventDefault(); onClose(); }}
+      onKeyDown={event => {
+        if (event.key !== "Tab") return;
+        const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], textarea:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex="-1"])')).filter(element => element.getClientRects().length > 0);
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (!first || !last) return;
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }}
       onClick={event => {
         if (event.target !== event.currentTarget) return;
         const rect = event.currentTarget.getBoundingClientRect();
@@ -250,7 +259,7 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
             </div>
           </div>
           {cooldown > 0 ? <p className={styles.cooldown} role="status">Please wait {cooldown >= 60 ? `${Math.ceil(cooldown / 60)} minute${cooldown > 60 ? "s" : ""}` : `${cooldown} second${cooldown !== 1 ? "s" : ""}`} before sending another question.</p> : null}
-          <p className={styles.privacy}>Your message and public page context are sent to the AI service. Chat history stays in this tab and clears on reload. AI can make mistakes; check the supporting data.</p>
+          <p className={styles.privacy}>Your message and public page context are sent to the AI service. Do not enter sensitive information. Chat history stays in this tab and clears on reload. AI can make mistakes; check the supporting data.</p>
         </form>
       </div>
     </dialog>,

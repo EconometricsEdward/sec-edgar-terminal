@@ -1,5 +1,7 @@
+import { safeInternalPath } from '../../utils/siteRoutes.js';
+
 export const CHAT_USER_LIMIT = 2000;
-export const CHAT_ANSWER_LIMIT = 24000;
+export const CHAT_ANSWER_LIMIT = 8000;
 export const CHAT_HISTORY_LIMIT = 20;
 
 /** Send only a small, recent conversation; browser display history is separate. */
@@ -35,10 +37,22 @@ export function safeChatUrl(value) {
   }
 }
 
+/** Model-written links must lead to a known site route or retrieved evidence. */
+export function safeChatMessageUrl(value, sources = []) {
+  const url = safeChatUrl(value);
+  if (!url) return null;
+  if (sources.some(source => safeChatUrl(source?.url) === url)) return url;
+  if (!url.startsWith('/')) return null;
+  const internal = safeInternalPath(url);
+  if (internal) return internal;
+  const path = url.split(/[?#]/, 1)[0];
+  return ['/market/positioning', '/market/factors', '/workspace/demo', '/workspace/portfolio-guide'].includes(path) ? url : null;
+}
+
 export function cleanChatSources(sources) {
   if (!Array.isArray(sources)) return [];
   const seen = new Set();
-  return sources.slice(0, 16).flatMap(source => {
+  return sources.slice(0, 24).flatMap(source => {
     const url = safeChatUrl(source?.url);
     if (!url || typeof source?.title !== 'string' || !source.title.trim() || seen.has(url)) return [];
     seen.add(url);

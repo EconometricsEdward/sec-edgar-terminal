@@ -172,3 +172,30 @@ test('research deadline starts on first lookup, interrupts an unresponsive reade
   const cancelled = createChatResearch({ signal: controller.signal, dependencies: { market: async () => { reads++; return market(); } } });
   assert.match((await cancelled.tools.market_summary.execute({ basis: 'ttm', sector: '' })).reason, /cancelled/); assert.equal(reads, 0);
 });
+
+test('failure diagnostics expose only fixed category, stage and numeric HTTP status, never private error detail', async () => {
+  const api = research({ company: async () => { throw Object.assign(new Error('private gateway secret and SQL response'), { status: 503, code: 'PRIVATE_GATEWAY_SECRET' }); } });
+  const result = await api.tools.company_financials.execute({ identifier: 'EXAMPLE', basis: 'annual' });
+  assert.equal(result.code, 'SOURCE_HTTP_ERROR'); assert.equal(result.httpStatus, 503); assert.equal(result.stage, 'company');
+  assert.doesNotMatch(JSON.stringify(result), /private|secret|SQL|PRIVATE_GATEWAY/);
+  assert.equal((await api.tools.company_financials.execute({ identifier: 'https://invalid.example', basis: 'annual' })).code, 'TOOL_INVALID_INPUT');
+});
+
+test('preview name lookup uses the bounded existing public report search route for all three entity types', async t => {
+  const original = process.env.VERCEL_ENV; process.env.VERCEL_ENV = 'preview';
+  t.after(() => { if (original === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = original; });
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    const parsed = new URL(url); calls.push({ url: parsed, options });
+    const kind = parsed.searchParams.get('kind');
+    return Response.json({ results: [{ kind, id: kind === '13f' ? '0000000001' : kind === 'nport' ? 'S000000001' : 'EXAMPLE', cik: '0000000001', name: 'Independent Entity' }] });
+  });
+  const api = createChatResearch();
+  for (const kind of ['company', 'nport', '13f']) assert.equal((await api.tools.search_entities.execute({ query: 'Independent Entity', kind })).status, 'ready');
+  assert.equal(calls.length, 3);
+  for (const { url, options } of calls) {
+    assert.equal(url.origin, 'https://secedgarterminal.com'); assert.equal(url.pathname, '/api/reports/search');
+    assert.equal(url.searchParams.get('q'), 'Independent Entity'); assert.equal(url.searchParams.has('query'), false);
+    assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'error'); assert.ok(options.signal);
+  }
+});

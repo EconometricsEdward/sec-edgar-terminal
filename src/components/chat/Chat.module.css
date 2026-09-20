@@ -100,11 +100,12 @@
 .sources { margin-top: 15px; border-top: 1px solid var(--chat-line); padding-top: 10px; }
 .sources summary { font-size: 11px; color: var(--chat-muted); cursor: pointer; }
 .sources summary span { display: inline-block; margin-left: 5px; padding: 0 5px; border: 1px solid var(--chat-line); border-radius: 4px; font-size: 10px; }
-.sources ol { padding-left: 17px; margin: 12px 0 0; list-style: decimal; color: var(--chat-muted); font-size: 11px; }
+.sources ol { padding-left: 0; margin: 12px 0 0; list-style: none; color: var(--chat-muted); font-size: 11px; }
 .sources li { padding-left: 2px; margin: 8px 0; }
 .sources a { display: inline; color: var(--chat-teal); line-height: 1.7; }
 .sources a svg { display: inline; margin-left: 5px; }
 .sources small { display: block; margin-top: 2px; font-size: 10px; }
+.sourceId { color: var(--chat-muted); font-variant-numeric: tabular-nums; }
 .progress { display: flex; align-items: center; gap: 9px; font-size: 11px; color: var(--chat-muted); margin: 20px 0 5px; }
 .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--chat-teal); animation: pulse 1.5s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.3; } }
@@ -113,9 +114,9 @@
 .composer { padding: 14px 22px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--chat-line); flex-shrink: 0; }
 .inputBox { border: 1px solid var(--chat-line); background: var(--chat-panel); border-radius: 12px; padding: 12px; }
 .inputBox:focus-within { border-color: var(--chat-teal); }
-.inputBox textarea { display: block; width: 100%; min-height: 64px; max-height: 160px; resize: vertical; padding: 0; border: 0; background: transparent; color: var(--chat-text); font-family: inherit; font-size: 13px; line-height: 1.65; box-shadow: none; }
+.dialog .inputBox textarea { display: block; width: 100%; min-height: 64px; max-height: 160px; resize: vertical; padding: 0; border: 0; background: transparent !important; color: var(--chat-text) !important; font-family: inherit; font-size: 13px; line-height: 1.65; box-shadow: none; }
 .inputBox textarea:focus-visible { outline: none !important; }
-.inputBox textarea::placeholder { color: var(--chat-muted); opacity: 0.85; }
+.dialog .inputBox textarea::placeholder { color: var(--chat-muted) !important; opacity: 0.85; }
 .composerActions { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 7px; }
 .composerActions > span { color: var(--chat-muted); font-size: 9px; line-height: 1.5; }
 .send { display: inline-flex; gap: 6px; align-items: center; justify-content: center; min-width: 34px; height: 34px; padding: 0 10px; color: #202b35; background: #f8ce61; border-radius: 8px; font-size: 11px; font-weight: 700; flex-shrink: 0; cursor: pointer; }
@@ -132,7 +133,7 @@
   .contextBar { padding-inline: 16px; }
   .conversation { padding: 20px 16px; }
   .composer { padding-inline: 16px; }
-  .inputBox textarea { font-size: 16px; min-height: 58px; }
+  .dialog .inputBox textarea { font-size: 16px; min-height: 58px; }
   .empty { padding-top: 12px; }
   .userMessage { margin-left: 18px; }
   .trigger { padding-inline: 9px; font-size: 11px; }

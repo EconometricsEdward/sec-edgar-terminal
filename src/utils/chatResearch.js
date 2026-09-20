@@ -14,8 +14,10 @@ const finite = value => typeof value === 'number' && Number.isFinite(value) ? va
 const bytes = value => Buffer.byteLength(JSON.stringify(value), 'utf8');
 const cikOf = value => /^\d{1,10}$/.test(String(value)) && Number(value) > 0 ? String(value).padStart(10, '0') : null;
 const cleanName = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-const fail = message => Object.assign(new Error(message), { safeMessage: message });
-const unavailable = reason => ({ status: 'unavailable', reason });
+const fail = (message, code = 'RESEARCH_DATA_INVALID', status) => Object.assign(new Error(message), { safeMessage: message, researchCode: code, ...(status ? { status } : {}) });
+const unavailable = (reason, code = 'SOURCE_UNAVAILABLE', detail = {}) => ({ status: 'unavailable', reason, code, ...detail });
+const FAILURE_CODES = new Set(['RESEARCH_DATA_INVALID', 'SOURCE_HTTP_ERROR', 'SOURCE_NETWORK_ERROR', 'SOURCE_RESPONSE_TOO_LARGE', 'SOURCE_RESPONSE_INVALID', 'SOURCE_IDENTITY_MISMATCH']);
+const RESEARCH_STAGES = new Set(['search', 'company', 'fund', 'market', 'cftc', 'disclosures']);
 const stringSchema = (description, maxLength = 160) => ({ type: 'string', minLength: 1, maxLength, description });
 const enumeration = values => ({ type: 'string', enum: values });
 const schema = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -57,12 +59,15 @@ function bounded(work, signal) {
 /** Preview is an anonymous reader of the same fixed public research routes as
  * Reports. Production uses native readers and their existing caches/rate gates. */
 async function publicJson(path, params, signal, maxBytes = 12 * 1024 * 1024) {
-  const allowed = ['/api/analysis-research', '/api/market-research', '/api/v1/cftc/markets', '/api/disclosure-search/passages'];
+  const allowed = ['/api/reports/search', '/api/analysis-research', '/api/market-research', '/api/v1/cftc/markets', '/api/disclosure-search/passages'];
   if (!allowed.includes(path)) throw fail('This research endpoint is unavailable.');
   const url = new URL(path, ORIGIN); url.search = new URLSearchParams(params).toString();
-  const response = await fetch(url, { method: 'GET', credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { Accept: 'application/json' }, signal });
+  let response;
+  try { response = await fetch(url, { method: 'GET', credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { Accept: 'application/json' }, signal }); }
+  catch (error) { if (signal.aborted) throw error; throw fail('The public research connection is temporarily unavailable.', 'SOURCE_NETWORK_ERROR'); }
   if (!response.ok || Number(response.headers.get('content-length')) > maxBytes) {
-    await response.body?.cancel(); throw fail(response.status === 429 ? 'The data source is rate limited. Retry later.' : 'The prepared data source is temporarily unavailable.');
+    await response.body?.cancel(); throw fail(response.status === 429 ? 'The data source is rate limited. Retry later.' : 'The prepared data source is temporarily unavailable.',
+      response.ok ? 'SOURCE_RESPONSE_TOO_LARGE' : 'SOURCE_HTTP_ERROR', response.ok ? undefined : response.status);
   }
   const reader = response.body?.getReader();
   if (!reader) throw fail('The data source returned an empty response.');
@@ -72,10 +77,13 @@ async function publicJson(path, params, signal, maxBytes = 12 * 1024 * 1024) {
       signal.throwIfAborted();
       const next = await reader.read(); if (next.done) break;
       size += next.value.byteLength;
-      if (size > maxBytes) throw fail('This source is too large for a chat lookup. Open its research page.');
+      if (size > maxBytes) throw fail('This source is too large for a chat lookup. Open its research page.', 'SOURCE_RESPONSE_TOO_LARGE');
       chunks.push(next.value);
     }
-    return { payload: JSON.parse(Buffer.concat(chunks, size).toString('utf8')), metadata: {
+    let payload;
+    try { payload = JSON.parse(Buffer.concat(chunks, size).toString('utf8')); }
+    catch { throw fail('The research source returned an invalid response.', 'SOURCE_RESPONSE_INVALID'); }
+    return { payload, metadata: {
       fetchedAt: response.headers.get('X-Data-Fetched-At'), revalidatedAt: response.headers.get('X-Data-Revalidated-At'),
     }, stale: ['true', '1'].includes(response.headers.get('X-Data-Stale')) };
   } catch (error) { await reader.cancel().catch(() => {}); throw error; }
@@ -88,14 +96,17 @@ function defaultDependencies() {
     cftcEnabled: isCftcEnabled,
     search: async (input, signal) => {
       signal.throwIfAborted();
-      const searchModule = await import(preview ? './reportPreviewSources.js' : './reportSearchServer.js');
-      return (preview ? searchModule.searchPublicReportSources : searchModule.searchReports)(input);
+      // The existing public search route performs the same verified company,
+      // series and manager resolution in production. A preview need not fetch
+      // the complete SEC operating and mutual-fund directories on a cold start.
+      if (preview) return (await publicJson('/api/reports/search', { q: input.query, kind: input.kind }, signal, 256 * 1024)).payload;
+      return (await import('./reportSearchServer.js')).searchReports(input);
     },
     company: async ({ id, basis }, signal) => {
       if (!preview) return (await import('./companyReport.js')).loadCompanyReport({ ticker: id, basis }, signal);
       if (/^\d+$/.test(id)) return (await import('./reportPreviewSources.js')).preparePublicReportSources({ kind: 'company', id, basis }, signal);
       const result = await publicJson('/api/analysis-research', { ticker: id, basis }, signal);
-      if (result.payload?.ticker !== id || result.payload?.basis !== basis) throw fail('The financial source did not match this company and period basis.');
+      if (result.payload?.ticker !== id || result.payload?.basis !== basis) throw fail('The financial source did not match this company and period basis.', 'SOURCE_IDENTITY_MISMATCH');
       return (await import('./companyReport.js')).buildCompanyReport(result.payload, { sourceSnapshot: result });
     },
     fund: async ({ id, kind }, signal) => preview
@@ -122,7 +133,11 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
   let callCount = 0, returnedBytes = 0, deadline;
   const turnSignal = () => deadline ||= AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(Math.min(18000, Math.max(1, dependencies.deadlineMs || 18000)))]);
   const read = (key, work) => {
-    if (!reads.has(key)) reads.set(key, bounded(() => work(turnSignal()), turnSignal()));
+    if (!reads.has(key)) reads.set(key, bounded(() => work(turnSignal()), turnSignal()).catch(error => {
+      const stage = key.split(':')[0];
+      if (error && typeof error === 'object' && RESEARCH_STAGES.has(stage)) error.researchStage = stage;
+      throw error;
+    }));
     return reads.get(key);
   };
   function addSource(title, rawUrl, asOf) {
@@ -188,9 +203,9 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
   }
   function tool(description, properties, status, execute) {
     return { description, inputSchema: schema(properties), execute: async input => {
-      try { validate(input, properties); } catch (error) { return unavailable(error.safeMessage); }
+      try { validate(input, properties); } catch (error) { return unavailable(error.safeMessage, 'TOOL_INVALID_INPUT'); }
       const key = `${status}:${JSON.stringify(Object.keys(properties).map(name => input[name].trim()))}`;
-      if (callCount >= MAX_CALLS) return unavailable('The four research lookups for this message are complete. Use the retrieved evidence or ask a follow-up.');
+      if (callCount >= MAX_CALLS) return unavailable('The four research lookups for this message are complete. Use the retrieved evidence or ask a follow-up.', 'TOOL_CALL_LIMIT');
       callCount++;
       if (calls.has(key)) return finish(await calls.get(key));
       const work = (async () => {
@@ -198,8 +213,12 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
           onStatus(status);
           return await bounded(() => execute(input), turnSignal());
         } catch (error) {
+          const httpStatus = Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? error.status : undefined;
+          const code = signal?.aborted ? 'REQUEST_CANCELLED' : turnSignal().aborted ? 'RESEARCH_TIMEOUT'
+            : FAILURE_CODES.has(error.researchCode) ? error.researchCode : httpStatus ? 'SOURCE_HTTP_ERROR' : 'SOURCE_UNAVAILABLE';
           return unavailable(signal?.aborted ? 'Research was cancelled.' : turnSignal().aborted ? 'Research timed out. Cached data can be reused in a follow-up.'
-            : error.safeMessage || 'This source is temporarily unavailable. State the gap; do not invent figures.');
+            : error.safeMessage || 'This source is temporarily unavailable. State the gap; do not invent figures.', code,
+            { ...(httpStatus ? { httpStatus } : {}), ...(RESEARCH_STAGES.has(error.researchStage) ? { stage: error.researchStage } : {}) });
         }
       })();
       calls.set(key, work); return finish(await work);

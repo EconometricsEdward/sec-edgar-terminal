@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildChatMessages, safeChatUrl, cleanChatSources, chatRetrySeconds, readChatStream } from '../src/components/chat/chatClient.js';
+import { buildChatMessages, safeChatUrl, safeChatMessageUrl, cleanChatSources, chatRetrySeconds, readChatStream } from '../src/components/chat/chatClient.js';
 
 function stream(parts) {
   return new ReadableStream({ start(controller) { for (const part of parts) controller.enqueue(part); controller.close(); } });
@@ -30,6 +30,18 @@ test('source links reject executable schemes, credentials and protocol-relative 
   assert.equal(safeChatUrl('/analysis?ticker=AAPL'), '/analysis?ticker=AAPL');
   assert.equal(safeChatUrl('https://www.sec.gov/Archives/a'), 'https://www.sec.gov/Archives/a');
   assert.deepEqual(cleanChatSources([{ id: 'S1', title: 'SEC data', url: 'https://www.sec.gov' }, { title: 'Duplicate', url: 'https://www.sec.gov/' }, { title: 'Bad', url: 'javascript:alert(1)' }]), [{ id: 'S1', title: 'SEC data', url: 'https://www.sec.gov/' }]);
+});
+
+test('inline model links only activate known routes or exact retrieved sources', () => {
+  const sources = [{ id: 'S1', title: 'SEC data', url: 'https://www.sec.gov/Archives/verified.htm' }];
+  assert.equal(safeChatMessageUrl('https://www.sec.gov/Archives/verified.htm', sources), sources[0].url);
+  assert.equal(safeChatMessageUrl('https://www.sec.gov/Archives/invented.htm', sources), null);
+  assert.equal(safeChatMessageUrl('https://example.com', sources), null);
+  assert.equal(safeChatMessageUrl('/analysis/AAPL?basis=annual', sources), '/analysis/AAPL?basis=annual');
+  assert.equal(safeChatMessageUrl('/market/positioning', sources), '/market/positioning');
+  assert.equal(safeChatMessageUrl('/api/unknown', sources), null);
+  const fullSources = Array.from({ length: 24 }, (_, index) => ({ id: `S${index + 1}`, title: `Source ${index + 1}`, url: `https://www.sec.gov/Archives/${index}` }));
+  assert.equal(cleanChatSources(fullSources).at(-1).id, 'S24');
 });
 
 test('stream parser survives split records and split multibyte text', async () => {
