@@ -16,8 +16,12 @@ const cikOf = value => /^\d{1,10}$/.test(String(value)) && Number(value) > 0 ? S
 const cleanName = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
 const fail = (message, code = 'RESEARCH_DATA_INVALID', status) => Object.assign(new Error(message), { safeMessage: message, researchCode: code, ...(status ? { status } : {}) });
 const unavailable = (reason, code = 'SOURCE_UNAVAILABLE', detail = {}) => ({ status: 'unavailable', reason, code, ...detail });
-const FAILURE_CODES = new Set(['RESEARCH_DATA_INVALID', 'SOURCE_HTTP_ERROR', 'SOURCE_NETWORK_ERROR', 'SOURCE_RESPONSE_TOO_LARGE', 'SOURCE_RESPONSE_INVALID', 'SOURCE_IDENTITY_MISMATCH']);
+const FAILURE_CODES = new Set(['RESEARCH_DATA_INVALID', 'SOURCE_HTTP_ERROR', 'SOURCE_NETWORK_ERROR', 'SOURCE_RESPONSE_TOO_LARGE', 'SOURCE_RESPONSE_INVALID', 'SOURCE_IDENTITY_MISMATCH', 'SOURCE_BASIS_UNAVAILABLE']);
 const RESEARCH_STAGES = new Set(['search', 'company', 'fund', 'market', 'cftc', 'disclosures']);
+const COMPANY_BASIS_ERRORS = new Set([
+  'No supported reporting periods are available for this company and basis.',
+  'No supported SEC financial values could be verified for this company and reporting basis. Try another basis or inspect the original company filings.',
+]);
 const stringSchema = (description, maxLength = 160) => ({ type: 'string', minLength: 1, maxLength, description });
 const enumeration = values => ({ type: 'string', enum: values });
 const schema = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -242,7 +246,9 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
             : FAILURE_CODES.has(error.researchCode) ? error.researchCode : httpStatus ? 'SOURCE_HTTP_ERROR' : 'SOURCE_UNAVAILABLE';
           return unavailable(signal?.aborted ? 'Research was cancelled.' : turnSignal().aborted ? 'Research timed out. Cached data can be reused in a follow-up.'
             : error.safeMessage || 'This source is temporarily unavailable. State the gap; do not invent figures.', code,
-            { ...(httpStatus ? { httpStatus } : {}), ...(RESEARCH_STAGES.has(error.researchStage) ? { stage: error.researchStage } : {}) });
+            { ...(httpStatus ? { httpStatus } : {}), ...(RESEARCH_STAGES.has(error.researchStage) ? { stage: error.researchStage } : {}),
+              ...(code === 'SOURCE_BASIS_UNAVAILABLE' && BASES.includes(error.researchBasis) ? { requestedBasis: error.researchBasis,
+                suggestedBasis: error.researchBasis === 'quarter' ? 'annual' : 'quarter', suggestedBasisAvailable: null } : {}) });
         }
       })();
       calls.set(key, work); return finish(await work);
@@ -261,7 +267,18 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
       async ({ identifier, basis }) => {
         const resolved = await resolve(identifier, 'company'); if (!resolved.identity) return resolved;
         const identity = rememberCompany(resolved.identity);
-        const report = await read(`company:${identity.id}:${basis}`, s => deps.company({ id: identity.id, basis }, s));
+        const report = await read(`company:${identity.id}:${basis}`, async s => {
+          try { return await deps.company({ id: identity.id, basis }, s); }
+          catch (error) {
+            // These two exact report-builder failures mean absent verified
+            // coverage for the requested basis, not a network/provider outage.
+            // Other 422s stay opaque, and no different basis is fetched here.
+            if (error?.status === 422 && COMPANY_BASIS_ERRORS.has(error.message)) {
+              throw Object.assign(fail(`Verified financial data is unavailable for this company on the requested ${basis} basis. This does not establish that no SEC filing exists. Ask whether to try ${basis === 'quarter' ? 'annual' : 'quarterly'} data or inspect the original filings; availability of another basis has not been checked.`, 'SOURCE_BASIS_UNAVAILABLE'), { researchBasis: basis });
+            }
+            throw error;
+          }
+        });
         if (report.kind !== 'company' || cikOf(report.entity?.cik) !== identity.cik || report.period?.basis !== basis) throw fail('The financial source did not match the requested SEC company and reporting basis.');
         const { ids: sourceIds, metadata: sourceMetadata } = reportSources(report);
         const observations = report.sections?.find(section => section.id === 'observations')?.rows || [];

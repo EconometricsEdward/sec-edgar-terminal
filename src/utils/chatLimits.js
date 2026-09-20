@@ -201,17 +201,20 @@ export async function reserveChatUsage(request, {
       return { allowed: false, code: REASONS[reason], status: reason >= 7 ? 503 : 429, retryAfter, remaining: 0, release: noopRelease };
     }
     if (accepted !== 1 || reason !== 0 || retryAfter !== 0 || remaining < 0 || remaining >= IP_MINUTE_MAX) return unavailable();
-    let released = false;
+    let releasePromise;
     return {
       allowed: true, code: 'CHAT_ALLOWED', status: 200, retryAfter: 0, remaining,
-      release: async () => {
-        if (released) return;
-        released = true;
+      // All callers await the same cleanup, including stream completion racing
+      // browser cancellation or the platform's response-finished callback.
+      release: () => releasePromise ||= (async () => {
         try {
           // Deliberately independent of a cancelled HTTP request's signal.
-          await command(['EVAL', RELEASE_SCRIPT, 2, keys[5], keys[6], lease]);
-        } catch { /* The lease expires; do not refund or expose provider errors. */ }
-      },
+          if (await command(['EVAL', RELEASE_SCRIPT, 2, keys[5], keys[6], lease]) !== 1) throw new Error('invalid_release');
+        } catch {
+          // The lease expires; never refund or log keys, IPs or provider text.
+          console.warn('edgar_chat_release_failed');
+        }
+      })(),
     };
   } catch {
     return unavailable();

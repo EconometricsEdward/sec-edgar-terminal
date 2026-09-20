@@ -19,6 +19,16 @@ function fake(overrides = {}) {
   } };
 }
 
+function heldRelease() {
+  let finish, began;
+  const state = { calls: 0 };
+  const pending = new Promise(resolve => { finish = resolve; });
+  const started = new Promise(resolve => { began = resolve; });
+  return { state, started, finish, reserve: async () => ({ allowed: true,
+    release: () => { state.calls++; began(); return pending; },
+  }) };
+}
+
 test('streams only public text, sources and validated current page; releases usage lease', async () => {
   const { state, dependencies } = fake();
   const response = await handleChatPost(request(), dependencies);
@@ -31,6 +41,81 @@ test('streams only public text, sources and validated current page; releases usa
   assert.equal(frames.at(-1).type, 'done');
   assert.equal(state.reservations, 1); assert.equal(state.releases, 1);
   assert.ok(state.signal.aborted);
+});
+
+test('neither done nor error terminal frames or EOF reach the browser before lease cleanup completes', async () => {
+  for (const terminal of ['done', 'error']) {
+    const held = heldRelease();
+    const { dependencies } = fake({ reserve: held.reserve,
+      agent: () => ({ stream: async () => ({ fullStream: chunks([
+        { type: 'text-delta', text: 'Answer text.' },
+        terminal === 'done' ? { type: 'finish', finishReason: 'stop' } : { type: 'error', error: new Error('provider failure') },
+      ]) }) }),
+    });
+    const response = await handleChatPost(request(), dependencies);
+    const reader = response.body.getReader(), decoder = new TextDecoder(), frames = [];
+    let ended = false;
+    const consume = (async () => {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) { ended = true; break; }
+        frames.push(JSON.parse(decoder.decode(value).trim()));
+      }
+    })();
+    await held.started;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(ended, false);
+    assert.ok(frames.some(frame => frame.type === 'text'));
+    assert.ok(!frames.some(frame => ['done', 'error'].includes(frame.type)));
+    held.finish();
+    await consume;
+    assert.equal(frames.at(-1).type, terminal);
+    assert.equal(ended, true);
+    assert.equal(held.state.calls, 1);
+  }
+});
+
+test('platform response-finished cleanup and browser cancellation await one shared release', async () => {
+  const held = heldRelease();
+  let afterCallback, stopped = false;
+  const { dependencies } = fake({ reserve: held.reserve, after: callback => { afterCallback = callback; },
+    agent: () => ({ stream: async ({ abortSignal }) => ({ fullStream: (async function* () {
+      await new Promise(resolve => abortSignal.addEventListener('abort', () => { stopped = true; resolve(); }, { once: true }));
+      yield { type: 'abort' };
+    })() }) }),
+  });
+  const response = await handleChatPost(request(), dependencies);
+  const reader = response.body.getReader();
+  await reader.read();
+  const cancellation = reader.cancel();
+  await held.started;
+  assert.ok(stopped);
+  assert.equal(typeof afterCallback, 'function');
+  let platformFinished = false;
+  const platformCleanup = afterCallback().then(() => { platformFinished = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(platformFinished, false);
+  assert.equal(held.state.calls, 1);
+  held.finish();
+  await Promise.all([cancellation, platformCleanup]);
+  assert.equal(platformFinished, true);
+  assert.equal(held.state.calls, 1);
+});
+
+test('pre-stream errors finish cleanup before returning an HTTP error or its after callback', async () => {
+  const held = heldRelease();
+  let afterCallback, replied = false;
+  const { dependencies } = fake({ reserve: held.reserve, after: callback => { afterCallback = callback; },
+    verifyPrice: async () => { throw new Error('provider unavailable'); },
+  });
+  const response = handleChatPost(request(), dependencies).then(value => { replied = true; return value; });
+  await held.started;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(replied, false);
+  held.finish();
+  assert.equal((await response).status, 503);
+  await afterCallback();
+  assert.equal(held.state.calls, 1);
 });
 
 test('invalid requests and unavailable spend controls never reach a model', async () => {

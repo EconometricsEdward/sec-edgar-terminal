@@ -9,7 +9,7 @@ import { reserveChatUsage } from '../src/utils/chatLimits.js';
 const NOW = Date.parse('2026-09-20T12:34:10Z');
 const ENV = { VERCEL: '1', KV_REST_API_URL: 'https://redis.example', KV_REST_API_TOKEN: 'fixture-token' };
 const request = headers => new Request('https://secedgarterminal.com/api/chat', { headers: { 'x-vercel-forwarded-for': '192.0.2.11', ...headers } });
-function setup({ env = ENV, response = () => Response.json({ result: [1, 0, 0, 4] }), ...options } = {}) {
+function setup({ env = ENV, response = command => Response.json({ result: command[2] === 2 ? 1 : [1, 0, 0, 4] }), ...options } = {}) {
   const calls = [];
   return {
     calls,
@@ -66,6 +66,25 @@ test('reservations release exactly their own lease once without refund, and canc
   assert.ok(!calls[1].init.signal.aborted);
   const cleanupFailure = setup({ response: (_command, count) => { if (count === 2) throw new Error('secret transport failure'); return Response.json({ result: [1, 0, 0, 4] }); } });
   await assert.doesNotReject((await cleanupFailure.reserve()).release());
+});
+
+test('concurrent release callers share and await the same pending Redis cleanup', async () => {
+  let finishCleanup;
+  const pending = new Promise(resolve => { finishCleanup = resolve; });
+  const { reserve, calls } = setup({ response: (_command, count) => count === 1 ? Response.json({ result: [1, 0, 0, 4] }) : pending });
+  const result = await reserve();
+  const first = result.release(), second = result.release();
+  assert.equal(first, second);
+  let completed = false;
+  void second.then(() => { completed = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(completed, false);
+  assert.equal(calls.length, 2);
+  finishCleanup(Response.json({ result: 1 }));
+  await Promise.all([first, second]);
+  assert.equal(completed, true);
+  assert.equal(result.release(), first);
+  assert.equal(calls.length, 2);
 });
 
 test('budget configuration can only decrease the hard ceiling, including zero to pause usage', async () => {

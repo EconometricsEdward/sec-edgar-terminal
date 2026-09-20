@@ -16,14 +16,14 @@ Requests allow only the `mistral` provider, require zero data retention/no train
 
 Tools validate entity identity and reporting basis, preserve dates/units/coverage/missing values and return citation IDs backed by allowlisted public sources. Ambiguous names require a selection. Financial metrics span up to five periods; fund summaries show the largest ten reported holdings with full-count coverage. Results are limited to 12 KB per lookup/30 KB total, four calls, two companies and 18 seconds from the first lookup. Existing readers own caching; no chatbot tables, vector store, embeddings, report copies or transcripts are created. Some pre-existing upstream readers have their own deadlines, so abort stops awaiting their results while their bounded shared cache work can finish.
 
-The assistant distinguishes sector business fundamentals from price returns, aggregate CFTC data from company positions, N-PORT from 13F, and an indexed passage search from a complete SEC corpus. Historical URL dates are context hints; unsupported historical vintages and ytd are explicitly distinguished from tool results. It cannot trade, mutate data, browse arbitrary URLs or read private uploaded holdings.
+The assistant distinguishes sector business fundamentals from price returns, aggregate CFTC data from company positions, N-PORT from 13F, and an indexed passage search from a complete SEC corpus. Historical URL dates are context hints; unsupported historical vintages and ytd are explicitly distinguished from tool results. A company with no supported periods or verified values for the requested basis returns a specific coverage limitation and an unverified alternative-basis suggestion, rather than an outage or invented annual figures. It cannot trade, mutate data, browse arbitrary URLs or read private uploaded holdings.
 
 ## Usage controls and costs
 
 `chatLimits.js` uses the existing Upstash Redis REST configuration (`KV_REST_API_URL`/`KV_REST_API_TOKEN`, or their `UPSTASH_REDIS_REST_*` equivalents). A single atomic Lua reservation checks all limits before the model runs. Missing Redis, corrupt counters or network failures disable chat rather than bypass limits. Only hashed client identifiers, counters and 120-second concurrency leases are stored; all expire. No raw IP or message content is stored by the app.
 
 - Five requests/minute and 30/day per client IP; one active request per IP.
-- Four active requests and 1,000 requests/day globally.
+- Four active requests and 1,000 requests/day globally. Successful/error completion releases the shared concurrency lease before publishing its terminal frame. Next.js `after` also retains cancellation cleanup after a browser disconnect; all completion paths await the same idempotent release promise.
 - Shared production/preview reservation caps: $0.50 per UTC day and $5 per UTC month.
 - Each accepted turn conservatively reserves $0.04, with no refund. This allows at most 12 accepted turns/day and 125/month under the initial shared beta budget, even though actual model usage is usually much lower. Failed or cancelled requests also consume reservations.
 
