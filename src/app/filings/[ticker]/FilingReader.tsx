@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { disclosureWordDiff } from "../../../utils/disclosureResearch.js";
 import styles from "../reader.module.css";
-import { chatPageSelection } from "../../../components/chat/chatPageSelection.js";
 
 type Props = {
   ticker: string;
@@ -181,18 +180,6 @@ function ReaderSession({
   const heading = useRef<HTMLHeadingElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const id = useId();
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    params.set('accession', filing.accession); params.set('view', view);
-    params.set('query', query); params.set('section', section); params.set('page', String(page));
-    if (archive) params.set('archive', archive);
-    if (filing.filingDate) params.set('filed', filing.filingDate);
-    if (prior?.accession) params.set('prior', prior.accession);
-    if (priorArchive) params.set('priorArchive', priorArchive);
-    if (prior?.filingDate) params.set('priorFiled', prior.filingDate);
-    return chatPageSelection.publish({ path: `/filings/${ticker}`, query: params.toString() });
-  }, [ticker, filing.accession, filing.filingDate, view, query, section, page, archive, prior?.accession, prior?.filingDate, priorArchive]);
 
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });

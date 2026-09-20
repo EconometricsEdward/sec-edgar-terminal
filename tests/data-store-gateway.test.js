@@ -78,8 +78,8 @@ test('cryptographic verifier accepts valid RS256 and rejects forged, wrong audie
 });
 
 test('only the explicitly reviewed RPC names are supported and namespace is forced', async () => {
-  assert.equal(Object.keys(RPC_PARAMETERS).length, 53);
-  assert.deepEqual(RPC_PARAMETERS.edgar_billing_operation, ['p_action', 'p_payload']);
+  assert.equal(Object.keys(RPC_PARAMETERS).length, 52);
+  assert.equal(RPC_PARAMETERS.edgar_billing_operation, undefined);
   const { handler, calls } = setup();
   assert.equal((await handler(rpc('edgar_get_version', { p_dataset: 'sec', p_key: key }))).status, 200);
   assert.equal(calls[0][0], `${URL}/rest/v1/rpc/edgar_get_version`);
@@ -91,6 +91,7 @@ test('only the explicitly reviewed RPC names are supported and namespace is forc
     assert.ok((await handler(rpc('edgar_store_status', body))).status >= 400);
   }
   assert.equal((await handler(rpc('arbitrary_sql', { query: 'drop table' }))).status, 403);
+  assert.equal((await handler(rpc('edgar_billing_operation', { p_action: 'status', p_payload: {} }))).status, 403);
   assert.equal(calls.length, 1);
 });
 

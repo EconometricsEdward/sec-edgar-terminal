@@ -1,6 +1,4 @@
 "use client";
-import ChatShareButton from "../../../components/chat/ChatShareButton";
-import { buildSharedPortfolio } from "../../../utils/chatSharedContext.js";
 
 import { resolveCompanyClassification } from "../../../utils/companyClassification.js";
 import {
@@ -554,7 +552,6 @@ export default function PortfolioResearch({
     [document, companiesByCik],
   );
   const rows = useMemo(() => document?.rows || [], [document]);
-  const chatSnapshot = useMemo(() => buildSharedPortfolio(rows, summary), [rows, summary]);
   const focusedRow = rows.find((row: any) => row.id === focusedRowId);
   const focusedCompany = focusedRow
     ? companiesByCik[focusedRow.resolution?.cik]
@@ -1021,7 +1018,6 @@ export default function PortfolioResearch({
     return <p role="status">Opening your browser-local portfolios…</p>;
   return (
     <section className={s.root} aria-label="Portfolio research">
-      {document && !editor && <ChatShareButton kind="portfolio" disabled={!chatSnapshot} getSnapshot={() => chatSnapshot} />}
       {(editor || !document) && (
         <header className={s.intro}>
           <div>

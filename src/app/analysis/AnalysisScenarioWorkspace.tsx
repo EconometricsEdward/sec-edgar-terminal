@@ -19,7 +19,6 @@ const AnalysisScenarioSensitivity = dynamic(() => import("./AnalysisScenarioSens
 const AnalysisGoalSeek = dynamic(() => import("./AnalysisGoalSeek"));
 const AnalysisScenarioBaselineReview = dynamic(() => import("./AnalysisScenarioBaselineReview"));
 import styles from "./AnalysisScenarioWorkspace.module.css";
-import ChatShareButton from "../../components/chat/ChatShareButton";
 
 const tabs = [
   ["model", "Model & results"],
@@ -282,10 +281,6 @@ function ScenarioWorkbench({
           ))}
         </div>
         <div className={styles.toolbar}>
-          <ChatShareButton kind="scenario" disabled={dirty || !scenario.period?.end} getSnapshot={() => ({
-            kind: 'analysis-scenario', ticker: data.ticker, basis: settings.basis,
-            end: scenario.period.end, asOf: settings.asOf || '', assumptions: normalizeScenarioSettings(settings),
-          })} />
           <button
             type="button"
             disabled={!past.length || dirty}

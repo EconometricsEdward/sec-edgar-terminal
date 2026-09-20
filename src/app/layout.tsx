@@ -10,7 +10,6 @@ import HeaderSearchWrapper from "../components/HeaderSearchWrapper";
 import CompanyContext from "../components/site/CompanyContext";
 import ServiceStatus from "../components/site/ServiceStatus";
 import ReadingPreferences from "../components/site/ReadingPreferences";
-import ChatLauncher from "../components/chat/ChatLauncher";
 import { READING_BOOTSTRAP_SCRIPT } from "../utils/readingPreferences.js";
 import { isCftcEnabled } from "../utils/cftcFeature.js";
 import styles from "../components/site/SiteShell.module.css";
@@ -169,10 +168,7 @@ export default function RootLayout({
                   </div>
                   <div className={styles.utilities}>
                     <ServiceStatus />
-                    <div className={styles.readingAndChat}>
-                      <ReadingPreferences />
-                      <ChatLauncher />
-                    </div>
+                    <ReadingPreferences />
                   </div>
                 </div>
                 <Suspense fallback={<div style={{ height: 47 }} />}>
@@ -191,7 +187,7 @@ export default function RootLayout({
                 <div>
                   SEC.gov sources · Public EDGAR APIs{cftcEnabled && " · Official CFTC COT data"}
                   <br />
-                  Free public research · Optional paid hosted AI · Research use only
+                  Free public research · Research use only
                 </div>
                 <nav aria-label="Footer navigation">
                   <Link href="/workspace" prefetch={false}>
@@ -200,10 +196,8 @@ export default function RootLayout({
                   <Link href="/about" prefetch={false}>
                     About
                   </Link>
-                  <Link href="/ai" prefetch={false}>AI credits</Link>
                   <Link href="/terms" prefetch={false}>Terms</Link>
                   <Link href="/privacy" prefetch={false}>Privacy</Link>
-                  <Link href="/refunds" prefetch={false}>Refunds</Link>
                   <a
                     href="https://www.sec.gov/edgar/search/"
                     target="_blank"

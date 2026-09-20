@@ -1,6 +1,6 @@
 # Portfolio Research format and API, version 1
 
-The [Portfolio Research workspace](https://secedgarterminal.com/workspace) accepts company lists without holdings or allocation information. An AI application can prepare the same input or call the bounded public endpoint when it has an appropriate HTTP tool connection. No paid model, chatbot, asynchronous job service or automatic LLM discovery is implied.
+The [Portfolio Research workspace](https://secedgarterminal.com/workspace) accepts company lists without holdings or allocation information. An external AI application can prepare the same input or call the bounded public endpoint when it has an appropriate HTTP tool connection. Requests are synchronous and require the caller to supply the input.
 
 ## Files and input fields
 
