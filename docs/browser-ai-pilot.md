@@ -52,7 +52,24 @@ The four measured snapshots above were prepared once through real public site re
 
 Independent code review identified and corrected routing that could substitute the current company when a question named another company, a selected-company starter parsed as a literal entity, and ambiguous pronoun follow-ups. The financial formatter now treats instant metrics as period-end observations and flags future Market fiscal ends. Runtime corrections cover timeout state recovery, duplicate load attempts, reopening during the close grace period, incomplete token-limited output, and cache-clear failure. The setup exposes model-file removal even after a partial download. These fixes improve the implementation's boundaries; they do not substitute for real model-answer evaluation.
 
-The bounded pilot is intentionally less flexible than Hosted AI: it summarizes one fund report per request, asks users to select exact historical periods on the relevant page, and reports unsupported company YTD or fund comparison/change requests. It must not conceal these limits by presenting a different selection as the requested answer. The hosted baseline remains blocked by its existing allowance; browser adapter, download and real inference results remain pending a reachable preview.
+The bounded pilot is intentionally less flexible than Hosted AI: it summarizes one fund report per request, asks users to select exact historical periods on the relevant page, and reports unsupported company YTD or fund comparison/change requests. It must not conceal these limits by presenting a different selection as the requested answer.
+
+### Preview browser results — 2026-09-20
+
+Preview code revision `5404afa30ac28953166adb257367d94588b4c3cb` built successfully on Vercel. The cloud browser has no compatible graphics adapter. Browser AI displayed that limitation and supplied a clearly labeled data snapshot without a model download. Actual Qwen download, graphics-memory use, cache removal after a real download, local answer quality and inference speed remain **blocked: no compatible adapter**. The hosted comparison remains **blocked: shared allowance**. Neither blocked path is recorded as a successful model benchmark.
+
+Four questions were submitted through the actual Chat interface from the About page, exercising retrieval beyond the current page. These single-run end-to-end times are the values displayed by the UI; they include retrieval and formatting but no model inference. Cache warmth was not controlled.
+
+| Question | Mode / outcome | Displayed elapsed time | Checked result |
+| --- | --- | --- | --- |
+| Summarize BOBS's quarterly results | Browser AI unavailable → Data snapshot | 3.2 s | Correct quarter, whole-dollar amounts, instant balance-sheet dates and three sources. |
+| Summarize Bridgewater Associates' reported holdings | Data answers | 3.1 s | Correct 13F manager, portfolio date, 997 positions and three sources. |
+| Explain the market briefing | Data answers | 1.9 s | TTM breadth and sector facts; explicit warning for the upstream future fiscal end. |
+| Summarize N-PORT fund VTI | Data answers | 4.1 s | Correct fund series, 2026-06-30 portfolio, 3,546 positions and two sources; fund-series holdings distinguished from ticker-specific assets. |
+
+The desktop drawer rendered without horizontal overflow. Close and Escape preserved the URL and restored focus to Chat after the closing transition. Reopening retained the conversation; New chat cleared it. Stop during retrieval left a stopped message and restored the composer. Mobile hardware and real local generation lifecycle checks remain unmeasured.
+
+The production build, TypeScript check, scoped lint and all **255 focused chat/runtime tests** passed. The complete PR CI suite reported 3,664 passed, nine failed and six skipped. The nine failures match existing unrelated baseline failures in chart-cache stale handling/TTL, CFTC and Market source-shape assertions, and the disposable cache-key family assertion. No test gate or spending limit was disabled. A green focused suite and successful deployment build do not mean the complete repository suite passed.
 
 ## Acceptance review
 
