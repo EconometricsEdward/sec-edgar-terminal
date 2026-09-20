@@ -1,5 +1,6 @@
 /** Narrow workload gateway. Supabase credentials never leave this function. */
 import { FUND_REVIEW_LIMITS, FUND_REVIEW_RPC_PARAMETERS, validFundReviewRpc } from './fundReviewPolicy.js';
+import { BILLING_RPC_PARAMETERS, validBillingRpc } from './billingPolicy.js';
 import { APPROVED_SEC_CIKS, SUPPORTING_SOURCE_CIKS } from './coverage.js';
 import { DISPOSABLE_CACHE_LIMITS as CACHE_LIMITS, disposableCachePolicy, disposableCacheFencePolicy, disposableCacheFenceResource } from './cachePolicy.js';
 import { DISCLOSURE_INDEX_LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument, validDisclosureIndexSearch } from './disclosurePolicy.js';
@@ -49,6 +50,7 @@ const GROUPS = Object.freeze({
 // Unknown parameters are rejected rather than accidentally reaching a new SQL
 // overload or a future operation with wider privileges.
 export const RPC_PARAMETERS = Object.freeze({
+  ...BILLING_RPC_PARAMETERS,
   ...FUND_REVIEW_RPC_PARAMETERS,
   edgar_disclosure_document: ['p_cik', 'p_accession', 'p_primary_doc', 'p_parser_version'],
   edgar_disclosure_replace: ['p_document', 'p_passages'],
@@ -272,6 +274,10 @@ function membershipEvidence(value, snapshot) {
 function validateRpc(name, params, nowMs) {
   knownKeys(params, ['p_namespace', ...RPC_PARAMETERS[name]]);
   if (has(params, 'p_namespace') && params.p_namespace !== NAMESPACE) reject('namespace_denied', 403);
+  if (has(BILLING_RPC_PARAMETERS, name)) {
+    if (!validBillingRpc(params, nowMs)) reject('invalid_billing_request');
+    return { p_action: params.p_action, p_payload: params.p_payload };
+  }
   if (has(FUND_REVIEW_RPC_PARAMETERS, name)) {
     if (!validFundReviewRpc(name, params, nowMs)) reject('invalid_fund_review_request');
     return { ...params, p_namespace: NAMESPACE };

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowUp, BookOpen, MessageSquare, Plus, Square, X } from "lucide-react";
 import { getChatStarters } from "../../utils/chatContext.js";
@@ -12,6 +14,9 @@ import { chatPageSelection } from "./chatPageSelection.js";
 import { normalizeSharedChatContext } from "../../utils/chatSharedContext.js";
 import { useBrowserChat } from "./useBrowserChat";
 import BrowserChatSetup from "./BrowserChatSetup";
+import type { HostedAccess } from "../billing/HostedChatAccess";
+
+const HostedChatAccess = dynamic(() => import("../billing/HostedChatAccess"), { loading: () => <p className={styles.paidLoading}>Checking paid AI access…</p> });
 
 type Props = { open: boolean; onClose: () => void; triggerRef: RefObject<HTMLButtonElement | null>; attachment?: { snapshot: NonNullable<ReturnType<typeof normalizeSharedChatContext>>; route: string } | null; onClearAttachment?: () => void };
 type ActiveRequest = { id: string; controller: AbortController; content: string; frame: number | null };
@@ -27,6 +32,7 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<ChatMode>("fast");
   const [engine, setEngine] = useState<ChatEngine>("data");
+  const [hostedAccess, setHostedAccess] = useState<HostedAccess | null>(null);
   const local = useBrowserChat(engine === "browser", open);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -119,6 +125,7 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
   const send = async (question: string, previous = messagesRef.current) => {
     const content = question.trim().slice(0, CHAT_USER_LIMIT);
     if (!content || active.current || Date.now() < retryUntil) return;
+    if (engine === "hosted" && !hostedAccess?.canSend) return;
     // Read the URL at send time, including client-side navigation since opening.
     const current = chatPageSelection.resolve({ path: window.location.pathname, query: window.location.search });
     const sharedContext = attachment?.route === window.location.pathname + window.location.search ? attachment.snapshot : null;
@@ -144,9 +151,11 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
       patchAnswer({ content: request.content });
     };
     try {
+      const accessToken = requestEngine === "hosted" ? await hostedAccess?.getToken() : null;
+      if (requestEngine === "hosted" && !accessToken) throw new Error("Please sign in to your AI account before using hosted AI.");
       const response = await fetch(requestEngine === "hosted" ? "/api/chat" : "/api/chat/research", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: requestEngine === "hosted" ? "application/x-ndjson" : "application/json" },
+        headers: { "Content-Type": "application/json", Accept: requestEngine === "hosted" ? "application/x-ndjson" : "application/json", ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
         body: JSON.stringify({ messages: buildChatMessages(conversation), context: { path: current.path, query: current.query }, mode: requestMode, ...(sharedContext ? { sharedContext } : {}) }),
         signal: request.controller.signal,
       });
@@ -229,6 +238,7 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
       }
       patchAnswer({ content: request.content, state: "error", error: `${request.content ? "This answer is incomplete. " : ""}${failure.message || "Chat could not connect. Please try again."}` });
     } finally {
+      if (requestEngine === "hosted") void hostedAccess?.refresh();
       if (active.current === request) {
         active.current = null;
         setBusy(false);
@@ -287,7 +297,7 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
           <legend className={styles.visuallyHidden}>Research assistant engine</legend>
           {(["data", "browser", "hosted"] as const).map(value => <label key={value} className={styles.engineOption}>
             <input className={styles.visuallyHidden} type="radio" name="edgar-chat-engine" checked={engine === value} onChange={() => setEngine(value)} />
-            <span>{value === "data" ? "Data answers" : value === "browser" ? "Browser AI" : "Hosted AI"}<small>{value === "data" ? "No model needed" : value === "browser" ? "On your device · Pilot" : "Shared allowance"}</small></span>
+            <span>{value === "data" ? "Data answers" : value === "browser" ? "Browser AI" : "Hosted AI"}<small>{value === "data" ? "Free · No model needed" : value === "browser" ? "Free · On device · Pilot" : "Paid · Your account"}</small></span>
           </label>)}
         </fieldset>
         {attached ? <div className={styles.attachment}>
@@ -298,7 +308,7 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
           const element = event.currentTarget;
           keepAtBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
         }}>
-          <p id="edgar-engine-help" className={styles.engineHelp}>{engine === "data" ? "Structured facts and page guidance from EDGAR Terminal. No AI model or download." : engine === "browser" ? "A small local model explains a prepared research snapshot. Quality and speed depend on your device." : "The existing research AI, including cross-page tools. Uses the site's shared AI allowance."}</p>
+          <p id="edgar-engine-help" className={styles.engineHelp}>{engine === "data" ? "Structured facts and page guidance from EDGAR Terminal. No AI model or download." : engine === "browser" ? "A small local model explains a prepared research snapshot. Quality and speed depend on your device." : "Hosted AI explains the available research and uses cross-page tools. Each completed answer uses one paid response from your account."}</p>
           {engine === "browser" ? <BrowserChatSetup snapshot={local.snapshot} onLoad={local.load} onCancel={local.cancel} onClear={local.clear} busy={busy} /> : null}
           {!messages.length ? (
             <div className={styles.empty}>
@@ -318,9 +328,10 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
           )}
           {busy ? <p className={styles.progress} role="status"><span className={styles.pulse} />{status || "Reading the available data…"}</p> : null}
           <p className={styles.visuallyHidden} role="status">{!busy && latest?.state === "complete" ? "Answer ready. Review the answer and supporting data above." : !busy && latest?.state === "stopped" ? "Answer generation stopped." : ""}</p>
-          {!busy && latest?.state === "error" ? <button type="button" className={styles.retry} disabled={cooldown > 0} onClick={retry}>Try this question again</button> : null}
+          {!busy && latest?.state === "error" ? <button type="button" className={styles.retry} disabled={cooldown > 0 || (engine === "hosted" && !hostedAccess?.canSend)} onClick={retry}>Try this question again</button> : null}
         </div>
         <form className={styles.composer} onSubmit={event => { event.preventDefault(); void send(draft); }}>
+          {engine === "hosted" ? <HostedChatAccess onChange={setHostedAccess} onNavigate={onClose} /> : null}
           {engine === "hosted" ? <div className={styles.modeControls}>
             <fieldset className={styles.modeChoice} aria-describedby="edgar-chat-mode-help" disabled={busy}>
               <legend className={styles.visuallyHidden}>Answer mode</legend>
@@ -340,12 +351,12 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
             }} />
             <div className={styles.composerActions}>
               <span>{draft.length > 1700 ? `${draft.length.toLocaleString()} / 2,000` : "Enter to send · Shift + Enter for a new line"}</span>
-              {busy ? <button type="button" className={styles.send} onClick={stop} aria-label="Stop generating answer"><Square size={15} aria-hidden="true" /> Stop</button> : <button type="submit" className={styles.send} disabled={!draft.trim() || cooldown > 0} aria-label="Send question"><ArrowUp size={18} aria-hidden="true" /></button>}
+              {busy ? <button type="button" className={styles.send} onClick={stop} aria-label="Stop generating answer"><Square size={15} aria-hidden="true" /> Stop</button> : <button type="submit" className={styles.send} disabled={!draft.trim() || cooldown > 0 || (engine === "hosted" && !hostedAccess?.canSend)} aria-label={engine === "hosted" ? "Send question using one paid response" : "Send question"}><ArrowUp size={18} aria-hidden="true" /></button>}
             </div>
           </div>
           {cooldown > 0 ? <p className={styles.cooldown} role="status">Please wait {cooldown >= 60 ? `${Math.ceil(cooldown / 60)} minute${cooldown > 60 ? "s" : ""}` : `${cooldown} second${cooldown !== 1 ? "s" : ""}`} before sending another question.</p> : null}
           {!busy && engine === "hosted" && (cooldown > 0 || latest?.state === "error") ? <button type="button" className={styles.retry} onClick={() => { setEngine("data"); setDraft(messagesRef.current.findLast(message => message.role === "user")?.content || ""); }}>Continue with data answers</button> : null}
-          <p className={styles.privacy}>{engine === "hosted" ? "Your message, page selections and attached snapshot are sent to the AI service." : "Your question, recent conversation, page selections and attached snapshot go to EDGAR Terminal for data retrieval. Browser AI writes its answer on your device."} Do not enter sensitive information. Conversation stays in this tab and clears on reload. Check dates and supporting data.</p>
+          <p className={styles.privacy}>{engine === "hosted" ? "Your message, recent conversation, page selections and attached snapshot are sent to the AI service." : "Your question, recent conversation, page selections and attached snapshot go to EDGAR Terminal for data retrieval. Browser AI writes its answer on your device."} Do not enter sensitive information. Conversation stays in this tab and clears on reload. Check dates and supporting data. <Link href="/privacy" prefetch={false} onClick={onClose}>Privacy</Link></p>
         </form>
       </div>
     </dialog>,

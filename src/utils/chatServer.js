@@ -1,7 +1,7 @@
 import { ToolLoopAgent, gateway, isStepCount, jsonSchema, tool } from 'ai';
 import { CHAT_PAGE_GUIDE } from './chatContext.js';
 import { createChatResearch } from './chatResearch.js';
-import { reserveChatUsage } from './chatLimits.js';
+import { reservePaidChatUsage } from './billingServer.js';
 import { readChatRequest } from './chatRequest.js';
 import { createChatGrounding, omitUnverifiedAssistantHistory } from './chatGrounding.js';
 
@@ -147,23 +147,29 @@ function jsonError(error) {
 }
 
 function limitError(limit) {
-  const message = limit.code === 'CHAT_LIMITS_UNAVAILABLE' ? 'Chat is temporarily unavailable. Its usage controls could not be reached.'
+  const message = limit.safeMessage || (limit.code === 'BILLING_AUTH_REQUIRED' ? 'Sign in to use paid hosted AI. Data chat and browser AI remain free.'
+    : limit.code === 'BILLING_CREDITS_REQUIRED' ? 'You need hosted AI credits to continue. View pricing and your balance under AI credits.'
+    : limit.code === 'BILLING_ACCOUNT_REVIEW_REQUIRED' ? 'Hosted AI is paused after repeated unsuccessful attempts. Your remaining credits are preserved. Contact billing support from AI credits for help or a refund review.'
+    : limit.code === 'BILLING_NOT_CONFIGURED' ? 'Paid hosted AI is being prepared. Data chat and browser AI remain available at no charge.'
+    : limit.code === 'CHAT_LIMITS_UNAVAILABLE' ? 'Hosted AI is temporarily unavailable. Your credit has not been used.'
     : limit.code === 'CHAT_BUSY' ? 'Another answer is still running. Please wait a moment before trying again.'
-    : limit.code === 'CHAT_BUDGET_EXHAUSTED' ? 'Chat has reached its shared beta usage allowance. Please try again after it resets.'
-    : 'You have reached the chat message limit. Please wait before trying again.';
+    : limit.code === 'CHAT_BUDGET_EXHAUSTED' ? 'Hosted AI has reached its service capacity. Your credit has not been used. Please try again later.'
+    : 'Hosted AI is currently unavailable or has reached its usage limit. Your credit has not been used.');
   return safeError(message, limit.code, limit.status, limit.retryAfter);
 }
 
 export async function handleChatPost(request, dependencies = {}) {
-  const deps = { readRequest: readChatRequest, verifyPrice: verifyChatModelPrice, reserve: reserveChatUsage,
+  const deps = { readRequest: readChatRequest, verifyPrice: verifyChatModelPrice, reserve: reservePaidChatUsage,
     research: createChatResearch, agent: createChatAgent, ...dependencies };
   const controller = new AbortController();
   const signal = AbortSignal.any([request.signal, controller.signal, AbortSignal.timeout(85000)]);
   let lease, releasePromise;
-  const releaseLease = () => releasePromise ||= Promise.resolve().then(() => lease?.release()).catch(() => {
-    // The production limiter already handles transport failures. Keep this
-    // final lifecycle boundary safe without exposing an unexpected error body.
+  const releaseLease = (success = false) => releasePromise ||= Promise.resolve().then(() =>
+    lease?.finalize ? lease.finalize(success) : lease?.release()).catch(() => {
     console.warn('edgar_chat_release_failed');
+    // A successful response must have a durable debit before the done frame.
+    // Failed/cancelled leases expire if their cleanup cannot reach the database.
+    if (success) throw safeError('The answer could not be finalized. Please check your credit balance before trying again.', 'BILLING_FINALIZE_UNAVAILABLE');
   });
   try {
     const { messages, context, sharedContext = null, mode = 'fast' } = await deps.readRequest(request);
@@ -188,7 +194,7 @@ export async function handleChatPost(request, dependencies = {}) {
         // The returned promise is intentionally owned by start(): completion,
         // cancellation and errors all release the same expiring lease.
         return (async () => {
-          let emitted = 0, succeeded = false, separateStep = false, terminal, pendingAnswer = '', stepCalledTool = false;
+          let emitted = 0, succeeded = false, separateStep = false, terminal, pendingAnswer = '', stepCalledTool = false, chargeable = false;
           try {
             send({ type: 'status', message: 'Preparing your answer…' });
             const result = await deps.agent({ context, research, grounding, sharedContext, mode }).stream({ messages, abortSignal: signal });
@@ -232,6 +238,7 @@ export async function handleChatPost(request, dependencies = {}) {
               if (answer && (!grounding.hasEvidence() || !stepCalledTool)) { send({ type: 'text', text: answer }); emitted = answer.length; }
             }
             if (!succeeded || !emitted) throw safeError('An answer could not be completed. Please try a narrower question.', 'CHAT_INCOMPLETE');
+            chargeable = !grounding.requiresResearch || grounding.hasEvidence();
             send({ type: 'sources', sources: research.getSources() });
             terminal = { type: 'done' };
           } catch (error) {
@@ -248,11 +255,15 @@ export async function handleChatPost(request, dependencies = {}) {
               terminal = { type: 'error', code, message: signal.aborted ? 'The answer timed out or was stopped. Please try again.' : message, retryAfter: 30 };
             }
           } finally {
+            const completed = chargeable && terminal?.type === 'done' && !closed && !signal.aborted;
             controller.abort();
             // A terminal frame makes the browser enable its composer and cancel
             // the response reader. Finish cleanup before that frame or EOF so
             // Vercel cannot freeze an unawaited release behind a closed response.
-            await releaseLease();
+            try { await releaseLease(completed); }
+            catch {
+              terminal = { type: 'error', code: 'BILLING_FINALIZE_UNAVAILABLE', message: 'The answer could not be finalized. Check your credit balance before trying again.', retryAfter: 30 };
+            }
             if (!closed) {
               try {
                 if (terminal) stream.enqueue(encoder.encode(`${JSON.stringify(terminal)}\n`));

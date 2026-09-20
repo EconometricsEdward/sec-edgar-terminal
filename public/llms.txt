@@ -2,6 +2,8 @@
 
 EDGAR Terminal is a free, source-linked research application for SEC filings, company fundamentals, reported fund holdings and official CFTC Commitments of Traders positioning. It is an educational research tool, not investment advice.
 
+Public research and data chat remain free without an account. Hosted AI is an optional paid service with prepaid response credits; pricing and availability are at /ai. Browser AI is an optional local pilot. Payment does not confer access to additional SEC or CFTC records. Terms, privacy, and refund policies are at /terms, /privacy, and /refunds. Billing APIs are private and must not be crawled.
+
 ## Start here
 
 - [Home](https://secedgarterminal.com/): public research directory linking company financial analysis, filings, Portfolio, Market Briefing, Funds and institutional managers, and disclosure research. The main directory and source explanations are available in server-rendered HTML; no account is required.
