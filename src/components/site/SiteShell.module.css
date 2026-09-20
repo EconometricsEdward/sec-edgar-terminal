@@ -105,6 +105,11 @@
   gap: 9px;
   flex-shrink: 0;
 }
+.readingAndChat {
+  display: grid;
+  gap: 5px;
+  min-width: 96px;
+}
 .navigation {
   display: flex;
   align-items: center;

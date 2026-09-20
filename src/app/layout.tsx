@@ -10,6 +10,7 @@ import HeaderSearchWrapper from "../components/HeaderSearchWrapper";
 import CompanyContext from "../components/site/CompanyContext";
 import ServiceStatus from "../components/site/ServiceStatus";
 import ReadingPreferences from "../components/site/ReadingPreferences";
+import ChatLauncher from "../components/chat/ChatLauncher";
 import { READING_BOOTSTRAP_SCRIPT } from "../utils/readingPreferences.js";
 import { isCftcEnabled } from "../utils/cftcFeature.js";
 import styles from "../components/site/SiteShell.module.css";
@@ -168,7 +169,10 @@ export default function RootLayout({
                   </div>
                   <div className={styles.utilities}>
                     <ServiceStatus />
-                    <ReadingPreferences />
+                    <div className={styles.readingAndChat}>
+                      <ReadingPreferences />
+                      <ChatLauncher />
+                    </div>
                   </div>
                 </div>
                 <Suspense fallback={<div style={{ height: 47 }} />}>
