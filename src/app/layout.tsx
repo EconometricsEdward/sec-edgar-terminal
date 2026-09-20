@@ -191,7 +191,7 @@ export default function RootLayout({
                 <div>
                   SEC.gov sources · Public EDGAR APIs{cftcEnabled && " · Official CFTC COT data"}
                   <br />
-                  Free access · No account required · Research use only
+                  Free public research · Optional paid hosted AI · Research use only
                 </div>
                 <nav aria-label="Footer navigation">
                   <Link href="/workspace" prefetch={false}>
@@ -200,6 +200,10 @@ export default function RootLayout({
                   <Link href="/about" prefetch={false}>
                     About
                   </Link>
+                  <Link href="/ai" prefetch={false}>AI credits</Link>
+                  <Link href="/terms" prefetch={false}>Terms</Link>
+                  <Link href="/privacy" prefetch={false}>Privacy</Link>
+                  <Link href="/refunds" prefetch={false}>Refunds</Link>
                   <a
                     href="https://www.sec.gov/edgar/search/"
                     target="_blank"

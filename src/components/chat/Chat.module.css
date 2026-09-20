@@ -200,3 +200,11 @@
 .browserSetup .setupNotice { color: var(--chat-accent); }
 .composer > .modeHelp { margin-bottom: 8px; }
 @media (max-width: 600px) { .engineChoice { padding-inline: 12px; } }
+
+.paidLoading { font-size: 11px; color: var(--chat-muted); margin: 0 0 10px; }
+.paidAccess { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--chat-line); border-radius: 8px; padding: 10px 12px; margin-bottom: 11px; background: color-mix(in srgb, var(--chat-accent) 5%, var(--chat-panel)); }
+.paidAccess strong { display: block; font-size: 11px; line-height: 1.5; color: var(--chat-text); }
+.paidAccess span { display: block; color: var(--chat-muted); font-size: 9px; line-height: 1.6; margin-top: 2px; }
+.paidAccess a, .paidAccess button { flex-shrink: 0; font-size: 10px; color: var(--chat-accent); border: 1px solid var(--chat-line); padding: 7px 9px; border-radius: 6px; cursor: pointer; }
+.paidAccess :is(a, button):focus-visible { outline: 2px solid var(--chat-accent); outline-offset: 3px; }
+.privacy a { color: var(--chat-accent); text-decoration: underline; text-underline-offset: 2px; }

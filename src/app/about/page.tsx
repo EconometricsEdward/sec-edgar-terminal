@@ -28,7 +28,7 @@ export default function AboutPage() {
         </div>
         <div className={styles.heroFooter}>
           <Link href="/analysis" prefetch={false}>Explore company research <ArrowRight size={18} aria-hidden="true" /></Link>
-          <p>Free access <span aria-hidden="true">/</span> No account required <span aria-hidden="true">/</span> Public sources</p>
+          <p>Free research <span aria-hidden="true">/</span> No account needed for research <span aria-hidden="true">/</span> Public sources</p>
         </div>
       </header>
 
@@ -83,7 +83,7 @@ export default function AboutPage() {
 
       <section className={styles.detailsSection} aria-label="Access, storage and support" id="workspace">
         <span id="keyboard" className={styles.anchor} />
-        <details><summary>Free access & browser storage</summary><div><p>No account is required. Saved portfolios and preferences use this browser profile and do not automatically sync across devices. Share links preserve supported page selections, while an export provides a separate record of the results. Export local work before clearing site data.</p><p>Research requests are sent to the application to retrieve public data. Vercel Analytics and Speed Insights measure page usage and performance.</p></div></details>
+        <details><summary>Free access & browser storage</summary><div><p>No account is required for public research, Data answers or optional Browser AI. Hosted AI is an optional paid feature requiring a verified account and prepaid answer credits; it has no automatic renewal. See <Link href="/ai#account" prefetch={false}>Hosted AI & billing</Link> for availability and pricing.</p><p>Saved portfolios and preferences use this browser profile and do not automatically sync across devices. Share links preserve supported page selections, while an export provides a separate record of the results. Export local work before clearing site data.</p><p>Research requests are sent to the application to retrieve public data. Vercel Analytics and Speed Insights measure page usage and performance. Read the <Link href="/privacy" prefetch={false}>privacy notice</Link>, <Link href="/terms" prefetch={false}>service terms</Link> and <Link href="/refunds" prefetch={false}>refund policy</Link>.</p></div></details>
         <details id="recovery"><summary>Availability & research limitations</summary><div><p>Coverage depends on the company, filing, reporting period and supported data fields. A missing value is not zero, and an empty search result does not establish that an event or exposure is absent. Retry failed requests and check dates and source coverage when something does not load.</p><p>EDGAR Terminal is an independent research and educational project, not an SEC or CFTC service. Its calculations and scenarios support research and do not constitute investment advice.</p></div></details>
       </section>
 
