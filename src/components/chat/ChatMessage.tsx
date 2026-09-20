@@ -5,6 +5,7 @@ import styles from "./Chat.module.css";
 
 export type ChatSource = { id: string; title: string; url: string; asOf?: string };
 export type ChatMode = "fast" | "reasoning";
+export type ChatEngine = "data" | "browser" | "hosted";
 export type ChatMessageData = {
   id: string;
   role: "user" | "assistant";
@@ -14,6 +15,10 @@ export type ChatMessageData = {
   page?: string;
   mode?: ChatMode;
   error?: string;
+  engine?: ChatEngine;
+  elapsedMs?: number;
+  evidenceSnapshot?: string;
+  notice?: string;
 };
 
 // A deliberately small Markdown subset: React escapes all other text, including HTML.
@@ -103,15 +108,19 @@ function AnswerText({ content, sources }: { content: string; sources: ChatSource
 
 function ChatMessage({ message }: { message: ChatMessageData }) {
   return (
-    <article className={message.role === "user" ? styles.userMessage : styles.answer} aria-label={message.role === "user" ? "Your question" : "EDGAR Terminal answer"}>
+    <article data-chat-engine={message.engine} data-chat-state={message.state} data-elapsed-ms={message.elapsedMs ? Math.round(message.elapsedMs) : undefined} className={message.role === "user" ? styles.userMessage : styles.answer} aria-label={message.role === "user" ? "Your question" : "EDGAR Terminal answer"}>
       <div className={styles.messageLabel}>
         <strong>{message.role === "user" ? "You" : "EDGAR Terminal"}</strong>
+        {message.role === "assistant" && message.engine && message.engine !== "hosted" ? <span className={styles.modeBadge}>{message.engine === "browser" ? "Browser AI · Pilot" : "Data snapshot"}</span> : null}
         {message.role === "assistant" && message.mode ? <span className={styles.modeBadge}>{message.mode === "reasoning" ? "Reasoning" : "Fast"}</span> : null}
         {message.page ? <span>{message.page}</span> : null}
       </div>
       <div className={styles.messageText}>
         {message.role === "user" ? <p>{message.content}</p> : <AnswerText content={message.content} sources={message.sources || []} />}
       </div>
+      {message.notice ? <p className={styles.messageNote}>{message.notice}</p> : null}
+      {message.engine === "browser" && message.evidenceSnapshot ? <details className={styles.sources}><summary>Check the research snapshot</summary><div className={styles.messageText}><AnswerText content={message.evidenceSnapshot} sources={message.sources || []} /></div></details> : null}
+      {message.elapsedMs && message.state === "complete" ? <p className={styles.messageNote}>{(message.elapsedMs / 1000).toFixed(1)}s · {message.engine === "browser" ? "Generated on this device. Check the research snapshot for exact figures." : message.engine === "data" ? "Prepared without an AI model." : "Hosted AI answer."}</p> : null}
       {message.state === "stopped" ? <p className={styles.messageNote}>Stopped{message.content ? " · This answer is incomplete." : " before an answer was received."}</p> : null}
       {message.error ? <p className={styles.messageError} role="alert">{message.error}</p> : null}
       {message.sources?.length ? (
