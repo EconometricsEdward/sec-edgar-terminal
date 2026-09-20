@@ -5,11 +5,13 @@ import { createPortal } from "react-dom";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowUp, BookOpen, MessageSquare, Plus, Square, X } from "lucide-react";
 import { getChatStarters } from "../../utils/chatContext.js";
-import ChatMessage, { type ChatMessageData, type ChatMode } from "./ChatMessage";
+import ChatMessage, { type ChatMessageData, type ChatMode, type ChatEngine } from "./ChatMessage";
 import { buildChatMessages, CHAT_ANSWER_LIMIT, CHAT_HISTORY_LIMIT, CHAT_USER_LIMIT, chatRetrySeconds, cleanChatSources, readChatStream } from "./chatClient.js";
 import styles from "./Chat.module.css";
 import { chatPageSelection } from "./chatPageSelection.js";
 import { normalizeSharedChatContext } from "../../utils/chatSharedContext.js";
+import { useBrowserChat } from "./useBrowserChat";
+import BrowserChatSetup from "./BrowserChatSetup";
 
 type Props = { open: boolean; onClose: () => void; triggerRef: RefObject<HTMLButtonElement | null>; attachment?: { snapshot: NonNullable<ReturnType<typeof normalizeSharedChatContext>>; route: string } | null; onClearAttachment?: () => void };
 type ActiveRequest = { id: string; controller: AbortController; content: string; frame: number | null };
@@ -24,9 +26,12 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<ChatMode>("fast");
+  const [engine, setEngine] = useState<ChatEngine>("data");
+  const local = useBrowserChat(engine === "browser", open);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
-  const [retryUntil, setRetryUntil] = useState(0);
+  const [retryTimes, setRetryTimes] = useState({ hosted: 0, research: 0 });
+  const retryUntil = retryTimes[engine === "hosted" ? "hosted" : "research"];
   const [clock, setClock] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -118,16 +123,18 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
     const current = chatPageSelection.resolve({ path: window.location.pathname, query: window.location.search });
     const sharedContext = attachment?.route === window.location.pathname + window.location.search ? attachment.snapshot : null;
     const requestMode = mode;
+    const requestEngine = engine;
+    const started = performance.now();
     const userMessage: ChatMessageData = { id: crypto.randomUUID(), role: "user", content };
     const answerId = crypto.randomUUID();
     const conversation = [...previous, userMessage];
     const request: ActiveRequest = { id: answerId, controller: new AbortController(), content: "", frame: null };
     active.current = request;
     keepAtBottom.current = true;
-    updateMessages(() => [...conversation, { id: answerId, role: "assistant", content: "", page: current.label, mode: requestMode, state: "streaming" }]);
+    updateMessages(() => [...conversation, { id: answerId, role: "assistant", content: "", page: current.label, engine: requestEngine, ...(requestEngine === "hosted" ? { mode: requestMode } : {}), state: "streaming" }]);
     setDraft("");
     setBusy(true);
-    setStatus("Connecting to EDGAR Terminal…");
+    setStatus(requestEngine === "hosted" ? "Connecting to EDGAR Terminal…" : "Preparing a research snapshot…");
     const patchAnswer = (patch: Partial<ChatMessageData>) => {
       if (active.current !== request) return;
       updateMessages(items => items.map(message => message.id === answerId ? { ...message, ...patch } : message));
@@ -137,9 +144,9 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
       patchAnswer({ content: request.content });
     };
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch(requestEngine === "hosted" ? "/api/chat" : "/api/chat/research", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+        headers: { "Content-Type": "application/json", Accept: requestEngine === "hosted" ? "application/x-ndjson" : "application/json" },
         body: JSON.stringify({ messages: buildChatMessages(conversation), context: { path: current.path, query: current.query }, mode: requestMode, ...(sharedContext ? { sharedContext } : {}) }),
         signal: request.controller.signal,
       });
@@ -148,6 +155,45 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
         const failure: ChatFailure = new Error(typeof detail.error === "string" ? detail.error.slice(0, 500) : "Chat is temporarily unavailable. Please try again shortly.");
         failure.retryAfter = chatRetrySeconds(response.headers.get("Retry-After")) || chatRetrySeconds(detail.retryAfter);
         throw failure;
+      }
+      if (requestEngine !== "hosted") {
+        const research = await response.json();
+        if (typeof research.answer !== "string" || !research.answer.trim() || research.answer.length > CHAT_ANSWER_LIMIT
+          || typeof research.evidence !== "string" || research.evidence.length > 8000) throw new Error("The research snapshot could not be read. Please try again.");
+        patchAnswer({ sources: cleanChatSources(research.sources) });
+        const instance = local.runtime.current;
+        if (requestEngine === "browser" && instance?.getSnapshot().state === "ready" && research.status === "ready") {
+          setStatus("Qwen is reading the research on your device…");
+          patchAnswer({ evidenceSnapshot: research.answer });
+          try {
+            const result = await instance.generate({ question: content, evidence: research.evidence,
+              history: previous.slice(-6).map(({ role, content, state }) => ({ role, content, state })), pageLabel: current.label }, {
+              signal: request.controller.signal,
+              onChunk: (text: string) => {
+                if (active.current !== request) return;
+                request.content += text;
+                if (request.content.length > CHAT_ANSWER_LIMIT) throw new Error("The browser answer reached its length limit.");
+                setStatus("Writing on your device…");
+                if (request.frame === null) request.frame = requestAnimationFrame(flushText);
+              },
+            });
+            request.content = result.text;
+            patchAnswer({ engine: "browser" });
+          } catch (error) {
+            if (request.controller.signal.aborted || active.current !== request) throw error;
+            request.content = research.answer;
+            patchAnswer({ engine: "data", notice: "Browser AI could not finish. Here is the research snapshot; no hosted AI was used." });
+          }
+        } else {
+          request.content = research.answer;
+          patchAnswer({ engine: "data", ...(requestEngine === "browser" ? { notice: research.status === "ready"
+            ? "Browser AI is not loaded. This research snapshot uses no AI model."
+            : "This request needs the clarification or data availability information below." } : {}) });
+        }
+        if (active.current !== request) return;
+        if (request.frame !== null) cancelAnimationFrame(request.frame);
+        patchAnswer({ content: request.content, state: "complete", elapsedMs: performance.now() - started });
+        return;
       }
       if (!response.headers.get("Content-Type")?.includes("application/x-ndjson")) throw new Error("Chat returned an unexpected response. Please try again shortly.");
       await readChatStream(response.body, frame => {
@@ -172,13 +218,13 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
       });
       if (!request.content.trim()) throw new Error("No answer was received. Please try again.");
       if (request.frame !== null) cancelAnimationFrame(request.frame);
-      patchAnswer({ content: request.content, state: "complete" });
+      patchAnswer({ content: request.content, state: "complete", elapsedMs: performance.now() - started });
     } catch (error) {
       if (active.current !== request) return;
       if (request.frame !== null) cancelAnimationFrame(request.frame);
       const failure = error as ChatFailure;
       if (failure.retryAfter && failure.retryAfter > 0) {
-        setRetryUntil(Date.now() + failure.retryAfter * 1000);
+        setRetryTimes(previous => ({ ...previous, [requestEngine === "hosted" ? "hosted" : "research"]: Date.now() + failure.retryAfter! * 1000 }));
         setClock(Date.now());
       }
       patchAnswer({ content: request.content, state: "error", error: `${request.content ? "This answer is incomplete. " : ""}${failure.message || "Chat could not connect. Please try again."}` });
@@ -237,6 +283,13 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
           <span><BookOpen size={14} aria-hidden="true" /> On <strong>{context.label}</strong>{pageEntity ? ` · ${pageEntity}` : ""}</span>
           <button type="button" onClick={() => { stop(); updateMessages(() => []); setDraft(""); onClearAttachment?.(); inputRef.current?.focus(); }} disabled={!messages.length && !draft && !attached}><Plus size={14} aria-hidden="true" /> New chat</button>
         </div>
+        <fieldset className={styles.engineChoice} disabled={busy} aria-describedby="edgar-engine-help">
+          <legend className={styles.visuallyHidden}>Research assistant engine</legend>
+          {(["data", "browser", "hosted"] as const).map(value => <label key={value} className={styles.engineOption}>
+            <input className={styles.visuallyHidden} type="radio" name="edgar-chat-engine" checked={engine === value} onChange={() => setEngine(value)} />
+            <span>{value === "data" ? "Data answers" : value === "browser" ? "Browser AI" : "Hosted AI"}<small>{value === "data" ? "No model needed" : value === "browser" ? "On your device · Pilot" : "Shared allowance"}</small></span>
+          </label>)}
+        </fieldset>
         {attached ? <div className={styles.attachment}>
           <span><strong>{attached.kind === 'portfolio' ? `${attached.holdings.length} of ${attached.totalHoldings} tickers attached` : `${attached.ticker} scenario · ${attached.end}`}</strong><small>{attached.kind === 'portfolio' ? 'User-provided tickers and modeled weights only.' : 'Applied hypothetical assumptions; financial baseline will be checked.'} Snapshot stays attached on this page until removed.</small></span>
           <button type="button" className={styles.iconButton} aria-label="Remove shared selection" onClick={onClearAttachment}><X size={16} aria-hidden="true" /></button>
@@ -245,11 +298,13 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
           const element = event.currentTarget;
           keepAtBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
         }}>
+          <p id="edgar-engine-help" className={styles.engineHelp}>{engine === "data" ? "Structured facts and page guidance from EDGAR Terminal. No AI model or download." : engine === "browser" ? "A small local model explains a prepared research snapshot. Quality and speed depend on your device." : "The existing research AI, including cross-page tools. Uses the site's shared AI allowance."}</p>
+          {engine === "browser" ? <BrowserChatSetup snapshot={local.snapshot} onLoad={local.load} onCancel={local.cancel} onClear={local.clear} busy={busy} /> : null}
           {!messages.length ? (
             <div className={styles.empty}>
               <span className={styles.eyebrow}>A CLEARER VIEW OF THE DATA</span>
               <h3>Ask a question.<br /><em>Follow the evidence.</em></h3>
-              <p id="edgar-chat-description">I’m EDGAR Terminal’s research assistant. Ask me to explain this page, review a company, or make sense of SEC and CFTC data.</p>
+              <p id="edgar-chat-description">Explore a company, fund, or market. Start with source-backed facts, or choose an AI explanation.</p>
               <div className={styles.starters}>{getChatStarters(context).map(question => (
                 <button key={question} type="button" onClick={() => { setDraft(question); inputRef.current?.focus(); }}><span>{question}</span><ArrowUp size={15} aria-hidden="true" /></button>
               ))}</div>
@@ -266,7 +321,7 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
           {!busy && latest?.state === "error" ? <button type="button" className={styles.retry} disabled={cooldown > 0} onClick={retry}>Try this question again</button> : null}
         </div>
         <form className={styles.composer} onSubmit={event => { event.preventDefault(); void send(draft); }}>
-          <div className={styles.modeControls}>
+          {engine === "hosted" ? <div className={styles.modeControls}>
             <fieldset className={styles.modeChoice} aria-describedby="edgar-chat-mode-help" disabled={busy}>
               <legend className={styles.visuallyHidden}>Answer mode</legend>
               {(["fast", "reasoning"] as const).map(value => (
@@ -277,7 +332,7 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
               ))}
             </fieldset>
             <p id="edgar-chat-mode-help" className={styles.modeHelp}>{mode === "reasoning" ? "Takes longer; useful for comparisons and analysis." : "Quick answers from the available data."}</p>
-          </div>
+          </div> : <p className={styles.modeHelp}>{engine === "browser" && local.snapshot.state === "ready" ? "Qwen3-1.7B · Ready on your device · No hosted AI charge" : "Data lookups have short rate limits to keep the site responsive."}</p>}
           <div className={styles.inputBox}>
             <label htmlFor="edgar-chat-question" className={styles.visuallyHidden}>Ask EDGAR Terminal</label>
             <textarea id="edgar-chat-question" ref={inputRef} value={draft} rows={3} maxLength={CHAT_USER_LIMIT} placeholder={`Ask about ${pageEntity || context.label.toLowerCase()}…`} onChange={event => setDraft(event.target.value)} onKeyDown={event => {
@@ -289,7 +344,8 @@ export default function ChatPanel({ open, onClose, triggerRef, attachment, onCle
             </div>
           </div>
           {cooldown > 0 ? <p className={styles.cooldown} role="status">Please wait {cooldown >= 60 ? `${Math.ceil(cooldown / 60)} minute${cooldown > 60 ? "s" : ""}` : `${cooldown} second${cooldown !== 1 ? "s" : ""}`} before sending another question.</p> : null}
-          <p className={styles.privacy}>Your message, public page selections, and any explicitly attached snapshot are sent to the AI service. Do not enter sensitive information. Chat history stays in this tab and clears on reload. AI can make mistakes; check the supporting data.</p>
+          {!busy && engine === "hosted" && (cooldown > 0 || latest?.state === "error") ? <button type="button" className={styles.retry} onClick={() => { setEngine("data"); setDraft(messagesRef.current.findLast(message => message.role === "user")?.content || ""); }}>Continue with data answers</button> : null}
+          <p className={styles.privacy}>{engine === "hosted" ? "Your message, page selections and attached snapshot are sent to the AI service." : "Your question, recent conversation, page selections and attached snapshot go to EDGAR Terminal for data retrieval. Browser AI writes its answer on your device."} Do not enter sensitive information. Conversation stays in this tab and clears on reload. Check dates and supporting data.</p>
         </form>
       </div>
     </dialog>,
