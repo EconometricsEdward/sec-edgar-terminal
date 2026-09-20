@@ -1,4 +1,5 @@
-const DATA_TOOLS = new Set(['company_financials', 'fund_portfolio', 'market_summary', 'cftc_positioning', 'disclosure_passages']);
+const DATA_TOOLS = new Set(['company_financials', 'fund_portfolio', 'market_summary', 'cftc_positioning', 'disclosure_passages',
+  'sector_companies', 'cftc_history', 'company_comparison', 'company_risk', 'company_exposures', 'fund_holdings', 'fund_changes', 'fund_overlap', 'filings_list', 'filing_document', 'shared_context']);
 const PAGE_HELP = new Set([
   'explain this page', 'explain what this page shows', 'what does this page show',
   'how do i use this page', 'what can i do on this page', 'how do i use edgar terminal',
@@ -33,7 +34,7 @@ function citedSourceIds(value, ids = new Set(), depth = 0) {
 
 /** Ephemeral state for one response. Only successful substantive tool results
  * can unlock model prose; earlier assistant messages and entity search cannot. */
-export function createChatGrounding(messages) {
+export function createChatGrounding(messages, { sharedContext = null } = {}) {
   const requiresResearch = chatRequiresResearch(messages);
   let evidence = false, attempts = 0, identityOnly = false, outcome = '', lastTool = '', choices = [], unavailableBasis = '', suggestedBasis = '';
   return {
@@ -50,11 +51,20 @@ export function createChatGrounding(messages) {
       choices = outcome === 'needs_selection' && Array.isArray(result.choices)
         ? result.choices.map(choice => choice?.id).filter(id => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9.-]{0,35}$/.test(id)).slice(0, 6) : [];
       if (!DATA_TOOLS.has(name) || outcome !== 'ready') return;
+      // A deliberately shared portfolio is usable only as user-provided input,
+      // never as a verified public financial source. No fabricated citation is
+      // created to unlock an explanation of these weights.
+      if (name === 'shared_context' && sharedContext?.kind === 'portfolio' && result.evidenceType === 'user-provided') {
+        evidence = true;
+        return;
+      }
       const registered = new Set(sources.filter(source => typeof source?.id === 'string' && typeof source?.url === 'string').map(source => source.id));
       if ([...citedSourceIds(result)].some(id => registered.has(id))) evidence = true;
     },
     limitation() {
       if (unavailableBasis) return `Verified financial data is unavailable on the requested ${unavailableBasis === 'quarter' ? 'quarterly' : unavailableBasis.toUpperCase() === 'TTM' ? 'TTM' : 'annual'} basis. This does not establish that no SEC filing exists.${suggestedBasis ? ` You can ask to try ${suggestedBasis === 'quarter' ? 'quarterly' : suggestedBasis} data; availability of that basis has not been checked.` : ''} You can also inspect the original filings.`;
+      if (outcome === 'needs_selection' && lastTool === 'cftc_history') return `Please choose the CFTC contract code and trader group you want to examine.${choices.length ? ` Matching contract codes: ${choices.join(', ')}.` : ''}`;
+      if (outcome === 'needs_selection' && lastTool === 'sector_companies') return 'Please select a sector on the Market page or name the sector you want to examine.';
       if (outcome === 'needs_selection') return `Please specify the exact company ticker, fund identifier, or manager CIK before I summarize financial data.${choices.length ? ` Matching identifiers: ${choices.join(', ')}.` : ''}`;
       if (outcome === 'not_found') return 'I could not match this request to a verified SEC entity. Please provide the company ticker, SEC CIK, or N-PORT fund identifier.';
       if (lastTool === 'disclosure_passages' && outcome === 'ready') return 'The retained filing index returned no source-backed passages for this question. That does not establish that the company lacks the risk or exposure. Try a different filing term or open Disclosures.';

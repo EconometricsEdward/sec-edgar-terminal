@@ -1,22 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowUp, BookOpen, MessageSquare, Plus, Square, X } from "lucide-react";
-import { getChatStarters, normalizeChatContext } from "../../utils/chatContext.js";
+import { getChatStarters } from "../../utils/chatContext.js";
 import ChatMessage, { type ChatMessageData, type ChatMode } from "./ChatMessage";
 import { buildChatMessages, CHAT_ANSWER_LIMIT, CHAT_HISTORY_LIMIT, CHAT_USER_LIMIT, chatRetrySeconds, cleanChatSources, readChatStream } from "./chatClient.js";
 import styles from "./Chat.module.css";
+import { chatPageSelection } from "./chatPageSelection.js";
+import { normalizeSharedChatContext } from "../../utils/chatSharedContext.js";
 
-type Props = { open: boolean; onClose: () => void; triggerRef: RefObject<HTMLButtonElement | null> };
+type Props = { open: boolean; onClose: () => void; triggerRef: RefObject<HTMLButtonElement | null>; attachment?: { snapshot: NonNullable<ReturnType<typeof normalizeSharedChatContext>>; route: string } | null; onClearAttachment?: () => void };
 type ActiveRequest = { id: string; controller: AbortController; content: string; frame: number | null };
 type ChatFailure = Error & { retryAfter?: number };
 
-export default function ChatPanel({ open, onClose, triggerRef }: Props) {
+export default function ChatPanel({ open, onClose, triggerRef, attachment, onClearAttachment }: Props) {
   const path = usePathname();
   const search = useSearchParams();
-  const context = normalizeChatContext({ path, query: search.toString() });
+  useSyncExternalStore(chatPageSelection.subscribe, chatPageSelection.getSnapshot, () => null);
+  const context = chatPageSelection.resolve({ path, query: search.toString() });
   const pageEntity = context.company || context.fund || context.managerCik;
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [draft, setDraft] = useState("");
@@ -31,6 +34,11 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
   const keepAtBottom = useRef(true);
   const messagesRef = useRef<ChatMessageData[]>([]);
   const active = useRef<ActiveRequest | null>(null);
+  const route = `${path}${search.size ? `?${search}` : ''}`;
+  const attached = attachment?.route === route ? attachment.snapshot : null;
+  useEffect(() => {
+    if (attachment && attachment.route !== window.location.pathname + window.location.search) onClearAttachment?.();
+  }, [attachment, route, onClearAttachment]);
 
   const updateMessages = useCallback((update: (previous: ChatMessageData[]) => ChatMessageData[]) => {
     const next = update(messagesRef.current).slice(-CHAT_HISTORY_LIMIT);
@@ -107,7 +115,8 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
     const content = question.trim().slice(0, CHAT_USER_LIMIT);
     if (!content || active.current || Date.now() < retryUntil) return;
     // Read the URL at send time, including client-side navigation since opening.
-    const current = normalizeChatContext({ path: window.location.pathname, query: window.location.search });
+    const current = chatPageSelection.resolve({ path: window.location.pathname, query: window.location.search });
+    const sharedContext = attachment?.route === window.location.pathname + window.location.search ? attachment.snapshot : null;
     const requestMode = mode;
     const userMessage: ChatMessageData = { id: crypto.randomUUID(), role: "user", content };
     const answerId = crypto.randomUUID();
@@ -131,7 +140,7 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
-        body: JSON.stringify({ messages: buildChatMessages(conversation), context: { path: current.path, query: current.query }, mode: requestMode }),
+        body: JSON.stringify({ messages: buildChatMessages(conversation), context: { path: current.path, query: current.query }, mode: requestMode, ...(sharedContext ? { sharedContext } : {}) }),
         signal: request.controller.signal,
       });
       if (!response.ok) {
@@ -226,8 +235,12 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
         </header>
         <div className={styles.contextBar}>
           <span><BookOpen size={14} aria-hidden="true" /> On <strong>{context.label}</strong>{pageEntity ? ` · ${pageEntity}` : ""}</span>
-          <button type="button" onClick={() => { stop(); updateMessages(() => []); setDraft(""); inputRef.current?.focus(); }} disabled={!messages.length && !draft}><Plus size={14} aria-hidden="true" /> New chat</button>
+          <button type="button" onClick={() => { stop(); updateMessages(() => []); setDraft(""); onClearAttachment?.(); inputRef.current?.focus(); }} disabled={!messages.length && !draft && !attached}><Plus size={14} aria-hidden="true" /> New chat</button>
         </div>
+        {attached ? <div className={styles.attachment}>
+          <span><strong>{attached.kind === 'portfolio' ? `${attached.holdings.length} of ${attached.totalHoldings} tickers attached` : `${attached.ticker} scenario · ${attached.end}`}</strong><small>{attached.kind === 'portfolio' ? 'User-provided tickers and modeled weights only.' : 'Applied hypothetical assumptions; financial baseline will be checked.'} Snapshot stays attached on this page until removed.</small></span>
+          <button type="button" className={styles.iconButton} aria-label="Remove shared selection" onClick={onClearAttachment}><X size={16} aria-hidden="true" /></button>
+        </div> : null}
         <div ref={scrollRef} className={styles.conversation} role="region" aria-label="Chat conversation" tabIndex={0} onScroll={event => {
           const element = event.currentTarget;
           keepAtBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
@@ -276,7 +289,7 @@ export default function ChatPanel({ open, onClose, triggerRef }: Props) {
             </div>
           </div>
           {cooldown > 0 ? <p className={styles.cooldown} role="status">Please wait {cooldown >= 60 ? `${Math.ceil(cooldown / 60)} minute${cooldown > 60 ? "s" : ""}` : `${cooldown} second${cooldown !== 1 ? "s" : ""}`} before sending another question.</p> : null}
-          <p className={styles.privacy}>Your message and public page context are sent to the AI service. Do not enter sensitive information. Chat history stays in this tab and clears on reload. AI can make mistakes; check the supporting data.</p>
+          <p className={styles.privacy}>Your message, public page selections, and any explicitly attached snapshot are sent to the AI service. Do not enter sensitive information. Chat history stays in this tab and clears on reload. AI can make mistakes; check the supporting data.</p>
         </form>
       </div>
     </dialog>,

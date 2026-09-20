@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { disclosureWordDiff } from "../../../utils/disclosureResearch.js";
 import styles from "../reader.module.css";
+import { chatPageSelection } from "../../../components/chat/chatPageSelection.js";
 
 type Props = {
   ticker: string;
@@ -18,6 +19,7 @@ type Props = {
   archive?: string;
   prior?: any;
   priorArchive?: string;
+  initialSelection?: { view?: string; query?: string; section?: string; page?: number };
   comparisonBasis?: "year" | "previous";
   onComparisonChange?: (basis: "year" | "previous") => void;
   selectionReason?: string;
@@ -159,17 +161,19 @@ function ReaderSession({
   archive,
   prior,
   priorArchive,
+  initialSelection,
   comparisonBasis = "year",
   onComparisonChange,
   selectionReason,
   onClose,
   onCollect,
 }: Props) {
-  const [view, setView] = useState("document");
-  const [draftQuery, setDraftQuery] = useState("");
-  const [query, setQuery] = useState("");
-  const [section, setSection] = useState("all");
-  const [page, setPage] = useState(1);
+  const initialQuery = typeof initialSelection?.query === 'string' && initialSelection.query.length <= 200 && !/[\u0000-\u001f\u007f]/.test(initialSelection.query) ? initialSelection.query : '';
+  const [view, setView] = useState(initialSelection?.view === 'changes' ? 'changes' : 'document');
+  const [draftQuery, setDraftQuery] = useState(initialQuery);
+  const [query, setQuery] = useState(initialQuery);
+  const [section, setSection] = useState(/^(all|other|risk|mda|notes|8k:\d\.\d{2})$/.test(initialSelection?.section || '') ? initialSelection!.section! : 'all');
+  const [page, setPage] = useState(Number.isInteger(initialSelection?.page) && initialSelection!.page! >= 1 && initialSelection!.page! <= 1000 ? initialSelection!.page! : 1);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -177,6 +181,18 @@ function ReaderSession({
   const heading = useRef<HTMLHeadingElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const id = useId();
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set('accession', filing.accession); params.set('view', view);
+    params.set('query', query); params.set('section', section); params.set('page', String(page));
+    if (archive) params.set('archive', archive);
+    if (filing.filingDate) params.set('filed', filing.filingDate);
+    if (prior?.accession) params.set('prior', prior.accession);
+    if (priorArchive) params.set('priorArchive', priorArchive);
+    if (prior?.filingDate) params.set('priorFiled', prior.filingDate);
+    return chatPageSelection.publish({ path: `/filings/${ticker}`, query: params.toString() });
+  }, [ticker, filing.accession, filing.filingDate, view, query, section, page, archive, prior?.accession, prior?.filingDate, priorArchive]);
 
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });

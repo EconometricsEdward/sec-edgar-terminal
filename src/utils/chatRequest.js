@@ -1,4 +1,5 @@
 import { normalizeChatContext } from './chatContext.js';
+import { normalizeSharedChatContext } from './chatSharedContext.js';
 
 const MAX_BODY_BYTES = 64 * 1024;
 const BODY_TIMEOUT_MS = 5000;
@@ -112,7 +113,8 @@ export async function readChatRequest(request, { env = process.env } = {}) {
   const input = await readBoundedJson(request);
   // Older open tabs still send the original shape. Mode is an enum only: the
   // browser cannot set a model, token allowance, or provider options.
-  if (!exactKeys(input, ['messages', 'context']) && !exactKeys(input, ['messages', 'context', 'mode'])) {
+  if (!exactKeys(input, ['messages', 'context']) && !exactKeys(input, ['messages', 'context', 'mode'])
+    && !exactKeys(input, ['messages', 'context', 'sharedContext']) && !exactKeys(input, ['messages', 'context', 'mode', 'sharedContext'])) {
     fail(400, 'CHAT_INVALID_REQUEST', 'The chat request is invalid. Please try again.');
   }
   const mode = Object.hasOwn(input, 'mode') ? input.mode : 'fast';
@@ -143,5 +145,13 @@ export async function readChatRequest(request, { env = process.env } = {}) {
     || typeof input.context.query !== 'string' || input.context.query.length > 2000) {
     fail(400, 'CHAT_INVALID_CONTEXT', 'The current page could not be identified. Reopen chat and try again.');
   }
-  return { messages, context: normalizeChatContext(input.context), mode };
+  const context = normalizeChatContext(input.context);
+  const sharedContext = Object.hasOwn(input, 'sharedContext') ? normalizeSharedChatContext(input.sharedContext) : null;
+  if (Object.hasOwn(input, 'sharedContext') && (!sharedContext
+    || sharedContext.kind === 'portfolio' && context.section !== 'workspace'
+    || sharedContext.kind === 'analysis-scenario' && (context.section !== 'analysis' || context.view !== 'scenarios'
+      || context.company !== sharedContext.ticker))) {
+    fail(400, 'CHAT_INVALID_SHARED_CONTEXT', 'The shared selection is invalid or belongs to another page. Share the current selection again.');
+  }
+  return { messages, context, mode, sharedContext };
 }

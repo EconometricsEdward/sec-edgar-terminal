@@ -1,6 +1,13 @@
 import { buildMarketMacroSummary, MARKET_SECTOR_METRICS } from './marketMacroSummary.js';
 import { buildMarketMacroPositioning } from './marketMacroPositioning.js';
 import { isCftcEnabled } from './cftcFeature.js';
+import { createMarketChatTools } from './chatMarketResearch.js';
+import { createCompanyChatTools } from './chatCompanyResearch.js';
+import { createFundChatTools } from './chatFundResearch.js';
+import { createFilingChatTools } from './chatFilingResearch.js';
+import { createSharedChatTools } from './chatSharedResearch.js';
+import { createExposureChatTools } from './chatExposureResearch.js';
+import { loadChatAnalysis, selectChatAnalysisPeriod } from './chatAnalysisSelection.js';
 
 const ORIGIN = 'https://secedgarterminal.com';
 const MAX_CALLS = 4, MAX_COMPANIES = 2, MAX_RESULT = 12000, MAX_TOTAL = 30000;
@@ -17,14 +24,14 @@ const cleanName = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
 const fail = (message, code = 'RESEARCH_DATA_INVALID', status) => Object.assign(new Error(message), { safeMessage: message, researchCode: code, ...(status ? { status } : {}) });
 const unavailable = (reason, code = 'SOURCE_UNAVAILABLE', detail = {}) => ({ status: 'unavailable', reason, code, ...detail });
 const FAILURE_CODES = new Set(['RESEARCH_DATA_INVALID', 'SOURCE_HTTP_ERROR', 'SOURCE_NETWORK_ERROR', 'SOURCE_RESPONSE_TOO_LARGE', 'SOURCE_RESPONSE_INVALID', 'SOURCE_IDENTITY_MISMATCH', 'SOURCE_BASIS_UNAVAILABLE']);
-const RESEARCH_STAGES = new Set(['search', 'company', 'fund', 'market', 'cftc', 'disclosures']);
+const RESEARCH_STAGES = new Set(['search', 'company', 'fund', 'market', 'cftc', 'disclosures', 'compare', 'risk', 'filings', 'scenario']);
 const COMPANY_BASIS_ERRORS = new Set([
   'No supported reporting periods are available for this company and basis.',
   'No supported SEC financial values could be verified for this company and reporting basis. Try another basis or inspect the original company filings.',
 ]);
 const stringSchema = (description, maxLength = 160) => ({ type: 'string', minLength: 1, maxLength, description });
 const enumeration = values => ({ type: 'string', enum: values });
-const schema = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
+const schema = properties => ({ type: 'object', properties: Object.fromEntries(Object.entries(properties).map(([key, { optional: _optional, ...rule }]) => [key, rule])), required: Object.keys(properties).filter(key => !properties[key].optional), additionalProperties: false });
 const sourcePeriod = ({ filingDate, ...period }) => ({ ...period, latestSourceFilingDate: filingDate || null });
 const FILING_DATE_NOTE = 'latestSourceFilingDate is the latest filing among the supporting inputs, not the filing date of every metric or of an annual report. Use each metric’s sourceIds and sourceMetadata for its actual form and filing date. Later quarterly filings can supply comparative annual balances.';
 const QUARTER_DIFFERENCE = 'Current cumulative value − prior cumulative value';
@@ -78,7 +85,7 @@ function citationUrl(value) {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.href.length > 2000) return null;
-    if (url.hostname === 'secedgarterminal.com' && /^\/(?:analysis|market|fund|disclosures|filings|reports)(?:\/|$)/.test(url.pathname)) return url.href;
+    if (url.hostname === 'secedgarterminal.com' && /^\/(?:analysis|market|fund|disclosures|filings|reports|risk|compare|workspace)(?:\/|$)/.test(url.pathname)) return url.href;
     if (['www.sec.gov', 'sec.gov'].includes(url.hostname) && /^\/(?:Archives\/edgar\/data\/|search-filings|files\/)/.test(url.pathname)) return url.href;
     if (url.hostname === 'data.sec.gov' && /^\/(?:submissions\/CIK|api\/xbrl\/companyfacts\/CIK)/.test(url.pathname)) return url.href;
     if (['www.cftc.gov', 'cftc.gov', 'publicreporting.cftc.gov'].includes(url.hostname)) return url.href;
@@ -90,6 +97,7 @@ function validate(input, shape) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !Object.hasOwn(shape, key))) throw fail('Use only the documented tool fields.');
   for (const [key, rule] of Object.entries(shape)) {
     const value = input[key];
+    if (value === undefined && rule.optional) continue;
     if (typeof value !== 'string' || value.length < (rule.minLength || 0) || value.length > (rule.maxLength || 1000)
       || rule.enum && !rule.enum.includes(value) || /[\u0000-\u001f\u007f<>\\]/.test(value)
       || /(?:https?:|www\.)/i.test(value)) throw fail(`Provide a valid ${key}.`);
@@ -109,7 +117,9 @@ function bounded(work, signal) {
 /** Preview is an anonymous reader of the same fixed public research routes as
  * Reports. Production uses native readers and their existing caches/rate gates. */
 async function publicJson(path, params, signal, maxBytes = 12 * 1024 * 1024) {
-  const allowed = ['/api/reports/search', '/api/analysis-research', '/api/market-research', '/api/v1/cftc/markets', '/api/disclosure-search/passages'];
+  const allowed = ['/api/reports/search', '/api/analysis-research', '/api/market-research', '/api/v1/cftc/markets', '/api/disclosure-search/passages',
+    '/api/market-sector-companies', '/api/v1/cftc/history', '/api/compare-research', '/api/risk', '/api/filings-research', '/api/filings-reader',
+    '/api/fund-13f', '/api/fund-13f/compare', '/api/fund', '/api/fund-workspace', '/api/v1/cftc/company-exposures'];
   if (!allowed.includes(path)) throw fail('This research endpoint is unavailable.');
   const url = new URL(path, ORIGIN); url.search = new URLSearchParams(params).toString();
   let response;
@@ -152,16 +162,25 @@ function defaultDependencies() {
       if (preview) return (await publicJson('/api/reports/search', { q: input.query, kind: input.kind }, signal, 256 * 1024)).payload;
       return (await import('./reportSearchServer.js')).searchReports(input);
     },
-    company: async ({ id, basis }, signal) => {
+    company: async ({ id, basis, end = '', asOf = '' }, signal) => {
+      if (end || asOf) {
+        const result = await loadChatAnalysis({ ticker: id, basis, asOf }, signal, { preview, publicJson });
+        return (await import('./companyReport.js')).buildCompanyReport(selectChatAnalysisPeriod(result.payload, end), { sourceSnapshot: result });
+      }
       if (!preview) return (await import('./companyReport.js')).loadCompanyReport({ ticker: id, basis }, signal);
       if (/^\d+$/.test(id)) return (await import('./reportPreviewSources.js')).preparePublicReportSources({ kind: 'company', id, basis }, signal);
       const result = await publicJson('/api/analysis-research', { ticker: id, basis }, signal);
       if (result.payload?.ticker !== id || result.payload?.basis !== basis) throw fail('The financial source did not match this company and period basis.', 'SOURCE_IDENTITY_MISMATCH');
       return (await import('./companyReport.js')).buildCompanyReport(result.payload, { sourceSnapshot: result });
     },
-    fund: async ({ id, kind }, signal) => preview
-      ? (await import('./reportPreviewSources.js')).preparePublicReportSources({ id, kind, basis: 'annual' }, signal)
-      : (await import('./fundReport.js')).loadFundReport({ id, kind }, signal),
+    fund: async ({ id, kind, period = '', accession = '' }, signal) => {
+      if (preview && kind === '13f' && period) {
+        const { payload } = await publicJson('/api/fund-13f', { cik: id, period, delivery: 'full' }, signal);
+        return (await import('./fundReport.js')).buildThirteenFReport(payload);
+      }
+      if (preview && !period && !accession) return (await import('./reportPreviewSources.js')).preparePublicReportSources({ id, kind, basis: 'annual' }, signal);
+      return (await import('./fundReport.js')).loadFundReport({ id, kind, period, accession }, signal);
+    },
     market: async signal => preview ? (await publicJson('/api/market-research', {}, signal)).payload
       : (await import('./marketOverviewServer.js')).readMarketOverview(),
     cftc: async (family, signal) => preview ? (await publicJson('/api/v1/cftc/markets', { family }, signal, 4 * 1024 * 1024)).payload
@@ -177,7 +196,7 @@ function defaultDependencies() {
 
 /** A turn-scoped read-only research layer. It writes no chatbot datasets, history,
  * embeddings or new caches. The shared site readers own source cache policy. */
-export function createChatResearch({ context = {}, signal, onSources = () => {}, onStatus = () => {}, dependencies = {} } = {}) {
+export function createChatResearch({ context = {}, sharedContext = null, signal, onSources = () => {}, onStatus = () => {}, dependencies = {} } = {}) {
   const deps = { ...defaultDependencies(), ...dependencies };
   const calls = new Map(), reads = new Map(), companies = new Set(), sources = [], sourceUrls = new Map();
   let callCount = 0, returnedBytes = 0, activeResearch = 0, activeSince = 0, researchTimer;
@@ -273,7 +292,7 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
     let value = usedSourceMetadata(result);
     // Trim complete optional rows, never individual financial points or passage
     // text. Truncation is explicit; a lost row can never become a zero value.
-    const arrays = ['contracts', 'metrics', 'sectors', 'passages', 'industries', 'topPositions', 'allocations', 'choices'];
+    const arrays = ['contracts', 'metrics', 'sectors', 'passages', 'industries', 'topPositions', 'allocations', 'choices', 'companies', 'rows', 'filings', 'changes', 'holdings', 'positions', 'history', 'points', 'comparisons', 'watchItems', 'exposures', 'reports', 'managers', 'pairs', 'archives'];
     while (bytes(value) > cap && arrays.some(key => Array.isArray(value[key]) && value[key].length)) {
       const key = arrays.filter(key => Array.isArray(value[key]) && value[key].length)
         .sort((a, b) => bytes(value[b]) - bytes(value[a]))[0];
@@ -286,7 +305,7 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
   function tool(description, properties, status, execute) {
     return { description, inputSchema: schema(properties), execute: async input => {
       try { validate(input, properties); } catch (error) { return unavailable(error.safeMessage, 'TOOL_INVALID_INPUT'); }
-      const key = `${status}:${JSON.stringify(Object.keys(properties).map(name => input[name].trim()))}`;
+      const key = `${status}:${description}:${JSON.stringify(Object.keys(properties).map(name => Object.hasOwn(input, name) ? input[name].trim() : null))}`;
       if (callCount >= MAX_CALLS) return unavailable('The four research lookups for this message are complete. Use the retrieved evidence or ask a follow-up.', 'TOOL_CALL_LIMIT');
       callCount++;
       if (calls.has(key)) return finish(await calls.get(key));
@@ -324,12 +343,19 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
         return result.identity ? { status: 'ready', kind, ...result } : result;
       }),
     company_financials: tool('Read verified SEC financial statements and ratios for one company, including up to five periods and filing citations. Resolve names automatically; use a returned exact identifier after ambiguity. USD is whole dollars; percent values are fractions. Missing is never zero.',
-      { identifier: stringSchema('Company name, ticker or CIK. Use the page company when relevant.'), basis: enumeration(BASES) }, 'Reading company financials',
-      async ({ identifier, basis }) => {
+      { identifier: stringSchema('Company name, ticker or CIK. Use the page company when relevant.'), basis: enumeration(BASES),
+        end: { type: 'string', maxLength: 10, optional: true, description: 'Exact fiscal period end YYYY-MM-DD; blank/latest for latest. Omit to use the matching current page selection.' },
+        asOf: { type: 'string', maxLength: 10, optional: true, description: 'Filing cutoff YYYY-MM-DD; blank for current filed values. Omit to use the matching current page cutoff.' } }, 'Reading company financials',
+      async ({ identifier, basis, end, asOf }) => {
         const resolved = await resolve(identifier, 'company'); if (!resolved.identity) return resolved;
         const identity = rememberCompany(resolved.identity);
-        const report = await read(`company:${identity.id}:${basis}`, async s => {
-          try { return await deps.company({ id: identity.id, basis }, s); }
+        const currentCompany = [identity.id, identity.ticker, identity.cik].filter(Boolean).some(value => value.toUpperCase() === String(context.company || '').toUpperCase() || cikOf(context.company) === identity.cik);
+        end = end ?? (currentCompany ? context.end : '') ?? '';
+        asOf = asOf ?? (currentCompany ? context.asOf : '') ?? '';
+        if (end === 'latest') end = '';
+        if (end && !validDay(end) || asOf && (!validDay(asOf) || asOf > new Date().toISOString().slice(0, 10))) throw fail('Use valid financial period and filing cutoff dates.');
+        const report = await read(`company:${identity.id}:${basis}:${end}:${asOf}`, async s => {
+          try { return await deps.company({ id: identity.id, basis, ...(end ? { end } : {}), ...(asOf ? { asOf } : {}) }, s); }
           catch (error) {
             // These two exact report-builder failures mean absent verified
             // coverage for the requested basis, not a network/provider outage.
@@ -341,6 +367,8 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
           }
         });
         if (report.kind !== 'company' || cikOf(report.entity?.cik) !== identity.cik || report.period?.basis !== basis) throw fail('The financial source did not match the requested SEC company and reporting basis.');
+        if (end && report.period.asOf !== end || asOf && (report.sources || []).some(source => !validDay(source.filed) || source.filed > asOf))
+          throw fail('The available financial evidence does not match the selected period or filing cutoff.', 'SOURCE_BASIS_UNAVAILABLE');
         const { ids: sourceIds, metadata: sourceMetadata } = reportSources(report);
         const sourceCatalog = new Map((report.sources || []).map(source => [source.id, source]));
         const observations = report.sections?.find(section => section.id === 'observations')?.rows || [];
@@ -361,9 +389,9 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
             ...(points.some(point => point.start) ? { startDates: points.map(point => point.start) } : {}),
             ...(points.some(point => point.reason) ? { missingReasons: Object.fromEntries(points.filter(point => point.reason).map(point => [point.period, point.reason])) } : {}) }];
         });
-        const pageUrl = /^\d+$/.test(identity.id) ? `${ORIGIN}/filings/${identity.cik}` : `${ORIGIN}/analysis/${encodeURIComponent(identity.id)}?basis=${basis}`;
+        const pageUrl = /^\d+$/.test(identity.id) ? `${ORIGIN}/filings/${identity.cik}` : `${ORIGIN}/analysis/${encodeURIComponent(identity.id)}?${new URLSearchParams({ basis, ...(end ? { end } : {}), ...(asOf ? { asOf } : {}) })}`;
         const page = addSource(`${report.entity.name} · ${/^\d+$/.test(identity.id) ? 'SEC filings' : 'Analysis'}`, pageUrl, report.period.asOf);
-        return { status: 'ready', entity: report.entity, basis, period: sourcePeriod(report.period), filingDateNote: FILING_DATE_NOTE, coverage: report.coverage, periods, metrics, sourceMetadata,
+        return { status: 'ready', entity: report.entity, basis, ...(asOf ? { filingCutoff: asOf } : {}), period: sourcePeriod(report.period), filingDateNote: FILING_DATE_NOTE, coverage: report.coverage, periods, metrics, sourceMetadata,
           units: 'Each metric’s values, status, sourceIds and startDates arrays follow periods in the same order. USD is whole dollars; percent values are fractions (0.125 = 12.5%). Balance sheet amounts are period-end; flows cover their labeled durations.',
           notes: (report.notes || []).filter(note => !/Excel|PDF/.test(note)).map(note => txt(note, 600)), sourceIds: page ? [page] : [], warning: resolved.warning };
       }),
@@ -404,12 +432,21 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
           failures: loaded.flatMap((result, index) => result.status === 'rejected' ? [`${families[index]} prepared positioning unavailable.`] : []) };
       }),
     fund_portfolio: tool('Read one verified N-PORT fund-series or 13F manager’s historical portfolio summary and top ten disclosed holdings. N-PORT net assets are series-level; 13F reported value is not AUM or performance. Includes missing-data and amendment qualifications.',
-      { identifier: stringSchema('Fund name, ticker, N-PORT series ID or 13F manager CIK.'), kind: enumeration(['nport', '13f']) }, 'Reading the disclosed portfolio',
-      async ({ identifier, kind }) => {
+      { identifier: stringSchema('Fund name, ticker, N-PORT series ID or 13F manager CIK.'), kind: enumeration(['nport', '13f']),
+        selection: { type: 'string', maxLength: 20, optional: true, description: '13F quarter end or N-PORT accession; omit/blank for the matching current page selection, latest to override.' } }, 'Reading the disclosed portfolio',
+      async ({ identifier, kind, selection = '' }) => {
         const resolved = await resolve(identifier, kind); if (!resolved.identity) return resolved;
         const { identity } = resolved;
-        const report = await read(`fund:${kind}:${identity.id}`, s => deps.fund({ id: identity.id, kind }, s));
+        const pageSelection = kind === '13f' && context.managerCik === identity.cik ? context.managerPeriod
+          : kind === 'nport' && [identity.id, identity.ticker, identity.seriesId].includes(context.fund) ? context.accession : '';
+        selection = selection === 'latest' ? '' : selection || pageSelection || '';
+        if (selection && !(kind === '13f' ? /^\d{4}-(03-31|06-30|09-30|12-31)$/ : /^\d{10}-\d{2}-\d{6}$/).test(selection)) throw fail('Use a reporting quarter end or verified N-PORT accession.');
+        if (kind === '13f' && selection > new Date().toISOString().slice(0, 10)) throw fail('Choose a reporting quarter that has ended.');
+        const report = await read(`fund:${kind}:${identity.id}:${selection}`, s => deps.fund({ id: identity.id, kind,
+          ...(selection ? kind === '13f' ? { period: selection } : { accession: selection } : {}) }, s));
         if (report.kind !== kind || cikOf(report.entity?.cik) !== identity.cik || report.entity?.id !== identity.id) throw fail('The portfolio source did not match the selected fund or manager.');
+        if (selection && (kind === '13f' ? report.period?.asOf !== selection : !report.sources?.some(source => source.accession === selection)))
+          throw fail('The portfolio source did not match the selected historical report.', 'SOURCE_IDENTITY_MISMATCH');
         const { ids, metadata: sourceMetadata } = reportSources(report);
         return { status: 'ready', kind, entity: report.entity, period: sourcePeriod(report.period), sourceMetadata,
           filingDateNote: 'latestSourceFilingDate is the most recent supporting filing date, including amendments. It differs from the portfolio date. See sourceMetadata for each filing’s form and filed date.', coverage: report.coverage,
@@ -443,5 +480,8 @@ export function createChatResearch({ context = {}, signal, onSources = () => {},
           limitation: 'This is a partial index of selected recent filing passages. No matching retained passage does not establish absence. Open Disclosures for a broader filing review.' };
       }),
   };
+  const api = { tool, stringSchema, enumeration, read, resolve, rememberCompany, addSource, fail, unavailable, txt, finite,
+    context, sharedContext, dependencies: deps, publicJson, preview: process.env.VERCEL_ENV === 'preview' };
+  Object.assign(tools, createMarketChatTools(api), createCompanyChatTools(api), createFundChatTools(api), createFilingChatTools(api), createSharedChatTools(api), createExposureChatTools(api));
   return { tools, getSources: () => sources.map(source => ({ ...source })), context };
 }

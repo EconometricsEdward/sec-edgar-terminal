@@ -1,6 +1,6 @@
 # EDGAR Terminal assistant
 
-The global **Chat** button sits below Reading. It lazy-loads a native modal panel without navigation. Opening does not call a model or fetch research. The panel uses the current public URL at each submit; it does not scrape the page or read uploaded portfolios. History and drafts live only in root-mounted React memory, bounded to 20 displayed messages and nine complete-pair messages/12,000 characters sent per request. Reloading or New chat clears the conversation. Closing aborts generation and preserves the incomplete answer.
+The global **Chat** button sits below Reading. It lazy-loads a native modal panel without navigation. Opening does not call a model or fetch research. The panel uses validated current public selections at each submit, including an in-memory bridge for the open Filings reader. It does not scrape page HTML or automatically read uploaded portfolios. The explicit **Use this portfolio/scenario in chat** buttons attach a bounded snapshot and open the same modal without navigation. Portfolio snapshots contain at most 25 public ticker identifiers and modeled weights, with total-count/coverage metadata; no account names, position amounts or uploaded files are included. Analysis scenario snapshots contain the company, exact period/basis/filing cutoff and applied, allowlisted assumptions. Attachments remain only in React memory, are visibly removable, and clear on New chat or URL changes. An attachment is a fixed snapshot until the user shares again. History and drafts live only in root-mounted React memory, bounded to 20 displayed messages and nine complete-pair messages/12,000 characters sent per request. Reloading or New chat clears the conversation. Closing aborts generation and preserves the incomplete answer.
 
 ## Model and transport
 
@@ -16,15 +16,37 @@ No chat-specific tracing or prompt logging is enabled. The deployment must be on
 
 ## Research tools
 
-`chatResearch.js` exposes six read-only tools: SEC entity search, company financials, market fundamentals, CFTC positioning, N-PORT/13F portfolios, and indexed disclosure passages. Native production readers reuse existing data caches, SEC pacing, prepared market/CFTC snapshots and report normalization. Preview uses a small fixed set of the live site's public research endpoints; no private-data gateway identities are broadened.
+`chatResearch.js` exposes bounded read-only tools through the shared turn-level identity, byte, time and lookup limits. Every tool can be used from any page:
+
+| Tool | Data and selection |
+| --- | --- |
+| `search_entities` | Verified SEC company, fund series or manager identity |
+| `company_financials` | Up to five financial periods, exact fiscal end and filing cutoff |
+| `company_comparison` | Two issuers, calendar alignment, deterministic differences and comparable YoY changes |
+| `company_risk` | Current annual/TTM Risk profile, supported strengths, watch items and source-linked ratios |
+| `company_exposures` | Dated SEC exposure evidence and associated benchmark contracts; not a company's futures position |
+| `market_summary` | Prepared SEC business breadth and sector medians |
+| `sector_companies` | Full-sector ranking before pagination, metric/filter/basis and company report dates |
+| `cftc_positioning` | Prepared broad futures positioning |
+| `cftc_history` | Exact prepared contract/group/report date/window; no new CFTC download on a missing chart |
+| `fund_portfolio` | Verified portfolio summary, selected quarter/accession and top holdings |
+| `fund_holdings` | Targeted holdings search within the selected public report |
+| `fund_changes` | Existing deterministic N-PORT/13F before/after comparisons |
+| `fund_overlap` | Two managers' aligned-quarter overlap, including explicit incomplete-report coverage |
+| `filings_list` | Recent filings or one manifest-listed historical archive |
+| `filing_document` | Selected filing sections, complete paragraphs and Risk Factors/MD&A changes |
+| `disclosure_passages` | Retained indexed SEC disclosure passages |
+| `shared_context` | User-provided portfolio concentration or recomputed Analysis scenario |
+
+Native production readers reuse existing data caches, SEC pacing, prepared market/CFTC snapshots and report normalization. Preview uses a small fixed set of the live site's public research endpoints; no private-data gateway identities are broadened.
 
 Tools validate entity identity and reporting basis, preserve dates/units/coverage/missing values and return citation IDs backed by allowlisted public sources. Ambiguous names require a selection. Financial metrics span up to five periods; fund summaries show the largest ten reported holdings with full-count coverage. Results are limited to 12 KB per lookup/30 KB total, four calls, two companies and 18 seconds of cumulative active research time. The research timer pauses between tool rounds while the model reasons; overlapping lookups share the same remaining allowance. The overall 85-second request deadline still applies. Existing readers own caching; no chatbot tables, vector store, embeddings, report copies or transcripts are created. Some pre-existing upstream readers have their own deadlines, so abort stops awaiting their results while their bounded shared cache work can finish.
 
-Every turn requires new substantive research unless the complete question matches a narrow generic page-help, definition, or greeting exception. Entity search alone is insufficient. Prior assistant prose is removed from the model's evidence context. Research answers are held until a successful substantive tool result references a registered source; tool-call preambles are discarded. Missing evidence yields a fixed limitation or entity-selection response instead of unverified model prose. Generic help disables research and cannot repeat earlier entity figures. This prevents the observed no-lookup follow-up failure; users should still verify model interpretations against the supplied sources.
+Every turn requires new substantive research unless the complete question matches a narrow generic page-help, definition, or greeting exception. Entity search alone is insufficient. Prior assistant prose is removed from the model's evidence context. Research answers are held until a successful substantive tool result references a registered source. The narrow exception is a validated, explicitly attached portfolio: its computed weights/concentration can be explained as user-provided input, without invented public citations. Scenario numeric outputs require original SEC evidence for every baseline input; tool-call preambles are discarded. Missing evidence yields a fixed limitation or entity-selection response instead of unverified model prose. Generic help disables research and cannot repeat earlier entity figures. This prevents the observed no-lookup follow-up failure; users should still verify model interpretations against the supplied sources.
 
 For calculated standalone quarters, the compact company tool can include the exact cumulative subtraction inputs with their dates and source IDs. It exposes this derivation only when concepts, units, fiscal-year starts, reporting dates and arithmetic match the existing verified report result. Other formulas are not inferred.
 
-The assistant distinguishes sector business fundamentals from price returns, aggregate CFTC data from company positions, N-PORT from 13F, and an indexed passage search from a complete SEC corpus. Historical URL dates are context hints; unsupported historical vintages and ytd are explicitly distinguished from tool results. A company with no supported periods or verified values for the requested basis returns a specific coverage limitation and an unverified alternative-basis suggestion, rather than an outage or invented annual figures. It cannot trade, mutate data, browse arbitrary URLs or read private uploaded holdings.
+The assistant distinguishes sector business fundamentals from price returns, aggregate CFTC data from company positions, N-PORT from 13F, and an indexed passage search from a complete SEC corpus. Exact historical selections are passed to supporting readers and mismatches never silently fall back to current results. General company financial summaries support annual/quarter/TTM, while shared Analysis scenarios also support ytd when compatible baseline inputs exist. The current Risk profile does not support historical filing cutoffs and reports that limitation. Prepared CFTC history may be unavailable for a contract/date/window that has not been published; no chat-specific chart preparation starts. Filings text retrieval is bounded to the selected reader page and a maximum of one manifest-listed archive per accession; extracted passages do not represent an exhaustive review. A company with no supported periods or verified values for the requested basis returns a specific coverage limitation and an unverified alternative-basis suggestion, rather than an outage or invented annual figures. It cannot trade, mutate data, browse arbitrary URLs, or access unshared private browser data. N-PORT/13F changes use the site calculators; holding-value changes are not labeled purchases, sales, flows or performance. Portfolio impact scenarios use a different calculator and are not attached by the Analysis scenario action.
 
 ## Usage controls and costs
 

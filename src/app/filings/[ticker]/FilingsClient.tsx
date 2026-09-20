@@ -52,6 +52,7 @@ import {
   writeFilingsNotebook,
   exportFilingsCsv,
 } from "../../../utils/filingsNotebook.js";
+import { readFilingReaderSelection, resolveFilingReaderSelection } from "../../../utils/filingReaderSelection.js";
 import styles from "../filings.module.css";
 
 const FilingReader = dynamic(() => import("./FilingReader"), {
@@ -129,6 +130,8 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
   const [storageError, setStorageError] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<any>(null);
+  const [readerLink, setReaderLink] = useState<any>(null);
+  const [linkedReader, setLinkedReader] = useState<any>(null);
   const [comparison, setComparison] = useState<"year" | "previous">("year");
   const [status, setStatus] = useState("");
   const [viewName, setViewName] = useState("");
@@ -141,7 +144,15 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
 
   useEffect(() => {
     function readUrl() {
-      setSettings(readFilingsSettings(window.location.search));
+      setLinkedReader(null);
+      setSelected(null);
+      let selection: ReturnType<typeof readFilingReaderSelection> = null;
+      try { selection = readFilingReaderSelection(window.location.search); }
+      catch (failure) { setStatus(errorText(failure)); }
+      setReaderLink(selection);
+      const listParams = new URLSearchParams(window.location.search);
+      if (selection) { listParams.delete("query"); listParams.delete("view"); }
+      setSettings(readFilingsSettings(listParams.toString()));
       setPage(1);
     }
     readUrl();
@@ -253,11 +264,34 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
     };
   }, [ticker, isFiler, refresh, router, setTicker, setCompany]);
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || loading || !data || !readerLink) return;
+    const controller = new AbortController();
+    const current = generation.current;
+    setStatus("Opening the selected SEC filing…");
+    resolveFilingReaderSelection(readerLink, data, async (name: string) => {
+      const response = await fetch(`/api/filings-research?ticker=${encodeURIComponent(ticker)}&archive=${encodeURIComponent(name)}`, { signal: controller.signal });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not load the selected SEC archive.");
+      return result;
+    }).then((result) => {
+      if (controller.signal.aborted || current !== generation.current) return;
+      setLoadedArchives((value) => ({ ...value, ...result.archives }));
+      setLinkedReader({ ...result, key: JSON.stringify(readerLink) });
+      setSelected(result.filing);
+      setStatus("");
+    }).catch((failure) => {
+      if (!controller.signal.aborted && current === generation.current) setStatus(errorText(failure));
+    });
+    return () => controller.abort();
+  }, [ticker, ready, loading, data, readerLink]);
+  useEffect(() => {
+    // Keep the validated public reader link while opening/reading its filing.
+    // Normal list navigation resumes when the user closes or changes selection.
+    if (!ready || readerLink) return;
     const path = filingPath(ticker, settings);
     if (window.location.pathname + window.location.search !== path)
       window.history.replaceState(null, "", path);
-  }, [ticker, settings, ready]);
+  }, [ticker, settings, ready, readerLink]);
   // A fixed desktop reader stays clear of both navigation bars even in short views.
   useEffect(() => {
     const root = rootRef.current;
@@ -405,6 +439,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
     return [...months].sort((a, b) => b[0].localeCompare(a[0]));
   }, [filtered]);
   function changeSettings(patch: any) {
+    setReaderLink(null);
     setSettings((s: any) => normalizeFilingsSettings({ ...s, ...patch }));
     setPage(1);
     setDateError("");
@@ -592,6 +627,8 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
     });
   }
   function openFiling(filing: any) {
+    setReaderLink(null);
+    setLinkedReader(null);
     setSelected(filing);
     setStatus("");
     requestAnimationFrame(() => alignResults(gridRef.current));
@@ -1387,16 +1424,17 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                   </button>
                 </div>
                 <FilingReader
-                  key={selected.accession}
+                  key={`${selected.accession}:${linkedReader?.key || "list"}`}
                   ticker={ticker}
                   filing={selected}
                   archive={selected.archive}
-                  prior={pair?.prior}
-                  priorArchive={pair?.prior?.archive}
+                  prior={linkedReader?.prior || pair?.prior}
+                  priorArchive={linkedReader?.prior ? linkedReader.prior.archive : pair?.prior?.archive}
+                  initialSelection={linkedReader?.initialSelection}
                   comparisonBasis={comparison}
-                  onComparisonChange={setComparison}
-                  selectionReason={pair?.reason}
-                  onClose={() => setSelected(null)}
+                  onComparisonChange={(basis) => { setComparison(basis); setReaderLink(null); setLinkedReader((value: any) => value ? { ...value, prior: null } : null); }}
+                  selectionReason={linkedReader?.prior ? "Exact preceding filing selected by the source link; the reader verifies whether the periods are comparable." : pair?.reason}
+                  onClose={() => { setSelected(null); setReaderLink(null); setLinkedReader(null); }}
                   onCollect={collect}
                 />
               </aside>
