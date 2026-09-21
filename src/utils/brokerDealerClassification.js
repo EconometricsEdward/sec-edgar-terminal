@@ -68,7 +68,7 @@ export function classifyBrokerDealerDocument({ pages = [], cover = {}, filing = 
   };
   const prepared = (Array.isArray(pages) ? pages : []).slice(0, 80).map((page, index) => {
     const lines = String(page?.text || (Array.isArray(page?.lines) ? page.lines.map(line => line.text || '').join('\n') : '')).slice(0, 250000).split(/\r?\n/).map(normalizeLine).filter(Boolean);
-    return { page: Number.isInteger(page?.pageNumber) && page.pageNumber > 0 ? page.pageNumber : index + 1, lines, text: lines.join('\n') };
+    return { page: Number.isInteger(page?.pageNumber) && page.pageNumber > 0 ? page.pageNumber : index + 1, method: page?.method || '', lines, text: lines.join('\n') };
   });
   // Attachment-local metadata is permitted only when it is an exact part heading.
   // An annual cover belonging to another attachment must not classify this one.
@@ -79,7 +79,7 @@ export function classifyBrokerDealerDocument({ pages = [], cover = {}, filing = 
     if (part) { parts.add(part); add('part', descriptor); }
   }
   let auditor = null, unaudited = null, disclaimer = false, reportedPeriod = null, asOf = null, annualHeading = false;
-  const durations = [];
+  const durations = [], partObservations = [];
   for (const page of prepared) {
     const text = compact(page.text);
     const checklist = /this (?:filing|report).{0,30}contains|oath or affirmation/i.test(text);
@@ -92,6 +92,7 @@ export function classifyBrokerDealerDocument({ pages = [], cover = {}, filing = 
       const nearby = page.lines.slice(Math.max(0, i - 7), i + 8).join(' ');
       if (part && !contents && /X\s*-?\s*17A\s*-?\s*5|\bFOCUS\b|financial and operational combined|annual reports?|securities and exchange commission/i.test(nearby)) {
         parts.add(part); add('part', nearby, page.page);
+        partObservations.push({ part, page: page.page, ambiguousAnnualOcr: part === 'Part II' && page.method === 'ocr' && Boolean(annualTitle) && coverPage && /\b17a-5\b/i.test(text) && /\b17a-12\b/i.test(text) && /\b18a-7\b/i.test(text) });
       }
     }
     // Annual facing-page checklists, a contents list, and an accountant name do
@@ -110,6 +111,10 @@ export function classifyBrokerDealerDocument({ pages = [], cover = {}, filing = 
         auditor = { page: page.page, scope: /financial statements|statements of (?:income|cash flows|operations)/i.test(financialAudit[0]) ? 'financial-statements' : 'financial-condition' };
         disclaimer ||= /\b(?:do not|did not|unable to|cannot) express (?:an? )?(?:audit )?opinion\b|\bdisclaimer of opinion\b/i.test(text);
         components.add('auditor-report');
+        if (!asOf) {
+          const auditedDate = text.slice(financialAudit.index, financialAudit.index + 500).match(new RegExp(`\\bas (?:of|at)\\s*(${datePattern})`, 'i'));
+          if (auditedDate && parseDate(auditedDate[1])) asOf = parseDate(auditedDate[1]);
+        }
         add('auditor-report', text.slice(Math.max(0, financialAudit.index - 70), financialAudit.index + 250), page.page);
       }
       const unauditedHeading = page.lines.find(line => /^(?:\(?unaudited\)?|(?:financial and operational combined uniform single report|FOCUS(?: report)?|(?:consolidated |condensed )?statements? of [\w '\-]+)\s*(?:-|—|:)?\s*\(?unaudited\)?)$/i.test(line));
@@ -127,9 +132,11 @@ export function classifyBrokerDealerDocument({ pages = [], cover = {}, filing = 
         const start = parseDate(range[1]), end = parseDate(range[2]);
         if (start && end && start <= end && !reportedPeriod) { reportedPeriod = { start, end }; add('reporting-period', range[0], page.page); }
       }
-      const duration = text.match(new RegExp(`\\b(year|quarter|month|three months|twelve months) ended\\s*(${datePattern})`, 'i'));
-      const durationContext = coverPage || page.lines.some(line => exactPart(line) || statementPatterns.slice(0, 4).some(([, pattern]) => pattern.test(line))) || (auditor?.page === page.page);
-      if (duration && durationContext && !page.lines.some(line => statementPatterns.find(([kind]) => kind === 'notes')[1].test(line))) {
+      const notesIndex = page.lines.findIndex(line => statementPatterns.find(([kind]) => kind === 'notes')[1].test(line));
+      const notesDuration = notesIndex < 0 ? '' : page.lines.slice(notesIndex + 1, notesIndex + 4).find(line => new RegExp(`^(?:for (?:the )?)?(?:year|quarter|month|three months|twelve months) ended\\s*${datePattern}[.]?$`, 'i').test(line));
+      const duration = (notesDuration || text).match(new RegExp(`\\b(year|quarter|month|three months|twelve months) ended\\s*(${datePattern})`, 'i'));
+      const durationContext = Boolean(notesDuration) || coverPage || page.lines.some(line => exactPart(line) || statementPatterns.slice(0, 4).some(([, pattern]) => pattern.test(line))) || (auditor?.page === page.page);
+      if (duration && durationContext && (notesIndex < 0 || notesDuration)) {
         const end = parseDate(duration[2]);
         if (end) durations.push({ end, frequency: /year|twelve/i.test(duration[1]) ? 'annual' : /quarter|three/i.test(duration[1]) ? 'quarterly' : 'monthly', text: duration[0], page: page.page });
       }
@@ -147,9 +154,20 @@ export function classifyBrokerDealerDocument({ pages = [], cover = {}, filing = 
   if (datedDuration) add('reporting-period', datedDuration.text, datedDuration.page);
   const ownRangeDays = reportedPeriod ? (Date.parse(reportedPeriod.end) - Date.parse(reportedPeriod.start)) / 86400000 + 1 : 0;
   const annualPeriod = explicitFrequency === 'annual' || (ownRangeDays >= 365 && ownRangeDays <= 366);
+  // A scanned Part III cover can lose its final roman numeral in OCR. Do not
+  // let that single noisy token overrule the explicit annual facing-page template
+  // and an actual auditor report plus financial statement. Preserve the observed
+  // token as ambiguous evidence; do not manufacture a corrected Part III value.
+  const ambiguousAnnualParts = partObservations.filter(item => item.ambiguousAnnualOcr);
+  if (ambiguousAnnualParts.length && auditor && components.has('financial-condition')) {
+    const ambiguousPages = new Set(ambiguousAnnualParts.map(item => item.page));
+    for (const item of evidence) if (item.kind === 'part' && ambiguousPages.has(item.page)) item.kind = 'ambiguous-part';
+    if (!partObservations.some(item => item.part === 'Part II' && !item.ambiguousAnnualOcr) && !metadata.some(item => exactPart(item) === 'Part II')) parts.delete('Part II');
+    limitations.push('An OCR part heading conflicts with the annual-report facing page. The family follows the annual cover and accompanying auditor report; the ambiguous part is left unverified.');
+  }
   const annualPart = parts.has('Part III'), periodicPart = ['Part II', 'Part IIA', 'Schedule I'].some(part => parts.has(part));
   let family = annualPart ? 'annual-report' : periodicPart ? 'periodic-focus' : annualHeading || (auditor && annualPeriod) ? 'annual-report' : 'unknown';
-  if (annualPart && periodicPart) { family = 'unknown'; limitations.push('The selected document contains both annual and periodic report headings. Review the source before comparing periods.'); }
+  if ((annualPart || annualHeading) && periodicPart) { family = 'unknown'; limitations.push('The selected document contains both annual and periodic report headings. Review the source before comparing periods.'); }
   if (periodicPart) components.add('operational-schedules');
   const audit = auditor ? { status: 'auditor-report-present', scope: auditor.scope } : unaudited ? { status: 'explicitly-unaudited' } : { status: 'not-established' };
   if (auditor && unaudited) limitations.push('An auditor report and an unaudited designation both appear. The audit scope does not automatically extend to every schedule.');
@@ -160,7 +178,7 @@ export function classifyBrokerDealerDocument({ pages = [], cover = {}, filing = 
   const documentHasPeriod = Boolean(reportedPeriod || asOf || datedDuration);
   const coverPart = exactPart(partField(cover.part || cover.reportPart || cover.formPart || ''));
   const incompatibleCover = ownDocument && family === 'periodic-focus' && (coverPart === 'Part III' || (!coverPart && parseDate(cover.periodBegin) && parseDate(cover.reportDate) && Date.parse(cover.reportDate) - Date.parse(cover.periodBegin) > 300 * 86400000));
-  const matchingAnnualCover = family === 'annual-report' && coverPart === 'Part III' && asOf && asOf === parseDate(cover.reportDate || cover.periodEnd);
+  const matchingAnnualCover = family === 'annual-report' && (coverPart === 'Part III' || (annualHeading && auditor)) && asOf && asOf === parseDate(cover.reportDate || cover.periodEnd);
   let start = reportedPeriod?.start || (!incompatibleCover && (!documentHasPeriod || matchingAnnualCover) ? parseDate(cover.periodBegin || cover.periodStart) : '') || '';
   const end = reportedPeriod?.end || asOf || datedDuration?.end || (!incompatibleCover ? parseDate(cover.reportDate || cover.periodEnd) || parseDate(filing.reportDate || filing.periodEnd) : '') || '';
   if (start && end && start > end) start = '';

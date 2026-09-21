@@ -192,3 +192,74 @@ test('an explicit structured formPart Roman numeral is distinct from a generic d
   assert.equal(classify({ selectedDocument: { part: 'IIA' } }).family, 'periodic-focus');
   assert.equal(classify({ selectedDocument: { description: 'III' } }).family, 'unknown');
 });
+
+// Observed text from Brean's scanned 2025 annual facing page. The visible PDF
+// says Part III; OCR drops the last I and corrupts the date separators. Keeping
+// this noisy source text prevents a dealer-specific correction from hiding the bug.
+const annualOcrCover = `PUBLIC VERSION
+SECURITIES AND EXCHANGE COMMISSION Expires: Nov. 30, 2026
+Washington, D.C. 20549 Estimated average burden
+hours per response: 12
+ANNUAL REPORTS
+FORM X-17A-5 8-40742
+PART II
+FACING PAGE
+Information Required Pursuant to Rules 17a-5, 17a-12, and 18a-7 under the Securities Exchange Act of 1934
+FILING FOR THE PERIOD BEGINNING 01 101 12025 AND ENDING 1 2/31 12025
+MM/DD/YY MM/DD/YY
+A. REGISTRANT IDENTIFICATION
+TYPE OF REGISTRANT (check all applicable boxes):
+Broker-dealer`;
+const yearEndBody = body.replaceAll('June 30, 2026', 'December 31, 2025');
+const yearEndBalance = balance.replaceAll('JUNE 30, 2026', 'DECEMBER 31, 2025');
+const yearEndNotes = notes.replace('NOTES TO STATEMENT OF FINANCIAL CONDITION\n', 'NOTES TO STATEMENT OF FINANCIAL CONDITION\nFor the Year Ended December 31, 2025\n');
+const noisyAnnualPages = method => [{ ...page(annualOcrCover), method }, page(yearEndBody, 5), page(yearEndBalance, 6), page(yearEndNotes, 7)];
+
+test('observed annual-cover OCR Part II does not override corroborated annual report contents', () => {
+  const result = classify({ selectedDocument: document, pages: noisyAnnualPages('ocr') });
+  assert.equal(result.family, 'annual-report');
+  assert.equal(result.label, 'Annual audited report');
+  assert.deepEqual(result.parts, [], 'The missing third numeral is not invented');
+  assert.equal(result.audit.status, 'auditor-report-present');
+  assert.deepEqual(result.period, { start: '', end: '2025-12-31', frequency: 'annual' });
+  assert.ok(result.evidence.some(item => item.kind === 'ambiguous-part' && item.page === 1 && item.excerpt.includes('PART II')));
+  assert.ok(result.evidence.some(item => item.kind === 'reporting-period' && item.page === 7));
+  assert.ok(result.limitations.some(item => /OCR part heading/.test(item)));
+  assert.ok(!result.components.includes('operational-schedules'));
+});
+
+test('native annual/periodic conflicts cannot use the narrow OCR resolution', () => {
+  const result = classify({ pages: noisyAnnualPages('native') });
+  assert.equal(result.family, 'unknown');
+  assert.deepEqual(result.parts, ['Part II']);
+  assert.ok(!result.evidence.some(item => item.kind === 'ambiguous-part'));
+});
+
+test('OCR annual/periodic conflict needs actual auditor and financial-statement support', () => {
+  for (const pages of [[{ ...page(annualOcrCover), method: 'ocr' }], [{ ...page(annualOcrCover), method: 'ocr' }, page(yearEndBody, 5)]]) {
+    const result = classify({ pages });
+    assert.equal(result.family, 'unknown');
+    assert.deepEqual(result.parts, ['Part II']);
+  }
+});
+
+test('audited annual-duration Part II stays periodic without conflicting annual template', () => {
+  const result = classify({ pages: [{ ...page('FORM X-17A-5\nPART II\nFACING PAGE\nFILING FOR THE PERIOD BEGINNING 01/01/2025 AND ENDING 12/31/2025'), method: 'ocr' }, page(yearEndBody, 5), page(yearEndBalance, 6)] });
+  assert.equal(result.family, 'periodic-focus');
+  assert.deepEqual(result.parts, ['Part II']);
+  assert.equal(result.audit.status, 'auditor-report-present');
+  assert.equal(result.period.frequency, 'annual');
+});
+
+test('a separate genuine periodic heading still prevents mixed-file annual classification', () => {
+  const result = classify({ pages: [...noisyAnnualPages('ocr'), { ...page('FORM X-17A-5\nPART II\nFOCUS REPORT', 8), method: 'native' }] });
+  assert.equal(result.family, 'unknown');
+  assert.deepEqual(result.parts, ['Part II']);
+  assert.ok(result.evidence.some(item => item.kind === 'part' && item.page === 8));
+});
+
+test('verified matching XML range supplies exact dates after ambiguous annual-cover OCR', () => {
+  const result = classify({ selectedDocument: document, cover: { periodBegin: '2025-01-01', reportDate: '2025-12-31' }, pages: noisyAnnualPages('ocr') });
+  assert.equal(result.family, 'annual-report');
+  assert.deepEqual(result.period, { start: '2025-01-01', end: '2025-12-31', frequency: 'annual' });
+});

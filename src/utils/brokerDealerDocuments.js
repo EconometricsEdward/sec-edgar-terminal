@@ -13,6 +13,16 @@ const fail = (message, status = 502) => Object.assign(new Error(message), { stat
 export function validBrokerDealerDocumentName(value) {
   return typeof value === 'string' && value.length <= 240 && /^[A-Za-z0-9_][A-Za-z0-9_.-]*\.(pdf|htm|html|txt|xml)$/i.test(value) && !value.includes('..');
 }
+// SEC submissions may reference an XSL presentation path even though the
+// accession index lists the underlying XML by its plain attachment name.
+// Reduce only validated relative paths, then require an exact indexed match.
+function primaryDocumentBasename(value) {
+  if (typeof value !== 'string' || value.length > 500) return '';
+  const pieces = value.split('/');
+  if (pieces.length > 4 || pieces.slice(0, -1).some(part => !/^[A-Za-z0-9_-]+$/.test(part))) return '';
+  const name = pieces.at(-1);
+  return validBrokerDealerDocumentName(name) ? name : '';
+}
 function baseUrl(cik, accession) {
   if (!/^[0-9]{1,10}$/.test(String(cik)) || Number(cik) <= 0 || !/^\d{10}-\d{2}-\d{6}$/.test(accession || '')) throw fail('Invalid SEC filing identity.', 400);
   return `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accession.replaceAll('-', '')}/`;
@@ -59,8 +69,8 @@ export function selectBrokerDealerDocument(documents, requested = '', { family =
 export function parseBrokerDealerCover(xml) {
   const field = name => clean(xml.match(new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, 'i'))?.[1] || '');
   const date = value => {
-    const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value);
-    const iso = match ? `${match[3]}-${match[1]}-${match[2]}` : value;
+    const match = /^(\d{2})([-/])(\d{2})\2(\d{4})$/.exec(value);
+    const iso = match ? `${match[4]}-${match[1]}-${match[3]}` : value;
     return validFilingDate(iso) ? iso : '';
   };
   return { reportDate: date(field('periodEnd')), periodBegin: date(field('periodBegin')), accountantName: field('accountantName'), registrantType: field('typeOfBDRegistrant'), amendmentDescription: field('amendmentDescription'), reportType: field('reportType'), formPart: field('formPart') || field('reportPart') || field('part') };
@@ -103,19 +113,29 @@ export function createBrokerDealerDocumentLoader({ fetchSec = secFetch, cacheGet
     const base = baseUrl(cik, filing.accession), identity = `${String(cik).padStart(10, '0')}:${filing.accession}`;
     const manifestKey = `manifest:${identity}`;
     let manifest = refresh ? null : getLocal(manifestKey) || await cacheGet(MANIFEST_CACHE, identity);
+    let manifestChanged = false;
     if (!manifest || manifest.cik !== String(cik).padStart(10, '0') || !Array.isArray(manifest.documents) || !manifest.documents.length || manifest.documents.some(doc => !doc || !validBrokerDealerDocumentName(doc.name) || doc.url !== base + doc.name || doc.format !== doc.name.split('.').pop().toLowerCase())) {
       const html = new TextDecoder().decode(await fetchBytes(`${base}${filing.accession}-index.html`, signal, 2_000_000));
       const documents = parseBrokerDealerDocumentIndex(html, cik, filing);
-      let cover = {}, coverWarning = '';
-      const coverDoc = documents.find(doc => doc.name === filing.primaryDoc && doc.format === 'xml');
-      if (coverDoc) {
-        try { cover = parseBrokerDealerCover(new TextDecoder().decode(await fetchBytes(coverDoc.url, signal, 1_000_000))); }
-        catch (error) { if (signal?.aborted) throw error; coverWarning = 'The facing-page metadata could not be read; the reporting period uses the SEC submissions record where available.'; }
-      }
-      manifest = { cik: String(cik).padStart(10, '0'), documents, cover, coverWarning, observedAt: new Date().toISOString() };
-      // A transient facing-page failure must not prevent a future retry.
-      if (!coverWarning) { remember(manifestKey, manifest); await cacheSet(MANIFEST_CACHE, identity, manifest, 86400 * 7); }
+      manifest = { cik: String(cik).padStart(10, '0'), documents, cover: {}, coverWarning: '', observedAt: new Date().toISOString() };
+      manifestChanged = true;
     }
+    const primaryName = primaryDocumentBasename(filing.primaryDoc);
+    const coverDoc = manifest.documents.find(doc => doc.name === primaryName && doc.format === 'xml');
+    // Backfill manifests retained before styled primary-document paths were
+    // resolved. Only the small indexed XML is fetched; cached PDF pages remain.
+    if (coverDoc && manifest.coverDocument !== coverDoc.name) {
+      try {
+        const cover = parseBrokerDealerCover(new TextDecoder().decode(await fetchBytes(coverDoc.url, signal, 1_000_000)));
+        manifest = { ...manifest, cover, coverDocument: coverDoc.name, coverWarning: '' };
+        manifestChanged = true;
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        manifest = { ...manifest, coverWarning: 'The facing-page metadata could not be read; the reporting period uses the SEC submissions record where available.' };
+      }
+    }
+    // A transient facing-page failure must remain retryable.
+    if (manifestChanged && !manifest.coverWarning) { remember(manifestKey, manifest); await cacheSet(MANIFEST_CACHE, identity, manifest, 86400 * 7); }
     const selectedDocument = selectBrokerDealerDocument(manifest.documents, document, { family });
     const hash = createHash('sha256').update(selectedDocument.name).digest('hex');
     const cacheKey = `${identity}:${hash}`;

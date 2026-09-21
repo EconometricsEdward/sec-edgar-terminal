@@ -164,3 +164,70 @@ test('a requested family prioritizes attachment-local part evidence while exact 
   assert.equal(selectBrokerDealerDocument(documents, '', { family: 'annual-report' }).name, 'z-annual.pdf');
   assert.equal(selectBrokerDealerDocument(documents, 'a-periodic.pdf', { family: 'annual-report' }).name, 'a-periodic.pdf');
 });
+
+
+test('styled SEC primary document paths resolve to the validated indexed XML attachment', async () => {
+  const record = { ...filing(130), primaryDoc: 'xslX-17A-5_X01/primary_doc.xml' };
+  const { load, calls } = setup(record);
+  const result = await load(cik, record);
+  assert.equal(result.cover.periodBegin, '2025-07-01');
+  assert.equal(result.cover.reportDate, '2026-06-30');
+  assert.equal(calls.filter(call => call.url === `${base(record)}primary_doc.xml`).length, 1);
+  assert.ok(calls.every(call => !call.url.includes('xslX-17A-5_X01/')));
+  await load(cik, record);
+  assert.equal(calls.filter(call => call.url.endsWith('primary_doc.xml')).length, 1, 'Resolved cover metadata is retained');
+});
+
+test('old manifests missing a styled XML cover are repaired without downloading the index or PDF again', async () => {
+  const record = { ...filing(131), primaryDoc: 'xslX-17A-5_X01/primary_doc.xml' };
+  const documents = parseBrokerDealerDocumentIndex(manifest(), cik, record);
+  const cached = { cik, documents, cover: {}, coverWarning: '', observedAt: '2026-08-28T00:00:00Z' };
+  const { load, calls, writes } = setup(record, { cacheGet: async namespace => namespace.includes('-manifest.') ? cached : { ...extracted(), cik, extractedAt: '2026-08-28T00:00:00Z' } });
+  const result = await load(cik, record);
+  assert.equal(result.cover.periodBegin, '2025-07-01');
+  assert.deepEqual(calls.map(call => call.url), [`${base(record)}primary_doc.xml`]);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][2].coverDocument, 'primary_doc.xml');
+  assert.equal(writes[0][3], 86400 * 7);
+});
+
+test('primary document path normalization cannot escape the verified attachment index', async () => {
+  const paths = ['../primary_doc.xml', '/primary_doc.xml', 'xsl/../primary_doc.xml', 'https://example.com/primary_doc.xml', 'xsl\\primary_doc.xml', 'xsl/primary_doc.xml?file=other', 'xsl/absent.xml'];
+  for (const [index, primaryDoc] of paths.entries()) {
+    const record = { ...filing(140 + index), primaryDoc };
+    const { load, calls } = setup(record);
+    const result = await load(cik, record);
+    assert.deepEqual(result.cover, {}, primaryDoc);
+    assert.equal(calls.filter(call => call.url.endsWith('.xml')).length, 0, primaryDoc);
+    assert.ok(calls.every(call => call.url.startsWith(base(record))), primaryDoc);
+  }
+});
+
+test('facing-page dates accept SEC hyphen and slash representations with strict calendar validation', () => {
+  assert.equal(parseBrokerDealerCover('<periodBegin>01/01/2025</periodBegin><periodEnd>12/31/2025</periodEnd>').periodBegin, '2025-01-01');
+  assert.equal(parseBrokerDealerCover('<periodBegin>01-01-2025</periodBegin><periodEnd>12-31-2025</periodEnd>').reportDate, '2025-12-31');
+  assert.equal(parseBrokerDealerCover('<periodEnd>02/30/2025</periodEnd>').reportDate, '');
+  assert.equal(parseBrokerDealerCover('<periodEnd>12/31-2025</periodEnd>').reportDate, '');
+});
+
+
+test('transient XML backfill failures leave cached PDF evidence usable and retry the cover later', async () => {
+  const record = { ...filing(151), primaryDoc: 'xslX-17A-5_X01/primary_doc.xml' };
+  const documents = parseBrokerDealerDocumentIndex(manifest(), cik, record);
+  let attempts = 0;
+  const { load, writes } = setup(record, {
+    cacheGet: async namespace => namespace.includes('-manifest.') ? { cik, documents, cover: {} } : { ...extracted(), cik },
+    fetchSec: async url => {
+      assert.equal(url, `${base(record)}primary_doc.xml`);
+      return ++attempts === 1 ? new Response('Unavailable', { status: 503 }) : new Response(cover);
+    },
+  });
+  const partial = await load(cik, record);
+  assert.equal(partial.pages.length, 1);
+  assert.ok(partial.extraction.limitations.some(value => /facing-page metadata could not be read/.test(value)));
+  assert.equal(writes.length, 0);
+  const recovered = await load(cik, record);
+  assert.equal(recovered.cover.reportDate, '2026-06-30');
+  assert.equal(attempts, 2);
+  assert.equal(writes.length, 1);
+});
