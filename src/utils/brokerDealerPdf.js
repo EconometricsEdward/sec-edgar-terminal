@@ -1,11 +1,20 @@
 /** Bounded server-only PDF text extraction, with local English OCR for scanned
  * or broken-font pages. OCR assets are pinned npm files; no runtime downloads. */
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { access } from 'node:fs/promises';
 import { Worker } from 'node:worker_threads';
 
-const require = createRequire(import.meta.url);
+// These files are explicitly included in Next's output file tracing. Keep their
+// paths as filesystem paths: Turbopack rewrites require.resolve(...) to numeric
+// module identifiers, which are invalid for dirname() and Node Worker().
+function dependencyPath(...parts) { return join(process.cwd(), 'node_modules', ...parts); }
+function logExtractionFailure(stage, error) {
+  // Server diagnostics only. Never include document content or request URLs.
+  console.error('[broker-dealer-pdf]', {
+    stage, name: error?.name || 'Error', code: error?.code || null,
+    ...(stage === 'initialize' ? { message: String(error?.message || '').replace(/[\r\n]/g, ' ').slice(0, 300) } : {}),
+  });
+}
 export const BROKER_DEALER_PDF_LIMITS = Object.freeze({
   bytes: 24 * 1024 * 1024, pages: 80, ocrPages: 20, milliseconds: 150_000,
   pixels: 5_000_000, pageCharacters: 30_000, totalCharacters: 600_000,
@@ -81,11 +90,10 @@ function ocrLines(data, viewport) {
  * creation. The public createWorker promise does not expose its thread until
  * language initialization completes, so it cannot enforce startup cancellation. */
 async function createLocalOcr(signal) {
-  const languageRoot = dirname(require.resolve('@tesseract.js-data/eng/package.json'));
-  const langPath = join(languageRoot, '4.0.0');
+  const langPath = dependencyPath('@tesseract.js-data', 'eng', '4.0.0');
   await access(join(langPath, 'eng.traineddata.gz'));
   checkSignal(signal);
-  const worker = new Worker(require.resolve('tesseract.js/src/worker-script/node/index.js'), {
+  const worker = new Worker(dependencyPath('tesseract.js', 'src', 'worker-script', 'node', 'index.js'), {
     resourceLimits: { maxOldGenerationSizeMb: 256, stackSizeMb: 8 },
     // --input-type and test-runner flags belong to the caller, not a file worker.
     execArgv: [],
@@ -143,17 +151,19 @@ export async function extractBrokerDealerPdf(input, { signal } = {}) {
   const stop = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
   const timer = setTimeout(() => deadline.abort(new BrokerDealerPdfError('The report reached its extraction time limit.', 'BROKER_PDF_TIMEOUT')), BROKER_DEALER_PDF_LIMITS.milliseconds);
   let loading, document, ocr, activeRender, canvas, pageCount = 0, ocrAttempts = 0, textCharacters = 0, retryable = false;
+  let stage = 'initialize';
   const pages = [], limitations = new Set();
   const abortWork = () => { activeRender?.cancel(); void ocr?.terminate(); void loading?.destroy().catch(() => {}); };
   stop.addEventListener('abort', abortWork, { once: true });
   try {
     const pdfjs = await bounded(import('pdfjs-dist/legacy/build/pdf.mjs'), stop);
-    const pdfRoot = dirname(require.resolve('pdfjs-dist/package.json'));
+    const pdfRoot = dependencyPath('pdfjs-dist');
     loading = pdfjs.getDocument({ data: new Uint8Array(input), isEvalSupported: false, disableFontFace: true,
       useSystemFonts: false, useWorkerFetch: false, disableAutoFetch: true, disableStream: true,
       disableRange: true, verbosity: 0, maxImageSize: 16_000_000, canvasMaxAreaInBytes: 32_000_000,
       cMapUrl: join(pdfRoot, 'cmaps') + '/', cMapPacked: true,
       standardFontDataUrl: join(pdfRoot, 'standard_fonts') + '/', wasmUrl: join(pdfRoot, 'wasm') + '/' });
+    stage = 'load-document';
     document = await bounded(loading.promise, stop);
     pageCount = document.numPages;
     if (pageCount > BROKER_DEALER_PDF_LIMITS.pages) limitations.add('Only the first 80 PDF pages were read.');
@@ -203,6 +213,7 @@ export async function extractBrokerDealerPdf(input, { signal } = {}) {
         textCharacters += result.text.length;
       } catch (error) {
         if (stop.aborted) throw error;
+        logExtractionFailure('extract-page', error);
         retryable = true;
         limitations.add(`Page ${pageNumber} could not be extracted; check the original PDF.`);
       } finally { page?.cleanup(); }
@@ -217,7 +228,10 @@ export async function extractBrokerDealerPdf(input, { signal } = {}) {
     }
     else if (error?.name === 'PasswordException') throw new BrokerDealerPdfError('This PDF requires a password and cannot be analyzed.', 'BROKER_PDF_PASSWORD', 422);
     else if (error instanceof BrokerDealerPdfError) throw error;
-    else throw new BrokerDealerPdfError('This PDF could not be read safely. Open the original SEC document.', 'BROKER_PDF_INVALID', 422);
+    else {
+      logExtractionFailure(stage, error);
+      throw new BrokerDealerPdfError('This PDF could not be read safely. Open the original SEC document.', 'BROKER_PDF_INVALID', 422);
+    }
   } finally {
     clearTimeout(timer); stop.removeEventListener('abort', abortWork);
     activeRender?.cancel(); await ocr?.terminate().catch(() => {});
