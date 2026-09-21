@@ -1,0 +1,1185 @@
+{
+  "source": "https://www.sec.gov/Archives/edgar/data/1690976/000169097625000003/ASLCMIPUBLICFSJUNE2025.pdf",
+  "description": "Actual PDF.js page6 positioned rows. Public filing contains an overlaid word-level searchable layer; original visible totals visually checked.",
+  "reportDate": "2025-06-30",
+  "pages": [
+    {
+      "pageNumber": 6,
+      "text": "ASL CAPITAL MARKETS INC. ASL CAPITAL MARKETS INC.\nSTATEMENT OF FINANCIAL CONDITION STATEMENT OF FINANCIAL CONDITION\nAS OF JUNE 30, 2025 AS OF JUNE 30, 2025\nASSETS ASSETS\nCash and cash equivalents Cash and cash equivalents $ $ 18,272,722 18,272,722\nReceivables from brokers, dealers, clearing organizations and others Receivables from brokers, dealers, clearing organizations and others 427,952,403 427,952 403\nSecurities purchased under agreements to resell Securities purchased under agreements to resell 35,059,894,068 35,059,894,068\nFinancial instruments owned, at fair value Financial instruments owned, at fair value 9,547,697,011 9,547.,697.011\nFurniture, equipment, leasehold improvements and software (net of Fumiture, equipment, leaschold improvements and software (net of\naccumulated depreciation and amortization of $1,267,848) accumulated depreciation and amortization of $1,267,848) 321,256 321,256\nDeferred tax assets Deferred tax assets 652,000 652,000\nOther assets Other assets 6,460,434 6,460,434\nTotal assets Total assets $ $ 45,061,249,894 45,061,249.894\nLIABILITIES AND STOCKHOLDER'S EQUITY LIABILITIES AND STOCKHOLDER'S EQUITY\nLiabilities: Liabilities:\nPayables to brokers, dealers, clearing organizations and others Payables to brokers, dealers, clearing organizations and others $ $ 2,349,711,092 2.349,711,092\nSecurities sold under agreements to repurchase Securities sold under agreements to repurchase 39,175,097,982 39,175,097,982\nFinancial instruments sold, not yet purchased, at fair value Financial instruments sold, not yet purchased, at fair value 3,339,875,022 3,339,875,022\nPayable to Parent Payable to Parent 2,866,622 2,866,622\nAccounts payable, accrued expenses and other liabilities Accounts payable, accrued expenses and other liabilities 3,354,055 3,354,055\nTotal liabilities Total liabilities 44,870,904,773 44 870.904,773\nStockholder's equity Stockholder's equity 190,345,121 190,345,121\nTotal liabilities and stockholder's equity Total liabilities and stockholder's equity $ $ 45,061,249,894 45,061,249,894\nSee accompanying notes to this statement of financial condition. See accompanying notes to this statement of financial condition.\n- 2 -",
+      "lines": [
+        {
+          "text": "ASL CAPITAL MARKETS INC. ASL CAPITAL MARKETS INC.",
+          "items": [
+            {
+              "text": "ASL CAPITAL MARKETS INC.",
+              "x": 73.92,
+              "y": 707.28,
+              "width": 151.32
+            },
+            {
+              "text": "ASL",
+              "x": 73.92,
+              "y": 707.28,
+              "width": 14.76
+            },
+            {
+              "text": "CAPITAL",
+              "x": 97.44,
+              "y": 707.28,
+              "width": 40.74
+            },
+            {
+              "text": "MARKETS",
+              "x": 147.6,
+              "y": 707.28,
+              "width": 45.36
+            },
+            {
+              "text": "INC.",
+              "x": 203.04,
+              "y": 707.28,
+              "width": 17.28
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "STATEMENT OF FINANCIAL CONDITION STATEMENT OF FINANCIAL CONDITION",
+          "items": [
+            {
+              "text": "STATEMENT OF FINANCIAL CONDITION",
+              "x": 73.92,
+              "y": 692.04,
+              "width": 212.46
+            },
+            {
+              "text": "STATEMENT",
+              "x": 74.4,
+              "y": 691.92,
+              "width": 58.75
+            },
+            {
+              "text": "OF",
+              "x": 143.52,
+              "y": 691.92,
+              "width": 9.12
+            },
+            {
+              "text": "FINANCIAL",
+              "x": 160.8,
+              "y": 691.92,
+              "width": 53.35
+            },
+            {
+              "text": "CONDITION",
+              "x": 223.92,
+              "y": 691.92,
+              "width": 55.94
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "AS OF JUNE 30, 2025 AS OF JUNE 30, 2025",
+          "items": [
+            {
+              "text": "AS OF JUNE 30, 2025",
+              "x": 73.92,
+              "y": 676.8,
+              "width": 101.64
+            },
+            {
+              "text": "AS",
+              "x": 73.92,
+              "y": 676.8,
+              "width": 8.32
+            },
+            {
+              "text": "OF",
+              "x": 90.24,
+              "y": 676.8,
+              "width": 9.12
+            },
+            {
+              "text": "JUNE",
+              "x": 107.76,
+              "y": 676.8,
+              "width": 21.5
+            },
+            {
+              "text": "30,",
+              "x": 138.48,
+              "y": 676.8,
+              "width": 9.54
+            },
+            {
+              "text": "2025",
+              "x": 154.8,
+              "y": 676.8,
+              "width": 16.13
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "ASSETS ASSETS",
+          "items": [
+            {
+              "text": "ASSETS",
+              "x": 73.92,
+              "y": 615.84,
+              "width": 38.99
+            },
+            {
+              "text": "ASSETS",
+              "x": 73.92,
+              "y": 615.84,
+              "width": 32.91
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Cash and cash equivalents Cash and cash equivalents $ $ 18,272,722 18,272,722",
+          "items": [
+            {
+              "text": "Cash and cash equivalents",
+              "x": 73.92,
+              "y": 600.96,
+              "width": 111.02
+            },
+            {
+              "text": "Cash",
+              "x": 74.4,
+              "y": 600.96,
+              "width": 16.7
+            },
+            {
+              "text": "and",
+              "x": 98.4,
+              "y": 600.96,
+              "width": 10.62
+            },
+            {
+              "text": "cash",
+              "x": 115.92,
+              "y": 600.96,
+              "width": 14.98
+            },
+            {
+              "text": "equivalents",
+              "x": 137.52,
+              "y": 600.96,
+              "width": 42.9
+            },
+            {
+              "text": "$",
+              "x": 403.44,
+              "y": 600.96,
+              "width": 5.28
+            },
+            {
+              "text": "$",
+              "x": 403.92,
+              "y": 600.96,
+              "width": 2.16
+            },
+            {
+              "text": "18,272,722",
+              "x": 443.28,
+              "y": 600.96,
+              "width": 46.92
+            },
+            {
+              "text": "18,272,722",
+              "x": 444.48,
+              "y": 600.96,
+              "width": 41.02
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Receivables from brokers, dealers, clearing organizations and others Receivables from brokers, dealers, clearing organizations and others 427,952,403 427,952 403",
+          "items": [
+            {
+              "text": "Receivables from brokers, dealers, clearing organizations and others",
+              "x": 73.92,
+              "y": 585.72,
+              "width": 286.1
+            },
+            {
+              "text": "Receivables",
+              "x": 74.16,
+              "y": 585.6,
+              "width": 46.2
+            },
+            {
+              "text": "from",
+              "x": 128.16,
+              "y": 585.6,
+              "width": 15.74
+            },
+            {
+              "text": "brokers,",
+              "x": 150.72,
+              "y": 585.6,
+              "width": 29.87
+            },
+            {
+              "text": "dealers,",
+              "x": 187.68,
+              "y": 585.6,
+              "width": 28.59
+            },
+            {
+              "text": "clearing",
+              "x": 223.2,
+              "y": 585.6,
+              "width": 29.23
+            },
+            {
+              "text": "organizations",
+              "x": 259.2,
+              "y": 585.6,
+              "width": 50.37
+            },
+            {
+              "text": "and",
+              "x": 317.52,
+              "y": 585.6,
+              "width": 10.62
+            },
+            {
+              "text": "others",
+              "x": 335.04,
+              "y": 585.6,
+              "width": 20.98
+            },
+            {
+              "text": "427,952,403",
+              "x": 438,
+              "y": 585.72,
+              "width": 52.2
+            },
+            {
+              "text": "427,952",
+              "x": 438.24,
+              "y": 585.6,
+              "width": 28.77
+            },
+            {
+              "text": "403",
+              "x": 474.96,
+              "y": 585.6,
+              "width": 10.62
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Securities purchased under agreements to resell Securities purchased under agreements to resell 35,059,894,068 35,059,894,068",
+          "items": [
+            {
+              "text": "Securities purchased under agreements to resell",
+              "x": 73.92,
+              "y": 570.48,
+              "width": 200.57
+            },
+            {
+              "text": "Securities",
+              "x": 74.64,
+              "y": 570.48,
+              "width": 36.66
+            },
+            {
+              "text": "purchased",
+              "x": 118.56,
+              "y": 570.48,
+              "width": 38.23
+            },
+            {
+              "text": "under",
+              "x": 163.92,
+              "y": 570.48,
+              "width": 19.8
+            },
+            {
+              "text": "agreements",
+              "x": 190.8,
+              "y": 570.48,
+              "width": 41.67
+            },
+            {
+              "text": "to resell",
+              "x": 240.24,
+              "y": 570.48,
+              "width": 30.58
+            },
+            {
+              "text": "35,059,894,068",
+              "x": 425.04,
+              "y": 570.48,
+              "width": 65.16
+            },
+            {
+              "text": "35,059,894,068",
+              "x": 425.28,
+              "y": 570.48,
+              "width": 59.81
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Financial instruments owned, at fair value Financial instruments owned, at fair value 9,547,697,011 9,547.,697.011",
+          "items": [
+            {
+              "text": "Financial instruments owned, at fair value",
+              "x": 73.92,
+              "y": 555.24,
+              "width": 175.44
+            },
+            {
+              "text": "Financial",
+              "x": 74.16,
+              "y": 555.12,
+              "width": 34.13
+            },
+            {
+              "text": "instruments",
+              "x": 115.44,
+              "y": 555.12,
+              "width": 42.9
+            },
+            {
+              "text": "owned,",
+              "x": 166.08,
+              "y": 555.12,
+              "width": 25.1
+            },
+            {
+              "text": "at fair value",
+              "x": 198.96,
+              "y": 555.12,
+              "width": 46.16
+            },
+            {
+              "text": "9,547,697,011",
+              "x": 430.32,
+              "y": 555.24,
+              "width": 59.88
+            },
+            {
+              "text": "9,547.,697.011",
+              "x": 430.56,
+              "y": 555.12,
+              "width": 54.43
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Furniture, equipment, leasehold improvements and software (net of Fumiture, equipment, leaschold improvements and software (net of",
+          "items": [
+            {
+              "text": "Furniture, equipment, leasehold improvements and software (net of",
+              "x": 73.92,
+              "y": 540,
+              "width": 281.19
+            },
+            {
+              "text": "Fumiture,",
+              "x": 74.16,
+              "y": 540,
+              "width": 36.29
+            },
+            {
+              "text": "equipment,",
+              "x": 117.84,
+              "y": 540,
+              "width": 41.24
+            },
+            {
+              "text": "leaschold",
+              "x": 166.56,
+              "y": 540,
+              "width": 35.42
+            },
+            {
+              "text": "improvements",
+              "x": 209.28,
+              "y": 540,
+              "width": 53.61
+            },
+            {
+              "text": "and",
+              "x": 271.44,
+              "y": 540,
+              "width": 10.62
+            },
+            {
+              "text": "software",
+              "x": 289.2,
+              "y": 540,
+              "width": 31.15
+            },
+            {
+              "text": "(net",
+              "x": 328.08,
+              "y": 540,
+              "width": 12.29
+            },
+            {
+              "text": "of",
+              "x": 346.56,
+              "y": 540,
+              "width": 6.24
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "accumulated depreciation and amortization of $1,267,848) accumulated depreciation and amortization of $1,267,848) 321,256 321,256",
+          "items": [
+            {
+              "text": "accumulated depreciation and amortization of $1,267,848)",
+              "x": 88.32,
+              "y": 524.76,
+              "width": 245.19
+            },
+            {
+              "text": "accumulated",
+              "x": 88.8,
+              "y": 524.64,
+              "width": 48.18
+            },
+            {
+              "text": "depreciation",
+              "x": 144.72,
+              "y": 524.64,
+              "width": 47.63
+            },
+            {
+              "text": "and",
+              "x": 199.44,
+              "y": 524.64,
+              "width": 10.62
+            },
+            {
+              "text": "amortization",
+              "x": 217.2,
+              "y": 524.64,
+              "width": 47.63
+            },
+            {
+              "text": "of $1,267,848)",
+              "x": 271.68,
+              "y": 524.64,
+              "width": 57.3
+            },
+            {
+              "text": "321,256",
+              "x": 456.24,
+              "y": 524.76,
+              "width": 33.96
+            },
+            {
+              "text": "321,256",
+              "x": 456.48,
+              "y": 524.64,
+              "width": 28.98
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Deferred tax assets Deferred tax assets 652,000 652,000",
+          "items": [
+            {
+              "text": "Deferred tax assets",
+              "x": 73.92,
+              "y": 509.52,
+              "width": 80.9
+            },
+            {
+              "text": "Deferred",
+              "x": 74.16,
+              "y": 509.52,
+              "width": 32.85
+            },
+            {
+              "text": "tax",
+              "x": 114.24,
+              "y": 509.52,
+              "width": 9.72
+            },
+            {
+              "text": "assets",
+              "x": 130.08,
+              "y": 509.52,
+              "width": 20.78
+            },
+            {
+              "text": "652,000",
+              "x": 456.24,
+              "y": 509.52,
+              "width": 33.96
+            },
+            {
+              "text": "652,000",
+              "x": 456.72,
+              "y": 509.52,
+              "width": 28.77
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Other assets Other assets 6,460,434 6,460,434",
+          "items": [
+            {
+              "text": "Other assets",
+              "x": 73.92,
+              "y": 494.28,
+              "width": 51.62
+            },
+            {
+              "text": "Other",
+              "x": 74.4,
+              "y": 494.16,
+              "width": 19.4
+            },
+            {
+              "text": "assets",
+              "x": 100.8,
+              "y": 494.16,
+              "width": 20.78
+            },
+            {
+              "text": "6,460,434",
+              "x": 448.56,
+              "y": 494.28,
+              "width": 41.64
+            },
+            {
+              "text": "6,460,434",
+              "x": 449.04,
+              "y": 494.16,
+              "width": 36.5
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Total assets Total assets $ $ 45,061,249,894 45,061,249.894",
+          "items": [
+            {
+              "text": "Total assets",
+              "x": 102.72,
+              "y": 479.16,
+              "width": 50.66
+            },
+            {
+              "text": "Total",
+              "x": 102.96,
+              "y": 479.04,
+              "width": 18.4
+            },
+            {
+              "text": "assets",
+              "x": 128.64,
+              "y": 479.04,
+              "width": 20.78
+            },
+            {
+              "text": "$",
+              "x": 402.48,
+              "y": 479.16,
+              "width": 5.28
+            },
+            {
+              "text": "$",
+              "x": 402.96,
+              "y": 479.04,
+              "width": 2.16
+            },
+            {
+              "text": "45,061,249,894",
+              "x": 425.04,
+              "y": 479.16,
+              "width": 65.16
+            },
+            {
+              "text": "45,061,249.894",
+              "x": 429.3,
+              "y": 479.04,
+              "width": 56.28
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "LIABILITIES AND STOCKHOLDER'S EQUITY LIABILITIES AND STOCKHOLDER'S EQUITY",
+          "items": [
+            {
+              "text": "LIABILITIES AND STOCKHOLDER'S EQUITY",
+              "x": 73.92,
+              "y": 447.96,
+              "width": 231.18
+            },
+            {
+              "text": "LIABILITIES",
+              "x": 74.16,
+              "y": 447.84,
+              "width": 60.06
+            },
+            {
+              "text": "AND",
+              "x": 143.04,
+              "y": 447.84,
+              "width": 16.38
+            },
+            {
+              "text": "STOCKHOLDER'S",
+              "x": 168.72,
+              "y": 447.84,
+              "width": 84.24
+            },
+            {
+              "text": "EQUITY",
+              "x": 263.04,
+              "y": 447.84,
+              "width": 35.59
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Liabilities: Liabilities:",
+          "items": [
+            {
+              "text": "Liabilities:",
+              "x": 73.92,
+              "y": 432.96,
+              "width": 45.17
+            },
+            {
+              "text": "Liabilities:",
+              "x": 74.16,
+              "y": 432.96,
+              "width": 40.54
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Payables to brokers, dealers, clearing organizations and others Payables to brokers, dealers, clearing organizations and others $ $ 2,349,711,092 2.349,711,092",
+          "items": [
+            {
+              "text": "Payables to brokers, dealers, clearing organizations and others",
+              "x": 88.32,
+              "y": 417.72,
+              "width": 261.14
+            },
+            {
+              "text": "Payables",
+              "x": 88.56,
+              "y": 417.6,
+              "width": 32.85
+            },
+            {
+              "text": "to brokers,",
+              "x": 129.12,
+              "y": 417.6,
+              "width": 40.91
+            },
+            {
+              "text": "dealers,",
+              "x": 177.12,
+              "y": 417.6,
+              "width": 28.59
+            },
+            {
+              "text": "clearing",
+              "x": 212.64,
+              "y": 417.6,
+              "width": 29.23
+            },
+            {
+              "text": "organizations",
+              "x": 248.64,
+              "y": 417.6,
+              "width": 50.37
+            },
+            {
+              "text": "and",
+              "x": 306.96,
+              "y": 417.6,
+              "width": 10.62
+            },
+            {
+              "text": "others",
+              "x": 324.48,
+              "y": 417.6,
+              "width": 20.98
+            },
+            {
+              "text": "$",
+              "x": 402,
+              "y": 417.72,
+              "width": 5.28
+            },
+            {
+              "text": "$",
+              "x": 402.48,
+              "y": 417.6,
+              "width": 2.16
+            },
+            {
+              "text": "2,349,711,092",
+              "x": 430.32,
+              "y": 417.72,
+              "width": 59.88
+            },
+            {
+              "text": "2.349,711,092",
+              "x": 430.56,
+              "y": 417.6,
+              "width": 54.82
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Securities sold under agreements to repurchase Securities sold under agreements to repurchase 39,175,097,982 39,175,097,982",
+          "items": [
+            {
+              "text": "Securities sold under agreements to repurchase",
+              "x": 88.32,
+              "y": 402.48,
+              "width": 198
+            },
+            {
+              "text": "Securities",
+              "x": 89.04,
+              "y": 402.48,
+              "width": 36.66
+            },
+            {
+              "text": "sold",
+              "x": 133.44,
+              "y": 402.48,
+              "width": 13.63
+            },
+            {
+              "text": "under",
+              "x": 153.6,
+              "y": 402.48,
+              "width": 19.6
+            },
+            {
+              "text": "agreements",
+              "x": 180.24,
+              "y": 402.48,
+              "width": 41.67
+            },
+            {
+              "text": "to repurchase",
+              "x": 229.68,
+              "y": 402.48,
+              "width": 52.06
+            },
+            {
+              "text": "39,175,097,982",
+              "x": 425.04,
+              "y": 402.48,
+              "width": 65.16
+            },
+            {
+              "text": "39,175,097,982",
+              "x": 425.28,
+              "y": 402.48,
+              "width": 60.03
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Financial instruments sold, not yet purchased, at fair value Financial instruments sold, not yet purchased, at fair value 3,339,875,022 3,339,875,022",
+          "items": [
+            {
+              "text": "Financial instruments sold, not yet purchased, at fair value",
+              "x": 88.32,
+              "y": 387.24,
+              "width": 245.41
+            },
+            {
+              "text": "Financial",
+              "x": 88.56,
+              "y": 387.12,
+              "width": 34.13
+            },
+            {
+              "text": "instruments",
+              "x": 129.84,
+              "y": 387.12,
+              "width": 42.9
+            },
+            {
+              "text": "sold,",
+              "x": 180.72,
+              "y": 387.12,
+              "width": 16.2
+            },
+            {
+              "text": "not yet",
+              "x": 203.28,
+              "y": 387.12,
+              "width": 25.5
+            },
+            {
+              "text": "purchased,",
+              "x": 234.96,
+              "y": 387.12,
+              "width": 40.8
+            },
+            {
+              "text": "at fair value",
+              "x": 283.44,
+              "y": 387.12,
+              "width": 46.16
+            },
+            {
+              "text": "3,339,875,022",
+              "x": 430.32,
+              "y": 387.24,
+              "width": 59.88
+            },
+            {
+              "text": "3,339,875,022",
+              "x": 430.56,
+              "y": 387.12,
+              "width": 54.82
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Payable to Parent Payable to Parent 2,866,622 2,866,622",
+          "items": [
+            {
+              "text": "Payable to Parent",
+              "x": 88.32,
+              "y": 372,
+              "width": 73.85
+            },
+            {
+              "text": "Payable",
+              "x": 88.56,
+              "y": 372,
+              "width": 28.77
+            },
+            {
+              "text": "to",
+              "x": 124.8,
+              "y": 372,
+              "width": 5.12
+            },
+            {
+              "text": "Parent",
+              "x": 136.08,
+              "y": 372,
+              "width": 22.22
+            },
+            {
+              "text": "2,866,622",
+              "x": 448.56,
+              "y": 372,
+              "width": 41.64
+            },
+            {
+              "text": "2,866,622",
+              "x": 448.8,
+              "y": 372,
+              "width": 36.72
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Accounts payable, accrued expenses and other liabilities Accounts payable, accrued expenses and other liabilities 3,354,055 3,354,055",
+          "items": [
+            {
+              "text": "Accounts payable, accrued expenses and other liabilities",
+              "x": 88.32,
+              "y": 356.76,
+              "width": 238.58
+            },
+            {
+              "text": "Accounts",
+              "x": 88.32,
+              "y": 356.64,
+              "width": 34.77
+            },
+            {
+              "text": "payable,",
+              "x": 131.04,
+              "y": 356.64,
+              "width": 31.15
+            },
+            {
+              "text": "accrued",
+              "x": 169.68,
+              "y": 356.64,
+              "width": 28.35
+            },
+            {
+              "text": "expenses",
+              "x": 205.44,
+              "y": 356.64,
+              "width": 32.85
+            },
+            {
+              "text": "and",
+              "x": 246.48,
+              "y": 356.64,
+              "width": 10.62
+            },
+            {
+              "text": "other",
+              "x": 264,
+              "y": 356.64,
+              "width": 17.6
+            },
+            {
+              "text": "liabilities",
+              "x": 288,
+              "y": 356.64,
+              "width": 35.2
+            },
+            {
+              "text": "3,354,055",
+              "x": 448.56,
+              "y": 356.76,
+              "width": 41.64
+            },
+            {
+              "text": "3,354,055",
+              "x": 448.8,
+              "y": 356.64,
+              "width": 36.29
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Total liabilities Total liabilities 44,870,904,773 44 870.904,773",
+          "items": [
+            {
+              "text": "Total liabilities",
+              "x": 102.72,
+              "y": 341.52,
+              "width": 64.46
+            },
+            {
+              "text": "Total",
+              "x": 102.96,
+              "y": 341.52,
+              "width": 18.4
+            },
+            {
+              "text": "liabilities",
+              "x": 128.4,
+              "y": 341.52,
+              "width": 34.98
+            },
+            {
+              "text": "44,870,904,773",
+              "x": 425.04,
+              "y": 341.52,
+              "width": 65.16
+            },
+            {
+              "text": "44 870.904,773",
+              "x": 425.28,
+              "y": 341.52,
+              "width": 59.42
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Stockholder's equity Stockholder's equity 190,345,121 190,345,121",
+          "items": [
+            {
+              "text": "Stockholder's equity",
+              "x": 73.92,
+              "y": 326.28,
+              "width": 85.92
+            },
+            {
+              "text": "Stockholder's",
+              "x": 74.64,
+              "y": 326.16,
+              "width": 51.26
+            },
+            {
+              "text": "equity",
+              "x": 133.68,
+              "y": 326.16,
+              "width": 22.22
+            },
+            {
+              "text": "190,345,121",
+              "x": 438,
+              "y": 326.28,
+              "width": 52.2
+            },
+            {
+              "text": "190,345,121",
+              "x": 439.2,
+              "y": 326.16,
+              "width": 45.54
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "Total liabilities and stockholder's equity Total liabilities and stockholder's equity $ $ 45,061,249,894 45,061,249,894",
+          "items": [
+            {
+              "text": "Total liabilities and stockholder's equity",
+              "x": 102.72,
+              "y": 311.16,
+              "width": 169.8
+            },
+            {
+              "text": "Total",
+              "x": 102.96,
+              "y": 311.04,
+              "width": 18.4
+            },
+            {
+              "text": "liabilities",
+              "x": 128.4,
+              "y": 311.04,
+              "width": 34.98
+            },
+            {
+              "text": "and",
+              "x": 170.64,
+              "y": 311.04,
+              "width": 10.62
+            },
+            {
+              "text": "stockholder's",
+              "x": 188.4,
+              "y": 311.04,
+              "width": 50.14
+            },
+            {
+              "text": "equity",
+              "x": 246.24,
+              "y": 311.04,
+              "width": 22.42
+            },
+            {
+              "text": "$",
+              "x": 402.48,
+              "y": 311.16,
+              "width": 5.28
+            },
+            {
+              "text": "$",
+              "x": 402.96,
+              "y": 311.04,
+              "width": 2.16
+            },
+            {
+              "text": "45,061,249,894",
+              "x": 425.04,
+              "y": 311.16,
+              "width": 65.16
+            },
+            {
+              "text": "45,061,249,894",
+              "x": 429.3,
+              "y": 311.04,
+              "width": 56.28
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "See accompanying notes to this statement of financial condition. See accompanying notes to this statement of financial condition.",
+          "items": [
+            {
+              "text": "See accompanying notes to this statement of financial condition.",
+              "x": 73.92,
+              "y": 264.96,
+              "width": 269.28
+            },
+            {
+              "text": "See",
+              "x": 74.64,
+              "y": 264.96,
+              "width": 10.62
+            },
+            {
+              "text": "accompanying",
+              "x": 92.64,
+              "y": 264.96,
+              "width": 54.94
+            },
+            {
+              "text": "notes",
+              "x": 155.04,
+              "y": 264.96,
+              "width": 17.6
+            },
+            {
+              "text": "to this",
+              "x": 179.76,
+              "y": 264.96,
+              "width": 22.37
+            },
+            {
+              "text": "statement",
+              "x": 209.04,
+              "y": 264.96,
+              "width": 35.42
+            },
+            {
+              "text": "of financial",
+              "x": 251.52,
+              "y": 264.96,
+              "width": 43.68
+            },
+            {
+              "text": "condition.",
+              "x": 301.92,
+              "y": 264.96,
+              "width": 40.32
+            }
+          ],
+          "usableForNumbers": true
+        },
+        {
+          "text": "- 2 -",
+          "items": [
+            {
+              "text": "- 2 -",
+              "x": 305.76,
+              "y": 51.12,
+              "width": 18.31
+            }
+          ],
+          "usableForNumbers": true
+        }
+      ],
+      "method": "native",
+      "ocrConfidence": null
+    }
+  ]
+}

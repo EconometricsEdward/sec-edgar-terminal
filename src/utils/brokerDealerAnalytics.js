@@ -190,11 +190,58 @@ function unitContext(text, { prose = false } = {}) {
   return { scale: prose ? 1 : scales[0] || 1, evidence: scales.length ? `USD amounts presented in ${scales[0] === 1e3 ? 'thousands' : scales[0] === 1e6 ? 'millions' : 'billions'}` : explicitUsd ? 'U.S. dollars' : 'Dollar-denominated statement ($); no foreign currency identified', explicitUsd };
 }
 
+/** Some public PDFs include a second, overlapping searchable text layer.
+ * Collapse only spatially contained duplicates. Separate comparative columns
+ * never overlap. Conflicting digits are retained as unavailable, not repaired.
+ */
+function nativeLineText(line) {
+  if (!Array.isArray(line?.items) || line.items.length < 2 || line.items.some(item => !finite(item.x) || !finite(item.y) || !finite(item.width) || item.width <= 0)) return line?.text || '';
+  const items = line.items.map((item, index) => ({ ...item, index }));
+  const contains = (outer, inner) => outer.index !== inner.index && Math.abs(outer.y - inner.y) <= 0.4 && inner.x >= outer.x - 0.8 && inner.x + inner.width <= outer.x + outer.width + 0.8 && inner.width <= outer.width;
+  const textKey = text => compact(text).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const numericKey = text => (String(text).match(/[-(]?\d[\d,.]*(?:\))?/g) || []).join('|');
+  const groups = [], used = new Set();
+  for (const outer of [...items].sort((a, b) => b.width - a.width)) {
+    if (used.has(outer.index)) continue;
+    const children = items.filter(item => !used.has(item.index) && contains(outer, item)).sort((a, b) => a.x - b.x);
+    if (!children.length) continue;
+    // A native phrase spanning several words and a duplicate word-level layer
+    // establish a local row baseline without relying on the numeric values.
+    const alpha = /[A-Za-z]/.test(outer.text);
+    if (alpha && textKey(outer.text) === textKey(children.map(item => item.text).join(' ')) && numericKey(outer.text) === numericKey(children.map(item => item.text).join(' '))) {
+      groups.push({ outer, children, alpha: true });
+      used.add(outer.index); children.forEach(item => used.add(item.index));
+    }
+  }
+  const baseline = groups.find(group => group.children.length > 1 && /\s/.test(group.outer.text))?.outer.y;
+  for (const outer of [...items].sort((a, b) => b.width - a.width)) {
+    if (used.has(outer.index) || /[A-Za-z]/.test(outer.text)) continue;
+    const children = items.filter(item => !used.has(item.index) && contains(outer, item)).sort((a, b) => a.x - b.x);
+    if (!children.length) continue;
+    const otherText = children.map(item => item.text).join(' ');
+    const outerAmounts = amountTokens(outer.text), innerAmounts = amountTokens(otherText);
+    const exact = compact(outer.text) === compact(otherText);
+    const digitsAgree = outer.text.replace(/\D/g, '') === otherText.replace(/\D/g, '') && /\d/.test(outer.text);
+    const signAgrees = /[-()–—]/.test(clean(outer.text)) === /[-()–—]/.test(clean(otherText));
+    const sameAmount = outerAmounts?.length === 1 && innerAmounts?.length === 1 && outerAmounts[0] === innerAmounts[0];
+    const uniqueValid = outerAmounts?.length === 1 && innerAmounts?.length !== 1;
+    const nativeBaseline = finite(baseline) && Math.abs(outer.y - baseline) < 0.04 && children.every(item => Math.abs(item.y - baseline) >= 0.08);
+    if (exact || (digitsAgree && signAgrees && (sameAmount || uniqueValid || nativeBaseline))) {
+      groups.push({ outer, children });
+    } else if (/\d/.test(outer.text + otherText)) {
+      groups.push({ outer: { ...outer, text: '[Conflicting overlapping PDF numeric text]' }, children });
+    } else continue;
+    used.add(outer.index); children.forEach(item => used.add(item.index));
+  }
+  if (!groups.length) return line.text || '';
+  return [...items.filter(item => !used.has(item.index)), ...groups.map(group => group.outer)].sort((a, b) => a.x - b.x).map(item => item.text).join(' ');
+}
+
 function pageLines(page) {
   const isOcr = page?.method === 'ocr';
   if (isOcr && (!finite(page.ocrConfidence) || page.ocrConfidence < 75)) return [];
   const rows = Array.isArray(page?.lines) && page.lines.length ? page.lines.map(line => {
-    const text = typeof line === 'string' ? line : line?.text || '';
+    const text = typeof line === 'string' ? line : isOcr ? line?.text || '' : nativeLineText(line);
     if (isOcr && /\d/.test(text) && (line?.usableForNumbers !== true || (finite(line.numericConfidence) && line.numericConfidence < 80))) return '[Uncertain OCR row withheld]';
     return text;
   }) : isOcr ? [] : String(page?.text || '').split(/\r?\n/);

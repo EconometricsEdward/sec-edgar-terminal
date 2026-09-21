@@ -386,3 +386,66 @@ test('explicit loss, cash-used and decrease labels retain their negative economi
   assert.equal(metric(cashMixed, 'changeInCash').value, 100);
   for (const row of cashMixed.metrics) assert.equal(row.extraction.signConvention, undefined);
 });
+
+
+test('actual ASL 2025 overlapping searchable layers recover the visible balance sheet without changing digits', () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/broker-dealer-asl-june2025-overlap.json', import.meta.url)));
+  const result = analyzeBrokerDealerReport({ ...fixture, documentUrl: fixture.source });
+  const expected = {
+    totalAssets: 45061249894, totalLiabilities: 44870904773, totalEquity: 190345121,
+    cashAndEquivalents: 18272722, securitiesOwned: 9547697011, securitiesSoldShort: 3339875022,
+    reverseRepos: 35059894068, repos: 39175097982, brokerReceivables: 427952403,
+    brokerPayables: 2349711092, otherAssets: 6460434, parentPayables: 2866622,
+    accountsPayableAndAccruedExpenses: 3354055,
+  };
+  for (const [id, value] of Object.entries(expected)) {
+    assert.equal(metric(result, id)?.value, value, id);
+    assert.equal(metric(result, id).source.page, 6);
+    assert.equal(metric(result, id).periodEnd, '2025-06-30');
+  }
+  assert.equal(result.validations[0].difference, 0);
+  assert.equal(result.status, 'ready');
+  assert.equal(ratio(result, 'assetsToEquity').value, 45061249894 / 190345121);
+  const conflict = structuredClone(fixture);
+  const assets = conflict.pages[0].lines.find(row => row.text.startsWith('Total assets'));
+  assets.items.find(item => item.text === '45,061,249.894').text = '45,061,249.895';
+  assert.equal(metric(analyzeBrokerDealerReport(conflict), 'totalAssets'), undefined);
+  assert.equal(ratio(analyzeBrokerDealerReport(conflict), 'assetsToEquity'), undefined);
+});
+
+test('overlap cleanup preserves separate comparative columns and rejects ambiguous punctuation or signs', () => {
+  const row = (label, a, b, positions = [400, 500]) => ({
+    text: `${label} ${a} ${b}`,
+    items: [
+      { text: label, x: 40, y: 600, width: 180 },
+      { text: a, x: positions[0], y: 600, width: 50 },
+      { text: b, x: positions[1], y: 600, width: 45 },
+    ],
+  });
+  const analyzeRows = (heading, rows) => analyze('', { pages: [{ method: 'native', lines: [
+    { text: 'Statement of Financial Condition' }, { text: heading }, { text: 'Amounts in U.S. dollars' }, ...rows,
+  ] }] });
+  const comparative = analyzeRows('December 31, 2025 and 2024', [row('Total assets', '1,000', '1,000')]);
+  assert.equal(metric(comparative, 'totalAssets').value, 1000);
+  const exactOverlay = analyzeRows('December 31, 2025', [row('Total assets', '1,000', '1,000', [400, 401])]);
+  assert.equal(metric(exactOverlay, 'totalAssets').value, 1000);
+  const ambiguous = analyzeRows('December 31, 2025', [row('Total assets', '1,000', '1.000', [400, 401])]);
+  assert.equal(metric(ambiguous, 'totalAssets'), undefined);
+  const signConflict = analyzeRows('December 31, 2025', [row("Members' equity", '1,000', '(1,000)', [400, 401])]);
+  assert.equal(metric(signConflict, 'totalEquity'), undefined);
+  for (const negativeOverlay of ['1,000-', '1,000−', '1,000)', '1,000—']) {
+    const trailingSign = analyzeRows('December 31, 2025', [row("Members' equity", '1,000', negativeOverlay, [400, 401])]);
+    assert.equal(metric(trailingSign, 'totalEquity'), undefined, negativeOverlay);
+  }
+  const unicodeSignConflict = analyzeRows('December 31, 2025', [{
+    text: "Members' equity Members' equity 1,000 −1,000",
+    items: [
+      { text: "Members' equity", x: 40, y: 600, width: 150 },
+      { text: "Members'", x: 40.2, y: 599.88, width: 70 },
+      { text: 'equity', x: 115, y: 599.88, width: 65 },
+      { text: '1,000', x: 400, y: 600, width: 50 },
+      { text: '−1,000', x: 400.2, y: 599.88, width: 45 },
+    ],
+  }]);
+  assert.equal(metric(unicodeSignConflict, 'totalEquity'), undefined);
+});
