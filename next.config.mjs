@@ -23,7 +23,11 @@ const nextConfig = {
   serverExternalPackages: ['pdfjs-dist', '@napi-rs/canvas', 'tesseract.js', 'tesseract.js-core', '@tesseract.js-data/eng'],
   outputFileTracingIncludes: Object.fromEntries(['/api/filings-reader', '/analysis/*', '/api/v1/analysis/*', '/api/reports/*'].map(route => [route, [
     './node_modules/pdfjs-dist/legacy/build/**', './node_modules/pdfjs-dist/standard_fonts/**', './node_modules/pdfjs-dist/cmaps/**', './node_modules/pdfjs-dist/wasm/**',
-    './node_modules/tesseract.js/src/**', './node_modules/tesseract.js-core/**', './node_modules/@tesseract.js-data/eng/**', './node_modules/@napi-rs/canvas*/**',
+    './node_modules/tesseract.js/src/**', './node_modules/tesseract.js/package.json', './node_modules/tesseract.js-core/**', './node_modules/@tesseract.js-data/eng/**', './node_modules/@napi-rs/canvas*/**',
+    // Node workers load these outside the server module graph. Include their
+    // runtime dependency trees explicitly so deployment matches local OCR.
+    ...['bmp-js', 'is-url', 'regenerator-runtime', 'wasm-feature-detect', 'node-fetch', 'whatwg-url', 'tr46', 'webidl-conversions']
+      .map(name => `./node_modules/${name}/**`),
   ]])),
   trailingSlash: false,
   // Preserve Next 16's default HTML-limited agents and include research agents

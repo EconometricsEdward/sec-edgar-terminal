@@ -21,11 +21,14 @@ export async function GET(request, { params }) {
       const research = await loadBrokerDealerResearch(selected.ticker, { signal: AbortSignal.any([request.signal, AbortSignal.timeout(280000)]) });
       if (research.status !== 'available' || !research.analysis) return Response.json({ status: 'unavailable', cik: research.company?.cik,
         reason: 'No analyzable public X-17A-5 report was found in the SEC submission history checked for this registrant.', coverage: research.coverage }, { status: 404, headers: privateHeaders });
+      if (research.extraction?.retryable && research.analysis.status === 'unavailable') return Response.json({ status: 'unavailable', cik: research.company.cik,
+        reason: 'Document extraction could not finish. Retry to read the available public annual report.', coverage: research.extraction },
+      { status: 503, headers: { ...privateHeaders, 'Retry-After': '60' } });
       return Response.json({ schemaVersion: 'edgar.broker-dealer-analysis.v1', basis: 'annual',
         name: research.company.name, cik: research.company.cik, filing: research.filing,
         ...research.analysis, observedAt: research.observedAt, filingCoverage: research.coverage,
         interactiveUrl: `/analysis/${research.company.cik}`, filingsUrl: `/filings/${research.company.cik}` },
-      { headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=3600', 'Access-Control-Allow-Origin': '*' } });
+      { headers: research.extraction?.retryable ? privateHeaders : { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=3600', 'Access-Control-Allow-Origin': '*' } });
     } catch {
       return Response.json({ status: 'unavailable', reason: 'The public annual report could not be analyzed at this time. Retry or inspect the original SEC filing.' }, { status: 503, headers: { ...privateHeaders, 'Retry-After': '60' } });
     }

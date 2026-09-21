@@ -12,7 +12,8 @@ function logExtractionFailure(stage, error) {
   // Server diagnostics only. Never include document content or request URLs.
   console.error('[broker-dealer-pdf]', {
     stage, name: error?.name || 'Error', code: error?.code || null,
-    ...(stage === 'initialize' ? { message: String(error?.message || '').replace(/[\r\n]/g, ' ').slice(0, 300) } : {}),
+    ...(['initialize', 'ocr-worker-startup'].includes(stage)
+      ? { message: String(error?.message || '').split(/[\r\n]/, 1)[0].slice(0, 300) } : {}),
   });
 }
 export const BROKER_DEALER_PDF_LIMITS = Object.freeze({
@@ -115,15 +116,26 @@ async function createLocalOcr(signal) {
     const job = pending.get(event.jobId); if (!job) return;
     pending.delete(event.jobId);
     if (event.status === 'resolve') job.resolve(event.data);
-    else job.reject(new BrokerDealerPdfError('This page could not be recognized reliably.', 'BROKER_PDF_OCR_FAILED'));
+    else {
+      logExtractionFailure(job.action === 'recognize' ? 'ocr-worker-recognize' : 'ocr-worker-startup', {
+        name: 'OcrWorkerError', message: typeof event.data === 'string' ? event.data : '',
+      });
+      job.reject(new BrokerDealerPdfError('This page could not be recognized reliably.', 'BROKER_PDF_OCR_FAILED'));
+    }
   });
-  worker.on('error', () => rejectJobs(new BrokerDealerPdfError('The OCR worker could not complete.', 'BROKER_PDF_OCR_FAILED')));
+  worker.on('error', error => {
+    // Startup receives only our fixed asset paths/configuration. Suppress error
+    // messages after image recognition begins so logs cannot contain PDF data.
+    const recognizing = [...pending.values()].some(job => job.action === 'recognize');
+    logExtractionFailure(recognizing ? 'ocr-worker-recognize' : 'ocr-worker-startup', error);
+    rejectJobs(new BrokerDealerPdfError('The OCR worker could not complete.', 'BROKER_PDF_OCR_FAILED'));
+  });
   worker.on('exit', () => rejectJobs(new BrokerDealerPdfError('The OCR worker stopped before completion.', 'BROKER_PDF_OCR_STOPPED')));
   function job(action, payload) {
     checkSignal(signal);
     if (stopped) throw new BrokerDealerPdfError('The OCR worker is unavailable.', 'BROKER_PDF_OCR_STOPPED');
     return bounded(new Promise((resolve, reject) => {
-      const jobId = String(++sequence); pending.set(jobId, { resolve, reject });
+      const jobId = String(++sequence); pending.set(jobId, { resolve, reject, action });
       worker.postMessage({ workerId: 'broker-report', jobId, action, payload });
     }), signal);
   }

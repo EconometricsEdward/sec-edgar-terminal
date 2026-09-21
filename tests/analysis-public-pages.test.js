@@ -272,7 +272,7 @@ async function brokerRouteFixture() {
   const { mock } = await import('node:test');
   const assert = (await import('node:assert/strict')).default;
   const root = process.argv[1], calls = [];
-  let failed = false, available = true;
+  let failed = false, available = true, retryable = false, analysisStatus = 'partial';
   const cik = '0000123456';
   mock.module(new URL('src/utils/rateLimit.js', root).href, { namedExports: {
     checkRateLimit: async () => ({ allowed: true }), getClientIp: () => 'fixture', rateLimitedResponse: () => new Response(null, { status: 429 }),
@@ -282,7 +282,8 @@ async function brokerRouteFixture() {
     loadBrokerDealerResearch: async (id, options) => {
       calls.push(id); assert.ok(options.signal); if (failed) throw new Error('private credentials');
       return { status: available ? 'available' : 'not-applicable', company: { cik, name: 'Independent Securities LLC' },
-        analysis: { status: 'partial', cik, name: 'Independent Securities LLC', metrics: [{ id: 'totalAssets', value: 1000 }] },
+        analysis: { status: analysisStatus, cik, name: 'Independent Securities LLC', metrics: analysisStatus === 'unavailable' ? [] : [{ id: 'totalAssets', value: 1000 }] },
+        extraction: { retryable },
         filing: { form: 'X-17A-5', accession: '0000123456-26-000001' } };
     },
   } });
@@ -298,6 +299,26 @@ async function brokerRouteFixture() {
   assert.equal(json.cik, cik); assert.equal(json.filing.form, 'X-17A-5');
   assert.equal(json.metrics[0].value, 1000);
   assert.equal(json.ticker, undefined);
+  assert.match(response.headers.get('Cache-Control'), /public.*s-maxage=3600/);
+  retryable = true;
+  analysisStatus = 'unavailable';
+  const transientMissing = await request();
+  assert.equal(transientMissing.status, 503, 'A temporary extraction failure remains retryable');
+  assert.match(transientMissing.headers.get('Cache-Control'), /private.*no-store/);
+  assert.doesNotMatch(transientMissing.headers.get('Cache-Control'), /s-maxage/);
+  assert.equal((await transientMissing.json()).status, 'unavailable');
+  analysisStatus = 'partial';
+  const transientPartial = await request();
+  assert.equal(transientPartial.status, 200, 'Already extracted figures remain usable during a partial outage');
+  assert.match(transientPartial.headers.get('Cache-Control'), /private.*no-store/);
+  assert.doesNotMatch(transientPartial.headers.get('Cache-Control'), /s-maxage/);
+  const partial = await transientPartial.json();
+  assert.equal(partial.status, 'partial');
+  assert.equal(partial.metrics[0].value, 1000);
+  retryable = false;
+  const recovered = await request();
+  assert.equal(recovered.status, 200);
+  assert.match(recovered.headers.get('Cache-Control'), /public.*s-maxage=3600/);
   available = false;
   assert.equal((await request()).status, 404);
   failed = true;
