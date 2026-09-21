@@ -531,7 +531,7 @@ function ReaderSession({
                         <button
                           type="button"
                           className={styles.collect}
-                          onClick={() => onCollect({ ...data.filing, documentUrl: sourceUrl }, passage)}
+                          onClick={() => onCollect({ ...data.filing, documentUrl: data.format === "pdf-text" && passage.page ? `${sourceUrl}#page=${passage.page}` : sourceUrl }, passage)}
                         >
                           <Plus size={13} /> Collect passage
                         </button>

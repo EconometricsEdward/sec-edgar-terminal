@@ -277,7 +277,8 @@ export async function readFilingsDocument(settings, { signal } = {}) {
   if (isBrokerDealerAnnualForm(filing.form)) {
     const document = await readBrokerDealerFiling(company, filing, { signal, document: settings.document });
     const paragraphs = document.pages.flatMap(sourcePage => (sourcePage.text.match(/[\s\S]{1,6000}/g) || [])
-      .map((text, index) => ({ id: `pdf-${sourcePage.pageNumber}-${index}`, text, page: sourcePage.pageNumber, sectionId: 'other', section: 'Financial report', part: 1, parts: 1 })));
+      .map((text, index) => ({ id: `pdf-${sourcePage.pageNumber}-${index}`, text, page: sourcePage.pageNumber, sectionId: 'other', section: 'Financial report', part: 1, parts: 1 })))
+      .map((passage, index) => ({ ...passage, index }));
     const matched = paragraphs.filter(passage => (!settings.query || passage.text.toLowerCase().includes(settings.query.toLowerCase())) && ['all', 'other', 'notes'].includes(settings.section));
     const page = Math.min(settings.page, Math.max(1, Math.ceil(matched.length / PAGE_SIZE)));
     return { ticker: company.ticker, cik: company.cik, name: company.name, filing: document.filing, prior,
