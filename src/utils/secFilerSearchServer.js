@@ -4,16 +4,18 @@
  * https://www.sec.gov/edgar/search/js/edgar_full_text_search.js
  *
  * Hints stop at ten and ignore pagination. Supplement them with entityName
- * searches of filing metadata, never document-text q searches. A 13F root-form
- * search keeps managers discoverable even when similarly named private funds
+ * searches of filing metadata, never document-text q searches. A root-form
+ * search keeps managers and broker-dealers discoverable when private funds
  * outrank them in hints. Root forms already include their amendments; adding
  * /A forms to the same request would accidentally require amendments only.
  */
 import { secFetch } from './secClient.js';
+import { isBrokerDealerAnnualForm, normalizeBrokerDealerForm } from './brokerDealerForms.js';
 
 export const SEC_FILER_SEARCH_URL = 'https://efts.sec.gov/LATEST/search-index';
 export const SEC_FILER_RESULT_LIMIT = 12;
 const FORM_13F = /^13F-(?:HR|NT)(?:\/A)?$/;
+const supportedDiscoveryForm = value => FORM_13F.test(value) || isBrokerDealerAnnualForm(value);
 const MAX_BYTES = 2 * 1024 * 1024;
 const SEARCH_DEADLINE_MS = 25000;
 const WARNING = 'Some SEC name sources could not be checked. Results may be incomplete. Retry or enter the filer’s CIK.';
@@ -73,7 +75,7 @@ function hintResults(payload, query) {
   return { ...page, results };
 }
 
-function filingResults(payload, query, restrictedTo13f) {
+function filingResults(payload, query, restrictedForms) {
   const page = validateSearchPayload(payload);
   const results = [];
   for (const hit of page.hits) {
@@ -84,8 +86,8 @@ function filingResults(payload, query, restrictedTo13f) {
       throw error('The SEC filing index returned invalid filer identities. Please retry.');
     const ciks = new Set(filing.ciks.map(normalizedCik));
     if (ciks.has(null)) throw error('The SEC filing index returned an invalid CIK. Please retry.');
-    const form = typeof filing.form === 'string' ? filing.form : '';
-    if (restrictedTo13f && !FORM_13F.test(form)) throw error('The SEC institutional filing search returned an unexpected form. Please retry.');
+    const form = normalizeBrokerDealerForm(filing.form) || (typeof filing.form === 'string' ? filing.form : '');
+    if (restrictedForms && !supportedDiscoveryForm(form)) throw error('The SEC filer discovery search returned an unexpected form. Please retry.');
     for (const display of filing.display_names) {
       if (typeof display !== 'string' || display.length > 1200) throw error('The SEC filing index returned an invalid name. Please retry.');
       const match = /^(.*?)\s*\(CIK (\d{10})\)\s*$/.exec(display);
@@ -96,8 +98,9 @@ function filingResults(payload, query, restrictedTo13f) {
       if (!name || nameAffinity(name, query) >= 4) continue;
       results.push({ cik: match[2], name,
         // Multi-party ownership filings do not prove every named party filed a
-        // 13F. Only a single-entity 13F record establishes this result badge.
-        formTypes: FORM_13F.test(form) && ciks.size === 1 ? [form] : [] });
+        // 13F or broker-dealer annual report. Only a single-entity record
+        // establishes the corresponding filing badge.
+        formTypes: supportedDiscoveryForm(form) && ciks.size === 1 ? [form] : [] });
     }
   }
   return { ...page, results };
@@ -114,7 +117,7 @@ function mergedResults(pages, query) {
   }
   // A notice identifies a related manager but does not supply a holdings
   // table. Prefer actual holdings reporters when legal-name relevance ties.
-  const reportRank = filer => filer.formTypes.some(form => /^13F-HR(?:\/A)?$/.test(form)) ? 0 : filer.formTypes.length ? 1 : 2;
+  const reportRank = filer => filer.formTypes.some(form => /^13F-HR(?:\/A)?$/.test(form) || isBrokerDealerAnnualForm(form)) ? 0 : filer.formTypes.length ? 1 : 2;
   return [...byCik.values()].sort((a, b) =>
     nameAffinity(a.name, query) - nameAffinity(b.name, query)
     || reportRank(a) - reportRank(b)
@@ -144,11 +147,11 @@ export function createSecFilerSearch({ fetchSec = secFetch, now = Date.now, ttlM
       const payload = await fetchJson(url, signal), name = cleanName(payload?.name);
       if (normalizedCik(payload?.cik) !== cik || !name || !Array.isArray(payload?.filings?.recent?.form))
         throw error('The SEC response did not match the requested filer identity. Please retry.');
-      return { query, results: [{ cik, name, formTypes: [...new Set(payload.filings.recent.form.filter(form => typeof form === 'string' && FORM_13F.test(form)))].sort() }],
+      return { query, results: [{ cik, name, formTypes: [...new Set(payload.filings.recent.form.filter(form => typeof form === 'string' && supportedDiscoveryForm(form)).map(form => normalizeBrokerDealerForm(form) || form))].sort() }],
         source: { url, fetchedAt, coverage: 'SEC public submissions for this CIK; older filings may be in additional history files.' }, truncated: false };
     }
     const hintUrl = `${SEC_FILER_SEARCH_URL}?${new URLSearchParams({ keysTyped: query })}`;
-    const managerUrl = `${SEC_FILER_SEARCH_URL}?${new URLSearchParams({ entityName: query, forms: '13F-HR,13F-NT', dateRange: 'all', from: '0' })}`;
+    const managerUrl = `${SEC_FILER_SEARCH_URL}?${new URLSearchParams({ entityName: query, forms: '13F-HR,13F-NT,X-17A-5', dateRange: 'all', from: '0' })}`;
     const attempts = await Promise.allSettled([
       fetchJson(hintUrl, signal).then(payload => hintResults(payload, query)),
       fetchJson(managerUrl, signal).then(payload => filingResults(payload, query, true)),

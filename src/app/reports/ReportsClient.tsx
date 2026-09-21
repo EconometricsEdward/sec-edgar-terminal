@@ -14,7 +14,7 @@ type Basis = "annual" | "ttm" | "quarter";
 type SearchResponse = { query: string; kind: ReportKind; results: ReportSearchResult[]; warning?: string; truncated?: boolean };
 
 const KINDS = [
-  { id: "company" as const, label: "Company", Icon: Building2, placeholder: "Search a company name, ticker or CIK", detail: "Financial statements, performance and financial risk" },
+  { id: "company" as const, label: "Company", Icon: Building2, placeholder: "Search a company or broker-dealer name, ticker or CIK", detail: "Company financial statements and public broker-dealer annual reports (X-17A-5)" },
   { id: "nport" as const, label: "N-PORT fund", Icon: Layers3, placeholder: "Search a fund name, ticker or SEC series", detail: "A fund’s reported portfolio and concentration" },
   { id: "13f" as const, label: "13F manager", Icon: Landmark, placeholder: "Search an institutional manager name or CIK", detail: "An institutional manager’s disclosed securities" },
   { id: "market" as const, label: "Market report", Icon: ChartNoAxesCombined, placeholder: "Market report", detail: "Sector fundamentals and CFTC positioning across financial and commodity markets" },
@@ -94,6 +94,14 @@ export default function ReportsClient({ preview = false }: { preview?: boolean }
   const displayedSources = report?.kind === "market"
     ? report.sources.filter(source => source.id === "market-snapshot" || source.id.startsWith("cftc-"))
     : report?.sources || [];
+
+  useEffect(() => {
+    const initial = new URLSearchParams(window.location.search).get("q");
+    if (initial && /^\d{1,10}$/.test(initial) && Number(initial) > 0) {
+      setQuery(initial.padStart(10, "0"));
+      setOpen(true);
+    }
+  }, []);
 
   useEffect(() => {
     const normalized = query.trim();
@@ -181,6 +189,7 @@ export default function ReportsClient({ preview = false }: { preview?: boolean }
     searchRequest.current++;
     searchController.current?.abort();
     setSelected(entity);
+    if (entity.annualReportForm === "X-17A-5") setBasis("annual");
     setQuery(entity.ticker ? `${entity.ticker} · ${entity.name}` : entity.name);
     setResults([]);
     setOpen(false);
@@ -335,7 +344,7 @@ export default function ReportsClient({ preview = false }: { preview?: boolean }
         {selected && <div className={styles.selection}>
           <div className={styles.selectedIdentity}><Check size={18} aria-hidden="true" /><div><strong>{selected.ticker ? `${selected.ticker} · ` : ""}{selected.name}</strong><p>{kind === "market" ? "SEC sector fundamentals and CFTC Commitments of Traders" : `CIK ${selected.cik}${selected.seriesId ? ` · Series ${selected.seriesId}` : ""}`}</p></div></div>
           <div className={styles.buildControls}>
-            {(kind === "company" || kind === "market") && <label>Reporting basis<select value={basis} onChange={event => { clearReport(); setBasis(event.target.value as Basis); }}><option value="annual">Latest annual</option><option value="ttm">Trailing twelve months</option>{kind === "company" && <option value="quarter">Latest standalone quarter</option>}</select></label>}
+            {(kind === "company" || kind === "market") && <label>Reporting basis<select value={basis} onChange={event => { clearReport(); setBasis(event.target.value as Basis); }}><option value="annual">Latest annual</option>{selected.annualReportForm !== "X-17A-5" && <><option value="ttm">Trailing twelve months</option>{kind === "company" && <option value="quarter">Latest standalone quarter</option>}</>}</select>{selected.annualReportForm === "X-17A-5" && <small>Public annual-report figures; no inferred quarterly or TTM data.</small>}</label>}
             <button type="button" className={styles.buildButton} disabled={preparing} onClick={buildReport}>{preparing ? <><LoaderCircle size={17} className={styles.spinner} aria-hidden="true" />Preparing report</> : <>{report ? "Rebuild report" : "Build report"}<ArrowRight size={17} aria-hidden="true" /></>}</button>
           </div>
         </div>}

@@ -1,4 +1,5 @@
 import { getItemsInfo } from './formItems.js';
+import { isBrokerDealerAnnualForm, normalizeBrokerDealerForm, brokerDealerFormDescription } from './brokerDealerForms.js';
 
 export const FILINGS_SETTINGS = {
   query: '', family: 'all', form: 'all', start: '', end: '', item: '',
@@ -21,6 +22,7 @@ export function validFilingDate(value) {
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
 export function filingFamily(form = '') {
+  if (isBrokerDealerAnnualForm(form)) return 'annual';
   const base = String(form).toUpperCase().replace(/\/A$/, '');
   if (/^(10-K|10-KT|20-F|40-F)$/.test(base)) return 'annual';
   if (/^(10-Q|10-QT)$/.test(base)) return 'quarterly';
@@ -41,7 +43,7 @@ export function normalizeFilingsSettings(input = {}) {
   };
   for (const [key, values] of Object.entries(choices)) if (values.includes(input[key])) result[key] = input[key];
   result.query = String(input.query || '').slice(0, 180);
-  const form = String(input.form || 'all').trim().toUpperCase();
+  const form = normalizeBrokerDealerForm(input.form) || String(input.form || 'all').trim().toUpperCase();
   result.form = form === 'ALL' ? 'all' : /^[A-Z0-9][A-Z0-9 .\/-]{0,29}$/.test(form) ? form : 'all';
   for (const key of ['start', 'end']) result[key] = validFilingDate(input[key]) ? input[key] : '';
   result.item = /^\d\.\d{2}$/.test(String(input.item || '')) ? String(input.item) : '';
@@ -71,7 +73,7 @@ export function normalizeFilingRows(recent, cik) {
     if (!accessionPattern.test(accession || '') || typeof form !== 'string' || !form.trim() || form.length > 40 || !validFilingDate(filingDate)) continue;
     const primaryDoc = validFilingDocument(recent.primaryDocument?.[i]) ? recent.primaryDocument[i] : '';
     const base = `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accession.replaceAll('-', '')}`;
-    const normalizedForm = form.trim().toUpperCase();
+    const normalizedForm = normalizeBrokerDealerForm(form) || form.trim().toUpperCase();
     const size = recent.size?.[i];
     rows.push({
       accession, form: normalizedForm, filingDate,
@@ -81,6 +83,8 @@ export function normalizeFilingRows(recent, cik) {
       documentUrl: primaryDoc ? `${base}/${primaryDoc}` : '',
       indexUrl: `${base}/${accession}-index.html`,
       isAmendment: normalizedForm.endsWith('/A'), family: filingFamily(normalizedForm),
+      brokerDealerAnnual: isBrokerDealerAnnualForm(normalizedForm),
+      formLabel: brokerDealerFormDescription(normalizedForm) || normalizedForm,
       ...(typeof size === 'number' && Number.isFinite(size) && size >= 0 ? { size } : {}),
     });
   }
@@ -104,11 +108,12 @@ export function filingReviewStatus(record = {}) {
 }
 export function filterFilings(filings, settings = {}, records = {}) {
   const s = normalizeFilingsSettings(settings);
-  const terms = s.query.toLowerCase().match(/"[^"]+"|\S+/g)?.map((term) => term.replace(/^"|"$/g, '')) || [];
+  const terms = (normalizeBrokerDealerForm(s.query) || s.query).toLowerCase().match(/"[^"]+"|\S+/g)?.map((term) => term.replace(/^"|"$/g, '')) || [];
   const filtered = filings.filter((filing) => {
     const amendment = filing.isAmendment ?? filing.form.endsWith('/A');
     if (s.family !== 'all' && (filing.family || filingFamily(filing.form)) !== s.family) return false;
-    if (s.form !== 'all' && filing.form !== s.form) return false;
+    if (s.form !== 'all' && filing.form !== s.form
+      && !(s.form === 'X-17A-5' && isBrokerDealerAnnualForm(filing.form))) return false;
     if (s.start && filing.filingDate < s.start || s.end && filing.filingDate > s.end) return false;
     if (s.amendments === 'exclude' && amendment || s.amendments === 'only' && !amendment) return false;
     const itemInfo = /^8-K(?:\/A)?$/.test(filing.form) ? getItemsInfo(filing.items || '') : [];
@@ -116,8 +121,8 @@ export function filterFilings(filings, settings = {}, records = {}) {
     const status = filingReviewStatus(records[filing.accession]);
     if (s.status === 'queued' && !status.queued || s.status === 'reviewed' && !status.reviewed || s.status === 'unreviewed' && status.reviewed) return false;
     if (terms.length) {
-      const text = [filing.form, filing.accession, filing.primaryDoc, filing.primaryDescription, filing.filingDate, filing.reportDate, ...itemInfo.flatMap((item) => [item.code, item.label])].join(' ').toLowerCase();
-      if (!terms.every((term) => text.includes(term))) return false;
+      const text = [filing.form, filing.formLabel, brokerDealerFormDescription(filing.form), filing.accession, filing.primaryDoc, filing.primaryDescription, filing.filingDate, filing.reportDate, ...itemInfo.flatMap((item) => [item.code, item.label])].join(' ').toLowerCase().replace(/broker-dealer/g, 'broker dealer');
+      if (!terms.every((term) => text.includes(term.replace(/broker-dealer/g, 'broker dealer')))) return false;
     }
     return true;
   });
@@ -151,10 +156,23 @@ export function selectFilingBaseline(current, filings, { comparison = 'previous'
     && f.form.replace(/\/A$/, '') === baseForm
     && (f.filingDate < current.filingDate || f.filingDate === current.filingDate && f.accession < current.accession));
   if (current.isAmendment ?? current.form.endsWith('/A')) {
-    const prior = validFilingDate(current.reportDate) ? older.find((f) => f.reportDate === current.reportDate) : null;
+    const samePeriod = validFilingDate(current.reportDate) ? older.filter((f) => f.reportDate === current.reportDate) : [];
+    const prior = isBrokerDealerAnnualForm(baseForm)
+      ? samePeriod.find((f) => !f.form.endsWith('/A')) || samePeriod[0]
+      : samePeriod[0];
     return { prior: prior || null, kind: 'amendment', reason: prior
       ? 'Amendment compared with the earlier filing for the same reporting period. Partial amendments can omit unchanged material.'
       : 'No earlier filing for the same reporting period is loaded. Load the relevant archive or open the SEC filing index.' };
+  }
+  if (isBrokerDealerAnnualForm(baseForm)) {
+    // Late reports and amendments may be filed years after the reporting
+    // period. A filing date never substitutes for a fiscal period end.
+    const prior = validFilingDate(current.reportDate) ? older.find((f) => !f.form.endsWith('/A')
+      && validFilingDate(f.reportDate) && f.reportDate < current.reportDate
+      && Math.abs((Date.parse(current.reportDate) - Date.parse(f.reportDate)) / 86400000 - 365.25) <= 40) : null;
+    return { prior: prior || null, kind: 'annual-season', reason: prior
+      ? 'Original broker-dealer annual report for the reporting period one year earlier. Public statement coverage can differ between years.'
+      : 'No original broker-dealer annual report with a verified matching prior-year reporting period is loaded. Filing dates are not used as fiscal period ends.' };
   }
   if (!periodicPattern.test(baseForm)) return { prior: null, kind: 'event', reason: 'Event, ownership, proxy and offering filings are not automatically compared with unrelated events.' };
   const candidates = older.filter((f) => !f.form.endsWith('/A') && validFilingDate(f.reportDate) && f.reportDate < current.reportDate);

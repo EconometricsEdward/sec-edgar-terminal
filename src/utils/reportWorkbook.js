@@ -1,6 +1,7 @@
 import { zipSync, strToU8 } from 'fflate';
 import { comparePairQuality } from './compareQuality.js';
 import { buildMarketWorkbookSheets } from './reportMarketWorkbook.js';
+import { isBrokerDealerAnnualForm } from './brokerDealerForms.js';
 
 const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -261,12 +262,13 @@ function chartXml(chart, sheetName, index) {
 export async function createReportXlsx(report) {
   validate(report);
   const styles = styleCatalog(), references = new Map(), marketEdition = report.kind === 'market' && report.marketBriefing;
+  const brokerDealer = report.sources?.some(source => isBrokerDealerAnnualForm(source.form));
   const sheets = marketEdition ? buildMarketWorkbookSheets(report, { makeSheet, styles, wrappedHeight, titleBlock, excludedColumn, numericFormat, sectionSheet, colName }) : [summarySheet(report, styles)];
   let sections = marketEdition ? [] : report.sections.filter((section) => !excludedSection(section));
   const companyCftc = report.kind === 'company' ? sections.filter((section) => section.id?.startsWith('cftc-') && section.id !== 'cftc-history') : [];
   if (companyCftc.length) sections = sections.filter((section) => !companyCftc.includes(section));
   if (report.kind === 'company') {
-    for (const [id, title] of Object.entries(companyNames)) if (!sections.some((section) => section.id === id)) sections.push({ id, title, columns: [{ key: 'metric', label: 'Metric', format: 'text' }, { key: 'value', label: 'Value', format: 'number' }], rows: [] });
+    if (!brokerDealer) for (const [id, title] of Object.entries(companyNames)) if (!sections.some((section) => section.id === id)) sections.push({ id, title, columns: [{ key: 'metric', label: 'Metric', format: 'text' }, { key: 'value', label: 'Value', format: 'number' }], rows: [] });
     sections.sort((a, b) => (Object.keys(companyNames).indexOf(a.id) < 0 ? 10 : Object.keys(companyNames).indexOf(a.id)) - (Object.keys(companyNames).indexOf(b.id) < 0 ? 10 : Object.keys(companyNames).indexOf(b.id)));
   }
   sections.forEach((section) => { const sheet = sectionSheet(report, section, styles, references); if (sheet) sheets.push(sheet); });
@@ -278,7 +280,7 @@ export async function createReportXlsx(report) {
     names.add(name.toLowerCase()); sheet.name = name;
   };
   sheets.forEach(nameSheet);
-  if (report.kind === 'company') { const sheet = trendsSheet(report, styles, references); nameSheet(sheet); sheets.splice(5, 0, sheet); }
+  if (report.kind === 'company' && !brokerDealer) { const sheet = trendsSheet(report, styles, references); nameSheet(sheet); sheets.splice(5, 0, sheet); }
   const files = {}, entries = [], relationships = [], overrides = [], definedNames = [];
   let chartCount = 0;
   sheets.forEach((sheet, index) => {

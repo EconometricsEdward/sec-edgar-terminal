@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   BookOpen,
+  ChartNoAxesCombined,
   ExternalLink,
   GitCompareArrows,
   Plus,
@@ -10,6 +12,8 @@ import {
   X,
 } from "lucide-react";
 import { disclosureWordDiff } from "../../../utils/disclosureResearch.js";
+import { isBrokerDealerAnnualForm } from "../../../utils/brokerDealerForms.js";
+import BrokerDealerAnalytics from "../../../components/broker-dealer/BrokerDealerAnalytics";
 import styles from "../reader.module.css";
 
 type Props = {
@@ -18,7 +22,7 @@ type Props = {
   archive?: string;
   prior?: any;
   priorArchive?: string;
-  initialSelection?: { view?: string; query?: string; section?: string; page?: number };
+  initialSelection?: { view?: string; query?: string; section?: string; page?: number; document?: string };
   comparisonBasis?: "year" | "previous";
   onComparisonChange?: (basis: "year" | "previous") => void;
   selectionReason?: string;
@@ -167,8 +171,11 @@ function ReaderSession({
   onClose,
   onCollect,
 }: Props) {
+  const isBrokerDealer = isBrokerDealerAnnualForm(filing.form);
   const initialQuery = typeof initialSelection?.query === 'string' && initialSelection.query.length <= 200 && !/[\u0000-\u001f\u007f]/.test(initialSelection.query) ? initialSelection.query : '';
-  const [view, setView] = useState(initialSelection?.view === 'changes' ? 'changes' : 'document');
+  const [view, setView] = useState(isBrokerDealer && initialSelection?.view === 'analytics' ? 'analytics' : !isBrokerDealer && initialSelection?.view === 'changes' ? 'changes' : 'document');
+  const [documentName, setDocumentName] = useState(initialSelection?.document || '');
+  const requestView = view === "changes" ? "changes" : "document";
   const [draftQuery, setDraftQuery] = useState(initialQuery);
   const [query, setQuery] = useState(initialQuery);
   const [section, setSection] = useState(/^(all|other|risk|mda|notes|8k:\d\.\d{2})$/.test(initialSelection?.section || '') ? initialSelection!.section! : 'all');
@@ -191,11 +198,12 @@ function ReaderSession({
     const params = new URLSearchParams({
       ticker,
       accession: filing.accession,
-      view,
+      view: requestView,
       query,
       section,
       page: String(page),
     });
+    if (documentName) params.set("document", documentName);
     if (archive) params.set("archive", archive);
     if (filing.filingDate) params.set("filed", filing.filingDate);
     if (prior?.accession) params.set("prior", prior.accession);
@@ -228,13 +236,22 @@ function ReaderSession({
     prior?.accession,
     prior?.filingDate,
     priorArchive,
-    view,
+    requestView,
+    documentName,
     query,
     section,
     page,
     attempt,
   ]);
 
+  const documents = data?.documents || [];
+  const selectedDocument = documents.find((document: any) => document.name === documentName) || data?.selectedDocument;
+  const sourceUrl = selectedDocument?.url || (isBrokerDealer ? undefined : filing.documentUrl);
+  const analysisParams = new URLSearchParams({ accession: filing.accession });
+  if (archive) analysisParams.set("archive", archive);
+  if (filing.filingDate) analysisParams.set("filed", filing.filingDate);
+  if (selectedDocument?.name) analysisParams.set("document", selectedDocument.name);
+  const analysisIdentity = data?.company?.cik || data?.cik || ticker;
   const comparison = data?.comparison;
   const total =
     view === "document"
@@ -290,13 +307,13 @@ function ReaderSession({
         </div>
       </dl>
       <div className={styles.sources}>
-        {filing.documentUrl && (
+        {sourceUrl && (
           <a
-            href={filing.documentUrl}
+            href={sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
           >
-            SEC original <ExternalLink size={12} />
+            {selectedDocument?.format === "pdf" ? "Original SEC PDF" : "SEC original"} <ExternalLink size={12} />
           </a>
         )}
         {filing.indexUrl && (
@@ -304,7 +321,18 @@ function ReaderSession({
             Filing & exhibits <ExternalLink size={12} />
           </a>
         )}
+        {isBrokerDealer && <Link href={`/analysis/${encodeURIComponent(analysisIdentity)}?${analysisParams}`} prefetch={false}>Open financial analysis <ExternalLink size={12} /></Link>}
       </div>
+      {documents.length > 0 && <div className={styles.documentControl}>
+        <label htmlFor={`${id}-document`}>Filing document</label>
+        <select id={`${id}-document`} value={selectedDocument?.name || ""} onChange={event => {
+          setDocumentName(event.target.value);
+          setPage(1);
+          setSection("all");
+        }}>
+          {documents.map((document: any) => <option key={document.name} value={document.name}>{document.description || document.name}{document.format ? ` · ${String(document.format).toUpperCase()}` : ""}</option>)}
+        </select>
+      </div>}
       <div
         className={styles.tabs}
         role="tablist"
@@ -323,7 +351,8 @@ function ReaderSession({
         >
           <BookOpen size={15} /> Document
         </button>
-        <button
+        {isBrokerDealer && <button type="button" role="tab" aria-selected={view === "analytics"} aria-controls={`${id}-panel`} onClick={() => { setView("analytics"); setPage(1); setSection("all"); }}><ChartNoAxesCombined size={15} /> Financials</button>}
+        {!isBrokerDealer && <button
           type="button"
           role="tab"
           aria-selected={view === "changes"}
@@ -335,7 +364,7 @@ function ReaderSession({
           }}
         >
           <GitCompareArrows size={15} /> Changes
-        </button>
+        </button>}
       </div>
       {view === "changes" && onComparisonChange && (
         <div className={styles.comparisonControl}>
@@ -359,7 +388,7 @@ function ReaderSession({
           )}
         </div>
       )}
-      <form
+      {view !== "analytics" && <form
         className={styles.filters}
         onSubmit={(event) => {
           event.preventDefault();
@@ -413,14 +442,14 @@ function ReaderSession({
             Clear “{query}”
           </button>
         )}
-      </form>
+      </form>}
       <div
         ref={body}
         className={styles.body}
         id={`${id}-panel`}
         role="tabpanel"
         aria-label={
-          view === "document" ? "Document passages" : "Passage changes"
+          view === "analytics" ? "Broker-dealer financial analysis" : view === "document" ? "Document passages" : "Passage changes"
         }
         aria-busy={loading}
       >
@@ -445,12 +474,18 @@ function ReaderSession({
         ) : (
           data && (
             <>
-              {view === "document" ? (
+              {data.extraction && <div className={styles.extractionNotice} role="status">
+                <strong>{data.extraction.status === "scanned" || data.extraction.status === "no-text" ? "Readable text unavailable" : data.extraction.status === "unsupported" ? "Document format not supported" : "Document extraction coverage"}</strong>
+                <p>{typeof data.extraction.pagesRead === "number" ? `${data.extraction.pagesRead} pages read${typeof data.extraction.pageCount === "number" ? ` of ${data.extraction.pageCount}` : ""}. ` : ""}{data.extraction.message || data.extraction.reason || "Only extracted text is available in this reader. Tables, scanned pages and other unsupported content require the original document."}</p>
+                {data.extraction.ocrPages > 0 && <p>{data.extraction.ocrPages} pages use optical text recognition. Check extracted digits and labels against the original PDF.</p>}
+                {data.extraction.limitations?.length > 0 && <ul>{data.extraction.limitations.map((limit: string) => <li key={limit}>{limit}</li>)}</ul>}
+              </div>}
+              {view === "analytics" ? <BrokerDealerAnalytics analysis={data.brokerDealerAnalysis} filing={data.filing || filing} compact /> : view === "document" ? (
                 <>
                   <p className={styles.caption}>
                     {total.toLocaleString()} {query ? "matching " : ""}passages
                     {section !== "all" ? " in the selected section" : ""} ·{" "}
-                    {data.coverage.totalParagraphs.toLocaleString()} extracted
+                    {(data.coverage?.totalParagraphs || 0).toLocaleString()} extracted
                     overall.
                   </p>
                   <details className={styles.coverage}>
@@ -472,11 +507,10 @@ function ReaderSession({
                   </details>
                   {!total && (
                     <div className={styles.message}>
-                      No matching text in the extracted document. Unrecognized
-                      sections and exhibits still require the SEC original.
+                      {query ? "No matching text in the extracted document." : "No readable passages are available for this document."} Scanned pages, unrecognized sections and exhibits still require the SEC original.
                     </div>
                   )}
-                  {data.paragraphs.map((passage: any) => (
+                  {(data.paragraphs || []).map((passage: any) => (
                     <article
                       key={`${passage.index}:${passage.part}`}
                       className={styles.passage}
@@ -484,7 +518,7 @@ function ReaderSession({
                       <div className={styles.passageHeader}>
                         <span>{passage.section}</span>
                         <span>
-                          ¶{passage.index + 1}
+                          {passage.page ? `PDF p. ${passage.page} · ` : ""}¶{passage.index + 1}
                           {passage.parts > 1
                             ? ` · part ${passage.part}/${passage.parts}`
                             : ""}
@@ -497,7 +531,7 @@ function ReaderSession({
                         <button
                           type="button"
                           className={styles.collect}
-                          onClick={() => onCollect(data.filing, passage)}
+                          onClick={() => onCollect({ ...data.filing, documentUrl: sourceUrl }, passage)}
                         >
                           <Plus size={13} /> Collect passage
                         </button>
@@ -622,7 +656,7 @@ function ReaderSession({
           )
         )}
       </div>
-      {!loading && !error && total > 0 && (
+      {view !== "analytics" && !loading && !error && total > 0 && (
         <div className={styles.pagination}>
           <button
             type="button"

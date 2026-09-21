@@ -46,4 +46,4 @@ export type ReportDocument = {
   sources: ReportSource[]; notes: string[];
   coverage: { status: 'ready' | 'partial'; message: string; recordCount?: number; availableMetrics?: number; totalMetrics?: number };
 };
-export type ReportSearchResult = { kind: ReportKind; id: string; name: string; ticker?: string; cik: string; seriesId?: string; detail: string };
+export type ReportSearchResult = { kind: ReportKind; id: string; name: string; ticker?: string; cik: string; seriesId?: string; annualReportForm?: 'X-17A-5'; detail: string };

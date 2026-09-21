@@ -19,11 +19,14 @@ export function readFilingReaderSelection(search = '') {
   const filed = one('filed'), priorFiled = one('priorFiled');
   if ([filed, priorFiled].some(value => value && !validFilingDate(value))) throw selectionError('The filing link contains an invalid filing date.');
   const view = one('view') || 'document', section = one('section') || 'all', query = one('query'), pageText = one('page') || '1';
-  if (!['document', 'changes'].includes(view) || !/^(all|other|risk|mda|notes|8k:\d\.\d{2})$/.test(section)
+  const document = one('document');
+  if (document && (document.length > 240 || !/^[A-Za-z0-9_][A-Za-z0-9_.-]*\.(pdf|htm|html|txt|xml)$/i.test(document) || document.includes('..')))
+    throw selectionError('The filing link contains an invalid document name.');
+  if (!['document', 'changes', 'analytics'].includes(view) || !/^(all|other|risk|mda|notes|8k:\d\.\d{2})$/.test(section)
     || query.length > 200 || /[\u0000-\u001f\u007f]/.test(query)
     || !/^\d{1,4}$/.test(pageText) || Number(pageText) < 1 || Number(pageText) > 1000)
     throw selectionError('The filing link contains unsupported reader filters.');
-  return { accession, prior, archive, priorArchive, filed, priorFiled, view, section, query, page: Number(pageText) };
+  return { accession, prior, archive, priorArchive, filed, priorFiled, view, section, query, page: Number(pageText), ...(document ? { document } : {}) };
 }
 
 /** Resolve at most one explicit/date-matched archive per accession. The page's
@@ -63,6 +66,6 @@ export async function resolveFilingReaderSelection(selection, company, loadArchi
   const filing = await locate(selection.accession, selection.archive, selection.filed);
   const prior = selection.prior ? await locate(selection.prior, selection.priorArchive, selection.priorFiled) : null;
   return { filing, prior, archives: Object.fromEntries(loaded), initialSelection: {
-    view: selection.view, section: selection.section, query: selection.query, page: selection.page,
+    view: selection.view, section: selection.section, query: selection.query, page: selection.page, ...(selection.document ? { document: selection.document } : {}),
   } };
 }

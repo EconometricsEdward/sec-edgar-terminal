@@ -1,0 +1,106 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { isBrokerDealerAnnualForm, normalizeBrokerDealerForm, brokerDealerFormDescription } from '../src/utils/brokerDealerForms.js';
+import { filingFamily, normalizeFilingRows, filterFilings, selectFilingBaseline } from '../src/utils/filingsResearch.js';
+import { createSecFilerSearch } from '../src/utils/secFilerSearchServer.js';
+import { secFilerResearchPath, hasBrokerDealerAnnualReports } from '../src/utils/secFilerSearch.js';
+import { rankGlobalFilerMatches } from '../src/utils/globalFilerMatches.js';
+import { buildGlobalSearch } from '../src/utils/globalSearchEngine.js';
+import { routeSearch } from '../src/utils/searchRouter.js';
+
+const cik = '0000001001';
+const filer = { cik, name: 'Example Securities LLC', formTypes: ['X-17A-5'] };
+const map = { AAPL: { ticker: 'AAPL', cik: '0000320193', name: 'Apple Inc.', isFund: false } };
+const report = (number, form, filingDate, reportDate) => ({ accession: `0000001001-26-${String(number).padStart(6, '0')}`, form, filingDate, reportDate, primaryDoc: 'public.pdf' });
+const page = hits => ({ hits: { total: { value: hits.length, relation: 'eq' }, hits } });
+const hit = (id, name, form) => ({ _source: { ciks: [id], display_names: [`${name}  (CIK ${id})`], form } });
+
+test('broker-dealer annual aliases remain distinct from other forms and operational submissions', () => {
+  for (const form of ['X-17A-5', 'x17a5', 'Form X 17A 5', 'broker dealer annual reports']) {
+    assert.equal(normalizeBrokerDealerForm(form), 'X-17A-5');
+    assert.equal(filingFamily(form), 'annual');
+  }
+  assert.equal(normalizeBrokerDealerForm('x-17a-5/a'), 'X-17A-5/A');
+  assert.match(brokerDealerFormDescription('X-17A-5/A'), /annual report amendment/);
+  for (const form of ['FOCUS', '17a-5', 'FOCUS Part II', 'X-17A-5 EXHIBIT', '10-K', 'X-17A-5\n']) assert.equal(isBrokerDealerAnnualForm(form), false, form);
+});
+
+test('normalized public annual rows retain source dates, labels, PDFs and amendment filters', () => {
+  const reports = [report(1, 'X-17A-5', '2026-03-02', ''), report(2, 'X-17A-5/A', '2026-08-19', '2023-09-30'), report(3, '10-K', '2026-03-01', '2025-12-31')];
+  const rows = normalizeFilingRows({ accessionNumber: reports.map(row => row.accession), form: reports.map(row => row.form), filingDate: reports.map(row => row.filingDate), reportDate: reports.map(row => row.reportDate), primaryDocument: reports.map(row => row.primaryDoc) }, cik);
+  assert.equal(rows.find(row => row.accession === reports[0].accession).reportDate, '', 'A filing year never becomes a reporting period');
+  assert.equal(rows[0].brokerDealerAnnual, true);
+  assert.match(rows[0].formLabel, /annual report amendment/);
+  assert.match(rows[0].documentUrl, /public\.pdf$/);
+  assert.equal(filterFilings(rows, { form: 'x17a5' }).length, 2);
+  assert.equal(filterFilings(rows, { form: 'X-17A-5', amendments: 'exclude' }).length, 1);
+  assert.equal(filterFilings(rows, { form: 'X-17A-5', amendments: 'only' })[0].form, 'X-17A-5/A');
+  assert.equal(filterFilings(rows, { form: 'X-17A-5/A' }).length, 1);
+  assert.equal(filterFilings(rows, { query: 'broker dealer annual report' }).length, 2);
+  assert.equal(filterFilings(rows, { query: 'broker dealer annual reports' }).length, 2);
+  assert.equal(filterFilings(rows, { query: 'x17a5' }).length, 2);
+  assert.equal(filterFilings(rows, { form: '10-K' }).length, 1);
+});
+
+test('annual comparisons use verified prior-year fiscal periods and same-period originals for late amendments', () => {
+  const current = report(5, 'X-17A-5', '2026-08-28', '2026-06-30');
+  const prior = report(2, 'X-17A-5', '2025-08-28', '2025-06-30');
+  const halfYear = report(3, 'X-17A-5', '2026-03-01', '2025-12-31');
+  const original = report(1, 'X-17A-5', '2023-11-30', '2023-09-30');
+  const earlierAmendment = report(4, 'X-17A-5/A', '2026-07-30', '2023-09-30');
+  const lateAmendment = report(6, 'X-17A-5/A', '2026-09-01', '2023-09-30');
+  const reports = [current, prior, halfYear, original, earlierAmendment, lateAmendment];
+  assert.equal(selectFilingBaseline(current, reports).prior, prior);
+  assert.equal(selectFilingBaseline(lateAmendment, reports).prior, original);
+  assert.equal(selectFilingBaseline({ ...current, reportDate: '' }, reports).prior, null);
+  assert.equal(selectFilingBaseline({ ...lateAmendment, reportDate: '' }, reports).prior, null);
+});
+
+test('name discovery retains untickered annual reporters alongside managers without extra requests', async () => {
+  const calls = [];
+  const search = createSecFilerSearch({ fetchSec: async url => {
+    calls.push(url);
+    const params = new URL(url).searchParams;
+    if (params.has('keysTyped')) return Response.json(page([{ _id: '1002', _source: { entity: 'Example Securities Private Fund LLC' } }]));
+    assert.equal(params.get('forms'), '13F-HR,13F-NT,X-17A-5');
+    return Response.json(page([hit('0000001002', 'Example Securities Management LLC', '13F-HR'), hit(cik, filer.name, 'X-17A-5'), hit(cik, filer.name, 'X-17A-5/A')]));
+  } });
+  const result = await search('Example Securities');
+  assert.equal(calls.length, 2);
+  assert.equal(result.results[0].cik, cik);
+  assert.deepEqual(result.results[0].formTypes, ['X-17A-5', 'X-17A-5/A']);
+  assert.equal(Object.hasOwn(result.results[0], 'ticker'), false);
+  assert.equal(result.warning, undefined);
+});
+
+test('explicit CIK discovery recognizes original annual reports and amendments in submissions', async () => {
+  const search = createSecFilerSearch({ fetchSec: async () => Response.json({ cik, name: filer.name, tickers: [], filings: { recent: { form: ['X-17A-5', 'X-17A-5/A', 'FOCUS'] } } }) });
+  const result = await search(cik);
+  assert.equal(hasBrokerDealerAnnualReports(result.results[0]), true);
+  assert.deepEqual(result.results[0].formTypes, ['X-17A-5', 'X-17A-5/A']);
+});
+
+test('annual search aliases use existing filings routes and carry name intent without invented tickers', () => {
+  for (const query of ['X-17A-5', 'x17a5', 'broker dealer annual reports']) {
+    assert.equal(buildGlobalSearch(query, null).directPath, '/filings?form=X-17A-5');
+    assert.equal(routeSearch(query, null).path, '/filings?form=X-17A-5');
+  }
+  assert.equal(buildGlobalSearch('X-17A-5/A', map).directPath, '/filings?form=X-17A-5/A');
+  for (const directory of [map, null]) {
+    const plan = buildGlobalSearch('Brean annual report', directory);
+    assert.equal(plan.lookupQuery, 'Brean');
+    assert.equal(plan.filingIntent, 'annual');
+    assert.equal(plan.directPath, null);
+  }
+  const explicit = buildGlobalSearch('Example Securities X-17A-5/A', map);
+  assert.equal(explicit.lookupQuery, 'Example Securities');
+  assert.equal(explicit.filingIntent, 'X-17A-5/A');
+  assert.equal(buildGlobalSearch('CIK 1001 X-17A-5', null).directPath, '/filings/0000001001?form=X-17A-5');
+  assert.equal(buildGlobalSearch('AAPL X-17A-5', map).directPath, '/filings/AAPL?form=X-17A-5');
+  const matches = rankGlobalFilerMatches(filer.name, [filer], { filingIntent: explicit.filingIntent });
+  assert.equal(matches.exactPath, '/filings/0000001001?form=X-17A-5/A');
+  assert.match(matches.items[0].description, /Broker-dealer annual reports.*CIK 0000001001/);
+  assert.equal(matches.items[0].identityType, 'cik');
+  assert.equal(Object.hasOwn(matches.items[0], 'ticker'), false);
+  assert.equal(secFilerResearchPath({ ...filer, formTypes: ['13F-HR', 'X-17A-5'] }), '/filings/0000001001?form=X-17A-5');
+});

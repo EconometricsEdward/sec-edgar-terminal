@@ -1,4 +1,5 @@
 import { managerHoldingsPath } from "./siteRoutes.js";
+import { isBrokerDealerAnnualForm, normalizeBrokerDealerForm } from "./brokerDealerForms.js";
 
 /** Small browser responses from SEC entity discovery; the complete index stays upstream. */
 export function filerCik(value) {
@@ -16,9 +17,16 @@ export function hasThirteenFHoldings(filer) {
     && filer.formTypes.some(form => form === "13F-HR" || form === "13F-HR/A");
 }
 
-export function secFilerResearchPath(filer) {
+export function hasBrokerDealerAnnualReports(filer) {
+  return Array.isArray(filer?.formTypes) && filer.formTypes.some(isBrokerDealerAnnualForm);
+}
+
+export function secFilerResearchPath(filer, { filingIntent = '' } = {}) {
   const cik = filerCik(filer?.cik);
   if (!cik) return null;
+  const requestedForm = normalizeBrokerDealerForm(filingIntent);
+  if (requestedForm || hasBrokerDealerAnnualReports(filer)) return `/filings/${cik}?form=${requestedForm || 'X-17A-5'}`;
+  if (filingIntent === 'annual') return `/filings/${cik}?family=annual`;
   return hasThirteenFHoldings(filer) ? managerHoldingsPath(cik) : `/filings/${cik}`;
 }
 
@@ -51,7 +59,7 @@ export function mergeFilerSuggestions(suggestions, filers, limit = 12) {
   const securities = suggestions.filter(item => item.type !== "topic");
   const securityCiks = new Set(securities.map(item => item.cik));
   const extra = filers.filter(item => !securityCiks.has(item.cik)).map(item => ({
-    ...item, type: "filer", ticker: item.cik, path: secFilerResearchPath(item),
+    ...item, type: "filer", ticker: item.cik, identityType: "cik", brokerDealerAnnual: hasBrokerDealerAnnualReports(item), path: secFilerResearchPath(item),
   }));
   return [...securities, ...extra, ...suggestions.filter(item => item.type === "topic")].slice(0, limit);
 }

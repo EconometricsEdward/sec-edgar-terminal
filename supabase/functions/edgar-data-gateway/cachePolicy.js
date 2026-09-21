@@ -41,6 +41,16 @@ const researchServing = /^RESEARCH-(COMPARE|PORTFOLIO)-V1:(?:COMPARE-V2|ANALYSIS
 export function disposableCachePolicy(type, originalId) {
   if (typeof type !== 'string' || typeof originalId !== 'string' || !originalId.length || originalId.length > 1024) return null;
   const id = originalId.toUpperCase();
+  if (type === 'edgar.broker-dealer-document.v1:production') {
+    const match = re(`(${CIK}):${ACCESSION}:[A-F0-9]{64}`).exec(id);
+    return match ? Object.freeze({ family: 'document', type, id, sourceCik: match[1],
+      maxTtlSeconds: 30 * 86400, maxRawBytes: 8 * 1024 * 1024 }) : null;
+  }
+  if (type === 'edgar.broker-dealer-manifest.v1:production') {
+    const match = re(`(${CIK}):${ACCESSION}`).exec(id);
+    return match ? Object.freeze({ family: 'document', type, id, sourceCik: match[1],
+      maxTtlSeconds: 30 * 86400, maxRawBytes: 128 * 1024 }) : null;
+  }
   // Immutable filing proof/text and engine-versioned extraction revisions use
   // the existing 30-day document quota. Current identity/manifest checks retain
   // their separate, shorter freshness windows.

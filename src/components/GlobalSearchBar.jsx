@@ -44,7 +44,7 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
   const plan = useMemo(() => buildGlobalSearch(input, tickerMap, { cftcEnabled }), [input, tickerMap, cftcEnabled]);
   const planNotice = /^(?:Searching|Checking)\b/.test(plan.message || "") ? "" : plan.message;
   const filers = useSecFilerSearch(plan.lookupQuery, open && !!plan.lookupQuery && !plan.needsDirectory);
-  const filerMatches = useMemo(() => rankGlobalFilerMatches(plan.lookupQuery, filers.results, { truncated: filers.truncated, warning: filers.warning }), [plan.lookupQuery, filers.results, filers.truncated, filers.warning]);
+  const filerMatches = useMemo(() => rankGlobalFilerMatches(plan.lookupQuery, filers.results, { truncated: filers.truncated, warning: filers.warning, filingIntent: plan.filingIntent }), [plan.lookupQuery, plan.filingIntent, filers.results, filers.truncated, filers.warning]);
   const visibleRecent = useCallback(() => loadRecentSearches().filter(item => cftcEnabled || !requiresCftc(item.path)), [cftcEnabled]);
   const items = useMemo(() => {
     if (!query) return [

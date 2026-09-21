@@ -1266,3 +1266,17 @@
    reader to scroll instead of squeezing its document body to zero height. */
 .readerAside { overflow-y: auto; }
 .readerAside > section { min-height: 500px; flex-shrink: 0; }
+
+.sourceBrief { margin: 12px 0 4px; border: 1px solid #344256; border-radius: 9px; padding: 12px 16px; color: #afbdd0; font-size: 12px; line-height: 1.6; }
+.sourceBrief > div { display: flex; justify-content: space-between; align-items: center; gap: 8px 20px; flex-wrap: wrap; }
+.sourceBrief > div > span { color: #e9eef6; font-weight: 650; }
+.sourceBrief a { color: #7dd3fc; }
+.sourceBrief summary { cursor: pointer; margin-top: 7px; }
+.sourceBrief p { margin: 10px 0; }
+.sourceBrief ul { list-style: none; padding: 0; margin: 12px 0; }
+.sourceBrief li { display: flex; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid #344256; }
+.sourceBrief :is(a, summary):focus-visible { outline: 2px solid #7dd3fc; outline-offset: 3px; }
+:global(html[data-theme-mode="light"]) .sourceBrief { color: #425a72; border-color: #c3d0df; }
+:global(html[data-theme-mode="light"]) .sourceBrief > div > span { color: #172c43; }
+:global(html[data-theme-mode="light"]) .sourceBrief a { color: #075c87; }
+:global(html[data-theme-mode="light"]) .sourceBrief li { border-color: #c3d0df; }

@@ -18,6 +18,7 @@ const files = {
   company: '../src/app/analysis/[ticker]/page.tsx',
   directory: '../src/app/analysis/page.tsx',
   sampler: '../src/app/analysis/AnalysisDirectory.tsx',
+  broker: '../src/components/broker-dealer/BrokerDealerAnalytics.tsx',
 };
 const companies = [
   { ticker: 'AAPL', cik: '0000320193', name: 'Apple fixture', sector: 'Technology' },
@@ -43,8 +44,8 @@ function financialModel(basis = 'annual') {
   return packAnalysisCompany(buildAnalysisCompany({ ticker: 'AAPL', cik: '0000320193', companyName: 'Apple fixture', sic: 3571,
     facts: { 'us-gaap': tags }, filings: [] }, { basis }));
 }
-function fixture({ fail = false, available = true } = {}) {
-  const calls = [], cacheCalls = [], clientProps = [], registryCalls = [];
+function fixture({ fail = false, available = true, broker = null } = {}) {
+  const calls = [], cacheCalls = [], clientProps = [], registryCalls = [], brokerCalls = [];
   const reader = createPublicAnalysisReader({ read: async ({ basis }) => ({ payload: financialModel(basis), metadata }) });
   function compile(kind) {
     const source = readFileSync(new URL(files[kind], import.meta.url), 'utf8');
@@ -75,12 +76,18 @@ function fixture({ fail = false, available = true } = {}) {
         clientProps.push(props); return createElement('div', { id: 'analysis-workspace', 'data-client-ticker': props.urlTicker, 'data-workspace': 'preserved' });
       };
       if (name.endsWith('/CompanySearch')) return function CompanySearch() { return createElement('div', { 'data-company-search': 'preserved' }); };
+      if (name.endsWith('/brokerDealerResearch.js')) return { loadBrokerDealerResearch: async (cik, options) => {
+        brokerCalls.push({ cik, ...options });
+        if (!broker) throw new Error('No broker-dealer fixture was requested');
+        return options.metadataOnly ? { ...broker, analysis: undefined } : broker;
+      } };
+      if (name.endsWith('/BrokerDealerAnalytics')) return compile('broker');
       if (name.endsWith('.css')) return new Proxy({}, { get: (_target, key) => key === '__esModule' ? false : String(key) });
       throw new Error(`Unexpected public page dependency: ${name}`);
     }, testModule, testModule.exports);
     return testModule.exports;
   }
-  return { compile, calls, cacheCalls, clientProps, registryCalls };
+  return { compile, calls, cacheCalls, clientProps, registryCalls, brokerCalls };
 }
 const props = (query = {}, ticker = 'AAPL') => ({ params: Promise.resolve({ ticker }), searchParams: Promise.resolve(query) });
 
@@ -185,6 +192,35 @@ test('Analysis company directory renders registry identities, source-free discov
   assert.equal(f.registryCalls.length, 1); assert.equal(f.calls.length, 0);
 });
 
+test('CIK broker-dealers render annual-report evidence and indexable identities without XBRL or stock ticker lookup', async () => {
+  const cik = '0000123456', accession = '0000123456-26-000001';
+  const url = `https://www.sec.gov/Archives/edgar/data/123456/${accession.replaceAll('-', '')}/annual.pdf`;
+  const broker = { status: 'available', company: { cik, name: 'Independent Securities LLC' },
+    filing: { form: 'X-17A-5', accession, filingDate: '2026-02-27', reportDate: '2025-12-31' }, filings: [],
+    selectedDocument: { name: 'annual.pdf', url },
+    analysis: { status: 'partial', metrics: [{ id: 'totalAssets', label: 'Total assets', value: 10000000, unit: 'USD', periodEnd: '2025-12-31',
+      source: { url, page: 3, text: 'Total assets 10,000' } }], coverage: { disclosedStatements: ['financial-condition'] } } };
+  const f = fixture({ broker }), page = f.compile('company');
+  const meta = await page.generateMetadata(props({}, cik));
+  assert.equal(meta.path, `/analysis/${cik}`);
+  assert.equal(meta.robots?.index, undefined);
+  assert.match(meta.title, /Independent Securities LLC/);
+  assert.equal(f.brokerCalls.every(call => call.metadataOnly), true, 'SEO metadata never parses financial statements');
+  const html = renderToStaticMarkup(await page.default(props({}, cik)));
+  assert.match(html, /\$10,000,000/);
+  assert.match(html, /annual\.pdf#page=3/);
+  assert.match(html, /X-17A-5/);
+  assert.match(html, /href="\/reports\?q=0000123456"/);
+  assert.doesNotMatch(html, /tickerSymbol|data-client-ticker/);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.clientProps.length, 0);
+  const before = f.brokerCalls.filter(call => !call.metadataOnly).length;
+  const unsupported = renderToStaticMarkup(await page.default(props({ basis: 'ttm' }, cik)));
+  assert.match(unsupported, /not inferred/);
+  assert.equal(f.brokerCalls.filter(call => !call.metadataOnly).length, before);
+  assert.equal((await page.generateMetadata(props({ basis: 'ttm' }, cik))).robots.index, false);
+});
+
 async function routeFixture() {
   const { mock } = await import('node:test');
   const assert = (await import('node:assert/strict')).default;
@@ -230,6 +266,48 @@ async function routeFixture() {
 test('Analysis public JSON rejects acquisition and personal flags, preserves selections and stale status, and never caches misses', () => {
   execFileSync(process.execPath, ['--experimental-test-module-mocks', '--input-type=module', '-e', `await (${routeFixture.toString()})();`, new URL('../', import.meta.url).href],
     { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'pipe'] });
+});
+
+async function brokerRouteFixture() {
+  const { mock } = await import('node:test');
+  const assert = (await import('node:assert/strict')).default;
+  const root = process.argv[1], calls = [];
+  let failed = false, available = true;
+  const cik = '0000123456';
+  mock.module(new URL('src/utils/rateLimit.js', root).href, { namedExports: {
+    checkRateLimit: async () => ({ allowed: true }), getClientIp: () => 'fixture', rateLimitedResponse: () => new Response(null, { status: 429 }),
+  } });
+  mock.module(new URL('src/utils/brokerDealerResearch.js', root).href, { namedExports: {
+    readBrokerDealerFiling: () => assert.fail('The CIK route must use verified broker-dealer discovery'),
+    loadBrokerDealerResearch: async (id, options) => {
+      calls.push(id); assert.ok(options.signal); if (failed) throw new Error('private credentials');
+      return { status: available ? 'available' : 'not-applicable', company: { cik, name: 'Independent Securities LLC' },
+        analysis: { status: 'partial', cik, name: 'Independent Securities LLC', metrics: [{ id: 'totalAssets', value: 1000 }] },
+        filing: { form: 'X-17A-5', accession: '0000123456-26-000001' } };
+    },
+  } });
+  const route = await import(new URL('src/app/api/v1/analysis/[ticker]/route.js', root).href);
+  const request = (id = cik, query = '') => route.GET(new Request(`https://secedgarterminal.com/api/v1/analysis/${id}${query}`), { params: Promise.resolve({ ticker: id }) });
+  assert.equal((await request('0000000000')).status, 400);
+  assert.equal((await request(cik, '?basis=ttm')).status, 422);
+  assert.equal((await request(cik, '?asOf=2025-01-01')).status, 422);
+  assert.equal(calls.length, 0);
+  const response = await request(), json = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(json.schemaVersion, 'edgar.broker-dealer-analysis.v1');
+  assert.equal(json.cik, cik); assert.equal(json.filing.form, 'X-17A-5');
+  assert.equal(json.metrics[0].value, 1000);
+  assert.equal(json.ticker, undefined);
+  available = false;
+  assert.equal((await request()).status, 404);
+  failed = true;
+  const failure = await request();
+  assert.equal(failure.status, 503);
+  assert.match(failure.headers.get('Cache-Control'), /no-store/);
+  assert.doesNotMatch(await failure.text(), /private credentials/);
+}
+test('public CIK analysis returns source-linked broker-dealer research and rejects unsupported bases before parsing', () => {
+  execFileSync(process.execPath, ['--experimental-test-module-mocks', '--input-type=module', '-e', `await (${brokerRouteFixture.toString()})();`, new URL('../', import.meta.url).href], { stdio: 'pipe' });
 });
 
 test('HTML-only research agents wait for metadata while ordinary browsers retain streaming', async () => {

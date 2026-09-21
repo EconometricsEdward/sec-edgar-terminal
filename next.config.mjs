@@ -20,6 +20,11 @@ const securityHeaders = [
 
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ['pdfjs-dist', '@napi-rs/canvas', 'tesseract.js', 'tesseract.js-core', '@tesseract.js-data/eng'],
+  outputFileTracingIncludes: Object.fromEntries(['/api/filings-reader', '/analysis/*', '/api/v1/analysis/*', '/api/reports/*'].map(route => [route, [
+    './node_modules/pdfjs-dist/legacy/build/**', './node_modules/pdfjs-dist/standard_fonts/**', './node_modules/pdfjs-dist/cmaps/**', './node_modules/pdfjs-dist/wasm/**',
+    './node_modules/tesseract.js/src/**', './node_modules/tesseract.js-core/**', './node_modules/@tesseract.js-data/eng/**', './node_modules/@napi-rs/canvas*/**',
+  ]])),
   trailingSlash: false,
   // Preserve Next 16's default HTML-limited agents and include research agents
   // that fetch HTML without running the streamed React completion scripts.

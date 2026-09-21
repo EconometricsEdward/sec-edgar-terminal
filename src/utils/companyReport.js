@@ -252,6 +252,14 @@ export function createReportCikCompanyLoader({ loadJson, enrich } = {}) {
 }
 let cikAnalysisLoader;
 async function loadCikAnalysis(selection, signal) {
+  // Annual broker-dealer statements are often PDF-only and have no companyfacts
+  // document. Verify the exact registrant before entering the XBRL workflow.
+  const { loadBrokerDealerResearch } = await import('./brokerDealerResearch.js');
+  const discovery = await loadBrokerDealerResearch(selection.ticker, { signal, metadataOnly: true });
+  if (discovery?.status === 'available') {
+    if (selection.basis !== 'annual') throw Object.assign(new Error('Broker-dealer X-17A-5 reports support the annual reporting basis. Select Latest annual; quarter and trailing-twelve-month figures are not inferred from annual statements.'), { status: 422 });
+    return { brokerDealerResearch: await loadBrokerDealerResearch(selection.ticker, { signal }) };
+  }
   cikAnalysisLoader ||= import('./analysisResearchServer.js').then(({ createInteractiveAnalysisLoader }) =>
     createInteractiveAnalysisLoader({ load: createReportCikCompanyLoader() }));
   return (await cikAnalysisLoader)(selection, signal);
@@ -279,6 +287,13 @@ export function createCompanyReportLoader({ readPrepared, loadInteractive, loadC
       result = await interactive({ ticker, basis, asOf: '' }, signal);
     }
     signal?.throwIfAborted();
+    if (result?.brokerDealerResearch) {
+      const research = result.brokerDealerResearch;
+      if (!/^\d+$/.test(ticker) || basis !== 'annual' || normalizedCik(research.company?.cik) !== normalizedCik(ticker))
+        throw Object.assign(new Error('The broker-dealer report did not match the selected company and reporting basis.'), { status: 502 });
+      const { buildBrokerDealerReport } = await import('./brokerDealerReport.js');
+      return buildBrokerDealerReport(research, { id: ticker, basis, generatedAt: now() });
+    }
     if (result?.payload?.ticker !== ticker || result?.payload?.basis !== basis
       || /^\d+$/.test(ticker) && normalizedCik(result?.payload?.cik) !== normalizedCik(ticker))
       throw Object.assign(new Error('The financial response did not match the selected company and reporting basis.'), { status: 502 });

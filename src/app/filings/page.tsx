@@ -3,26 +3,32 @@ import { redirect } from "next/navigation";
 import { ArrowUpRight, Search, BookOpen, ListChecks } from "lucide-react";
 import { buildPageMetadata } from "../../utils/siteMetadata";
 import { validTicker } from "../../utils/researchWorkspace.js";
+import { filingPath, normalizeFilingsSettings } from "../../utils/filingsResearch.js";
+import { isBrokerDealerAnnualForm } from "../../utils/brokerDealerForms.js";
 import CompanySearch from "./CompanySearch";
 import styles from "./filings.module.css";
 
 export const metadata = buildPageMetadata({
-  title: "SEC Filings Browser — 13F, 10-K, 10-Q, 8-K & More",
+  title: "SEC Filings Browser — 10-K, 13F & Broker-Dealer Annual Reports",
   description:
-    "Find companies and investment managers by name, ticker or CIK. Browse 13F holdings reports and other SEC filings, load older archives, and keep source-linked evidence.",
+    "Search SEC filings by legal name, ticker or CIK. Read company disclosures, 13F holdings and public X-17A-5 broker-dealer annual reports with original source documents.",
   path: "/filings",
 });
 
 export default async function FilingsIndexPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ticker?: string }>;
+  searchParams: Promise<{ ticker?: string; form?: string }>;
 }) {
   const query = await searchParams;
   const ticker = String(query.ticker || "")
     .trim()
     .toUpperCase();
-  if (validTicker(ticker)) redirect(`/filings/${encodeURIComponent(ticker)}`);
+  const { form } = normalizeFilingsSettings({
+    form: typeof query.form === "string" ? query.form : "",
+  });
+  const brokerDealerReports = isBrokerDealerAnnualForm(form);
+  if (validTicker(ticker)) redirect(filingPath(ticker, { form }));
   return (
     <div className={styles.page}>
       <section className={styles.landing}>
@@ -34,11 +40,29 @@ export default async function FilingsIndexPage({
             <span>Read what matters.</span>
           </h1>
           <p className={styles.lead}>
-            Find companies and investment managers by name, ticker, or CIK.
-            Explore 13F holdings reports, company disclosures, and earlier
-            filings, then keep a clear record of the evidence you’ve reviewed.
+            Find companies, investment managers, and broker-dealers by legal
+            name, ticker, or CIK. Explore company disclosures, 13F holdings, and
+            public broker-dealer annual reports with a path to the original
+            documents.
           </p>
-          <CompanySearch />
+          <CompanySearch form={form === "all" ? undefined : form} />
+          <p className={styles.muted}>
+            {brokerDealerReports ? (
+              <>
+                Public X-17A-5 annual reports selected. Search the broker-dealer’s
+                legal filer name or CIK; its parent company may file separately.{" "}
+                <Link href="/filings">Browse all forms</Link>
+              </>
+            ) : (
+              <>
+                Reviewing a broker-dealer?{" "}
+                <Link href="/filings?form=X-17A-5">
+                  Find public X-17A-5 annual reports
+                </Link>{" "}
+                using its legal filer name or CIK.
+              </>
+            )}
+          </p>
           <p className={styles.muted}>
             SEC primary sources · No account required · Research saved in your
             browser
@@ -51,13 +75,13 @@ export default async function FilingsIndexPage({
               Search,
               "01",
               "Find the right report",
-              "Find 13F holdings reports, annual reports, amendments, and other forms. Load older archives with visible coverage.",
+              "Find company and broker-dealer annual reports, 13F holdings, and amendments. Load older archives with visible coverage.",
             ],
             [
               BookOpen,
               "02",
               "Read and compare",
-              "Search inside documents and compare supported reporting periods or amendments.",
+              "Open original financial-statement PDFs, search available extracted text, and compare supported reporting periods or amendments.",
             ],
             [
               ListChecks,

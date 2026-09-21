@@ -7,7 +7,7 @@ import { loadMarketReport } from '../../../../utils/marketReport.js';
 import { enrichCompanyReportCftc } from '../../../../utils/companyReportCftc.js';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function GET(request) {
   const startedAt = performance.now();
@@ -15,7 +15,7 @@ export async function GET(request) {
     const selection = normalizeReportRequest(new URL(request.url).searchParams);
     const limit = await checkRateLimit({ key: `rl:reports:${getClientIp(request)}`, windowMs: 60000, max: 12 });
     if (!limit.allowed) return rateLimitedResponse(limit, { 'Cache-Control': 'private, no-store' });
-    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(110000)]);
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(280000)]);
     const report = usesPublicReportSources() ? await preparePublicReportSources(selection, signal) : selection.kind === 'market'
       ? await loadMarketReport({ basis: selection.basis }, signal) : selection.kind === 'company'
       ? await enrichCompanyReportCftc(await loadCompanyReport({ ticker: selection.id, basis: selection.basis }, signal), { signal })

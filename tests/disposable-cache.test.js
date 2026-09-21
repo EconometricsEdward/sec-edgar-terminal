@@ -14,6 +14,17 @@ import { QUANT_COVERAGE_VERSION } from '../src/utils/quantGroups.js';
 const NOW = Date.parse('2026-09-13T18:00:00Z');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const cik = '0000320193', accession = '0000320193-26-000001';
+test('broker-dealer public extracts bind CIK and accession with bounded independent cache records', () => {
+  const document = disposableCachePolicy('edgar.broker-dealer-document.v1:production', `${cik}:${accession}:${'a'.repeat(64)}`);
+  assert.equal(document.sourceCik, cik);
+  assert.equal(document.maxRawBytes, 8 * 1024 * 1024);
+  assert.equal(document.maxTtlSeconds, 30 * 86400);
+  const manifest = disposableCachePolicy('edgar.broker-dealer-manifest.v1:production', `${cik}:${accession}`);
+  assert.equal(manifest.sourceCik, cik);
+  assert.equal(manifest.maxRawBytes, 128 * 1024);
+  assert.equal(disposableCachePolicy('edgar.broker-dealer-document.v1:production', `${cik}:${accession}:../../file.pdf`), null);
+  assert.equal(disposableCachePolicy('edgar.broker-dealer-manifest.v1:preview', `${cik}:${accession}`), null);
+});
 function record(id, payload, patch = {}) {
   const bytes = Buffer.from(JSON.stringify(payload)), gzip = gzipSync(bytes);
   return { id: id.toUpperCase(), gzipBase64: gzip.toString('base64'), rawSha256: hash(bytes), gzipSha256: hash(gzip), rawBytes: bytes.length,
@@ -44,6 +55,8 @@ test('every reviewed live key builder selects the intended disposable family', (
     ['portfolio-company-v3-evidence-continuity', `portfolio-company-v3-evidence-continuity:${COMPARE_VERSION}:${ANALYSIS_VERSION}:${cik}:ttm`, 'research'],
     ['holders-v3', 'AAPL', 'document'], [RISK_VERSION, 'AAPL', 'research'], [`${RISK_VERSION}-scan`, accession, 'document'],
     ['filings-reader-text-v2', `${cik}:${accession}:aapl-20251231.htm`, 'document'], ['disclosure-text-v1', `${cik}:${accession}:aapl-20251231.htm`, 'document'],
+    ['edgar.broker-dealer-document.v1:production', `${cik}:${accession}:${'a'.repeat(64)}`, 'document'],
+    ['edgar.broker-dealer-manifest.v1:production', `${cik}:${accession}`, 'document'],
     ['disclosure-history-v1', `${cik}:2025-01-01`, 'research'], ['disclosure-scan-v1', 'a'.repeat(64), 'research'],
     ['filing-changes', `${CHANGE_VERSION}:${cik}:${accession}:${accession}`, 'document'],
     ['edgar.company-exposure-sources.v1:production', 'AAPL:latest', 'research'], ['edgar.company-cftc-context.v1:production', 'AAPL:2026-01-01', 'research'],
@@ -68,6 +81,8 @@ test('policy excludes coordination, arbitrary URLs, unknown and preview namespac
     ['sec-directory-v1', 'https://attacker.example'], ['research-sec-v1', '/submissions/CIK0000000000.json'],
     ['research-sec-v1', '/submissions/CIK0000320193.json?next=evil'], ['research-sec-v1', 'https://data.sec.gov/submissions/CIK0000320193.json'],
     ['submissions-cik', '320193'], ['unknown', 'value'], ['rate-limit', 'AAPL'], ['auth', 'user'],
+    ['edgar.broker-dealer-document.v1:production', `${cik}:${accession}:https://attacker.example`],
+    ['edgar.broker-dealer-manifest.v1:production', `0000000000:${accession}`],
     ['edgar.cftc-positioning.v1:production', 'refresh'], ['edgar.cftc-positioning.v1:production', 'load:markets:tff:latest'],
     ['market-research-v3', 'lease:atlas'], ['quant-company-v2:production', `${cik}:generation`],
   ]) assert.equal(disposableCachePolicy(type, id), null, `${type}/${id}`);

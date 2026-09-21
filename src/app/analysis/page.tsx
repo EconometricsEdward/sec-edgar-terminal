@@ -12,7 +12,7 @@ import { buildAnalysisDirectory } from "../../utils/analysisDirectory.js";
 export const revalidate = 3600;
 export const metadata = buildPageMetadata({
   title: "Financial Analysis — SEC Company Research",
-  description: "Search companies, explore SEC financial statements, understand growth and cash flow, and test ratios and scenarios. Browse a small sample of companies by sector and industry.",
+  description: "Analyze SEC company statements and public broker-dealer X-17A-5 annual reports. Search by name, ticker or CIK for financial ratios and original filing evidence.",
   path: "/analysis",
 });
 
@@ -28,7 +28,7 @@ export default async function AnalysisIndexPage() {
           <h1 id="analysis-title">Understand the company.<br /><span>Follow the evidence.</span></h1>
           <p className={styles.intro}>A clearer view of the business, from financial statements to the forces behind them. Start with a company.</p>
           <div className={styles.searchArea}><CompanySearch /></div>
-          <p className={styles.searchHint}>Search the SEC ticker directory · No account required</p>
+          <p className={styles.searchHint}>Company tickers and broker-dealer annual reports · Search exact SEC registrants by CIK</p>
         </div>
         <div className={styles.evidenceVisual} aria-hidden="true">
           <div className={styles.visualOrbit} />

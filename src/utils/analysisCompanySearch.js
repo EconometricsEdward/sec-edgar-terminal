@@ -4,6 +4,20 @@ const baseNameOf = (value) => nameOf(value)
   .replace(/(?:\s+(?:INCORPORATED|INC|CORPORATION|CORP|LIMITED|LTD|PLC|LLC|CO))+$/, "");
 const symbolAlias = (value) => normalized(value).replace(/\./g, "-");
 
+export function analysisCikIdentifier(query) {
+  const matched = /^(?:CIK\s*)?(\d{1,10})$/i.exec(String(query || '').trim());
+  return matched && Number(matched[1]) > 0 ? matched[1].padStart(10, '0') : null;
+}
+
+/** Filer identities stay separate from listed parent/share-class tickers. */
+export function analysisBrokerDealerMatches(filers = []) {
+  return filers.flatMap(filer => {
+    const cik = analysisCikIdentifier(filer?.cik);
+    if (!cik || typeof filer.name !== 'string' || !filer.name.trim() || !filer.formTypes?.some(isBrokerDealerAnnualForm)) return [];
+    return [{ name: filer.name, cik, ticker: cik, isFund: false, isBrokerDealer: true }];
+  });
+}
+
 /** Search the complete SEC directory; the landing-page samples are unrelated. */
 export function findAnalysisCompanyMatches(query, tickerMap, limit = 6) {
   const q = normalized(query);
@@ -47,3 +61,4 @@ export function resolveAnalysisCompany(query, tickerMap) {
   if (matches.length === 1) return { kind: "match", company: matches[0] };
   return { kind: matches.length ? "ambiguous" : "not_found", company: null };
 }
+import { isBrokerDealerAnnualForm } from './brokerDealerForms.js';

@@ -6,6 +6,9 @@ import { warmGet, warmSet } from "./warmCache.js";
 import { loadFilingsCompany, loadFilingsArchive } from "./filingsResearchServer.js";
 import { validFilingDate } from "./filingsResearch.js";
 import { secFetch } from "./secClient.js";
+import { isBrokerDealerAnnualForm } from "./brokerDealerForms.js";
+import { validBrokerDealerDocumentName } from "./brokerDealerDocuments.js";
+import { readBrokerDealerFiling } from "./brokerDealerResearch.js";
 
 const MAX_DOCUMENT_BYTES = 24_000_000;
 const PAGE_SIZE = 8;
@@ -25,6 +28,7 @@ export function filingReaderSettings(params) {
   const query = (params.get("query") || "").trim();
   const section = params.get("section") || "all";
   const view = params.get("view") || "document";
+  const document = params.get("document") || "";
   const page = Number(params.get("page") || 1);
   if (!/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(ticker) || !accessionPattern.test(accession))
     throw error("Provide an exact company ticker and valid SEC accession.");
@@ -34,11 +38,11 @@ export function filingReaderSettings(params) {
   if ([filed, priorFiled].some((date) => date && !validFilingDate(date)))
     throw error("Provide a valid filing date for archive recovery.");
   if (query.length > 200 || !/^(all|other|risk|mda|notes|8k:\d\.\d{2})$/.test(section) ||
-      !["document", "changes"].includes(view) || !Number.isInteger(page) || page < 1 || page > 100000)
+      !["document", "changes", "analytics"].includes(view) || document && !validBrokerDealerDocumentName(document) || !Number.isInteger(page) || page < 1 || page > 100000)
     throw error("Invalid reader filters or page.");
-  // No caller-supplied URLs or document names are accepted. The primary document
-  // is resolved from the SEC manifest belonging to the requested company.
-  return { ticker, accession, prior, archive, priorArchive, filed, priorFiled, query, section, view, page };
+  // Document names are validated against the accession attachment manifest
+  // before any fetch. Caller-supplied document URLs are never accepted.
+  return { ticker, accession, prior, archive, priorArchive, filed, priorFiled, query, section, view, page, ...(document ? { document } : {}) };
 }
 
 export function validateReaderDocument(cik, filing) {
@@ -265,10 +269,24 @@ export async function readFilingsDocument(settings, { signal } = {}) {
     throw error("This accession was not found in the requested company's recent feed or date-matched SEC archives. Load its history archive before opening it.", 404);
   };
   const filing = await resolve(settings.accession, settings.archive, settings.filed);
+  if (settings.filed && filing.filingDate !== settings.filed) throw error("This accession does not match the selected filing date.", 400);
   // Current-document reading stays usable even if a separate baseline archive
   // cannot be fetched. Prior provenance is verified when comparison is requested.
   const prior = settings.prior && settings.view === "changes" ? await resolve(settings.prior, settings.priorArchive, settings.priorFiled) :
     company.filings.find((row) => row.accession === settings.prior) || null;
+  if (isBrokerDealerAnnualForm(filing.form)) {
+    const document = await readBrokerDealerFiling(company, filing, { signal, document: settings.document });
+    const paragraphs = document.pages.flatMap(sourcePage => (sourcePage.text.match(/[\s\S]{1,6000}/g) || [])
+      .map((text, index) => ({ id: `pdf-${sourcePage.pageNumber}-${index}`, text, page: sourcePage.pageNumber, sectionId: 'other', section: 'Financial report', part: 1, parts: 1 })));
+    const matched = paragraphs.filter(passage => (!settings.query || passage.text.toLowerCase().includes(settings.query.toLowerCase())) && ['all', 'other', 'notes'].includes(settings.section));
+    const page = Math.min(settings.page, Math.max(1, Math.ceil(matched.length / PAGE_SIZE)));
+    return { ticker: company.ticker, cik: company.cik, name: company.name, filing: document.filing, prior,
+      paragraphs: matched.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), sections: [],
+      coverage: { totalParagraphs: paragraphs.length, matchedParagraphs: matched.length, page, pageSize: PAGE_SIZE, extraction: document.extraction.status, splitParagraphs: paragraphs.some(passage => passage.text.length === 6000) },
+      format: document.format, documents: document.documents, selectedDocument: document.selectedDocument, extraction: document.extraction,
+      brokerDealerAnalysis: document.analysis, comparison: { status: 'unavailable', ...validateReaderPair(filing, prior), changes: [], coverage: [] }, observedAt: document.observedAt };
+  }
+  if (settings.document && settings.document !== filing.primaryDoc) throw error("Attachment selection is available for broker-dealer annual reports only.", 422);
   const document = await fetchReaderDocument(company.cik, filing, { signal });
   const result = paginateReaderText(document.text, filing.form, settings);
   let comparison = { status: "not-requested", ...validateReaderPair(filing, prior), changes: [], coverage: [] };

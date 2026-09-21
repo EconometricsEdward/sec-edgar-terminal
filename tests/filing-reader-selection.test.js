@@ -70,3 +70,13 @@ test('current and prior selections in one archive deduplicate the metadata load'
   assert.equal(result.filing.archive, archive.name);
   assert.equal(result.prior.archive, archive.name);
 });
+
+test('broker-dealer analytics deep links retain exact attachment names through verified selection', async () => {
+  const selection = parse({ view: 'analytics', document: 'public_annual-2025.pdf', filed: currentRow.filingDate });
+  const result = await resolveFilingReaderSelection(selection, { ...company(), filings: [{ ...currentRow, form: 'X-17A-5' }] }, async () => assert.fail('Current accession should not load an archive'));
+  assert.equal(result.filing.form, 'X-17A-5');
+  assert.equal(result.initialSelection.view, 'analytics');
+  assert.equal(result.initialSelection.document, 'public_annual-2025.pdf');
+  for (const document of ['https://example.com/private.pdf', '../public.pdf', 'sub/public.pdf', 'public.pdf?url=evil', 'public.pdf#page=2', 'public.pdf\n']) assert.throws(() => parse({ view: 'analytics', document }), /document name/);
+  assert.throws(() => readFilingReaderSelection(`accession=${accession}&document=public.pdf&document=other.pdf`), /repeats/);
+});

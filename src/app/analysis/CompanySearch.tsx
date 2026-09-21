@@ -5,9 +5,12 @@ import { Search, ArrowRight } from "lucide-react";
 import { TickerContext, type TickerEntry } from "../../contexts/TickerContext";
 import {
   analysisCompanyPath,
+  analysisCikIdentifier,
+  analysisBrokerDealerMatches,
   findAnalysisCompanyMatches,
   resolveAnalysisCompany,
 } from "../../utils/analysisCompanySearch.js";
+import { useSecFilerSearch } from "../../utils/useSecFilerSearch.js";
 import styles from "./analysis.module.css";
 import searchStyles from "./CompanySearch.module.css";
 
@@ -25,7 +28,12 @@ export default function CompanySearch({ compact = false }: { compact?: boolean }
   const id = useId();
   const listId = `${id}-matches`;
   const statusId = `${id}-status`;
-  const matches = useMemo(() => findAnalysisCompanyMatches(query, tickerMap), [query, tickerMap]);
+  const directoryMatches = useMemo(() => findAnalysisCompanyMatches(query, tickerMap), [query, tickerMap]);
+  const exactTicker = directoryMatches.some((company: TickerEntry) => company.ticker === query.trim().toUpperCase());
+  const filerSearch = useSecFilerSearch(query, expanded && !exactTicker);
+  const brokerMatches = useMemo(() => analysisBrokerDealerMatches(filerSearch.results), [filerSearch.results]);
+  const matches = useMemo(() => [...directoryMatches, ...brokerMatches.filter((filer: TickerEntry) =>
+    !directoryMatches.some((company: TickerEntry) => company.cik === filer.cik))], [directoryMatches, brokerMatches]);
   const showMatches = expanded && query.trim().length > 0 && matches.length > 0;
 
   useEffect(() => {
@@ -43,18 +51,23 @@ export default function CompanySearch({ compact = false }: { compact?: boolean }
   }, [router]);
 
   const resolve = useCallback((submittedQuery: string) => {
+    const cik = analysisCikIdentifier(submittedQuery);
+    if (cik) { setPendingQuery(null); setExpanded(false); setError(""); router.push(`/analysis/${cik}`); return; }
     const result = resolveAnalysisCompany(submittedQuery, tickerMap);
     if (result.company) open(result.company);
+    else if (brokerMatches.length === 1 && filerSearch.status === "ready") open(brokerMatches[0]);
     else {
       setPendingQuery(null);
       setExpanded(true);
       setError(result.kind === "ambiguous"
         ? "More than one company matches. Choose a result below or use its ticker."
         : result.kind === "empty"
-          ? "Enter a company name or ticker."
-          : "No matching SEC-listed company found. Check the ticker or try the company’s full name.");
+          ? "Enter a company or broker-dealer name, ticker or CIK."
+          : filerSearch.status === "loading" ? "Searching SEC broker-dealer registrants. Choose a result when it appears."
+            : brokerMatches.length > 1 ? "More than one broker-dealer matches. Choose the exact SEC registrant below."
+              : "No matching company or broker-dealer found. Try its full registered name or exact SEC CIK.");
     }
-  }, [tickerMap, open]);
+  }, [tickerMap, open, brokerMatches, filerSearch.status, router]);
 
   // The provider returns Promise<void>. Resolve against its next rendered map,
   // rather than the stale map captured when the request first started.
@@ -75,7 +88,7 @@ export default function CompanySearch({ compact = false }: { compact?: boolean }
     : status === "loading" ? "Loading SEC company search…"
       : status === "error" ? "Company search is temporarily unavailable. Please try again."
         : expanded && query.trim() && !matches.length
-          ? "No matches yet. Try a ticker or a different company name."
+          ? filerSearch.status === "loading" ? "Searching SEC broker-dealer names…" : filerSearch.error || "No matches yet. Try a name, ticker or SEC CIK."
           : showMatches ? `${matches.length} suggestions. Use the up and down arrows to choose.` : "");
 
   return (
@@ -93,7 +106,7 @@ export default function CompanySearch({ compact = false }: { compact?: boolean }
         event.preventDefault();
         if (showMatches && activeIndex >= 0 && matches[activeIndex]) {
           open(matches[activeIndex]);
-        } else if (!query.trim() || status === "ready") {
+        } else if (!query.trim() || status === "ready" || analysisCikIdentifier(query) || brokerMatches.length > 0) {
           resolve(query);
         } else {
           setError("");
@@ -143,7 +156,7 @@ export default function CompanySearch({ compact = false }: { compact?: boolean }
                   : (current <= 0 ? matches.length - 1 : current - 1));
               }
             }}
-            placeholder="Ticker or company name"
+            placeholder="Company, broker-dealer, ticker or CIK"
           />
           <button type="submit" aria-label="Open financial analysis" aria-busy={pendingQuery !== null}>
             <ArrowRight size={20} aria-hidden="true" />
@@ -164,9 +177,10 @@ export default function CompanySearch({ compact = false }: { compact?: boolean }
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => open(company)}
               >
-                <strong>{company.ticker}</strong>
+                <strong>{company.isBrokerDealer ? `CIK ${company.cik}` : company.ticker}</strong>
                 <span>{company.name}</span>
                 {company.isFund && <small>Fund</small>}
+                {company.isBrokerDealer && <small>X-17A-5</small>}
               </button>
             </li>
           ))}
@@ -175,6 +189,8 @@ export default function CompanySearch({ compact = false }: { compact?: boolean }
       <p id={statusId} role="status" aria-live="polite" className={showMatches && !error ? searchStyles.srOnly : searchStyles.status}>
         {statusMessage}
       </p>
+      {expanded && filerSearch.warning && <p className={searchStyles.status}>{filerSearch.warning}</p>}
+      {expanded && filerSearch.status === "error" && <button type="button" className={searchStyles.retry} onClick={filerSearch.retry}>Retry broker-dealer search</button>}
       {status === "error" && context && (
         <button type="button" className={searchStyles.retry} onClick={() => {
           setError("");

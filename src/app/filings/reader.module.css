@@ -484,3 +484,13 @@
     padding: 7px 13px;
   }
 }
+
+.documentControl { padding: 0 15px 10px; flex-shrink: 0; }
+.documentControl label { display: block; font-size: 11px; color: var(--reader-muted); margin-bottom: 5px; }
+.documentControl select { width: 100%; min-width: 0; padding: 7px; border: 1px solid var(--reader-border); border-radius: 6px; font-size: 11px; }
+.extractionNotice { padding: 10px 12px; border: 1px solid var(--reader-border); border-radius: 8px; margin: 0 0 16px; color: var(--reader-muted); font-size: 11px; line-height: 1.6; }
+.extractionNotice strong { color: var(--reader-text); }
+.extractionNotice p { margin: 5px 0 0; }
+
+.extractionNotice ul { padding-left: 17px; list-style: disc; margin-top: 7px; }
+.extractionNotice li + li { margin-top: 4px; }

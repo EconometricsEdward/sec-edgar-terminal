@@ -2,6 +2,7 @@ import { SITE_TOOLS, safeInternalPath, normalizeCikIdentifier } from './siteRout
 import { MAX_COMPARE_COMPANIES } from './compareLimits.js';
 import { CFTC_LAUNCH_CATALOG } from './cftc.js';
 import { DISCLOSURE_TOPIC_LABELS, disclosureSearchPath } from './searchRouter.js';
+import { normalizeBrokerDealerForm } from './brokerDealerForms.js';
 
 // Navigation is deterministic. A suggested spelling or an ambiguous legal name
 // can never silently select a different issuer. Directory work is shared across
@@ -92,7 +93,19 @@ function finish(plan) {
   if (plan.directPath && !safeInternalPath(plan.directPath)) plan.directPath = null;
   return plan;
 }
-function initialPlan() { return { items: [], directPath: null, lookupQuery: '', message: '', entity: null, needsDirectory: false }; }
+function initialPlan() { return { items: [], directPath: null, lookupQuery: '', filingIntent: '', message: '', entity: null, needsDirectory: false }; }
+
+function annualFilerIntent(raw) {
+  const formMatch = raw.match(/\b(?:form\s+)?x[\s-]*17[\s-]*a[\s-]*5(?:\s*\/\s*a)?\b/i);
+  const brokerReport = raw.match(/\bbroker[ -]?dealer\s+annual\s+reports?\b/i);
+  const annualReport = raw.match(/\bannual\s+reports?\b/i);
+  const match = formMatch || brokerReport || annualReport;
+  if (!match) return null;
+  const filingIntent = formMatch ? normalizeBrokerDealerForm(formMatch[0]) : brokerReport ? 'X-17A-5' : 'annual';
+  const name = raw.replace(match[0], ' ').replace(/^(?:please\s+)?(?:open|find|show me|show|search for)\s+/i, '')
+    .replace(/^\s*(?:for|of)\s+/i, '').replace(/\s+(?:for|of)\s*$/i, '').trim().replace(/\s+/g, ' ');
+  return { filingIntent, name };
+}
 
 const TOOL_ALIASES = [
   ['workspace', /^(?:research hub|workspace|portfolios?|portfolio research|my research|saved research)$/],
@@ -108,6 +121,8 @@ const TOOL_ALIASES = [
 ];
 function toolMatch(raw, cftcEnabled) {
   const q = normalize(raw).replace(/^(?:open|go to|take me to|show me|find) (?:the )?/, '');
+  const annualForm = normalizeBrokerDealerForm(raw.replace(/^(?:open|go to|take me to|show me|find)\s+(?:the\s+)?/i, ''));
+  if (annualForm) return item(`/filings?form=${annualForm}`, 'Broker-dealer annual reports · X-17A-5', 'Find a broker-dealer by its legal name or SEC CIK', 'filings');
   if (/^(?:13f|13f holdings|13f managers|managers|institutional managers|hedge funds?)$/.test(q)) return item('/fund?view=13f', 'Institutional managers · 13F', 'Find investment managers and their disclosed holdings', 'fund');
   if (/^(?:compare funds|fund comparison|etf comparison|compare etfs)$/.test(q)) return item('/fund?view=compare', 'Compare fund portfolios', 'Compare up to four registered funds', 'compare');
   if (/^(?:compare managers|manager comparison|compare hedge funds|13f comparison)$/.test(q)) return item('/fund?view=13f&managerView=compare', 'Compare institutional managers', 'Shared positions and reported portfolio exposures', 'compare');
@@ -228,11 +243,13 @@ function companyIntent(entry, remaining, raw, cftcEnabled) {
   if (/^(?:cftc|futures exposure|commodity risk)$/.test(q) && cftcEnabled) return item(`/risk?ticker=${company}&view=exposures&exposurePanel=markets`, `${company} business exposures · Market links`, 'Company disclosures and aggregate CFTC futures positioning', 'risk');
   if (/^(?:stress|stress test|stress testing)$/.test(q)) return item(`/risk?ticker=${company}`, `${company} risk profile`, 'Review financial resilience, trends and source evidence', 'risk');
   if (/^(?:(?:credit|liquidity|financial|company|business) )?risk(?:s| profile| analysis)?$/.test(q) || q === 'liquidity') return item(`/risk?ticker=${company}`, `${company} risk profile`, 'Credit, liquidity and business exposures', 'risk');
-  const filing = /\b(?:10\s*k|10\s*q|8\s*k|20\s*f|40\s*f|6\s*k|s\s*1|def\s*14a|annual reports?|quarterly reports?|current reports?|sec filings?|filings?|proxy|insider filings?|form 4)\b/.test(q);
+  const brokerIntent = annualFilerIntent(raw);
+  const filing = brokerIntent?.filingIntent.startsWith('X-17A-5') || /\b(?:10\s*k|10\s*q|8\s*k|20\s*f|40\s*f|6\s*k|s\s*1|def\s*14a|annual reports?|quarterly reports?|current reports?|sec filings?|filings?|proxy|insider filings?|form 4)\b/.test(q);
   if (filing) {
     const params = new URLSearchParams();
     const form = q.match(/\b(10\s*k|10\s*q|8\s*k|20\s*f|40\s*f|6\s*k|s\s*1|def\s*14a)\b/)?.[1];
-    if (form) params.set('form', /^def/.test(form) ? 'DEF 14A' : form.replace(/\s+/g, '').replace(/^(\d+|s)([a-z0-9])$/, '$1-$2').toUpperCase());
+    if (brokerIntent?.filingIntent.startsWith('X-17A-5')) params.set('form', brokerIntent.filingIntent);
+    else if (form) params.set('form', /^def/.test(form) ? 'DEF 14A' : form.replace(/\s+/g, '').replace(/^(\d+|s)([a-z0-9])$/, '$1-$2').toUpperCase());
     else if (/annual report/.test(q)) params.set('family', 'annual');
     else if (/quarterly report/.test(q)) params.set('family', 'quarterly');
     else if (/current report/.test(q)) params.set('family', 'current');
@@ -309,6 +326,18 @@ export function buildGlobalSearch(query, tickerMap, { cftcEnabled = true } = {})
   if (/^(?:cik\s*:?\s*)?\d+$/i.test(raw)) { plan.message = 'Enter a positive SEC CIK with at most 10 digits.'; return plan; }
   const tool = toolMatch(raw, cftcEnabled);
   if (tool) { plan.items = [tool]; plan.directPath = tool.path; return finish(plan); }
+  const annualIntent = annualFilerIntent(raw);
+  const annualCik = annualIntent?.name.match(/^(?:cik\s*:?\s*)?(\d{1,10})$/i);
+  if (annualCik) {
+    const cik = normalizeCikIdentifier(annualCik[1]);
+    if (cik) {
+      const filter = annualIntent.filingIntent === 'annual' ? 'family=annual' : `form=${annualIntent.filingIntent}`;
+      const target = `/filings/${cik}?${filter}`;
+      plan.items = [item(target, `Annual reports · CIK ${cik}`, 'Open the requested public SEC annual reports', 'filings')];
+      plan.directPath = target;
+    } else plan.message = 'Enter a positive SEC CIK with at most 10 digits.';
+    return finish(plan);
+  }
   const marketIntent = /\b(?:positioning|futures|cftc|cot|commitments of traders)\b/i.test(raw);
   const foundMarkets = cftcEnabled ? marketMatches(raw) : [];
   if (marketIntent && cftcEnabled) {
@@ -324,6 +353,13 @@ export function buildGlobalSearch(query, tickerMap, { cftcEnabled = true } = {})
   const index = directoryIndex(tickerMap);
   const topicTerm = DISCLOSURE_TOPIC_LABELS[raw.toUpperCase()];
   if (!index.records.length) {
+    if (annualIntent?.name && annualIntent.name.length <= 160 && !/["():?]/.test(annualIntent.name)) {
+      plan.lookupQuery = annualIntent.name;
+      plan.filingIntent = annualIntent.filingIntent;
+      plan.items = [disclosureItem(raw)];
+      plan.message = 'Searching SEC filer names for annual reports…';
+      return finish(plan);
+    }
     // Full topic phrases are independent; short symbol/topic overlaps (AI,
     // BTC, etc.) need the directory before a company can be ruled out.
     if (!/^[A-Za-z0-9.-]{1,10}$/.test(raw) && TOPIC_PATTERN.test(raw) && !QUESTION_PATTERN.test(raw) && raw.split(' ').every(word => word === word.toLowerCase()) && raw.split(' ').length <= 4 && /^(?:cybersecurity risks?|supply chain(?: risks?| disruptions?)?|debt covenant breaches|material weaknesses|internal controls?|going concern|customer concentration|artificial intelligence|climate risks?|data breaches)$/i.test(raw)) {
@@ -372,13 +408,14 @@ export function buildGlobalSearch(query, tickerMap, { cftcEnabled = true } = {})
   }
   plan.items = [...suggestionEntries(raw, index), ...foundMarkets.map(market => marketItem(market)), disclosureItem(raw)];
   const managerAction = raw.match(/^(.+?)\s+(?:13f(?:\s+holdings)?|portfolio holdings|sec filings|holdings|filings)$/);
-  const lookup = managerAction ? managerAction[1].trim() : raw;
+  const lookup = annualIntent?.name || (managerAction ? managerAction[1].trim() : raw);
   const legalName = /\b(?:llc|ltd|inc|corp|l\.?p\.?)\.?$/i.test(lookup);
   const research = TOPIC_PATTERN.test(raw) || QUESTION_PATTERN.test(raw);
-  const nameLike = legalName || !research && (/\b(?:capital|partners|associates|management|advisors|advisers|investments?|holdings)\b/i.test(lookup) || raw.split(' ').length <= 3 || /^[A-Z\d]/.test(raw));
+  const nameLike = legalName || !research && (Boolean(annualIntent?.name) || /\b(?:capital|partners|associates|management|advisors|advisers|investments?|holdings)\b/i.test(lookup) || raw.split(' ').length <= 3 || /^[A-Z\d]/.test(raw));
   if (nameLike && lookup.length >= 2 && lookup.length <= 160 && !/["():?]/.test(lookup)) {
     plan.lookupQuery = lookup;
-    plan.message = plan.items.some(entry => entry.type !== 'disclosures') ? 'Choose a matching company, fund, or SEC filer.' : 'Searching SEC company and investment-manager names…';
+    plan.filingIntent = annualIntent?.filingIntent || '';
+    plan.message = plan.items.some(entry => entry.type !== 'disclosures') ? 'Choose a matching company, fund, or SEC filer.' : 'Searching SEC company, broker-dealer and investment-manager names…';
   } else {
     const best = disclosureItem(raw, 'Best match'); plan.items = [best, ...plan.items]; plan.directPath = best.path;
   }

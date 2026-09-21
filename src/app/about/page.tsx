@@ -5,7 +5,7 @@ import styles from "./about.module.css";
 
 export const metadata = buildPageMetadata({
   title: "About EDGAR Terminal — Purpose, Origins & Public Data Sources",
-  description: "EDGAR Terminal makes public financial research easier to explore. Learn who it is for, its beginnings in April 2026, and how SEC filings and CFTC reports power the site.",
+  description: "Explore EDGAR Terminal’s public sources and methodology: SEC company filings, broker-dealer annual reports, fund holdings and CFTC market reports.",
   path: "/about",
 });
 
@@ -23,7 +23,7 @@ export default function AboutPage() {
         <p className={styles.eyebrow}>About EDGAR Terminal</p>
         <h1>Public information.<br /><span>A clearer view.</span></h1>
         <div className={styles.intro}>
-          <p>EDGAR Terminal is a free financial research platform that brings company filings, financial statements, portfolio holdings and futures market context into one place.</p>
+          <p>EDGAR Terminal is a free financial research platform that brings company filings, public broker-dealer annual reports, financial statements, portfolio holdings and futures market context into one place.</p>
           <p>The goal is simple: make public information easier to find, compare and understand, while keeping the original sources close at hand.</p>
         </div>
         <div className={styles.heroFooter}>
@@ -57,6 +57,7 @@ export default function AboutPage() {
           <div className={styles.sourceIdentity}><FileText size={24} aria-hidden="true" /><h3>SEC EDGAR</h3><p>Company disclosures<br />& reported holdings</p></div>
           <div className={styles.sourceBody}>
             <div><h4>Filings & financial facts</h4><p>SEC submission records, structured XBRL financial data and filing documents supply company statements, reporting history and disclosure text, including annual, quarterly and current reports.</p></div>
+            <div><h4>Broker-dealer annual reports</h4><p>Public Form X-17A-5 annual reports connect a broker-dealer’s legal filer name and CIK to its original financial-statement PDFs. Filings provides document access and available extracted text; Analysis presents available disclosed financial metrics with their source coverage. A parent company and its broker-dealer subsidiary can have different SEC identities. Coverage depends on the public documents and readable disclosures in each filing.</p><p><Link href="/filings?form=X-17A-5" prefetch={false}>Find a broker-dealer annual report <ArrowRight size={14} aria-hidden="true" /></Link></p></div>
             <div><h4>Funds & institutional managers</h4><p>Public N-PORT filings supply fund portfolio snapshots. Form 13F filings supply institutional managers’ holdings of reportable securities. These describe historical positions with their own reporting dates and coverage.</p></div>
             <div className={styles.sourceLinks}><a href="https://www.sec.gov/search-filings/edgar-application-programming-interfaces" target="_blank" rel="noopener noreferrer">SEC data APIs <ArrowUpRight size={14} aria-hidden="true" /></a><a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener noreferrer">Original SEC filings <ArrowUpRight size={14} aria-hidden="true" /></a></div>
           </div>
@@ -74,7 +75,7 @@ export default function AboutPage() {
       <section id="coverage" className={styles.section} aria-labelledby="method-title">
         <div className={styles.sectionHeader}><p className={styles.eyebrow}>What the site adds</p><h2 id="method-title">From reported inputs to useful context.</h2></div>
         <div className={styles.methods}>
-          <article><span>01</span><h3>Organize</h3><p>Connect companies and funds to their SEC identities, filings, reporting periods and supported data fields.</p></article>
+          <article><span>01</span><h3>Organize</h3><p>Connect companies, broker-dealers and funds to their SEC identities, filings, reporting periods and supported data fields.</p></article>
           <article><span>02</span><h3>Calculate & compare</h3><p>Turn reported inputs into ratios, growth measures, peer comparisons and portfolio summaries, with formulas and source context available.</p></article>
           <article><span>03</span><h3>Keep the context</h3><p>Show reporting dates, distinguish reported figures from calculations, and leave unsupported or incompatible inputs unavailable.</p></article>
         </div>

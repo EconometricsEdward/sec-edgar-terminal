@@ -18,6 +18,7 @@ import {
   Bookmark,
   Check,
   CheckCheck,
+  ChartNoAxesCombined,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -33,6 +34,7 @@ import {
 } from "lucide-react";
 import CompanySearch from "../CompanySearch";
 import { TickerContext } from "../../../contexts/TickerContext";
+import { isBrokerDealerAnnualForm, brokerDealerFormDescription } from "../../../utils/brokerDealerForms.js";
 import { getItemsInfo } from "../../../utils/formItems.js";
 import { normalizeCikIdentifier, managerHoldingsPath } from "../../../utils/siteRoutes.js";
 import {
@@ -366,8 +368,9 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
   const annualReport = filings.find((filing: any) =>
     ["10-K", "20-F", "40-F"].includes(filing.form),
   );
-  const featuredReport = holdingsReport || annualReport || (isFiler ? filings[0] : null);
-  const featuredFamily = holdingsReport ? "ownership" : annualReport || !isFiler ? "annual" : "all";
+  const brokerDealerReport = filings.find((filing: any) => isBrokerDealerAnnualForm(filing.form));
+  const featuredReport = brokerDealerReport || holdingsReport || annualReport || (isFiler ? filings[0] : null);
+  const featuredFamily = brokerDealerReport ? "annual" : holdingsReport ? "ownership" : annualReport || !isFiler ? "annual" : "all";
   const loadedCount = Object.keys(loadedArchives).length;
   const remaining = archives.filter((a: any) => !loadedArchives[a.name]);
   const coverage = useMemo(
@@ -626,9 +629,9 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
       behavior: "instant",
     });
   }
-  function openFiling(filing: any) {
+  function openFiling(filing: any, readerView = "document") {
     setReaderLink(null);
-    setLinkedReader(null);
+    setLinkedReader(readerView === "analytics" ? { key: "analytics", initialSelection: { view: "analytics" } } : null);
     setSelected(filing);
     setStatus("");
     requestAnimationFrame(() => alignResults(gridRef.current));
@@ -664,7 +667,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
               : "Resolving SEC filer identity and the filing index."}
           </p>
         </div>
-        <CompanySearch compact />
+        <CompanySearch compact form={settings.form} />
       </section>
       {loading && (
         <div className={styles.loading} role="status">
@@ -687,6 +690,10 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
       )}
       {data && !loading && !error && (
         <>
+          {brokerDealerReport && <section className={styles.managerResearch} aria-label="Broker-dealer annual-report research">
+            <div><p className={styles.eyebrow}>Public broker-dealer annual reports</p><h2>Read the financial statements behind the filing</h2><p className={styles.muted}>Open the original PDF, inspect available financial figures and trace calculations to the reported evidence. Research follows this legal entity’s CIK.</p></div>
+            <Link href={`/analysis/${data.cik}`} prefetch={false}>Explore financial analysis <ArrowUpRight size={16} aria-hidden="true" /></Link>
+          </section>}
           {holdingsReport && (
             <section className={styles.managerResearch} aria-label="13F holdings research">
               <div>
@@ -714,7 +721,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
               onClick={() =>
                 changeSettings({
                   family: featuredFamily,
-                  form: "all",
+                  form: brokerDealerReport ? "X-17A-5" : "all",
                   status: "all",
                   start: "",
                   end: "",
@@ -725,12 +732,12 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                 })
               }
             >
-              <span>{holdingsReport ? "Latest 13F holdings report" : annualReport || !isFiler ? "Latest annual report" : "Latest SEC filing"}</span>
+              <span>{brokerDealerReport ? "Latest broker-dealer annual report" : holdingsReport ? "Latest 13F holdings report" : annualReport || !isFiler ? "Latest annual report" : "Latest SEC filing"}</span>
               <strong>
                 {featuredReport?.filingDate || "Not in loaded history"}
               </strong>
               <small>
-                {holdingsReport ? "Show ownership filings" : annualReport || !isFiler ? "Show annual filings" : "Show all filings"} <ArrowUpRight size={12} />
+                {brokerDealerReport ? "Show X-17A-5 filings" : holdingsReport ? "Show ownership filings" : annualReport || !isFiler ? "Show annual filings" : "Show all filings"} <ArrowUpRight size={12} />
               </small>
             </button>
             <button onClick={() => changeSettings({ view: "notebook" })}>
@@ -875,6 +882,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                       {family.label}
                     </button>
                   ))}
+                  <button aria-pressed={settings.form === "X-17A-5"} onClick={() => changeSettings({ family: "all", form: "X-17A-5", amendments: "include" })}>Broker-dealer annuals</button>
                   <details className={styles.advanced}>
                     <summary>
                       Dates &amp; events
@@ -1255,7 +1263,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                                   className={styles.filingTitle}
                                   onClick={() => openFiling(filing)}
                                 >
-                                  {(/^13F-(HR|NT)(?:\/A)?$/.test(filing.form) && FORM_TITLES[filing.form]) ||
+                                  {brokerDealerFormDescription(filing.form) || (/^13F-(HR|NT)(?:\/A)?$/.test(filing.form) && FORM_TITLES[filing.form]) ||
                                     filing.primaryDescription ||
                                     FORM_TITLES[form] ||
                                     `${filing.form} filing`}
@@ -1318,6 +1326,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                                 <BookOpen size={15} />
                                 Read
                               </button>
+                              {isBrokerDealerAnnualForm(filing.form) && <button className={styles.readButton} onClick={() => openFiling(filing, "analytics")} aria-label={`Analyze ${filing.form} filed ${filing.filingDate}`}><ChartNoAxesCombined size={15} /> Financials</button>}
                               <button
                                 aria-label={`${record?.queued ? "Unqueue" : "Queue"} ${filing.accession}`}
                                 aria-pressed={!!record?.queued}
@@ -1335,7 +1344,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                                 <Check size={15} />
                               </button>
                               <a
-                                href={filing.documentUrl || filing.indexUrl}
+                                href={isBrokerDealerAnnualForm(filing.form) ? filing.indexUrl : filing.documentUrl || filing.indexUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 aria-label={`Open ${filing.form} filed ${filing.filingDate} on SEC.gov`}

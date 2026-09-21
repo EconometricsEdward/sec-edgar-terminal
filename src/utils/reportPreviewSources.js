@@ -1,6 +1,6 @@
 import { createTickerDirectoryCache } from './tickerMap.js';
 import { createReportSearch } from './reportSearchServer.js';
-import { buildCompanyReport, createReportCikCompanyLoader } from './companyReport.js';
+import { buildCompanyReport } from './companyReport.js';
 import { buildNportReport, buildThirteenFReport } from './fundReport.js';
 import { normalizeReportRequest, reportMatchesSelection } from './reportRequest.js';
 import { enrichCompanyReportCftc, createReportCompanyExposureDiscovery } from './companyReportCftc.js';
@@ -73,10 +73,10 @@ async function boundedResponse(response, maxBytes, signal) {
 
 export function createPublicReportSources({ fetchPublic = fetch, now = Date.now } = {}) {
   async function request(url, { signal, maxBytes = MAX_BYTES, timeoutMs = 85000 } = {}) {
-    if (url.origin !== ORIGIN || !['/api/sec', '/api/sec-filers', '/api/analysis-research', '/api/fund-13f',
+    if (url.origin !== ORIGIN || !['/api/sec', '/api/sec-filers', '/api/analysis-research', '/api/fund-13f', '/api/reports/prepare',
       '/api/market-research', '/api/v1/cftc/markets', '/api/v1/cftc/company-exposures', '/api/v1/cftc/history'].includes(url.pathname))
       throw fail('This report endpoint is outside the public preview allowlist.', 400);
-    const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(Math.min(timeoutMs, 90000))]);
+    const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(Math.min(timeoutMs, url.pathname === '/api/reports/prepare' ? 280000 : 90000))]);
     deadline.throwIfAborted();
     const response = await fetchPublic(url.href, { method: 'GET', redirect: 'error', credentials: 'omit',
       headers: { Accept: 'application/json, text/plain, text/html, application/xml' }, cache: 'no-store', signal: deadline });
@@ -124,7 +124,7 @@ export function createPublicReportSources({ fetchPublic = fetch, now = Date.now 
       const response = await fetchSec(url, { ...options, signal: AbortSignal.any([...(signal ? [signal] : []), ...(options?.signal ? [options.signal] : [])]) });
       clocks.push(response.headers); return response;
     };
-    let report;
+    let report, preparedPublicCompany = false;
     if (kind === 'market') {
       const load = createMarketReportLoader({ now,
         loadOverview: async ({ signal: s }) => (await request(endpoint('/api/market-research', {}), { signal: s, timeoutMs: 45000 })).json(),
@@ -139,15 +139,13 @@ export function createPublicReportSources({ fetchPublic = fetch, now = Date.now 
         metadata: { fetchedAt: response.headers.get('X-Data-Fetched-At'), revalidatedAt: response.headers.get('X-Data-Revalidated-At') },
         stale: response.headers.get('X-Data-Stale') === 'true' } });
     } else if (kind === 'company') {
-      const [{ buildAnalysisCompany }, { enrichAnalysisCompanySources }] = await Promise.all([
-        import('./analysisResearch.js'), import('./analysisResearchSources.js')]);
-      const loadJson = async (path, s) => (await trackedSec(`https://data.sec.gov${path}`, { signal: s })).json();
-      const load = createReportCikCompanyLoader({ loadJson,
-        enrich: (company, settings, options) => enrichAnalysisCompanySources(company, settings, { ...options,
-          loadCompanyFacts: (cik, s) => loadJson(`/api/xbrl/companyfacts/CIK${cik}.json`, s),
-          loadFiling: async (filing, s) => (await trackedSec(filing.url, { signal: s, maxBytes: 16 * 1024 * 1024 })).text() }) });
-      const company = await load(id, { basis, signal });
-      report = buildCompanyReport(buildAnalysisCompany(company, { basis }), { generatedAt: new Date(now()).toISOString() });
+      // The public production preparation route owns exact-CIK discovery and
+      // both XBRL and PDF-only annual-report analysis. Preview remains an
+      // anonymous reader and cannot silently force a PDF filer through XBRL.
+      report = await (await request(endpoint('/api/reports/prepare', { kind, id, basis }), { signal, timeoutMs: 280000 })).json();
+      if (!reportMatchesSelection(report, selection) || String(report.entity.cik).padStart(10, '0') !== id.padStart(10, '0'))
+        throw fail('The public company report did not match the selected SEC registrant and reporting basis.');
+      preparedPublicCompany = true;
     } else if (kind === '13f') {
       const data = await (await request(endpoint('/api/fund-13f', { cik: id, delivery: 'full' }), { signal })).json();
       if (data?.manager?.cik !== id) throw fail('The public holdings response did not match the selected manager.');
@@ -169,7 +167,7 @@ export function createPublicReportSources({ fetchPublic = fetch, now = Date.now 
       }
       report = buildNportReport(await load(id, '', { signal }), { generatedAt: new Date(now()).toISOString() });
     }
-    if (kind === 'company') report = await enrichCompanyReportCftc(report, { signal, now,
+    if (kind === 'company' && !preparedPublicCompany) report = await enrichCompanyReportCftc(report, { signal, now,
       loadContext: async ({ cik }, { signal: s }) => {
         const ticker = report.entity.ticker && !/^\d+$/.test(report.entity.ticker) ? report.entity.ticker
           : Object.entries(await directories.get('operating')).find(([, entry]) => String(entry.cik).padStart(10, '0') === cik)?.[0];

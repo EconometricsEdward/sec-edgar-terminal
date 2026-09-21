@@ -3,6 +3,7 @@ import {
   filerCik,
   filerNameQuery,
   hasThirteenFHoldings,
+  hasBrokerDealerAnnualReports,
   normalizedFilerName,
   secFilerResearchPath,
 } from "./secFilerSearch.js";
@@ -24,7 +25,7 @@ function nameScore(query, name) {
  * Ranking is only a suggestion: partial names and incomplete SEC responses
  * never become an automatic entity selection.
  */
-export function rankGlobalFilerMatches(query, results, { truncated = false, warning = "" } = {}) {
+export function rankGlobalFilerMatches(query, results, { truncated = false, warning = "", filingIntent = "" } = {}) {
   const input = filerNameQuery(query);
   const source = Array.isArray(results) ? results : [];
   const seen = new Set();
@@ -32,12 +33,13 @@ export function rankGlobalFilerMatches(query, results, { truncated = false, warn
     const cik = filerCik(filer?.cik);
     if (!cik || seen.has(cik) || typeof filer?.name !== "string" || !filer.name.trim()
       || filer.name.length > 1000 || /[\u0000-\u001f\u007f]/.test(filer.name)) return [];
-    const path = secFilerResearchPath(filer);
+    const path = secFilerResearchPath(filer, { filingIntent });
     if (!path) return [];
     seen.add(cik);
-    const manager = hasThirteenFHoldings(filer);
-    return [{ ...filer, cik, name: filer.name.trim(), path, manager,
-      score: nameScore(input, filer.name) + (manager ? 20 : 0) }];
+    const brokerDealerAnnual = hasBrokerDealerAnnualReports(filer);
+    const manager = hasThirteenFHoldings(filer) && !brokerDealerAnnual && !filingIntent;
+    return [{ ...filer, cik, name: filer.name.trim(), path, manager, brokerDealerAnnual,
+      score: nameScore(input, filer.name) + (manager || brokerDealerAnnual ? 20 : 0) }];
   }).sort((a, b) => b.score - a.score || a.name.length - b.name.length
     || a.name.localeCompare(b.name) || a.cik.localeCompare(b.cik));
   const exact = input ? exactFilerMatch(input, filers, { truncated: truncated || source.length > 20, warning }) : null;
@@ -45,12 +47,13 @@ export function rankGlobalFilerMatches(query, results, { truncated = false, warn
     items: filers.slice(0, 12).map(filer => ({
       id: `filer:${filer.cik}`,
       label: filer.name,
-      description: `${filer.manager ? "13F holdings" : "SEC filings"} · CIK ${filer.cik}`,
+      description: `${filer.brokerDealerAnnual ? "Broker-dealer annual reports · X-17A-5" : filer.manager ? "13F holdings" : "SEC filings"} · CIK ${filer.cik}`,
       path: filer.path,
       type: filer.manager ? "manager" : "filer",
       group: "Managers & SEC filers",
       query: input,
       cik: filer.cik,
+      identityType: "cik",
     })),
     exactPath: exact?.path || null,
   };

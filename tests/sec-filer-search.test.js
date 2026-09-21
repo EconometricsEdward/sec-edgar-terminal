@@ -45,7 +45,7 @@ test('uses actual SEC name parameters and root forms without document text or am
   assert.equal(first.get('keysTyped'), 'D1 Capital');
   assert.equal(first.has('keys'), false);
   assert.equal(second.get('entityName'), 'D1 Capital');
-  assert.equal(second.get('forms'), '13F-HR,13F-NT');
+  assert.equal(second.get('forms'), '13F-HR,13F-NT,X-17A-5');
   assert.equal(second.get('q'), null);
   assert.equal(second.get('dateRange'), 'all');
   assert.ok(calls.every(call => call.options.maxBytes === 2 * 1024 * 1024 && call.options.timeoutMs === 8000 && call.options.retries === 1));
