@@ -22,7 +22,7 @@ export const maxDuration = 300;
 const cikIdentifier = (value: string) => /^(?!0+$)\d{1,10}$/.test(value) ? value.padStart(10, "0") : null;
 const readBrokerMetadata = cache(async (cik: string, accession: string, archive: string, filed: string, document: string) => {
   try { return await loadBrokerDealerResearch(cik, { metadataOnly: true, accession, archive, filed, document }); }
-  catch (error: any) { return { status: "unavailable", company: null, error: error?.status === 404 ? "This filing could not be verified for the selected SEC registrant." : "SEC annual-report discovery is temporarily unavailable. Retry or open the original filings." }; }
+  catch (error: any) { return { status: "unavailable", company: null, error: error?.status === 404 ? "This filing could not be verified for the selected SEC registrant." : "SEC broker-dealer filing discovery is temporarily unavailable. Retry or open the original filings." }; }
 });
 const readBrokerResearch = cache(async (cik: string, accession: string, archive: string, filed: string, document: string) => {
   try { return await loadBrokerDealerResearch(cik, { accession, archive, filed, document }); }
@@ -64,8 +64,8 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     const discovery: any = await readBrokerMetadata(cik, ...choice.brokerSelectors);
     const available = discovery?.status === "available";
     return { ...buildPageMetadata({
-      title: `${discovery?.company?.name || `CIK ${cik}`} — Broker-Dealer Annual Report Analysis`,
-      description: "Explore public SEC X-17A-5 broker-dealer statements, five-period financial trends, capital and funding ratios, peer comparisons and dated CFTC market context with original sources.",
+      title: `${discovery?.company?.name || `CIK ${cik}`} — Broker-Dealer Filing Analysis`,
+      description: "Explore public X-17A-5 broker-dealer documents, with annual reports and periodic FOCUS classified separately. Review financial trends, audit evidence, ratios, peers and dated CFTC context.",
       path: `/analysis/${cik}`,
     }), ...(!available || custom || selected.basis !== "annual" ? { robots: { index: false, follow: true } } : {}) };
   }
@@ -96,28 +96,34 @@ export default async function AnalysisTickerPage(props: Props) {
       ? await readBrokerResearch(cik, ...choice.brokerSelectors) : null;
     const company = discovery?.company;
     const filing = research?.filing || discovery?.filing;
+    const classification = research?.classification || research?.analysis?.classification;
+    const reportLabel = classification?.label || "X-17A-5 document — type not established";
+    const reportPeriod = classification?.period;
     const canonical = `https://secedgarterminal.com/analysis/${cik}`;
     return <div className={base.page} id="analysis-workspace">
       {company && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org", "@graph": [{ "@type": "Organization", "@id": `${canonical}#registrant`, name: company.name,
           identifier: { "@type": "PropertyValue", propertyID: "SEC CIK", value: cik }, url: canonical,
           sameAs: [`https://www.sec.gov/edgar/browse/?CIK=${cik}`] },
-        ...(filing ? [{ "@type": "Report", name: `${company.name} — ${filing.form || "X-17A-5"} annual report`,
+        ...(filing ? [{ "@type": "Report", name: `${company.name} — ${reportLabel}`,
           about: { "@id": `${canonical}#registrant` }, datePublished: filing.filingDate,
-          ...(filing.reportDate ? { temporalCoverage: filing.reportDate } : {}),
+          ...(reportPeriod?.start && reportPeriod?.end ? { temporalCoverage: `${reportPeriod.start}/${reportPeriod.end}` }
+            : filing.reportDate ? { temporalCoverage: filing.reportDate } : {}),
+          genre: reportLabel,
+          keywords: [filing.form || "X-17A-5", ...(classification?.parts || [])].join(", "),
           identifier: filing.accessionNumber || filing.accession,
           url: research?.selectedDocument?.url || filing.documentUrl || canonical,
-          description: "Public broker-dealer annual-report disclosures and source-linked financial analysis." }] : [])],
+          description: `${reportLabel}. Public broker-dealer disclosures with document-specific classification, reporting periods and source-linked financial analysis.` }] : [])],
       }).replace(/</g, "\\u003c") }} />}
-      <header className={base.companyHeader}><div><p className={base.eyebrow}>SEC / Broker-dealer annual reports</p>
-        <h1>{company?.name || `SEC registrant ${cik}`}</h1><p className={base.muted}>CIK {cik} · Public X-17A-5 financial statements</p></div><CompanySearch compact /></header>
+      <header className={base.companyHeader}><div><p className={base.eyebrow}>SEC / Broker-dealer reports</p>
+        <h1>{company?.name || `SEC registrant ${cik}`}</h1><p className={base.muted}>CIK {cik} · Public X-17A-5 documents</p></div><CompanySearch compact /></header>
       <nav className={base.inline} aria-label="Broker-dealer research links"><a href={`/filings/${cik}`}>All SEC filings</a><a href={`/reports?q=${cik}`}>Prepare latest PDF or Excel report</a>
         {!choice.custom && selected.basis === "annual" && <a href={`/api/v1/analysis/${cik}`}>Source-linked JSON</a>}
         <a href={`https://www.sec.gov/edgar/browse/?CIK=${cik}`} target="_blank" rel="noreferrer">Original SEC registrant</a></nav>
-      {unsupported ? <p className={base.notice}>Public X-17A-5 analysis uses annual reports. Quarterly, trailing-twelve-month and historical-cutoff figures are not inferred from these statements. <a href={`/analysis/${cik}`}>Open annual-report analysis</a>.</p>
-        : discovery?.status !== "available" ? <p className={base.notice}>{discovery?.error || "No public X-17A-5 annual report was found in the SEC submission history checked for this exact registrant. Other company filings may still be available."} <a href={`/filings/${cik}`}>Inspect SEC filings</a>.</p>
+      {unsupported ? <p className={base.notice}>Broker-dealer analysis uses each selected filing’s own reporting period. Choose a document from its filing history; quarterly, trailing-twelve-month and historical-cutoff figures are not inferred. <a href={`/analysis/${cik}`}>Open broker-dealer analysis</a>.</p>
+        : discovery?.status !== "available" ? <p className={base.notice}>{discovery?.error || "No public X-17A-5 filing was found in the SEC submission history checked for this exact registrant. Other company filings may still be available."} <a href={`/filings/${cik}`}>Inspect SEC filings</a>.</p>
           : <>
-            {!research && <p className={base.notice}>The annual report is available, but its document could not be analyzed at this time. Retry or open the original SEC filing.</p>}
+            {!research && <p className={base.notice}>The filing is available, but its document could not be analyzed at this time. Retry or open the original SEC filing.</p>}
             <BrokerDealerWorkspace key={`${cik}:${choice.brokerSelectors.join(":")}`} cik={cik} explicitSelection={!!choice.brokerSelectors[0]} initialResearch={brokerDealerResearchPayload(research)} discovery={{
               status: discovery.status, company: company ? { cik: company.cik, name: company.name, ticker: company.ticker } : null,
               filing: discovery.filing, filings: discovery.filings || [], coverage: discovery.coverage,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { PDFDocument } from 'pdf-lib';
 import { unzipSync, strFromU8 } from 'fflate';
 import { analyzeBrokerDealerReport } from '../src/utils/brokerDealerAnalytics.js';
+import { classifyBrokerDealerDocument } from '../src/utils/brokerDealerClassification.js';
 import { buildBrokerDealerReport } from '../src/utils/brokerDealerReport.js';
 import { createCompanyReportLoader } from '../src/utils/companyReport.js';
 import { enrichCompanyReportCftc } from '../src/utils/companyReportCftc.js';
@@ -14,10 +15,12 @@ const generatedAt = '2026-09-21T00:00:00.000Z';
 const documentUrl = `https://www.sec.gov/Archives/edgar/data/123456/${accession.replaceAll('-', '')}/annual.pdf`;
 function research() {
   const filing = { accession, form: 'X-17A-5', reportDate: end, filingDate: '2026-02-27' };
-  const analysis = analyzeBrokerDealerReport({ ...filing, cik, name: 'Independent Securities LLC', documentUrl,
-    pages: [{ pageNumber: 3, text: 'Statement of Financial Condition\nDecember 31, 2025\nU.S. dollars in thousands\nTotal assets 10,000\nTotal liabilities 9,000\nMembers equity 1,000\nCash and cash equivalents 400\nSecurities sold under agreements to repurchase 6,000' },
-      { pageNumber: 8, text: 'Computation of Net Capital\nDecember 31, 2025\nU.S. dollars in thousands\nNet capital 600\nRequired minimum net capital 100\nExcess net capital 500' }] });
-  return { status: 'available', company: { cik, name: 'Independent Securities LLC' }, filing, analysis,
+  const pages = [{ pageNumber: 1, text: 'UNITED STATES SECURITIES AND EXCHANGE COMMISSION\nFORM X-17A-5\nPART III\nAnnual Report\nPeriod beginning January 1, 2025 and ending December 31, 2025' },
+    { pageNumber: 3, text: 'Statement of Financial Condition\nDecember 31, 2025\nU.S. dollars in thousands\nTotal assets 10,000\nTotal liabilities 9,000\nMembers equity 1,000\nCash and cash equivalents 400\nSecurities sold under agreements to repurchase 6,000' },
+    { pageNumber: 8, text: 'Computation of Net Capital\nDecember 31, 2025\nU.S. dollars in thousands\nNet capital 600\nRequired minimum net capital 100\nExcess net capital 500' }];
+  const classification = classifyBrokerDealerDocument({ pages, filing, documentUrl });
+  const analysis = { ...analyzeBrokerDealerReport({ ...filing, cik, name: 'Independent Securities LLC', documentUrl, pages }), classification };
+  return { status: 'available', company: { cik, name: 'Independent Securities LLC' }, filing, analysis, classification,
     selectedDocument: { name: 'annual.pdf', url: documentUrl }, coverage: { complete: true } };
 }
 
@@ -33,6 +36,7 @@ Securities sold under agreements to repurchase 36,603,534,508
 Total liabilities 41,201,143,006
 Subordinated debt 25,006,352
 Stockholder's equity 183,374,799` }] });
+  input.analysis.classification = input.classification;
   return input;
 }
 
@@ -135,10 +139,79 @@ test('note details are kept separate from balance-sheet totals and missing state
 test('expanded income measures remain in the income statement', () => {
   const input = research(), template = input.analysis.metrics[0];
   const ids = ['interestIncome', 'interestExpense', 'totalExpenses', 'pretaxIncome'];
-  for (const id of ids) input.analysis.metrics.push({ ...template, id, value: 500, statement: 'income' });
+  for (const id of ids) input.analysis.metrics.push({ ...template, id, value: 500, statement: 'income', periodStart: '2025-04-01' });
   const report = buildBrokerDealerReport(input);
   assert.deepEqual(report.sections.find(section => section.id === 'income').rows.map(row => row.key), ids);
   assert.equal(report.sections.find(section => section.id === 'balance').rows.some(row => ids.includes(row.key)), false);
+  assert.equal(report.sections.find(section => section.id === 'income').rows[0].start, '2025-04-01');
+  assert.equal(report.sections.find(section => section.id === 'income').rows[0].basis, 'duration', 'Nine-month amounts retain a duration basis inside an annual filing');
+  assert.equal(report.sections.find(section => section.id === 'balance').rows[0].basis, 'instant');
+  assert.equal(report.sections.find(section => section.id === 'income').rows[0].reportedPeriod, '2025-04-01 to 2025-12-31');
+  assert.equal(report.sources.find(source => source.concept === 'X-17A-5:interestIncome').start, '2025-04-01');
+});
+
+test('annual exports reject periodic and unclassified documents across broker-dealers despite the shared SEC form', () => {
+  for (const [name, text, family] of [
+    ['Regional Clearing LLC', 'SECURITIES AND EXCHANGE COMMISSION\nX-17A-5\nPART II\nFOCUS REPORT\nPeriod beginning October 1, 2025 and ending December 31, 2025\nUnaudited', 'periodic-focus'],
+    ['Independent Introducing Securities Inc.', 'SECURITIES AND EXCHANGE COMMISSION\nX-17A-5\nPART IIA\nFOCUS REPORT\nPeriod beginning December 1, 2025 and ending December 31, 2025', 'periodic-focus'],
+    ['Unclassified Securities LLC', 'Financial schedules\nTotal assets $10,000\nTotal liabilities $9,000\nMembers equity $1,000', 'unknown'],
+  ]) {
+    const input = research();
+    input.company.name = name;
+    input.classification = classifyBrokerDealerDocument({ pages: [{ pageNumber: 1, text }], documentUrl });
+    input.analysis.classification = input.classification;
+    assert.equal(input.classification.family, family);
+    assert.throws(() => buildBrokerDealerReport(input), error => error.status === 422 && /classified as an annual report/.test(error.message));
+  }
+  const missing = research(); delete missing.classification; delete missing.analysis.classification;
+  assert.throws(() => buildBrokerDealerReport(missing), /classified as an annual report/);
+  const conflicting = research(); conflicting.classification = { ...conflicting.classification, family: 'periodic-focus' };
+  assert.throws(() => buildBrokerDealerReport(conflicting), /classified as an annual report/);
+});
+
+test('Part III without an auditor report remains annual with audit not established, including PDF and Excel scope', async () => {
+  const input = research();
+  input.filing.classification = { version: 1, family: 'unknown' };
+  const report = buildBrokerDealerReport(input, { generatedAt });
+  assert.equal(report.classification.audit.status, 'not-established');
+  assert.deepEqual(report.classification.parts, ['Part III']);
+  assert.equal(report.classification.period.start, '2025-01-01');
+  assert.equal(report.classification.period.end, end);
+  assert.equal(report.period.start, '2025-01-01');
+  assert.doesNotMatch(`${report.title} ${report.subtitle} ${report.classification.label}`, /audited/i);
+  const scope = report.sections.find(section => section.id === 'report-scope');
+  assert.match(scope.rows.find(row => row.item === 'Audit evidence').value, /Audit status not established/);
+  assert.ok(scope.rows.some(row => /Period beginning January 1, 2025/.test(row.value)));
+  assert.ok(report.classification.evidence.every(row => report.sources.some(source => source.id === row.sourceId && source.url === row.url)));
+  const pdf = await PDFDocument.load(await createReportPdf(report));
+  assert.doesNotMatch(pdf.getSubject(), /audited/i);
+  const workbook = unzipSync(await createReportXlsx(report));
+  assert.match(strFromU8(workbook['xl/workbook.xml']), /Report scope/);
+  const sheets = Object.entries(workbook).filter(([name]) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name)).map(([, bytes]) => strFromU8(bytes)).join('\n');
+  assert.match(sheets, /Audit status not established/);
+  assert.match(sheets, /Part III/);
+  assert.match(sheets, /2025-01-01 to 2025-12-31/);
+});
+
+test('auditor report evidence retains its financial-condition-only scope and unverified claims are downgraded', () => {
+  const input = research();
+  input.company.name = 'Clearwater Securities Inc.';
+  const classification = classifyBrokerDealerDocument({ documentUrl, filing: input.filing, pages: [
+    { pageNumber: 1, text: 'SECURITIES AND EXCHANGE COMMISSION\nX-17A-5\nPART III\nAnnual Report' },
+    { pageNumber: 2, text: "Report of Independent Registered Public Accounting Firm\nWe have audited the accompanying statement of financial condition of Clearwater Securities Inc. as of December 31, 2025.\nIn our opinion, the statement of financial condition presents fairly, in all material respects, the financial position." },
+  ] });
+  input.classification = classification; input.analysis.classification = classification;
+  const report = buildBrokerDealerReport(input);
+  assert.equal(report.classification.audit.status, 'auditor-report-present');
+  assert.equal(report.classification.audit.scope, 'financial-condition');
+  assert.match(report.sections.find(section => section.id === 'report-scope').rows.find(row => row.item === 'Audit evidence').value, /for the statement of financial condition/);
+  assert.ok(report.classification.evidence.some(item => item.kind === 'auditor-report' && item.page === 2));
+  const invalid = research(); invalid.classification.audit = { status: 'auditor-report-present', scope: 'financial-statements' };
+  assert.equal(buildBrokerDealerReport(invalid).classification.audit.status, 'not-established');
+  const crossedSource = research(); crossedSource.classification.evidence = crossedSource.classification.evidence.map(item => ({ ...item, url: 'https://www.sec.gov/Archives/edgar/data/999/000000099926000001/annual.pdf' }));
+  assert.throws(() => buildBrokerDealerReport(crossedSource), /page-level evidence/);
+  const siblingSource = research(); siblingSource.selectedDocument.url = documentUrl.replace('annual.pdf', 'focus.pdf');
+  assert.throws(() => buildBrokerDealerReport(siblingSource), /page-level evidence/, 'Annual sibling metadata cannot classify a selected periodic attachment');
 });
 
 test('company Reports loader selects the annual PDF branch without prepared-company or XBRL calls', async () => {

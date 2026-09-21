@@ -13,7 +13,7 @@ export function analysisCikIdentifier(query) {
 export function analysisBrokerDealerMatches(filers = []) {
   return filers.flatMap(filer => {
     const cik = analysisCikIdentifier(filer?.cik);
-    if (!cik || typeof filer.name !== 'string' || !filer.name.trim() || !filer.formTypes?.some(isBrokerDealerAnnualForm)) return [];
+    if (!cik || typeof filer.name !== 'string' || !filer.name.trim() || !filer.formTypes?.some(isBrokerDealerForm)) return [];
     return [{ name: filer.name, cik, ticker: cik, isFund: false, isBrokerDealer: true }];
   });
 }
@@ -61,4 +61,4 @@ export function resolveAnalysisCompany(query, tickerMap) {
   if (matches.length === 1) return { kind: "match", company: matches[0] };
   return { kind: matches.length ? "ambiguous" : "not_found", company: null };
 }
-import { isBrokerDealerAnnualForm } from './brokerDealerForms.js';
+import { isBrokerDealerForm } from './brokerDealerForms.js';

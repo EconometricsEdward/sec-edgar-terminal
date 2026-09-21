@@ -1,14 +1,14 @@
 import { validFilingDate } from './filingsResearch.js';
 import { validBrokerDealerDocumentName } from './brokerDealerDocuments.js';
 
-const invalid = () => Object.assign(new Error('Choose one SEC CIK and a valid annual-report accession, archive, filing date or document.'), { status: 400 });
+const invalid = () => Object.assign(new Error('Choose one SEC CIK and a valid X-17A-5 accession, archive, filing date or document.'), { status: 400 });
 
 /** Keep chart requests small: document text belongs to the filing reader. */
 export function brokerDealerResearchPayload(research) {
   if (!research) return null;
-  const { company, filing, analysis, selectedDocument, documents, extraction, observedAt, coverage, status } = research;
+  const { company, filing, analysis, selectedDocument, documents, extraction, observedAt, coverage, status, classification } = research;
   return { status, company: company ? { cik: company.cik, name: company.name, ticker: company.ticker } : null,
-    filing, analysis, selectedDocument, documents, extraction, observedAt, coverage };
+    filing, analysis, classification: classification || analysis?.classification, selectedDocument, documents, extraction, observedAt, coverage };
 }
 
 export function brokerDealerReportSelection(query) {

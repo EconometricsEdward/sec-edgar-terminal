@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { disclosureWordDiff } from "../../../utils/disclosureResearch.js";
-import { isBrokerDealerAnnualForm } from "../../../utils/brokerDealerForms.js";
+import { isBrokerDealerForm } from "../../../utils/brokerDealerForms.js";
 import BrokerDealerAnalytics from "../../../components/broker-dealer/BrokerDealerAnalytics";
 import styles from "../reader.module.css";
 
@@ -171,7 +171,7 @@ function ReaderSession({
   onClose,
   onCollect,
 }: Props) {
-  const isBrokerDealer = isBrokerDealerAnnualForm(filing.form);
+  const isBrokerDealer = isBrokerDealerForm(filing.form);
   const initialQuery = typeof initialSelection?.query === 'string' && initialSelection.query.length <= 200 && !/[\u0000-\u001f\u007f]/.test(initialSelection.query) ? initialSelection.query : '';
   const [view, setView] = useState(isBrokerDealer && initialSelection?.view === 'analytics' ? 'analytics' : !isBrokerDealer && initialSelection?.view === 'changes' ? 'changes' : 'document');
   const [documentName, setDocumentName] = useState(initialSelection?.document || '');
@@ -246,6 +246,9 @@ function ReaderSession({
 
   const documents = data?.documents || [];
   const selectedDocument = documents.find((document: any) => document.name === documentName) || data?.selectedDocument;
+  const classification = !loading && !error ? data?.classification || data?.brokerDealerAnalysis?.classification : null;
+  const auditLabel = classification?.audit?.status === "auditor-report-present" ? "Auditor report present"
+    : classification?.audit?.status === "explicitly-unaudited" ? "Explicitly unaudited" : "Audit status not established";
   const sourceUrl = selectedDocument?.url || (isBrokerDealer ? undefined : filing.documentUrl);
   const analysisParams = new URLSearchParams({ accession: filing.accession });
   if (archive) analysisParams.set("archive", archive);
@@ -299,13 +302,18 @@ function ReaderSession({
         </div>
         <div>
           <dt>Reporting period</dt>
-          <dd>{filing.reportDate || "Not reported"}</dd>
+          <dd>{classification ? `${classification.period?.start ? `${classification.period.start} to ` : ""}${classification.period?.end || "Not established for this document"}` : filing.reportDate || "Not reported"}</dd>
         </div>
         <div className={styles.accession}>
           <dt>Accession</dt>
           <dd>{filing.accession}</dd>
         </div>
       </dl>
+      {isBrokerDealer && <div className={styles.extractionNotice} aria-label="Selected document classification">
+        <strong>{classification?.label || "Document type not established"}</strong>
+        <p>{auditLabel} · Reporting frequency: {classification?.period?.frequency || "unknown"}{classification?.parts?.length ? ` · ${classification.parts.join(", ")}` : ""}</p>
+        <p>Part III annual reports and periodic FOCUS reports are separate document families. Classification follows the selected attachment; the X-17A-5 code alone does not establish its type, audit status or disclosed statements.</p>
+      </div>}
       <div className={styles.sources}>
         {sourceUrl && (
           <a

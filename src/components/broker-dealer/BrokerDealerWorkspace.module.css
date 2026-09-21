@@ -209,3 +209,27 @@
   .retryNotice { flex-direction: column; align-items: start; }
 }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+.familyControl { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 16px; border: 1px solid var(--bdw-line); border-top: 0; background: var(--bdw-surface); }
+.familyControl label { display: flex; align-items: center; gap: 10px; flex-shrink: 0; color: var(--bdw-muted); font-size: 11px; }
+.workspace .familyControl select { min-height: 32px; padding: 4px 26px 4px 9px; color: var(--bdw-text); background: var(--bdw-raised); border: 1px solid var(--bdw-line); border-radius: 6px; font-size: 11px; }
+.workspace .familyControl p { font-size: 10px; color: var(--bdw-faint); margin: 0; }
+.periodRibbon small { display: block; font-size: 9px; opacity: .82; }
+.reportIdentity { padding: 19px 21px; margin-bottom: 21px; border: 1px solid var(--bdw-line); border-radius: 11px; background: linear-gradient(120deg, var(--bdw-raised), var(--bdw-surface)); }
+.identityHeading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.workspace .identityHeading h2 { font-size: 19px; line-height: 1.4; margin: 5px 0 0; letter-spacing: -.025em; }
+.auditBadge { border: 1px solid var(--bdw-line); border-radius: 20px; padding: 5px 10px; font-size: 10px; color: var(--bdw-muted); }
+.auditBadge[data-status="auditor-report-present"] { color: var(--bdw-cyan); border-color: color-mix(in srgb, var(--bdw-cyan) 45%, transparent); }
+.identityFacts { display: flex; flex-wrap: wrap; gap: 14px 30px; margin: 16px 0; }
+.identityFacts > span { color: var(--bdw-text); font-size: 11px; }
+.identityFacts b { display: block; color: var(--bdw-muted); font-size: 9px; font-weight: 550; margin-bottom: 3px; }
+.componentPills { display: flex; gap: 6px; flex-wrap: wrap; }
+.componentPills > span { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 3px 8px; border: 1px solid var(--bdw-line); border-radius: 5px; color: var(--bdw-muted); }
+.componentPills svg { color: var(--bdw-cyan); }
+.workspace .identityEvidence { border: none; margin: 13px 0 0; }
+.workspace .identityEvidence > summary { font-size: 10px; cursor: pointer; color: var(--bdw-cyan); padding: 0; }
+.workspace .identityEvidence :is(p, li, blockquote) { font-size: 11px; color: var(--bdw-muted); line-height: 1.7; margin: 9px 0; }
+.identityEvidence blockquote { padding-left: 12px; border-left: 2px solid var(--bdw-line); }
+.identityEvidence ul { list-style: disc; padding-left: 20px; }
+.identityEvidence a { font-size: 10px; }
+@media (max-width: 580px) { .familyControl { align-items: start; flex-direction: column; gap: 8px; } .reportIdentity { padding: 15px; } .identityHeading { align-items: start; flex-direction: column; gap: 10px; } .identityFacts { gap: 12px 20px; } }

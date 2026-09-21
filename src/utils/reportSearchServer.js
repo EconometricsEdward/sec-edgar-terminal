@@ -2,7 +2,7 @@ import { getOperatingDirectory, getFundDirectory } from './tickerMap.js';
 import { searchSecFilers } from './secFilerSearchServer.js';
 import { secFetch } from './secClient.js';
 import { KNOWN_ETFS } from './knownFunds.js';
-import { isBrokerDealerAnnualForm } from './brokerDealerForms.js';
+import { isBrokerDealerForm } from './brokerDealerForms.js';
 
 const LIMIT = 20;
 const SEC_FUND_SEARCH = 'https://www.sec.gov/cgi-bin/browse-edgar';
@@ -141,9 +141,9 @@ export function createReportSearch({ operatingDirectory = getOperatingDirectory,
             if (fundCiks.has(item.cik) || coveredCiks.has(item.cik)) continue;
             coveredCiks.add(item.cik);
             choices.push({ kind, id: item.cik, name: item.name, cik: item.cik,
-              ...(item.formTypes?.some(isBrokerDealerAnnualForm) ? { annualReportForm: 'X-17A-5' } : {}),
-              detail: item.formTypes?.some(isBrokerDealerAnnualForm)
-                ? 'Broker-dealer · X-17A-5 annual financial statements · Exact SEC registrant'
+              ...(item.formTypes?.some(isBrokerDealerForm) ? { brokerDealerForm: 'X-17A-5' } : {}),
+              detail: item.formTypes?.some(isBrokerDealerForm)
+                ? 'Broker-dealer · X-17A-5 public filing documents · Exact SEC registrant'
                 : 'SEC filer · Company financial-data availability will be checked' });
           }
           choices.sort((a, b) => affinity(a.name, query, a.ticker) - affinity(b.name, query, b.ticker)

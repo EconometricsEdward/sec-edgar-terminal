@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { brokerDealerHistorySettings, createBrokerDealerHistoryLoader } from '../src/utils/brokerDealerHistory.js';
+import { brokerDealerHistorySettings, createBrokerDealerHistoryLoader, groupBrokerDealerPeriods } from '../src/utils/brokerDealerHistory.js';
 import { GET } from '../src/app/api/broker-dealer/history/route.js';
 
 const cik = '0001690976';
@@ -28,8 +28,8 @@ test('default catalog selects five distinct most recent periods and keeps older 
 });
 
 test('latest amendment wins its period, while a recently filed amendment never displaces a newer reporting period', async () => {
-  const amendment = filing(2024, { accession: `${cik}-26-000011`, form: 'X-17A-5/A', filingDate: '2026-09-01' });
-  const load = createBrokerDealerHistoryLoader({ loadCompany: async () => company([amendment, ...recent()]) });
+  const amendment = filing(2024, { accession: `${cik}-26-000011`, form: 'X-17A-5/A', filingDate: '2026-09-01', description: 'Part III' });
+  const load = createBrokerDealerHistoryLoader({ loadCompany: async () => company([amendment, ...recent().map(row => ({ ...row, description: 'Part III' }))]) });
   const data = await load(cik);
   assert.equal(data.filings.length, 10);
   assert.equal(data.periods.length, 9);
@@ -184,4 +184,38 @@ test('malformed metadata requests return uncached noindex errors before source r
   assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
   assert.equal(response.headers.get('X-Robots-Tag'), 'noindex');
   assert.match((await response.json()).error, /blank/i);
+});
+
+
+test('shared form and end date never merge annual reports with periodic schedules or unknown attachments', () => {
+  const annual = filing(2025, { description: 'Part III' });
+  const amendment = { ...annual, accession: `${cik}-26-000021`, filingDate: '2026-01-10', form: 'X-17A-5/A' };
+  const periodic = filing(2025, { accession: `${cik}-25-000022`, description: 'Part II' });
+  const alternate = filing(2025, { accession: `${cik}-25-000023`, description: 'Part IIA' });
+  const unknown = filing(2025, { accession: `${cik}-25-000024` });
+  const unknownAmendment = { ...unknown, accession: `${cik}-26-000025`, form: 'X-17A-5/A', filingDate: '2026-01-11' };
+  const periods = groupBrokerDealerPeriods([annual, amendment, periodic, alternate, unknown, unknownAmendment]);
+  assert.equal(periods.length, 5);
+  const annualPeriod = periods.find(row => row.accession === amendment.accession);
+  assert.deepEqual(annualPeriod.versions.map(row => row.accession), [amendment.accession, annual.accession]);
+  assert.equal(periods.find(row => row.accession === periodic.accession).versions.length, 1);
+  assert.equal(periods.find(row => row.accession === unknownAmendment.accession).versions.length, 1);
+});
+
+test('metadata history exposes unclassified filings without asserting audit status or reading attachments', async () => {
+  const load = createBrokerDealerHistoryLoader({ loadCompany: async () => company(recent()) });
+  const result = await load(cik);
+  assert.equal(result.coverage.classificationScope, 'submission-metadata-only');
+  assert.equal(result.coverage.unclassifiedFilings, 9);
+  assert.equal(result.filings[0].classification.family, 'unknown');
+  assert.equal(result.filings[0].classification.audit.status, 'not-established');
+});
+
+
+test('periodic reports with an unknown duration and future-dated annual metadata cannot share period groups', () => {
+  const periodic = filing(2025, { description: 'Part II' });
+  const other = { ...periodic, accession: `${cik}-25-000033` };
+  assert.equal(groupBrokerDealerPeriods([periodic, other]).length, 2);
+  const future = filing(2025, { description: 'Part III', reportDate: '2026-12-31' });
+  assert.equal(groupBrokerDealerPeriods([future])[0].periodKey, `accession:${future.accession}`);
 });

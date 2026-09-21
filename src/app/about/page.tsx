@@ -5,7 +5,7 @@ import styles from "./about.module.css";
 
 export const metadata = buildPageMetadata({
   title: "About EDGAR Terminal — Purpose, Origins & Public Data Sources",
-  description: "Explore EDGAR Terminal’s public sources and methodology: SEC company filings, broker-dealer annual reports, fund holdings and CFTC market reports.",
+  description: "Explore EDGAR Terminal’s public sources and methodology: SEC company filings, broker-dealer filings, fund holdings and CFTC market reports.",
   path: "/about",
 });
 
@@ -23,7 +23,7 @@ export default function AboutPage() {
         <p className={styles.eyebrow}>About EDGAR Terminal</p>
         <h1>Public information.<br /><span>A clearer view.</span></h1>
         <div className={styles.intro}>
-          <p>EDGAR Terminal is a free financial research platform that brings company filings, public broker-dealer annual reports, financial statements, portfolio holdings and futures market context into one place.</p>
+          <p>EDGAR Terminal is a free financial research platform that brings company filings, public broker-dealer filings, financial statements, portfolio holdings and futures market context into one place.</p>
           <p>The goal is simple: make public information easier to find, compare and understand, while keeping the original sources close at hand.</p>
         </div>
         <div className={styles.heroFooter}>
@@ -57,7 +57,7 @@ export default function AboutPage() {
           <div className={styles.sourceIdentity}><FileText size={24} aria-hidden="true" /><h3>SEC EDGAR</h3><p>Company disclosures<br />& reported holdings</p></div>
           <div className={styles.sourceBody}>
             <div><h4>Filings & financial facts</h4><p>SEC submission records, structured XBRL financial data and filing documents supply company statements, reporting history and disclosure text, including annual, quarterly and current reports.</p></div>
-            <div><h4>Broker-dealer annual reports</h4><p>Public Form X-17A-5 annual reports connect a broker-dealer’s legal filer name and CIK to its original financial-statement PDFs. Filings provides document access and available extracted text; Analysis organizes disclosed statements, capital and funding ratios, financial trends across the latest five reporting periods, adjustable period selections and legal-entity peer comparisons. Dated CFTC Treasury futures positioning provides separate market context. Every mapped financial figure retains its original source, and undisclosed income or cash-flow statements remain unavailable. A parent company and its broker-dealer subsidiary can have different SEC identities. Coverage depends on the public documents and readable disclosures in each filing.</p><p><Link href="/filings?form=X-17A-5" prefetch={false}>Find a broker-dealer annual report <ArrowRight size={14} aria-hidden="true" /></Link></p></div>
+            <div><h4>Broker-dealer filings</h4><p>Public Form X-17A-5 filings connect a broker-dealer’s legal filer name and CIK to its original financial-statement PDFs. Filings provides document access and available extracted text; Analysis organizes disclosed statements, capital and funding ratios, financial trends across the latest five reports, adjustable period selections and legal-entity peer comparisons. Dated CFTC Treasury futures positioning provides separate market context. Every mapped financial figure retains its original source, and undisclosed income or cash-flow statements remain unavailable. Part III annual reports are classified separately from periodic FOCUS Parts II, IIA and Schedule I. Audit evidence, reporting frequency and disclosed statements are assessed independently from the form code. An annual filing does not by itself establish an auditor opinion or a full set of public statements. Confidential periodic submissions are not sourced. A parent company and its broker-dealer subsidiary can have different SEC identities. Coverage depends on the public documents and readable disclosures in each filing.</p><p>SEC form references: <a href="https://www.sec.gov/files/formx-17a-5_3.pdf" target="_blank" rel="noopener noreferrer">Part III annual reports</a>, <a href="https://www.sec.gov/files/formx-17a-5_2.pdf" target="_blank" rel="noopener noreferrer">Part II FOCUS</a> and <a href="https://www.sec.gov/files/formx-17a-5_2a.pdf" target="_blank" rel="noopener noreferrer">Part IIA FOCUS</a>.</p><p><Link href="/filings?form=X-17A-5" prefetch={false}>Find broker-dealer filings <ArrowRight size={14} aria-hidden="true" /></Link></p></div>
             <div><h4>Funds & institutional managers</h4><p>Public N-PORT filings supply fund portfolio snapshots. Form 13F filings supply institutional managers’ holdings of reportable securities. These describe historical positions with their own reporting dates and coverage.</p></div>
             <div className={styles.sourceLinks}><a href="https://www.sec.gov/search-filings/edgar-application-programming-interfaces" target="_blank" rel="noopener noreferrer">SEC data APIs <ArrowUpRight size={14} aria-hidden="true" /></a><a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener noreferrer">Original SEC filings <ArrowUpRight size={14} aria-hidden="true" /></a></div>
           </div>

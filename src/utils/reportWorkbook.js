@@ -1,7 +1,7 @@
 import { zipSync, strToU8 } from 'fflate';
 import { comparePairQuality } from './compareQuality.js';
 import { buildMarketWorkbookSheets } from './reportMarketWorkbook.js';
-import { isBrokerDealerAnnualForm } from './brokerDealerForms.js';
+import { isBrokerDealerForm } from './brokerDealerForms.js';
 
 const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -92,7 +92,7 @@ function summarySheet(report, styles) {
   sheet.height(1, 10);
   sheet.span(2, 1, 11, report.entity.name, 'text', { font: 1, border: 1 }); sheet.height(2, wrappedHeight(report.entity.name, 100, 34));
   sheet.span(3, 1, 11, [kindNames[report.kind], report.entity.ticker, report.entity.cik && `CIK ${report.entity.cik}`, report.entity.seriesId].filter(Boolean).join('  ·  '), 'text', { font: 6 });
-  const dates = [{ label: report.kind === 'market' ? 'Snapshot date' : 'Reporting period ending', value: report.period.asOf }, { label: report.kind === 'market' ? 'Report prepared' : 'Latest filing', value: report.kind === 'market' ? report.generatedAt : report.period.filingDate }, { label: 'Reporting basis', value: report.period.basis || report.period.label, format: 'text' }];
+  const dates = [{ label: report.kind === 'market' ? 'Snapshot date' : 'Reporting period ending', value: report.period.asOf }, { label: report.kind === 'market' ? 'Report prepared' : 'Latest filing', value: report.kind === 'market' ? report.generatedAt : report.period.filingDate }, { label: report.classification ? 'Document family' : 'Reporting basis', value: report.classification?.label || report.period.basis || report.period.label, format: 'text' }];
   dates.forEach((date, index) => { sheet.span(5, starts[index], starts[index] + 2, date.label, 'text', { font: 6 }); sheet.span(6, starts[index], starts[index] + 2, date.value || 'Unavailable', date.format || 'date', { font: 5, align: 'left' }); });
   sheet.height(6, 29); sheet.height(7, 10);
   const metrics = report.summary.slice(0, 6);
@@ -111,6 +111,8 @@ function summarySheet(report, styles) {
   let row = 8 + Math.ceil(metrics.length / 3) * 5;
   sheet.span(row, 1, 11, 'Report coverage', 'text', { font: 5, border: 2 }); sheet.height(row++, 27);
   sheet.span(row, 1, 11, report.coverage?.message || 'Available reported observations.', 'text', { font: 6 }); sheet.height(row++, wrappedHeight(report.coverage?.message, 110, 31));
+  const auditScope = report.sections.find(section => section.id === 'report-scope')?.rows.find(item => item.item === 'Audit evidence')?.value;
+  if (auditScope) { sheet.span(row, 1, 11, auditScope, 'text', { font: 6 }); sheet.height(row++, wrappedHeight(auditScope, 110, 31)); }
   const insights = (report.highlights || []).slice(0, 4);
   if (insights.length) {
     sheet.height(row++, 8); sheet.span(row, 1, 11, 'Key observations', 'text', { font: 5, border: 2 }); sheet.height(row++, 27);
@@ -262,14 +264,15 @@ function chartXml(chart, sheetName, index) {
 export async function createReportXlsx(report) {
   validate(report);
   const styles = styleCatalog(), references = new Map(), marketEdition = report.kind === 'market' && report.marketBriefing;
-  const brokerDealer = report.sources?.some(source => isBrokerDealerAnnualForm(source.form));
+  const brokerDealer = report.sources?.some(source => isBrokerDealerForm(source.form));
   const sheets = marketEdition ? buildMarketWorkbookSheets(report, { makeSheet, styles, wrappedHeight, titleBlock, excludedColumn, numericFormat, sectionSheet, colName }) : [summarySheet(report, styles)];
   let sections = marketEdition ? [] : report.sections.filter((section) => !excludedSection(section));
   const companyCftc = report.kind === 'company' ? sections.filter((section) => section.id?.startsWith('cftc-') && section.id !== 'cftc-history') : [];
   if (companyCftc.length) sections = sections.filter((section) => !companyCftc.includes(section));
   if (report.kind === 'company') {
     if (!brokerDealer) for (const [id, title] of Object.entries(companyNames)) if (!sections.some((section) => section.id === id)) sections.push({ id, title, columns: [{ key: 'metric', label: 'Metric', format: 'text' }, { key: 'value', label: 'Value', format: 'number' }], rows: [] });
-    sections.sort((a, b) => (Object.keys(companyNames).indexOf(a.id) < 0 ? 10 : Object.keys(companyNames).indexOf(a.id)) - (Object.keys(companyNames).indexOf(b.id) < 0 ? 10 : Object.keys(companyNames).indexOf(b.id)));
+    const sectionOrder = id => id === 'report-scope' ? -1 : Object.keys(companyNames).indexOf(id) < 0 ? 10 : Object.keys(companyNames).indexOf(id);
+    sections.sort((a, b) => sectionOrder(a.id) - sectionOrder(b.id));
   }
   sections.forEach((section) => { const sheet = sectionSheet(report, section, styles, references); if (sheet) sheets.push(sheet); });
   if (companyCftc.length) sheets.push(companyCftcSheet(report, companyCftc, styles));

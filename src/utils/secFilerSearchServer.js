@@ -10,12 +10,12 @@
  * /A forms to the same request would accidentally require amendments only.
  */
 import { secFetch } from './secClient.js';
-import { isBrokerDealerAnnualForm, normalizeBrokerDealerForm } from './brokerDealerForms.js';
+import { isBrokerDealerForm, normalizeBrokerDealerForm } from './brokerDealerForms.js';
 
 export const SEC_FILER_SEARCH_URL = 'https://efts.sec.gov/LATEST/search-index';
 export const SEC_FILER_RESULT_LIMIT = 12;
 const FORM_13F = /^13F-(?:HR|NT)(?:\/A)?$/;
-const supportedDiscoveryForm = value => FORM_13F.test(value) || isBrokerDealerAnnualForm(value);
+const supportedDiscoveryForm = value => FORM_13F.test(value) || isBrokerDealerForm(value);
 const MAX_BYTES = 2 * 1024 * 1024;
 const SEARCH_DEADLINE_MS = 25000;
 const WARNING = 'Some SEC name sources could not be checked. Results may be incomplete. Retry or enter the filer’s CIK.';
@@ -98,7 +98,7 @@ function filingResults(payload, query, restrictedForms) {
       if (!name || nameAffinity(name, query) >= 4) continue;
       results.push({ cik: match[2], name,
         // Multi-party ownership filings do not prove every named party filed a
-        // 13F or broker-dealer annual report. Only a single-entity record
+        // 13F or broker-dealer filing. Only a single-entity record
         // establishes the corresponding filing badge.
         formTypes: supportedDiscoveryForm(form) && ciks.size === 1 ? [form] : [] });
     }
@@ -117,7 +117,7 @@ function mergedResults(pages, query) {
   }
   // A notice identifies a related manager but does not supply a holdings
   // table. Prefer actual holdings reporters when legal-name relevance ties.
-  const reportRank = filer => filer.formTypes.some(form => /^13F-HR(?:\/A)?$/.test(form) || isBrokerDealerAnnualForm(form)) ? 0 : filer.formTypes.length ? 1 : 2;
+  const reportRank = filer => filer.formTypes.some(form => /^13F-HR(?:\/A)?$/.test(form) || isBrokerDealerForm(form)) ? 0 : filer.formTypes.length ? 1 : 2;
   return [...byCik.values()].sort((a, b) =>
     nameAffinity(a.name, query) - nameAffinity(b.name, query)
     || reportRank(a) - reportRank(b)

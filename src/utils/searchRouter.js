@@ -16,7 +16,7 @@ import { safeInternalPath } from "./siteRoutes.js";
 import { MAX_COMPARE_COMPANIES } from "./compareLimits.js";
 import { migrateMarketPath } from "./marketResearch.js";
 import { filerCik, isTickerComparison } from "./secFilerSearch.js";
-import { normalizeBrokerDealerForm } from "./brokerDealerForms.js";
+import { brokerDealerSearchForm } from "./brokerDealerSearch.js";
 
 export const DISCLOSURE_TOPIC_LABELS = {
   AI: "artificial intelligence",
@@ -186,7 +186,7 @@ export function routeSearch(query, tickerMap) {
 
   const raw = query.trim();
   const normalized = raw.toUpperCase();
-  const brokerDealerForm = normalizeBrokerDealerForm(raw);
+  const brokerDealerForm = brokerDealerSearchForm(raw);
   if (brokerDealerForm) return { path: `/filings?form=${brokerDealerForm}` };
   const cik = filerCik(raw);
   if (cik) return { path: `/filings/${cik}` };

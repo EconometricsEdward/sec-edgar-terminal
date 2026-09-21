@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createBrokerDealerResearchLoader } from '../src/utils/brokerDealerResearch.js';
+import { createBrokerDealerResearchLoader, createBrokerDealerFilingReader } from '../src/utils/brokerDealerResearch.js';
 
 const cik = '0000003001';
 const filing = (number, filingDate = '2026-03-02', form = 'X-17A-5') => ({ accession: `0000950170-26-${String(number).padStart(6, '0')}`, form, filingDate, reportDate: '2025-12-31', primaryDoc: 'primary_doc.xml' });
@@ -86,4 +86,55 @@ test('saved accession search bounded before all candidate archives reports tempo
   const load = createBrokerDealerResearchLoader({ loadCompany: async () => company([], archives), loadArchive: async (_, name) => { calls++; return { cik, archive: archives.find(item => item.name === name), filings: [] }; } });
   await assert.rejects(load(cik, { accession: filing(99).accession, metadataOnly: true }), { status: 502 });
   assert.equal(calls, 8);
+});
+
+
+test('selected periodic attachment retains its own family and dates within annual filing context', async () => {
+  const selected = filing(60);
+  const text = 'FOCUS REPORT\nPART II\nUNAUDITED\nFor the period beginning October 1, 2025 and ending December 31, 2025\nStatement of Financial Condition\nDecember 31, 2025\nTotal assets $1,000\nTotal liabilities 800\nMembers equity 200';
+  const read = createBrokerDealerFilingReader({ loadDocument: async () => ({
+    cover: { part: 'Part III', periodBegin: '2025-01-01', reportDate: '2025-12-31', accountantName: 'Annual Auditor' },
+    selectedDocument: { name: 'quarter.pdf', url: 'https://www.sec.gov/Archives/edgar/data/3001/000095017026000060/quarter.pdf' },
+    pages: [{ pageNumber: 1, text }], extraction: { limitations: [] },
+  }) });
+  const result = await read(company([selected]), selected);
+  assert.equal(result.classification.family, 'periodic-focus');
+  assert.equal(result.classification.period.start, '2025-10-01');
+  assert.equal(result.filing.periodBegin, '2025-10-01');
+  assert.equal(result.classification.audit.status, 'explicitly-unaudited');
+  assert.equal(result.filing.classification.family, 'annual-report');
+  assert.equal(result.filing.classification.audit.status, 'not-established');
+  assert.equal(result.analysis.classification.family, 'periodic-focus');
+  assert.equal(result.analysis.basis, 'quarter');
+  assert.ok(!result.analysis.limitations.some(value => /amended annual|Public annual reports/.test(value)));
+});
+
+test('annual-only consumers inspect unknown candidates but do not substitute a newer periodic filing', async () => {
+  const periodic = { ...filing(62, '2026-08-28'), description: 'Part II' };
+  const annual = filing(61, '2026-03-02');
+  const reads = [];
+  const load = createBrokerDealerResearchLoader({ loadCompany: async () => company([periodic, annual]), readFiling: async (_, selected) => {
+    reads.push(selected.accession);
+    return { filing: selected, classification: { family: selected.accession === annual.accession ? 'annual-report' : 'periodic-focus' }, analysis: {} };
+  } });
+  const result = await load(cik, { family: 'annual-report' });
+  assert.equal(result.filing.accession, annual.accession);
+  assert.deepEqual(reads, [periodic.accession, annual.accession]);
+  await assert.rejects(load(cik, { accession: periodic.accession, family: 'annual-report' }), { status: 422 });
+});
+
+
+test('annual-only lookup can find the annual attachment within a mixed accession without relabeling a periodic document', async () => {
+  const selected = { ...filing(63), description: 'Part II' };
+  const reads = [];
+  const load = createBrokerDealerResearchLoader({ loadCompany: async () => company([selected]), readFiling: async (_, row, options) => {
+    reads.push(options.document || 'periodic.pdf');
+    return { filing: row, selectedDocument: { name: options.document || 'periodic.pdf' },
+      classification: { family: options.document === 'annual.pdf' ? 'annual-report' : 'periodic-focus' }, analysis: {},
+      documents: [{ name: 'periodic.pdf', format: 'pdf', classification: { family: 'periodic-focus' } }, { name: 'annual.pdf', format: 'pdf', classification: { family: 'annual-report' } }] };
+  } });
+  const result = await load(cik, { family: 'annual-report', accession: selected.accession });
+  assert.equal(result.selectedDocument.name, 'annual.pdf');
+  assert.deepEqual(reads, ['periodic.pdf', 'annual.pdf']);
+  await assert.rejects(load(cik, { family: 'annual-report', accession: selected.accession, document: 'periodic.pdf' }), { status: 422 });
 });

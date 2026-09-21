@@ -1,6 +1,7 @@
 import { loadFilingsCompany, loadFilingsArchive, normalizeFilingsIdentifier } from './filingsResearchServer.js';
 import { validFilingDate } from './filingsResearch.js';
-import { isBrokerDealerAnnualForm } from './brokerDealerForms.js';
+import { isBrokerDealerForm } from './brokerDealerForms.js';
+import { classifyBrokerDealerDocument } from './brokerDealerClassification.js';
 
 export const BROKER_DEALER_DEFAULT_PERIODS = 5;
 export const BROKER_DEALER_MAX_PERIODS = 10;
@@ -52,18 +53,28 @@ function filingLinks(cik, filing) {
   return { ...filing,
     // A future or absent period is unknown, never a filing-date surrogate.
     reportDate: validFilingDate(filing.reportDate) && filing.reportDate <= filing.filingDate ? filing.reportDate : '',
+    classification: classifyBrokerDealerDocument({ filing: { ...filing, reportDate: validFilingDate(filing.reportDate) && filing.reportDate <= filing.filingDate ? filing.reportDate : '' } }),
     readerHref: `/api/filings-reader?${params}&view=analytics`,
     researchHref: `/api/broker-dealer/report?${new URLSearchParams({ cik, ...Object.fromEntries(analysisParams) })}`,
     analysisHref: `/analysis/${cik}?${analysisParams}`,
   };
 }
 
-/** Amendments replace the selected version of a known period; originals remain
- * available in versions and in the filing catalog for an exact-accession view. */
+/** Group only established, compatible reporting families and bases. A shared
+ * form code and end date alone never establish an amendment relationship. */
+export function brokerDealerPeriodKey(filing) {
+  const classification = filing.classification || classifyBrokerDealerDocument({ filing });
+  const { family, parts = [], period = {} } = classification;
+  const validEnd = value => validFilingDate(value) && (!filing.filingDate || value <= filing.filingDate);
+  const end = validEnd(filing.reportDate) ? filing.reportDate : validEnd(period.end) ? period.end : '';
+  const periodicDurationKnown = validFilingDate(period.start) && period.start <= end && ['annual', 'quarterly', 'monthly', 'other'].includes(period.frequency);
+  if (!end || family === 'unknown' || family === 'periodic-focus' && (!parts.length || !periodicDurationKnown)) return `accession:${filing.accession}`;
+  return [family, [...parts].sort().join('+') || 'unspecified-part', period.frequency || 'unknown', period.start || 'unknown-start', end].join(':');
+}
 export function groupBrokerDealerPeriods(filings = []) {
   const groups = new Map();
   for (const filing of [...filings].sort(newestFiled)) {
-    const periodKey = filing.reportDate || `accession:${filing.accession}`;
+    const periodKey = brokerDealerPeriodKey(filing);
     if (!groups.has(periodKey)) groups.set(periodKey, []);
     groups.get(periodKey).push(filing);
   }
@@ -84,7 +95,7 @@ export function createBrokerDealerHistoryLoader({ loadCompany = loadFilingsCompa
     const checked = new Set(), failedArchives = [];
     let omittedRecords = company.coverage?.omittedRecords || 0;
     const omittedArchives = company.coverage?.omittedArchives || 0;
-    const catalog = () => [...new Map(rows.filter(row => isBrokerDealerAnnualForm(row.form)).sort(newestFiled)
+    const catalog = () => [...new Map(rows.filter(row => isBrokerDealerForm(row.form)).sort(newestFiled)
       .map(row => [row.accession, filingLinks(company.cik, row)])).values()];
     const matchingPeriods = () => groupBrokerDealerPeriods(catalog()).filter(row => !from && !to || row.reportDate && (!from || row.reportDate >= from) && (!to || row.reportDate <= to));
     const needed = candidate => {
@@ -114,17 +125,19 @@ export function createBrokerDealerHistoryLoader({ loadCompany = loadFilingsCompa
     const filings = catalog(), periods = groupBrokerDealerPeriods(filings);
     const remaining = archives.filter(item => !checked.has(item.name));
     const unknownPeriods = filings.filter(row => !row.reportDate).length;
+    const unclassifiedFilings = filings.filter(row => row.classification.family === 'unknown').length;
     const selectionComplete = !failedArchives.length && !omittedRecords && !omittedArchives
       && !remaining.some(needed) && (!(from || to) || !unknownPeriods);
     const coverage = { complete: selectionComplete, selectionComplete,
       allHistoryLoaded: !remaining.length && !failedArchives.length && !omittedRecords && !omittedArchives,
       archivesChecked: checked.size, totalArchives: archives.length, remainingArchives: remaining.length,
-      failedArchives, omittedRecords, omittedArchives, unknownPeriods,
+      failedArchives, omittedRecords, omittedArchives, unknownPeriods, unclassifiedFilings,
+      classificationScope: 'submission-metadata-only',
     };
     let selectedFilings;
     if (accessions.length) {
-      const unrelated = accessions.find(accession => rows.some(row => row.accession === accession && !isBrokerDealerAnnualForm(row.form)));
-      if (unrelated) throw fail('The selected accession is not an X-17A-5 annual report.', 422);
+      const unrelated = accessions.find(accession => rows.some(row => row.accession === accession && !isBrokerDealerForm(row.form)));
+      if (unrelated) throw fail('The selected accession is not an X-17A-5 filing.', 422);
       selectedFilings = accessions.map(accession => filings.find(row => row.accession === accession));
       if (selectedFilings.some(row => !row)) throw fail('An exact accession was not found in the checked SEC records. Select its history archive or retry incomplete history.', selectionComplete ? 404 : 502);
       selectedFilings.sort(periodOrder);

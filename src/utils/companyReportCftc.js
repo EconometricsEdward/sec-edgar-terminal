@@ -1,7 +1,7 @@
 import { CFTC_FAMILIES, CFTC_LAUNCH_CATALOG, CFTC_SCHEMA_VERSION, cftcDate, parseCftcNumber } from './cftc.js';
 import { companyCftcEvidence, matchesCompanyCftcHistory } from './companyCftcEvidence.js';
 import { cftcPositionChange } from './cftcContextAnalytics.js';
-import { isBrokerDealerAnnualForm } from './brokerDealerForms.js';
+import { isBrokerDealerForm } from './brokerDealerForms.js';
 
 const MAX_MARKETS = 4;
 const BUDGET_MS = 22000;
@@ -97,9 +97,9 @@ function withCoverage(report, message, { partial = false, checkedAt = null, note
  */
 export async function enrichCompanyReportCftc(report, { loadContext, loadHistory, signal, now = () => new Date().toISOString() } = {}) {
   if (report?.kind !== 'company') return report;
-  // PDF-only legal-entity annual statements do not imply the listed parent's
+  // PDF-only legal-entity filing statements do not imply the listed parent's
   // business exposures or establish its use of a futures contract.
-  if (report.sources?.some(source => isBrokerDealerAnnualForm(source.form))) return report;
+  if (report.sources?.some(source => isBrokerDealerForm(source.form))) return report;
   signal?.throwIfAborted();
   const nowValue = typeof now === 'function' ? now() : now;
   const nowMs = new Date(nowValue).getTime();

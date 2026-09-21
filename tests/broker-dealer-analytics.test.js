@@ -449,3 +449,51 @@ test('overlap cleanup preserves separate comparative columns and rejects ambiguo
   }]);
   assert.equal(metric(unicodeSignConflict, 'totalEquity'), undefined);
 });
+
+
+test('periodic monthly and explicit quarterly ranges retain duration and never become annual analytics', () => {
+  const result = analyze(`PART IIA
+FOCUS REPORT
+UNAUDITED
+Statement of Income
+For the month ended December 31, 2025
+Total revenue $100
+Net income $10`);
+  assert.equal(result.classification.family, 'periodic-focus');
+  assert.equal(result.classification.audit.status, 'explicitly-unaudited');
+  assert.equal(metric(result, 'netIncome').durationMonths, 1);
+  assert.equal(metric(result, 'netIncome').periodStart, '2025-12-01');
+  assert.equal(ratio(result, 'netIncomeToRevenue').durationMonths, 1);
+  assert.equal(metric(result, 'netIncome').documentFamily, 'periodic-focus');
+  const quarterly = analyze(`PART II
+Statement of Income
+For the period from October 1, 2025 to December 31, 2025
+Total revenue $300
+Net income $30`);
+  assert.equal(metric(quarterly, 'netIncome').value, 30);
+  assert.equal(metric(quarterly, 'netIncome').periodStart, '2025-10-01');
+  assert.equal(metric(quarterly, 'netIncome').durationMonths, 3);
+  assert.equal(quarterly.basis, 'quarter');
+});
+
+test('periodic regulatory column layouts do not misread field codes as statement values', () => {
+  const result = analyze(`PART II
+FOCUS REPORT
+Statement of Financial Condition
+December 31, 2025
+U.S. dollars
+Allowable Nonallowable Total
+Total assets 4380
+Total liabilities 800
+Members equity 200`);
+  assert.equal(result.classification.family, 'periodic-focus');
+  assert.equal(result.metrics.length, 0);
+  assert.ok(result.coverage.rejected.every(item => /FOCUS regulatory/.test(item.reason)));
+});
+
+
+test('blank FOCUS line-item codes remain unavailable even when no column headers survive extraction', () => {
+  const result = analyze('SECURITIES AND EXCHANGE COMMISSION\nFORM X-17A-5\nPART II\nStatement of Financial Condition\nDecember 31, 2025\nUSD\nTotal assets 1230\nTotal liabilities 1520\nTotal equity 1800');
+  assert.equal(result.metrics.length, 0);
+  assert.ok(result.coverage.rejected.every(item => /field codes/.test(item.reason)));
+});

@@ -252,13 +252,13 @@ export function createReportCikCompanyLoader({ loadJson, enrich } = {}) {
 }
 let cikAnalysisLoader;
 async function loadCikAnalysis(selection, signal) {
-  // Annual broker-dealer statements are often PDF-only and have no companyfacts
-  // document. Verify the exact registrant before entering the XBRL workflow.
+  // Broker-dealer statements are often PDF-only and have no companyfacts
+  // document. A shared SEC form code does not establish their document family.
   const { loadBrokerDealerResearch } = await import('./brokerDealerResearch.js');
   const discovery = await loadBrokerDealerResearch(selection.ticker, { signal, metadataOnly: true });
   if (discovery?.status === 'available') {
-    if (selection.basis !== 'annual') throw Object.assign(new Error('Broker-dealer X-17A-5 reports support the annual reporting basis. Select Latest annual; quarter and trailing-twelve-month figures are not inferred from annual statements.'), { status: 422 });
-    return { brokerDealerResearch: await loadBrokerDealerResearch(selection.ticker, { signal }) };
+    if (selection.basis !== 'annual') throw Object.assign(new Error('Broker-dealer exports currently require a classified annual-report attachment. Select Latest annual; periodic FOCUS schedules are separate documents and quarter or trailing-twelve-month figures are not inferred.'), { status: 422 });
+    return { brokerDealerResearch: await loadBrokerDealerResearch(selection.ticker, { signal, family: 'annual-report' }) };
   }
   cikAnalysisLoader ||= import('./analysisResearchServer.js').then(({ createInteractiveAnalysisLoader }) =>
     createInteractiveAnalysisLoader({ load: createReportCikCompanyLoader() }));

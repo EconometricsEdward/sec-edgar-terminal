@@ -3,6 +3,7 @@ import { secFetch } from './secClient.js';
 import { warmGet, warmSet } from './warmCache.js';
 import { stripHtml } from './filingTextParser.js';
 import { validFilingDate } from './filingsResearch.js';
+import { classifyBrokerDealerDocument } from './brokerDealerClassification.js';
 
 const DOCUMENT_CACHE = 'edgar.broker-dealer-document.v1:production';
 const MANIFEST_CACHE = 'edgar.broker-dealer-manifest.v1:production';
@@ -38,14 +39,19 @@ export function parseBrokerDealerDocumentIndex(html, cik, filing) {
   if (!documents.size) throw fail('SEC did not return a usable attachment index. Retry or open the SEC filing index.');
   return [...documents.values()];
 }
-export function selectBrokerDealerDocument(documents, requested = '') {
+export function selectBrokerDealerDocument(documents, requested = '', { family = '' } = {}) {
   if (requested) {
     if (!validBrokerDealerDocumentName(requested)) throw fail('Invalid SEC document name.', 400);
     const found = documents.find(doc => doc.name === requested);
     if (!found) throw fail('This document is not listed in the selected SEC filing.', 400);
     return found;
   }
-  const score = doc => (doc.format === 'pdf' ? 100 : /^(htm|html|txt)$/.test(doc.format) ? 40 : 0)
+  const familyScore = doc => {
+    if (!family) return 0;
+    const classified = classifyBrokerDealerDocument({ selectedDocument: doc }).family;
+    return classified === family ? 200 : classified === 'unknown' ? 0 : -200;
+  };
+  const score = doc => familyScore(doc) + (doc.format === 'pdf' ? 100 : /^(htm|html|txt)$/.test(doc.format) ? 40 : 0)
     + (/^(PUBLIC|FULL)$/i.test(doc.type) ? 30 : 0) + (/financial|annual|public|statement/i.test(`${doc.name} ${doc.description}`) ? 15 : 0)
     - (/consent|exemption|compliance|cover|facing/i.test(`${doc.name} ${doc.description}`) ? 80 : 0);
   return [...documents].sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name))[0];
@@ -57,7 +63,7 @@ export function parseBrokerDealerCover(xml) {
     const iso = match ? `${match[3]}-${match[1]}-${match[2]}` : value;
     return validFilingDate(iso) ? iso : '';
   };
-  return { reportDate: date(field('periodEnd')), periodBegin: date(field('periodBegin')), accountantName: field('accountantName'), registrantType: field('typeOfBDRegistrant'), amendmentDescription: field('amendmentDescription') };
+  return { reportDate: date(field('periodEnd')), periodBegin: date(field('periodBegin')), accountantName: field('accountantName'), registrantType: field('typeOfBDRegistrant'), amendmentDescription: field('amendmentDescription'), reportType: field('reportType'), formPart: field('formPart') || field('reportPart') || field('part') };
 }
 export async function readBrokerDealerBytes(response, maxBytes = 24_000_000) {
   if (!response.ok) throw fail(`SEC document request returned HTTP ${response.status}. Retry or open the SEC original.`);
@@ -93,7 +99,7 @@ export function createBrokerDealerDocumentLoader({ fetchSec = secFetch, cacheGet
   const fetchBytes = async (url, signal, maxBytes) => readBrokerDealerBytes(await fetchSec(url, {
     signal, timeoutMs: 20000, maxBytes, redirect: 'error', headers: { Accept: 'application/pdf,text/html,application/xml,text/plain' },
   }), maxBytes);
-  return async function load(cik, filing, { signal, document = '', refresh = false } = {}) {
+  return async function load(cik, filing, { signal, document = '', refresh = false, family = '' } = {}) {
     const base = baseUrl(cik, filing.accession), identity = `${String(cik).padStart(10, '0')}:${filing.accession}`;
     const manifestKey = `manifest:${identity}`;
     let manifest = refresh ? null : getLocal(manifestKey) || await cacheGet(MANIFEST_CACHE, identity);
@@ -110,7 +116,7 @@ export function createBrokerDealerDocumentLoader({ fetchSec = secFetch, cacheGet
       // A transient facing-page failure must not prevent a future retry.
       if (!coverWarning) { remember(manifestKey, manifest); await cacheSet(MANIFEST_CACHE, identity, manifest, 86400 * 7); }
     }
-    const selectedDocument = selectBrokerDealerDocument(manifest.documents, document);
+    const selectedDocument = selectBrokerDealerDocument(manifest.documents, document, { family });
     const hash = createHash('sha256').update(selectedDocument.name).digest('hex');
     const cacheKey = `${identity}:${hash}`;
     let extracted = refresh ? null : getLocal(cacheKey) || await cacheGet(DOCUMENT_CACHE, cacheKey);
@@ -143,7 +149,14 @@ export function createBrokerDealerDocumentLoader({ fetchSec = secFetch, cacheGet
         try { extracted = await task; } finally { pending.delete(cacheKey); }
       }
     }
-    return { ...extracted, documents: manifest.documents, selectedDocument, cover: manifest.cover || {},
+    // Classification is recomputed from retained source pages, never inherited
+    // from a cached filing label or another attachment in the same accession.
+    const cover = manifest.cover || {};
+    const classification = classifyBrokerDealerDocument({ pages: extracted.pages, cover, filing, selectedDocument, documentUrl: selectedDocument.url });
+    const documents = manifest.documents.map(doc => ({ ...doc, classification: doc.name === selectedDocument.name ? classification
+      : classifyBrokerDealerDocument({ filing, cover, selectedDocument: doc, documentUrl: doc.url }) }));
+    return { ...extracted, documents, selectedDocument: documents.find(doc => doc.name === selectedDocument.name), cover, classification,
+      filingClassification: classifyBrokerDealerDocument({ filing, cover }),
       extraction: { ...extracted.extraction, limitations: [...(extracted.extraction.limitations || []), ...(manifest.coverWarning ? [manifest.coverWarning] : [])] },
       text: extracted.pages.map(page => `Page ${page.pageNumber}\n\n${page.text}`).join('\n\n'), format: selectedDocument.format === 'pdf' ? 'pdf-text' : selectedDocument.format === 'xml' ? 'xml-fields' : 'text' };
   };

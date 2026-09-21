@@ -1,5 +1,7 @@
 import { getItemsInfo } from './formItems.js';
-import { isBrokerDealerAnnualForm, normalizeBrokerDealerForm, brokerDealerFormDescription } from './brokerDealerForms.js';
+import { brokerDealerSearchForm } from './brokerDealerSearch.js';
+import { brokerComparisonFit } from './brokerDealerContext.js';
+import { isBrokerDealerForm, normalizeBrokerDealerForm, brokerDealerFormDescription } from './brokerDealerForms.js';
 
 export const FILINGS_SETTINGS = {
   query: '', family: 'all', form: 'all', start: '', end: '', item: '',
@@ -7,6 +9,7 @@ export const FILINGS_SETTINGS = {
 };
 export const FILING_FAMILIES = [
   { id: 'annual', label: 'Annual reports' },
+  { id: 'broker-dealer', label: 'Broker-dealer filings' },
   { id: 'quarterly', label: 'Quarterly reports' },
   { id: 'current', label: 'Current reports' },
   { id: 'insider', label: 'Insider ownership' },
@@ -22,7 +25,7 @@ export function validFilingDate(value) {
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
 export function filingFamily(form = '') {
-  if (isBrokerDealerAnnualForm(form)) return 'annual';
+  if (isBrokerDealerForm(form)) return 'broker-dealer';
   const base = String(form).toUpperCase().replace(/\/A$/, '');
   if (/^(10-K|10-KT|20-F|40-F)$/.test(base)) return 'annual';
   if (/^(10-Q|10-QT)$/.test(base)) return 'quarterly';
@@ -83,7 +86,8 @@ export function normalizeFilingRows(recent, cik) {
       documentUrl: primaryDoc ? `${base}/${primaryDoc}` : '',
       indexUrl: `${base}/${accession}-index.html`,
       isAmendment: normalizedForm.endsWith('/A'), family: filingFamily(normalizedForm),
-      brokerDealerAnnual: isBrokerDealerAnnualForm(normalizedForm),
+      brokerDealer: isBrokerDealerForm(normalizedForm),
+      ...(isBrokerDealerForm(normalizedForm) ? { classification: { family: 'unknown', label: 'Document type not established' } } : {}),
       formLabel: brokerDealerFormDescription(normalizedForm) || normalizedForm,
       ...(typeof size === 'number' && Number.isFinite(size) && size >= 0 ? { size } : {}),
     });
@@ -108,12 +112,12 @@ export function filingReviewStatus(record = {}) {
 }
 export function filterFilings(filings, settings = {}, records = {}) {
   const s = normalizeFilingsSettings(settings);
-  const terms = (normalizeBrokerDealerForm(s.query) || s.query).toLowerCase().match(/"[^"]+"|\S+/g)?.map((term) => term.replace(/^"|"$/g, '')) || [];
+  const terms = (brokerDealerSearchForm(s.query) || s.query).toLowerCase().match(/"[^"]+"|\S+/g)?.map((term) => term.replace(/^"|"$/g, '')) || [];
   const filtered = filings.filter((filing) => {
     const amendment = filing.isAmendment ?? filing.form.endsWith('/A');
     if (s.family !== 'all' && (filing.family || filingFamily(filing.form)) !== s.family) return false;
     if (s.form !== 'all' && filing.form !== s.form
-      && !(s.form === 'X-17A-5' && isBrokerDealerAnnualForm(filing.form))) return false;
+      && !(s.form === 'X-17A-5' && isBrokerDealerForm(filing.form))) return false;
     if (s.start && filing.filingDate < s.start || s.end && filing.filingDate > s.end) return false;
     if (s.amendments === 'exclude' && amendment || s.amendments === 'only' && !amendment) return false;
     const itemInfo = /^8-K(?:\/A)?$/.test(filing.form) ? getItemsInfo(filing.items || '') : [];
@@ -155,24 +159,37 @@ export function selectFilingBaseline(current, filings, { comparison = 'previous'
   const older = mergeFilings(filings).filter((f) => f.accession !== current.accession && f.primaryDoc
     && f.form.replace(/\/A$/, '') === baseForm
     && (f.filingDate < current.filingDate || f.filingDate === current.filingDate && f.accession < current.accession));
+  if (isBrokerDealerForm(baseForm) && !['annual-report', 'periodic-focus'].includes(current.classification?.family)) {
+    return { prior: null, kind: 'unavailable', reason: 'X-17A-5 is a form family. Read the document to establish its report type before comparing periods.' };
+  }
   if (current.isAmendment ?? current.form.endsWith('/A')) {
-    const samePeriod = validFilingDate(current.reportDate) ? older.filter((f) => f.reportDate === current.reportDate) : [];
-    const prior = isBrokerDealerAnnualForm(baseForm)
+    const samePeriod = validFilingDate(current.reportDate) ? older.filter((f) => {
+      if (f.reportDate !== current.reportDate) return false;
+      if (!isBrokerDealerForm(baseForm)) return true;
+      if (!brokerComparisonFit(current, f).compatible) return false;
+      return current.classification?.family !== 'periodic-focus'
+        || validFilingDate(current.classification?.period?.start) && f.classification?.period?.start === current.classification.period.start;
+    }) : [];
+    const prior = isBrokerDealerForm(baseForm)
       ? samePeriod.find((f) => !f.form.endsWith('/A')) || samePeriod[0]
       : samePeriod[0];
     return { prior: prior || null, kind: 'amendment', reason: prior
       ? 'Amendment compared with the earlier filing for the same reporting period. Partial amendments can omit unchanged material.'
       : 'No earlier filing for the same reporting period is loaded. Load the relevant archive or open the SEC filing index.' };
   }
-  if (isBrokerDealerAnnualForm(baseForm)) {
-    // Late reports and amendments may be filed years after the reporting
-    // period. A filing date never substitutes for a fiscal period end.
-    const prior = validFilingDate(current.reportDate) ? older.find((f) => !f.form.endsWith('/A')
-      && validFilingDate(f.reportDate) && f.reportDate < current.reportDate
-      && Math.abs((Date.parse(current.reportDate) - Date.parse(f.reportDate)) / 86400000 - 365.25) <= 40) : null;
-    return { prior: prior || null, kind: 'annual-season', reason: prior
-      ? 'Original broker-dealer annual report for the reporting period one year earlier. Public statement coverage can differ between years.'
-      : 'No original broker-dealer annual report with a verified matching prior-year reporting period is loaded. Filing dates are not used as fiscal period ends.' };
+  if (isBrokerDealerForm(baseForm)) {
+    const classification = current.classification;
+    const family = classification?.family;
+    const candidates = validFilingDate(current.reportDate) ? older.filter(f => !f.form.endsWith('/A')
+      && brokerComparisonFit(current, f).compatible
+      && validFilingDate(f.reportDate) && f.reportDate < current.reportDate) : [];
+    const annual = family === 'annual-report' || comparison === 'year';
+    const prior = annual
+      ? candidates.find(f => Math.abs((Date.parse(current.reportDate) - Date.parse(f.reportDate)) / 86400000 - 365.25) <= 40)
+      : [...candidates].sort((a, b) => b.reportDate.localeCompare(a.reportDate))[0];
+    return { prior: prior || null, kind: annual ? 'annual-season' : 'previous-period', reason: prior
+      ? 'Same document family and compatible reporting period. Audit evidence and disclosed statements still require separate review.'
+      : 'No report with an established matching document family and reporting period is loaded. Filing dates never substitute for reporting-period ends.' };
   }
   if (!periodicPattern.test(baseForm)) return { prior: null, kind: 'event', reason: 'Event, ownership, proxy and offering filings are not automatically compared with unrelated events.' };
   const candidates = older.filter((f) => !f.form.endsWith('/A') && validFilingDate(f.reportDate) && f.reportDate < current.reportDate);

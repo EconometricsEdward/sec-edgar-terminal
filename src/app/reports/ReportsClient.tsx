@@ -189,7 +189,7 @@ export default function ReportsClient({ preview = false }: { preview?: boolean }
     searchRequest.current++;
     searchController.current?.abort();
     setSelected(entity);
-    if (entity.annualReportForm === "X-17A-5") setBasis("annual");
+    if (entity.brokerDealerForm === "X-17A-5") setBasis("annual");
     setQuery(entity.ticker ? `${entity.ticker} · ${entity.name}` : entity.name);
     setResults([]);
     setOpen(false);
@@ -344,7 +344,7 @@ export default function ReportsClient({ preview = false }: { preview?: boolean }
         {selected && <div className={styles.selection}>
           <div className={styles.selectedIdentity}><Check size={18} aria-hidden="true" /><div><strong>{selected.ticker ? `${selected.ticker} · ` : ""}{selected.name}</strong><p>{kind === "market" ? "SEC sector fundamentals and CFTC Commitments of Traders" : `CIK ${selected.cik}${selected.seriesId ? ` · Series ${selected.seriesId}` : ""}`}</p></div></div>
           <div className={styles.buildControls}>
-            {(kind === "company" || kind === "market") && <label>Reporting basis<select value={basis} onChange={event => { clearReport(); setBasis(event.target.value as Basis); }}><option value="annual">Latest annual</option>{selected.annualReportForm !== "X-17A-5" && <><option value="ttm">Trailing twelve months</option>{kind === "company" && <option value="quarter">Latest standalone quarter</option>}</>}</select>{selected.annualReportForm === "X-17A-5" && <small>Public annual-report figures; no inferred quarterly or TTM data.</small>}</label>}
+            {(kind === "company" || kind === "market") && <label>Reporting basis<select value={basis} onChange={event => { clearReport(); setBasis(event.target.value as Basis); }}><option value="annual">Latest annual</option>{selected.brokerDealerForm !== "X-17A-5" && <><option value="ttm">Trailing twelve months</option>{kind === "company" && <option value="quarter">Latest standalone quarter</option>}</>}</select>{selected.brokerDealerForm === "X-17A-5" && <small>Exports use a classified annual attachment. Periodic FOCUS schedules remain separate; no quarterly or TTM figures are inferred.</small>}</label>}
             <button type="button" className={styles.buildButton} disabled={preparing} onClick={buildReport}>{preparing ? <><LoaderCircle size={17} className={styles.spinner} aria-hidden="true" />Preparing report</> : <>{report ? "Rebuild report" : "Build report"}<ArrowRight size={17} aria-hidden="true" /></>}</button>
           </div>
         </div>}

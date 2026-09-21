@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import CompanySearch from "../CompanySearch";
 import { TickerContext } from "../../../contexts/TickerContext";
-import { isBrokerDealerAnnualForm, brokerDealerFormDescription } from "../../../utils/brokerDealerForms.js";
+import { isBrokerDealerForm, brokerDealerFormDescription } from "../../../utils/brokerDealerForms.js";
 import { getItemsInfo } from "../../../utils/formItems.js";
 import { normalizeCikIdentifier, managerHoldingsPath } from "../../../utils/siteRoutes.js";
 import {
@@ -368,9 +368,9 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
   const annualReport = filings.find((filing: any) =>
     ["10-K", "20-F", "40-F"].includes(filing.form),
   );
-  const brokerDealerReport = filings.find((filing: any) => isBrokerDealerAnnualForm(filing.form));
+  const brokerDealerReport = filings.find((filing: any) => isBrokerDealerForm(filing.form));
   const featuredReport = brokerDealerReport || holdingsReport || annualReport || (isFiler ? filings[0] : null);
-  const featuredFamily = brokerDealerReport ? "annual" : holdingsReport ? "ownership" : annualReport || !isFiler ? "annual" : "all";
+  const featuredFamily = brokerDealerReport ? "broker-dealer" : holdingsReport ? "ownership" : annualReport || !isFiler ? "annual" : "all";
   const loadedCount = Object.keys(loadedArchives).length;
   const remaining = archives.filter((a: any) => !loadedArchives[a.name]);
   const coverage = useMemo(
@@ -690,8 +690,8 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
       )}
       {data && !loading && !error && (
         <>
-          {brokerDealerReport && <section className={styles.managerResearch} aria-label="Broker-dealer annual-report research">
-            <div><p className={styles.eyebrow}>Public broker-dealer annual reports</p><h2>Read the financial statements behind the filing</h2><p className={styles.muted}>Open the original PDF, inspect available financial figures and trace calculations to the reported evidence. Research follows this legal entity’s CIK.</p></div>
+          {brokerDealerReport && <section className={styles.managerResearch} aria-label="Broker-dealer filing research">
+            <div><p className={styles.eyebrow}>Public broker-dealer filings</p><h2>Read the financial statements behind the filing</h2><p className={styles.muted}>Open the original PDF, inspect available financial figures and trace calculations to the reported evidence. Research follows this legal entity’s CIK.</p></div>
             <Link href={`/analysis/${data.cik}`} prefetch={false}>Explore financial analysis <ArrowUpRight size={16} aria-hidden="true" /></Link>
           </section>}
           {holdingsReport && (
@@ -732,7 +732,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                 })
               }
             >
-              <span>{brokerDealerReport ? "Latest broker-dealer annual report" : holdingsReport ? "Latest 13F holdings report" : annualReport || !isFiler ? "Latest annual report" : "Latest SEC filing"}</span>
+              <span>{brokerDealerReport ? "Latest broker-dealer filing" : holdingsReport ? "Latest 13F holdings report" : annualReport || !isFiler ? "Latest annual report" : "Latest SEC filing"}</span>
               <strong>
                 {featuredReport?.filingDate || "Not in loaded history"}
               </strong>
@@ -882,7 +882,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                       {family.label}
                     </button>
                   ))}
-                  <button aria-pressed={settings.form === "X-17A-5"} onClick={() => changeSettings({ family: "all", form: "X-17A-5", amendments: "include" })}>Broker-dealer annuals</button>
+                  <button aria-pressed={settings.form === "X-17A-5"} onClick={() => changeSettings({ family: "all", form: "X-17A-5", amendments: "include" })}>Broker-dealer filings</button>
                   <details className={styles.advanced}>
                     <summary>
                       Dates &amp; events
@@ -1326,7 +1326,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                                 <BookOpen size={15} />
                                 Read
                               </button>
-                              {isBrokerDealerAnnualForm(filing.form) && <button className={styles.readButton} onClick={() => openFiling(filing, "analytics")} aria-label={`Analyze ${filing.form} filed ${filing.filingDate}`}><ChartNoAxesCombined size={15} /> Financials</button>}
+                              {isBrokerDealerForm(filing.form) && <button className={styles.readButton} onClick={() => openFiling(filing, "analytics")} aria-label={`Analyze ${filing.form} filed ${filing.filingDate}`}><ChartNoAxesCombined size={15} /> Financials</button>}
                               <button
                                 aria-label={`${record?.queued ? "Unqueue" : "Queue"} ${filing.accession}`}
                                 aria-pressed={!!record?.queued}
@@ -1344,7 +1344,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                                 <Check size={15} />
                               </button>
                               <a
-                                href={isBrokerDealerAnnualForm(filing.form) ? filing.indexUrl : filing.documentUrl || filing.indexUrl}
+                                href={isBrokerDealerForm(filing.form) ? filing.indexUrl : filing.documentUrl || filing.indexUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 aria-label={`Open ${filing.form} filed ${filing.filingDate} on SEC.gov`}

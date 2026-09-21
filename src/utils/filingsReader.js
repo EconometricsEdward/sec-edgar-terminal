@@ -6,7 +6,7 @@ import { warmGet, warmSet } from "./warmCache.js";
 import { loadFilingsCompany, loadFilingsArchive } from "./filingsResearchServer.js";
 import { validFilingDate } from "./filingsResearch.js";
 import { secFetch } from "./secClient.js";
-import { isBrokerDealerAnnualForm } from "./brokerDealerForms.js";
+import { isBrokerDealerForm } from "./brokerDealerForms.js";
 import { validBrokerDealerDocumentName } from "./brokerDealerDocuments.js";
 import { readBrokerDealerFiling } from "./brokerDealerResearch.js";
 
@@ -274,7 +274,7 @@ export async function readFilingsDocument(settings, { signal } = {}) {
   // cannot be fetched. Prior provenance is verified when comparison is requested.
   const prior = settings.prior && settings.view === "changes" ? await resolve(settings.prior, settings.priorArchive, settings.priorFiled) :
     company.filings.find((row) => row.accession === settings.prior) || null;
-  if (isBrokerDealerAnnualForm(filing.form)) {
+  if (isBrokerDealerForm(filing.form)) {
     const document = await readBrokerDealerFiling(company, filing, { signal, document: settings.document });
     const paragraphs = document.pages.flatMap(sourcePage => (sourcePage.text.match(/[\s\S]{1,6000}/g) || [])
       .map((text, index) => ({ id: `pdf-${sourcePage.pageNumber}-${index}`, text, page: sourcePage.pageNumber, sectionId: 'other', section: 'Financial report', part: 1, parts: 1 })))
@@ -285,9 +285,9 @@ export async function readFilingsDocument(settings, { signal } = {}) {
       paragraphs: matched.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), sections: [],
       coverage: { totalParagraphs: paragraphs.length, matchedParagraphs: matched.length, page, pageSize: PAGE_SIZE, extraction: document.extraction.status, splitParagraphs: paragraphs.some(passage => passage.text.length === 6000) },
       format: document.format, documents: document.documents, selectedDocument: document.selectedDocument, extraction: document.extraction,
-      brokerDealerAnalysis: document.analysis, comparison: { status: 'unavailable', ...validateReaderPair(filing, prior), changes: [], coverage: [] }, observedAt: document.observedAt };
+      classification: document.classification || document.analysis?.classification, brokerDealerAnalysis: document.analysis, comparison: { status: 'unavailable', ...validateReaderPair(filing, prior), changes: [], coverage: [] }, observedAt: document.observedAt };
   }
-  if (settings.document && settings.document !== filing.primaryDoc) throw error("Attachment selection is available for broker-dealer annual reports only.", 422);
+  if (settings.document && settings.document !== filing.primaryDoc) throw error("Attachment selection is available for broker-dealer X-17A-5 filings only.", 422);
   const document = await fetchReaderDocument(company.cik, filing, { signal });
   const result = paginateReaderText(document.text, filing.form, settings);
   let comparison = { status: "not-requested", ...validateReaderPair(filing, prior), changes: [], coverage: [] };

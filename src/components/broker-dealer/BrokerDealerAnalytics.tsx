@@ -1,10 +1,12 @@
 import { ArrowUpRight, FileText } from "lucide-react";
+import { brokerReportIdentity } from "../../utils/brokerDealerContext.js";
 import styles from "./BrokerDealerAnalytics.module.css";
 
 type Source = { url?: string; page?: number; text?: string };
 type Measure = { id: string; label: string; value: number | null; unit?: string; format?: string; periodEnd?: string; source?: Source; sources?: Source[]; formula?: string; confidence?: string };
 export type BrokerDealerAnalysis = {
   status?: string;
+  classification?: any;
   metrics?: Measure[];
   ratios?: Measure[];
   findings?: Array<{ id?: string; title?: string; text?: string; severity?: string; source?: Source }>;
@@ -46,10 +48,12 @@ export default function BrokerDealerAnalytics({ analysis, filing, compact = fals
   const metrics = (analysis?.metrics || []).filter(metric => typeof metric.value === "number" && Number.isFinite(metric.value));
   const ratios = (analysis?.ratios || []).filter(metric => typeof metric.value === "number" && Number.isFinite(metric.value));
   const coverage = analysis?.coverage;
+  const identity = brokerReportIdentity({ analysis });
   const limits = [...new Set([...(analysis?.limitations || []), ...(coverage?.caveats || [])])];
   const statements = coverage?.disclosedStatements?.map(value => ({ "financial-condition": "financial condition", income: "income statement", "net-capital": "net capital" })[value] || value);
   return <section className={`${styles.analysis} ${compact ? styles.compact : ""}`} aria-label="Broker-dealer financial analysis">
-    <header className={styles.heading}><div><p className={styles.eyebrow}>Public annual report · X-17A-5</p><h2>Broker-dealer financials</h2></div><span className={styles.status}>{metrics.length ? analysis?.status === "ready" ? "Extracted figures" : "Partial coverage" : "Figures unavailable"}</span></header>
+    <header className={styles.heading}><div><p className={styles.eyebrow}>{identity.label} · X-17A-5</p><h2>Broker-dealer financials</h2></div><span className={styles.status}>{metrics.length ? analysis?.status === "ready" ? "Extracted figures" : "Partial coverage" : "Figures unavailable"}</span></header>
+    <p className={styles.period}>{identity.parts.length ? `${identity.parts.join(" · ")} · ` : ""}{identity.auditLabel}{identity.auditScope ? ` · ${identity.auditScope}` : ""}</p>
     <p className={styles.intro}>Financial figures from the selected public filing. Dollar values are normalized to USD; calculations retain their disclosed inputs. Check the source labels and reporting dates before relying on a figure.</p>
     {filing?.reportDate && <p className={styles.period}>Reporting period end <strong>{filing.reportDate}</strong>{filing.filingDate ? ` · Filed ${filing.filingDate}` : ""}</p>}
     {!metrics.length ? <div className={styles.empty}><FileText size={22} aria-hidden="true" /><div><h3>No supported figures extracted</h3><p>The selected document may contain only a cover, scanned pages or a statement layout that cannot be mapped reliably. Open the financial-statement PDF and review it directly. Missing figures are not zero.</p></div></div> : <>
@@ -61,7 +65,7 @@ export default function BrokerDealerAnalytics({ analysis, filing, compact = fals
       {statements?.length ? <p>Statement evidence identified: {statements.join(", ")}.</p> : <p>Statement coverage depends on what the selected public document discloses.</p>}
       {typeof coverage?.pagesWithText === "number" && <p>{coverage.pagesWithText} pages with readable text{typeof coverage.totalPages === "number" ? ` out of ${coverage.totalPages} document pages` : ""}. Text extraction is not an audit or a complete review of the filing.</p>}
       {limits.length > 0 && <ul>{limits.map(limit => <li key={limit}>{limit}</li>)}</ul>}
-      <p>Only publicly filed annual-report material is available here. Confidential FOCUS submissions are not included. Public filings may omit income statements, net-capital schedules or other information needed for a full review.</p>
+      <p>Only publicly accessible X-17A-5 material is available here. Annual reports and periodic FOCUS reports are identified separately from document evidence. Confidential FOCUS submissions are not included. Public filings may omit income statements, net-capital schedules or other information needed for a full review.</p>
     </details>
   </section>;
 }

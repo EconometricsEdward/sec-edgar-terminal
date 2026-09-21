@@ -9,6 +9,7 @@ import { buildAnalysisCompany, packAnalysisCompany } from '../src/utils/analysis
 import { ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION } from '../src/utils/analysisVersion.js';
 import { buildAnalysisDirectory } from '../src/utils/analysisDirectory.js';
 import { brokerDealerResearchPayload } from '../src/utils/brokerDealerPayload.js';
+import * as brokerDealerContext from '../src/utils/brokerDealerContext.js';
 import { readAnalysisSettings } from '../src/utils/analysisNotebook.js';
 import { createPublicAnalysisReader, publicAnalysisSelection } from '../src/utils/analysisPublicResearch.js';
 
@@ -86,6 +87,7 @@ function fixture({ fail = false, available = true, broker = null } = {}) {
         return options.metadataOnly ? { ...broker, analysis: undefined } : broker;
       } };
       if (name.endsWith('/brokerDealerPayload.js')) return { brokerDealerResearchPayload };
+      if (name.endsWith('/brokerDealerContext.js')) return brokerDealerContext;
       if (name.endsWith('/BrokerDealerWorkspace')) return compile('brokerWorkspace');
       if (name.endsWith('/BrokerDealerCharts')) return compile('brokerCharts');
       if (name.endsWith('/BrokerDealerContext')) return () => null;
@@ -229,6 +231,29 @@ test('CIK broker-dealers render annual-report evidence and indexable identities 
   assert.equal((await page.generateMetadata(props({ basis: 'ttm' }, cik))).robots.index, false);
 });
 
+test('broker-dealer structured data preserves periodic and unclassified document identities', async () => {
+  const cik = '0000123456', accession = '0000123456-26-000002';
+  for (const classification of [
+    { family: 'periodic-focus', label: 'Periodic FOCUS report', parts: ['Part IIA'], audit: { status: 'explicitly-unaudited' }, period: { start: '2026-04-01', end: '2026-06-30', frequency: 'quarterly' }, components: ['financial-condition'] },
+    { family: 'unknown', label: 'Unclassified broker-dealer report', parts: [], audit: { status: 'not-established' }, period: { start: '', end: '2026-06-30', frequency: 'unknown' }, components: [] },
+  ]) {
+    const broker = { status: 'available', company: { cik, name: 'Independent Securities LLC' }, classification,
+      filing: { form: 'X-17A-5', accession, filingDate: '2026-07-31', reportDate: '2026-06-30' }, filings: [],
+      analysis: { status: 'unavailable', classification, metrics: [], ratios: [] } };
+    const page = fixture({ broker }).compile('company');
+    const metadata = await page.generateMetadata(props({}, cik));
+    assert.doesNotMatch(metadata.title, /annual|audited/i);
+    const html = renderToStaticMarkup(await page.default(props({}, cik)));
+    const graph = JSON.parse(html.match(/<script type="application\/ld\+json">(.*?)<\/script>/)[1])['@graph'];
+    const report = graph.find(item => item['@type'] === 'Report');
+    assert.equal(report.genre, classification.label);
+    assert.equal(report.name, `Independent Securities LLC — ${classification.label}`);
+    assert.doesNotMatch(report.name, /annual|audited/i);
+    assert.equal(report.temporalCoverage, classification.period.start ? '2026-04-01/2026-06-30' : '2026-06-30');
+    assert.ok(html.includes('Report classification'));
+  }
+});
+
 async function routeFixture() {
   const { mock } = await import('node:test');
   const assert = (await import('node:assert/strict')).default;
@@ -281,6 +306,7 @@ async function brokerRouteFixture() {
   const assert = (await import('node:assert/strict')).default;
   const root = process.argv[1], calls = [];
   let failed = false, available = true, retryable = false, analysisStatus = 'partial';
+  let classification = { family: 'annual-report', label: 'Annual report', period: { frequency: 'annual' }, audit: { status: 'not-established' } }, basis = 'annual';
   const cik = '0000123456';
   mock.module(new URL('src/utils/rateLimit.js', root).href, { namedExports: {
     checkRateLimit: async () => ({ allowed: true }), getClientIp: () => 'fixture', rateLimitedResponse: () => new Response(null, { status: 429 }),
@@ -290,7 +316,8 @@ async function brokerRouteFixture() {
     loadBrokerDealerResearch: async (id, options) => {
       calls.push(id); assert.ok(options.signal); if (failed) throw new Error('private credentials');
       return { status: available ? 'available' : 'not-applicable', company: { cik, name: 'Independent Securities LLC' },
-        analysis: { status: analysisStatus, cik, name: 'Independent Securities LLC', metrics: analysisStatus === 'unavailable' ? [] : [{ id: 'totalAssets', value: 1000 }] },
+        classification,
+        analysis: { status: analysisStatus, cik, name: 'Independent Securities LLC', basis, classification, metrics: analysisStatus === 'unavailable' ? [] : [{ id: 'totalAssets', value: 1000 }] },
         extraction: { retryable },
         filing: { form: 'X-17A-5', accession: '0000123456-26-000001' } };
     },
@@ -303,11 +330,28 @@ async function brokerRouteFixture() {
   assert.equal(calls.length, 0);
   const response = await request(), json = await response.json();
   assert.equal(response.status, 200);
-  assert.equal(json.schemaVersion, 'edgar.broker-dealer-analysis.v1');
+  assert.equal(json.schemaVersion, 'edgar.broker-dealer-analysis.v2');
+  assert.equal(json.classification.audit.status, 'not-established');
+  assert.equal(json.basis, 'annual');
   assert.equal(json.cik, cik); assert.equal(json.filing.form, 'X-17A-5');
   assert.equal(json.metrics[0].value, 1000);
   assert.equal(json.ticker, undefined);
   assert.match(response.headers.get('Cache-Control'), /public.*s-maxage=3600/);
+  classification = { family: 'periodic-focus', label: 'Periodic FOCUS', parts: ['IIA'], period: { frequency: 'quarterly' }, audit: { status: 'explicitly-unaudited' } };
+  basis = 'quarter';
+  const periodic = await request(), periodicJson = await periodic.json();
+  assert.equal(periodic.status, 200);
+  assert.equal(periodicJson.basis, 'quarter');
+  assert.equal(periodicJson.classification.family, 'periodic-focus');
+  const incompatible = await request(cik, '?basis=annual');
+  assert.equal(incompatible.status, 422);
+  assert.match(incompatible.headers.get('Cache-Control'), /private.*no-store/);
+  classification = { family: 'unknown', label: 'Document type not established', period: { frequency: 'unknown' }, audit: { status: 'not-established' } };
+  basis = 'unknown';
+  assert.equal((await (await request()).json()).basis, 'unknown');
+  assert.equal((await request(cik, '?basis=annual')).status, 422);
+  classification = { family: 'annual-report', label: 'Annual report', period: { frequency: 'annual' }, audit: { status: 'not-established' } };
+  basis = 'annual';
   retryable = true;
   analysisStatus = 'unavailable';
   const transientMissing = await request();

@@ -15,7 +15,7 @@ export async function GET(request) {
   try {
     const { cik, ...selection } = choice;
     const research = await loadBrokerDealerResearch(cik, { ...selection, signal: AbortSignal.any([request.signal, AbortSignal.timeout(280000)]) });
-    if (research.status !== 'available' || !research.analysis) return Response.json({ error: 'No public broker-dealer annual report was found for this exact registrant.' }, { status: 404, headers: privateHeaders });
+    if (research.status !== 'available' || !research.analysis) return Response.json({ error: 'No public broker-dealer X-17A-5 filing was found for this exact registrant.' }, { status: 404, headers: privateHeaders });
     const retryable = research.extraction?.retryable;
     return Response.json(brokerDealerResearchPayload(research), {
       status: retryable && research.analysis.status === 'unavailable' ? 503 : 200,
@@ -26,7 +26,7 @@ export async function GET(request) {
     });
   } catch (error) {
     const status = [400, 404, 422].includes(error.status) ? error.status : 503;
-    return Response.json({ error: status < 500 ? error.message : 'This annual report could not finish loading. Retry or open its original SEC document.' }, {
+    return Response.json({ error: status < 500 ? error.message : 'This filing could not finish loading. Retry or open its original SEC document.' }, {
       status, headers: status === 503 ? { ...privateHeaders, 'Retry-After': '60' } : privateHeaders,
     });
   }

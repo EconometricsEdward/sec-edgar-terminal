@@ -3,7 +3,7 @@ import {
   filerCik,
   filerNameQuery,
   hasThirteenFHoldings,
-  hasBrokerDealerAnnualReports,
+  hasBrokerDealerFilings,
   normalizedFilerName,
   secFilerResearchPath,
 } from "./secFilerSearch.js";
@@ -36,10 +36,10 @@ export function rankGlobalFilerMatches(query, results, { truncated = false, warn
     const path = secFilerResearchPath(filer, { filingIntent });
     if (!path) return [];
     seen.add(cik);
-    const brokerDealerAnnual = hasBrokerDealerAnnualReports(filer);
-    const manager = hasThirteenFHoldings(filer) && !brokerDealerAnnual && !filingIntent;
-    return [{ ...filer, cik, name: filer.name.trim(), path, manager, brokerDealerAnnual,
-      score: nameScore(input, filer.name) + (manager || brokerDealerAnnual ? 20 : 0) }];
+    const brokerDealer = hasBrokerDealerFilings(filer);
+    const manager = hasThirteenFHoldings(filer) && !brokerDealer && !filingIntent;
+    return [{ ...filer, cik, name: filer.name.trim(), path, manager, brokerDealer,
+      score: nameScore(input, filer.name) + (manager || brokerDealer ? 20 : 0) }];
   }).sort((a, b) => b.score - a.score || a.name.length - b.name.length
     || a.name.localeCompare(b.name) || a.cik.localeCompare(b.cik));
   const exact = input ? exactFilerMatch(input, filers, { truncated: truncated || source.length > 20, warning }) : null;
@@ -47,7 +47,7 @@ export function rankGlobalFilerMatches(query, results, { truncated = false, warn
     items: filers.slice(0, 12).map(filer => ({
       id: `filer:${filer.cik}`,
       label: filer.name,
-      description: `${filer.brokerDealerAnnual ? "Broker-dealer annual reports · X-17A-5" : filer.manager ? "13F holdings" : "SEC filings"} · CIK ${filer.cik}`,
+      description: `${filer.brokerDealer ? "Broker-dealer filings · X-17A-5" : filer.manager ? "13F holdings" : "SEC filings"} · CIK ${filer.cik}`,
       path: filer.path,
       type: filer.manager ? "manager" : "filer",
       group: "Managers & SEC filers",

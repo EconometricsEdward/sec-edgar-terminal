@@ -3,7 +3,7 @@ import { useContext, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, ArrowRight } from "lucide-react";
 import { TickerContext } from "../../contexts/TickerContext";
-import { filerCik, exactFilerMatch, mergeFilerSuggestions, hasBrokerDealerAnnualReports } from "../../utils/secFilerSearch.js";
+import { filerCik, exactFilerMatch, mergeFilerSuggestions, hasBrokerDealerFilings } from "../../utils/secFilerSearch.js";
 import { useSecFilerSearch } from "../../utils/useSecFilerSearch.js";
 import { filingPath, normalizeFilingsSettings } from "../../utils/filingsResearch.js";
 import styles from "./filings.module.css";
@@ -57,7 +57,7 @@ export default function CompanySearch({
           else if (exactNames.length === 1) open(exactNames[0].ticker, exactNames[0].isFund);
           else if (cik) open(cik);
           else if (/^\d+$/.test(ticker)) setError("Enter a positive SEC CIK with at most 10 digits.");
-          else if (filer) open(filer.cik, false, hasBrokerDealerAnnualReports(filer));
+          else if (filer) open(filer.cik, false, hasBrokerDealerFilings(filer));
           else if (filers.status === "loading") setError("");
           else setError("Select a matching SEC filer, or enter an exact ticker or CIK.");
         }}
@@ -91,10 +91,10 @@ export default function CompanySearch({
         <ul className={styles.suggestions}>
           {matches.map((m) => (
             <li key={`${m.type}:${m.ticker}`}>
-              <button type="button" onClick={() => open(m.ticker, m.isFund, !!m.brokerDealerAnnual)}>
+              <button type="button" onClick={() => open(m.ticker, m.isFund, !!m.brokerDealer)}>
                 <strong>{m.type === "filer" ? m.name : m.ticker}</strong>
-                <span>{m.type === "filer" ? `CIK ${m.cik}${m.brokerDealerAnnual ? " · X-17A-5 annual reports" : m.formTypes.some((form: string) => /^13F/.test(form)) ? " · 13F reports" : ""}` : m.name}</span>
-                <small>{m.brokerDealerAnnual ? "Broker-dealer" : m.type === "filer" ? "SEC filer" : m.isFund ? "Fund" : "Company"}</small>
+                <span>{m.type === "filer" ? `CIK ${m.cik}${m.brokerDealer ? " · X-17A-5 filings" : m.formTypes.some((form: string) => /^13F/.test(form)) ? " · 13F reports" : ""}` : m.name}</span>
+                <small>{m.brokerDealer ? "Broker-dealer" : m.type === "filer" ? "SEC filer" : m.isFund ? "Fund" : "Company"}</small>
               </button>
             </li>
           ))}

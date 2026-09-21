@@ -14,7 +14,7 @@ export const revalidate = 3600;
 type PageProps = { params: Promise<{ ticker: string }> };
 
 // Metadata and the visible source directory share one bounded submission-history
-// lookup. This path never fetches annual-report PDFs or starts text extraction.
+// lookup. This path never fetches filing PDFs or starts text extraction.
 const readFilerMetadata = cache(async (cik: string) => {
   try { return await loadBrokerDealerResearch(cik, { metadataOnly: true }); }
   catch {
@@ -42,15 +42,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     }
   }
   return buildPageMetadata({
-    title: brokerDealer ? `${name} — X-17A-5 Broker-Dealer Annual Reports` : `${name} (${cik ? "CIK " : ""}${ticker}) — SEC Filings`,
+    title: brokerDealer ? `${name} — X-17A-5 Broker-Dealer Filings` : `${name} (${cik ? "CIK " : ""}${ticker}) — SEC Filings`,
     description: brokerDealer
-      ? `Find ${name} public broker-dealer annual reports by SEC CIK ${cik}. Open X-17A-5 financial-statement PDFs, inspect available figures and follow original SEC sources.`
+      ? `Find ${name} public broker-dealer filings by SEC CIK ${cik}. Open X-17A-5 financial-statement PDFs, inspect available figures and follow original SEC sources.`
       : `Search ${name} SEC filings, inspect archive coverage, compare reports, and collect source-linked evidence in your filing review workspace.`,
     path: `/filings/${encodeURIComponent(ticker)}`,
   });
 }
 
-function annualReportPath(cik: string, filing: any) {
+function brokerReportPath(cik: string, filing: any) {
   const query = new URLSearchParams({ accession: filing.accession, view: "analytics" });
   if (filing.archive) query.set("archive", filing.archive);
   if (filing.filingDate) query.set("filed", filing.filingDate);
@@ -73,27 +73,27 @@ export default async function FilingsTickerPage({ params }: PageProps) {
           { "@type": "Organization", "@id": `${canonical}#registrant`, name: company.name,
             identifier: { "@type": "PropertyValue", propertyID: "SEC CIK", value: cik },
             sameAs: [`https://www.sec.gov/edgar/browse/?CIK=${cik}`] },
-          { "@type": "ItemList", "@id": `${canonical}#annual-reports`, name: `${company.name} public X-17A-5 annual reports`,
+          { "@type": "ItemList", "@id": `${canonical}#broker-dealer-filings`, name: `${company.name} public X-17A-5 filings`,
             url: canonical, numberOfItems: reports.length, itemListOrder: "https://schema.org/ItemListOrderDescending",
             itemListElement: reports.map((filing, index) => ({ "@type": "ListItem", position: index + 1,
               item: { "@type": "Report", name: `${company.name} ${filing.form} — filed ${filing.filingDate}`,
                 identifier: filing.accession, datePublished: filing.filingDate,
                 ...(filing.reportDate ? { temporalCoverage: filing.reportDate } : {}),
                 about: { "@id": `${canonical}#registrant` }, url: filing.indexUrl,
-                description: "Public broker-dealer annual-report filing. Financial-statement coverage depends on the documents disclosed." },
+                description: "Public X-17A-5 filing. Document type, audit evidence and statement coverage require review of the selected attachment." },
             })),
           },
         ],
       }).replace(/</g, "\\u003c") }} />
-      <section className={styles.sourceBrief} aria-label="Public broker-dealer annual report sources">
-        <div><span>Public X-17A-5 annual reports · CIK {cik}</span><Link href={`/analysis/${cik}`} prefetch={false}>Explore financial analysis ↗</Link></div>
-        <details><summary>Recent annual-report sources for {company.name}</summary>
-          <p>The SEC submission history identifies these public annual reports for this exact legal entity. Open a filing to select its financial-statement PDF and inspect supported financial figures. Confidential FOCUS submissions are not included.</p>
+      <section className={styles.sourceBrief} aria-label="Public broker-dealer filing sources">
+        <div><span>Public X-17A-5 filings · CIK {cik}</span><Link href={`/analysis/${cik}`} prefetch={false}>Explore financial analysis ↗</Link></div>
+        <details><summary>Recent X-17A-5 sources for {company.name}</summary>
+          <p>The SEC submission history identifies these public X-17A-5 filings for this exact legal entity. Open an attachment to establish whether it is a Part III annual report or a periodic FOCUS report and inspect supported figures. The form code alone does not establish document type or audit status. Confidential FOCUS submissions are not included.</p>
           <ul>{reports.map(filing => <li key={filing.accession}>
-            <Link href={annualReportPath(cik, filing)} prefetch={false}>{filing.form} · {filing.reportDate ? `Period ${filing.reportDate}` : "Period not supplied"} · Filed {filing.filingDate}</Link>
+            <Link href={brokerReportPath(cik, filing)} prefetch={false}>{filing.form} · {filing.reportDate ? `Period ${filing.reportDate}` : "Period not supplied"} · Filed {filing.filingDate}</Link>
             <a href={filing.indexUrl} target="_blank" rel="noopener noreferrer">SEC filing &amp; exhibits ↗</a>
           </li>)}</ul>
-          <p>Showing {reports.length} of {discovery.filings.length} annual filings identified in the checked submission history. {discovery.coverage?.complete === false ? "History coverage is incomplete; additional reports may be available in older archives." : "Load older archives in the filing workspace to extend the visible history."}</p>
+          <p>Showing {reports.length} of {discovery.filings.length} X-17A-5 filings identified in the checked submission history. {discovery.coverage?.complete === false ? "History coverage is incomplete; additional reports may be available in older archives." : "Load older archives in the filing workspace to extend the visible history."}</p>
         </details>
       </section>
     </>}

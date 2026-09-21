@@ -16,11 +16,12 @@ test('chart selections preserve exact annual-report identity and reject ambiguou
 });
 
 test('chart payload retains source evidence without serializing full PDFs, raw text or unrelated company filings', () => {
-  const analysis = { metrics: [{ id: 'totalAssets', value: 12, source: { page: 6, text: 'Total assets 12' } }] };
+  const analysis = { classification: { family: 'periodic-focus', audit: { status: 'not-established' } }, metrics: [{ id: 'totalAssets', value: 12, source: { page: 6, text: 'Total assets 12' } }] };
   const result = brokerDealerResearchPayload({ company: { cik: '0001690976', name: 'ASL', filings: new Array(100).fill('unrelated') },
     filing: { accession: '0001690976-26-000005' }, analysis, pages: ['large raw pages'], text: 'full document',
     selectedDocument: { name: 'report.pdf' }, extraction: { retryable: false }, coverage: { complete: true } });
   assert.equal(result.analysis, analysis);
+  assert.equal(result.classification, analysis.classification);
   assert.equal(result.company.cik, '0001690976');
   assert.equal('pages' in result, false); assert.equal('text' in result, false);
   assert.equal('filings' in result.company, false);

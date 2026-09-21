@@ -17,6 +17,50 @@ export const BROKER_PEER_COLUMNS = [
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 
+const REPORT_LABELS = { 'annual-report': 'Annual report', 'periodic-focus': 'Periodic FOCUS', unknown: 'Report type not established' };
+const AUDIT_LABELS = { 'auditor-report-present': 'Auditor report identified', 'explicitly-unaudited': 'Explicitly unaudited', 'not-established': 'Audit status not established' };
+const COMPONENT_LABELS = { 'financial-condition': 'Financial condition', income: 'Income statement', 'cash-flows': 'Cash flows', 'changes-in-equity': 'Changes in equity', notes: 'Financial statement notes', 'net-capital': 'Net capital', 'reserve-requirements': 'Reserve requirements', 'auditor-report': 'Auditor report', 'operational-schedules': 'Operational schedules' };
+
+/** Document evidence takes precedence over the filing's discovery metadata. */
+export function brokerReportIdentity(value) {
+  const classification = value?.classification || value?.analysis?.classification || value?.brokerDealerAnalysis?.classification || value?.filing?.classification || {};
+  const family = Object.hasOwn(REPORT_LABELS, classification.family) ? classification.family : 'unknown';
+  const parts = [...new Set((classification.parts || []).filter(part => ['Part III', 'Part II', 'Part IIA', 'Schedule I'].includes(part)))].sort();
+  const auditStatus = Object.hasOwn(AUDIT_LABELS, classification.audit?.status) ? classification.audit.status : 'not-established';
+  const frequency = ['annual', 'quarterly', 'monthly', 'other'].includes(classification.period?.frequency) ? classification.period.frequency : 'unknown';
+  return { classification, family, label: REPORT_LABELS[family], parts, auditStatus, auditLabel: AUDIT_LABELS[auditStatus],
+    auditScope: classification.audit?.scope === 'financial-condition' ? 'Financial condition only' : classification.audit?.scope === 'financial-statements' ? 'Financial statements' : null,
+    frequency, periodStart: classification.period?.start || null, periodEnd: classification.period?.end || null,
+    components: (classification.components || []).filter(component => Object.hasOwn(COMPONENT_LABELS, component)).map(component => ({ id: component, label: COMPONENT_LABELS[component] })) };
+}
+
+/** Unknown reports remain readable individually, never an implied comparison cohort. */
+export function brokerComparisonFit(baseline, candidate) {
+  const base = brokerReportIdentity(baseline), peer = brokerReportIdentity(candidate);
+  if (base.family === 'unknown' || peer.family === 'unknown') return { compatible: false, label: 'Report type not established' };
+  if (base.family !== peer.family) return { compatible: false, label: 'Different report types' };
+  if (base.frequency !== 'unknown' && peer.frequency !== 'unknown' && base.frequency !== peer.frequency) return { compatible: false, label: 'Different reporting frequency' };
+  if ([base.periodStart, base.periodEnd, peer.periodStart, peer.periodEnd].every(validDate)) {
+    const baseDays = (Date.parse(base.periodEnd) - Date.parse(base.periodStart)) / 86400000;
+    const peerDays = (Date.parse(peer.periodEnd) - Date.parse(peer.periodStart)) / 86400000;
+    if (baseDays < 0 || peerDays < 0 || Math.abs(baseDays - peerDays) > 7) return { compatible: false, label: 'Different reporting durations' };
+  }
+  if (base.family === 'periodic-focus') {
+    if (!base.parts.length || !peer.parts.length || base.parts.join('|') !== peer.parts.join('|')) return { compatible: false, label: 'Different or unconfirmed FOCUS parts' };
+    if (['unknown', 'other'].includes(base.frequency) || base.frequency !== peer.frequency) return { compatible: false, label: 'Different or unconfirmed reporting frequency' };
+  }
+  return { compatible: true, label: 'Compatible report type' };
+}
+
+/** A Part II, Part IIA and Schedule I on one date are distinct observations. */
+export function brokerReportPeriodKey(value) {
+  const identity = brokerReportIdentity(value), filing = value?.filing || value || {};
+  const accession = filing.accession || filing.accessionNumber || value?.accession || '';
+  const end = identity.periodEnd || filing.reportDate || value?.periodEnd;
+  if (identity.family === 'unknown' || !end || identity.family === 'periodic-focus' && (!identity.parts.length || !identity.periodStart || ['unknown', 'other'].includes(identity.frequency))) return `accession:${accession}`;
+  return [identity.family, identity.parts.join('+'), identity.frequency, identity.periodStart || '', end].join(':');
+}
+
 /** Bind every displayed amount to the exact SEC legal entity and accession. */
 export function brokerSourceUrl(source, cik, accession = '') {
   if (!filerCik(cik) || !source?.url) return null;
@@ -33,12 +77,14 @@ export function brokerSourceUrl(source, cik, accession = '') {
 
 export function validateBrokerPeer(value, requestedCik) {
   const cik = filerCik(requestedCik);
-  if (!cik || value?.schemaVersion !== 'edgar.broker-dealer-analysis.v1' || value.cik !== cik
-    || value.basis !== 'annual' || !['ready', 'partial'].includes(value.status)
-    || typeof value.name !== 'string' || !value.name.trim()
-    || !/^\d{10}-\d{2}-\d{6}$/.test(value.accession || value.filing?.accession || '')
-    || !validDate(value.periodEnd) || !Array.isArray(value.metrics) || !Array.isArray(value.ratios)) {
-    throw new Error('The annual report does not match this broker-dealer. Choose an exact SEC registrant with public X-17A-5 statements.');
+  const analysis = value?.analysis;
+  if (!cik || value?.status !== 'available' || filerCik(value.company?.cik) !== cik || filerCik(analysis?.cik) !== cik
+    || !['ready', 'partial'].includes(analysis?.status)
+    || typeof value.company?.name !== 'string' || !value.company.name.trim()
+    || !/^\d{10}-\d{2}-\d{6}$/.test(value.filing?.accession || '')
+    || analysis.accession !== value.filing.accession
+    || !validDate(analysis.periodEnd) || !Array.isArray(analysis.metrics) || !Array.isArray(analysis.ratios)) {
+    throw new Error('The report does not match this broker-dealer. Choose an exact SEC registrant with public X-17A-5 statements.');
   }
   return value;
 }
@@ -60,7 +106,7 @@ export function brokerPeerRow(research, expectedCik) {
       || column.kind === 'metric' && amount.unit !== 'USD') continue;
     measures[column.id] = { ...amount, sourceUrl: brokerSourceUrl(sources[0], cik, accession) };
   }
-  return { cik, name, periodEnd, accession, status: analysis.status, measures, url: `/analysis/${cik}` };
+  return { cik, name, periodEnd, accession, status: analysis.status, measures, classification: brokerReportIdentity(research).classification, url: `/analysis/${cik}?accession=${accession}` };
 }
 
 export function compareBrokerPeriods(baseline, peer) {
@@ -106,7 +152,7 @@ export function createBrokerPeerClient({ fetchImpl = (...args) => fetch(...args)
     signal?.throwIfAborted();
     const cached = cache.get(cik);
     if (cached?.expiresAt > now()) return cached.data;
-    const response = await fetchImpl(`/api/v1/analysis/${cik}?basis=annual`, { signal, headers: { Accept: 'application/json' } });
+    const response = await fetchImpl(`/api/broker-dealer/report?cik=${cik}`, { signal, headers: { Accept: 'application/json' } });
     const body = await response.json();
     signal?.throwIfAborted();
     if (!response.ok) throw new Error(body.reason || body.error || 'This broker-dealer report is temporarily unavailable.');

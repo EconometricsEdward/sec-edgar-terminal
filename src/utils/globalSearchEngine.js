@@ -3,6 +3,7 @@ import { MAX_COMPARE_COMPANIES } from './compareLimits.js';
 import { CFTC_LAUNCH_CATALOG } from './cftc.js';
 import { DISCLOSURE_TOPIC_LABELS, disclosureSearchPath } from './searchRouter.js';
 import { normalizeBrokerDealerForm } from './brokerDealerForms.js';
+import { brokerDealerSearchForm, BROKER_DEALER_SEARCH_PATTERN } from './brokerDealerSearch.js';
 
 // Navigation is deterministic. A suggested spelling or an ambiguous legal name
 // can never silently select a different issuer. Directory work is shared across
@@ -97,7 +98,7 @@ function initialPlan() { return { items: [], directPath: null, lookupQuery: '', 
 
 function annualFilerIntent(raw) {
   const formMatch = raw.match(/\b(?:form\s+)?x[\s-]*17[\s-]*a[\s-]*5(?:\s*\/\s*a)?\b/i);
-  const brokerReport = raw.match(/\bbroker[ -]?dealer\s+annual\s+reports?\b/i);
+  const brokerReport = raw.match(BROKER_DEALER_SEARCH_PATTERN);
   const annualReport = raw.match(/\bannual\s+reports?\b/i);
   const match = formMatch || brokerReport || annualReport;
   if (!match) return null;
@@ -121,8 +122,8 @@ const TOOL_ALIASES = [
 ];
 function toolMatch(raw, cftcEnabled) {
   const q = normalize(raw).replace(/^(?:open|go to|take me to|show me|find) (?:the )?/, '');
-  const annualForm = normalizeBrokerDealerForm(raw.replace(/^(?:open|go to|take me to|show me|find)\s+(?:the\s+)?/i, ''));
-  if (annualForm) return item(`/filings?form=${annualForm}`, 'Broker-dealer annual reports · X-17A-5', 'Find a broker-dealer by its legal name or SEC CIK', 'filings');
+  const brokerForm = brokerDealerSearchForm(raw.replace(/^(?:open|go to|take me to|show me|find)\s+(?:the\s+)?/i, ''));
+  if (brokerForm) return item(`/filings?form=${brokerForm}`, 'Broker-dealer filings · X-17A-5', 'Find public filings by legal name or CIK; confidential FOCUS reports are not included', 'filings');
   if (/^(?:13f|13f holdings|13f managers|managers|institutional managers|hedge funds?)$/.test(q)) return item('/fund?view=13f', 'Institutional managers · 13F', 'Find investment managers and their disclosed holdings', 'fund');
   if (/^(?:compare funds|fund comparison|etf comparison|compare etfs)$/.test(q)) return item('/fund?view=compare', 'Compare fund portfolios', 'Compare up to four registered funds', 'compare');
   if (/^(?:compare managers|manager comparison|compare hedge funds|13f comparison)$/.test(q)) return item('/fund?view=13f&managerView=compare', 'Compare institutional managers', 'Shared positions and reported portfolio exposures', 'compare');
@@ -333,7 +334,7 @@ export function buildGlobalSearch(query, tickerMap, { cftcEnabled = true } = {})
     if (cik) {
       const filter = annualIntent.filingIntent === 'annual' ? 'family=annual' : `form=${annualIntent.filingIntent}`;
       const target = `/filings/${cik}?${filter}`;
-      plan.items = [item(target, `Annual reports · CIK ${cik}`, 'Open the requested public SEC annual reports', 'filings')];
+      plan.items = [item(target, `${annualIntent.filingIntent === 'annual' ? 'Annual reports' : 'Broker-dealer filings'} · CIK ${cik}`, 'Open the requested public SEC filings; document type is checked from the attachment', 'filings')];
       plan.directPath = target;
     } else plan.message = 'Enter a positive SEC CIK with at most 10 digits.';
     return finish(plan);
@@ -357,7 +358,7 @@ export function buildGlobalSearch(query, tickerMap, { cftcEnabled = true } = {})
       plan.lookupQuery = annualIntent.name;
       plan.filingIntent = annualIntent.filingIntent;
       plan.items = [disclosureItem(raw)];
-      plan.message = 'Searching SEC filer names for annual reports…';
+      plan.message = 'Searching SEC filer names for public reports…';
       return finish(plan);
     }
     // Full topic phrases are independent; short symbol/topic overlaps (AI,

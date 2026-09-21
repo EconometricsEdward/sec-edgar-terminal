@@ -1,9 +1,11 @@
+import { classifyBrokerDealerDocument } from './brokerDealerClassification.js';
+
 /**
  * Conservative, deterministic extraction of public X-17A-5 financial statements.
  * This is a source-reading aid, not an audit or a reconstruction of confidential
  * FOCUS schedules. Values need an identifiable row, currency basis and period.
  */
-export const BROKER_DEALER_ANALYTICS_VERSION = 2;
+export const BROKER_DEALER_ANALYTICS_VERSION = 3;
 
 export const BROKER_DEALER_METRICS = {
   totalAssets: 'Total assets',
@@ -51,7 +53,7 @@ export const BROKER_DEALER_METRICS = {
   collateralReceivedReusable: 'Collateral received eligible for sale or repledging',
   forwardReverseRepos: 'Forward-starting reverse repo commitments',
   forwardRepos: 'Forward-starting repo commitments',
-  dividendsPaid: 'Dividends paid during the year',
+  dividendsPaid: 'Dividends paid during the disclosed period',
 };
 
 const ALIASES = [
@@ -250,22 +252,31 @@ function pageLines(page) {
 
 function periodContext(header, reportDate) {
   let dates = datesIn(header);
-  // Common comparative heading: "December 31," on one line, then "2025 2024".
   if (!dates.length) dates = datesIn(compact(header));
   if (!dates.length) return { reason: 'The statement period is not explicit in its heading.' };
   const target = validDate(reportDate) ? reportDate : dates.slice().sort().at(-1);
   if (!dates.includes(target)) return { reason: `The statement heading does not establish the selected reporting date ${target}.` };
-  const durationMatch = compact(header).match(/\b(?:(three|six|nine|twelve|3|6|9|12) months?|years?) ended\b/i);
-  const durationMonths = durationMatch ? ({ three: 3, six: 6, nine: 9, twelve: 12, 3: 3, 6: 6, 9: 9, 12: 12 })[durationMatch[1]?.toLowerCase()] || 12 : null;
+  const heading = compact(header);
+  const durationMatch = heading.match(/\b(?:(one|three|six|nine|twelve|1|3|6|9|12) months?|months?|quarters?|years?) ended\b/i);
+  let durationMonths = durationMatch ? ({ one: 1, three: 3, six: 6, nine: 9, twelve: 12, 1: 1, 3: 3, 6: 6, 9: 9, 12: 12 })[durationMatch[1]?.toLowerCase()] || (/^months?/i.test(durationMatch[0]) ? 1 : /^quarters?/i.test(durationMatch[0]) ? 3 : 12) : null;
   let periodStart = null;
-  if (durationMonths) {
+  // A beginning/ending range has one amount column; comparative end dates have
+  // one column each. Never count the range's beginning as a comparative year.
+  if (dates.length === 2 && /\b(?:period|from|beginning|commencing)\b.*\b(?:to|through|ending|ended)\b/i.test(heading)
+    && !/\b(?:years|months|quarters) ended\b/i.test(heading) && dates[0] < dates[1] && dates[1] === target) {
+    periodStart = dates[0]; dates = [target];
+    const start = new Date(`${periodStart}T00:00:00Z`), afterEnd = new Date(`${target}T00:00:00Z`);
+    afterEnd.setUTCDate(afterEnd.getUTCDate() + 1);
+    durationMonths = start.getUTCDate() === afterEnd.getUTCDate()
+      ? (afterEnd.getUTCFullYear() - start.getUTCFullYear()) * 12 + afterEnd.getUTCMonth() - start.getUTCMonth() : null;
+    if (!(durationMonths > 0)) durationMonths = null;
+  } else if (durationMonths) {
     const start = new Date(`${target}T00:00:00Z`);
-    // Move to the first day of the following month before subtracting whole months.
     start.setUTCDate(start.getUTCDate() + 1);
     start.setUTCMonth(start.getUTCMonth() - durationMonths);
     periodStart = start.toISOString().slice(0, 10);
   }
-  return { dates, index: dates.indexOf(target), target, periodStart, durationMonths, evidence: compact(header).slice(0, 360) };
+  return { dates, index: dates.indexOf(target), target, periodStart, durationMonths, evidence: heading.slice(0, 360) };
 }
 
 function metric({ id, value, page, text, url, period, units, method = 'statement-row', label, confidence = 'high' }) {
@@ -302,6 +313,9 @@ function statementCandidates(lines, pageNumber, metadata, rejected, statements) 
     const header = [...lines.slice(Math.max(0, start - 5), start), ...block.slice(0, firstRow < 0 ? Math.min(block.length, 10) : firstRow)].join('\n');
     const period = periodContext(header, metadata.reportDate);
     const units = unitContext(`${header}\n${block.join('\n')}`);
+    const periodicSchedule = metadata.classification?.family === 'periodic-focus' || metadata.classification?.parts?.some(part => ['Part II', 'Part IIA', 'Schedule I'].includes(part));
+    const unresolvedFocusColumns = periodicSchedule
+      && /\ballowable\b[\s\S]*\bnon[ -]?allowable\b|\b(?:field|item) (?:code|number)s?\b|\bcolumn[s]?\s*\(?[ABC123]\)?/i.test(block.join(' '));
     const rows = [];
     for (let i = 1; i < block.length; i++) {
       let row = tableRow(block[i]);
@@ -317,7 +331,7 @@ function statementCandidates(lines, pageNumber, metadata, rejected, statements) 
     statements.add(kind);
     for (const row of rows) {
       if (CAPITAL_IDS.has(row.id) !== (kind === 'net-capital') || INCOME_IDS.has(row.id) !== (kind === 'income') || CASH_FLOW_IDS.has(row.id) !== (kind === 'cash-flows')) continue;
-      const reason = period.reason || units.reason || (row.amounts.length !== period.dates?.length ? 'Numeric columns cannot be mapped unambiguously to the statement dates.' : null);
+      const reason = (periodicSchedule && !/\$\s*[(-]?\d/.test(row.text) ? 'Bare numeric entries in a FOCUS regulatory schedule may be field codes; an explicit currency amount is required for this statement mapping.' : null) || (unresolvedFocusColumns ? 'FOCUS regulatory columns or field codes require a dedicated schedule mapping; amounts are not treated as a single financial-statement column.' : null) || period.reason || units.reason || (row.amounts.length !== period.dates?.length ? 'Numeric columns cannot be mapped unambiguously to the statement dates.' : null);
       if (reason) { rejected.push({ id: row.id, page: pageNumber, reason }); continue; }
       const value = row.amounts[period.index];
       if (value === null) { rejected.push({ id: row.id, page: pageNumber, reason: 'A dash is not interpreted as a reported zero.' }); continue; }
@@ -452,7 +466,7 @@ function makeRatio(id, label, formula, inputs, calculate, format = 'multiple') {
   if (flows.length > 1 && !(flows.every(input => input.periodStart) && new Set(flows.map(input => input.periodStart)).size === 1) && new Set(flows.map(input => `${input.source.page}:${input.extraction.periodEvidence}`)).size !== 1) return null;
   const value = calculate(...inputs.map(input => input.value));
   if (!finite(value)) return null;
-  return { id, label, formula, value, unit: 'ratio', format, basis: 'calculated', reported: false, periodEnd: inputs[0].periodEnd, confidence: inputs.every(input => input.confidence === 'high') ? 'high' : 'medium', metricIds: inputs.map(input => input.id), source: inputs[0].source, sources: inputs.flatMap(input => input.sources || [input.source]) };
+  return { id, label, formula, value, ...(flows.length && flows[0].periodStart ? { periodStart: flows[0].periodStart, durationMonths: flows[0].durationMonths } : {}), periodType: flows.length ? 'duration' : 'instant', unit: 'ratio', format, basis: 'calculated', reported: false, periodEnd: inputs[0].periodEnd, confidence: inputs.every(input => input.confidence === 'high') ? 'high' : 'medium', metricIds: inputs.map(input => input.id), source: inputs[0].source, sources: inputs.flatMap(input => input.sources || [input.source]) };
 }
 
 function buildRatios(metrics) {
@@ -512,11 +526,13 @@ function conclusions(metrics, ratios, rejected) {
     validations.push({ id: 'net-capital-tie-out', status: Math.abs(difference) <= tolerance ? 'consistent' : 'mismatch', difference, tolerance, metricIds: ['netCapital', 'minimumNetCapital', 'excessNetCapital'], description: 'Arithmetic comparison of reported net capital, required minimum and excess.' });
     if (Math.abs(difference) > tolerance) add('net-capital-mismatch', 'Net capital amounts do not reconcile', 'Reported net capital less the disclosed minimum does not match reported excess net capital within presentation rounding. No amount has been replaced or corrected.', ['netCapital', 'minimumNetCapital', 'excessNetCapital'], 'warning');
   }
-  if (rejected.some(item => /Conflicting/.test(item.reason))) findings.push({ id: 'conflicting-extraction', severity: 'warning', title: 'Conflicting source amounts', text: 'One or more metrics were withheld because the source supplied conflicting amounts or periods. Review the cited annual report.', metricIds: [...new Set(rejected.filter(item => /Conflicting/.test(item.reason)).map(item => item.id))] });
+  if (rejected.some(item => /Conflicting/.test(item.reason))) findings.push({ id: 'conflicting-extraction', severity: 'warning', title: 'Conflicting source amounts', text: 'One or more metrics were withheld because the source supplied conflicting amounts or periods. Review the cited document.', metricIds: [...new Set(rejected.filter(item => /Conflicting/.test(item.reason)).map(item => item.id))] });
   return { findings, validations };
 }
 
 export function analyzeBrokerDealerReport({ pages = [], ...metadata } = {}) {
+  const classification = metadata.classification || classifyBrokerDealerDocument({ pages, filing: metadata, selectedDocument: metadata.selectedDocument, documentUrl: metadata.documentUrl });
+  metadata.classification = classification;
   const rejected = [], candidates = [], statements = new Set();
   let pagesWithText = 0;
   for (let index = 0; index < pages.length; index++) {
@@ -543,16 +559,21 @@ export function analyzeBrokerDealerReport({ pages = [], ...metadata } = {}) {
     const index = findings.findIndex(item => item.id === 'repo-funding');
     if (index >= 0) findings.splice(index, 1);
   }
+  for (const item of [...metrics, ...ratios]) {
+    item.documentFamily = classification.family;
+    item.reportParts = classification.parts;
+    item.periodType ||= INCOME_IDS.has(item.id) || CASH_FLOW_IDS.has(item.id) ? 'duration' : 'instant';
+  }
   const availableMetrics = metrics.map(item => item.id);
   const missingMetrics = Object.keys(BROKER_DEALER_METRICS).filter(id => id !== 'adjustedTotalLiabilities' && !availableMetrics.includes(id));
-  const limitations = ['Automated extraction is a source-reading aid, not an audit or verification of the financial statements. Each value links to its reported page.', 'Only the publicly available attachment is analyzed. Public annual reports may omit the income statement, regulatory capital schedules or other nonpublic material.'];
+  const limitations = ['Automated extraction is a source-reading aid, not an audit or verification of the financial statements. Each value links to its reported page.', 'Only the selected publicly available attachment is analyzed. Other statements, regulatory schedules or confidential material may not be included.'];
   if (!pagesWithText) limitations.push('No readable text was found. This report may be scanned; OCR or manual review is required before financial values can be extracted.');
   else if (!metrics.length) limitations.push('No financial amounts could be mapped reliably. Financial tables may be image-only, have damaged text encoding or use an unsupported layout; manual source review or OCR is required.');
   if (pages.some(page => page.method === 'ocr')) limitations.push('Some pages use optical character recognition (OCR). Values from readable OCR rows are marked for review; low-confidence numeric rows are withheld, and OCR is not verification of the original image.');
   if (!metrics.some(item => INCOME_IDS.has(item.id))) limitations.push('No unambiguous income-statement metrics were extracted. Profitability is unavailable and has not been estimated.');
   if (!metrics.some(item => CAPITAL_IDS.has(item.id))) limitations.push('No unambiguous period-end regulatory capital amounts were extracted. Accounting equity is not substituted for net capital.');
   if (!metrics.some(item => CASH_FLOW_IDS.has(item.id))) limitations.push('No unambiguous cash-flow statement totals were extracted. Funding flows are not reconstructed from balance-sheet changes.');
-  if (/\/A$/i.test(metadata.form || '')) limitations.push('This is an amended annual report. An amendment may replace only part of an earlier filing; this analysis uses the selected attachment alone and does not merge missing amounts from the original.');
+  if (/\/A$/i.test(metadata.form || '')) limitations.push('This is an amended X-17A-5 filing. An amendment may replace only part of an earlier filing; this analysis uses the selected attachment alone and does not merge missing amounts from the original.');
   if (rejected.length) limitations.push('Some candidate amounts were withheld because their label, period, units or comparative columns could not be established unambiguously.');
   limitations.push('Ratios use reported balance-sheet amounts. No collateral netting, asset liquidation values or repo-adjusted leverage is inferred.');
   const coreReady = ['totalAssets', 'totalLiabilities', 'totalEquity'].every(id => availableMetrics.includes(id));
@@ -562,9 +583,11 @@ export function analyzeBrokerDealerReport({ pages = [], ...metadata } = {}) {
   return {
     version: BROKER_DEALER_ANALYTICS_VERSION,
     status: !metrics.length ? 'unavailable' : coreReady && !hasMismatch && !partialExtraction ? 'ready' : 'partial',
+    classification, basis: ({ annual: 'annual', quarterly: 'quarter', monthly: 'month' })[classification.period.frequency] || classification.period.frequency,
+    periodStart: classification.period.start || null,
     periodEnd: validDate(metadata.reportDate) ? metadata.reportDate : metrics[0]?.periodEnd || null,
     documentUrl: metadata.documentUrl || '', name: metadata.name || '', cik: metadata.cik || '', form: metadata.form || 'X-17A-5', accession: metadata.accession || '', filingDate: metadata.filingDate || null,
-    metrics, ratios, findings, limitations, validations,
+    metrics, ratios, findings, limitations: [...new Set([...limitations, ...classification.limitations])], validations,
     coverage: { disclosedStatements: [...statements], availableMetrics, missingMetrics, extractedMetricCount: metrics.length, totalMetricCount: Object.keys(BROKER_DEALER_METRICS).length, pagesWithText, totalPages: pages.length, rejected: rejected.slice(0, 50), scope: 'public-attachment-only' },
   };
 }

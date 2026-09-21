@@ -135,3 +135,32 @@ test('cached extraction from another CIK is discarded before displaying financia
   assert.ok(calls.some(call => call.url.endsWith('/public_financials.pdf')));
   assert.notEqual(result.extractedAt, '2025-01-01T00:00:00Z');
 });
+
+
+test('each accession attachment receives independent classification and cover accountant does not establish an audit', async () => {
+  const record = filing(120);
+  const annualText = 'PART III\nAnnual report\n' + text;
+  const periodicText = 'PART IIA\nFOCUS REPORT\nUNAUDITED\n' + text;
+  const { load } = setup(record, {
+    fetchSec: async url => new Response(url.endsWith('-index.html') ? `<table>${row('primary_doc.xml', 'X-17A-5', 'Facing page')}${row('public_financials.pdf', 'FULL', 'Part III')}${row('periodic.pdf', 'X-17A-5', 'Part IIA')}</table>` : url.endsWith('.xml') ? cover : `%PDF-1.7\n${url.endsWith('periodic.pdf') ? periodicText : annualText}`),
+    extractPdf: async bytes => ({ pages: [{ pageNumber: 1, text: new TextDecoder().decode(bytes).split('\n').slice(1).join('\n') }], extraction: { status: 'text', limitations: [] } }),
+  });
+  const annual = await load(cik, record);
+  assert.equal(annual.classification.family, 'annual-report');
+  assert.equal(annual.classification.audit.status, 'not-established');
+  assert.equal(annual.documents.find(doc => doc.name === 'periodic.pdf').classification.family, 'periodic-focus');
+  const periodic = await load(cik, record, { document: 'periodic.pdf' });
+  assert.equal(periodic.classification.family, 'periodic-focus');
+  assert.equal(periodic.selectedDocument.classification.family, 'periodic-focus');
+  assert.equal(periodic.classification.audit.status, 'explicitly-unaudited');
+});
+
+
+test('a requested family prioritizes attachment-local part evidence while exact document selection remains authoritative', () => {
+  const documents = [
+    { name: 'a-periodic.pdf', format: 'pdf', type: 'FULL', description: 'Part II' },
+    { name: 'z-annual.pdf', format: 'pdf', type: 'FULL', description: 'Part III' },
+  ];
+  assert.equal(selectBrokerDealerDocument(documents, '', { family: 'annual-report' }).name, 'z-annual.pdf');
+  assert.equal(selectBrokerDealerDocument(documents, 'a-periodic.pdf', { family: 'annual-report' }).name, 'a-periodic.pdf');
+});
