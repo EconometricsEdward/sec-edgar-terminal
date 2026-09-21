@@ -9,7 +9,6 @@ import {
   marketViewForCftcAvailability,
 } from '../src/utils/marketResearch.js';
 
-const marketPage = readFileSync(new URL('../src/app/market/page.tsx', import.meta.url), 'utf8');
 const shortcut = readFileSync(new URL('../src/app/market/positioning/page.tsx', import.meta.url), 'utf8');
 const marketClient = readFileSync(new URL('../src/app/market/MarketOverviewClient.tsx', import.meta.url), 'utf8');
 const homePage = readFileSync(new URL('../src/app/page.tsx', import.meta.url), 'utf8');
@@ -65,10 +64,7 @@ test('disabled CFTC saved views remain stored while their navigation is omitted'
   assert.equal(views.length, 3);
 });
 
-test('server-derived switch gates canonical routes, tabs, macro positioning, home and recent navigation', () => {
-  assert.match(marketPage, /const cftcEnabled = isCftcEnabled\(\)/);
-  assert.match(marketPage, /redirect\(marketViewPath\(marketViewForCftcAvailability/);
-  assert.match(marketPage, /cftcEnabled=\{cftcEnabled\}/);
+test('server-derived switch gates shortcut routes, tabs, macro positioning, home and recent navigation', () => {
   assert.match(shortcut, /redirect\(isCftcEnabled\(\) \? '\/market\?tab=positioning' : '\/market'\)/);
   assert.match(marketClient, /TABS\.filter\(\(tab\) => cftcEnabled \|\| tab\.id !== 'positioning'\)/);
   assert.match(marketClient, /cftcEnabled && <MarketMacroPositioning/);

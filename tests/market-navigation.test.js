@@ -82,17 +82,20 @@ test('company page validation rejects cross-query responses, duplicates, oversiz
   assert.equal(validate(result, { ...expected, page: 9 }), true, 'a shrinking snapshot may clamp to its last page');
 });
 
-test('Market page is a static shell with no visitor-triggered SEC snapshot read', () => {
+for (const cftcEnabled of [true, false]) test(`Market static shell passes the server CFTC switch (${cftcEnabled}) without a visitor-triggered SEC snapshot read`, () => {
   const overrides = {
     './MarketOverviewClient': { default: () => null },
     '../../utils/siteMetadata': { buildPageMetadata: value => value },
-    '../../utils/cftcFeature.js': { isCftcEnabled: () => true },
+    '../../utils/cftcFeature.js': { isCftcEnabled: () => cftcEnabled },
     '../../utils/marketOverviewServer.js': { readMarketOverview: () => { throw new Error('Unexpected full-universe read'); } },
   };
   const Page = loadComponent('../src/app/market/page.tsx', overrides);
   const dynamic = loadComponent('../src/app/market/page.tsx', overrides, 'dynamic');
   assert.equal(dynamic, 'force-static');
   const rendered = Page();
-  assert.equal(rendered.props.cftcEnabled, true);
+  assert.equal(rendered.props.cftcEnabled, cftcEnabled);
   assert.equal(rendered.props.initialData, undefined);
+  const metadata = loadComponent('../src/app/market/page.tsx', overrides, 'metadata');
+  assert.equal(metadata.title.includes('CFTC'), cftcEnabled);
+  assert.equal(metadata.description.includes('CFTC'), cftcEnabled);
 });

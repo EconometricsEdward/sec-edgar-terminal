@@ -43,9 +43,15 @@ npm run build
 npm run start
 npm run lint
 npm run typecheck
+npm run check
 npm test
 npm run test:cftc-live
 ```
+
+Run `npm run check` before pushing a release. It runs the full regression suite,
+database recovery rehearsal, lint, typecheck, and production build. GitHub's
+Quality Gates runs those same checks; a failed test does not hide the results
+of the remaining checks. Superseded runs on the same branch are cancelled.
 
 ## Operations
 

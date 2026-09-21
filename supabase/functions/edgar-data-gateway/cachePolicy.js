@@ -132,8 +132,10 @@ export function disposableCachePolicy(type, originalId) {
   else if (type === 'compare-research' && re(`COMPARE-V2:(?:CONTEXT-V3|XBRL-V1):${TICKER}:(?:ANNUAL|QUARTER|TTM):(?:${DATE})?`).test(id)) family = 'research';
   else if (type === 'portfolio-company-v3-evidence-continuity' && re(`PORTFOLIO-COMPANY-V3-EVIDENCE-CONTINUITY:COMPARE-V2:CONTEXT-V3:ANALYSIS-V1\\.4:CONTEXT-V3:${CIK}:${BASIS}`).test(id)) family = 'research';
   else if (type === 'holders-v3' && ticker.test(id)) family = 'document';
-  else if (type === 'risk-workspace-v4' && ticker.test(id)) family = 'research';
-  else if (type === 'risk-workspace-v4-scan' && accession.test(id)) family = 'document';
+  // Keep the legacy version readable until expiry while admitting the current
+  // Risk payload and filing scans under the same bounded retention policies.
+  else if (['risk-workspace-v4', 'risk-workspace-v9'].includes(type) && ticker.test(id)) family = 'research';
+  else if (['risk-workspace-v4-scan', 'risk-workspace-v9-scan'].includes(type) && accession.test(id)) family = 'document';
   else if (['filings-reader-text-v2', 'disclosure-text-v1'].includes(type) && filingDocument(type, id)) family = 'document';
   else if (type === 'disclosure-history-v1' && re(`${CIK}:${DATE}`).test(id)) family = 'research';
   else if (type === 'disclosure-scan-v1' && /^[A-F0-9]{64}$/.test(id)) family = 'research';

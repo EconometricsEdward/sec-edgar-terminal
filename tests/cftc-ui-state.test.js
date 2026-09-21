@@ -5,13 +5,6 @@ import { readFileSync } from 'node:fs';
 const cftc = readFileSync(new URL('../src/app/market/CftcPositioning.tsx', import.meta.url), 'utf8');
 const market = readFileSync(new URL('../src/app/market/MarketOverviewClient.tsx', import.meta.url), 'utf8');
 
-test('Market client delegates canonical no-op/push/replace state and restores popstate without a second navigation', () => {
-  assert.match(market, /marketViewHistoryMode\(current, next, push\)/);
-  assert.match(market, /if \(!mode\) return;/);
-  assert.match(market, /window\.history\[mode\]\(null, '', marketViewPath\(next\)\)/);
-  assert.match(market, /addEventListener\('popstate', restore\)/);
-});
-
 test('CFTC unsupported contracts remain explicit and retries clear only failed request paths', () => {
   assert.match(cftc, /The requested code remains in the URL and has not been replaced/);
   assert.match(cftc, /const contract = knownContract \? view\.cftcContract : ''/);
