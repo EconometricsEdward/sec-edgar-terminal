@@ -11,7 +11,8 @@ import { publicAnalysisSelection, readPublicAnalysis } from "../../../utils/anal
 import { readAnalysisSettings } from "../../../utils/analysisNotebook.js";
 import { getActiveSecCoverageCompany, loadSecCoverageRegistry } from "../../../utils/secCoverageRegistry.js";
 import { loadBrokerDealerResearch } from "../../../utils/brokerDealerResearch.js";
-import BrokerDealerAnalytics from "../../../components/broker-dealer/BrokerDealerAnalytics";
+import BrokerDealerWorkspace from "../../../components/broker-dealer/BrokerDealerWorkspace";
+import { brokerDealerResearchPayload } from "../../../utils/brokerDealerPayload.js";
 import CompanySearch from "../CompanySearch";
 import base from "../analysis.module.css";
 
@@ -64,7 +65,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     const available = discovery?.status === "available";
     return { ...buildPageMetadata({
       title: `${discovery?.company?.name || `CIK ${cik}`} — Broker-Dealer Annual Report Analysis`,
-      description: "Analyze public SEC X-17A-5 broker-dealer annual financial statements, balance sheets and disclosed net capital with page-level evidence and original filings.",
+      description: "Explore public SEC X-17A-5 broker-dealer statements, five-period financial trends, capital and funding ratios, peer comparisons and dated CFTC market context with original sources.",
       path: `/analysis/${cik}`,
     }), ...(!available || custom || selected.basis !== "annual" ? { robots: { index: false, follow: true } } : {}) };
   }
@@ -96,13 +97,6 @@ export default async function AnalysisTickerPage(props: Props) {
     const company = discovery?.company;
     const filing = research?.filing || discovery?.filing;
     const canonical = `https://secedgarterminal.com/analysis/${cik}`;
-    const filings: any[] = discovery?.filings || company?.filings || [];
-    const filingHref = (row: any) => {
-      const query = new URLSearchParams({ accession: row.accessionNumber || row.accession });
-      if (row.archive || row.archiveFile) query.set("archive", row.archive || row.archiveFile);
-      if (row.filingDate) query.set("filed", row.filingDate);
-      return `/analysis/${cik}?${query}`;
-    };
     return <div className={base.page} id="analysis-workspace">
       {company && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org", "@graph": [{ "@type": "Organization", "@id": `${canonical}#registrant`, name: company.name,
@@ -123,17 +117,11 @@ export default async function AnalysisTickerPage(props: Props) {
       {unsupported ? <p className={base.notice}>Public X-17A-5 analysis uses annual reports. Quarterly, trailing-twelve-month and historical-cutoff figures are not inferred from these statements. <a href={`/analysis/${cik}`}>Open annual-report analysis</a>.</p>
         : discovery?.status !== "available" ? <p className={base.notice}>{discovery?.error || "No public X-17A-5 annual report was found in the SEC submission history checked for this exact registrant. Other company filings may still be available."} <a href={`/filings/${cik}`}>Inspect SEC filings</a>.</p>
           : <>
-            {filing && <p className={base.periodBanner}><span><strong>{filing.form} · {filing.reportDate ? `Period ending ${filing.reportDate}` : "Annual report"}</strong><span>Filed {filing.filingDate} · {filing.accessionNumber || filing.accession}</span></span>
-              {research?.selectedDocument?.url && <a href={research.selectedDocument.url} target="_blank" rel="noreferrer">Open financial statements ↗</a>}</p>}
             {!research && <p className={base.notice}>The annual report is available, but its document could not be analyzed at this time. Retry or open the original SEC filing.</p>}
-            <BrokerDealerAnalytics analysis={research?.analysis} filing={filing} />
-            {research?.documents?.length > 1 && <details><summary>Documents in this annual report</summary><ul>{research.documents.map((document: any) => {
-              const query = new URLSearchParams({ accession: filing.accessionNumber || filing.accession, document: document.name });
-              if (filing.archive) query.set("archive", filing.archive);
-              if (filing.filingDate) query.set("filed", filing.filingDate);
-              return <li key={document.name}><a href={`/analysis/${cik}?${query}`}>{document.description || document.name}</a> <a href={document.url} target="_blank" rel="noreferrer">Original SEC document ↗</a></li>;
-            })}</ul></details>}
-            {filings.length > 1 && <details><summary>Choose another public annual report</summary><ul>{filings.slice(0, 30).map((row: any) => <li key={row.accessionNumber || row.accession}><a href={filingHref(row)}>{row.form} · {row.reportDate || "Period not supplied"} · Filed {row.filingDate}</a></li>)}</ul></details>}
+            <BrokerDealerWorkspace key={`${cik}:${choice.brokerSelectors.join(":")}`} cik={cik} explicitSelection={!!choice.brokerSelectors[0]} initialResearch={brokerDealerResearchPayload(research)} discovery={{
+              status: discovery.status, company: company ? { cik: company.cik, name: company.name, ticker: company.ticker } : null,
+              filing: discovery.filing, filings: discovery.filings || [], coverage: discovery.coverage,
+            }} />
             {discovery.coverage?.complete === false && <p className={base.muted}>The checked SEC submission history is bounded. Older reports may be available in the registrant’s full filing history.</p>}
           </>}
     </div>;

@@ -80,7 +80,7 @@ test('loader resolves its manifest before extracting and prevents arbitrary docu
   assert.match(result.text, /^Page 1/);
   assert.deepEqual(calls.map(call => call.url), [`${base(record)}${record.accession}-index.html`, `${base(record)}primary_doc.xml`, `${base(record)}public_financials.pdf`]);
   assert.ok(calls.every(call => call.options.redirect === 'error'));
-  assert.ok(writes.every(write => write[3] === 86400 * 7));
+  assert.ok(writes.every(write => write[3] === 86400 * (write[0].includes('-document.') ? 30 : 7)));
   const count = calls.length;
   for (const document of ['unknown.pdf', 'https://example.com/secret.pdf', '../private.pdf']) await assert.rejects(load(cik, record, { document }), { status: 400 });
   assert.equal(calls.length, count, 'Invalid requested documents cannot trigger arbitrary fetches');

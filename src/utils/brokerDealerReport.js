@@ -1,4 +1,4 @@
-import { BROKER_DEALER_METRICS } from './brokerDealerAnalytics.js';
+import { BROKER_DEALER_METRICS, brokerDealerMetricGroup } from './brokerDealerAnalytics.js';
 import { isBrokerDealerAnnualForm } from './brokerDealerForms.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -6,9 +6,40 @@ const cikOf = value => /^\d{1,10}$/.test(String(value || '')) && Number(value) >
 const text = (value, max = 1600) => typeof value === 'string' ? value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, max) : '';
 const date = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value ? value : null;
 const fail = message => Object.assign(new Error(message), { status: 422 });
-const capital = new Set(['netCapital', 'minimumNetCapital', 'excessNetCapital', 'haircuts']);
-const income = new Set(['totalRevenue', 'netRevenue', 'netIncome']);
-const cashflow = new Set(['operatingCashFlow', 'investingCashFlow', 'financingCashFlow', 'changeInCash']);
+const ADJUSTED_LIABILITY_INPUTS = ['totalAssets', 'totalLiabilities', 'subordinatedDebt', 'totalEquity'];
+
+function validatedCalculatedInputs(metric, byId, rawById) {
+  // A calculated total needs the filed inputs and the balance-sheet proof. It
+  // must not acquire a fabricated "reported" source of its own in an export.
+  if (metric.id !== 'adjustedTotalLiabilities' || metric.basis !== 'calculated'
+    || metric.validation?.id !== 'balance-sheet-with-subordinated-debt' || metric.validation.status !== 'consistent'
+    || !Array.isArray(metric.metricIds) || metric.metricIds.length !== 2
+    || !['totalLiabilities', 'subordinatedDebt'].every(id => metric.metricIds.includes(id))
+    || !ADJUSTED_LIABILITY_INPUTS.every(id => byId.has(id)) || !text(metric.formula)) return null;
+  const inputs = ADJUSTED_LIABILITY_INPUTS.map(id => rawById.get(id));
+  if (inputs.some(input => input.basis !== 'reported' || input.currency !== 'USD')
+    || new Set(inputs.map(input => `${input.periodEnd}:${input.source.url.split('#')[0]}:${input.source.page}`)).size !== 1) return null;
+  const [assets, liabilities, debt, equity] = inputs;
+  const tolerance = Math.max(1, ...inputs.map(input => finite(input.extraction?.scale) && input.extraction.scale > 0 ? input.extraction.scale : 1)) * 1.5;
+  const calculated = liabilities.value + debt.value;
+  if (debt.value <= tolerance || Math.abs(metric.value - calculated) > 0.000001
+    || Math.abs(assets.value - calculated - equity.value) > tolerance) return null;
+  return ADJUSTED_LIABILITY_INPUTS.map(id => byId.get(id));
+}
+
+function unavailableStatementNotes(rows, analysis) {
+  const mapped = new Set(rows.map(row => brokerDealerMetricGroup(row.key)));
+  const disclosed = new Set(analysis.coverage?.disclosedStatements || []);
+  const notes = [];
+  if (!mapped.has('income')) notes.push(disclosed.has('income')
+    ? 'An income statement was identified, but no income amounts could be mapped with verified period and page evidence. Profitability is unavailable; inspect the original statement.'
+    : 'No income statement amounts were mapped from the selected public attachment. Public filings may omit this statement; revenue, earnings and profitability are unavailable, not zero.');
+  if (!mapped.has('cashflow')) notes.push(disclosed.has('cash-flows')
+    ? 'A cash-flow statement was identified, but no cash-flow amounts could be mapped with verified period and page evidence. Inspect the original statement.'
+    : 'No cash-flow statement amounts were mapped from the selected public attachment. Cash flows are unavailable and are not inferred from balance-sheet movements.');
+  if (!mapped.has('capital')) notes.push('No verified regulatory-capital amounts were mapped from the selected public attachment. Accounting equity is not substituted for regulatory net capital.');
+  return notes;
+}
 
 function sourceUrl(source, cik, accession) {
   if (!Number.isInteger(source?.page) || source.page < 1 || !text(source.text)) return null;
@@ -33,22 +64,37 @@ export function buildBrokerDealerReport(research, { id = research?.company?.cik,
     || !/^\d{10}-\d{2}-\d{6}$/.test(accession || '') || !filed || !end || !Number.isFinite(Date.parse(generatedAt))
     || cikOf(analysis?.cik) !== cik || analysis?.accession !== accession || !isBrokerDealerAnnualForm(analysis?.form))
     throw fail('The broker-dealer annual report needs a verified SEC registrant, filing, statement period and readable financial figures. Open the original annual-report document.');
-  const sources = [], rows = [], byId = new Map();
+  const sources = [], rows = [], byId = new Map(), rawById = new Map();
   for (const metric of analysis.metrics || []) {
     const url = sourceUrl(metric.source, cik, accession);
-    if (!BROKER_DEALER_METRICS[metric.id] || byId.has(metric.id) || !finite(metric.value)
-      || metric.unit !== 'USD' || metric.periodEnd !== end || metric.basis !== 'reported' || !url) continue;
+    if (!BROKER_DEALER_METRICS[metric.id] || metric.id === 'adjustedTotalLiabilities' || byId.has(metric.id) || !finite(metric.value)
+      || metric.unit !== 'USD' || metric.currency !== 'USD' || metric.periodEnd !== end || metric.basis !== 'reported' || !url) continue;
     const sourceId = `S${String(sources.length + 1).padStart(4, '0')}`;
-    sources.push({ id: sourceId, label: `${text(metric.label)} · page ${metric.source.page}`, url,
+    const reportedLabel = text(metric.extraction?.reportedLabel || metric.label);
+    sources.push({ id: sourceId, label: `${reportedLabel} · ${end} · PDF page ${metric.source.page}`, url,
       form: filing.form, periodEnd: end, filed, accession, concept: `X-17A-5:${metric.id}`, unit: 'USD', value: metric.value,
-      note: `Page ${metric.source.page}. ${text(metric.source.text)}${metric.extraction?.unitEvidence ? ` Units: ${text(metric.extraction.unitEvidence)}` : ''}` });
+      note: `Page ${metric.source.page}. Reported ${reportedLabel}. ${text(metric.source.text)}${metric.extraction?.unitEvidence ? ` Units: ${text(metric.extraction.unitEvidence)}` : ''}${metric.source.method === 'ocr' ? ' Read through OCR; verify the original page.' : ''}` });
     const row = { key: metric.id, metric: BROKER_DEALER_METRICS[metric.id], p0: metric.value, value: metric.value, unit: 'usd',
       classification: 'reported', period: end, basis: 'annual', formula: '', sourceIds: [sourceId], sourceRefs: sourceId,
-      page: metric.source.page, reportedLabel: text(metric.extraction?.reportedLabel || metric.label), evidence: text(metric.source.text),
+      page: metric.source.page, reportedLabel, evidence: text(metric.source.text),
       confidence: text(metric.confidence, 20), reason: '' };
-    rows.push(row); byId.set(metric.id, row);
+    rows.push(row); byId.set(metric.id, row); rawById.set(metric.id, metric);
   }
   if (!rows.length) throw fail('No financial amounts with a verified period and page-level SEC evidence could be extracted from this public X-17A-5 report. Open the original statement; scanned documents may require manual review.');
+  for (const metric of analysis.metrics || []) {
+    if (!BROKER_DEALER_METRICS[metric.id] || byId.has(metric.id) || !finite(metric.value)
+      || metric.unit !== 'USD' || metric.currency !== 'USD' || metric.periodEnd !== end) continue;
+    const inputs = validatedCalculatedInputs(metric, byId, rawById);
+    if (!inputs) continue;
+    const sourceIds = [...new Set(inputs.flatMap(input => input.sourceIds))];
+    const row = { key: metric.id, metric: `${BROKER_DEALER_METRICS[metric.id]} (calculated)`, p0: metric.value, value: metric.value, unit: 'usd',
+      classification: 'calculated', period: end, basis: 'annual', formula: text(metric.formula), sourceIds, sourceRefs: sourceIds.join(', '),
+      page: inputs[0].page, reportedLabel: 'Calculated from reported inputs',
+      evidence: `${text(metric.formula)}. ${inputs.map(input => `${input.reportedLabel}: ${input.value} USD (PDF page ${input.page})`).join('; ')}.`,
+      confidence: inputs.every(input => input.confidence === 'high') ? 'high' : 'medium', reason: '' };
+    const subtotalIndex = rows.findIndex(input => input.key === 'totalLiabilities');
+    rows.splice(subtotalIndex + 1, 0, row); byId.set(metric.id, row);
+  }
   const ratios = [];
   for (const ratio of analysis.ratios || []) {
     if (!finite(ratio.value) || ratio.periodEnd !== end || ratio.basis !== 'calculated' || !ratio.metricIds?.length
@@ -60,21 +106,22 @@ export function buildBrokerDealerReport(research, { id = research?.company?.cik,
   }
   const columns = [{ key: 'metric', label: 'Measure', format: 'text', width: 2.6 }, { key: 'p0', label: end, format: 'number', formatKey: 'unit' }];
   const sections = [
-    { id: 'balance', title: 'Statement of financial condition', description: 'Reported assets, liabilities and equity for the selected broker-dealer legal entity.', rows: rows.filter(row => !capital.has(row.key) && !income.has(row.key) && !cashflow.has(row.key)) },
-    { id: 'capital', title: 'Regulatory capital', description: 'Only the net-capital figures disclosed in the public attachment are included. Accounting equity is a different measure.', rows: rows.filter(row => capital.has(row.key)) },
-    { id: 'income', title: 'Income statement', description: 'Annual income figures are included only when explicitly disclosed and mapped in the selected public attachment.', rows: rows.filter(row => income.has(row.key)) },
-    { id: 'cashflow', title: 'Cash flow statement', description: 'Annual cash-flow totals explicitly disclosed in the selected public attachment.', rows: rows.filter(row => cashflow.has(row.key)) },
+    { id: 'balance', title: 'Statement of financial condition', description: 'Reported assets, liabilities and equity for the selected legal entity. Any calculated liabilities total is separately labeled and retains the reported subtotal.', rows: rows.filter(row => brokerDealerMetricGroup(row.key) === 'balance') },
+    { id: 'capital', title: 'Regulatory capital', description: 'Only the net-capital figures disclosed in the public attachment are included. Accounting equity is a different measure.', rows: rows.filter(row => brokerDealerMetricGroup(row.key) === 'capital') },
+    { id: 'income', title: 'Income statement', description: 'Annual income figures are included only when explicitly disclosed and mapped in the selected public attachment.', rows: rows.filter(row => brokerDealerMetricGroup(row.key) === 'income') },
+    { id: 'cashflow', title: 'Cash flow statement', description: 'Annual cash-flow totals explicitly disclosed in the selected public attachment.', rows: rows.filter(row => brokerDealerMetricGroup(row.key) === 'cashflow') },
+    { id: 'statement-notes', title: 'Statement notes', description: 'Disclosed note details and commitments. These can overlap statement balances and must not be added together as balance-sheet totals. Dividends are annual flows; the other amounts are period-end observations.', rows: rows.filter(row => brokerDealerMetricGroup(row.key) === 'notes') },
     { id: 'ratios', title: 'Ratios', description: 'Calculations use compatible, disclosed period-end inputs. Percentages are fractions in the underlying workbook.', rows: ratios },
   ].filter(section => section.rows.length).map(section => ({ ...section, columns,
     footnote: section.id === 'ratios' ? 'Accounting leverage is not adjusted for collateral netting or asset liquidation values. Ratios are research measures, not a regulatory compliance determination.' : 'USD amounts are normalized to whole dollars. Missing amounts are unavailable, not zero.' }));
-  sections.push({ id: 'evidence', title: 'Statement evidence', description: 'Extracted page references and reported wording for manual review.',
+  sections.push({ id: 'evidence', title: 'Statement evidence', description: 'Extracted page references and reported wording for manual review. Calculated amounts list the underlying reported inputs and reconciliation evidence.',
     columns: [{ key: 'metric', label: 'Measure', format: 'text' }, { key: 'page', label: 'PDF page', format: 'number' },
       { key: 'reportedLabel', label: 'Reported label', format: 'text' }, { key: 'evidence', label: 'Statement extract', format: 'text', width: 3.5 }], rows });
   sections.push({ id: 'observations', title: 'Metric methodology and source references', pdfRowLimit: 0,
     columns: [{ key: 'metric', label: 'Measure', format: 'text' }, { key: 'period', label: 'Period end', format: 'date' },
       { key: 'value', label: 'Value', format: 'number', formatKey: 'unit' }, { key: 'classification', label: 'Status', format: 'text' },
       { key: 'formula', label: 'Formula', format: 'text' }, { key: 'sourceRefs', label: 'Source IDs', format: 'text' }], rows: [...rows, ...ratios] });
-  const headline = ['totalAssets', 'totalLiabilities', 'totalEquity', 'netCapital', 'excessNetCapital'];
+  const headline = ['totalAssets', byId.has('adjustedTotalLiabilities') ? 'adjustedTotalLiabilities' : 'totalLiabilities', 'totalEquity', 'netCapital', 'excessNetCapital'];
   const summary = headline.map(key => byId.get(key)).filter(Boolean).concat(ratios.filter(row => row.key === 'assetsToEquity')).slice(0, 6)
     .map(row => ({ label: row.metric, value: row.value, unit: row.unit, detail: `${end} · ${row.classification}`, sourceIds: row.sourceIds }));
   if (!summary.length) summary.push(...rows.slice(0, 6).map(row => ({ label: row.metric, value: row.value, unit: row.unit, detail: `${end} · reported`, sourceIds: row.sourceIds })));
@@ -85,6 +132,9 @@ export function buildBrokerDealerReport(research, { id = research?.company?.cik,
     'Public X-17A-5 annual-report extraction for the exact SEC registrant. The report does not substitute listed-parent financial data or confidential FOCUS submissions.',
     'Financial condition and regulatory capital are period-end observations. Income is included only when the annual public attachment discloses it. Missing income and cash-flow statements are not estimated.',
     'Only the selected attachment and annual reporting period are included. No quarterly or trailing-twelve-month figures are inferred.',
+    ...unavailableStatementNotes(rows, analysis),
+    ...(byId.has('adjustedTotalLiabilities') ? ['Liabilities including separately presented subordinated debt is a calculated amount, not an additional reported row. The original subtotal, subordinated debt and equity remain visible; the calculation is included only when these inputs reconcile to assets within presentation rounding.'] : []),
+    ...(rows.some(row => brokerDealerMetricGroup(row.key) === 'notes') ? ['Statement-note details may be components of other balances or off-balance-sheet commitments. They are kept separate from the balance sheet; no additional asset, liability, netting benefit or exposure is inferred.'] : []),
     ...(analysis.limitations || []).map(value => text(value)),
     ...(missing.length ? [`Measures unavailable in this extract: ${missing.map(key => BROKER_DEALER_METRICS[key]).join('; ')}.`] : []),
     ...(research.coverage?.complete === false ? ['Filing discovery checked a bounded SEC submission history. Older public annual reports may exist outside the checked history.'] : []),
@@ -96,6 +146,6 @@ export function buildBrokerDealerReport(research, { id = research?.company?.cik,
     period: { label: `Public annual report ending ${end}`, asOf: end, filingDate: filed, basis: 'annual' },
     summary, highlights, sections, sources, notes,
     coverage: { status: missing.length || analysis.status !== 'ready' || research.coverage?.complete === false ? 'partial' : 'ready',
-      message: `${rows.length} of ${Object.keys(BROKER_DEALER_METRICS).length} supported broker-dealer measures have page-level evidence for ${end}. ${ratios.length} compatible ratios are calculated. Public-attachment coverage may be incomplete.`,
+      message: `${rows.filter(row => row.classification === 'reported').length} reported broker-dealer measures have page-level evidence for ${end}.${rows.some(row => row.classification === 'calculated') ? ` ${rows.filter(row => row.classification === 'calculated').length} additional amount is calculated from reconciled reported inputs.` : ''} ${ratios.length} compatible ratios are calculated. Public-attachment coverage may be incomplete.`,
       recordCount: rows.length + ratios.length, availableMetrics: rows.length, totalMetrics: Object.keys(BROKER_DEALER_METRICS).length } };
 }

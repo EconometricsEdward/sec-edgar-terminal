@@ -134,7 +134,9 @@ export function createBrokerDealerDocumentLoader({ fetchSec = secFetch, cacheGet
           }
           const prepared = { ...value, cik: String(cik).padStart(10, '0'), extractedAt: new Date().toISOString() };
           if (!prepared.extraction?.retryable) remember(cacheKey, prepared);
-          if (JSON.stringify(prepared).length <= 8_000_000 && !prepared.extraction?.retryable) await cacheSet(DOCUMENT_CACHE, cacheKey, prepared, 86400 * 7);
+          // Accession-bound extracts are reusable across history, peers and
+          // exports. Fresh mapping runs against the retained source pages.
+          if (JSON.stringify(prepared).length <= 8_000_000 && !prepared.extraction?.retryable) await cacheSet(DOCUMENT_CACHE, cacheKey, prepared, 86400 * 30);
           return prepared;
         })();
         pending.set(cacheKey, task);

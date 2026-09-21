@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeBrokerDealerReport, BROKER_DEALER_ANALYTICS_VERSION } from '../src/utils/brokerDealerAnalytics.js';
+import { readFileSync } from 'node:fs';
+import { analyzeBrokerDealerReport, BROKER_DEALER_ANALYTICS_VERSION, brokerDealerMetricGroup } from '../src/utils/brokerDealerAnalytics.js';
 
 const source = 'https://www.sec.gov/Archives/edgar/data/123/000000012326000001/public.pdf';
 const analyze = (text, extra = {}) => analyzeBrokerDealerReport({ documentUrl: source, reportDate: '2025-12-31', pages: [{ pageNumber: 6, text }], ...extra });
@@ -133,7 +134,7 @@ test('regulatory formulas and statutory floors cannot replace a reported period-
   assert.equal(noDate.metrics.length, 0);
 });
 
-test('ASL separately labeled subordinated debt explains an unresolved subtotal without silently changing reported liabilities', () => {
+test('ASL separately labeled subordinated debt reconciles explicitly without changing the reported subtotal', () => {
   const result = analyze(`Statement of Financial Condition
 As of June 30, 2026
 Cash and cash equivalents $ 13,624,543
@@ -150,13 +151,21 @@ Total liabilities and stockholder's equity $ 41,409,524,157`, { reportDate: '202
   assert.equal(metric(result, 'totalLiabilities').value, 41201143006);
   assert.equal(metric(result, 'subordinatedDebt').value, 25006352);
   assert.equal(metric(result, 'brokerReceivables').value, 3837729501);
-  assert.equal(result.status, 'partial');
-  assert.equal(result.validations[0].difference, 25006352);
-  assert.equal(result.validations[0].status, 'mismatch');
-  assert.equal(ratio(result, 'liabilitiesToEquity'), undefined);
-  assert.equal(ratio(result, 'cashToLiabilities'), undefined);
+  assert.equal(result.status, 'ready');
+  assert.equal(result.validations[0].difference, 0);
+  assert.equal(result.validations[0].reportedDifference, 25006352);
+  assert.equal(result.validations[0].status, 'consistent');
+  const adjusted = metric(result, 'adjustedTotalLiabilities');
+  assert.equal(adjusted.value, 41226149358);
+  assert.equal(adjusted.basis, 'calculated');
+  assert.equal(adjusted.reported, false);
+  assert.deepEqual(adjusted.metricIds, ['totalLiabilities', 'subordinatedDebt']);
+  assert.equal(adjusted.validation.difference, 0);
+  assert.equal(ratio(result, 'liabilitiesToEquity').value, 41226149358 / 183374799);
+  assert.equal(ratio(result, 'cashToLiabilities').value, 13624543 / 41226149358);
+  assert.deepEqual(ratio(result, 'reposToLiabilities').metricIds, ['repos', 'adjustedTotalLiabilities']);
   assert.ok(ratio(result, 'assetsToEquity'));
-  assert.match(result.findings.find(item => item.id === 'balance-sheet-mismatch').title, /Subordinated/);
+  assert.match(result.findings.find(item => item.id === 'separate-subordinated-debt').text, /reported subtotal is preserved/);
 });
 
 test('full public income statements stay distinct from balance sheets and net revenue stays distinct from total revenue', () => {
@@ -253,4 +262,127 @@ test('amendments explain standalone scope and partial document extraction cannot
   assert.equal(partial.status, 'partial');
   assert.equal(metric(partial, 'totalAssets').value, 1000);
   assert.match(partial.limitations.join(' '), /covered only part/);
+});
+
+
+test('actual ASL June 2026 public filing maps statement detail, capital and dated notes with separate evidence', () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/broker-dealer-asl-june2026.json', import.meta.url)));
+  const result = analyzeBrokerDealerReport({ ...fixture, documentUrl: fixture.source });
+  const expected = {
+    totalAssets: 41409524157, totalLiabilities: 41201143006, adjustedTotalLiabilities: 41226149358,
+    totalEquity: 183374799, subordinatedDebt: 25006352, cashAndEquivalents: 13624543,
+    securitiesOwned: 8323647433, securitiesSoldShort: 4418045014, reverseRepos: 29223522831,
+    repos: 36603534508, brokerReceivables: 3837729501, brokerPayables: 173962501,
+    fixedAssets: 672294, otherAssets: 10327555, parentPayables: 849004, accountsPayableAndAccruedExpenses: 4751979,
+    netCapital: 162760952, minimumNetCapital: 250000, excessNetCapital: 162510952,
+    ficcReceivables: 349375797, cmeReceivables: 10012868, treasurySecuritiesOwned: 8177381228,
+    gseSecuritiesOwned: 146266205, treasurySecuritiesSoldShort: 4413683891,
+    collateralReceivedReusable: 111800000000, forwardReverseRepos: 51400000000, forwardRepos: 32800000000,
+    dividendsPaid: 30000361,
+  };
+  for (const [id, value] of Object.entries(expected)) {
+    assert.equal(metric(result, id)?.value, value, id);
+    assert.equal(metric(result, id).source.url, fixture.source);
+    assert.equal(metric(result, id).periodEnd, '2026-06-30');
+  }
+  assert.equal(result.metrics.length, 28);
+  assert.equal(result.ratios.length, 13);
+  assert.equal(metric(result, 'ficcReceivables').source.page, 11);
+  assert.equal(metric(result, 'ficcReceivables').statement, 'notes');
+  assert.equal(metric(result, 'forwardReverseRepos').source.page, 18);
+  assert.equal(metric(result, 'fixedAssets').source.page, 6);
+  assert.equal(metric(result, 'fixedAssets').section, 'assets');
+  assert.equal(metric(result, 'netCapital').statement, 'net-capital');
+  assert.equal(metric(result, 'netIncome'), undefined);
+  assert.equal(metric(result, 'operatingCashFlow'), undefined);
+  assert.equal(metric(result, 'segregatedCash'), undefined);
+  assert.equal(brokerDealerMetricGroup('adjustedTotalLiabilities'), 'balance');
+  assert.equal(brokerDealerMetricGroup('dividendsPaid'), 'notes');
+  assert.equal(result.coverage.disclosedStatements.includes('income'), false);
+  assert.equal(result.coverage.disclosedStatements.includes('cash-flows'), false);
+  assert.equal(ratio(result, 'cashToAssets').value, 13624543 / 41409524157);
+  assert.equal(ratio(result, 'reposToLiabilities').value, 36603534508 / 41226149358);
+});
+
+test('separate subordinated debt must reconcile same-page totals and cannot hide an unresolved discrepancy', () => {
+  const separate = basic.replace('Total liabilities 800', 'Total liabilities 750\nSubordinated debt 50');
+  assert.equal(metric(analyze(separate), 'adjustedTotalLiabilities').value, 800);
+  const discrepancy = analyze(separate.replace('Subordinated debt 50', 'Subordinated debt 49'));
+  // One dollar is inside explicit dollar rounding tolerance; larger errors stay withheld.
+  assert.equal(metric(discrepancy, 'adjustedTotalLiabilities').value, 799);
+  const mismatch = analyze(separate.replace('Subordinated debt 50', 'Subordinated debt 47'));
+  assert.equal(metric(mismatch, 'adjustedTotalLiabilities'), undefined);
+  assert.equal(mismatch.validations[0].status, 'mismatch');
+  assert.equal(ratio(mismatch, 'cashToLiabilities'), undefined);
+  const alreadyIncluded = analyze(basic.replace('Total liabilities 800', 'Subordinated debt 50\nTotal liabilities 800'));
+  assert.equal(metric(alreadyIncluded, 'adjustedTotalLiabilities'), undefined);
+  assert.equal(ratio(alreadyIncluded, 'liabilitiesToEquity').value, 4);
+  const separatePages = analyze('', { pages: [
+    { pageNumber: 1, text: basic.replace('Total liabilities 800', 'Total liabilities 750') },
+    { pageNumber: 2, text: 'Statement of Financial Condition\nDecember 31, 2025\nSubordinated debt $50' },
+  ] });
+  assert.equal(metric(separatePages, 'adjustedTotalLiabilities'), undefined);
+});
+
+test('notes respect report dates, explicit amounts, foreign currency and OCR numeric gates', () => {
+  const note = 'At December 31, 2025, amounts due from FICC of $10 million were outstanding.';
+  assert.equal(metric(analyze(note), 'ficcReceivables').value, 10000000);
+  assert.equal(metric(analyze(`Notes to financial statements\n(Amounts in thousands)\n${note.replace('$10 million', '$500')}`), 'ficcReceivables').value, 500000);
+  assert.equal(metric(analyze(`Notes to financial statements\n(Amounts in thousands)\n(Amounts in millions)\n${note}`), 'ficcReceivables'), undefined);
+  assert.equal(metric(analyze(note.replace('2025', '2024')), 'ficcReceivables'), undefined);
+  assert.equal(metric(analyze(note.replace('At December 31, 2025, ', '')), 'ficcReceivables'), undefined);
+  assert.equal(metric(analyze(note.replace('$10 million', 'CAD $10 million')), 'ficcReceivables'), undefined);
+  assert.equal(metric(analyze(note.replace('$10 million', '$10 million in 2024 and at December 31, 2023')), 'ficcReceivables'), undefined);
+  const ocr = analyze('', { pages: [{ method: 'ocr', ocrConfidence: 94, lines: [{ text: note, numericConfidence: 65, usableForNumbers: false }] }] });
+  assert.equal(metric(ocr, 'ficcReceivables'), undefined);
+  const subsequent = analyze('Through January 31, 2026, the Company paid dividends of $40,000. During the year ended December 31, 2025, the Company declared and paid dividends of $10,000.');
+  assert.equal(metric(subsequent, 'dividendsPaid').value, 10000);
+  assert.equal(metric(subsequent, 'dividendsPaid').statement, 'notes');
+});
+
+test('expanded statement aliases preserve annual and interim duration and avoid mixed-period profit ratios', () => {
+  const result = analyze(`Statement of Operations
+For the year ended December 31, 2025
+Interest income $100
+Interest expense 20
+Net revenues 80
+Total expenses 40
+Income before income taxes 40
+Net income 30`);
+  assert.equal(metric(result, 'interestIncome').value, 100);
+  assert.equal(metric(result, 'totalExpenses').value, 40);
+  assert.equal(metric(result, 'pretaxIncome').value, 40);
+  assert.equal(metric(result, 'netIncome').statement, 'income');
+  assert.equal(metric(result, 'netIncome').periodStart, '2025-01-01');
+  assert.equal(metric(result, 'netIncome').durationMonths, 12);
+  assert.equal(ratio(result, 'netIncomeToNetRevenue').value, 0.375);
+  const mixed = analyze('', { pages: [
+    { pageNumber: 1, text: 'Statement of Income\nYear ended December 31, 2025\nTotal revenue $100' },
+    { pageNumber: 2, text: 'Statement of Income\nThree months ended December 31, 2025\nNet income $10' },
+  ] });
+  assert.equal(metric(mixed, 'netIncome').periodStart, '2025-10-01');
+  assert.equal(ratio(mixed, 'netIncomeToRevenue'), undefined);
+});
+
+
+test('explicit loss, cash-used and decrease labels retain their negative economic sign without double inversion', () => {
+  for (const amount of ['$100', '$(100)', '$-100']) {
+    const income = analyze(`Statement of Income\nYear ended December 31, 2025\nNet loss ${amount}`);
+    assert.equal(metric(income, 'netIncome').value, -100, amount);
+    assert.match(metric(income, 'netIncome').extraction.signConvention, /loss/);
+    const pretax = analyze(`Statement of Income\nYear ended December 31, 2025\nLoss before income taxes ${amount}`);
+    assert.equal(metric(pretax, 'pretaxIncome').value, -100, amount);
+    const cash = analyze(`Statement of Cash Flows\nYear ended December 31, 2025\nNet cash used in operating activities ${amount}\nNet cash used in investing activities ${amount}\nNet cash used in financing activities ${amount}\nNet decrease in cash ${amount}`);
+    for (const id of ['operatingCashFlow', 'investingCashFlow', 'financingCashFlow', 'changeInCash']) assert.equal(metric(cash, id).value, -100, `${id}: ${amount}`);
+  }
+  const incomeMixed = analyze('Statement of Income\nYear ended December 31, 2025\nNet income (loss) $100');
+  assert.equal(metric(incomeMixed, 'netIncome').value, 100);
+  assert.equal(metric(incomeMixed, 'netIncome').extraction.signConvention, undefined);
+  const lossMixed = analyze('Statement of Income\nYear ended December 31, 2025\nNet loss (income) $100');
+  assert.equal(metric(lossMixed, 'netIncome').value, 100);
+  const cashMixed = analyze('Statement of Cash Flows\nYear ended December 31, 2025\nNet cash provided by (used in) operating activities $100\nNet cash used in (provided by) investing activities $(100)\nNet increase (decrease) in cash $100');
+  assert.equal(metric(cashMixed, 'operatingCashFlow').value, 100);
+  assert.equal(metric(cashMixed, 'investingCashFlow').value, -100);
+  assert.equal(metric(cashMixed, 'changeInCash').value, 100);
+  for (const row of cashMixed.metrics) assert.equal(row.extraction.signConvention, undefined);
 });

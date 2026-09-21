@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { buildAnalysisCompany, packAnalysisCompany } from '../src/utils/analysisResearch.js';
 import { ANALYSIS_VERSION, ANALYSIS_MAPPING_VERSION } from '../src/utils/analysisVersion.js';
 import { buildAnalysisDirectory } from '../src/utils/analysisDirectory.js';
+import { brokerDealerResearchPayload } from '../src/utils/brokerDealerPayload.js';
 import { readAnalysisSettings } from '../src/utils/analysisNotebook.js';
 import { createPublicAnalysisReader, publicAnalysisSelection } from '../src/utils/analysisPublicResearch.js';
 
@@ -19,6 +20,8 @@ const files = {
   directory: '../src/app/analysis/page.tsx',
   sampler: '../src/app/analysis/AnalysisDirectory.tsx',
   broker: '../src/components/broker-dealer/BrokerDealerAnalytics.tsx',
+  brokerWorkspace: '../src/components/broker-dealer/BrokerDealerWorkspace.tsx',
+  brokerCharts: '../src/components/broker-dealer/BrokerDealerCharts.tsx',
 };
 const companies = [
   { ticker: 'AAPL', cik: '0000320193', name: 'Apple fixture', sector: 'Technology' },
@@ -55,6 +58,7 @@ function fixture({ fail = false, available = true, broker = null } = {}) {
       if (name === 'react/jsx-runtime' || name === 'react') return require(name);
       if (name === 'next/link') return function Link({ prefetch: _prefetch, ...props }) { return createElement('a', props); };
       if (name === 'next/cache') return { unstable_cache: (fn, keys) => (...args) => { cacheCalls.push({ keys, args }); return fn(...args); } };
+      if (name === 'next/dynamic') return () => () => null;
       if (name === 'next/navigation') return { notFound: () => { throw new Error('NOT_FOUND'); } };
       if (name === 'lucide-react') return new Proxy({}, { get: () => () => null });
       if (name.endsWith('/siteMetadata')) return { buildPageMetadata: value => value };
@@ -81,6 +85,10 @@ function fixture({ fail = false, available = true, broker = null } = {}) {
         if (!broker) throw new Error('No broker-dealer fixture was requested');
         return options.metadataOnly ? { ...broker, analysis: undefined } : broker;
       } };
+      if (name.endsWith('/brokerDealerPayload.js')) return { brokerDealerResearchPayload };
+      if (name.endsWith('/BrokerDealerWorkspace')) return compile('brokerWorkspace');
+      if (name.endsWith('/BrokerDealerCharts')) return compile('brokerCharts');
+      if (name.endsWith('/BrokerDealerContext')) return () => null;
       if (name.endsWith('/BrokerDealerAnalytics')) return compile('broker');
       if (name.endsWith('.css')) return new Proxy({}, { get: (_target, key) => key === '__esModule' ? false : String(key) });
       throw new Error(`Unexpected public page dependency: ${name}`);

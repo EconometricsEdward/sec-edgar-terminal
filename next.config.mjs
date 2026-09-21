@@ -21,7 +21,7 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   serverExternalPackages: ['pdfjs-dist', '@napi-rs/canvas', 'tesseract.js', 'tesseract.js-core', '@tesseract.js-data/eng'],
-  outputFileTracingIncludes: Object.fromEntries(['/api/filings-reader', '/analysis/*', '/api/v1/analysis/*', '/api/reports/*'].map(route => [route, [
+  outputFileTracingIncludes: Object.fromEntries(['/api/filings-reader', '/analysis/*', '/api/v1/analysis/*', '/api/reports/*', '/api/broker-dealer/report'].map(route => [route, [
     './node_modules/pdfjs-dist/legacy/build/**', './node_modules/pdfjs-dist/standard_fonts/**', './node_modules/pdfjs-dist/cmaps/**', './node_modules/pdfjs-dist/wasm/**',
     './node_modules/tesseract.js/src/**', './node_modules/tesseract.js/package.json', './node_modules/tesseract.js-core/**', './node_modules/@tesseract.js-data/eng/**', './node_modules/@napi-rs/canvas*/**',
     // Node workers load these outside the server module graph. Include their

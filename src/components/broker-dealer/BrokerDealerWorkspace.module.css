@@ -1,0 +1,211 @@
+.workspace {
+  --bdw-text: #ecf1f8;
+  --bdw-muted: #a0b1c7;
+  --bdw-faint: #73879f;
+  --bdw-line: #2c3c50;
+  --bdw-surface: #101b2b;
+  --bdw-raised: #172436;
+  --bdw-cyan: #69d6ed;
+  --bdw-gold: #f3c755;
+  color: var(--bdw-text);
+  min-width: 0;
+  margin-top: 24px;
+  line-height: 1.6;
+  font-size: 13px;
+}
+.workspace :is(button, a, summary, input, select, rect[tabindex], [tabindex="0"]):focus-visible { outline: 2px solid var(--bdw-cyan); outline-offset: 4px; }
+.workspace button { min-height: 36px; font-size: 12px; }
+.workspace a { color: var(--bdw-cyan); }
+.workspace .overline { display: block; color: var(--bdw-muted); font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .12em; }
+.controlBar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 19px; border: 1px solid var(--bdw-line); background: var(--bdw-surface); border-radius: 12px 12px 0 0; }
+.periodControl { min-width: 0; }
+.periodControl label { margin-top: 4px; }
+.workspace .periodControl select { border: 0; padding: 3px 25px 3px 0; min-height: 28px; background: transparent; font-weight: 650; font-size: 13px; color: var(--bdw-text); width: 100%; }
+.periodControl option { background: var(--bdw-surface); color: var(--bdw-text); }
+.controlActions { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.loadStatus { display: flex; align-items: center; gap: 6px; color: var(--bdw-muted); font-size: 11px; white-space: nowrap; }
+.loadStatus > svg { color: var(--bdw-cyan); }
+.workspace .periodButton { background: var(--bdw-raised); border-color: var(--bdw-line); }
+.periodRibbon { display: flex; gap: 7px; padding: 12px 16px; overflow-x: auto; border: 1px solid var(--bdw-line); border-top: 0; background: var(--bdw-surface); border-radius: 0 0 12px 12px; }
+.workspace .periodRibbon button { display: flex; gap: 7px; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--bdw-muted); font-size: 11px; white-space: nowrap; padding: 5px 10px; min-height: 31px; }
+.workspace .periodRibbon .activePeriod { border-color: #4c91a1; background: #1c3545; color: #d4f5fc; }
+.periodDot { height: 5px; width: 5px; background: var(--bdw-faint); border-radius: 50%; flex-shrink: 0; }
+.readyDot { background: #78d4ab; }
+.errorDot { background: #f2a77c; }
+.tabs { display: flex; gap: 24px; margin-top: 22px; border-bottom: 1px solid var(--bdw-line); overflow-x: auto; }
+.workspace .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 13px 0; color: var(--bdw-muted); background: transparent; font-size: 13px; font-weight: 600; white-space: nowrap; gap: 7px; }
+.workspace .tabs .activeTab { border-bottom-color: var(--bdw-gold); color: var(--bdw-gold); }
+.selectedReport { display: flex; justify-content: space-between; gap: 15px; align-items: center; padding: 22px 0 18px; }
+.workspace .selectedReport .overline { color: var(--bdw-text); font-size: 11px; letter-spacing: .035em; }
+.workspace .selectedReport p { color: var(--bdw-faint); font-size: 10px; margin: 4px 0 0; }
+.selectedReport > div:last-child { display: flex; flex-wrap: wrap; gap: 16px; }
+.selectedReport a { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+.kpiGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 22px; }
+.kpi { position: relative; padding: 19px 19px 14px; background: linear-gradient(140deg, var(--bdw-raised), var(--bdw-surface)); border: 1px solid var(--bdw-line); border-top: 2px solid var(--card-accent); border-radius: 10px; min-width: 0; }
+.kpi > span { display: block; color: var(--bdw-muted); font-size: 11px; font-weight: 550; }
+.kpi > strong { display: block; font-size: clamp(22px, 2.55vw, 35px); letter-spacing: -.045em; line-height: 1.4; margin: 10px 0; font-weight: 720; font-variant-numeric: tabular-nums; }
+.workspace .kpi > p { font-size: 10px; color: var(--bdw-muted); min-height: 17px; margin: 5px 0 0; display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.workspace .kpi .evidence { border: 0; margin-top: 6px; }
+.twoColumn { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.balancePanel, .chartPanel { border: 1px solid var(--bdw-line); background: var(--bdw-surface); border-radius: 12px; min-width: 0; }
+.balancePanel { padding: 21px; }
+.panelHeading { display: flex; align-items: start; justify-content: space-between; gap: 14px; }
+.balancePanel .panelHeading { display: block; }
+.workspace .panelHeading h3, .workspace .chartPanel h3 { font-size: 14px; font-weight: 650; margin: 0; line-height: 1.4; }
+.workspace .panelHeading p, .workspace .chartPanel figcaption p { font-size: 11px; color: var(--bdw-muted); margin: 5px 0 0; line-height: 1.7; }
+.balanceBars { display: grid; gap: 15px; margin-top: 23px; }
+.balanceRow > div:first-child { display: flex; justify-content: space-between; align-items: center; gap: 16px; color: var(--bdw-text); font-size: 11px; }
+.balanceRow strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.barTrack { height: 7px; background: var(--bdw-raised); border-radius: 2px; margin: 7px 0 4px; overflow: hidden; }
+.barTrack > span { display: block; height: 100%; min-width: 1px; border-radius: 2px; }
+.barFoot { display: flex; justify-content: space-between; gap: 10px; font-size: 10px; color: var(--bdw-faint); }
+.barFoot a { font-size: 10px; }
+.workspace .visualNote { color: var(--bdw-faint); margin: 10px 0 22px; font-size: 10px; }
+.chartPanel { padding: 21px 20px 14px; margin: 0 0 18px; }
+.chartPanel figcaption { display: flex; justify-content: space-between; gap: 12px; }
+.chartUnit { font-size: 10px; font-weight: 600; color: var(--bdw-faint); padding-top: 2px; white-space: nowrap; }
+.trendSvg { display: block; width: 100%; height: auto; min-height: 190px; overflow: visible; margin-top: 12px; }
+.gridLine { stroke: var(--bdw-line); stroke-width: 1; stroke-dasharray: 3 5; }
+.axisLabel { fill: var(--bdw-muted); font-size: 11px; }
+.cursorLine { stroke: var(--bdw-faint); stroke-width: 1; stroke-dasharray: 4 5; }
+.trendSvg rect[tabindex] { cursor: crosshair; }
+.chartReadout { display: flex; flex-wrap: wrap; gap: 12px 19px; align-items: center; border-top: 1px solid var(--bdw-line); padding-top: 12px; font-size: 10px; font-variant-numeric: tabular-nums; }
+.chartReadout > strong { color: var(--bdw-muted); font-weight: 550; }
+.chartReadout > span { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.chartReadout > span > span { color: var(--bdw-muted); }
+.chartReadout i { height: 6px; width: 6px; border-radius: 50%; }
+.chartReadout b { color: var(--bdw-text); font-weight: 600; margin-left: 2px; }
+.workspace .chartNote { color: var(--bdw-muted); font-size: 11px; margin: 12px 0 0; }
+.chartEmpty { min-height: 185px; display: grid; place-items: center; color: var(--bdw-muted); font-size: 12px; }
+.sectionHeading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin: 27px 0 20px; }
+.workspace .sectionHeading h2 { font-size: 21px; margin: 5px 0 0; font-weight: 650; letter-spacing: -.035em; }
+.workspace .sectionHeading p { color: var(--bdw-muted); font-size: 12px; margin: 7px 0 0; }
+.workspace .sectionHeading button { background: transparent; color: var(--bdw-cyan); border-color: var(--bdw-line); font-size: 11px; flex-shrink: 0; }
+.tableScroll { overflow-x: auto; border: 1px solid var(--bdw-line); border-radius: 10px; background: var(--bdw-surface); }
+.workspace .statementTable { width: 100%; border-collapse: collapse; text-align: left; background: transparent; font-size: 12px; margin: 0; }
+.workspace .statementTable caption { caption-side: top; text-align: left; color: var(--bdw-muted); background: transparent; padding: 12px 15px; font-size: 10px; font-weight: 450; letter-spacing: .02em; }
+.workspace .statementTable :is(th, td) { padding: 12px 15px; border: 0; border-top: 1px solid var(--bdw-line); vertical-align: top; min-width: 166px; background: transparent; }
+.workspace .statementTable thead th { color: var(--bdw-text); background: var(--bdw-raised); font-size: 11px; font-weight: 650; white-space: nowrap; text-transform: none; letter-spacing: 0; }
+.workspace .statementTable thead th:not(:first-child), .workspace .statementTable td { text-align: right; }
+.workspace .statementTable th:first-child { min-width: 215px; max-width: 330px; }
+.workspace .statementTable tbody th { font-size: 11px; color: var(--bdw-muted); font-weight: 500; }
+.workspace .statementTable td { font-variant-numeric: tabular-nums; font-size: 12px; }
+.workspace .statementTable td > strong { font-weight: 600; white-space: nowrap; }
+.workspace .statementTable td.selectedColumn { background: #69d6ed06; }
+.workspace .statementTable thead .selectedColumn { box-shadow: inset 0 2px 0 var(--bdw-cyan); }
+.workspace .statementTable small { display: block; font-size: 9px; color: var(--bdw-faint); font-weight: 450; margin-top: 3px; }
+.workspace .statementTable tbody tr:hover { background: #69d6ed06; }
+.workspace .evidence { margin: 4px 0 0; border: none; font-size: 10px; }
+.workspace .evidence summary { color: var(--bdw-cyan); padding: 0; font-size: 9px; font-weight: 500; cursor: pointer; }
+.workspace .evidence[open] { min-width: 145px; }
+.workspace .evidence p, .workspace .evidence blockquote { white-space: normal; color: var(--bdw-muted); margin: 8px 0; line-height: 1.7; text-align: left; }
+.workspace .evidence blockquote { border-left: 2px solid var(--bdw-line); padding-left: 8px; overflow-wrap: anywhere; }
+.workspace .evidence a { display: inline-block; font-size: 10px; }
+.unavailable { color: var(--bdw-faint); font-size: 11px; }
+.statementTabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 18px; }
+.workspace .statementTabs button { background: transparent; border: 1px solid var(--bdw-line); color: var(--bdw-muted); font-size: 11px; padding: 6px 12px; border-radius: 20px; }
+.workspace .statementTabs .activePill { color: var(--bdw-text); background: var(--bdw-raised); border-color: var(--bdw-faint); }
+.emptyStatement { display: flex; align-items: start; gap: 17px; padding: 30px; border: 1px dashed var(--bdw-line); border-radius: 10px; background: var(--bdw-surface); }
+.emptyStatement > svg { color: var(--bdw-faint); flex-shrink: 0; }
+.workspace .emptyStatement h3 { font-size: 14px; margin: 0; }
+.workspace .emptyStatement p { font-size: 12px; color: var(--bdw-muted); margin: 8px 0 0; max-width: 620px; }
+.ratioGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 22px; }
+.ratioGrid article { padding: 18px; border: 1px solid var(--bdw-line); border-radius: 10px; background: var(--bdw-surface); }
+.ratioGrid article > span { font-size: 11px; color: var(--bdw-muted); }
+.ratioGrid article > strong { display: block; font-size: 27px; font-weight: 650; letter-spacing: -.04em; margin-top: 7px; }
+.workspace .ratioGrid p { font-size: 10px; color: var(--bdw-faint); margin: 6px 0; min-height: 32px; }
+.findingsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; margin: 24px 0 15px; }
+.findingsGrid article { padding: 20px 0; border-top: 1px solid var(--bdw-line); }
+.findingNumber { font-size: 10px; color: var(--bdw-cyan); letter-spacing: .12em; }
+.workspace .findingsGrid h3 { font-size: 13px; margin-top: 6px; }
+.workspace .findingsGrid p { color: var(--bdw-muted); font-size: 12px; line-height: 1.85; margin: 8px 0; }
+.findingsGrid a { font-size: 10px; }
+.workspace .coverage { border-top: 1px solid var(--bdw-line); margin-top: 30px; }
+.workspace .coverage > summary { padding: 16px 0; color: var(--bdw-muted); font-size: 11px; cursor: pointer; }
+.coverage > summary > span { float: right; color: var(--bdw-faint); font-weight: 450; }
+.coverageBody { padding: 0 0 16px; }
+.workspace .coverageBody p, .workspace .coverageBody li { font-size: 11px; color: var(--bdw-muted); line-height: 1.85; }
+.coverageBody ul { list-style: disc; padding-left: 20px; }
+.coverageBody li + li { margin-top: 5px; }
+.documentList { border-top: 1px solid var(--bdw-line); margin-top: 20px; padding-top: 16px; }
+.documentList h3 { font-size: 12px; margin-bottom: 12px; }
+.documentList > div { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 5px 0; font-size: 11px; }
+.documentList svg { color: var(--bdw-muted); }
+.documentList a { overflow-wrap: anywhere; }
+.documentList a:last-child { margin-left: auto; color: var(--bdw-muted); }
+.periodPicker { border: 1px solid var(--bdw-line); padding: 20px; background: var(--bdw-raised); }
+.periodPicker .panelHeading > button { padding: 4px; min-height: 28px; background: transparent; border: none; }
+.periodChoices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 18px; max-height: 310px; overflow-y: auto; }
+.workspace .periodChoices label { display: flex; flex-direction: row; gap: 10px; align-items: center; cursor: pointer; padding: 10px; border: 1px solid var(--bdw-line); background: var(--bdw-surface); border-radius: 7px; }
+.workspace .periodChoices .checkedPeriod { border-color: #4c91a1; }
+.workspace .periodChoices input { width: 14px; height: 14px; min-height: 14px; accent-color: #69d6ed; }
+.periodChoices strong { display: block; color: var(--bdw-text); font-size: 11px; }
+.workspace .periodChoices small { font-size: 9px; color: var(--bdw-muted); }
+.pickerActions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+.workspace .pickerActions button { font-size: 11px; }
+.workspace .pickerActions .applyButton { background: var(--bdw-cyan); color: #082733; border-color: transparent; font-weight: 650; }
+.workspace .inlineNotice { font-size: 11px; color: var(--bdw-muted); padding: 12px 15px; border: 1px solid var(--bdw-line); }
+.retryNotice { display: flex; justify-content: space-between; align-items: center; gap: 15px; border: 1px solid var(--bdw-line); background: var(--bdw-surface); padding: 12px 15px; border-radius: 8px; margin-bottom: 18px; }
+.workspace .retryNotice p { font-size: 11px; color: var(--bdw-muted); margin: 0; }
+.retryNotice button { flex-shrink: 0; }
+.loadingPanel { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; min-height: 200px; justify-content: center; background: var(--bdw-surface); border: 1px solid var(--bdw-line); border-radius: 12px; margin-bottom: 20px; padding: 28px; }
+.loadingPanel > svg { color: var(--bdw-cyan); }
+.workspace .loadingPanel h3 { font-size: 15px; margin: 0; }
+.workspace .loadingPanel p { font-size: 12px; color: var(--bdw-muted); max-width: 530px; margin: 0; }
+.muted { color: var(--bdw-muted); }
+.spinner { animation: spin 1.3s linear infinite; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+:global(html[data-theme-mode="light"]) .workspace { --bdw-text: #18324c; --bdw-muted: #476079; --bdw-faint: #5c7186; --bdw-line: #cbd7e2; --bdw-surface: #f9fbfd; --bdw-raised: #edf3f8; --bdw-cyan: #09647e; --bdw-gold: #856000; }
+:global(html[data-theme-mode="light"]) .workspace .activePeriod { color: #174d60; background: #e1f2f7; }
+:global(html[data-theme-mode="light"]) .workspace .applyButton { color: #fff; }
+@media (min-width: 1450px) { .kpi > strong { font-size: 35px; } }
+@media (max-width: 850px) {
+  .controlActions { gap: 9px; }
+  .controlActions .loadStatus { display: none; }
+  .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi > strong { font-size: 29px; }
+  .twoColumn { grid-template-columns: 1fr; }
+  .periodChoices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chartPanel { padding: 18px 15px 14px; }
+  .ratioGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 580px) {
+  .workspace { margin-top: 18px; }
+  .controlBar { align-items: stretch; flex-direction: column; gap: 10px; padding: 14px; }
+  .controlActions { justify-content: space-between; }
+  .controlActions .loadStatus { display: flex; }
+  .periodRibbon { padding: 9px; }
+  .tabs { gap: 20px; margin-top: 15px; }
+  .workspace .tabs button { font-size: 12px; }
+  .tabs svg { display: none; }
+  .selectedReport { flex-direction: column; align-items: start; padding: 18px 0; gap: 9px; }
+  .selectedReport > div:last-child { gap: 13px; }
+  .kpiGrid { gap: 9px; }
+  .kpi { padding: 14px 12px 11px; }
+  .kpi > span { font-size: 10px; min-height: 30px; }
+  .kpi > strong { font-size: 28px; margin: 6px 0; }
+  .workspace .kpi > p { min-height: 30px; font-size: 9px; align-items: start; }
+  .balancePanel { padding: 17px; }
+  .chartPanel figcaption p { max-width: 280px; }
+  .trendSvg { min-height: 160px; margin-top: 2px; }
+  .chartReadout { gap: 7px; flex-direction: column; align-items: start; }
+  .chartReadout > span { width: 100%; }
+  .chartReadout b { margin-left: auto; }
+  .sectionHeading { flex-direction: column; align-items: start; gap: 14px; margin-top: 22px; }
+  .workspace .sectionHeading h2 { font-size: 20px; }
+  .workspace .statementTable :is(th, td) { padding: 10px 12px; min-width: 152px; }
+  .workspace .statementTable th:first-child { min-width: 170px; }
+  .findingsGrid { grid-template-columns: 1fr; }
+  .ratioGrid { gap: 9px; }
+  .ratioGrid article { padding: 14px; }
+  .ratioGrid article > span { font-size: 10px; display: block; min-height: 30px; }
+  .ratioGrid article > strong { font-size: 25px; }
+  .coverage > summary > span { display: block; float: none; margin-top: 5px; }
+  .periodChoices { grid-template-columns: 1fr; }
+  .periodPicker { padding: 14px; }
+  .pickerActions { flex-wrap: wrap; }
+  .emptyStatement { padding: 22px; }
+  .retryNotice { flex-direction: column; align-items: start; }
+}
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
