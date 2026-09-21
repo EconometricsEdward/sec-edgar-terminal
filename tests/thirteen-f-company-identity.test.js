@@ -357,22 +357,29 @@ test('complete bounded searches and valid CUSIP special characters remain sharea
   }
 });
 
-test('slow or failing optional shared reads and writes retain a bounded SEC fallback', async () => {
+test('slow or failing optional shared reads and writes retain a bounded SEC fallback', { timeout: 5000 }, async () => {
   for (const phase of ['readEvidence', 'writeEvidence']) {
     const store = sharedEvidenceStore();
+    const delayedStorage = deferredIdentityResponse();
     let expired = false, finished = false;
     const loader = freshIdentityLoader({ ...store, cacheIoMs: 5,
       [phase]: async (...args) => {
         const options = args.at(-1);
         options.signal.addEventListener('abort', () => { expired = true; }, { once: true });
-        await new Promise(resolve => setTimeout(resolve, 40));
+        // Keep storage pending until the caller returns. Racing a 5 ms
+        // deadline against 40 ms of wall time flakes on busy CI runners.
+        await delayedStorage.promise;
         finished = true;
         throw new Error('slow optional storage');
       },
     });
-    assert.equal((await loader(holding)).status, 'resolved');
-    assert.equal(expired, true);
-    assert.equal(finished, false, 'research does not wait for optional storage beyond its deadline');
+    try {
+      assert.equal((await loader(holding)).status, 'resolved');
+      assert.equal(expired, true);
+      assert.equal(finished, false, 'research does not wait for optional storage beyond its deadline');
+    } finally {
+      delayedStorage.resolve();
+    }
   }
   const store = sharedEvidenceStore();
   assert.equal((await freshIdentityLoader({ ...store, readEvidence: async () => { throw new Error('cache outage'); }, writeEvidence: async () => { throw new Error('cache outage'); } })(holding)).status, 'resolved');

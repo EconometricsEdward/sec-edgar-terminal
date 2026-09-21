@@ -90,6 +90,23 @@ test('policy excludes coordination, arbitrary URLs, unknown and preview namespac
   assert.equal(disposableCachePolicy('analysis-research', `${ANALYSIS_VERSION}:SMALL:annual:`).family, 'research');
 });
 
+test('current Risk cache entries retain bounds and reject unrelated versions and identities', async () => {
+  assert.equal(disposableCachePolicy(RISK_VERSION, 'AAPL').maxTtlSeconds, 25 * 3600);
+  assert.equal(disposableCachePolicy(`${RISK_VERSION}-scan`, accession).maxTtlSeconds, 30 * 86400);
+  for (const [type, id] of [
+    [RISK_VERSION, 'https://example.test'], [RISK_VERSION, 'AAPL:lease'],
+    [`${RISK_VERSION}-scan`, 'AAPL'], [`${RISK_VERSION}:preview`, 'AAPL'],
+    ['risk-workspace-v999', 'AAPL'], ['risk-workspace-v999-scan', accession],
+  ]) assert.equal(disposableCachePolicy(type, id), null, `${type}/${id}`);
+  const payload = { version: RISK_VERSION, ticker: 'AAPL', generatedAt: new Date(NOW).toISOString() };
+  const { cache, calls } = setup({ response: params => params.p_ids ? Response.json([record('AAPL', payload)])
+    : Response.json({ stored: true, rawSha256: params.p_raw_sha256, expiresAt: new Date(NOW + params.p_ttl_seconds * 1000).toISOString() }) });
+  assert.equal((await cache.cachePut(RISK_VERSION, 'AAPL', payload, 3600)).stored, true);
+  assert.deepEqual((await cache.cacheGet(RISK_VERSION, 'AAPL')).payload, payload);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.params.p_family === 'research' && call.params.p_type === RISK_VERSION));
+});
+
 test('filing text cache admits bounded manifest-relative nested documents without traversal or URL suffixes', () => {
   const prefix = `${cik}:${accession}:`;
   for (const [type, path] of [

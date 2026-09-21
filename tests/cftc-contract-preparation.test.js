@@ -4,10 +4,15 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { CFTC_FAMILIES, normalizeCftcRow } from '../src/utils/cftc.js';
 import { cftcContractRawKey, createCftcPersistence } from '../src/utils/cftcPersistence.js';
-import { buildCftcMarketsSnapshot, cftcPublicationStatus, cftcResourceUrl, fetchCftcContractHistory, loadCftcHistory, prepareCftcContractRawHistory, validateRawHistoryEnvelope, validMarketsResponse } from '../src/utils/cftcServer.js';
+import { buildCftcMarketsSnapshot, cftcPublicationStatus, cftcResourceUrl, fetchCftcContractHistory, loadCftcHistory, prepareCftcContractRawHistory, validateRawHistoryEnvelope, validHistoryResponse, validMarketsResponse } from '../src/utils/cftcServer.js';
 
 const base = JSON.parse(readFileSync(new URL('./fixtures/cftc-tff-gpe5-46if-v1.json', import.meta.url)))[0];
-const throughDate = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+// A Tuesday report observed on Friday leaves room for the 30-hour-old source
+// fixtures below. Using "yesterday" made them predate their own report before
+// 06:00 UTC, so valid provenance checks rejected them depending on run time.
+const NOW = Date.parse('2026-09-18T18:00:00Z');
+const throughDate = '2026-09-15';
+test.beforeEach(t => t.mock.timers.enable({ apis: ['Date'], now: NOW }));
 const prior = weeks => new Date(Date.parse(`${throughDate}T00:00:00Z`) - weeks * 7 * 86400_000).toISOString().slice(0, 10);
 const selection = { family: 'tff', code: 'ABC', throughDate };
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -356,6 +361,9 @@ async function staleHistoryScenario() {
   record.payload.response.retrieved_at = oldRetrieval;
   record.payload.response.freshness.retrieved_at = oldRetrieval;
   record.metadata.revalidatedAt = oldSave;
+  assert.ok(oldRetrieval.slice(0, 10) >= throughDate, 'a source cannot be retrieved before its report date');
+  assert.equal(validHistoryResponse(record.payload.response, 'tff', 'ABC', 'leveraged-funds', throughDate, '5y', Date.now()), true,
+    'the stale fixture must remain a valid source-bound history response');
   const priorResponse = structuredClone(record.payload.response);
   backing.calls.length = 0;
   return { backing, rows, options, record, oldRetrieval, priorResponse, upstreamRequests: () => upstreamRequests };
