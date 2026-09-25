@@ -1,6 +1,6 @@
 import { BankDataError } from './errors.js';
 export const CALL_FORMS = new Set(['031', '041', '051']);
-export const SCOPE_MAPPING_VERSION = 'ffiec-bankscope-v1';
+export const SCOPE_MAPPING_VERSION = 'ffiec-bankscope-v2';
 export function normalizeBankPanel(panel, reportDate, submissions = [], now = new Date().toISOString()) {
   if (!Array.isArray(panel) || panel.length > 15000 || !Array.isArray(submissions)) throw new BankDataError('parsing_failure');
   const dates = new Map(submissions.map(r => [Number(r.ID_RSSD), typeof r.DateTime === 'string' ? r.DateTime.slice(0,100) : null]));

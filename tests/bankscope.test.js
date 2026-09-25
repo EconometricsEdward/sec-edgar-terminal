@@ -140,3 +140,14 @@ test('worker reprocesses cached official XBRL without contacting FFIEC and prese
   assert.equal(published[0].retrievedAt,'2026-09-25T01:00:00.000Z');
   assert.equal(published[0].submissionDate,'source-date');assert.equal(operations.includes('reserve'),false);
 });
+
+test('official 041 and 051 fixtures reconcile and recognize FFIEC nonMonetary CBLR elections',async()=>{
+  for(const [rssd,form,assets,cblr] of [[2758613,'041',5526397000,false],[493741,'051',454838000,true],[946274,'051',303003000,true]]){
+    const xml=await readFile(new URL(`./fixtures/bank-${rssd}-2026-06-30.xml`,import.meta.url),'utf8');
+    const normalized=normalizeBankReport(parseCallXbrl(xml,{rssd,reportDate:date}),{form});
+    assert.equal(normalized.validation.passed,true);
+    assert.equal(normalized.metrics.find(m=>m.key==='assets').value,assets);
+    assert.equal(normalized.capitalFramework,cblr?'CBLR':'risk_based');
+    if(cblr){const metric=normalized.metrics.find(m=>m.key==='rwa');assert.equal(metric.value,null);assert.equal(metric.reason,'not_required_under_cblr');assert.match(metric.frameworkLineage[0].unit,/nonMonetary$/);}
+  }
+});
