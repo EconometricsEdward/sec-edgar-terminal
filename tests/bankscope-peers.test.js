@@ -96,7 +96,7 @@ test('peer SQL fences ingestion, publishes only complete identity-joined snapsho
     const banks=Array.from({length:1000},(_,i)=>({rssd:i+1,name:`BANK ${i+1}`,form:'051',city:'TEST',state:'IN',fdic:i+1,filed:true,source:{ID_RSSD:i+1,FDICCertNumber:i+1,Name:`BANK ${i+1}`}}));
     for(let i=0;i<1000;i+=500)await op('catalog',{owner,period,banks:banks.slice(i,i+500),complete:i===500,reporterCount:1000});
     assert.equal((await op('request',{rssd:101,clientHash:'a'.repeat(64)})).queued,2);
-    const start={owner,snapshotId,period,count:1000,url:'https://api.fdic.gov/banks/financials?test',sha256:'a'.repeat(64),sourceIndex:'v1',modelVersion:'v1'};
+    const start={owner,snapshotId,period,count:1000,url:'https://api.fdic.gov/banks/financials?test',sha256:'a'.repeat(64),sourceIndex:'v1',modelVersion:'bankscope-peers-2'};
     await assert.rejects(()=>op('peer_start',{...start,owner:randomUUID()}));await op('peer_start',start);
     const rows=banks.map(b=>({raw:raw(b.rssd),profile:normalizePeerRecord(raw(b.rssd),period)}));
     await op('peer_batch',{owner,snapshotId,rows:rows.slice(0,500)});
@@ -105,7 +105,7 @@ test('peer SQL fences ingestion, publishes only complete identity-joined snapsho
     await assert.rejects(()=>op('peer_batch',{owner,snapshotId,rows:[{raw:raw(501),profile:{...rows[500].profile,rssd:9999}}]}));
     await op('peer_batch',{owner,snapshotId,rows:rows.slice(500)});await op('peer_complete',{owner,snapshotId});
     const universe=await op('peer_universe',{period});assert.equal(universe.profiles.length,1000);assert.equal(universe.profiles[0].name,'BANK 1');
-    assert.equal((await op('peer_status')).snapshots[0].model_version,'v1');
+    assert.equal((await op('peer_status')).snapshots[0].model_version,'bankscope-peers-2');
     assert.equal('raw_source' in universe.profiles[0],false);assert.equal('owner' in universe.snapshot,false);
     assert.equal((await op('reserve',{owner,method:'RetrieveUBPRXBRLFacsimile'})).allowed,true);
     assert.equal((await op('reserve',{owner,method:'RetrieveFacsimile'})).allowed,false);
@@ -114,6 +114,26 @@ test('peer SQL fences ingestion, publishes only complete identity-joined snapsho
     assert.equal((await op('ubpr_read',{rssd:101,period})).status,'ready');
     assert.equal(await op('ubpr_source',{rssd:101,period,hash:'c'.repeat(64)}),null);
     await op('finish',{owner});
+    // Fixtures represent completed historical, revised-current, legacy and staging versions.
+    const prior='2026-03-31',priorId=randomUUID(),revisedId=randomUUID(),stagingId=randomUUID(),legacyId=randomUUID();
+    await db.query("update edgar_private.bank_pilot_control set catalog=jsonb_set(catalog,'{periods}',$1::jsonb)",[JSON.stringify(['2026-09-30',period,prior,'2025-12-31','2025-09-30'])]);
+    for(const [id,date,completed,version] of [[priorId,prior,true,'bankscope-peers-2'],[revisedId,period,true,'bankscope-peers-2'],[stagingId,prior,false,'bankscope-peers-2'],[legacyId,'2025-12-31',true,'bankscope-peers-1']]){
+      await db.query(`insert into edgar_private.bank_peer_snapshots(id,report_date,owner,expected_count,received_count,matched_count,source_url,source_sha256,source_index,model_version,completed_at)
+        select $1,$2::date,owner,expected_count,received_count,matched_count,source_url,source_sha256,source_index,$3,case when $4 then clock_timestamp() else null end from edgar_private.bank_peer_snapshots where id=$5`,[id,date,version,completed,snapshotId]);
+      await db.query("insert into edgar_private.bank_peer_profiles select $1,id_rssd,jsonb_set(profile,'{metrics,roa}',$2::jsonb),raw_source from edgar_private.bank_peer_profiles where snapshot_id=$3",[id,id===priorId?'1.1':'99',snapshotId]);
+    }
+    const payload={rssd:101,period,snapshotId,peers:[2,3,4,5,6,7]},history=await op('peer_history',payload);
+    assert.deepEqual(history.periods,['2025-09-30','2025-12-31',prior,period]);
+    assert.deepEqual(history.snapshots.map(s=>s.id),[priorId,snapshotId]); // Excludes legacy, staging, and current restatement.
+    assert.equal(history.profiles.length,14);assert.ok(history.profiles.every(p=>[101,...payload.peers].includes(p.rssd)));
+    assert.equal(history.profiles.find(p=>p.rssd===101&&p.period===period).metrics.roa,1.2);
+    assert.equal(history.profiles.find(p=>p.rssd===101&&p.period===prior).metrics.roa,1.1);
+    assert.ok(history.snapshots.every(s=>!('owner' in s)));assert.ok(history.profiles.every(p=>!('raw_source' in p)));
+    for(const peers of [[101],[2,2],Array.from({length:31},(_,i)=>i+2),[null],['-1']])await assert.rejects(()=>op('peer_history',{...payload,peers}));
+    for(const id of [stagingId,legacyId,randomUUID()])await assert.rejects(()=>op('peer_history',{...payload,snapshotId:id}));
+    const old=await op('peer_history',{...payload,period:prior,snapshotId:priorId});
+    assert.ok(old.periods.every(p=>p<=prior));assert.equal(old.profiles.length,7);
+    assert.equal((await op('peer_history',{...payload,peers:[]})).profiles.length,2);
     for(const role of ['anon','authenticated']){
       assert.equal((await db.query(`select has_function_privilege('${role}','public.bank_scope_operation(text,jsonb)','execute') allowed`)).rows[0].allowed,false);
       assert.equal((await db.query(`select has_table_privilege('${role}','edgar_private.bank_peer_profiles','select') allowed`)).rows[0].allowed,false);

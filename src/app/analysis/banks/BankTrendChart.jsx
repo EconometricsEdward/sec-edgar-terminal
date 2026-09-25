@@ -1,12 +1,13 @@
 'use client';
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar, ReferenceLine, ScatterChart, Scatter, Cell, LabelList } from 'recharts';
 import styles from './banks.module.css';
+import { formatPeerPercent } from '../../../utils/bank/peerMetrics.js';
 
 const axis = { stroke: '#9eafc5', tick: { fontSize: 11 }, tickLine: false, axisLine: false };
-const tick = (v, unit) => unit === 'percent' ? `${Number(v.toFixed(2))}%` : `$${new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(v * 1e6)}`;
+const tick = (v, unit) => unit === 'percent' ? formatPeerPercent(v) : `$${new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(v * 1e6)}`;
 function ChartTooltip({ active, payload, label, unit }) {
   if (!active || !payload?.length) return null;
-  return <div className={styles.chartTooltip}><strong>{label}</strong>{payload.map((p, i) => <div key={`${p.dataKey}-${i}`}><span><i style={{ background: p.color }} />{p.name}</span><b>{p.value == null ? 'Unavailable' : `${Number(p.value).toLocaleString('en-US', { maximumFractionDigits: unit === 'percent' ? 2 : 3 })}${unit === 'percent' ? '%' : 'm'}`}</b></div>)}{unit !== 'percent' && <small>USD millions</small>}</div>;
+  return <div className={styles.chartTooltip}><strong>{label}</strong>{payload.map((p, i) => <div key={`${p.dataKey}-${i}`}><span><i style={{ background: p.color }} />{p.name}</span><b>{p.value == null ? 'Unavailable' : unit === 'percent' ? formatPeerPercent(Number(p.value)) : `${Number(p.value).toLocaleString('en-US', { maximumFractionDigits: 3 })}m`}</b></div>)}{unit !== 'percent' && <small>USD millions</small>}</div>;
 }
 export default function BankTrendChart({ points, quarterly, unit, label, series = [{ key: 'value', label, color: '#67c8ff' }], height = 230 }) {
   const Chart = quarterly ? BarChart : LineChart;
@@ -20,7 +21,7 @@ export default function BankTrendChart({ points, quarterly, unit, label, series 
       {negative && <ReferenceLine y={0} stroke="#8494aa" />}
       {series.map((s, i) => quarterly
         ? <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color} maxBarSize={35} radius={[3, 3, 0, 0]} isAnimationActive={false} />
-        : <Line key={s.key} type="linear" dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2.5} strokeDasharray={i === 2 ? '5 3' : undefined} dot={{ r: 3.5, fill: s.color, stroke: '#101b2b', strokeWidth: 2 }} activeDot={{ r: 6, stroke: '#e8edf5' }} connectNulls={false} isAnimationActive={false} />)}
+        : <Line key={s.key} type="linear" dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2.5} strokeDasharray={s.dash || (i === 2 ? '5 3' : undefined)} dot={{ r: 3.5, fill: s.color, stroke: '#101b2b', strokeWidth: 2 }} activeDot={{ r: 6, stroke: '#e8edf5' }} connectNulls={false} isAnimationActive={false} />)}
     </Chart></ResponsiveContainer>
   </div>;
 }
