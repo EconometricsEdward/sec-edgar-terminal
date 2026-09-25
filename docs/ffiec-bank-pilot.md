@@ -45,3 +45,17 @@ The mapping registry is `src/utils/bank/metrics.js`. Each stored metric carries 
 Run `node --test tests/bank-pilot.test.js` for identity, parsing, context, units, missing values, ratios, HTTP error handling, serial requests, repeat-read behavior, exact SQL duplicate/lease/RLS behavior, gateway claims, and preview guards. SQL tests run in the existing PGlite dependency and never connect to a live database. Run the existing project typecheck, build, and regression suite before preview publication.
 
 A passing HTTP status is insufficient. Reports must contain the seven required validation metrics and reconcile balance sheet, loans, net interest income, and standardized capital ratios. Live source verification and the actual retrieved periods are recorded separately after ingestion; mock test identities are synthetic, never reported as verified bank IDs.
+
+## Live validation — 25 September 2026
+
+The FFIEC panel verified JPMorgan Chase Bank, National Association (RSSD 852218; FDIC 628), Bank of America, National Association (RSSD 480228; FDIC 3510), and Wells Fargo Bank, National Association (RSSD 451965; FDIC 3511). All three reported on FFIEC 031 for 2026-06-30, 2026-03-31, 2025-12-31, and 2025-09-30.
+
+The database contains exactly 3 institutions, 12 source filings, and 420 metric rows: 35 available metrics per filing, no duplicate bank/quarter, and no unresolved metric in this sample. All 156 stored financial checks passed. The narrow HTM context exception was independently corroborated in all 12 filings. Original XBRL documents total 2,361,104 bytes.
+
+`scripts/verify-bank-pilot.sql` independently parses the retained source with PostgreSQL XML/XPath, rather than the application parser. All 84 comparisons matched: assets, loans, deposits, equity, YTD net income, Tier 1 capital, and nonaccrual loans for every bank/quarter. The browser also verified the five overview figures in all 12 views and inspected expanded source lineage.
+
+The request ledger ended at 21 dispatches: reporting periods 1, panels 4, submission timestamps 4, XBRL facsimiles 12. A completed repeat ingestion returned `ready`, stored 0, reused 12, and made zero new FFIEC requests. Bank/quarter navigation and stored-source access left the ledger at 21. No live authentication, quota, 429, transient API, or database errors occurred. Rate-limit and failure paths were exercised with mocks. Historical submissions can reflect later amendments; their original timestamp text and source hashes are retained without inventing amendment sequence numbers.
+
+The complete test suite passed 3,607 tests with 2 skipped and 0 failed, including all 16 bank-pilot tests. Typecheck, production build, changed-file lint, and whitespace checks passed. Anonymous gateway access returned 401; unprotected access to the preview required Vercel authentication. Production `/bank-pilot` and `/api/internal/bank-pilot` returned 404. The existing Home, Analysis, Risk, Market, Funds, Portfolio, and Reports pages returned 200. This is regression and page-smoke evidence, not a full live exercise of every external-data workflow.
+
+Validated preview: https://sec-edgar-terminal-mzevvtnqx-econometricsedwards-projects.vercel.app/bank-pilot . The source route returned 200 in Vercel runtime logs, although the automated browser could not render its plain-text navigation; source-content validation used the retained database XML. No production rollout, recurring job, extra bank, or extra quarter was initiated. Further expansion and amendment refresh require a separately reviewed change.
