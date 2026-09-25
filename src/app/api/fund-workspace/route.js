@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { compareAllFundHoldings, multiFundComparisonCsv } from "../../../utils/fundMultiComparison.js";
 import {
   checkRateLimit,
   getClientIp,
@@ -70,7 +71,7 @@ export async function GET(request) {
   let mode, tickers, reports, weights, before, after, allocation;
   try {
     mode = p.get("mode") || "compare";
-    if (!["compare", "search", "allocation", "changes"].includes(mode))
+    if (!["compare", "compare-all", "search", "allocation", "changes"].includes(mode))
       throw new Error("Choose a supported fund research mode.");
     const raw =
       (mode === "changes"
@@ -143,7 +144,16 @@ export async function GET(request) {
       exporter,
       resolvedBefore = "",
       resolvedAfter = "";
-    if (mode === "compare") {
+    if (mode === "compare-all") {
+      result = compareAllFundHoldings(portfolios, {
+        tickers,
+        scope: ["all", "shared", "every", "unique", "unmatched"].includes(p.get("scope")) ? p.get("scope") : "all",
+        query: p.get("q") || "",
+        sort: ["shared", "weight", "value", "name"].includes(p.get("sort")) ? p.get("sort") : "shared",
+        fund: tickers.includes(p.get("fund")) ? p.get("fund") : "",
+      });
+      exporter = multiFundComparisonCsv;
+    } else if (mode === "compare") {
       result = compareFundPortfolios(portfolios, {
         left: p.get("left") || tickers[0],
         right: p.get("right") || tickers[1],

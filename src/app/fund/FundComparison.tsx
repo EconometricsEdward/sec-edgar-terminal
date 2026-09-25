@@ -2,594 +2,78 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Download, RefreshCw } from "lucide-react";
-import { money, pct } from "./fundUi";
-import s from "./fund.module.css";
-import c from "./FundComparison.module.css";
+import { money, number, pct } from "./fundUi";
+import { securityWeight } from "../../utils/fundSecuritySearch.js";
+import s from "./NportResearch.module.css";
 
-type Settings = {
-  reportMap?: Record<string, string>;
-  comparisonLeft?: string;
-  comparisonRight?: string;
-  comparisonScope?: string;
-  comparisonQuery?: string;
-};
-type Evidence = {
-  ticker: string;
-  name?: string;
-  asOf: string;
-  filingDate: string;
-  accession: string;
-  sourceUrl: string;
-};
-type FundMeta = Evidence & {
-  seriesId: string | null;
-  classId: string | null;
-  reports: {
-    accession: string;
-    reportDate: string | null;
-    filingDate: string;
-    form: string;
-  }[];
-  fundInfo: { netAssets: number | null };
-  summary: { count: number };
-};
-type Row = {
-  key: string;
-  ids: string[];
-  name: string;
-  kind: string;
-  leftWeight: number;
-  rightWeight: number;
-  difference: number;
-  sharedWeight: number;
-  leftPositions: number;
-  rightPositions: number;
-};
-type Pair = {
-  left: string;
-  right: string;
-  overlap: number | null;
-  count: number;
-  samePeriod: boolean;
-  samePortfolio: boolean;
-};
-type Result = {
-  available: boolean;
-  reason?: string;
-  left: Evidence | null;
-  right: Evidence | null;
-  samePeriod?: boolean;
-  gapDays?: number | null;
-  samePortfolio?: boolean;
-  overlap?: number | null;
-  sharedCount?: number;
-  pairs: Pair[];
-  coverage: {
-    ticker: string;
-    totalPositions: number;
-    eligiblePositions: number;
-    eligibleWeight: number | null;
-    excludedPositions: number;
-    exclusions: Record<string, number>;
-  }[];
-  rows: Row[];
-  methodology?: string;
-};
-type ResponseData = {
-  funds: FundMeta[];
-  errors: { ticker: string; message: string }[];
-  resolvedReports: Record<string, string>;
-  result: Result;
-  pagination: { page: number; pageCount: number; total: number };
-};
-export default function FundComparison({
-  tickers,
-  settings = {},
-  onPatch = () => {},
-  onFunds,
-}: {
-  tickers: string[];
-  settings?: Settings;
-  onPatch?: (patch: Record<string, unknown>) => void;
-  onFunds?: (funds: any[]) => void;
+export default function FundComparison({ tickers, settings = {}, onPatch = () => {}, onFunds }: {
+  tickers: string[]; settings?: any; onPatch?: (patch: Record<string, unknown>) => void; onFunds?: (funds: any[]) => void;
 }) {
-  const [data, setData] = useState<ResponseData | null>(null),
-    [error, setError] = useState(""),
-    [attempt, setAttempt] = useState(0),
-    [page, setPage] = useState(1);
+  const [payload, setPayload] = useState<{ key: string; data: any } | null>(null);
+  const [error, setError] = useState<{ key: string; message: string } | null>(null);
+  const [attempt, setAttempt] = useState(0), [pageState, setPage] = useState({ key: "", page: 1 });
   const [draft, setDraft] = useState(settings.comparisonQuery || "");
-  const patchRef = useRef(onPatch);
-  const fundsRef = useRef(onFunds);
-  useEffect(() => {
-    patchRef.current = onPatch;
-    fundsRef.current = onFunds;
-  }, [onPatch, onFunds]);
-  useEffect(() => {
-    setDraft(settings.comparisonQuery || "");
-  }, [settings.comparisonQuery]);
-  const left = tickers.includes(settings.comparisonLeft || "")
-    ? settings.comparisonLeft!
-    : tickers[0];
-  const right =
-    tickers.includes(settings.comparisonRight || "") &&
-    settings.comparisonRight !== left
-      ? settings.comparisonRight!
-      : tickers.find((ticker) => ticker !== left);
-  const reports = JSON.stringify(
-    Object.fromEntries(
-      tickers
-        .filter((ticker) => settings.reportMap?.[ticker])
-        .map((ticker) => [ticker, settings.reportMap![ticker]]),
-    ),
-  );
-  const base = new URLSearchParams({
-    mode: "compare",
-    tickers: tickers.join(","),
-    reports,
-    left: left || "",
-    right: right || "",
-    scope: settings.comparisonScope || "all",
-    q: settings.comparisonQuery || "",
-  }).toString();
-  const url = `/api/fund-workspace?${base}&page=${page}`;
-  useEffect(() => {
-    setPage(1);
-  }, [base]);
+  const callbacks = useRef({ onFunds, onPatch });
+  useEffect(() => { callbacks.current = { onFunds, onPatch }; }, [onFunds, onPatch]);
+  useEffect(() => { setDraft(settings.comparisonQuery || ""); }, [settings.comparisonQuery]);
+  useEffect(() => { if (draft === (settings.comparisonQuery || "")) return; const timer = setTimeout(() => callbacks.current.onPatch({ comparisonQuery: draft }), 350); return () => clearTimeout(timer); }, [draft, settings.comparisonQuery]);
+  // Always start from each fund's latest public report. Old shared date selections
+  // remain navigable on individual fund pages, but do not pin this comparison.
+  const base = new URLSearchParams({ mode: "compare-all", tickers: tickers.join(","), scope: settings.comparisonScope || "all", q: settings.comparisonQuery || "", sort: settings.comparisonSort || "shared", fund: settings.comparisonFund || "" }).toString();
+  const page = pageState.key === base ? pageState.page : 1;
+  const key = `${base}&page=${page}&attempt=${attempt}`;
+  const data = payload?.key === key ? payload.data : null;
+  const meta = payload?.data.funds?.filter((fund: any) => tickers.includes(fund.ticker)) || [];
+  const currentError = error?.key === key ? error.message : "";
   useEffect(() => {
     if (tickers.length < 2) return;
     const controller = new AbortController();
-    setData(null);
-    setError("");
-    fetch(url, { signal: controller.signal })
-      .then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok)
-          throw new Error(payload.error || "Comparison could not be loaded.");
-        if (controller.signal.aborted) return;
-        setData(payload);
-        fundsRef.current?.(payload.funds);
-        const current = JSON.parse(reports);
-        const additions = Object.fromEntries(
-          Object.entries(payload.resolvedReports).filter(
-            ([ticker]) => !current[ticker],
-          ),
-        );
-        if (Object.keys(additions).length)
-          patchRef.current({ reportMap: { ...current, ...additions } });
-      })
-      .catch((reason) => {
-        if (!controller.signal.aborted) setError(reason.message);
-      });
+    fetch(`/api/fund-workspace?${base}&page=${page}`, { signal: controller.signal })
+      .then(async res => { const json = await res.json(); if (!res.ok) throw new Error(json.error || "Comparison could not be loaded."); return json; })
+      .then(json => { if (!controller.signal.aborted) { setPayload({ key, data: json }); callbacks.current.onFunds?.(json.funds); } })
+      .catch(error => { if (!controller.signal.aborted) setError({ key, message: error.message }); });
     return () => controller.abort();
-  }, [url, reports, tickers.length, attempt]);
+  }, [base, page, key, tickers.length]);
   const result = data?.result;
-  const csv = new URLSearchParams(base);
-  if (data)
-    csv.set(
-      "reports",
-      JSON.stringify({ ...JSON.parse(reports), ...data.resolvedReports }),
-    );
-  csv.set("format", "csv");
-  return (
-    <section
-      className={`${s.panel} ${c.panel}`}
-      aria-label="Fund comparison results"
-    >
-      <div className={s.sectionHeading}>
-        <div>
-          <p className={s.eyebrow}>Compare the underlying holdings</p>
-          <h2>Find overlap and meaningful differences</h2>
-          <p className={c.muted}>
-            Choose each report, then investigate every shared or distinct
-            eligible security.
-          </p>
-        </div>
-        <button
-          className={s.secondary}
-          onClick={() => setAttempt((value) => value + 1)}
-        >
-          <RefreshCw size={14} /> Retry reports
-        </button>
-      </div>
-      {tickers.length < 2 ? (
-        <p className={s.notice}>
-          Add at least two funds to compare their portfolios.
-        </p>
-      ) : (
-        <>
-          <div className={c.controls}>
-            <label>
-              First fund
-              <select
-                value={left}
-                onChange={(event) =>
-                  onPatch({
-                    comparisonLeft: event.target.value,
-                    comparisonRight:
-                      event.target.value === right ? left : right,
-                  })
-                }
-              >
-                {tickers.map((ticker) => (
-                  <option key={ticker}>{ticker}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Second fund
-              <select
-                value={right || ""}
-                onChange={(event) =>
-                  onPatch({ comparisonRight: event.target.value })
-                }
-              >
-                {tickers
-                  .filter((ticker) => ticker !== left)
-                  .map((ticker) => (
-                    <option key={ticker}>{ticker}</option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Positions to show
-              <select
-                value={settings.comparisonScope || "all"}
-                onChange={(event) =>
-                  onPatch({ comparisonScope: event.target.value })
-                }
-              >
-                <option value="all">All eligible securities</option>
-                <option value="shared">Shared eligible securities</option>
-                <option value="left">Only in first eligible set</option>
-                <option value="right">Only in second eligible set</option>
-              </select>
-            </label>
-            <form
-              className={c.search}
-              onSubmit={(event) => {
-                event.preventDefault();
-                onPatch({ comparisonQuery: draft.trim() });
-              }}
-            >
-              <label>
-                Search differences
-                <input
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder="Security name, CUSIP, or ISIN"
-                  maxLength={100}
-                />
-              </label>
-              <button className={s.secondary} type="submit">
-                Search
-              </button>
-            </form>
-          </div>
-          {error ? (
-            <p role="alert" className={s.notice}>
-              {error}
-            </p>
-          ) : !data ? (
-            <p role="status" className={s.loading}>
-              Reading complete portfolios and reconciling security identifiers…
-            </p>
-          ) : (
-            <>
-              {data.errors.length > 0 && (
-                <div className={s.notice} role="status">
-                  <b>Some reports could not be reviewed.</b>
-                  {data.errors.map((failure) => (
-                    <p key={failure.ticker}>
-                      {failure.ticker}: {failure.message}{" "}
-                      <button
-                        className={c.inline}
-                        onClick={() =>
-                          onPatch({
-                            reportMap: {
-                              ...settings.reportMap,
-                              [failure.ticker]: "",
-                            },
-                          })
-                        }
-                      >
-                        Try latest report
-                      </button>
-                    </p>
-                  ))}
-                  <p>
-                    Unavailable funds are shown separately from successfully
-                    searched portfolios.
-                  </p>
-                </div>
-              )}
-              <div className={c.reports}>
-                {tickers.map((ticker) => {
-                  const fund = data.funds.find(
-                    (item) => item.ticker === ticker,
-                  );
-                  return (
-                    <div key={ticker} className={c.report}>
-                      <b>{ticker}</b>
-                      {fund ? (
-                        <>
-                          <label>
-                            Report for {ticker}
-                            <select
-                              value={fund.accession}
-                              onChange={(event) =>
-                                onPatch({
-                                  reportMap: {
-                                    ...settings.reportMap,
-                                    [ticker]: event.target.value,
-                                  },
-                                })
-                              }
-                            >
-                              {fund.reports.map((report) => (
-                                <option
-                                  key={report.accession}
-                                  value={report.accession}
-                                >
-                                  {report.reportDate ||
-                                    "Period not in report index"}{" "}
-                                  · filed {report.filingDate}
-                                  {report.form.endsWith("/A")
-                                    ? " · amendment"
-                                    : ""}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <p>
-                            {fund.asOf} · {money(fund.fundInfo.netAssets)} NAV ·{" "}
-                            {fund.summary.count.toLocaleString()} positions
-                          </p>
-                          <a
-                            href={fund.sourceUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            SEC source <ArrowUpRight size={12} />
-                          </a>
-                        </>
-                      ) : (
-                        <p>Report unavailable</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <div className={s.tableWrap}>
-                <table className={`${s.table} ${c.matrix}`}>
-                  <caption>
-                    All selected pairs · shared eligible NAV weight, in
-                    percentage points. Select a pair to investigate it.
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Fund</th>
-                      {tickers.map((ticker) => (
-                        <th scope="col" key={ticker}>
-                          {ticker}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tickers.map((a) => (
-                      <tr key={a}>
-                        <th scope="row">{a}</th>
-                        {tickers.map((b) => {
-                          const pair = result?.pairs.find(
-                            (p) =>
-                              (p.left === a && p.right === b) ||
-                              (p.left === b && p.right === a),
-                          );
-                          return (
-                            <td key={b}>
-                              {a === b ? (
-                                "—"
-                              ) : pair && pair.overlap != null ? (
-                                <button
-                                  className={c.cell}
-                                  aria-label={`Compare ${a} with ${b}, shared weight ${pair.overlap.toFixed(2)} percentage points${pair.samePeriod ? "" : ", different reporting dates"}`}
-                                  aria-pressed={
-                                    (left === a && right === b) ||
-                                    (left === b && right === a)
-                                  }
-                                  onClick={() =>
-                                    onPatch({
-                                      comparisonLeft: a,
-                                      comparisonRight: b,
-                                    })
-                                  }
-                                >
-                                  {pair.overlap.toFixed(2)}
-                                  <small>
-                                    {pair.samePortfolio
-                                      ? "Same portfolio"
-                                      : pair.samePeriod
-                                        ? "Same date"
-                                        : "Different dates"}
-                                  </small>
-                                </button>
-                              ) : (
-                                <span className={c.muted}>Unavailable</span>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {!result?.available ? (
-                <p className={s.notice}>{result?.reason}</p>
-              ) : (
-                <>
-                  <div className={c.summary}>
-                    <div>
-                      <b>
-                        {result.overlap?.toFixed(2) ?? "—"}
-                        <small> percentage points</small>
-                      </b>
-                      <p>Shared eligible NAV weight</p>
-                    </div>
-                    <div>
-                      <b>{result.sharedCount?.toLocaleString()}</b>
-                      <p>Shared identified securities</p>
-                    </div>
-                    <div>
-                      <b>
-                        {result.samePeriod
-                          ? "Same reporting date"
-                          : `${result.gapDays ?? "Unknown"} days apart`}
-                      </b>
-                      <p>
-                        {result.left?.asOf} / {result.right?.asOf}
-                      </p>
-                    </div>
-                  </div>
-                  {!result.samePeriod && (
-                    <p className={s.notice}>
-                      These reports cover different dates. Their differences
-                      combine portfolio differences with changes across time.
-                      Select matching reporting dates above when available.
-                    </p>
-                  )}
-                  {result.samePortfolio && (
-                    <p className={s.notice}>
-                      These tickers share the same SEC portfolio. Different
-                      share classes can have different fees and prices; the
-                      holdings do not create a second independent portfolio.
-                    </p>
-                  )}
-                  <details className={c.coverage}>
-                    <summary>What this comparison covers</summary>
-                    <p>{result.methodology}</p>
-                    {result.coverage
-                      .filter((item) => [left, right].includes(item.ticker))
-                      .map((item) => (
-                        <p key={item.ticker}>
-                          <b>{item.ticker}:</b>{" "}
-                          {item.eligiblePositions.toLocaleString()} of{" "}
-                          {item.totalPositions.toLocaleString()} positions
-                          qualify, representing {pct(item.eligibleWeight)} of
-                          NAV. {item.excludedPositions.toLocaleString()}{" "}
-                          excluded.{" "}
-                          {Object.entries(item.exclusions)
-                            .map(
-                              ([reason, count]) =>
-                                `${count} ${reason.toLowerCase()}`,
-                            )
-                            .join("; ")}
-                        </p>
-                      ))}
-                  </details>
-                  <div className={c.resultsHeading}>
-                    <h3>
-                      {data.pagination.total.toLocaleString()} matching
-                      securities
-                    </h3>
-                    <a
-                      className={s.secondary}
-                      href={`/api/fund-workspace?${csv}`}
-                    >
-                      <Download size={14} /> Export all matching differences
-                    </a>
-                  </div>
-                  <p className={c.muted}>
-                    Sorted by absolute NAV-weight difference. Zero denotes no
-                    eligible matching position; it does not establish zero
-                    economic exposure.
-                  </p>
-                  <div className={s.tableWrap}>
-                    <table className={s.table}>
-                      <caption>
-                        Complete portfolio differences · page{" "}
-                        {data.pagination.page} of {data.pagination.pageCount}
-                      </caption>
-                      <thead>
-                        <tr>
-                          <th scope="col">Security</th>
-                          <th scope="col">{left} / NAV</th>
-                          <th scope="col">{right} / NAV</th>
-                          <th scope="col">
-                            {left} − {right}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {result.rows.map((row) => (
-                          <tr key={row.key}>
-                            <th scope="row">
-                              {row.name}
-                              <small>{row.ids.join(" · ")}</small>
-                              <small>
-                                {row.kind === "shared"
-                                  ? "Both eligible sets"
-                                  : row.kind === "left"
-                                    ? `${left} eligible set only`
-                                    : `${right} eligible set only`}
-                              </small>
-                            </th>
-                            <td>{pct(row.leftWeight)}</td>
-                            <td>{pct(row.rightWeight)}</td>
-                            <td>
-                              {row.difference > 0 ? "+" : ""}
-                              {row.difference.toFixed(2)} pp
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {!result.rows.length && (
-                      <p className={s.empty}>
-                        No eligible securities match these filters. Review
-                        coverage above or broaden the search.
-                      </p>
-                    )}
-                  </div>
-                  <div className={c.pagination}>
-                    <button
-                      className={s.secondary}
-                      disabled={data.pagination.page <= 1}
-                      onClick={() => setPage(data.pagination.page - 1)}
-                    >
-                      Previous
-                    </button>
-                    <span>
-                      Page {data.pagination.page} of {data.pagination.pageCount}
-                    </span>
-                    <button
-                      className={s.secondary}
-                      disabled={
-                        data.pagination.page >= data.pagination.pageCount
-                      }
-                      onClick={() => setPage(data.pagination.page + 1)}
-                    >
-                      Next
-                    </button>
-                  </div>
-                  <div className={c.links}>
-                    <Link
-                      href={`/fund/${left}?accession=${result.left?.accession}`}
-                    >
-                      Open {left} portfolio <ArrowUpRight size={13} />
-                    </Link>
-                    <Link
-                      href={`/fund/${right}?accession=${result.right?.accession}`}
-                    >
-                      Open {right} portfolio <ArrowUpRight size={13} />
-                    </Link>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </>
-      )}
-    </section>
-  );
+  const funds = data?.funds || meta;
+  const maxNav = Math.max(1, ...funds.map((f: any) => f.fundInfo?.netAssets || 0));
+  const counts = result?.counts;
+  const scopes = [["all", "All holdings", counts?.total], ["every", "In every fund", counts?.every], ["shared", "In 2+ funds", counts?.shared], ["unique", "In one fund", counts?.unique], ["unmatched", "Unmatched IDs", counts?.unmatched]];
+  return <section className={s.comparison} aria-label="Compare all selected funds">
+    <header className={s.sectionHeader}><div><p className={s.eyebrow}>All {tickers.length} selected funds</p><h2>What do they hold in common?</h2><p>Compare portfolio size and every holding across the latest available reports.</p></div><div className={s.actions}><button type="button" onClick={() => setAttempt(n => n + 1)}><RefreshCw size={15} /> Retry reports</button><a href={`/api/fund-workspace?${base}&format=csv`} className={s.actionLink}><Download size={15} /> Export comparison</a></div></header>
+    <div className={s.fundCards} style={{ "--fund-count": tickers.length } as React.CSSProperties}>
+      {tickers.map((ticker, index) => {
+        const fund = funds.find((f: any) => f.ticker === ticker), failure = data?.errors?.find((f: any) => f.ticker === ticker);
+        return <article key={ticker} className={s.navCard} data-color={index}>
+          <div className={s.cardHeading}><Link prefetch={false} href={`/fund/${ticker}`}>{ticker} <ArrowUpRight size={16} /></Link><span>{fund ? `${number(fund.summary?.count)} positions` : failure ? "Report unavailable" : "Loading report…"}</span></div>
+          <p className={s.fundName}>{fund?.name || ticker}</p><span className={s.metricLabel}>Net asset value · NAV</span><strong className={s.navValue}>{fund ? money(fund.fundInfo?.netAssets) : "—"}</strong>
+          <div className={s.navTrack} aria-hidden="true"><i style={{ width: `${Math.max(0, (fund?.fundInfo?.netAssets || 0) / maxNav * 100)}%` }} /></div>
+          {fund && <div className={s.cardFacts}><span>Top 10 <b>{pct(fund.summary?.top10Weight)}</b></span><span>Holdings value <b>{money(fund.summary?.value)}</b></span></div>}
+          {fund && <div className={s.sourceLine}><span>Portfolio {fund.asOf}</span><a href={fund.sourceUrl} target="_blank" rel="noreferrer">SEC source ↗</a></div>}
+          {failure && <p className={s.error}>{failure.message}</p>}
+        </article>;
+      })}
+    </div>
+    <p className={s.caption}>NAV is the fund series’ total net assets, which may cover multiple share classes; it is not a price per share. Portfolio dates can differ.</p>
+    {result?.sharedSeries?.map((group: string[]) => <p role="status" className={s.notice} key={group.join(",")}>{group.join(" and ")} share one SEC fund portfolio. Their NAV and holdings are not independent assets.</p>)}
+    {data?.errors?.length > 0 && <p role="status" className={s.notice}>Showing {data.funds.length} of {tickers.length} reports. Unavailable funds remain visible; “in every fund” and “in one fund” cannot be confirmed until every report loads.</p>}
+    <div className={s.comparisonSummary}>
+      <div><strong>{counts ? number(counts.every) : "—"}</strong><span>holdings in every fund</span></div><div><strong>{counts ? number(counts.shared) : "—"}</strong><span>{result && !result.complete ? "shared holdings found so far" : "holdings in at least two"}</span></div><div><strong>{counts ? number(counts.unique) : "—"}</strong><span>holdings found in one fund</span></div>
+    </div>
+    <div className={s.holdingsHeader}><div><h3>Holdings side by side</h3><p>Each column is a selected fund. Each cell shows its NAV weight and holding value.</p></div></div>
+    <div className={s.filterPills} role="group" aria-label="Holdings present in selected funds">{scopes.map(([scope, label, count]) => <button type="button" key={scope} aria-pressed={(settings.comparisonScope || "all") === scope} onClick={() => onPatch({ comparisonScope: scope })}>{label}{count != null && <span>{number(count)}</span>}</button>)}</div>
+    <div className={s.tableControls}><label className={s.holdingFilter}>Search holdings<input value={draft} onChange={event => setDraft(event.target.value)} placeholder="Name, ticker, CUSIP or ISIN" /></label><label>Held by<select value={settings.comparisonFund || ""} onChange={event => onPatch({ comparisonFund: event.target.value })}><option value="">Any selected fund</option>{tickers.map(t => <option key={t}>{t}</option>)}</select></label><label>Sort holdings<select value={settings.comparisonSort || "shared"} onChange={event => onPatch({ comparisonSort: event.target.value })}><option value="shared">Most funds in common</option><option value="weight">Largest NAV weight</option><option value="value">Largest holding value</option><option value="name">Holding name</option></select></label></div>
+    {currentError && <p role="alert" className={s.notice}>{currentError} <button type="button" onClick={() => setAttempt(n => n + 1)}>Retry comparison</button></p>}
+    {!data && !currentError && <p role="status" className={s.loading}>Loading the latest portfolios and matching holdings across all selected funds…</p>}
+    {data && <><div className={s.matrixScroll} tabIndex={0} role="region" aria-label="All-fund holdings comparison table"><table className={s.holdingsMatrix}>
+      <thead><tr><th scope="col">Holding <small>Reported security</small></th><th scope="col">Held by</th>{tickers.map((ticker, index) => <th scope="col" key={ticker} data-color={index}><span>{ticker}</span><small>% of NAV / USD value</small></th>)}</tr></thead>
+      <tbody>{result.rows.map((row: any) => <tr key={row.key}><th scope="row"><strong>{row.name}</strong><small>{row.ids.join(" · ") || "No matching identifier"}</small>{row.kind === "unmatched" && <small className={s.warning}>{row.matchNote || "Identity cannot be matched across funds"}</small>}</th><td><span className={s.presence} data-shared={row.fundCount > 1}>{row.fundCount} / {tickers.length}</span><small>{row.kind === "every" ? "Every fund" : row.kind === "unique" ? "One fund" : row.kind === "shared" ? "Shared" : "Unconfirmed"}</small></td>{tickers.map((ticker, index) => {
+        const position = row.funds.find((f: any) => f.ticker === ticker), available = data.funds.some((f: any) => f.ticker === ticker);
+        return <td key={ticker} data-color={index} data-held={!!position}>{position ? <><strong title={position.pctOfNav == null ? undefined : `${position.pctOfNav}% of NAV`}>{securityWeight(position.pctOfNav)}</strong><span title={position.value == null ? undefined : position.value.toLocaleString("en-US", { style: "currency", currency: "USD" })}>{money(position.value)}</span>{position.missingWeightCount > 0 && <small>Known weight: {securityWeight(position.knownWeight)}</small>}{position.missingValueCount > 0 && <small>Known value: {money(position.knownValue)}</small>}<div className={s.cellTrack} aria-hidden="true"><i style={{ width: `${Math.min(100, Math.abs(position.pctOfNav || 0))}%` }} /></div></> : <span className={s.noPosition}>{available ? "—" : "Unavailable"}<small>{available ? "No matched position" : "Report not loaded"}</small></span>}</td>;
+      })}</tr>)}</tbody>
+    </table>{!result.rows.length && <div className={s.empty}>{result.available ? "No holdings match these filters." : "Holdings are unavailable until a fund report loads."} <button type="button" onClick={() => onPatch({ comparisonQuery: "", comparisonScope: "all", comparisonFund: "" })}>Show all holdings</button></div>}</div>
+    <div className={s.pagination}><span>{number(data.pagination.total)} holdings · Page {data.pagination.page} of {data.pagination.pageCount}</span><div><button type="button" disabled={data.pagination.page <= 1} onClick={() => setPage({ key: base, page: data.pagination.page - 1 })}>Previous</button><button type="button" disabled={data.pagination.page >= data.pagination.pageCount} onClick={() => setPage({ key: base, page: data.pagination.page + 1 })}>Next</button></div></div>
+    <details className={s.overlap}><summary>Weighted overlap between funds</summary><p>For each shared eligible security, the smaller NAV weight is counted. Higher overlap indicates more similar reported long holdings.</p><div className={s.overlapGrid}>{result.pairs.map((pair: any) => <div key={`${pair.left}-${pair.right}`}><span>{pair.left} <b> / </b> {pair.right}</span><strong>{pct(pair.overlap)}</strong><small>{number(pair.count)} shared eligible securities{pair.samePortfolio ? " · Same fund series" : ""}</small></div>)}</div></details>
+    <details className={s.method}><summary>Matching, values & source coverage</summary><p>{result.methodology}</p><p>A dash means no matching reported security was found in a loaded portfolio. It does not prove zero economic exposure.</p></details></>}
+  </section>;
 }

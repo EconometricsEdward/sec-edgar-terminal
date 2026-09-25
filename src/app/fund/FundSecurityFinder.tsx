@@ -13,6 +13,8 @@ import {
 import { money } from "./fundUi";
 import type { Fund } from "./fundTypes";
 import s from "./FundSecurityFinder.module.css";
+import FundSearchBox from "./FundSearchBox";
+import { companyHoldingQuery } from "../../utils/fundDiscovery.js";
 
 type Settings = {
   reportMap?: Record<string, string>;
@@ -339,16 +341,7 @@ export default function FundSecurityFinder({
           submitSearch();
         }}
       >
-        <label>
-          Company, stock ticker or security identifier
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            maxLength={160}
-            placeholder="Apple, AAPL, or 037833100…"
-            aria-describedby="security-search-help"
-          />
-        </label>
+        <FundSearchBox value={query} onChange={setQuery} mode="holding" label="Search selected fund holdings" placeholder="Company, ticker, CUSIP or ISIN…" onChoose={item => { const term = companyHoldingQuery(item.name) || item.ticker; setQuery(term); onPatch({ securityQuery: term, securityAsset: asset, securityCountry: country }); }} onSubmit={value => { setQuery(value); onPatch({ securityQuery: value, securityAsset: asset, securityCountry: country }); }} />
         <label>
           Security type
           <select

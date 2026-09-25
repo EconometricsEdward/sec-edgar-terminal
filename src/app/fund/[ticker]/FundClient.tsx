@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowUpRight,
-  Bookmark,
   Download,
   RefreshCw,
   Share2,
@@ -17,10 +16,10 @@ import {
   money,
   number,
   pct,
-  useFundShelf,
 } from "../fundUi";
 import type { Exposure, Fund, Holding } from "../fundTypes";
 import s from "../fund.module.css";
+import { recentFundFilings } from "../../../utils/fundRecentFilings.js";
 const assetLabels: Record<string, string> = ASSET_LABELS;
 export default function FundClient({ urlTicker, selectedAccession = "", preparedSummaryReady = false }: { urlTicker: string; selectedAccession?: string; preparedSummaryReady?: boolean }) {
   const params = useSearchParams();
@@ -48,7 +47,6 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
   const [retry, setRetry] = useState(0),
     [message, setMessage] = useState(""),
     [detail, setDetail] = useState<Holding | null>(null);
-  const shelf = useFundShelf();
   const evidenceRef = useRef<HTMLElement>(null);
   const previousAccession = useRef(selectedAccession);
   const briefRefreshes = useRef(new Set<string>());
@@ -187,32 +185,20 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
         <div className={s.actions}>
           <button
             className={s.secondary}
-            disabled={!shelf.ready}
-            aria-pressed={shelf.saved.includes(urlTicker)}
-            onClick={() => shelf.toggle(urlTicker)}
-          >
-            <Bookmark
-              size={15}
-              fill={shelf.saved.includes(urlTicker) ? "currentColor" : "none"}
-            />
-            {shelf.saved.includes(urlTicker) ? "Saved" : "Save fund"}
-          </button>
-          <button
-            className={s.secondary}
             onClick={() => copy(window.location.href, "Fund view link copied.")}
           >
             <Share2 size={15} /> Share view
           </button>
           <Link
             className={s.secondary}
-            href={`/fund?compare=${urlTicker},${urlTicker === "SPY" ? "VOO" : "SPY"}`}
+            href={`/fund?view=compare&tickers=${urlTicker}`}
           >
             Compare fund <ArrowUpRight size={15} />
           </Link>
         </div>
       </header>
       <p role="status" className={s.status}>
-        {message || shelf.storageError}
+        {message}
       </p>
       {error && (
         <div role="alert" className={s.notice}>
@@ -308,12 +294,12 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
                   className={tab === t ? s.active : ""}
                   onClick={() => setTab(t)}
                 >
-                  {t}
+                  {t === "sources" ? "Recent filings" : t}
                 </button>
               ))}
             </nav>
-            <label className={s.reportSelect}>
-              Portfolio report
+            {tab === "sources" && <label className={s.reportSelect}>
+              Portfolio report · past year
               <select
                 aria-label="Portfolio report"
                 value={accession || data.accession}
@@ -323,18 +309,18 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
                   query.delete("v");
                   query.delete("page");
                   query.set("accession", e.target.value);
-                  if (tab !== "overview") query.set("tab", tab);
+                  query.set("tab", "sources");
                   router.replace(`/fund/${urlTicker}?${query}`, { scroll: false });
                 }}
               >
-                {data.reports.map((r) => (
+                {[...recentFundFilings(data), ...(!recentFundFilings(data).some((r: any) => r.accession === data.accession) ? data.reports.filter(r => r.accession === data.accession) : [])].map((r: any) => (
                   <option key={r.accession} value={r.accession}>
                     {r.reportDate || "Period unlisted"} · filed {r.filingDate}
                     {r.form.endsWith("/A") ? " · amended" : ""}
                   </option>
                 ))}
               </select>
-            </label>
+            </label>}
           </div>
           {tab === "overview" && (
             <>
@@ -703,11 +689,9 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
                   <Download size={15} /> Full holdings CSV
                 </a>
               </div>
-              <h3 className={s.subheading}>Recent registrant filings</h3>
+              <h3 className={s.subheading}>N-PORT filings · past year</h3>
               <p className={s.caption}>
-                This list belongs to the registrant and can include other
-                series. Portfolio data above is independently matched to the
-                selected series.
+                Latest N-PORT filings for this fund series, filed within the past 12 months.
               </p>
               <div className={s.tableWrap}>
                 <table className={s.table}>
@@ -720,13 +704,13 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
                     </tr>
                   </thead>
                   <tbody>
-                    {data.filings.map((f) => (
+                    {recentFundFilings(data).map((f: any) => (
                       <tr key={f.accession}>
                         <th scope="row">{f.form}</th>
                         <td>{f.filingDate}</td>
                         <td>{f.reportDate || "—"}</td>
                         <td>
-                          <a href={f.url} target="_blank" rel="noreferrer">
+                          <a href={`https://www.sec.gov/Archives/edgar/data/${Number(data.cik)}/${f.accession.replaceAll("-", "")}/${f.accession}-index.html`} target="_blank" rel="noreferrer">
                             {f.accession} ↗
                           </a>
                         </td>

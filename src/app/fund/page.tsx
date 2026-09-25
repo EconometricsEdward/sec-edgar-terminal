@@ -11,7 +11,7 @@ import s from "./FundResearchBrief.module.css";
 export const metadata: Metadata = buildPageMetadata({
   title: "Funds & Institutional Managers — N-PORT and 13F Research",
   description:
-    "Explore SEC 13F manager holdings and N-PORT fund portfolios. See concentration, compare quarterly reported positions, and follow the source filings behind every snapshot.",
+    "Find SEC N-PORT funds by name or ticker, compare all selected funds’ NAV and shared holdings, and browse recent filings. Research institutional managers through Form 13F.",
   path: "/fund",
 });
 export default function FundIndexPage() {

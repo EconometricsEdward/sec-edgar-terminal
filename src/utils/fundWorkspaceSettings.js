@@ -21,6 +21,8 @@ export const FUND_WORKSPACE_DEFAULTS = {
   comparisonRight: "",
   comparisonScope: "all",
   comparisonQuery: "",
+  comparisonSort: "shared",
+  comparisonFund: "",
   changeTicker: "",
   changeBefore: "",
   changeAfter: "",
@@ -37,7 +39,7 @@ export const validFundTicker = (ticker) =>
 const accession = (value) =>
   typeof value === "string" && /^\d{10}-\d{2}-\d{6}$/.test(value);
 const choices = {
-  view: ["discover", "security", "compare", "allocation", "changes", "13f"],
+  view: ["discover", "security", "compare", "filings", "13f"],
   managerView: ["overview", "holdings", "changes", "history", "markets", "filings", "compare"],
   category: [
     "All funds",
@@ -51,7 +53,8 @@ const choices = {
   layout: ["table", "cards"],
   coverage: ["all", "ready", "missing", "unloaded"],
   securityScope: ["all", "selected"],
-  comparisonScope: ["all", "shared", "left", "right"],
+  comparisonScope: ["all", "shared", "every", "unique", "unmatched"],
+  comparisonSort: ["shared", "weight", "value", "name"],
   changeScope: ["all", "added", "removed", "changed"],
 };
 const draft = (value) =>
@@ -65,6 +68,8 @@ const draft = (value) =>
 export function normalizeFundWorkspaceSettings(input = {}) {
   const source = input && typeof input === "object" ? input : {};
   const out = { ...FUND_WORKSPACE_DEFAULTS };
+  if (source.view === "changes") out.view = "filings";
+  if (source.view === "allocation") out.view = "compare";
   for (const [key, values] of Object.entries(choices))
     if (values.includes(source[key])) out[key] = source[key];
   for (const key of [
@@ -95,7 +100,7 @@ export function normalizeFundWorkspaceSettings(input = {}) {
     if (source.allocations && Object.hasOwn(source.allocations, ticker))
       out.allocations[ticker] = draft(source.allocations[ticker]);
   }
-  for (const key of ["comparisonLeft", "comparisonRight", "changeTicker"])
+  for (const key of ["comparisonLeft", "comparisonRight", "comparisonFund", "changeTicker"])
     out[key] = out.tickers.includes(source[key]) ? source[key] : "";
   for (const key of ["changeBefore", "changeAfter"])
     out[key] = accession(source[key]) ? source[key] : "";
