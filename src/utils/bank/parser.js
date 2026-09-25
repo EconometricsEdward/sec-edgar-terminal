@@ -32,7 +32,7 @@ export function parseCallXbrl(xml, { rssd, reportDate }) {
   for (const u of list(root.unit)) units.set(u['@_id'], String(valueOf(u.measure) || ''));
   const facts = {};
   for (const [code, nodes] of Object.entries(root)) {
-    if (!/^(RCFD|RCON|RCFN|RIAD|RCFA|RCFW)[A-Z0-9]{4}$/.test(code)) continue;
+    if (!/^(RCFD|RCON|RCFN|RIAD|RCFA|RCFW|RCOA)[A-Z0-9]{4}$/.test(code)) continue;
     facts[code] = list(nodes).map(node => {
       const context = contexts.get(node['@_contextRef']);
       const raw = String(valueOf(node) ?? '').trim();

@@ -39,6 +39,7 @@ export default async function AnalysisIndexPage() {
         </div>
       </section>
       <div className={styles.capabilities} aria-label="Available company analysis tools">
+        <Link href="/analysis/banks"><Layers3 size={18} aria-hidden="true" /> BankScope · FFIEC <span aria-hidden="true">↗</span></Link>
         <span><Layers3 size={18} aria-hidden="true" /> Financial statements</span>
         <span><Activity size={18} aria-hidden="true" /> Growth &amp; cash flow</span>
         <Link href="/analysis/scenarios" prefetch={false}><GitCompareArrows size={18} aria-hidden="true" /> Scenario methodology <span aria-hidden="true">↗</span></Link>

@@ -71,7 +71,7 @@ export const SITE_TOOLS = Object.freeze([
 ]);
 
 const TICKER = /^[A-Z0-9][A-Z0-9.-]{0,14}$/;
-const LANDINGS = new Set([...SITE_TOOLS.map((tool) => tool.href), "/about", "/analysis/scenarios"]);
+const LANDINGS = new Set([...SITE_TOOLS.map((tool) => tool.href), "/about", "/analysis/scenarios", "/analysis/banks"]);
 
 /** A CIK identifies an SEC filer; it must never become a stock ticker. */
 export function normalizeCikIdentifier(value) {
@@ -155,6 +155,7 @@ export function safeInternalPath(value) {
   const path = pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname;
   // Keep saved Guide links usable after retiring the page.
   if (path === "/help") return `/about${url.search}${url.hash}`;
+  if (/^\/analysis\/banks\/[1-9]\d{0,9}$/.test(path)) return `${path}${url.search}${url.hash}`;
   if (LANDINGS.has(path)) return `${path}${url.search}${url.hash}`;
   const match = path.match(/^\/(analysis|filings|fund|compare)\/([^/]+)$/);
   if (!match) return null;
@@ -186,7 +187,7 @@ export function safeInternalPath(value) {
 export function entityFromRoute(pathname, searchParams) {
   if (typeof pathname !== "string") return null;
   const path = pathname.replace(/\/$/, "") || "/";
-  if (path === "/analysis/scenarios") return null;
+  if (path === "/analysis/scenarios" || path === "/analysis/banks" || path.startsWith("/analysis/banks/")) return null;
   if (path === "/fund") {
     if (queryValue(searchParams, "view") !== "13f" || queryValue(searchParams, "managerView") === "compare") return null;
     const cik = normalizeCikIdentifier(queryValue(searchParams, "managerCik"));
