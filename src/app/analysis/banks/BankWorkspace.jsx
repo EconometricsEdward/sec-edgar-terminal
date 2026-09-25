@@ -46,7 +46,7 @@ export default function BankWorkspace({ initialState, rssd, options, error }) {
       const refresh = await fetch(`/api/banks?rssds=${selection}`, { cache: 'no-store' });
       if (!refresh.ok) throw new Error('Preparation was accepted. Reload shortly to see the latest status.');
       setState(await refresh.json());
-      setNotice(body.queued ? 'Call Reports are being prepared. This page updates automatically; you can also return using this link.' : 'This bank is already prepared or in the preparation queue.');
+      setNotice(body.queued ? 'Preparation requested. This page updates automatically; you can also return using this link.' : 'This bank is already prepared or in the preparation queue.');
     } catch (e) { setNotice(e.message); } finally { setRequesting(''); }
   }
   async function share() { try { await navigator.clipboard.writeText(window.location.href); setCopied(true); } catch { setNotice('Use the address in your browser to share this view.'); } }
