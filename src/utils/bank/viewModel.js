@@ -29,6 +29,8 @@ export function unavailableReason(metric) {
   if (metric?.reason === 'previous_ytd_unavailable') return 'Previous quarter’s YTD figure is outside the prepared history or unavailable';
   if (metric?.reason === 'financial_review_required') return 'Financial checks require review';
   if (metric?.reason === 'report_not_prepared') return 'No prepared Call Report for this period';
+  if (metric?.reason === 'ratio_inputs_unavailable') return 'A required ratio component is unavailable';
+  if (metric?.reason === 'ratio_denominator_nonpositive') return 'Ratio requires a positive denominator';
   return 'Not reported on the required basis';
 }
 export function formatBankMetric(metric, { exact = false } = {}) {
@@ -48,7 +50,7 @@ export function bankHref(rssd, { view = 'overview', peers = [], period, metric, 
   if (peers.length) query.set('peers', peers.join(','));
   if (period) query.set('period', period);
   if (metric) query.set('metric', metric);
-  if (basis === 'quarterly') query.set('basis', basis);
+  if (basis === 'quarterly' || basis === 'ytd') query.set('basis', basis);
   return `/analysis/banks/${rssd}${query.size ? `?${query}` : ''}`;
 }
 export function bankPageOptions(rssd, query = {}) {
@@ -56,5 +58,5 @@ export function bankPageOptions(rssd, query = {}) {
   return { view: ['compare', 'trends'].includes(query.view) ? query.view : 'overview', peers,
     period: typeof query.period === 'string' && /^\d{4}-(03-31|06-30|09-30|12-31)$/.test(query.period) ? query.period : '',
     metric: BANK_METRICS.some(m => m.key === query.metric) ? query.metric : 'assets',
-    basis: query.basis === 'quarterly' ? 'quarterly' : 'ytd' };
+    basis: ['quarterly', 'ytd'].includes(query.basis) ? query.basis : query.view === 'trends' ? 'quarterly' : 'ytd' };
 }
