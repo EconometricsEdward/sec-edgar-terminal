@@ -1,4 +1,5 @@
 /** Public FDIC ratios, in percentage units. This catalog is safe to import in the client. */
+export const formatPeerPercent=n=>n==null?'Unavailable':`${Math.abs(n)>0&&Math.abs(n)<.005?n.toPrecision(2):n.toFixed(2)}%`;
 export const CAMELS_DIMENSIONS = [
   {key:'capital',letter:'C',label:'Capital adequacy',color:'#e9b660',keys:['leverage','cet1','totalCapital'],note:'Loss-absorbing capital. The regulatory framework matters as much as the peer rank.'},
   {key:'assetQuality',letter:'A',label:'Asset quality',color:'#fa9c90',keys:['noncurrent','chargeoffs','reserves'],note:'Credit performance and allowances. Loan mix and underwriting affect comparability.'},

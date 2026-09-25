@@ -2,10 +2,9 @@
 import { useEffect,useState } from 'react';
 import Link from 'next/link';
 import { bankHref,quarterLabel } from '../../../utils/bank/viewModel.js';
-import { CAMELS_DIMENSIONS } from '../../../utils/bank/peerMetrics.js';
+import { CAMELS_DIMENSIONS,formatPeerPercent as pct } from '../../../utils/bank/peerMetrics.js';
 import BankCamelsReview from './BankCamelsReview';
 import styles from './banks.module.css';
-const pct=n=>n==null?'Unavailable':`${n.toFixed(2)}%`;
 const assets=n=>n==null?'Unavailable':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',notation:'compact',maximumFractionDigits:1}).format(n*1000);
 const mixLabels=['Real estate','Commercial & industrial','Consumer','Other loans & leases'];
 const mixColors=['#65baff','#a899ff','#62d8ba','#e9b660'];

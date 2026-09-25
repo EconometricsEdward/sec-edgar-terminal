@@ -1,10 +1,9 @@
 'use client';
 import { useState } from 'react';
-import { CAMELS_DIMENSIONS } from '../../../utils/bank/peerMetrics.js';
+import { CAMELS_DIMENSIONS,formatPeerPercent as pct } from '../../../utils/bank/peerMetrics.js';
 import { regulatoryContext,REGULATORY_SOURCES } from '../../../utils/bank/regulatoryContext.js';
 import { quarterLabel } from '../../../utils/bank/viewModel.js';
 import styles from './banks.module.css';
-const pct=n=>n==null?'Unavailable':`${n.toFixed(2)}%`;
 
 export default function BankCamelsReview({data,period,onExplore}) {
   const metrics=new Map(data.benchmarks.map(b=>[b.key,b]));

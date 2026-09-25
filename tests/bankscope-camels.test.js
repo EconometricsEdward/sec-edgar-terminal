@@ -3,12 +3,19 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { normalizePeerRecord,PEER_MODEL_VERSION } from '../src/utils/bank/peerSource.js';
 import { buildPeerAnalysis } from '../src/utils/bank/peerModel.js';
+import { formatPeerPercent } from '../src/utils/bank/peerMetrics.js';
 import { cblrReference,regulatoryContext } from '../src/utils/bank/regulatoryContext.js';
 import { refreshPeerUniverse } from '../src/utils/bank/peerWorker.js';
 import { bankHref,bankPageOptions } from '../src/utils/bank/viewModel.js';
 const period='2026-06-30';
 const sources=JSON.parse(await readFile(new URL('./fixtures/fdic-camels-2026-06-30.json',import.meta.url),'utf8'));
 const source=rssd=>sources.find(r=>r.RSSDID===rssd);
+
+test('tiny charge-off rates preserve the sign of net recoveries instead of displaying negative zero',()=>{
+  assert.equal(formatPeerPercent(-0.001247586699478197),'-0.0012%');
+  assert.equal(formatPeerPercent(0),'0.00%');assert.equal(formatPeerPercent(null),'Unavailable');
+  assert.equal(formatPeerPercent(12.431),'12.43%');
+});
 
 test('expanded real FDIC records retain percentage units and identify CBLR without using bank size',()=>{
   const wells=normalizePeerRecord(source(451965),period),alliance=normalizePeerRecord(source(493741),period),community=normalizePeerRecord(source(3165357),period);
