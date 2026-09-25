@@ -6,9 +6,10 @@ import { decodeFacsimile,parseCallXbrl } from './parser.js';
 import { normalizeBankReport } from './normalization.js';
 import { safeBankError } from './errors.js';
 import { bankScopeStore } from './scopeStore.js';
+import { refreshPeerUniverse,prepareUbpr } from './peerWorker.js';
 
 /** One durable, fenced worker. Reader GET routes never import or invoke this. */
-export async function runBankWorker({store=bankScopeStore,env=process.env,maintain=false,maxFilings=4,now=Date.now,clientFactory=createFfiecClient}={}) {
+export async function runBankWorker({store=bankScopeStore,env=process.env,maintain=false,maxFilings=4,now=Date.now,clientFactory=createFfiecClient,peers=true}={}) {
   const owner=randomUUID(),begin=await store('begin',{owner});
   if(!begin.allowed)return {status:begin.code,retryAt:begin.retryAt};
   const owned=(op,payload={})=>store(op,{...payload,owner}),result={status:'ready',stored:0,reused:0,directory:0};
@@ -67,6 +68,11 @@ export async function runBankWorker({store=bankScopeStore,env=process.env,mainta
         result.review=(result.review||0)+1;
       }
     }
+    if(peers&&maintain&&now()<deadline-70000){
+      try{result.peerProfiles=await refreshPeerUniverse({store,owned,periods:state.periods||[],now});}
+      catch(error){result.peerError=safeBankError(error).code;}
+    }
+    if(peers&&now()<deadline-35000)result.ubpr=await prepareUbpr({owned,request,deadline,now});
     return result;
   }catch(error){const safe=safeBankError(error);result.status='deferred';result.code=safe.code;
     if(safe.retryAt||safe.code==='authentication_failure')await owned('cooldown',{code:safe.code,retryAt:safe.retryAt||new Date(now()+3600000).toISOString()}).catch(()=>{});

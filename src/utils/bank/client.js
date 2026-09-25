@@ -1,7 +1,7 @@
 import { BankDataError } from './errors.js';
 
 export const FFIEC_BASE = 'https://ffieccdr.azure-api.us/public/';
-export const FFIEC_METHODS = new Set(['RetrieveReportingPeriods', 'RetrievePanelOfReporters', 'RetrieveFilersSubmissionDateTime', 'RetrieveFacsimile']);
+export const FFIEC_METHODS = new Set(['RetrieveReportingPeriods', 'RetrievePanelOfReporters', 'RetrieveFilersSubmissionDateTime', 'RetrieveFacsimile', 'RetrieveUBPRReportingPeriods', 'RetrieveUBPRXBRLFacsimile']);
 export const MAX_RESPONSE_BYTES = 12 * 1024 * 1024;
 
 export async function limitedText(response, limit = MAX_RESPONSE_BYTES) {
@@ -57,7 +57,7 @@ export function createFfiecClient({ env = process.env, gate, fetchImpl = fetch, 
         try {
           response = await fetchImpl(FFIEC_BASE + method, { method: 'GET', headers: {
             UserID: env.FFIEC_CDR_USER_ID.trim(), Authentication: `Bearer ${env.FFIEC_CDR_TOKEN.trim().replace(/^Bearer\s+/i, '')}`,
-            dataSeries: 'Call', 'Content-Type': 'application/json', ...parameters,
+            ...(method.includes('UBPR') ? {} : { dataSeries: 'Call' }), 'Content-Type': 'application/json', ...parameters,
           }, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(25000) });
           body = await limitedText(response);
         } catch {
