@@ -32,7 +32,7 @@ Mapping source: https://www.ffiec.gov/sites/default/files/data/reporting-forms/F
 - RC-C I item 12 (RCFD2122) covers loans held for sale and investment before allowance, net of unearned income.
 - Deposits sum RCON2200 (domestic) and RCFN2200 (foreign).
 - Total equity is RCFDG105, including noncontrolling interests. RCFD3210 is separately labeled bank equity.
-- Securities sum net HTM, AFS debt, and readily valued non-trading equity. Trading assets are excluded.
+- Securities sum net HTM, AFS debt, and readily valued non-trading equity. Trading assets are excluded. The live FFIEC XBRL encodes RCFDJJ34 (an RC quarter-end balance) with a calendar-YTD duration context. A narrow exception accepts that fact only when it reconciles to RCFD1754 less RIADJH93; the original context and corroborating inputs are retained. No other stock item accepts duration contexts.
 - RC-N separates still-accruing past-due loans from nonaccrual loans.
 - Capital uses the appropriate CET1 capital column and the standardized RWA/ratio basis. Advanced-approach RWA and ratios are not mixed in.
 - FHLB advances sum the four RC-M maturity/repricing buckets; overlapping subtotals are excluded.

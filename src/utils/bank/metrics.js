@@ -1,5 +1,5 @@
 import { pickFact } from './parser.js';
-export const MAPPING_VERSION = 'ffiec031-pilot-v1';
+export const MAPPING_VERSION = 'ffiec031-pilot-v2';
 export const FORM_SOURCE = 'https://www.ffiec.gov/sites/default/files/data/reporting-forms/FFIEC031_202606_f.pdf';
 const metric = (key, label, group, schedule, item, codes, extras = {}) => ({ key, label, group, schedule, item, codes: codes.split(' '), period: 'instant', unit: 'USD', basis: 'Consolidated bank; domestic and foreign offices', ...extras });
 export const BANK_METRICS = Object.freeze([
@@ -37,9 +37,25 @@ export const BANK_METRICS = Object.freeze([
     ['total_capital_ratio', 'Total capital ratio', '51, column A', 'RCFA7205'], ['leverage_ratio', 'Tier 1 leverage ratio', '31', 'RCFA7204']]
     .map(([key, label, item, code]) => metric(key, label, 'Capital', 'RC-R I', item, code, { unit: 'percent', basis: key === 'leverage_ratio' ? 'Tier 1 capital / adjusted average consolidated assets' : 'Standardized approach' })),
 ]);
+function sourceFact(parsed, code, period) {
+  const direct = pickFact(parsed, code, period);
+  if (code !== 'RCFDJJ34' || direct.value !== null) return direct;
+  // Observed in the official pilot XBRL: this RC balance-sheet item uses the
+  // calendar-YTD duration context. Accept this ONE stock item only if it ties to
+  // RC-B amortized cost less RI-B II ending HTM allowance. Preserve the anomaly.
+  const duration = pickFact(parsed, code, 'ytd');
+  const gross = pickFact(parsed, 'RCFD1754');
+  const allowance = pickFact(parsed, 'RIADJH93', 'ytd');
+  if ([duration, gross, allowance].every(f => f.value !== null && /(^|:)USD$/i.test(f.unit))
+    && Math.abs(gross.value - allowance.value - duration.value) <= 1000) {
+    return { ...duration, contextNote: 'RC 2.a quarter-end stock is encoded with a YTD context by FFIEC; verified against RC-B I 8.A less RI-B II 7.B',
+      corroboration: [gross, allowance] };
+  }
+  return direct;
+}
 export function normalizeMetrics(parsed, ingestedAt = new Date().toISOString()) {
   return BANK_METRICS.map(def => {
-    let facts = def.codes.map(code => pickFact(parsed, code, def.period));
+    let facts = def.codes.map(code => sourceFact(parsed, code, def.period));
     let reason = null;
     if (def.operation === 'exclusive') { facts = facts.filter(f => f.value !== null); if (facts.length !== 1) reason = facts.length ? 'ambiguous_capital_column' : 'item_not_reported_on_required_basis'; }
     if (!reason && facts.some(f => f.value === null)) reason = facts.find(f => f.value === null).reason;

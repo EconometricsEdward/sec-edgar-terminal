@@ -50,6 +50,13 @@ test('missing/nil differ from zero; missing components never become a sum',()=>{
   assert.equal(m.find(x=>x.key==='nonaccrual').value,0); assert.equal(m.find(x=>x.key==='past_due_30_89').value,null);
   assert.equal(m.find(x=>x.key==='deposits').value,null);
 });
+test('FFIEC HTM stock encoded in a duration context requires independent schedule reconciliation',()=>{
+  const source=xml({RCFDJJ34:950,RCFD1754:1000,RIADJH93:50}).replace('<cc:RCFDJJ34 contextRef="instant"','<cc:RCFDJJ34 contextRef="ytd"');
+  const m=normalizeMetrics(parseCallXbrl(source,{rssd:101,reportDate:date})).find(m=>m.key==='securities');
+  assert.equal(m.value,2950);assert.equal(m.lineage[0].corroboration.length,2);
+  const wrong=source.replace('>50</cc:RIADJH93>','>10000</cc:RIADJH93>');
+  assert.equal(normalizeMetrics(parseCallXbrl(wrong,{rssd:101,reportDate:date})).find(m=>m.key==='securities').value,null);
+});
 test('wrong entity/quarter, unsafe XML, wrong context and conflicting duplicate facts are rejected',()=>{
   assert.throws(()=>parseCallXbrl(xml(),{rssd:999,reportDate:date}),{code:'source_identity_period_mismatch'});
   assert.throws(()=>parseCallXbrl('<!DOCTYPE x>'+xml(),{rssd:101,reportDate:date}),{code:'parsing_failure'});
@@ -60,6 +67,14 @@ test('wrong entity/quarter, unsafe XML, wrong context and conflicting duplicate 
 test('capital bases cannot be silently mixed and reconciliation catches ratio scaling errors',()=>{
   assert.equal(normalizeMetrics(parsed({RCFAP859:50000})).find(m=>m.key==='cet1').reason,'ambiguous_capital_column');
   assert.equal(validateMetrics(normalizeMetrics(parsed({RCFAP793:18}))).passed,false);
+});
+test('saved official three-bank FFIEC excerpts map every pilot metric and reconcile financial totals',async()=>{
+  for (const [rssd,assets,securities] of [[852218,4091315000000,808482000000],[480228,2654645000000,835065000000],[451965,1907928000000,442269000000]]) {
+    const source=await readFile(new URL(`./fixtures/bank-${rssd}-${date}.xml`,import.meta.url),'utf8');
+    const metrics=normalizeMetrics(parseCallXbrl(source,{rssd,reportDate:date}));
+    assert.equal(metrics.filter(m=>m.value===null).length,0);assert.equal(metrics.find(m=>m.key==='assets').value,assets);
+    assert.equal(metrics.find(m=>m.key==='securities').value,securities);assert.equal(validateMetrics(metrics).passed,true);
+  }
 });
 test('429 and FFIEC 403 quotas are distinct from authentication; Retry-After and reset text respected',()=>{
   const now=Date.parse('2026-09-25T00:00:00Z');
@@ -101,10 +116,12 @@ test('exact SQL: atomic publishing, duplicate prevention, nulls, RLS, shared lea
   const db=new PGlite();try{
     await db.exec('create role anon; create role authenticated; create role service_role bypassrls; create schema edgar_private; grant usage on schema edgar_private,public to service_role;');
     await db.exec(await readFile(new URL('../supabase/migrations/20260925051054_ffiec_bank_pilot.sql',import.meta.url),'utf8'));
+    await db.exec(await readFile(new URL('../supabase/migrations/20260925052649_ffiec_bank_source_recovery.sql',import.meta.url),'utf8'));
     const op=async(name,p={})=>(await db.query('select public.bank_pilot_operation($1,$2::jsonb) as v',[name,JSON.stringify(p)])).rows[0].v;
     const owner=randomUUID();assert.equal((await op('begin',{owner})).allowed,true);
     assert.equal((await op('begin',{owner:randomUUID()})).allowed,false);
     await op('discovery',{owner,value:{periods:[date]}});
+    await assert.rejects(op('discovery',{owner,value:{periods:['2025-03-31']}}),/pilot_periods_frozen/);
     await op('institution',{owner,...verifyPanel(panel,date)[0]});
     const source=parsed({RCFD1406:null}),metrics=normalizeMetrics(source);
     const record={owner,rssd:101,reportDate:date,retrievedAt:new Date().toISOString(),rawXbrl:xml({RCFD1406:null}),sha256:source.sha256,parserVersion:'fixture',validation:validateMetrics(metrics),metadata:{},metrics};
@@ -120,7 +137,7 @@ test('exact SQL: atomic publishing, duplicate prevention, nulls, RLS, shared lea
 });
 test('complete stored pilot rerun dispatches no FFIEC requests',async()=>{
   let requests=0;const periods=['2026-06-30','2026-03-31','2025-12-31','2025-09-30'];
-  const state={discovery:{periods},reports:periods.flatMap(report_date=>panel.map(b=>({report_date,id_rssd:b.ID_RSSD,validation:{passed:true}})))};
+  const state={discovery:{periods},reports:periods.flatMap(report_date=>panel.map(b=>({report_date,id_rssd:b.ID_RSSD,validation:{passed:true},metrics:[]})))};
   const result=await ingestBankPilot({store:async op=>op==='begin'?{allowed:true}:op==='read'?state:{ok:true},clientFactory:()=>({request:()=>{requests++;throw Error('Unexpected');}})});
   assert.equal(result.skipped,12);assert.equal(requests,0);
 });

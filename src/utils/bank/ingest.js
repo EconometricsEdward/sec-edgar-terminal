@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { createFfiecClient } from './client.js';
 import { BankDataError, safeBankError } from './errors.js';
 import { apiDate, latestPeriods, verifyPanel } from './identity.js';
@@ -24,7 +24,7 @@ export async function ingestBankPilot({ store, env = process.env, clientFactory 
     const reports = state.reports || [];
     for (const period of discovery.periods) {
       if (now() >= deadline || result.stored >= 3) { result.status = 'more_available'; break; }
-      if (reports.filter(r => r.report_date === period && r.validation?.passed).length === 3) { result.skipped += 3; continue; }
+      if (reports.filter(r => r.report_date === period && r.validation?.passed && r.metrics?.every(m => m.mappingVersion === MAPPING_VERSION)).length === 3) { result.skipped += 3; continue; }
       if (!discovery.panels[period]) {
         discovery.panels[period] = verifyPanel(await client.request('RetrievePanelOfReporters', { reportingPeriodEndDate: apiDate(period) }), period);
         await owned('discovery', { value: discovery });
@@ -44,18 +44,22 @@ export async function ingestBankPilot({ store, env = process.env, clientFactory 
       for (const bank of banks) {
         if (!bank.filed) { result.issues.push({ rssd: bank.rssd, period, code: 'call_report_not_filed' }); continue; }
         const existing = reports.find(r => Number(r.id_rssd) === bank.rssd && r.report_date === period);
-        if (existing) {
+        if (existing?.validation?.passed && existing.metrics?.every(m => m.mappingVersion === MAPPING_VERSION)) {
           result.skipped++;
-          if (!existing.validation?.passed) { result.status = 'needs_review'; return result; }
           continue;
         }
         if (now() >= deadline || result.stored >= 3) { result.status = 'more_available'; return result; }
-        const response = await client.request('RetrieveFacsimile', { reportingPeriodEndDate: apiDate(period), fiIdType: 'ID_RSSD', fiId: String(bank.rssd), facsimileFormat: 'XBRL' });
-        const retrievedAt = new Date().toISOString(), xml = decodeFacsimile(response);
+        const saved = existing ? await store('source', { rssd: bank.rssd, reportDate: period }) : null;
+        const xml = saved?.rawXbrl || decodeFacsimile(await client.request('RetrieveFacsimile', { reportingPeriodEndDate: apiDate(period), fiIdType: 'ID_RSSD', fiId: String(bank.rssd), facsimileFormat: 'XBRL' }));
+        const retrievedAt = existing?.retrieved_at || new Date().toISOString();
+        const submissionDate = discovery.submissions[period].find(s => s.rssd === bank.rssd)?.dateTime || null;
+        if (!saved) await owned('publish', { rssd: bank.rssd, reportDate: period, retrievedAt, rawXbrl: xml,
+          sha256: createHash('sha256').update(xml).digest('hex'), parserVersion: MAPPING_VERSION, submissionDate,
+          metrics: [], validation: { passed: false, checks: [{ name: 'source_retained_pending_parse', passed: false }] }, metadata: { format: 'XBRL', form: '031' } });
         const parsed = parseCallXbrl(xml, { rssd: bank.rssd, reportDate: period });
         const metrics = normalizeMetrics(parsed, retrievedAt), validation = validateMetrics(metrics);
         await owned('publish', { rssd: bank.rssd, reportDate: period, retrievedAt, rawXbrl: xml, sha256: parsed.sha256, parserVersion: MAPPING_VERSION,
-          submissionDate: discovery.submissions[period].find(s => s.rssd === bank.rssd)?.dateTime || null,
+          submissionDate,
           metrics, validation, metadata: { format: 'XBRL', form: '031', schemaReferences: parsed.schemaReferences, factCount: parsed.factCount,
             versionBasis: 'Source SHA-256 and FFIEC submission timestamp; amendment sequence not supplied', submissionTimezone: 'Not specified by FFIEC; original text retained' } });
         result.stored++;
