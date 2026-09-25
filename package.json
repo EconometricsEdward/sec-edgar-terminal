@@ -23,6 +23,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/oidc": "3.8.7",
     "@vercel/speed-insights": "^2.0.0",
+    "fast-xml-parser": "5.11.1",
     "fflate": "0.8.3",
     "lucide-react": "^1.8.0",
     "next": "^16.2.4",

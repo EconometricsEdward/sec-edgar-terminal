@@ -1,0 +1,68 @@
+<!-- Selected official FFIEC source facts; retained source metadata is documented in docs/bankscope.md. -->
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:cc="https://www.cdr.ffiec.gov/xbrl/call/concepts" xmlns:ns2="http://www.xbrl.org/2003/linkbase" xmlns:ns3="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://www.cdr.ffiec.gov/xbrl/call/report051/2026-06-30/v297 https://www.cdr.ffiec.gov/xbrl/call/report051/2026-06-30/v297/call-report051-2026-06-30-v297.xsd https://www.cdr.ffiec.gov/xbrl/call/concepts https://www.cdr.ffiec.gov/xbrl/call/report051/2026-06-30/v297/concepts.xsd">
+  <ns2:schemaRef ns3:type="simple" ns3:href="https://www.cdr.ffiec.gov/xbrl/call/report051/2026-06-30/v297/call-report051-2026-06-30-v297.xsd" />
+  <ns2:schemaRef ns3:type="simple" ns3:href="https://www.cdr.ffiec.gov/xbrl/call/report051/2026-06-30/v297/concepts.xsd" />
+  <context id="CI_493741_2026-06-30">
+    <entity>
+      <identifier scheme="https://www.cdr.ffiec.gov/cdr">493741</identifier>
+    </entity>
+    <period>
+      <instant>2026-06-30</instant>
+    </period>
+  </context>
+  <context id="CD_493741_2026-06-30">
+    <entity>
+      <identifier scheme="https://www.cdr.ffiec.gov/cdr">493741</identifier>
+    </entity>
+    <period>
+      <startDate>2026-01-01</startDate>
+      <endDate>2026-06-30</endDate>
+    </period>
+  </context>
+  <unit id="USD">
+    <measure>iso4217:USD</measure>
+  </unit>  
+  <unit id="PURE">
+    <measure>pure</measure>
+  </unit>  
+  <unit id="NON-MONETARY">
+    <measure>ffieci:nonMonetary</measure>
+  </unit>  
+  <cc:RCON1407 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">0</cc:RCON1407>
+  <cc:RCON2200 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">398155000</cc:RCON2200>
+  <cc:RCON1403 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">39000</cc:RCON1403>
+  <cc:RCON1406 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">2391000</cc:RCON1406>
+  <cc:RIADJJ33 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">85000</cc:RIADJJ33>
+  <cc:RIADJH93 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">0</cc:RIADJH93>
+  <cc:RIAD4635 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">8000</cc:RIAD4635>
+  <cc:RIAD4340 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">5234000</cc:RIAD4340>
+  <cc:RCON1754 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">556000</cc:RCON1754>
+  <cc:RCONJA22 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">0</cc:RCONJA22>
+  <cc:RCON2948 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">407015000</cc:RCON2948>
+  <cc:RCON0071 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">248000</cc:RCON0071>
+  <cc:RCOAP859 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">57552000</cc:RCOAP859>
+  <cc:RIAD4605 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">10000</cc:RIAD4605>
+  <cc:RCON0081 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">5285000</cc:RCON0081>
+  <cc:RCON1773 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">100463000</cc:RCON1773>
+  <cc:RCON2365 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">1007000</cc:RCON2365>
+  <cc:RIAD4107 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">11854000</cc:RIAD4107>
+  <cc:RCON3123 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">5151000</cc:RCON3123>
+  <cc:RCON2122 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">325761000</cc:RCON2122>
+  <cc:RCONF058 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">0</cc:RCONF058>
+  <cc:RCOA7204 contextRef="CI_493741_2026-06-30" unitRef="PURE" decimals="6">0.124311</cc:RCOA7204>
+  <cc:RCONF056 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">0</cc:RCONF056>
+  <cc:RCONJJ34 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">556000</cc:RCONJJ34>
+  <cc:RCON2170 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">454838000</cc:RCON2170>
+  <cc:RCON5369 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">0</cc:RCON5369>
+  <cc:RCON3210 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">47823000</cc:RCON3210>
+  <cc:RCOALE74 contextRef="CI_493741_2026-06-30" unitRef="NON-MONETARY" decimals="0">1</cc:RCOALE74>
+  <cc:RIAD4074 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">9465000</cc:RIAD4074>
+  <cc:RIAD4073 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">2389000</cc:RIAD4073>
+  <cc:RIAD4079 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">1038000</cc:RIAD4079>
+  <cc:RCOA8274 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">57552000</cc:RCOA8274>
+  <cc:RCONG105 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">47823000</cc:RCONG105>
+  <cc:RCONB528 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">325762000</cc:RCONB528>
+  <cc:RCONF055 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">0</cc:RCONF055>
+  <cc:RCONF057 contextRef="CI_493741_2026-06-30" unitRef="USD" decimals="0">0</cc:RCONF057>
+  <cc:RIAD4093 contextRef="CD_493741_2026-06-30" unitRef="USD" decimals="0">5184000</cc:RIAD4093>
+  </xbrl>

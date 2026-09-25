@@ -18,6 +18,7 @@ const MAIN_PAGES: Array<
   ["/market", "weekly", 0.8],
   ["/filings", "weekly", 0.8],
   ["/analysis", "weekly", 0.8],
+  ["/analysis/banks", "weekly", 0.8],
   ["/analysis/scenarios", "monthly", 0.7],
   ["/risk", "weekly", 0.8],
   ["/compare", "weekly", 0.8],

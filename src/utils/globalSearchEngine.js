@@ -122,6 +122,7 @@ const TOOL_ALIASES = [
 ];
 function toolMatch(raw, cftcEnabled) {
   const q = normalize(raw).replace(/^(?:open|go to|take me to|show me|find) (?:the )?/, '');
+  if (/^(?:ffiec|bankscope|bank scope|call reports?|bank analysis|compare banks|bank comparison|bank regulatory data)$/.test(q)) return item('/analysis/banks', 'BankScope · FFIEC', 'Search legal banks, compare Call Reports and explore quarterly trends', 'analysis');
   const brokerForm = brokerDealerSearchForm(raw.replace(/^(?:open|go to|take me to|show me|find)\s+(?:the\s+)?/i, ''));
   if (brokerForm) return item(`/filings?form=${brokerForm}`, 'Broker-dealer filings · X-17A-5', 'Find public filings by legal name or CIK; confidential FOCUS reports are not included', 'filings');
   if (/^(?:13f|13f holdings|13f managers|managers|institutional managers|hedge funds?)$/.test(q)) return item('/fund?view=13f', 'Institutional managers · 13F', 'Find investment managers and their disclosed holdings', 'fund');
