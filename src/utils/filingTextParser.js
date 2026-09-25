@@ -1,4 +1,5 @@
 import { secFetch } from './secClient.js';
+import { decodeNumericHtmlEntities } from './htmlEntities.js';
 
 // ============================================================================
 // filingTextParser — Fetches SEC filings and extracts plain text for scanning
@@ -75,7 +76,7 @@ export function stripHtml(html) {
     '&trade;': '™', '&reg;': '®', '&copy;': '©',
   };
   text = text.replace(/&\w+;/g, (m) => entities[m] || ' ');
-  text = text.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
+  text = decodeNumericHtmlEntities(text);
 
   // Normalize whitespace (but preserve paragraph breaks)
   text = text.replace(/[ \t]+/g, ' ');           // collapse spaces/tabs

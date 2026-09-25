@@ -1,4 +1,5 @@
 import { MARKET_VERSION, MARKET_METRICS, metricStats, activeMarketTab, activeMarketMetric, DEFAULT_MARKET_VIEW } from './marketResearch.js';
+import { withholdInvalidMarketPeriods } from './marketPeriodIntegrity.js';
 
 export const MARKET_OVERVIEW_VERSION = 'market-overview-v1';
 
@@ -6,7 +7,7 @@ export const MARKET_OVERVIEW_VERSION = 'market-overview-v1';
 export function buildMarketOverview(atlas, { membership = null, previous = null, persistHistory = false } = {}) {
   const expanded = Boolean(atlas.coverage);
   const supplemental = Boolean(atlas.coverage?.sources?.some(source => source.fund === 'SEC'));
-  const companies = atlas.companies.map(company => ({
+  const companies = atlas.companies.map(withholdInvalidMarketPeriods).map(company => ({
     version: company.version, ticker: company.ticker, name: company.name, cik: company.cik,
     sic: String(company.sic), revenueBasis: company.revenueBasis, observedAt: company.observedAt,
     ...(company.revenueVersion ? { revenueVersion: company.revenueVersion } : {}),

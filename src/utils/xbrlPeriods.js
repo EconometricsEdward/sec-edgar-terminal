@@ -1,5 +1,6 @@
 // Context-aware SEC facts. A filing's fp/fy describe the filing, not necessarily
 // the observation (comparative and YTD facts share those fields).
+import { validFinancialPeriodDates } from './financialPeriodDates.js';
 const DAY = 86400000;
 const REPORT = /^(10-K|10-Q|20-F|40-F)(\/A)?$/;
 const ANNUAL = /^(10-K|20-F|40-F)(\/A)?$/;
@@ -11,7 +12,7 @@ export function daysBetween(start, end) {
 }
 const nextDay = (date) => new Date(Date.parse(date) + DAY).toISOString().slice(0, 10);
 const duration = (e) => e.start ? daysBetween(e.start, e.end) + 1 : null;
-const valid = (e, asOf) => e.end && Number.isFinite(e.val) && REPORT.test(e.form || '') && (!asOf || e.filed <= asOf);
+const valid = (e, asOf) => validFinancialPeriodDates(e) && Number.isFinite(e.val) && REPORT.test(e.form || '') && (!asOf || e.filed <= asOf);
 const latest = (a, b) => (b.filed || '').localeCompare(a.filed || '') || (b.accn || '').localeCompare(a.accn || '');
 
 function anchorEntries(facts, asOf) {

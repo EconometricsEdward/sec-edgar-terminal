@@ -1,5 +1,6 @@
 import { MARKET_SECTOR_COMPANY_VERSION, MARKET_SECTOR_COMPANY_METRICS,
   MARKET_SECTOR_COMPANY_SORTS, MARKET_SECTOR_COMPANY_PAGE_SIZE } from './marketSectorCompanies.js';
+import { hasInvalidMarketPeriods } from './marketPeriodIntegrity.js';
 
 const FACTOR_METRIC_KEYS = [
   'revenueGrowth', 'netMargin', 'operatingMargin', 'freeCashFlowMargin', 'equityToAssets', 'cashToAssets',
@@ -93,6 +94,7 @@ function validCompany(company, comparisons = true) {
 /** Validate a full per-company SEC research record before trusting shared cache data. */
 export function isMarketCompany(value, expectedVersion, expectedTicker) {
   return validCompany(value, false)
+    && !hasInvalidMarketPeriods(value)
     && (expectedVersion === undefined || value.version === expectedVersion)
     && (expectedTicker === undefined || value.ticker === expectedTicker)
     && record(value.evidence)

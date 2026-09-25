@@ -4,6 +4,7 @@ import { buildAnalysisCompany, packAnalysisCompany, ANALYSIS_VERSION } from './a
 import { ANALYSIS_MAPPING_VERSION } from './analysisVersion.js';
 import { sampleFinancialShadow } from './preparedFinancialData.js';
 import { warmGet, warmSet } from './warmCache.js';
+import { validFinancialPeriodDates } from './financialPeriodDates.js';
 
 const MAX_PENDING = 8;
 const MAX_GZIP_BASE64_BYTES = 8 * 1024 * 1024;
@@ -13,7 +14,7 @@ function matchingResult(value, { ticker, basis, asOf }) {
   return value?.packed === true && value.version === ANALYSIS_VERSION
     && value.mappingVersion === ANALYSIS_MAPPING_VERSION
     && value.ticker === ticker && value.basis === basis && (value.asOf || '') === asOf
-    && Array.isArray(value.periods) && Array.isArray(value.definitions)
+    && Array.isArray(value.periods) && value.periods.every(validFinancialPeriodDates) && Array.isArray(value.definitions)
     && value.metrics && typeof value.metrics === 'object' && !Array.isArray(value.metrics)
     && Array.isArray(value.sourceCatalog) && Array.isArray(value.calculationCatalog);
 }

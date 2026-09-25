@@ -82,7 +82,7 @@ export function classifyTickerDirectory(companies, mutualFunds) {
     map[ticker] = {
       ticker,
       cik,
-      name: map[ticker]?.name || `Mutual Fund (${ticker})`,
+      name: map[ticker]?.name || `Fund (${ticker})`,
       isFund: true,
     };
   }

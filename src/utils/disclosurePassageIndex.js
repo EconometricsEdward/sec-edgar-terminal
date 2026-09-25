@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { disclosurePassages, passageSignals } from './disclosureResearch.js';
 import { matchesQuery, parseDisclosureQuery } from './disclosureQuery.js';
 import { buildFilingUrl } from './filingTextParser.js';
+import { decodeNumericHtmlEntities } from './htmlEntities.js';
 import { readDisclosureIndexDocument, replaceDisclosureIndexDocument, searchDisclosureIndexCandidates } from './dataStore.js';
 import { DISCLOSURE_INDEX_LIMITS as LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument } from '../../supabase/functions/edgar-data-gateway/disclosurePolicy.js';
 export { DISCLOSURE_INDEX_LIMITS } from '../../supabase/functions/edgar-data-gateway/disclosurePolicy.js';
@@ -96,7 +97,7 @@ export async function searchDisclosurePassageIndex(settings, { tickers = [], cik
       // Database full-text ranking proposes candidates; only the existing exact
       // Boolean parser can turn the original passage into a verified match.
       if (!row?.passage || !disclosureIndexIdentity(row) || row.parserVersion !== LIMITS.parserVersion) { checked++; continue; }
-      const passage = row.passage;
+      const passage = { ...row.passage, text: decodeNumericHtmlEntities(row.passage.text) };
       if ((settings.section && settings.section !== 'all' && passage.sectionId !== settings.section) || !matchesQuery(passage.text, parsed)) { checked++; continue; }
       const key = `${row.cik}:${row.accession}:${row.primaryDoc}`;
       if (!grouped.has(key)) {

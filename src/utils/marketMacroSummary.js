@@ -1,5 +1,6 @@
 import sicReference from '../data/sec-sic-codes.json' with { type: 'json' };
 import { isOlderReport, metricStats } from './marketResearch.js';
+import { withholdInvalidMarketPeriods } from './marketPeriodIntegrity.js';
 
 export const MARKET_SECTOR_METRICS = [
   { key: 'revenueGrowth', label: 'Revenue growth', shortLabel: 'Growth', context: 'Year-over-year reported revenue growth. Revenue reflects both volumes and prices; this is not real GDP growth.' },
@@ -47,7 +48,7 @@ function summaryMetrics(companies, basis) {
 
 /** Primary sectors are disjoint. Legacy overlapping research themes are never counted as sectors. */
 export function buildMarketMacroSummary(data, basis = 'ttm') {
-  const companies = [...new Map((data?.companies || []).map(company => [issuerKey(company), company])).values()];
+  const companies = [...new Map((data?.companies || []).map(company => [issuerKey(company), withholdInvalidMarketPeriods(company)])).values()];
   const cohorts = data?.cohorts || [];
   const primary = cohorts.filter(cohort => cohort.id.startsWith('sector-'));
   const groups = new Map();
