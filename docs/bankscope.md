@@ -18,6 +18,14 @@ First complete discovery on September 25, 2026 found 4,445 distinct legal banks 
 - Comparisons use the chosen quarter for every bank; missing dates never fall back to a different quarter. N/A is distinguished from missing or unprepared data.
 - Source records retain the original XBRL, SHA-256, reported submission timestamp, metric item codes, contexts, units, mapping version and validation checks. Selected metric lineage loads on demand; downloads are pinned to the displayed source hash.
 
+## Visual research
+
+Trends opens with four current-period metrics and four focused charts: balance sheet, earnings, regulatory capital, and loan quality. Earnings default to individual quarters, with an explicit, shareable YTD option. Reported and derived figures remain accessible in expandable chart tables; the full 35-metric explorer is retained. Bar axes include zero, negative amounts remain visible, line gaps are never joined, and line axes fit their data. Compact currency labels use actual USD (M/B/T); exact tables use USD millions.
+
+Compare gives each selected bank one consistent color and number. Four configurable bar charts cover scale/earnings, capital, funding, and credit; a peer map offers selectable capital and funding/credit axes. Equal point sizes avoid implying a composite risk score. Missing and non-applicable values remain labeled and are excluded from plotted points. Detailed reported figures and source records stay available below the charts.
+
+Four additional visual ratios are calculated only from validated components on the same reporting date: loans/total deposits; (nonaccrual + 90+ days past due still accruing)/loans before allowance; allowance/loans held for investment; and brokered/domestic deposits. A missing component or nonpositive denominator yields unavailable. These ratios supplement the 35 source metrics, with formulas shown beside the charts. Colors identify metrics or banks, not credit ratings.
+
 ## Preparation and operation
 
 Public GET requests read stored data only. A bounded same-origin POST admits a verified RSSD to the queue and schedules a post-response worker. Every new bank shares prepared results with later visitors. `/api/cron/banks` runs every five minutes in production to recover interrupted work and perform daily panel/submission checks for recently requested banks. The existing CRON_SECRET authenticates the schedule; FFIEC credentials remain in existing Vercel server environment variables.
