@@ -37,7 +37,7 @@ export function compareAllFundHoldings(portfolios = [], { tickers = portfolios.m
     .map(({ searchText: _searchText, ...row }) => row);
   return {
     available: portfolios.length > 0, complete, tickers, scope, query, sort, fund, rows, pairs,
-    counts: { total: allRows.length, shared: shared.length, every: complete ? every.length : null, unique: complete ? unique.length : null,
+    counts: { total: allRows.length, shared: portfolios.length > 1 ? shared.length : null, every: complete ? every.length : null, unique: complete ? unique.length : null,
       unmatched: allRows.filter(row => row.kind === 'unmatched').length },
     funds: portfolios.map(p => ({ ...fundEvidence(p), netAssets: p.fundInfo?.netAssets ?? null, positions: p.summary?.count ?? p.holdings.length })),
     sharedSeries: searched.sharedSeries,
