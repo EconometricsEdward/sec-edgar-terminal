@@ -6,7 +6,7 @@ import { formatBasisPoints,peerChange,previousPeerPeriod } from '../../../utils/
 import { quarterLabel } from '../../../utils/bank/viewModel.js';
 import styles from './banks.module.css';
 
-const TrendChart=dynamic(()=>import('./BankTrendChart'),{ssr:false,loading:()=> <div className={styles.chartPlaceholder}>Loading chart…</div>});
+const TrendChart=dynamic(()=>import('./BankTrendChart'),{ssr:false,loading:()=> <div className={styles.chartLoading}>Loading chart…</div>});
 const finite=n=>typeof n==='number'&&Number.isFinite(n);
 
 export function MetricHistoryMini({metric,onOpen,baseline='prior'}){
@@ -26,7 +26,7 @@ export function MetricHistoryMini({metric,onOpen,baseline='prior'}){
       </g>)}
       {!values.length&&<text x="64" y="22" textAnchor="middle" fill="#9fb3cd" fontSize="10">No reported values</text>}
     </svg>
-    <span><strong>{change==null?'—':formatBasisPoints(change)}</strong><small>{from===last.period?'One available period':`${baseline==='first'?'since':'vs'} ${quarterLabel(from)}`}</small></span>
+    <span><strong>{change==null?'—':formatBasisPoints(change)}</strong><small>{points.length===1?'One available period':`${baseline==='first'?'since':'vs'} ${quarterLabel(from)}`}</small></span>
     <span className={styles.miniArrow} aria-hidden="true">↗</span>
   </button>;
 }
@@ -51,7 +51,7 @@ export default function BankPeerHistory({history,error,onRetry,metricKey,onMetri
       <TrendChart points={points} quarterly={false} unit="percent" label={metric.label} height={265} series={[{key:'value',label:'This bank',color:metric.color},{key:'peerMedian',label:'Fixed-cohort peer median',color:'#a2b4cf',dash:'5 4'}]}/>
       <p className={styles.historyBasis}>{metric.basis}{ytd?' Changes compare the published YTD ratios; they do not isolate single-quarter performance. YTD restarts each calendar year.':''}</p>
       <p className={styles.historyMethod}>{history.cohort.length?`The same ${history.cohort.length} peers selected for ${quarterLabel(period)} are followed backward. Medians are unweighted and require five reported peers per date; valid counts can vary.`:'No matched peer group is available. Reported bank history is shown on its own.'} Missing values remain gaps. Changes describe direction, not improvement or deterioration.</p>
-      <details className={styles.exactDetails}><summary>Exact history &amp; source records <span>{points.length} periods · Changes in basis points</span></summary>
+      <details className={styles.exactDetails}><summary>Exact history &amp; source records <span>{points.length} {points.length===1?'period':'periods'} · Changes in basis points</span></summary>
         <div className={styles.tableScroll} tabIndex={0} role="region" aria-label={`${metric.label} history figures`}><table className={styles.comparison}><caption>{metric.label} · FDIC ratios · Bank changes compare adjacent reporting quarters</caption><thead><tr><th>Period</th><th>This bank</th><th>Change vs prior quarter</th><th>Peer median</th><th>Reported peers</th>{metric.category==='capital'&&<th>Bank framework</th>}</tr></thead><tbody>{points.map((p,i)=><tr key={p.period}><th scope="row">{p.label}<small>{p.period}</small></th><td>{p.notRequired?'N/A · CBLR':pct(p.value)}</td><td>{formatBasisPoints(peerChange(points.slice(0,i+1),previousPeerPeriod(p.period)))}</td><td>{pct(p.peerMedian)}</td><td>{p.peerCount} / {history.cohort.length}</td>{metric.category==='capital'&&<td>{p.framework}</td>}</tr>)}</tbody></table></div>
         <div className={styles.historySources}><p>Risk-based capital is unavailable for CBLR electors at each historical date. Unavailable bank records are not replaced with predecessor banks. Selected-quarter values use the same source snapshot as peer matching; earlier quarters use their latest completed snapshots. Amendments and changes in reporting or corporate structure can affect comparisons.</p>{history.snapshots.map(s=><p key={s.id}><a href={s.source_url} target="_blank" rel="noreferrer">{quarterLabel(s.report_date)} · FDIC source ↗</a> · Retrieved {new Date(s.created_at).toLocaleString('en-US',{timeZone:'UTC'})} UTC · {s.model_version}</p>)}</div>
       </details>
