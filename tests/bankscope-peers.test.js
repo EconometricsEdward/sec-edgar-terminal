@@ -105,6 +105,7 @@ test('peer SQL fences ingestion, publishes only complete identity-joined snapsho
     await assert.rejects(()=>op('peer_batch',{owner,snapshotId,rows:[{raw:raw(501),profile:{...rows[500].profile,rssd:9999}}]}));
     await op('peer_batch',{owner,snapshotId,rows:rows.slice(500)});await op('peer_complete',{owner,snapshotId});
     const universe=await op('peer_universe',{period});assert.equal(universe.profiles.length,1000);assert.equal(universe.profiles[0].name,'BANK 1');
+    assert.equal((await op('peer_status')).snapshots[0].model_version,'v1');
     assert.equal('raw_source' in universe.profiles[0],false);assert.equal('owner' in universe.snapshot,false);
     assert.equal((await op('reserve',{owner,method:'RetrieveUBPRXBRLFacsimile'})).allowed,true);
     assert.equal((await op('reserve',{owner,method:'RetrieveFacsimile'})).allowed,false);

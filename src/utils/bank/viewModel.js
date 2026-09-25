@@ -44,7 +44,7 @@ export function metricChange(current, previous) {
   if (previous.value <= 0) return null;
   return { value: (current.value / previous.value - 1) * 100, unit: '%' };
 }
-export function bankHref(rssd, { view = 'overview', peers = [], period, metric, basis, panel } = {}) {
+export function bankHref(rssd, { view = 'overview', peers = [], period, metric, basis, panel, lens, category } = {}) {
   const query = new URLSearchParams();
   if (view !== 'overview') query.set('view', view);
   if (peers.length) query.set('peers', peers.join(','));
@@ -52,12 +52,18 @@ export function bankHref(rssd, { view = 'overview', peers = [], period, metric, 
   if (metric) query.set('metric', metric);
   if (basis === 'quarterly' || basis === 'ytd') query.set('basis', basis);
   if (view === 'compare' && ['benchmarks','selected'].includes(panel)) query.set('panel', panel);
+  if (view === 'compare' && panel !== 'selected') {
+    if(lens === 'camels') query.set('lens',lens);
+    if(['capital','assetQuality','operations','earnings','liquidity','sensitivity'].includes(category)) query.set('category',category);
+  }
   return `/analysis/banks/${rssd}${query.size ? `?${query}` : ''}`;
 }
 export function bankPageOptions(rssd, query = {}) {
   const peers = typeof query.peers === 'string' ? [...new Set(query.peers.split(',').filter(id => /^[1-9]\d{0,9}$/.test(id) && id !== String(rssd)))].slice(0, 3) : [];
   return { view: ['compare', 'trends'].includes(query.view) ? query.view : 'overview', peers,
     panel: ['benchmarks','selected'].includes(query.panel) ? query.panel : peers.length ? 'selected' : 'benchmarks',
+    lens: query.lens==='camels'?'camels':'peers',
+    category: ['capital','assetQuality','operations','earnings','liquidity','sensitivity'].includes(query.category)?query.category:'core',
     period: typeof query.period === 'string' && /^\d{4}-(03-31|06-30|09-30|12-31)$/.test(query.period) ? query.period : '',
     metric: BANK_METRICS.some(m => m.key === query.metric) ? query.metric : 'assets',
     basis: ['quarterly', 'ytd'].includes(query.basis) ? query.basis : query.view === 'trends' ? 'quarterly' : 'ytd' };

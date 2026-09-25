@@ -1,11 +1,5 @@
-export const PEER_BENCHMARKS = [
-  {key:'roa',label:'Return on assets',group:'Profitability',field:'ROA',color:'#65baff',basis:'Annualized year-to-date net income / average assets.'},
-  {key:'nim',label:'Net interest margin',group:'Profitability',field:'NIMY',color:'#a899ff',basis:'Annualized year-to-date net interest income / average earning assets. FDIC basis; no UBPR tax-equivalent adjustment.'},
-  {key:'roe',label:'Return on equity',group:'Profitability',field:'ROE',color:'#62d8ba',basis:'Annualized year-to-date net income / average equity.'},
-  {key:'leverage',label:'Leverage ratio',group:'Capital',field:'RBC1AAJ',color:'#e9b660',basis:'Tier 1 capital / adjusted average assets, as published by FDIC.'},
-  {key:'noncurrent',label:'Noncurrent loans',group:'Credit quality',field:'NCLNLSR',color:'#fa9c90',basis:'Loans 90+ days past due or on nonaccrual / adjusted gross loans. Quarter-end.'},
-  {key:'chargeoffs',label:'Net charge-off rate',group:'Credit quality',field:'NTLNLSR',color:'#84ccf0',basis:'Annualized year-to-date net charge-offs / average loans. Negative values reflect net recoveries.'},
-];
+import { PEER_BENCHMARKS } from './peerMetrics.js';
+export { PEER_BENCHMARKS } from './peerMetrics.js';
 export const PEER_MATCH_WEIGHTS = {size:.4,lending:.35,funding:.25};
 const finite=n=>typeof n==='number'&&Number.isFinite(n);
 const full=values=>Array.isArray(values)&&values.every(finite);
@@ -38,12 +32,12 @@ export function buildPeerAnalysis(universe,rssd){
   const profiles=universe.profiles||[],bank=profiles.find(p=>String(p.rssd)===String(rssd));
   const metadata={snapshot:universe.snapshot||null,universeCount:profiles.length,eligibleCount:profiles.filter(hasPeerInputs).length};
   if(!bank)return {...metadata,bank:null,status:profiles.length?'bank_not_covered':'preparing',peers:[],benchmarks:[]};
-  if(!hasPeerInputs(bank))return {...metadata,bank,status:'insufficient_inputs',peers:[],benchmarks:[]};
+  if(!hasPeerInputs(bank))return {...metadata,bank,status:'insufficient_inputs',peers:[],benchmarks:PEER_BENCHMARKS.map(def=>({...def,...peerDistribution([],def.key,bank.metrics?.[def.key])}))};
   const candidates=profiles.filter(p=>p.rssd!==bank.rssd&&hasPeerInputs(p)).map(p=>({...p,match:peerDistance(bank,p)}));
   let assetBand=4;
   const inBand=n=>candidates.filter(p=>p.match.assetMultiple>=1/n&&p.match.assetMultiple<=n);
   if(inBand(4).length<10)assetBand=8;
   const peers=inBand(assetBand).sort((a,b)=>a.match.score-b.match.score||a.rssd-b.rssd).slice(0,30);
   return {...metadata,bank,status:peers.length>=5?'ready':'small_cohort',assetBand,peers,
-    benchmarks:PEER_BENCHMARKS.map(def=>({...def,...peerDistribution(peers,def.key,bank.metrics?.[def.key])}))};
+    benchmarks:PEER_BENCHMARKS.map(def=>({...def,...peerDistribution(peers,def.key,bank.metrics?.[def.key]),notRequired:!!def.riskBased&&bank.cblr===true}))};
 }

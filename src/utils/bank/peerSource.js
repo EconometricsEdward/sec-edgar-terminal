@@ -3,13 +3,15 @@ import { BankDataError } from './errors.js';
 import { limitedText } from './client.js';
 
 export const FDIC_FINANCIALS = 'https://api.fdic.gov/banks/financials';
-export const PEER_FIELDS = ['CERT','NAME','RSSDID','REPDTE','ASSET','LNLSGR','LNRE','LNCI','LNCON','DEP','DEPDOM','DEPNI','BRO','ROA','ROE','NIMY','RBC1AAJ','NCLNLSR','NTLNLSR'];
-export const PEER_MODEL_VERSION = 'bankscope-peers-1';
+export const PEER_FIELDS = ['CERT','NAME','RSSDID','REPDTE','ASSET','LNLSGR','LNRE','LNCI','LNCON','DEP','DEPDOM','DEPNI','BRO','ROA','ROE','NIMY','RBC1AAJ','NCLNLSR','NTLNLSR',
+  'CBLRIND','RBCT1CER','RBC1RWAJ','RBCRWAJ','EQV','LNATRESR','LNATRES','NCLNLS','EEFFR','NONIXR','NONIIR','CHBALR','ASSTLTR','SCMTGBKR','SC'];
+export const PEER_MODEL_VERSION = 'bankscope-peers-2';
 export function fdicSourceUrl(period, rssd) {
   const params = new URLSearchParams({ filters: `REPDTE:${period.replaceAll('-','')}${rssd ? ` AND RSSDID:${rssd}` : ''}`, fields: PEER_FIELDS.join(','), sort_by:'CERT', sort_order:'ASC', limit:'10000', format:'json' });
   return `${FDIC_FINANCIALS}?${params}`;
 }
 const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
+const ratio = (n,d) => number(n)!==null&&number(d)!==null&&d>0 ? n/d*100 : null;
 const share = (n,d) => number(n) !== null && n >= 0 && number(d) !== null && d > 0 && n <= d * 1.005 ? Math.min(1,n/d) : null;
 
 /** Amounts remain in source USD thousands; percentages remain percentage values. Missing is never zero. */
@@ -19,8 +21,17 @@ export function normalizePeerRecord(raw, period) {
   const total = lending.reduce((s,n)=>s+(n??0),0);
   const loanMix = lending.every(n=>n!==null) && total <= 1.005 ? [...lending,Math.max(0,1-total)] : null;
   const funding = [share(raw.DEP,raw.ASSET),share(raw.DEPNI,raw.DEPDOM),share(raw.BRO,raw.DEPDOM)];
-  return { rssd:raw.RSSDID,cert:raw.CERT,assets:raw.ASSET,loanMix,loanShare:share(raw.LNLSGR,raw.ASSET),funding,
-    metrics:{roa:number(raw.ROA),roe:number(raw.ROE),nim:number(raw.NIMY),leverage:number(raw.RBC1AAJ),noncurrent:number(raw.NCLNLSR),chargeoffs:number(raw.NTLNLSR)} };
+  const cblr=raw.CBLRIND===1?true:raw.CBLRIND===0?false:null;
+  // FDIC can publish zero for risk-based capital when the bank elects CBLR. Never rank that placeholder.
+  const riskBased=value=>cblr===true?null:number(value);
+  return { rssd:raw.RSSDID,cert:raw.CERT,assets:raw.ASSET,cblr,loanMix,loanShare:share(raw.LNLSGR,raw.ASSET),funding,
+    metrics:{roa:number(raw.ROA),roe:number(raw.ROE),nim:number(raw.NIMY),leverage:number(raw.RBC1AAJ),noncurrent:number(raw.NCLNLSR),chargeoffs:number(raw.NTLNLSR),
+      cet1:riskBased(raw.RBCT1CER),tier1:riskBased(raw.RBC1RWAJ),totalCapital:riskBased(raw.RBCRWAJ),equity:number(raw.EQV),
+      reserves:number(raw.LNATRESR),reserveCoverage:ratio(raw.LNATRES,raw.NCLNLS),realEstate:ratio(raw.LNRE,raw.LNLSGR),
+      efficiency:number(raw.EEFFR),operatingExpense:number(raw.NONIXR),feeIncome:number(raw.NONIIR),
+      loansDeposits:ratio(raw.LNLSGR,raw.DEP),cash:number(raw.CHBALR),brokered:ratio(raw.BRO,raw.DEPDOM),
+      noninterestDeposits:ratio(raw.DEPNI,raw.DEPDOM),depositsAssets:ratio(raw.DEP,raw.ASSET),
+      longTerm:number(raw.ASSTLTR),mbs:number(raw.SCMTGBKR),securities:ratio(raw.SC,raw.ASSET)} };
 }
 export async function fetchPeerUniverse(period,{fetchImpl=fetch}={}) {
   if (!/^\d{4}-(03-31|06-30|09-30|12-31)$/.test(period)) throw new BankDataError('invalid_period');
