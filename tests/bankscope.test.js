@@ -82,10 +82,13 @@ test('gateway pins production/preview identities and never forwards unauthentica
 test('expanded SQL supports discovery, search, durable admission, fenced work, source reprocessing and immutable versions',async()=>{
   const db=new PGlite();try{
     await db.exec('create role anon;create role authenticated;create role service_role bypassrls;create schema edgar_private;grant usage on schema edgar_private,public to service_role;');
-    for(const file of ['20260925051054_ffiec_bank_pilot.sql','20260925052649_ffiec_bank_source_recovery.sql','20260925063357_bankscope_directory_queue.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+file,import.meta.url),'utf8'));
+    for(const file of ['20260925051054_ffiec_bank_pilot.sql','20260925052649_ffiec_bank_source_recovery.sql','20260925063357_bankscope_directory_queue.sql', '20260925070230_bankscope_available_periods.sql', '20260925070607_bankscope_catalog_batches.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+file,import.meta.url),'utf8'));
     const op=async(name,p={})=>(await db.query('select public.bank_scope_operation($1,$2::jsonb) as x',[name,JSON.stringify(p)])).rows[0].x;
     const owner=randomUUID();assert.equal((await op('begin',{owner})).allowed,true);
-    await op('periods',{owner,periods:[date]});await op('catalog',{owner,period:date,banks:normalizeBankPanel(rows,date)});
+    await op('periods',{owner,periods:[date]});await op('catalog',{owner,period:date,banks:normalizeBankPanel(rows.slice(0,1),date),complete:false,reporterCount:2});
+    assert.equal((await op('status')).directoryPeriods.length,0);
+    await op('catalog',{owner,period:date,banks:normalizeBankPanel(rows.slice(1),date),complete:true,reporterCount:2});
+    assert.equal((await op('status')).directoryPeriods[0].reporter_count,2);
     assert.equal((await op('search',{query:'first test'})).banks.length,2);assert.equal((await op('search',{query:'333'})).banks[0].id_rssd,101);
     assert.equal((await op('request',{rssd:999,clientHash:'a'.repeat(64)})).code,'institution_not_found');
     assert.equal((await op('request',{rssd:101,clientHash:'a'.repeat(64)})).queued,1);
@@ -98,7 +101,7 @@ test('expanded SQL supports discovery, search, durable admission, fenced work, s
     await op('publish',payload);assert.equal((await op('source',{rssd:101,period:date,submission:null})).rawXbrl,raw);
     await assert.rejects(()=>op('publish',{...payload,metrics:[{...normalized.metrics[0],rssd:102}]}));
     await op('publish',{...payload,metrics:normalized.metrics,validation:normalized.validation});
-    const read=await op('read',{rssds:[101]});assert.equal(read.reports[0].metrics.length,35);assert.equal(read.jobs[0].status,'ready');
+    const read=await op('read',{rssds:[101]});assert.equal(read.reports[0].metrics.length,35);assert.equal(read.jobs[0].status,'ready');assert.deepEqual(read.banks[0].available_periods,[date]);
     assert.equal('lineage' in read.reports[0].metrics[0],false);
     assert.equal((await op('lineage',{rssd:101,period:date,hash:parsed.sha256,metric:'assets'})).value,1e9);
     assert.equal((await op('reserve',{owner,method:'RetrieveFacsimile'})).allowed,true);
@@ -115,8 +118,25 @@ test('expanded SQL supports discovery, search, durable admission, fenced work, s
 });
 test('worker reprocesses retained sources and does not call FFIEC for an idle queue',async()=>{
   let upstream=0;const operations=[];
-  const result=await runBankWorker({clientFactory:()=>{upstream++;throw Error('not needed');},store:async(op,p)=>{
+  const result=await runBankWorker({clientFactory:()=>{upstream++;throw Error('not needed');},store:async(op)=>{
     operations.push(op);if(op==='begin')return {allowed:true};if(op==='status')return {periods:[date]};if(op==='claim')return null;
   }});
   assert.equal(result.status,'ready');assert.equal(upstream,0);assert.deepEqual(operations,['begin','status','claim','finish']);
+});
+
+test('worker reprocesses cached official XBRL without contacting FFIEC and preserves its source version',async()=>{
+  const xml=await readFile(new URL('./fixtures/bank-852218-2026-06-30.xml',import.meta.url),'utf8');
+  const operations=[];let claimed=false;const published=[];
+  const result=await runBankWorker({clientFactory:()=>{throw Error('cached work must not create an upstream client');},store:async(op,p)=>{
+    operations.push(op);
+    if(op==='begin')return {allowed:true};
+    if(op==='status')return {periods:[date]};
+    if(op==='claim'){if(claimed)return null;claimed=true;return {id:randomUUID(),id_rssd:852218,report_date:date,form:'031',desired_submission:'source-date'};}
+    if(op==='source')return {rawXbrl:xml,retrievedAt:'2026-09-25T01:00:00.000Z'};
+    if(op==='publish')published.push(p);
+  }});
+  assert.equal(result.stored,1);assert.equal(result.reused,1);assert.equal(published.length,1);
+  assert.equal(published[0].validation.passed,true);assert.equal(published[0].metrics.length,35);
+  assert.equal(published[0].retrievedAt,'2026-09-25T01:00:00.000Z');
+  assert.equal(published[0].submissionDate,'source-date');assert.equal(operations.includes('reserve'),false);
 });

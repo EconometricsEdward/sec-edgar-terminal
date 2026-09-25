@@ -76,14 +76,17 @@ function Preparation({ bank, state, requesting, onPrepare }) {
   const jobs = state.jobs?.filter(j => sameBank(j.id_rssd, bank.id_rssd)) || [];
   const running = jobs.some(j => PENDING.has(j.status));
   const ready = state.periods?.filter(p => bankReport(state, bank.id_rssd, p)?.validation?.passed).length || 0;
-  const complete = state.periods?.length && ready === state.periods.length;
+  const available = bank.available_periods || state.periods || [];
+  const complete = available.length && ready === available.length;
   if (complete && !running) return null;
-  const unrequested = state.periods?.some(p => !jobs.some(j => j.report_date === p));
+  const unrequested = available.some(p => !jobs.some(j => j.report_date === p));
   const problem = jobs.some(j => ['review', 'unavailable'].includes(j.status));
-  return <section className={styles.preparation} aria-label={`Preparation for ${bank.legal_name}`}><div><strong>{bank.legal_name}</strong><p role="status">{ready} / {state.periods?.length || 4} quarters ready{running ? ' · Preparing Call Reports…' : problem ? ' · Some periods are unavailable or require review.' : ' · Prepare this bank’s recent Call Reports to begin.'}</p>{running && <p>Preparation continues if you leave this page. Busy periods can take a few minutes.</p>}</div>{unrequested && !running && <button className={styles.primaryButton} disabled={!!requesting} onClick={() => onPrepare(bank.id_rssd)}>{sameBank(requesting, bank.id_rssd) ? 'Requesting…' : 'Prepare Call Reports'}</button>}</section>;
+  return <section className={styles.preparation} aria-label={`Preparation for ${bank.legal_name}`}><div><strong>{bank.legal_name}</strong><p role="status">{ready} / {available.length || 4} eligible quarters ready{running ? ' · Preparing Call Reports…' : problem ? ' · Some periods are unavailable or require review.' : ' · Prepare this bank’s recent Call Reports to begin.'}</p>{running && <p>Preparation continues if you leave this page. Busy periods can take a few minutes.</p>}</div>{unrequested && !running && <button className={styles.primaryButton} disabled={!!requesting} onClick={() => onPrepare(bank.id_rssd)}>{sameBank(requesting, bank.id_rssd) ? 'Requesting…' : 'Prepare Call Reports'}</button>}</section>;
 }
 function EmptyPeriod({ state, rssd, period }) {
   const job = state.jobs?.find(j => sameBank(j.id_rssd, rssd) && j.report_date === period);
+  const bank = state.banks?.find(b => sameBank(b.id_rssd, rssd));
+  if (bank?.available_periods && !bank.available_periods.includes(period)) return <div className={styles.empty}><h3>No Call Report listing for this date</h3><p>{quarterLabel(period)} · This bank is not listed in the FFIEC reporting panel for this period. Choose another reporting date.</p></div>;
   return <div className={styles.empty}><h3>{PENDING.has(job?.status) ? 'Preparing this reporting period' : job?.status === 'review' ? 'This report needs a financial review' : 'No prepared report for this period'}</h3><p>{quarterLabel(period)} · A different reporting date is never substituted. {job?.status === 'review' ? 'Figures are withheld until the source and financial checks can be reconciled.' : 'Use the preparation control above or choose an available quarter.'}</p></div>;
 }
 function MetricValue({ metric, exact = false }) { return <span title={metric?.value == null ? unavailableReason(metric) : undefined}>{formatBankMetric(metric, { exact })}</span>; }

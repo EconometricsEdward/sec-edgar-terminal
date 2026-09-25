@@ -31,7 +31,14 @@ export async function runBankWorker({store=bankScopeStore,env=process.env,mainta
         if(prior&&now()-Date.parse(prior.checked_at)<86400000)continue;
         const panel=await request('RetrievePanelOfReporters',{reportingPeriodEndDate:apiDate(period)});
         const submissions=await request('RetrieveFilersSubmissionDateTime',{reportingPeriodEndDate:apiDate(period),lastUpdateDateTime:apiDate(period)});
-        await owned('catalog',{period,banks:normalizeBankPanel(panel,period,submissions,new Date(now()).toISOString())});result.directory++;
+        const banks=normalizeBankPanel(panel,period,submissions,new Date(now()).toISOString());
+        // Keep each transaction well below the database's eight-second limit.
+        // A period is marked refreshed only after every chunk has been accepted.
+        for(let offset=0;offset<banks.length;offset+=500) {
+          if(now()>deadline-25000){result.status='more_available';return result;}
+          await owned('catalog',{period,banks:banks.slice(offset,offset+500),reporterCount:banks.length,complete:offset+500>=banks.length});
+        }
+        result.directory++;
       }
     }
     for(let i=0;i<Math.min(8,maxFilings)&&now()<deadline-35000;i++) {
