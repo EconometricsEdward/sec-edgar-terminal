@@ -10,6 +10,7 @@ import { downloadText } from "../../utils/download.js";
 import { money } from "./fundUi";
 import type { Holding } from "./fundTypes";
 import s from "./GlobalSecurityFinder.module.css";
+import FundSearchBox from "./FundSearchBox";
 
 type Settings = { securityQuery?: string; securityAsset?: string };
 type Totals = {
@@ -437,21 +438,9 @@ export default function GlobalSecurityFinder({
           startSearch(query);
         }}
       >
-        <label className={s.queryLabel}>
-          Company, ticker or security identifier
-          <span className={s.searchInput}>
-            <Search size={19} aria-hidden="true" />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="e.g. Apple or AAPL"
-              maxLength={100}
-              required
-              aria-describedby="global-security-scope"
-            />
-          </span>
-        </label>
+        <div className={s.queryLabel}>
+          <FundSearchBox value={query} onChange={setQuery} mode="holding" label="Company, ticker or security identifier" placeholder="Company, ticker, CUSIP or ISIN…" onChoose={item => startSearch(item.ticker)} onSubmit={startSearch} />
+        </div>
         <label>
           Security type
           <select
