@@ -1,4 +1,5 @@
 import { buildMarketMacroSummary } from './marketMacroSummary.js';
+import { MARKET_PERIOD_INTEGRITY_VERSION } from './marketPeriodIntegrity.js';
 
 export const MARKET_BRIEFING_VERSION = 'market-briefing-v1';
 export const MARKET_DIRECTORY_VERSION = 'market-directory-v1';
@@ -9,6 +10,7 @@ export const MARKET_DIRECTORY_PAGE_SIZE = 50;
 export function buildMarketBriefing(overview) {
   return {
     version: MARKET_BRIEFING_VERSION, generatedAt: overview.generatedAt,
+    periodIntegrityVersion: MARKET_PERIOD_INTEGRITY_VERSION,
     requested: overview.requested, ...(overview.coverage ? { coverage: overview.coverage } : {}),
     summaries: Object.fromEntries(['ttm', 'annual'].map(basis => {
       const summary = buildMarketMacroSummary(overview, basis);
@@ -24,6 +26,7 @@ export function buildMarketBriefing(overview) {
 
 export function buildMarketIndustries(overview) {
   return { version: MARKET_INDUSTRIES_VERSION, generatedAt: overview.generatedAt,
+    periodIntegrityVersion: MARKET_PERIOD_INTEGRITY_VERSION,
     bases: Object.fromEntries(['ttm', 'annual'].map(basis => [basis,
       buildMarketMacroSummary(overview, basis).sectors.map(({ id, industries, missingIndustryCount }) => ({ id, industries, missingIndustryCount })),
     ])),

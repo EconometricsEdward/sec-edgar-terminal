@@ -1,3 +1,5 @@
+import { MARKET_PERIOD_INTEGRITY_VERSION, withholdInvalidMarketPeriods } from './marketPeriodIntegrity.js';
+
 export const MARKET_SECTOR_COMPANY_VERSION = 'market-sector-companies-v1';
 export const MARKET_SECTOR_COMPANY_PAGE_SIZE = 25;
 export const MARKET_SECTOR_COMPANY_METRICS = Object.freeze([
@@ -37,7 +39,8 @@ function compactReport(report) {
 /** A shared scalar-only projection; visitors never receive a full research atlas. */
 export function buildMarketSectorCompanies(overview) {
   const issuers = new Map();
-  for (const company of overview.companies) {
+  for (const original of overview.companies) {
+    const company = withholdInvalidMarketPeriods(original);
     const cik = String(company.cik).replace(/^0+/, '').padStart(10, '0');
     issuers.set(cik, { ticker: company.ticker, name: company.name, cik,
       sic: String(company.sic ?? ''), sectorId: sectorIdentity(company, overview),
@@ -50,6 +53,7 @@ export function buildMarketSectorCompanies(overview) {
     });
   }
   return { version: MARKET_SECTOR_COMPANY_VERSION, generatedAt: overview.generatedAt,
+    periodIntegrityVersion: MARKET_PERIOD_INTEGRITY_VERSION,
     companies: [...issuers.values()].sort(companyOrder) };
 }
 

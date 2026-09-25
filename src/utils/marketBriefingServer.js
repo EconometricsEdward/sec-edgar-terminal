@@ -4,6 +4,7 @@ import { buildMarketSectorCompanies, MARKET_SECTOR_COMPANY_VERSION } from './mar
 import { getDataStoreMode, readDataset, beginDatasetWrite, publishDataset, releaseDatasetWrite } from './dataStore.js';
 import { preparedEnvelopeUsable } from './secDocumentStore.js';
 import { MARKET_ATLAS_FRESH_MS } from './marketResearch.js';
+import { MARKET_PERIOD_INTEGRITY_VERSION } from './marketPeriodIntegrity.js';
 
 export const MARKET_BRIEFING_KEY = 'research-market-briefing-v1:latest';
 export const MARKET_DIRECTORY_KEY = 'research-market-directory-v1:latest';
@@ -19,6 +20,9 @@ const definitions = {
 function retained(payload, valid, now = Date.now()) {
   const age = now - Date.parse(payload?.generatedAt);
   if (!valid(payload) || !Number.isFinite(age) || age < 0 || age >= RETENTION_MS) return null;
+  // Old aggregates have already lost individual filing dates. Reproject them
+  // from the prepared overview, without refetching company data from the SEC.
+  if (valid !== isMarketDirectory && payload.periodIntegrityVersion !== MARKET_PERIOD_INTEGRITY_VERSION) return null;
   return age > MARKET_ATLAS_FRESH_MS ? { ...payload, cache: { ...payload.cache, status: 'stale', warning: 'The scheduled refresh is pending. Source dates belong to the last completed snapshot.' } } : payload;
 }
 
@@ -47,6 +51,7 @@ export async function publishMarketServingViews(overview, {
               parserVersion: definition.version, calculationVersion: overview.version,
               view: definition.version, coverage: overview.companies.length },
             identityInputs: { version: definition.version, generatedAt: overview.generatedAt,
+              periodIntegrityVersion: value.periodIntegrityVersion || null,
               membership: overview.coverage?.membership_id || null } });
         }
       } catch (error) { await release('financial', definition.key, claim); throw error; }

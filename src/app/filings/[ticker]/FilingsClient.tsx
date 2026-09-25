@@ -882,7 +882,6 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
                       {family.label}
                     </button>
                   ))}
-                  <button aria-pressed={settings.form === "X-17A-5"} onClick={() => changeSettings({ family: "all", form: "X-17A-5", amendments: "include" })}>Broker-dealer filings</button>
                   <details className={styles.advanced}>
                     <summary>
                       Dates &amp; events

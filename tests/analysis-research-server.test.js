@@ -76,7 +76,8 @@ test('a shared-cache response retains its original calculation timestamp and is 
 });
 
 test('corrupt or mismatched cached selections never serve another company, basis, cutoff or calculator', async () => {
-  for (const changes of [{ ticker: 'OTHER' }, { basis: 'quarter' }, { asOf: '2024-01-01' }, { version: 'old' }, { mappingVersion: undefined }, { packed: false }]) {
+  for (const changes of [{ ticker: 'OTHER' }, { basis: 'quarter' }, { asOf: '2024-01-01' }, { version: 'old' }, { mappingVersion: undefined }, { packed: false },
+    { periods: [{ end: '2026-12-31', filed: '2026-05-13' }] }]) {
     let loads = 0;
     const load = createInteractiveAnalysisLoader({ ...dependencies,
       read: async () => ({ gzip: gzipSync(JSON.stringify({ ...resultFor(), ...changes })).toString('base64') }),

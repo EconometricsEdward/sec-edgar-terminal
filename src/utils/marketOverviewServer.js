@@ -7,12 +7,14 @@ import { getDataStoreMode, readDataset, beginDatasetWrite, publishDataset, relea
 import { preparedEnvelopeUsable } from './secDocumentStore.js';
 import { MARKET_DURABLE_KEY } from './preparedResearchStore.js';
 import { publishMarketServingViews } from './marketBriefingServer.js';
+import { sanitizeMarketOverviewPeriods } from './marketPeriodIntegrity.js';
 
 const RETENTION = 7 * 86400;
 let memory = null, pending = null;
 function retained(value) {
   const age = Date.now() - Date.parse(value?.generatedAt);
   if (!isMarketOverview(value) || !Number.isFinite(age) || age < 0 || age >= RETENTION * 1000) return null;
+  value = sanitizeMarketOverviewPeriods(value);
   return age > MARKET_ATLAS_FRESH_MS ? { ...value, cache: { status: 'stale', warning: 'The scheduled refresh is pending. Coverage and source dates belong to the last completed snapshot.' } } : value;
 }
 
@@ -32,6 +34,7 @@ export async function publishDurableMarketOverview(value, {
 } = {}) {
   if (mode === 'off') return value;
   if (!isMarketOverview(value)) throw new Error('Durable Market overview failed validation.');
+  value = sanitizeMarketOverviewPeriods(value);
   const claim = await begin('financial', MARKET_DURABLE_KEY, { leaseSeconds: 120 });
   if (!claim) throw new Error('A scheduled Market publication is already running.');
   try {
@@ -39,7 +42,7 @@ export async function publishDurableMarketOverview(value, {
     // A delayed scheduler may bring an older atlas. It must not replace a newer one.
     if (retained(previous?.payload) && previous.payload.generatedAt >= value.generatedAt) {
       await release('financial', MARKET_DURABLE_KEY, claim);
-      return previous.payload;
+      return retained(previous.payload);
     }
     const sourceDates = value.companies.map((company) => company.factsRetrievedAt || company.observedAt).filter(Boolean).sort();
     const fetchedAt = sourceDates[0] || value.generatedAt;
@@ -62,7 +65,7 @@ export async function publishDurableMarketOverview(value, {
 export async function publishMarketOverview(atlas, membership, options = {}) {
   const previous = await readSnapshot(MARKET_OVERVIEW_VERSION, 'atlas');
   const next = previous?.generatedAt === atlas.generatedAt && retained(previous)
-    ? previous : buildMarketOverview(atlas, { membership, previous, persistHistory: true });
+    ? retained(previous) : buildMarketOverview(atlas, { membership, previous, persistHistory: true });
   if (!isMarketOverview(next)) throw new Error('Market overview failed validation.');
   const published = await publishDurableMarketOverview(next, options.durable || {});
   if (!await writeSnapshot(MARKET_OVERVIEW_VERSION, 'atlas', published, RETENTION, options)) throw new Error('Market overview publication failed.');

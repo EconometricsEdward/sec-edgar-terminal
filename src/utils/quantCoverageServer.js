@@ -14,6 +14,7 @@ import { readSnapshot, writeSnapshot } from './snapshotCache.js';
 import { publishMarketOverview } from './marketOverviewServer.js';
 import { cacheDeploymentScope, isProductionDeployment } from './cacheScope.js';
 import { revenueCorrectionPriority, recalculatePreparedMarketRevenue, withholdUncorrectedRevenue } from './marketRevenueCorrections.js';
+import { hasInvalidMarketPeriods } from './marketPeriodIntegrity.js';
 
 const scope = cacheDeploymentScope();
 export const QUANT_COVERAGE_CACHE = `${QUANT_COVERAGE_VERSION}:${scope}`;
@@ -82,7 +83,7 @@ export function filingFingerprint(submissions) {
   return hash(recent.accessionNumber.flatMap((accession, index) => /^(10-K|10-Q|20-F|40-F)(\/A)?$/.test(recent.form?.[index] || '') ? [[accession, recent.acceptanceDateTime?.[index], recent.reportDate?.[index]]] : []).slice(0, 40));
 }
 export function needsFactsRefresh(cached, fingerprint, now = Date.now()) {
-  return cached?.needsReconciliation || cached?.company?.revenueVersion !== MARKET_REVENUE_VERSION
+  return cached?.needsReconciliation || hasInvalidMarketPeriods(cached?.company) || cached?.company?.revenueVersion !== MARKET_REVENUE_VERSION
     || cached?.company?.riskVersion !== MARKET_RISK_VERSION || fingerprint !== cached.fingerprint || !Number.isFinite(Date.parse(cached.factsRetrievedAt)) || now - Date.parse(cached.factsRetrievedAt) >= 7 * DAY;
 }
 
@@ -91,7 +92,7 @@ export function quantCheckpointFresh(record, now = Date.now()) {
   if (!Number.isFinite(age) || age < 0) return false;
   if (record?.eligibility === 'unsupported') return age < 7 * DAY;
   return Boolean(record?.company && !record.needsReconciliation && record.company.revenueVersion === MARKET_REVENUE_VERSION
-    && record.company.riskVersion === MARKET_RISK_VERSION && age < 20 * 3600000);
+    && record.company.riskVersion === MARKET_RISK_VERSION && !hasInvalidMarketPeriods(record.company) && age < 20 * 3600000);
 }
 
 /** Retired Redis checkpoints only existed for the original baseline universe. */

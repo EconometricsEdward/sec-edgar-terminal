@@ -4,6 +4,7 @@ import {
   termPattern,
 } from "./disclosureQuery.js";
 import { disclosureExactText } from "./disclosureQuantities.js";
+import { decodeNumericHtmlEntities } from './htmlEntities.js';
 
 export const DISCLOSURE_TOPICS = [
   {
@@ -130,6 +131,8 @@ function hasForeignNarrative(body) {
 
 /** Bounded heading extraction. Missing headings stay unknown, never zero matches. */
 export function disclosurePassages(text, form = "") {
+  // Older prepared text may still contain hexadecimal references.
+  text = decodeNumericHtmlEntities(text);
   const foreignAnnual = /^20-F(?:\/A)?$/.test(form);
   const headings = [
     ...text.matchAll(
