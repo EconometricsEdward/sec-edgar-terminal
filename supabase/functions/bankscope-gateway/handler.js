@@ -1,7 +1,7 @@
 export const TRUST={issuer:'https://oidc.vercel.com/econometricsedwards-projects',audience:'https://vercel.com/econometricsedwards-projects',
   ownerId:'team_EEZpsSbH41QqVl83n2OJmLob',projectId:'prj_tjTGC2omKa1JOT7il31bFZ8ilk8f'};
 const PROJECT='https://vvkihuduqqnxqahhbphs.supabase.co';
-const OPS=new Set(['status','search','read','source','lineage','request','begin','reserve','cooldown','periods','catalog','claim','publish','job_error','finish']);
+const OPS=new Set(['status','search','read','source','lineage','request','begin','reserve','cooldown','periods','catalog','claim','publish','job_error','finish','peer_status','peer_universe','peer_start','peer_batch','peer_complete','ubpr_read','ubpr_source','ubpr_claim','ubpr_save','ubpr_error']);
 const reply=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 export function validScopeClaims(p,now=Date.now()) {
   return ['production','preview'].includes(p?.environment)&&p.iss===TRUST.issuer&&p.aud===TRUST.audience

@@ -6,7 +6,7 @@ const valueOf = node => typeof node === 'object' ? node?.['#text'] : node;
 const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, parseTagValue: false, parseAttributeValue: false, trimValues: true, processEntities: false });
 
 export function decodeFacsimile(response) {
-  let value = response?.FacsimileFile ?? response;
+  let value = response?.FacsimileFile ?? response?.XBRLFile ?? response;
   if (Array.isArray(value) && value.every(n => Number.isInteger(n) && n >= 0 && n <= 255)) return Buffer.from(value).toString('utf8');
   if (typeof value !== 'string' || value.length > 16 * 1024 * 1024) throw new BankDataError('parsing_failure');
   if (value.trimStart().startsWith('<')) return value;

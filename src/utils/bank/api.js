@@ -47,16 +47,18 @@ export function createBankApi({store=bankScopeStore,rateLimit=checkRateLimit,sch
     }catch(error){return fail(error);}},
     async SOURCE(request){try{
       const p=new URL(request.url).searchParams;
-      if([...p.keys()].some(k=>!['rssd','period','hash','metric'].includes(k)||p.getAll(k).length!==1)
+      if([...p.keys()].some(k=>!['rssd','period','hash','metric','series'].includes(k)||p.getAll(k).length!==1)
         ||!/^\d{4}-(03-31|06-30|09-30|12-31)$/.test(p.get('period')||'')||! /^[a-f0-9]{64}$/.test(p.get('hash')||''))throw new BankDataError('invalid_request',{status:400});
       const rssd=bankRssd(p.get('rssd')),metric=p.get('metric');
+      const ubpr=p.get('series')==='ubpr';
+      if(p.has('series')&&(!ubpr||metric))throw new BankDataError('invalid_request',{status:400});
       if(metric&&!BANK_METRICS.some(m=>m.key===metric))throw new BankDataError('invalid_request',{status:400});
       const blocked=await gate(request);if(blocked)return blocked;
-      const data=await store(metric?'lineage':'source',{rssd,period:p.get('period'),hash:p.get('hash'),...(metric?{metric}:{})});
+      const data=await store(ubpr?'ubpr_source':metric?'lineage':'source',{rssd,period:p.get('period'),hash:p.get('hash'),...(metric?{metric}:{})});
       if(!data)return Response.json({error:'This source version is unavailable.'},{status:404,headers:PRIVATE});
       if(metric)return Response.json(data,{headers:{...PUBLIC,'Cache-Control':'public, max-age=300, s-maxage=86400'}});
       return new Response(data.rawXbrl,{headers:{...PUBLIC,'Content-Type':'application/xml; charset=utf-8',
-        'Content-Disposition':`attachment; filename="FFIEC_${rssd}_${p.get('period')}.xml"`,'Content-Security-Policy':"default-src 'none'; sandbox",'X-Robots-Tag':'noindex'}});
+        'Content-Disposition':`attachment; filename="FFIEC_${ubpr?'UBPR_':''}${rssd}_${p.get('period')}.xml"`,'Content-Security-Policy':"default-src 'none'; sandbox",'X-Robots-Tag':'noindex'}});
     }catch(error){return fail(error);}},
   };
 }

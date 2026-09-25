@@ -118,7 +118,7 @@ test('expanded SQL supports discovery, search, durable admission, fenced work, s
 });
 test('worker reprocesses retained sources and does not call FFIEC for an idle queue',async()=>{
   let upstream=0;const operations=[];
-  const result=await runBankWorker({clientFactory:()=>{upstream++;throw Error('not needed');},store:async(op)=>{
+  const result=await runBankWorker({peers:false,clientFactory:()=>{upstream++;throw Error('not needed');},store:async(op)=>{
     operations.push(op);if(op==='begin')return {allowed:true};if(op==='status')return {periods:[date]};if(op==='claim')return null;
   }});
   assert.equal(result.status,'ready');assert.equal(upstream,0);assert.deepEqual(operations,['begin','status','claim','finish']);
@@ -127,7 +127,7 @@ test('worker reprocesses retained sources and does not call FFIEC for an idle qu
 test('worker reprocesses cached official XBRL without contacting FFIEC and preserves its source version',async()=>{
   const xml=await readFile(new URL('./fixtures/bank-852218-2026-06-30.xml',import.meta.url),'utf8');
   const operations=[];let claimed=false;const published=[];
-  const result=await runBankWorker({clientFactory:()=>{throw Error('cached work must not create an upstream client');},store:async(op,p)=>{
+  const result=await runBankWorker({peers:false,clientFactory:()=>{throw Error('cached work must not create an upstream client');},store:async(op,p)=>{
     operations.push(op);
     if(op==='begin')return {allowed:true};
     if(op==='status')return {periods:[date]};
