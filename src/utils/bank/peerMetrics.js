@@ -1,0 +1,39 @@
+/** Public FDIC ratios, in percentage units. This catalog is safe to import in the client. */
+export const formatPeerPercent=n=>n==null?'Unavailable':`${Math.abs(n)>0&&Math.abs(n)<.005?n.toPrecision(2):n.toFixed(2)}%`;
+export const CAMELS_DIMENSIONS = [
+  {key:'capital',letter:'C',label:'Capital adequacy',color:'#e9b660',keys:['leverage','cet1','totalCapital'],note:'Loss-absorbing capital. The regulatory framework matters as much as the peer rank.'},
+  {key:'assetQuality',letter:'A',label:'Asset quality',color:'#fa9c90',keys:['noncurrent','chargeoffs','reserves'],note:'Credit performance and allowances. Loan mix and underwriting affect comparability.'},
+  {key:'operations',letter:'M',label:'Management · operating proxies',shortLabel:'Operations',color:'#a899ff',keys:['efficiency','operatingExpense','feeIncome'],note:'Efficiency and expense measures only. Public ratios cannot assess governance, controls or management quality.'},
+  {key:'earnings',letter:'E',label:'Earnings',color:'#65baff',keys:['roa','nim','roe'],note:'Annualized year-to-date profitability, not a forecast or a single-quarter run rate.'},
+  {key:'liquidity',letter:'L',label:'Liquidity · funding proxies',shortLabel:'Liquidity',color:'#62d8ba',keys:['loansDeposits','cash','brokered'],note:'Funding structure and on-balance-sheet cash. These are not stressed outflows or regulatory liquidity ratios.'},
+  {key:'sensitivity',letter:'S',label:'Sensitivity · balance-sheet proxies',shortLabel:'Sensitivity',color:'#84ccf0',keys:['longTerm','mbs','securities'],note:'Long-term asset and securities exposure. Repricing, hedges and deposit behavior can change the actual rate risk.'},
+];
+const metric=(key,label,category,field,basis,extra={})=>({key,label,category,field,basis,
+  group:CAMELS_DIMENSIONS.find(d=>d.key===category).shortLabel||CAMELS_DIMENSIONS.find(d=>d.key===category).label,
+  color:CAMELS_DIMENSIONS.find(d=>d.key===category).color,...extra});
+export const PEER_BENCHMARKS = [
+  metric('roa','Return on assets','earnings','ROA','Annualized year-to-date net income / average assets.',{core:true}),
+  metric('nim','Net interest margin','earnings','NIMY','Annualized year-to-date net interest income / average earning assets. FDIC basis; no UBPR tax-equivalent adjustment.',{core:true}),
+  metric('roe','Return on equity','earnings','ROE','Annualized year-to-date net income / average equity.',{core:true}),
+  metric('leverage','Leverage ratio','capital','RBC1AAJ','Tier 1 capital / adjusted average assets. Includes CBLR electors and risk-based banks; their regulatory references differ.',{core:true}),
+  metric('noncurrent','Noncurrent loans','assetQuality','NCLNLSR','Loans 90+ days past due or on nonaccrual / adjusted gross loans. Quarter-end.',{core:true}),
+  metric('chargeoffs','Net charge-off rate','assetQuality','NTLNLSR','Annualized year-to-date net charge-offs / average loans. Negative values reflect net recoveries.',{core:true}),
+  metric('cet1','Common equity Tier 1','capital','RBCT1CER','Common equity Tier 1 capital / risk-weighted assets. Quarter-end. CBLR electors are excluded.',{riskBased:true}),
+  metric('tier1','Tier 1 risk-based capital','capital','RBC1RWAJ','Tier 1 capital / risk-weighted assets, FDIC PCA basis. Quarter-end. CBLR electors are excluded.',{riskBased:true}),
+  metric('totalCapital','Total risk-based capital','capital','RBCRWAJ','Total regulatory capital / risk-weighted assets, FDIC PCA basis. Quarter-end. CBLR electors are excluded.',{riskBased:true}),
+  metric('equity','Equity / assets','capital','EQV','Book equity / total assets. Quarter-end. This accounting ratio is not a regulatory capital ratio.'),
+  metric('reserves','Loan allowances / loans','assetQuality','LNATRESR','FDIC adjusted loan-loss allowances / gross loans and leases. Quarter-end; reporting and accounting transitions can affect this measure.'),
+  metric('reserveCoverage','Allowances / noncurrent loans','assetQuality','LNATRES / NCLNLS × 100','BankScope calculation: FDIC adjusted loan-loss allowances / noncurrent loans × 100. Quarter-end. Unavailable when noncurrent loans are zero; a high ratio alone does not establish reserve adequacy.'),
+  metric('realEstate','Real estate share of loans','assetQuality','LNRE / LNLSGR × 100','BankScope calculation: all real estate loans / gross loans and leases × 100. Quarter-end. Includes residential lending; this is not a regulatory commercial real estate concentration measure.'),
+  metric('efficiency','Efficiency ratio','operations','EEFFR','FDIC efficiency expense / efficiency income, year to date. Published FDIC adjustments apply. Lower expense relative to income may indicate efficiency, but is not a management rating.'),
+  metric('operatingExpense','Operating expense / assets','operations','NONIXR','Annualized year-to-date noninterest expense / average assets. Business model and one-time charges can affect comparisons.'),
+  metric('feeIncome','Noninterest income / assets','operations','NONIIR','Annualized year-to-date noninterest income / average assets. Includes more than fees; diversification does not imply lower risk.'),
+  metric('loansDeposits','Loans / deposits','liquidity','LNLSGR / DEP × 100','BankScope calculation: gross loans and leases / total deposits × 100. Quarter-end. Values may exceed 100%; this is not the liquidity coverage ratio.'),
+  metric('cash','Cash / assets','liquidity','CHBALR','Cash and balances due from depository institutions / total assets. Quarter-end. Not all balances are freely available or eligible high-quality liquid assets.'),
+  metric('brokered','Brokered / domestic deposits','liquidity','BRO / DEPDOM × 100','BankScope calculation: brokered deposits / domestic deposits × 100. Quarter-end. Deposit classifications and restrictions depend on applicable rules.'),
+  metric('noninterestDeposits','Noninterest deposit share','liquidity','DEPNI / DEPDOM × 100','BankScope calculation: noninterest-bearing domestic deposits / domestic deposits × 100. Quarter-end. No assumption about deposit stability or insurance coverage.'),
+  metric('depositsAssets','Deposits / assets','liquidity','DEP / ASSET × 100','BankScope calculation: total deposits / total assets × 100. Quarter-end. Describes funding mix, not available liquidity.'),
+  metric('longTerm','Long-term assets / assets','sensitivity','ASSTLTR','FDIC long-term assets (5+ years) / total assets. Quarter-end. Maturity exposure proxy, not duration, repricing gap or a modeled rate shock.'),
+  metric('mbs','Mortgage-backed securities / assets','sensitivity','SCMTGBKR','Mortgage-backed securities / total assets. Quarter-end. Prepayments, guarantees, duration and hedges are not captured.'),
+  metric('securities','Securities / assets','sensitivity','SC / ASSET × 100','BankScope calculation: securities / total assets × 100. Quarter-end. Does not measure unrealized losses, market value sensitivity or high-quality liquid assets.'),
+];

@@ -1,5 +1,5 @@
 import { randomUUID,createHash } from 'node:crypto';
-import { fetchPeerUniverse } from './peerSource.js';
+import { fetchPeerUniverse,PEER_MODEL_VERSION } from './peerSource.js';
 import { decodeFacsimile } from './parser.js';
 import { apiDate } from './identity.js';
 import { safeBankError } from './errors.js';
@@ -7,7 +7,7 @@ import { parseUbprXbrl } from './ubpr.js';
 
 export async function refreshPeerUniverse({store,owned,periods,now=Date.now,fetchUniverse=fetchPeerUniverse}) {
   const state=await store('peer_status');
-  const period=periods.find(p=>!state.snapshots?.some(s=>s.report_date===p&&now()-Date.parse(s.completed_at)<86400000));
+  const period=periods.find(p=>!state.snapshots?.some(s=>s.report_date===p&&s.model_version===PEER_MODEL_VERSION&&now()-Date.parse(s.completed_at)<86400000));
   if(!period)return 0;
   const data=await fetchUniverse(period),snapshotId=randomUUID();
   await owned('peer_start',{...data,rows:undefined,snapshotId,count:data.rows.length});
