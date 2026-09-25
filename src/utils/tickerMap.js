@@ -4,7 +4,7 @@
  */
 
 import { secFetch } from "./secClient.js";
-import { warmGet, warmSet } from "./warmCache.js";
+import { warmGet, warmGetMany, warmSet } from "./warmCache.js";
 
 const TTL_MS = 24 * 60 * 60 * 1000; // directory files change infrequently
 const RETAIN_MS = 7 * TTL_MS;
@@ -177,6 +177,20 @@ export async function getOperatingTickers(tickers) {
     if (entry) out[String(t).toUpperCase()] = entry;
   }
   return out;
+}
+
+/** Optional, cache-only identity resolution for the fast prepared-passage path.
+ * A missing directory never starts SEC acquisition or broadens a ticker filter. */
+export async function getPreparedOperatingTickers(tickers, { signal, deadline = Date.now() + 1500 } = {}, read = warmGetMany) {
+  signal?.throwIfAborted();
+  const [stored] = await read(DIRECTORY_NAMESPACE, ['operating'], { signal, deadline });
+  signal?.throwIfAborted();
+  if (!validDirectory(stored, 'operating', Date.now())) return {};
+  return Object.fromEntries(tickers.flatMap(value => {
+    const ticker = String(value).toUpperCase();
+    const entry = stored.data[ticker] || stored.data[ticker.replaceAll('.', '-')];
+    return entry ? [[ticker, entry]] : [];
+  }));
 }
 
 /** The same cached SEC directories support security-first fund discovery. */

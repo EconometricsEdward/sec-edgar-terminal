@@ -4,6 +4,7 @@ import { disclosurePassages, passageSignals } from './disclosureResearch.js';
 import { matchesQuery, parseDisclosureQuery } from './disclosureQuery.js';
 import { buildFilingUrl } from './filingTextParser.js';
 import { decodeNumericHtmlEntities } from './htmlEntities.js';
+import { getPreparedOperatingTickers } from './tickerMap.js';
 import { readDisclosureIndexDocument, replaceDisclosureIndexDocument, searchDisclosureIndexCandidates } from './dataStore.js';
 import { DISCLOSURE_INDEX_LIMITS as LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument } from '../../supabase/functions/edgar-data-gateway/disclosurePolicy.js';
 export { DISCLOSURE_INDEX_LIMITS } from '../../supabase/functions/edgar-data-gateway/disclosurePolicy.js';
@@ -78,7 +79,7 @@ function preview(passage, parsed) {
   return { ...passage, ...signals, previewTruncated: false, change: 'uncompared' };
 }
 
-export async function searchDisclosurePassageIndex(settings, { tickers = [], ciks = [], signal, offset = 0, limit = 20 } = {}, { search = searchDisclosureIndexCandidates } = {}) {
+export async function searchDisclosurePassageIndex(settings, { tickers = [], ciks = [], signal, offset = 0, limit = 20 } = {}, { search = searchDisclosureIndexCandidates, resolveTickers = getPreparedOperatingTickers } = {}) {
   const parsed = settings.parsed || parseDisclosureQuery(settings.query);
   const unavailable = reason => ({ results: [], hasMore: false, nextOffset: offset, coverage: { available: false, partial: true, reason, note: coverageNote } });
   // A document-wide NOT predicate requires every paragraph, including material
@@ -87,9 +88,19 @@ export async function searchDisclosurePassageIndex(settings, { tickers = [], cik
   try {
     const forms = settings.amendments ? settings.forms.flatMap(form => [form, `${form}/A`]) : settings.forms;
     const selectors = [...new Set(tickers.map(ticker => String(ticker).toUpperCase()))];
+    const symbols = selectors.filter(value => !/^\d{1,10}$/.test(value));
+    let identities = {};
+    if (symbols.length) {
+      try { identities = await resolveTickers(symbols, { signal, deadline: Date.now() + 1500 }); }
+      catch { if (signal?.aborted) throw signal.reason; /* Preserve exact ticker filtering during a directory outage. */ }
+    }
+    signal?.throwIfAborted();
+    // A document indexed via a CIK lookup may have no canonical ticker. Match
+    // its verified SEC issuer as well as any retained ticker spelling.
+    const issuerCiks = [...new Set([...ciks, ...selectors.filter(value => /^\d{1,10}$/.test(value)).map(value => value.padStart(10, '0')),
+      ...Object.values(identities).map(entry => entry.cik).filter(cik => /^\d{10}$/.test(cik || '') && Number(cik) > 0)])];
     const response = await search({ terms: parsed.positive, start: settings.start, end: settings.end, forms,
-      ciks: [...ciks, ...selectors.filter(value => /^\d{1,10}$/.test(value)).map(value => value.padStart(10, '0'))],
-      tickers: selectors.filter(value => !/^\d{1,10}$/.test(value)), section: settings.section || 'all',
+      ciks: issuerCiks, tickers: symbols, section: settings.section || 'all',
       offset, limit: LIMITS.candidateLimit, parserVersion: LIMITS.parserVersion }, { signal: safeSignal(signal) });
     if (!response || !Array.isArray(response.results)) return unavailable('index_unavailable');
     const grouped = new Map(); let checked = 0;
