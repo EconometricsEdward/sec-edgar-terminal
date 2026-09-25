@@ -3,6 +3,7 @@ import { fetchPeerUniverse } from './peerSource.js';
 import { decodeFacsimile } from './parser.js';
 import { apiDate } from './identity.js';
 import { safeBankError } from './errors.js';
+import { parseUbprXbrl } from './ubpr.js';
 
 export async function refreshPeerUniverse({store,owned,periods,now=Date.now,fetchUniverse=fetchPeerUniverse}) {
   const state=await store('peer_status');
@@ -15,15 +16,18 @@ export async function refreshPeerUniverse({store,owned,periods,now=Date.now,fetc
   return data.rows.length;
 }
 
-export async function prepareUbpr({owned,request,deadline,now=Date.now,maxReports=4}) {
+export async function prepareUbpr({store,owned,request,deadline,now=Date.now,maxReports=4}) {
   let stored=0;
   for(let i=0;i<maxReports&&now()<deadline-35000;i++) {
     const job=await owned('ubpr_claim');if(!job)break;
     try {
-      const rawXbrl=decodeFacsimile(await request('RetrieveUBPRXBRLFacsimile',{
+      const saved=await store('ubpr_source',{rssd:job.id_rssd,period:job.report_date});
+      const reusable=saved&&now()-Date.parse(saved.retrievedAt)<7*86400000;
+      const rawXbrl=reusable?saved.rawXbrl:decodeFacsimile(await request('RetrieveUBPRXBRLFacsimile',{
         reportingPeriodEndDate:apiDate(job.report_date),fiIdType:'ID_RSSD',fiId:String(job.id_rssd)}));
-      await owned('ubpr_save',{rssd:job.id_rssd,period:job.report_date,rawXbrl,sha256:createHash('sha256').update(rawXbrl).digest('hex'),
-        retrievedAt:new Date(now()).toISOString(),data:{stage:'source_retained'},complete:true});
+      const source={rssd:job.id_rssd,period:job.report_date,rawXbrl,sha256:createHash('sha256').update(rawXbrl).digest('hex'),retrievedAt:reusable?saved.retrievedAt:new Date(now()).toISOString()};
+      if(!reusable)await owned('ubpr_save',{...source,data:{stage:'source_retained'},complete:false});
+      await owned('ubpr_save',{...source,data:parseUbprXbrl(rawXbrl,{rssd:job.id_rssd,period:job.report_date}),complete:true});
       stored++;
     } catch(error) {
       const safe=safeBankError(error);await owned('ubpr_error',{rssd:job.id_rssd,period:job.report_date,code:safe.code,retryAt:safe.retryAt});

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import BankSearch from './BankSearch';
 import BankTrendDashboard from './BankTrendDashboard';
 import BankCompareVisuals from './BankCompareVisuals';
+import BankPeerBenchmarks from './BankPeerBenchmarks';
 import { BANK_COLORS } from '../../../utils/bank/visuals.js';
 import { BANK_METRICS } from '../../../utils/bank/definitions.js';
 import { GROUPS, PENDING, bankHref, bankMetric, bankReport, formatBankMetric, metricChange, quarterLabel, unavailableReason } from '../../../utils/bank/viewModel.js';
@@ -61,14 +62,17 @@ export default function BankWorkspace({ initialState, rssd, options, error }) {
     {(error || notice) && <p className={styles.notice} role="status">{error ? 'Bank research is temporarily unavailable. Please reload to try again.' : notice}</p>}
     <nav className={styles.tabs} aria-label="Bank research views">{[['overview', 'Overview'], ['compare', 'Compare'], ['trends', 'Trends']].map(([view, label]) => <Link key={view} href={href({ view, ...(view === 'trends' && options.view !== 'trends' ? { basis: 'quarterly' } : {}) })} scroll={false} aria-current={options.view === view ? 'page' : undefined}>{label}</Link>)}</nav>
     <div className={styles.toolbar}><div><h2>{options.view === 'compare' ? 'Compare FFIEC banks' : options.view === 'trends' ? 'The financial trajectory' : 'The bank at a glance'}</h2><p>{options.view === 'compare' ? 'One reporting date. Consistent units. Up to four legal banks.' : options.view === 'trends' ? 'See balances, earnings and capital evolve over time.' : 'Capital, credit quality, funding and earnings.'}</p></div>{options.view !== 'trends' && <label>Report date<select value={period} onChange={e => navigate({ period: e.target.value })} disabled={!periods.length}>{period && !periods.includes(period) && <option value={period}>{quarterLabel(period)} · Outside available history</option>}{periods.map(p => <option key={p} value={p}>{quarterLabel(p)} · {p}</option>)}</select></label>}</div>
-    <Preparation bank={bank} state={state} requesting={requesting} onPrepare={prepare} />
+    {(options.view !== 'compare' || options.panel === 'selected') && <Preparation bank={bank} state={state} requesting={requesting} onPrepare={prepare} />}
     {options.view === 'overview' && (report?.validation?.passed ? <Overview report={report} bank={bank} /> : <EmptyPeriod state={state} rssd={rssd} period={period} />)}
     {options.view === 'compare' && <>
+      <nav className={styles.compareModes} aria-label="Comparison mode"><Link href={href({panel:'benchmarks'})} scroll={false} aria-current={options.panel==='benchmarks'?'page':undefined}>Peer benchmarks</Link><Link href={href({panel:'selected'})} scroll={false} aria-current={options.panel==='selected'?'page':undefined}>Selected banks {banks.length>1?`(${banks.length})`:''}</Link></nav>
+      {options.panel==='benchmarks'?<BankPeerBenchmarks key={`${rssd}-${period}`} rssd={rssd} period={period} onCompare={peers=>navigate({peers,panel:'selected'})}/>:<>
       <div className={styles.peerChips}>{banks.map((b, i) => <span key={b.id_rssd} style={{ '--accent': BANK_COLORS[i] }}><strong><i className={styles.bankNumber}>{i + 1}</i>{b.legal_name}</strong><small>RSSD {b.id_rssd}{i === 0 ? ' · Selected bank' : ''}</small>{i > 0 && <button type="button" onClick={() => navigate({ peers: options.peers.filter(id => !sameBank(id, b.id_rssd)) })} aria-label={`Remove ${b.legal_name}`}>×</button>}</span>)}</div>
       {options.peers.some(id => !banks.some(b => sameBank(b.id_rssd, id))) && <p className={styles.notice}>A linked peer is not in the FFIEC directory. <button onClick={() => navigate({ peers: options.peers.filter(id => banks.some(b => sameBank(b.id_rssd, id))) })}>Remove unavailable peers</button></p>}
       {banks.length < 4 && <BankSearch compact label="Add an FFIEC bank to compare" exclude={banks.map(b => b.id_rssd)} onSelect={b => navigate({ peers: [...options.peers, String(b.id_rssd)].slice(0, 3) })} />}
       {banks.slice(1).map(b => <Preparation key={b.id_rssd} bank={b} state={state} requesting={requesting} onPrepare={prepare} />)}
       <Compare state={state} banks={banks} period={period} basis={options.basis} onBasis={basis => navigate({ basis })} />
+      </>}
     </>}
     {options.view === 'trends' && <Trends state={state} rssd={rssd} options={options} onChange={navigate} />}
     <footer className={styles.footer}><div><strong>Source first. Bank by bank.</strong><p>FFIEC 031, 041 and 051 Call Reports · USD millions, except ratios. Missing values stay unavailable. N/A means the item does not apply to the form or capital framework.</p><p>Four latest available reporting periods. Prepared banks are checked for new submissions daily while active. Original source versions are retained.</p></div><Link href="/analysis/banks">All banks →</Link></footer>

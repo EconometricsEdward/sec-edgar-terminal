@@ -72,7 +72,7 @@ export async function runBankWorker({store=bankScopeStore,env=process.env,mainta
       try{result.peerProfiles=await refreshPeerUniverse({store,owned,periods:state.periods||[],now});}
       catch(error){result.peerError=safeBankError(error).code;}
     }
-    if(peers&&now()<deadline-35000)result.ubpr=await prepareUbpr({owned,request,deadline,now});
+    if(peers&&now()<deadline-35000)result.ubpr=await prepareUbpr({store,owned,request,deadline,now});
     return result;
   }catch(error){const safe=safeBankError(error);result.status='deferred';result.code=safe.code;
     if(safe.retryAt||safe.code==='authentication_failure')await owned('cooldown',{code:safe.code,retryAt:safe.retryAt||new Date(now()+3600000).toISOString()}).catch(()=>{});
