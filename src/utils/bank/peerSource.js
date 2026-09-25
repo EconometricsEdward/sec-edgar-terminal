@@ -23,7 +23,7 @@ export function normalizePeerRecord(raw, period) {
   const funding = [share(raw.DEP,raw.ASSET),share(raw.DEPNI,raw.DEPDOM),share(raw.BRO,raw.DEPDOM)];
   const cblr=raw.CBLRIND===1?true:raw.CBLRIND===0?false:null;
   // FDIC can publish zero for risk-based capital when the bank elects CBLR. Never rank that placeholder.
-  const riskBased=value=>cblr===true?null:number(value);
+  const riskBased=value=>cblr===false?number(value):null;
   return { rssd:raw.RSSDID,cert:raw.CERT,assets:raw.ASSET,cblr,loanMix,loanShare:share(raw.LNLSGR,raw.ASSET),funding,
     metrics:{roa:number(raw.ROA),roe:number(raw.ROE),nim:number(raw.NIMY),leverage:number(raw.RBC1AAJ),noncurrent:number(raw.NCLNLSR),chargeoffs:number(raw.NTLNLSR),
       cet1:riskBased(raw.RBCT1CER),tier1:riskBased(raw.RBC1RWAJ),totalCapital:riskBased(raw.RBCRWAJ),equity:number(raw.EQV),

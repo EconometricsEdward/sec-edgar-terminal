@@ -23,6 +23,7 @@ test('expanded real FDIC records retain percentage units and identify CBLR witho
   const unknown=normalizePeerRecord({...source(493741),CBLRIND:null},period);
   assert.equal(regulatoryContext(unknown,period).framework,'unknown');
   assert.equal(regulatoryContext(unknown,period).rows.length,0);
+  assert.equal(unknown.metrics.totalCapital,null);
 });
 test('calculated peer metrics preserve real zeros, negatives and >100% values without filling missing denominators',()=>{
   const raw={...source(451965),BRO:0,NONIIR:-1,LNLSGR:200,DEP:100,NCLNLS:0,LNATRES:5};

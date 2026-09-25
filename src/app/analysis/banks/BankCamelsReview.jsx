@@ -10,8 +10,9 @@ export default function BankCamelsReview({data,period,onExplore}) {
   const metrics=new Map(data.benchmarks.map(b=>[b.key,b]));
   const context=regulatoryContext(data.bank,period);
   return <section className={styles.camelsReview} aria-label="CAMELS public-data review">
-    <div className={styles.camelsIntro}><div><span className={styles.chartEyebrow}>SIX LENSES. ONE BANK.</span><h3>A CAMELS-style financial review</h3><p>Connect capital, credit, operations, earnings, funding and rate exposure to the same matched peer group.</p></div><span className={styles.reviewBadge}>Public-data indicators<br/><strong>No supervisory rating</strong></span></div>
+    <div className={styles.camelsIntro}><div><span className={styles.chartEyebrow}>SIX LENSES. ONE BANK.</span><h3>A CAMELS-style financial review</h3><p>{data.bank.name} · {quarterLabel(period)} · {data.peers.length} matched peers</p></div><span className={styles.reviewBadge}>Public-data indicators<br/><strong>No supervisory rating</strong></span></div>
     <p className={styles.camelsDisclosure}>Official CAMELS ratings are confidential supervisory assessments. This review uses public financial indicators; it does not assign component scores or a composite rating. Management and sensitivity require information beyond these filings.</p>
+    {(data.assetBand===8||data.peers.length<10)&&<p className={styles.basis}>{data.assetBand===8?'The asset range was widened to ⅛–8× this bank’s size. ':''}{data.peers.length===0?'Peer medians are unavailable because matching inputs are incomplete.':data.peers.length<10?'Fewer than ten peers are available; interpret numeric ranks with care.':'Review the wider cohort when interpreting numeric ranks.'}</p>}
     <div className={styles.camelsGrid}>{CAMELS_DIMENSIONS.map(d=><article className={styles.camelsCard} key={d.key} style={{'--accent':d.color}}>
       <header><span className={styles.camelsLetter}>{d.letter}</span><h4>{d.label}</h4></header>
       <dl>{d.keys.map(key=>{const m=metrics.get(key),notRequired=data.bank?.cblr===true&&m?.riskBased;return <div className={styles.camelsMetric} key={key}>
