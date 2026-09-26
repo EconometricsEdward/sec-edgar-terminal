@@ -7,7 +7,8 @@ const axis = { stroke: '#9eafc5', tick: { fontSize: 11 }, tickLine: false, axisL
 const tick = (v, unit) => unit === 'percent' ? formatPeerPercent(v) : `$${new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(v * 1e6)}`;
 function ChartTooltip({ active, payload, label, unit }) {
   if (!active || !payload?.length) return null;
-  return <div className={styles.chartTooltip}><strong>{label}</strong>{payload.map((p, i) => <div key={`${p.dataKey}-${i}`}><span><i style={{ background: p.color }} />{p.name}</span><b>{p.value == null ? 'Unavailable' : unit === 'percent' ? formatPeerPercent(Number(p.value)) : `${Number(p.value).toLocaleString('en-US', { maximumFractionDigits: 3 })}m`}</b></div>)}{unit !== 'percent' && <small>USD millions</small>}</div>;
+  const peerPoint=payload.find(p=>p.dataKey==='peerMedian')?.payload;
+  return <div className={styles.chartTooltip}><strong>{label}</strong>{payload.map((p, i) => <div key={`${p.dataKey}-${i}`}><span><i style={{ background: p.color }} />{p.name}</span><b>{p.value == null ? 'Unavailable' : unit === 'percent' ? formatPeerPercent(Number(p.value)) : `${Number(p.value).toLocaleString('en-US', { maximumFractionDigits: 3 })}m`}</b></div>)}{peerPoint&&<small>{peerPoint.peerCount} peers reporting this period · Group median requires at least 5</small>}{unit !== 'percent' && <small>USD millions</small>}</div>;
 }
 export default function BankTrendChart({ points, quarterly, unit, label, series = [{ key: 'value', label, color: '#67c8ff' }], height = 230 }) {
   const Chart = quarterly ? BarChart : LineChart;
