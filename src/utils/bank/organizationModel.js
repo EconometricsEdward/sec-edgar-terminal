@@ -22,7 +22,7 @@ export function organizationProfile(raw, rssd) {
   const parentId = id(raw.RSSDHCR), parentName = text(raw.NAMEHCR);
   const parent = parentId && parentId !== Number(rssd) && parentName ? {
     rssd: parentId, name: parentName, city: text(raw.CITYHCR), state: text(raw.STALPHCR),
-    relationship: 'regulatory_top_holder', reportedAt: organizationDate(raw.REPDTE), nicUrl: nicProfile(parentId),
+    relationship: 'regulatory_top_holder', referenceDate: organizationDate(raw.REPDTE), nicUrl: nicProfile(parentId),
   } : null;
   return {
     rssd: Number(rssd), name: text(raw.NAME), cert: id(raw.CERT), city: text(raw.CITY), state: text(raw.STALP),
@@ -56,14 +56,14 @@ export function parentSecCandidates(parent, directory) {
 }
 
 export function organizationPeers(rows, parentRssd, selectedRssd) {
-  const seen = new Set();
+  const seen = new Set(), certificates = new Set();
   return rows.map(raw => {
     const rssd = id(raw.FED_RSSD);
-    if (!rssd || seen.has(rssd) || id(raw.RSSDHCR) !== parentRssd || Number(raw.ACTIVE) !== 1 || !text(raw.NAME)) throw new Error('Invalid related institution');
-    seen.add(rssd);
+    if (!rssd || seen.has(rssd) || !id(raw.CERT) || certificates.has(id(raw.CERT)) || id(raw.RSSDHCR) !== parentRssd || Number(raw.ACTIVE) !== 1 || !text(raw.NAME)) throw new Error('Invalid related institution');
+    seen.add(rssd); certificates.add(id(raw.CERT));
     return { rssd, name: text(raw.NAME), cert: id(raw.CERT), city: text(raw.CITY), state: text(raw.STALP),
       selected: rssd === selectedRssd, eligible: ['31', '41', '51'].includes(String(raw.CALLFORM)),
-      reportedAt: organizationDate(raw.REPDTE), nicUrl: nicProfile(rssd) };
+      referenceDate: organizationDate(raw.REPDTE), nicUrl: nicProfile(rssd) };
   }).sort((a, b) => Number(b.selected) - Number(a.selected) || a.name.localeCompare(b.name));
 }
 

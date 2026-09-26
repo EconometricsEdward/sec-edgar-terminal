@@ -12,7 +12,7 @@ test('current legal bank is linked only to its reported regulatory top holder wi
   const value = organizationProfile(bank, 451965);
   assert.equal(value.parent.rssd, 1120754);
   assert.equal(value.parent.relationship, 'regulatory_top_holder');
-  assert.equal(value.parent.reportedAt, '2026-06-30');
+  assert.equal(value.parent.referenceDate, '2026-06-30');
   assert.equal(value.snapshotDate, '2026-09-25');
   assert.equal(value.offices.domestic, null);
   assert.equal(value.nicUrl, 'https://www.ffiec.gov/npw/Institution/Profile/451965');

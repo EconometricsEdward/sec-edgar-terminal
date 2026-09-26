@@ -18,7 +18,9 @@ field). Wells Fargo demonstrates why: an RSSD-only query returns both a retired
 certificate and the current bank with different parent RSSDs. More than one
 active match, a mismatched RSSD, or a missing certificate fails closed.
 
-Current structure is dated separately from historical Call Reports. No historical
+Current structure is dated separately from historical Call Reports. The displayed
+FDIC reference quarter is REPDTE, a financial reporting period, not an ownership
+effective date. No historical
 ownership is inferred from the selected financial quarter. Missing and self-parent
 identifiers are unavailable, not proof of an independent bank. Related institutions
 must share the exact top-holder RSSD and be active; amounts are never aggregated.
