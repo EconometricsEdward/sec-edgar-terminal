@@ -18,6 +18,7 @@ export default function BankWorkspace({ initialState, rssd, options: initialOpti
   const router = useRouter();
   const searchParams = useSearchParams();
   const options = bankPageOptions(rssd, searchParams);
+  const selectionReady = options.peers.join(',') === initialOptions.peers.join(',');
   const viewIdentity = `${rssd}?${searchParams.toString()}`;
   const [navigating, startNavigation] = useTransition();
   const [state, setState] = useState(initialState), [requesting, setRequesting] = useState(''), [notice, setNotice] = useState(''), [copied, setCopied] = useState('');
@@ -71,18 +72,18 @@ export default function BankWorkspace({ initialState, rssd, options: initialOpti
   }
   async function share() { try { await navigator.clipboard.writeText(window.location.href); setCopied(viewIdentity); } catch { setNotice('Use the address in your browser to share this view.'); } }
   const report = bankReport(state, rssd, period);
-  return <div className={`${styles.page} ${['compare','exposures'].includes(options.view)?styles.comparePage:''}`} aria-busy={navigating}>
+  return <div className={`${styles.page} ${['compare','exposures'].includes(options.view)?styles.comparePage:''}`} aria-busy={navigating || !selectionReady}>
     <div className={styles.eyebrow}><Link href="/analysis/banks">BANKSCOPE</Link><span>FFIEC · CALL REPORT RESEARCH</span></div>
     <header className={styles.header}><div><h1 className={styles.bankTitle}>{bank?.legal_name || `RSSD ${rssd}`}</h1><p>{[bank?.city, bank?.state].filter(Boolean).join(', ')}{bank?.city || bank?.state ? ' · ' : ''}RSSD {rssd}{bank?.fdic_certificate ? ` · FDIC ${bank.fdic_certificate}` : ''}{bank?.form_type ? ` · FFIEC ${bank.form_type}` : ''}</p><p>Legal bank entity · Figures may differ from its holding company.</p></div><button type="button" onClick={share} aria-live="polite">{copied === viewIdentity ? 'Link copied' : 'Copy view link'}</button></header>
     <details className={styles.switchBank}><summary>Find another bank</summary><BankSearch compact /></details>
     {(error || notice) && <p className={styles.notice} role="status">{error ? 'Bank research is temporarily unavailable. Please reload to try again.' : notice}</p>}
     <nav className={styles.tabs} aria-label="Bank research views">{[['overview', 'Overview'], ['exposures', 'Exposures'], ['compare', 'Compare'], ['trends', 'Trends']].map(([view, label]) => <ViewLink key={view} href={href({ view, ...(view === 'trends' && options.view !== 'trends' ? { basis: 'quarterly' } : {}) })} onSelect={() => navigate({ view, ...(view === 'trends' && options.view !== 'trends' ? { basis: 'quarterly' } : {}) })} aria-current={options.view === view ? 'page' : undefined}>{label}</ViewLink>)}</nav>
-    {navigating && <p className={styles.basis} role="status">Loading selected banks…</p>}
+    {(navigating || !selectionReady) && <p className={styles.basis} role="status">Loading selected banks…</p>}
     <div className={styles.toolbar}><div><h2>{options.view === 'exposures' ? 'Inside the balance sheet' : options.view === 'compare' ? 'Compare FFIEC banks' : options.view === 'trends' ? 'The financial trajectory' : 'The bank at a glance'}</h2>{!['compare','exposures'].includes(options.view)&&<p>{options.view === 'trends' ? 'See balances, earnings and capital evolve over time.' : 'Capital, credit quality, funding and earnings.'}</p>}</div>{options.view !== 'trends' && <label>Report date<select value={period} onChange={e => navigate({ period: e.target.value })} disabled={!periods.length}>{period && !periods.includes(period) && <option value={period}>{quarterLabel(period)} · Outside available history</option>}{periods.map(p => <option key={p} value={p}>{quarterLabel(p)} · {p}</option>)}</select></label>}</div>
     {(options.view !== 'compare' || options.panel === 'selected') && <Preparation bank={bank} state={state} requesting={requesting} onPrepare={prepare} />}
     {options.view === 'overview' && (report?.validation?.passed ? <Overview report={report} bank={bank} /> : <EmptyPeriod state={state} rssd={rssd} period={period} />)}
     {options.view === 'exposures' && (report?.validation?.passed ? <BankExposures rssd={rssd} bankName={bank?.legal_name || `RSSD ${rssd}`} period={period} options={options} href={href} onChange={navigate} sourceHash={report.source_sha256} /> : <EmptyPeriod state={state} rssd={rssd} period={period} />)}
-    {options.view === 'compare' && <>
+    {options.view === 'compare' && selectionReady && <>
       <nav className={styles.compareModes} aria-label="Comparison mode"><ViewLink href={href({panel:'benchmarks',lens:'peers'})} onSelect={()=>navigate({panel:'benchmarks',lens:'peers'})} aria-current={options.panel==='benchmarks'&&options.lens!=='camels'?'page':undefined}>Peer Explorer</ViewLink><ViewLink href={href({panel:'benchmarks',lens:'camels'})} onSelect={()=>navigate({panel:'benchmarks',lens:'camels'})} aria-current={options.panel==='benchmarks'&&options.lens==='camels'?'page':undefined}>CAMELS</ViewLink><ViewLink href={href({panel:'selected'})} onSelect={()=>navigate({panel:'selected'})} aria-current={options.panel==='selected'?'page':undefined}>Selected banks {banks.length>1?`(${banks.length})`:''}</ViewLink></nav>
       {options.panel==='benchmarks'?<BankPeerBenchmarks key={`${rssd}-${period}`} rssd={rssd} period={period} lens={options.lens} category={options.category} onViewChange={navigate} onCompare={peers=>navigate({peers,panel:'selected'})}/>:<>
       <div className={styles.peerChips}>{banks.map((b, i) => <span key={b.id_rssd} style={{ '--accent': BANK_COLORS[i] }}><strong><i className={styles.bankNumber}>{i + 1}</i>{b.legal_name}</strong><small>RSSD {b.id_rssd}{i === 0 ? ' · Selected bank' : ''}</small>{i > 0 && <button type="button" onClick={() => navigate({ peers: options.peers.filter(id => !sameBank(id, b.id_rssd)) })} aria-label={`Remove ${b.legal_name}`}>×</button>}</span>)}</div>
