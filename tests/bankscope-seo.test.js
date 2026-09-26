@@ -42,3 +42,9 @@ test('all local bank views survive share links, reloads and history restoration'
     if (view === 'exposures') for (const key of ['exposure', 'segment']) assert.equal(restored[key], selected[key]);
   }
 });
+
+test('duplicate query keys resolve identically during server render and client navigation', () => {
+  const server = { view: ['trends', 'compare'], peers: ['102', '103'], period: ['2026-03-31', '2026-06-30'], metric: 'net_income' };
+  const client = new URLSearchParams('view=trends&view=compare&peers=102&peers=103&period=2026-03-31&period=2026-06-30&metric=net_income');
+  assert.deepEqual(bankPageOptions('101', client), bankPageOptions('101', server));
+});

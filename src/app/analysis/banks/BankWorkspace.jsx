@@ -17,7 +17,7 @@ const sameBank = (a, b) => String(a) === String(b);
 export default function BankWorkspace({ initialState, rssd, options: initialOptions, error }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const options = bankPageOptions(rssd, Object.fromEntries(searchParams));
+  const options = bankPageOptions(rssd, searchParams);
   const viewIdentity = `${rssd}?${searchParams.toString()}`;
   const [navigating, startNavigation] = useTransition();
   const [state, setState] = useState(initialState), [requesting, setRequesting] = useState(''), [notice, setNotice] = useState(''), [copied, setCopied] = useState('');
