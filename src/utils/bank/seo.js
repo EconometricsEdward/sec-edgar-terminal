@@ -6,7 +6,7 @@ export function bankPageSeo(rssd, state, error = false) {
   const location = [bank?.city, bank?.state].filter(Boolean).join(', ');
   return {
     title: `${name} — BankScope FFIEC Analysis`,
-    description: `${name}${location ? ` (${location})` : ''}, RSSD ${rssd}. Explore FFIEC Call Report financials, loan and funding exposures, securities, peer comparisons and quarterly trends.`,
+    description: `${name}${location ? ` (${location})` : ''}, RSSD ${rssd}. Explore FFIEC Call Report financials, loan and funding exposures, securities, peer comparisons, quarterly trends and bank-to-parent research links.`,
     path: `/analysis/banks/${rssd}`,
     index: !error && !!bank && !!state?.reports?.some(r => String(r.id_rssd) === String(rssd) && r.validation?.passed),
   };
