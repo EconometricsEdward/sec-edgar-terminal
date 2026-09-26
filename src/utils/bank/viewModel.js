@@ -1,4 +1,5 @@
 import { BANK_METRICS } from './definitions.js';
+import { CREDIT_SEGMENTS, EXPOSURE_LENSES } from './exposureDefinitions.js';
 
 export const GROUPS = ['Capital', 'Credit quality', 'Funding', 'Earnings', 'Overview'];
 export const PENDING = new Set(['queued', 'running', 'retry']);
@@ -44,13 +45,17 @@ export function metricChange(current, previous) {
   if (previous.value <= 0) return null;
   return { value: (current.value / previous.value - 1) * 100, unit: '%' };
 }
-export function bankHref(rssd, { view = 'overview', peers = [], period, metric, basis, panel, lens, category } = {}) {
+export function bankHref(rssd, { view = 'overview', peers = [], period, metric, basis, panel, lens, category, exposure, segment } = {}) {
   const query = new URLSearchParams();
   if (view !== 'overview') query.set('view', view);
   if (peers.length) query.set('peers', peers.join(','));
   if (period) query.set('period', period);
   if (metric) query.set('metric', metric);
   if (basis === 'quarterly' || basis === 'ytd') query.set('basis', basis);
+  if (view === 'exposures') {
+    if (EXPOSURE_LENSES.includes(exposure)) query.set('exposure', exposure);
+    if (CREDIT_SEGMENTS.some(s => s.key === segment)) query.set('segment', segment);
+  }
   if (view === 'compare' && ['benchmarks','selected'].includes(panel)) query.set('panel', panel);
   if (view === 'compare' && panel !== 'selected') {
     if(lens === 'camels') query.set('lens',lens);
@@ -60,7 +65,9 @@ export function bankHref(rssd, { view = 'overview', peers = [], period, metric, 
 }
 export function bankPageOptions(rssd, query = {}) {
   const peers = typeof query.peers === 'string' ? [...new Set(query.peers.split(',').filter(id => /^[1-9]\d{0,9}$/.test(id) && id !== String(rssd)))].slice(0, 3) : [];
-  return { view: ['compare', 'trends'].includes(query.view) ? query.view : 'overview', peers,
+  return { view: ['compare', 'trends', 'exposures'].includes(query.view) ? query.view : 'overview', peers,
+    exposure: EXPOSURE_LENSES.includes(query.exposure) ? query.exposure : 'credit',
+    segment: CREDIT_SEGMENTS.some(s => s.key === query.segment) ? query.segment : 'cre',
     panel: ['benchmarks','selected'].includes(query.panel) ? query.panel : peers.length ? 'selected' : 'benchmarks',
     lens: query.lens==='camels'?'camels':'peers',
     category: ['capital','assetQuality','operations','earnings','liquidity','sensitivity'].includes(query.category)?query.category:'core',

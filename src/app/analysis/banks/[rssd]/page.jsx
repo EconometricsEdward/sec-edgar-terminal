@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export async function generateMetadata({ params }) {
   const { rssd } = await params;
-  return buildPageMetadata({ title: `BankScope · RSSD ${/^[1-9]\d{0,9}$/.test(rssd) ? rssd : 'Bank'} — FFIEC Research`, description: 'Source-linked bank financials, FFIEC peer comparisons and quarterly trends.', path: `/analysis/banks/${rssd}` });
+  return buildPageMetadata({ title: `BankScope · RSSD ${/^[1-9]\d{0,9}$/.test(rssd) ? rssd : 'Bank'} — FFIEC Research`, description: 'Source-linked bank financials, credit and funding exposures, securities valuation, FFIEC peer comparisons and quarterly trends.', path: `/analysis/banks/${rssd}` });
 }
 export default async function BankPage({ params, searchParams }) {
   const { rssd } = await params;

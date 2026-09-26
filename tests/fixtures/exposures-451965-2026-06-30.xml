@@ -1,0 +1,126 @@
+<!-- Selected public FFIEC exposure facts, preserving original units and contexts. Retrieved 2026-09-26. -->
+<ns0:xbrl xmlns:ns0="http://www.xbrl.org/2003/instance" xmlns:ns2="http://www.xbrl.org/2003/linkbase" xmlns:ns3="http://www.w3.org/1999/xlink" xmlns:ns4="https://www.cdr.ffiec.gov/xbrl/call/concepts" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://www.cdr.ffiec.gov/xbrl/call/report031/2026-06-30/v297 https://www.cdr.ffiec.gov/xbrl/call/report031/2026-06-30/v297/call-report031-2026-06-30-v297.xsd https://www.cdr.ffiec.gov/xbrl/call/concepts https://www.cdr.ffiec.gov/xbrl/call/report031/2026-06-30/v297/concepts.xsd">
+  <ns2:schemaRef ns3:type="simple" ns3:href="https://www.cdr.ffiec.gov/xbrl/call/report031/2026-06-30/v297/call-report031-2026-06-30-v297.xsd" />
+  <ns2:schemaRef ns3:type="simple" ns3:href="https://www.cdr.ffiec.gov/xbrl/call/report031/2026-06-30/v297/concepts.xsd" />
+  <ns0:context id="CI_451965_2026-06-30">
+    <ns0:entity>
+      <ns0:identifier scheme="https://www.cdr.ffiec.gov/cdr">451965</ns0:identifier>
+    </ns0:entity>
+    <ns0:period>
+      <ns0:instant>2026-06-30</ns0:instant>
+    </ns0:period>
+  </ns0:context>
+  <ns0:context id="CD_451965_2026-06-30">
+    <ns0:entity>
+      <ns0:identifier scheme="https://www.cdr.ffiec.gov/cdr">451965</ns0:identifier>
+    </ns0:entity>
+    <ns0:period>
+      <ns0:startDate>2026-01-01</ns0:startDate>
+      <ns0:endDate>2026-06-30</ns0:endDate>
+    </ns0:period>
+  </ns0:context>
+  <ns0:unit id="USD">
+    <ns0:measure>iso4217:USD</ns0:measure>
+  </ns0:unit>  
+  <ns0:unit id="PURE">
+    <ns0:measure>pure</ns0:measure>
+  </ns0:unit>  
+  <ns0:unit id="NON-MONETARY">
+    <ns0:measure>ffieci:nonMonetary</ns0:measure>
+  </ns0:unit>  
+  <ns4:RCONHK15 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">6000000</ns4:RCONHK15>
+  <ns4:RCONHK14 contextRef="CD_451965_2026-06-30" unitRef="USD" decimals="0">519000000</ns4:RCONHK14>
+  <ns4:RCONHK13 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">24260000000</ns4:RCONHK13>
+  <ns4:RCONHK12 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">32007000000</ns4:RCONHK12>
+  <ns4:RCFDF055 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">22000000000</ns4:RCFDF055>
+  <ns4:RCFDF056 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCFDF056>
+  <ns4:RCFDF057 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCFDF057>
+  <ns4:RCONF159 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">11835000000</ns4:RCONF159>
+  <ns4:RCONF158 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">629000000</ns4:RCONF158>
+  <ns4:RCFDF058 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCFDF058>
+  <ns4:RCONF161 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">64785000000</ns4:RCONF161>
+  <ns4:RCONHK09 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">14732000000</ns4:RCONHK09>
+  <ns4:RCONHK08 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">61460000000</ns4:RCONHK08>
+  <ns4:RCONHK07 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">58301000000</ns4:RCONHK07>
+  <ns4:RCFDA558 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">187000000</ns4:RCFDA558>
+  <ns4:RCFD1252 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">151000000</ns4:RCFD1252>
+  <ns4:RCONF173 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">37000000</ns4:RCONF173>
+  <ns4:RCONF179 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">136000000</ns4:RCONF179>
+  <ns4:RCONF178 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">46000000</ns4:RCONF178>
+  <ns4:RCFDA562 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">31249000000</ns4:RCFDA562>
+  <ns4:RCFN2200 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">8920000000</ns4:RCFN2200>
+  <ns4:RCFDA550 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">2322000000</ns4:RCFDA550>
+  <ns4:RCONF160 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">17825000000</ns4:RCONF160>
+  <ns4:RCFD1773 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">243659000000</ns4:RCFD1773>
+  <ns4:RCFD1772 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">246658000000</ns4:RCFD1772>
+  <ns4:RCON5597 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">786195000000</ns4:RCON5597>
+  <ns4:RCON2215 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">996343000000</ns4:RCON2215>
+  <ns4:RCONF182 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">126000000</ns4:RCONF182>
+  <ns4:RCON0352 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">12252000000</ns4:RCON0352>
+  <ns4:RCON5399 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">7000000</ns4:RCON5399>
+  <ns4:RCON5398 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">68000000</ns4:RCON5398>
+  <ns4:RCON2200 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">1554614000000</ns4:RCON2200>
+  <ns4:RCON2122 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">951133000000</ns4:RCON2122>
+  <ns4:RCONK207 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">4554000000</ns4:RCONK207>
+  <ns4:RCON2365 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">151509000000</ns4:RCON2365>
+  <ns4:RCFDK216 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">47000000</ns4:RCFDK216>
+  <ns4:RCFDK217 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">23000000</ns4:RCFDK217>
+  <ns4:RCFDK215 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">72000000</ns4:RCFDK215>
+  <ns4:RCFDK213 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">697000000</ns4:RCFDK213>
+  <ns4:RCONK137 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">56924000000</ns4:RCONK137>
+  <ns4:RCONB539 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">1327000000</ns4:RCONB539>
+  <ns4:RCONB538 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">58394000000</ns4:RCONB538>
+  <ns4:RCON5400 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">708000000</ns4:RCON5400>
+  <ns4:RCFD1754 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">198666000000</ns4:RCFD1754>
+  <ns4:RCFDA552 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">2896000000</ns4:RCFDA552>
+  <ns4:RCFD1256 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">118000000</ns4:RCFD1256>
+  <ns4:RCFD1254 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">4000000</ns4:RCFD1254>
+  <ns4:RCFD1255 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">6000000</ns4:RCFD1255>
+  <ns4:RCFD1253 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">982000000</ns4:RCFD1253>
+  <ns4:RCFD1251 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">623000000</ns4:RCFD1251>
+  <ns4:RCON1763 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">180761000000</ns4:RCON1763>
+  <ns4:RCON1764 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">5980000000</ns4:RCON1764>
+  <ns4:RCFDA556 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCFDA556>
+  <ns4:RCON5367 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">223462000000</ns4:RCON5367>
+  <ns4:RCON5368 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">397000000</ns4:RCON5368>
+  <ns4:RCON1460 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">26549000000</ns4:RCON1460>
+  <ns4:RCONF177 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">510000000</ns4:RCONF177>
+  <ns4:RCONF175 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">23000000</ns4:RCONF175>
+  <ns4:RCONF174 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCONF174>
+  <ns4:RCON1797 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">9541000000</ns4:RCON1797>
+  <ns4:RCON3501 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">326000000</ns4:RCON3501>
+  <ns4:RCFD1771 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">166165000000</ns4:RCFD1771>
+  <ns4:RCONF172 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCONF172>
+  <ns4:RCONJ473 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">30240000000</ns4:RCONJ473>
+  <ns4:RCONJ474 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">56792000000</ns4:RCONJ474>
+  <ns4:RCFDB575 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">711000000</ns4:RCFDB575>
+  <ns4:RCON3500 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">74000000</ns4:RCON3500>
+  <ns4:RCFDA551 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">17080000000</ns4:RCFDA551>
+  <ns4:RCFDA553 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">65626000000</ns4:RCFDA553>
+  <ns4:RCONC229 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">1895000000</ns4:RCONC229>
+  <ns4:RCONF181 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">354000000</ns4:RCONF181>
+  <ns4:RCFDA561 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">2205000000</ns4:RCFDA561>
+  <ns4:RCFDA560 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">276074000000</ns4:RCFDA560>
+  <ns4:RCON3499 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">35000000</ns4:RCON3499>
+  <ns4:RCONC236 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">1417000000</ns4:RCONC236>
+  <ns4:RCONC237 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">1446000000</ns4:RCONC237>
+  <ns4:RCONC230 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">25000000</ns4:RCONC230>
+  <ns4:RCONC238 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">4000000</ns4:RCONC238>
+  <ns4:RCONC239 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCONC239>
+  <ns4:RCONF176 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCONF176>
+  <ns4:RCFDK218 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCFDK218>
+  <ns4:RCFDA559 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">1150000000</ns4:RCFDA559>
+  <ns4:RCFDA554 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">22585000000</ns4:RCFDA554>
+  <ns4:RCFDA557 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">2000000</ns4:RCFDA557>
+  <ns4:RCONF183 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">2350000000</ns4:RCONF183>
+  <ns4:RCONF180 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">6000000</ns4:RCONF180>
+  <ns4:RCONHK10 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">1126000000</ns4:RCONHK10>
+  <ns4:RCFDA549 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">20935000000</ns4:RCFDA549>
+  <ns4:RCFDK214 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">52000000</ns4:RCFDK214>
+  <ns4:RCON6810 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">353608000000</ns4:RCON6810>
+  <ns4:RCFDA555 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCFDA555>
+  <ns4:RCFDB577 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">0</ns4:RCFDB577>
+  <ns4:RCON6631 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">417129000000</ns4:RCON6631>
+  <ns4:RCFDB576 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">758000000</ns4:RCFDB576>
+  <ns4:RCON6648 contextRef="CI_451965_2026-06-30" unitRef="USD" decimals="0">105379000000</ns4:RCON6648>
+  </ns0:xbrl>
