@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { Activity, BarChart3, Check, Grid2X2, Loader2, RefreshCw, Share2, X } from 'lucide-react';
 import { MARKET_ATLAS_FRESH_MS, parseMarketView, marketViewForCftcAvailability, marketViewQuery, marketViewPath, marketViewHistoryMode } from '../../utils/marketResearch.js';
 import { QUANT_GROUPS } from '../../utils/quantGroups.js';
@@ -105,7 +106,7 @@ export default function MarketOverviewClient({ initialData = null, initialQuery 
       <div><div className={s.eyebrow}><Activity size={15} />The macro perspective</div><h1>The market, <span>in context.</span></h1><p>Business conditions across sectors. {cftcEnabled && 'Positioning across futures. '}A wider view of the forces worth watching.</p></div>
       <div className={m.sourcePair}><span><i />SEC filings <small>Reported business performance</small></span>{cftcEnabled && <span><i />CFTC reports <small>Weekly futures positioning</small></span>}</div>
     </header>
-    <div className={s.topbar}><nav className={s.tabs} aria-label="Market sections">{TABS.filter((tab) => cftcEnabled || tab.id !== 'positioning').map((tab) => <button key={tab.id} aria-current={view.tab === tab.id ? 'page' : undefined} onClick={() => updateView({ tab: tab.id }, true)}><tab.icon size={16} />{tab.label}</button>)}</nav><button className={s.button} onClick={shareView}><Share2 size={14} />Share view</button></div>
+    <div className={s.topbar}><nav className={s.tabs} aria-label="Market sections">{TABS.filter((tab) => cftcEnabled || tab.id !== 'positioning').map((tab) => <button key={tab.id} aria-current={view.tab === tab.id ? 'page' : undefined} onClick={() => updateView({ tab: tab.id }, true)}><tab.icon size={16} />{tab.label}</button>)}<Link href="/market/funding">Funding & Clearing</Link><Link href="/market/derivatives">Derivatives</Link></nav><button className={s.button} onClick={shareView}><Share2 size={14} />Share view</button></div>
     {shareFallback && <label className={s.shareFallback}>Shareable view link<input readOnly value={shareFallback} onFocus={(e) => e.target.select()} /></label>}
     {notice && <div className={s.notice} role="status" aria-live="polite"><Check size={14} />{notice}<button aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={13} /></button></div>}
     {!isCftcTab && data && summary && <MarketUniverseCoverage data={data} summary={summary} basis={view.basis} />}

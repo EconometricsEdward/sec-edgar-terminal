@@ -16,6 +16,8 @@ const MAIN_PAGES: Array<
   ["/terms", "monthly", 0.3],
   ["/privacy", "monthly", 0.3],
   ["/market", "weekly", 0.8],
+  ["/market/funding", "daily", 0.8],
+  ["/market/derivatives", "weekly", 0.8],
   ["/filings", "weekly", 0.8],
   ["/analysis", "weekly", 0.8],
   ["/analysis/banks", "weekly", 0.8],
