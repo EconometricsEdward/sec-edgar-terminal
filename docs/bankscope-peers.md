@@ -31,7 +31,9 @@ UBPR reference mappings use Summary Ratios page 1 of the official v187 guide: UB
 
 ## CAMELS-style public-data review
 
-`lens=camels` is a shareable view under Compare → Peer benchmarks. `category` preserves the selected metric group. Six component cards use three public indicators each, with same-cohort medians and numeric percentiles. There are no supervisory scores, composite grades or compliance conclusions. Management is represented only by operating proxies; sensitivity by maturity/securities proxies. Actual CAMELS ratings are confidential.
+`lens=camels` is a shareable view under Compare → Peer benchmarks. `category` preserves the selected metric group. Six open component sections use three public indicators each, with same-cohort medians and numeric percentiles. There are no supervisory scores, composite grades or compliance conclusions. Management is represented only by operating proxies; sensitivity by maturity/securities proxies. Actual CAMELS ratings are confidential.
+
+A sticky context strip names the selected legal bank, reporting quarter, group size, unweighted median basis and subject exclusion. Cyan always represents the selected bank; lavender represents peer statistics. Aligned rows show the bank value, group median, valid peer coverage, bank position against the middle 50% and both historical series. CAMELS uses compact interquartile tracks; the peer explorer retains full-distribution histograms. Colors identify scope, never quality. The shared group disclosure is accessible from either lens and explicitly distinguishes individual member values from aggregates. Regulatory charts use neutral reference markers and name the bank; official UBPR ratios are separately labeled individual-bank values.
 
 Capital context separates general U.S. bank minimums, minimum plus the 2.5 percentage point base conservation buffer, and PCA well-capitalized **numeric** references. It does not apply holding-company stress buffers or GSIB surcharges to the bank, infer an LCR/NSFR from balance-sheet ratios, or assess compliance with supplementary leverage or institution-specific constraints.
 
@@ -44,7 +46,7 @@ The latest completed snapshot's `model_version` is exposed by `peer_status`. Wor
 
 ## Metric history
 
-Both peer explorer and CAMELS review include quarterly paths for all 24 ratios. CAMELS switches between history and the original selected-quarter percentile tracks; its change baseline can be the immediately preceding quarter or the first retained period. A shared metric explorer shows bank and peer median series, adjacent-quarter and full-window changes, exact figures, historical capital framework, valid peer counts and per-period source records.
+Both peer explorer and CAMELS review include quarterly paths for all 24 ratios, shown alongside selected-quarter peer positions. CAMELS history changes can use the immediately preceding quarter or the first retained period. Each mini chart compares bank and group on one metric-specific scale, keeps missing values as gaps, and labels both changes. Activating a metric moves focus to the shared history explorer. Two named comparison rows show individual-bank and group-median values, adjacent-quarter and full-window changes; the chart, quarterly figures, historical capital framework, valid peer counts and per-period source records remain available below. Tooltip coverage is specific to the hovered quarter.
 
 History uses the same selected-quarter cohort, followed backward by RSSD. It never rematches historical peers or substitutes predecessor banks. The universe promise is shared with the current-quarter service. The separate `history=1` request to `/api/banks/peers` keeps history failures independent of current benchmarks and UBPR preparation. Only server-selected peer IDs reach the gateway: at most 30 peers plus the subject, over four retained dates at or before the selected date. No history request downloads new FDIC/FFIEC sources.
 
