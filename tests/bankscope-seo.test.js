@@ -33,11 +33,12 @@ test('bank sitemap includes only canonical, unique prepared-bank identities', ()
 });
 
 test('all local bank views survive share links, reloads and history restoration', () => {
-  for (const view of ['overview', 'trends', 'compare', 'exposures']) {
-    const input = { view, peers: '102,103', period: '2026-03-31', metric: 'net_income', basis: 'quarterly', panel: 'benchmarks', lens: 'camels', category: 'earnings', exposure: 'securities', segment: 'consumer' };
+  for (const view of ['overview', 'trends', 'compare', 'exposures', 'organization']) {
+    const input = { view, peers: '102,103', period: '2026-03-31', metric: 'net_income', basis: 'quarterly', panel: 'benchmarks', lens: 'camels', category: 'earnings', exposure: 'securities', segment: 'consumer', org: 'network' };
     const selected = bankPageOptions('101', input);
     const restored = bankPageOptions('101', Object.fromEntries(new URL(bankHref('101', selected), 'https://secedgarterminal.com').searchParams));
     for (const key of ['view', 'peers', 'period', 'metric', 'basis']) assert.deepEqual(restored[key], selected[key]);
+    if (view === 'organization') assert.equal(restored.org, 'network');
     if (view === 'compare') for (const key of ['panel', 'lens', 'category']) assert.equal(restored[key], selected[key]);
     if (view === 'exposures') for (const key of ['exposure', 'segment']) assert.equal(restored[key], selected[key]);
   }

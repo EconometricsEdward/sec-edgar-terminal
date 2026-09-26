@@ -45,13 +45,14 @@ export function metricChange(current, previous) {
   if (previous.value <= 0) return null;
   return { value: (current.value / previous.value - 1) * 100, unit: '%' };
 }
-export function bankHref(rssd, { view = 'overview', peers = [], period, metric, basis, panel, lens, category, exposure, segment } = {}) {
+export function bankHref(rssd, { view = 'overview', peers = [], period, metric, basis, panel, lens, category, exposure, segment, org } = {}) {
   const query = new URLSearchParams();
   if (view !== 'overview') query.set('view', view);
   if (peers.length) query.set('peers', peers.join(','));
   if (period) query.set('period', period);
   if (metric) query.set('metric', metric);
   if (basis === 'quarterly' || basis === 'ytd') query.set('basis', basis);
+  if (view === 'organization' && org === 'network') query.set('org', org);
   if (view === 'exposures') {
     if (EXPOSURE_LENSES.includes(exposure)) query.set('exposure', exposure);
     if (CREDIT_SEGMENTS.some(s => s.key === segment)) query.set('segment', segment);
@@ -70,7 +71,8 @@ export function bankPageOptions(rssd, query = {}) {
     const values = query.getAll(key); return [key, values.length === 1 ? values[0] : values];
   }));
   const peers = typeof query.peers === 'string' ? [...new Set(query.peers.split(',').filter(id => /^[1-9]\d{0,9}$/.test(id) && id !== String(rssd)))].slice(0, 3) : [];
-  return { view: ['compare', 'trends', 'exposures'].includes(query.view) ? query.view : 'overview', peers,
+  return { view: ['compare', 'trends', 'exposures', 'organization'].includes(query.view) ? query.view : 'overview', peers,
+    org: query.org === 'network' ? 'network' : 'identity',
     exposure: EXPOSURE_LENSES.includes(query.exposure) ? query.exposure : 'credit',
     segment: CREDIT_SEGMENTS.some(s => s.key === query.segment) ? query.segment : 'cre',
     panel: ['benchmarks','selected'].includes(query.panel) ? query.panel : peers.length ? 'selected' : 'benchmarks',
