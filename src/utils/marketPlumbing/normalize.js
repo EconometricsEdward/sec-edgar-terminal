@@ -96,6 +96,9 @@ export function normalizeSwapTables({ date, tables, asset, measure }) {
       if (!row[0] || row.length !== header.length || /^\*|includes/i.test(row[0])) continue;
       const product = row[0].replace(/\*+$/, '').trim();
       if (/^product/i.test(product)) continue;
+      // Credit tables indent geographic children beneath a product subtotal.
+      // HTML/text extraction loses indentation; these are not extra products.
+      if (asset === 'credit' && ['Asia','Europe','North America','Other Regions'].includes(product)) continue;
       columns.forEach((bucket, i) => observations.push({ date, asset, measure, dimension, product: productName(product), bucket, value: reportedNumber(row[i + 1]) }));
     }
   }
@@ -108,6 +111,11 @@ export function normalizeSwapTables({ date, tables, asset, measure }) {
   for (const total of totals) {
     const values = observations.filter(r => r.dimension === total.dimension && r.product === 'TOTAL' && !/^total$/i.test(r.bucket));
     if (values.every(r => r.value !== null) && Math.abs(values.reduce((sum, r) => sum + r.value, 0) - total.value) > tolerance) throw new Error('Swaps breakdown does not reconcile');
+  }
+  for (const dimension of ['clearing','grade']) {
+    const total = totals.find(r => r.dimension === dimension);
+    const products = observations.filter(r => r.dimension === dimension && r.product !== 'TOTAL' && r.bucket === 'Total');
+    if (total && products.length && products.every(r => r.value !== null) && Math.abs(products.reduce((sum,r) => sum+r.value,0) - total.value) > tolerance) throw new Error('Swaps products do not reconcile');
   }
   return observations;
 }

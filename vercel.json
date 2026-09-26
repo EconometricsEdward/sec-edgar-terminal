@@ -90,7 +90,7 @@
     },
     {
       "path": "/api/cron/market-research",
-      "schedule": "15 * * * *"
+      "schedule": "*/10 * * * *"
     }
   ]
 }

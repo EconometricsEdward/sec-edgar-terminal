@@ -16,6 +16,8 @@ market aggregates are explicitly separate.
   in USD millions or trade counts. Outstanding is a stock; weekly volume and
   count are flows. Single-count clearing totals exclude participant tables.
   Currency, product, tenor and grade are separate breakdowns of the same total.
+  Credit regional child rows are excluded from product totals. Credit products
+  use grade-table totals; a missing product-specific clearing split is null.
 - CFTC FX currency tables contain overlapping regional subtotals. Only USD
   pairs, EUR/non-USD and the final Other-pairs group are used. Credit reports
   have grade data rather than currency/tenor. FX activity and outstanding use
@@ -44,7 +46,7 @@ checked in production; failure retains and labels the previous capture.
 
 ## Pipeline and security
 
-`/api/cron/market-research` checks the refresh lease at minute 15 of each hour,
+`/api/cron/market-research` checks the refresh lease every ten minutes,
 requires the existing CRON_SECRET, and is bounded to 260 seconds within a
 300-second function. Only due claims ingest sources, about twice daily;
 intervening checks return immediately without fetching any source.

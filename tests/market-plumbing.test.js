@@ -20,6 +20,7 @@ test('captured official reports retain their units, period, total and clearing c
     assert.equal(view.date, '2026-09-04'); assert.equal(view.dates.length, 5);
     assert.ok(Math.abs(view.total - view.cleared - view.uncleared) <= 1);
     assert.equal(view.share, view.cleared / view.total * 100);
+    assert.ok(Math.abs(view.composition.reduce((s,r)=>s+r.value,0)-view.total)<=20);
   }
   const rates = swapView(derivatives, parsePlumbingView('', 'derivatives'));
   assert.equal(rates.total, 17618541); assert.equal(rates.cleared, 16001886);
@@ -27,6 +28,12 @@ test('captured official reports retain their units, period, total and clearing c
   const fx = swapView(derivatives, parsePlumbingView('asset=fx&measure=tickets', 'derivatives'));
   assert.equal(fx.total, 749480); assert.equal(compactNumber(fx.total, 'tickets'), '749.48K');
   assert.equal(fx.currency.length, 3); assert.ok(Math.abs(fx.currency.reduce((s,r) => s+r.value, 0) - fx.total) <= 1);
+});
+
+test('credit regional children are excluded and grade-only products do not inherit aggregate clearing',()=>{
+  const v=swapView(derivatives,parsePlumbingView('asset=credit&product=Other','derivatives'));
+  assert.equal(v.total,210505);assert.equal(v.cleared,null);assert.equal(v.uncleared,null);assert.equal(v.share,null);
+  assert.ok(!v.products.includes('Europe'));assert.equal(v.grade.length,3);
 });
 
 test('missing data stays unavailable; unknown or duplicate source values fail closed', () => {

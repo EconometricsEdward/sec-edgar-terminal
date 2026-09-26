@@ -32,14 +32,15 @@ export function swapView(snapshot, view) {
   const dates = [...new Set(rows.map(r => r.date))].sort();
   const date = dates.includes(view.date) ? view.date : dates.at(-1);
   const period = rows.filter(r => r.date === date);
-  const products = [...new Set(period.filter(r => r.dimension === 'clearing').map(r => r.product))].filter(p => p !== 'TOTAL');
+  const productDimension = view.asset === 'credit' ? 'grade' : 'clearing';
+  const products = [...new Set(period.filter(r => r.dimension === productDimension).map(r => r.product))].filter(p => p !== 'TOTAL');
   const product = products.includes(view.product) ? view.product : 'TOTAL';
   const selected = period.filter(r => r.product === product);
   const number = (dimension, bucket) => selected.find(r => r.dimension === dimension && r.bucket === bucket)?.value ?? null;
-  const total = number('clearing', 'Total'), cleared = number('clearing', 'Cleared'), uncleared = number('clearing', 'Uncleared');
+  const total = number('clearing', 'Total') ?? number('grade', 'Total'), cleared = number('clearing', 'Cleared'), uncleared = number('clearing', 'Uncleared');
   const buckets = dimension => selected.filter(r => r.dimension === dimension && r.bucket !== 'Total').map(r => ({ name: r.bucket, value: r.value }));
-  const trend = dates.map(d => ({ date: d, value: rows.find(r => r.date === d && r.product === product && r.dimension === 'clearing' && r.bucket === 'Total')?.value ?? null }));
-  const composition = products.map(p => ({ name: p, value: period.find(r => r.dimension === 'clearing' && r.product === p && r.bucket === 'Total')?.value ?? null }));
+  const trend = dates.map(d => ({ date: d, value: rows.find(r => r.date === d && r.product === product && r.dimension === 'clearing' && r.bucket === 'Total')?.value ?? rows.find(r => r.date === d && r.product === product && r.dimension === 'grade' && r.bucket === 'Total')?.value ?? null }));
+  const composition = products.map(p => ({ name: p, value: period.find(r => r.dimension === productDimension && r.product === p && r.bucket === 'Total')?.value ?? null }));
   const previous = trend.filter(r => r.date < date && r.value !== null).at(-1);
   return { date, dates, products, product, total, cleared, uncleared, share: total > 0 && cleared !== null ? cleared / total * 100 : null,
     currency: buckets('currency'), tenor: buckets('tenor'), grade: buckets('grade'), composition, trend,
