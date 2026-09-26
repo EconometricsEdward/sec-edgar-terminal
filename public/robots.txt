@@ -12,3 +12,4 @@ Allow: /api/fund-13f/market-review
 
 # Sitemap location
 Sitemap: https://secedgarterminal.com/sitemap.xml
+Sitemap: https://secedgarterminal.com/analysis/banks/sitemap.xml

@@ -1,4 +1,3 @@
-'use client';
 import Link from 'next/link';
 import BankSearch from './BankSearch';
 import { quarterLabel } from '../../../utils/bank/viewModel.js';
