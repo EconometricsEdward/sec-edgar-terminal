@@ -64,6 +64,11 @@ export function bankHref(rssd, { view = 'overview', peers = [], period, metric, 
   return `/analysis/banks/${rssd}${query.size ? `?${query}` : ''}`;
 }
 export function bankPageOptions(rssd, query = {}) {
+  // Match Next's server searchParams shape for repeated query keys. A duplicate
+  // cannot select a peer or view only on the client after hydration.
+  if (typeof query.getAll === 'function') query = Object.fromEntries([...new Set(query.keys())].map(key => {
+    const values = query.getAll(key); return [key, values.length === 1 ? values[0] : values];
+  }));
   const peers = typeof query.peers === 'string' ? [...new Set(query.peers.split(',').filter(id => /^[1-9]\d{0,9}$/.test(id) && id !== String(rssd)))].slice(0, 3) : [];
   return { view: ['compare', 'trends', 'exposures'].includes(query.view) ? query.view : 'overview', peers,
     exposure: EXPOSURE_LENSES.includes(query.exposure) ? query.exposure : 'credit',

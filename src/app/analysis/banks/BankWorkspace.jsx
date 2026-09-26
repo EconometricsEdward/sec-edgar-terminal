@@ -1,23 +1,29 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import BankSearch from './BankSearch';
-import BankTrendDashboard from './BankTrendDashboard';
-import BankCompareVisuals from './BankCompareVisuals';
-import BankPeerBenchmarks from './BankPeerBenchmarks';
 import { BANK_COLORS } from '../../../utils/bank/visuals.js';
 import { BANK_METRICS } from '../../../utils/bank/definitions.js';
-import { GROUPS, PENDING, bankHref, bankMetric, bankReport, formatBankMetric, metricChange, quarterLabel, unavailableReason } from '../../../utils/bank/viewModel.js';
+import { GROUPS, PENDING, bankHref, bankMetric, bankPageOptions, bankReport, formatBankMetric, metricChange, quarterLabel, unavailableReason } from '../../../utils/bank/viewModel.js';
 import styles from './banks.module.css';
 const TrendChart = dynamic(() => import('./BankTrendChart'), { ssr: false, loading: () => <p className={styles.basis}>Loading chart…</p> });
 const BankExposures = dynamic(() => import('./BankExposures'));
+const BankTrendDashboard = dynamic(() => import('./BankTrendDashboard'), { loading: () => <div className={styles.chartLoading} role="status">Loading trends…</div> });
+const BankCompareVisuals = dynamic(() => import('./BankCompareVisuals'), { loading: () => <div className={styles.chartLoading} role="status">Loading comparison…</div> });
+const BankPeerBenchmarks = dynamic(() => import('./BankPeerBenchmarks'), { loading: () => <div className={styles.chartLoading} role="status">Loading peer research…</div> });
 const sameBank = (a, b) => String(a) === String(b);
-export default function BankWorkspace({ initialState, rssd, options, error }) {
+export default function BankWorkspace({ initialState, rssd, options: initialOptions, error }) {
   const router = useRouter();
-  const [state, setState] = useState(initialState), [requesting, setRequesting] = useState(''), [notice, setNotice] = useState(''), [copied, setCopied] = useState(false);
+  const searchParams = useSearchParams();
+  const options = bankPageOptions(rssd, searchParams);
+  const selectionReady = options.peers.join(',') === initialOptions.peers.join(',');
+  const viewIdentity = `${rssd}?${searchParams.toString()}`;
+  const [navigating, startNavigation] = useTransition();
+  const [state, setState] = useState(initialState), [requesting, setRequesting] = useState(''), [notice, setNotice] = useState(''), [copied, setCopied] = useState('');
   useEffect(() => { setState(initialState); }, [initialState]);
+  useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(''), 3000); return () => clearTimeout(timer); }, [copied]);
   const selection = [rssd, ...options.peers].join(',');
   const pending = state.jobs?.some(j => PENDING.has(j.status));
   useEffect(() => {
@@ -40,7 +46,17 @@ export default function BankWorkspace({ initialState, rssd, options, error }) {
   const banks = [rssd, ...options.peers].map(id => state.banks?.find(b => sameBank(b.id_rssd, id))).filter(Boolean);
   const periods = state.periods || [];
   const period = options.period || periods[0] || '';
-  const navigate = changes => router.push(bankHref(rssd, { ...options, period, ...changes }), { scroll: false });
+  const navigate = changes => {
+    const next = { ...options, period, ...changes };
+    const url = bankHref(rssd, next);
+    if (next.peers.join(',') !== initialOptions.peers.join(',')) {
+      startNavigation(() => router.push(url, { scroll: false }));
+    } else if (url !== `${window.location.pathname}${window.location.search}`) {
+      // All prepared periods are already loaded. View-only changes do not need
+      // a new server render; Next synchronizes this with useSearchParams.
+      window.history.pushState(null, '', url);
+    }
+  };
   const href = changes => bankHref(rssd, { ...options, period, ...changes });
   async function prepare(id) {
     setRequesting(String(id)); setNotice('');
@@ -54,20 +70,21 @@ export default function BankWorkspace({ initialState, rssd, options, error }) {
       setNotice(body.queued ? 'Preparation requested. This page updates automatically; you can also return using this link.' : 'This bank is already prepared or in the preparation queue.');
     } catch (e) { setNotice(e.message); } finally { setRequesting(''); }
   }
-  async function share() { try { await navigator.clipboard.writeText(window.location.href); setCopied(true); } catch { setNotice('Use the address in your browser to share this view.'); } }
+  async function share() { try { await navigator.clipboard.writeText(window.location.href); setCopied(viewIdentity); } catch { setNotice('Use the address in your browser to share this view.'); } }
   const report = bankReport(state, rssd, period);
-  return <div className={`${styles.page} ${['compare','exposures'].includes(options.view)?styles.comparePage:''}`}>
+  return <div className={`${styles.page} ${['compare','exposures'].includes(options.view)?styles.comparePage:''}`} aria-busy={navigating || !selectionReady}>
     <div className={styles.eyebrow}><Link href="/analysis/banks">BANKSCOPE</Link><span>FFIEC · CALL REPORT RESEARCH</span></div>
-    <header className={styles.header}><div><h1 className={styles.bankTitle}>{bank?.legal_name || `RSSD ${rssd}`}</h1><p>{[bank?.city, bank?.state].filter(Boolean).join(', ')}{bank?.city || bank?.state ? ' · ' : ''}RSSD {rssd}{bank?.fdic_certificate ? ` · FDIC ${bank.fdic_certificate}` : ''}{bank?.form_type ? ` · FFIEC ${bank.form_type}` : ''}</p><p>Legal bank entity · Figures may differ from its holding company.</p></div><button type="button" onClick={share}>{copied ? 'Link copied' : 'Copy view link'}</button></header>
+    <header className={styles.header}><div><h1 className={styles.bankTitle}>{bank?.legal_name || `RSSD ${rssd}`}</h1><p>{[bank?.city, bank?.state].filter(Boolean).join(', ')}{bank?.city || bank?.state ? ' · ' : ''}RSSD {rssd}{bank?.fdic_certificate ? ` · FDIC ${bank.fdic_certificate}` : ''}{bank?.form_type ? ` · FFIEC ${bank.form_type}` : ''}</p><p>Legal bank entity · Figures may differ from its holding company.</p></div><button type="button" onClick={share} aria-live="polite">{copied === viewIdentity ? 'Link copied' : 'Copy view link'}</button></header>
     <details className={styles.switchBank}><summary>Find another bank</summary><BankSearch compact /></details>
     {(error || notice) && <p className={styles.notice} role="status">{error ? 'Bank research is temporarily unavailable. Please reload to try again.' : notice}</p>}
-    <nav className={styles.tabs} aria-label="Bank research views">{[['overview', 'Overview'], ['exposures', 'Exposures'], ['compare', 'Compare'], ['trends', 'Trends']].map(([view, label]) => <Link key={view} href={href({ view, ...(view === 'trends' && options.view !== 'trends' ? { basis: 'quarterly' } : {}) })} scroll={false} aria-current={options.view === view ? 'page' : undefined}>{label}</Link>)}</nav>
+    <nav className={styles.tabs} aria-label="Bank research views">{[['overview', 'Overview'], ['exposures', 'Exposures'], ['compare', 'Compare'], ['trends', 'Trends']].map(([view, label]) => <ViewLink key={view} href={href({ view, ...(view === 'trends' && options.view !== 'trends' ? { basis: 'quarterly' } : {}) })} onSelect={() => navigate({ view, ...(view === 'trends' && options.view !== 'trends' ? { basis: 'quarterly' } : {}) })} aria-current={options.view === view ? 'page' : undefined}>{label}</ViewLink>)}</nav>
+    {(navigating || !selectionReady) && <p className={styles.basis} role="status">Loading selected banks…</p>}
     <div className={styles.toolbar}><div><h2>{options.view === 'exposures' ? 'Inside the balance sheet' : options.view === 'compare' ? 'Compare FFIEC banks' : options.view === 'trends' ? 'The financial trajectory' : 'The bank at a glance'}</h2>{!['compare','exposures'].includes(options.view)&&<p>{options.view === 'trends' ? 'See balances, earnings and capital evolve over time.' : 'Capital, credit quality, funding and earnings.'}</p>}</div>{options.view !== 'trends' && <label>Report date<select value={period} onChange={e => navigate({ period: e.target.value })} disabled={!periods.length}>{period && !periods.includes(period) && <option value={period}>{quarterLabel(period)} · Outside available history</option>}{periods.map(p => <option key={p} value={p}>{quarterLabel(p)} · {p}</option>)}</select></label>}</div>
     {(options.view !== 'compare' || options.panel === 'selected') && <Preparation bank={bank} state={state} requesting={requesting} onPrepare={prepare} />}
     {options.view === 'overview' && (report?.validation?.passed ? <Overview report={report} bank={bank} /> : <EmptyPeriod state={state} rssd={rssd} period={period} />)}
     {options.view === 'exposures' && (report?.validation?.passed ? <BankExposures rssd={rssd} bankName={bank?.legal_name || `RSSD ${rssd}`} period={period} options={options} href={href} onChange={navigate} sourceHash={report.source_sha256} /> : <EmptyPeriod state={state} rssd={rssd} period={period} />)}
-    {options.view === 'compare' && <>
-      <nav className={styles.compareModes} aria-label="Comparison mode"><Link href={href({panel:'benchmarks',lens:'peers'})} scroll={false} aria-current={options.panel==='benchmarks'&&options.lens!=='camels'?'page':undefined}>Peer Explorer</Link><Link href={href({panel:'benchmarks',lens:'camels'})} scroll={false} aria-current={options.panel==='benchmarks'&&options.lens==='camels'?'page':undefined}>CAMELS</Link><Link href={href({panel:'selected'})} scroll={false} aria-current={options.panel==='selected'?'page':undefined}>Selected banks {banks.length>1?`(${banks.length})`:''}</Link></nav>
+    {options.view === 'compare' && selectionReady && <>
+      <nav className={styles.compareModes} aria-label="Comparison mode"><ViewLink href={href({panel:'benchmarks',lens:'peers'})} onSelect={()=>navigate({panel:'benchmarks',lens:'peers'})} aria-current={options.panel==='benchmarks'&&options.lens!=='camels'?'page':undefined}>Peer Explorer</ViewLink><ViewLink href={href({panel:'benchmarks',lens:'camels'})} onSelect={()=>navigate({panel:'benchmarks',lens:'camels'})} aria-current={options.panel==='benchmarks'&&options.lens==='camels'?'page':undefined}>CAMELS</ViewLink><ViewLink href={href({panel:'selected'})} onSelect={()=>navigate({panel:'selected'})} aria-current={options.panel==='selected'?'page':undefined}>Selected banks {banks.length>1?`(${banks.length})`:''}</ViewLink></nav>
       {options.panel==='benchmarks'?<BankPeerBenchmarks key={`${rssd}-${period}`} rssd={rssd} period={period} lens={options.lens} category={options.category} onViewChange={navigate} onCompare={peers=>navigate({peers,panel:'selected'})}/>:<>
       <div className={styles.peerChips}>{banks.map((b, i) => <span key={b.id_rssd} style={{ '--accent': BANK_COLORS[i] }}><strong><i className={styles.bankNumber}>{i + 1}</i>{b.legal_name}</strong><small>RSSD {b.id_rssd}{i === 0 ? ' · Selected bank' : ''}</small>{i > 0 && <button type="button" onClick={() => navigate({ peers: options.peers.filter(id => !sameBank(id, b.id_rssd)) })} aria-label={`Remove ${b.legal_name}`}>×</button>}</span>)}</div>
       {options.peers.some(id => !banks.some(b => sameBank(b.id_rssd, id))) && <p className={styles.notice}>A linked peer is not in the FFIEC directory. <button onClick={() => navigate({ peers: options.peers.filter(id => banks.some(b => sameBank(b.id_rssd, id))) })}>Remove unavailable peers</button></p>}
@@ -79,6 +96,9 @@ export default function BankWorkspace({ initialState, rssd, options, error }) {
     {options.view === 'trends' && <Trends state={state} rssd={rssd} options={options} onChange={navigate} />}
     {['compare','exposures'].includes(options.view)?<footer className={styles.footer}><div><details><summary>Sources &amp; reporting notes</summary><p>FFIEC 031, 041 and 051 Call Reports · USD millions, except ratios. Missing values stay unavailable. N/A means the item does not apply to the form or capital framework.</p><p>Four latest available reporting periods. Prepared banks are checked for new submissions daily while active. Original source versions are retained.</p></details></div><Link href="/analysis/banks">All banks →</Link></footer>:<footer className={styles.footer}><div><strong>Source first. Bank by bank.</strong><p>FFIEC 031, 041 and 051 Call Reports · USD millions, except ratios. Missing values stay unavailable. N/A means the item does not apply to the form or capital framework.</p><p>Four latest available reporting periods. Prepared banks are checked for new submissions daily while active. Original source versions are retained.</p></div><Link href="/analysis/banks">All banks →</Link></footer>}
   </div>;
+}
+function ViewLink({ onSelect, ...props }) {
+  return <Link {...props} prefetch={false} scroll={false} onNavigate={event => { event.preventDefault(); onSelect(); }} />;
 }
 function Preparation({ bank, state, requesting, onPrepare }) {
   if (!bank) return null;
@@ -131,15 +151,17 @@ function Compare({ state, banks, period, basis, onBasis }) {
   </>;
 }
 function Trends({ state, rssd, options, onChange }) {
+  const [expanded, setExpanded] = useState(options.metric !== 'assets');
+  useEffect(() => { if (options.metric !== 'assets') setExpanded(true); }, [options.metric]);
   const def = BANK_METRICS.find(m => m.key === options.metric) || BANK_METRICS[0];
   const dates = useMemo(() => [...(state.periods || [])].sort(), [state.periods]);
   const points = dates.map(date => { const metric = bankMetric(state, rssd, date, def.key, options.basis); return { date, label: quarterLabel(date), metric, value: metric.value == null ? null : metric.value / (metric.unit === 'percent' ? 1 : 1e6) }; });
   const flow = def.period === 'ytd';
   const meaningfulChange = !flow || options.basis === 'quarterly';
   return <><BankTrendDashboard state={state} rssd={rssd} basis={options.basis} onBasis={basis => onChange({ basis })} />
-    <details className={styles.exactDetails} open={options.metric !== 'assets' || undefined}><summary>Explore an individual metric <span>All 35 metrics · detailed chart &amp; quarterly changes</span></summary>
+    <details className={styles.exactDetails} open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}><summary>Explore an individual metric <span>All 35 metrics · detailed chart &amp; quarterly changes</span></summary>
     <div className={styles.trendControls}><label>Metric<select value={def.key} onChange={e => onChange({ metric: e.target.value })}>{['Overview', ...GROUPS.filter(g => g !== 'Overview')].map(group => <optgroup label={group} key={group}>{BANK_METRICS.filter(m => m.group === group).map(m => <option value={m.key} key={m.key}>{m.label}</option>)}</optgroup>)}</select></label>{flow && <BasisControl basis={options.basis} onChange={basis => onChange({ basis })} />}</div>
-    <section className={styles.chartPanel}><div className={styles.sectionHeading}><h3>{def.label}</h3><span>{def.unit === 'percent' ? 'Percent' : 'USD millions'} · {flow ? options.basis === 'quarterly' ? 'Individual quarter' : 'Calendar year to date' : 'Quarter-end'}</span></div>{points.some(p => p.value != null) ? <TrendChart points={points} quarterly={flow} unit={def.unit} label={def.label} /> : <p className={styles.empty}>No values available for this metric in the prepared history.</p>}</section>
+    <section className={styles.chartPanel}><div className={styles.sectionHeading}><h3>{def.label}</h3><span>{def.unit === 'percent' ? 'Percent' : 'USD millions'} · {flow ? options.basis === 'quarterly' ? 'Individual quarter' : 'Calendar year to date' : 'Quarter-end'}</span></div>{points.some(p => p.value != null) ? expanded && <TrendChart points={points} quarterly={flow} unit={def.unit} label={def.label} /> : <p className={styles.empty}>No values available for this metric in the prepared history.</p>}</section>
     {flow && <p className={styles.basis}>{options.basis === 'quarterly' ? 'Quarterly flows subtract the previous quarter’s YTD amount within the same year. Q1 equals YTD. A quarter is unavailable if its preceding YTD figure is outside the prepared history.' : 'Year-to-date figures accumulate during each calendar year and reset in Q1. Quarter-to-quarter growth is not calculated on this basis; choose Individual quarter to compare flows.'}</p>}
     <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Trend figures"><table className={styles.trendTable}><caption>Exact trend figures · {def.unit === 'percent' ? '%' : 'USD millions'}</caption><thead><tr><th scope="col">Period</th><th scope="col">{def.label}</th><th scope="col">Change from prior quarter</th><th scope="col">Basis / availability</th></tr></thead><tbody>{points.map((p, i) => { const change = meaningfulChange ? metricChange(p.metric, points[i - 1]?.metric) : null; return <tr key={p.date}><th scope="row"><Link href={bankHref(rssd, { period: p.date })}>{p.label}</Link><small>{p.date}</small></th><td><MetricValue metric={p.metric} exact /></td><td>{change ? `${change.value > 0 ? '+' : ''}${change.value.toFixed(2)} ${change.unit}` : '—'}</td><td>{p.metric.value == null ? unavailableReason(p.metric) : p.metric.derived || (flow ? 'Reported calendar year to date' : 'Reported quarter-end value')}</td></tr>; })}</tbody></table></div><p className={styles.basis}>Ratio changes are percentage points (pp). Percentage growth requires a positive prior amount. Figures reflect the latest validated version prepared for each date; restatements can change history.</p></details>
   </>;
