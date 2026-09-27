@@ -146,7 +146,7 @@ test('environment checks apply before cached hits and allowed environments do no
   assert.equal(state.calls.length, 2);
 });
 
-test('mutation and non-directory operations bypass caching, coalescing, cooldown, and retries', async () => {
+test('mutations and uncacheable operations bypass caching, coalescing, cooldown, and retries', async () => {
   const { store, state } = fixture();
   state.respond = async () => Response.json({ accepted: true });
   await Promise.all([store('request', { rssd: 451965 }), store('request', { rssd: 451965 })]);
@@ -158,8 +158,8 @@ test('mutation and non-directory operations bypass caching, coalescing, cooldown
   await assert.rejects(store('publish', { owner: 'private-owner' }), { code: 'database_failure', retryAt: null });
   assert.equal(state.calls.length, 5);
   state.respond = async () => Response.json({ reports: [] });
-  await store('read', { rssds: [451965] });
-  await store('read', { rssds: [451965] });
+  await store('status');
+  await store('status');
   assert.equal(state.calls.length, 7);
 });
 

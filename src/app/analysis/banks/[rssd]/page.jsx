@@ -8,7 +8,7 @@ import BankWorkspace from '../BankWorkspace';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 // Metadata and the page share one read per request, including selected peers.
-// This is request memoization, not a cross-request cache of financial figures.
+// The store additionally provides bounded, short-lived public read reuse.
 const readPage = cache(async (selection) => {
   try { return { state: await bankScopeStore('read', { rssds: selection.split(',') }), error: false }; }
   catch { return { state: { banks: [], reports: [], jobs: [], periods: [] }, error: true }; }
