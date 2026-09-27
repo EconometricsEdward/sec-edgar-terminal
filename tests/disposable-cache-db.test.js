@@ -48,7 +48,7 @@ async function assertAccounting(db) {
 async function expire(db, family, id) {
   await db.query("update edgar_private.cache_entries set written_at=clock_timestamp()-interval '1 day',expires_at=clock_timestamp()-interval '1 second' where family=$1 and cache_id=$2", [family, id]);
 }
-async function database() {
+async function database({ applyReadTouch = true } = {}) {
   const db = new PGlite();
   try {
     await db.exec(`create role anon nologin;create role authenticated nologin;create role service_role nologin bypassrls;
@@ -65,9 +65,69 @@ async function database() {
     const files = (await readdir(directory)).filter(name => name.endsWith('_edgar_disposable_cache.sql'));
     assert.equal(files.length, 1);
     await db.exec(await readFile(new URL(files[0], directory), 'utf8'));
+    if (applyReadTouch) {
+      const readTouch = (await readdir(directory)).filter(name => name.endsWith('_edgar_cache_lru_read_touches.sql'));
+      assert.equal(readTouch.length, 1);
+      await db.exec(await readFile(new URL(readTouch[0], directory), 'utf8'));
+    }
     return db;
   } catch (error) { await db.close(); throw error; }
 }
+
+test('cache read migration avoids protected-family writes while retaining policy-driven hourly LRU', async t => {
+  const db = await database({ applyReadTouch: false });
+  t.after(() => db.close());
+  const policies = (await db.query('select * from edgar_private.cache_families order by family')).rows;
+  const data = payload({ source: 'prepared public data', reportedAt: '2026-06-30' });
+  for (const policy of policies) {
+    await put(db, policy.family, 'ready', data);
+    await put(db, policy.family, 'expired', data);
+    await expire(db, policy.family, 'expired');
+  }
+  await db.exec("update edgar_private.cache_entries set accessed_at=clock_timestamp()-interval '2 hours'");
+  const records = () => db.query('select ctid::text as tuple_id,* from edgar_private.cache_entries order by family,cache_id').then(result => result.rows);
+  const security = async () => ({
+    functions: (await db.query("select oid,prosecdef,proconfig,proacl,pg_get_function_identity_arguments(oid) arguments from pg_proc where oid='public.edgar_cache_get(text,text,text,text[])'::regprocedure")).rows,
+    tables: (await db.query("select oid,relrowsecurity,relacl from pg_class where oid in ('edgar_private.cache_entries'::regclass,'edgar_private.cache_families'::regclass,'edgar_private.cache_maintenance_control'::regclass) order by oid")).rows,
+    policies: (await db.query('select * from edgar_private.cache_families order by family')).rows,
+    schedules: (await db.query('select * from cron.job order by jobname')).rows,
+  });
+  const before = await records(), previousSecurity = await security();
+  const directory = new URL('../supabase/migrations/', import.meta.url);
+  const files = (await readdir(directory)).filter(name => name.endsWith('_edgar_cache_lru_read_touches.sql'));
+  assert.equal(files.length, 1);
+  await db.exec(await readFile(new URL(files[0], directory), 'utf8'));
+  assert.deepEqual(await records(), before, 'migration preserves existing cache records');
+  assert.deepEqual(await security(), previousSecurity, 'signature, grants, RLS, settings, policies and schedules are unchanged');
+
+  for (const policy of policies) {
+    const result = await get(db, policy.family, ['ready', 'missing', 'expired', 'ready']);
+    assert.deepEqual(result.map(row => row?.id ?? null), ['ready', null, null, 'ready']);
+    assert.equal(gunzipSync(Buffer.from(result[0].gzipBase64, 'base64')).toString(), data.raw.toString());
+    const prior = before.find(row => row.family === policy.family && row.cache_id === 'ready');
+    const current = (await records()).find(row => row.family === policy.family && row.cache_id === 'ready');
+    if (policy.evict_live) {
+      assert.ok(current.accessed_at > prior.accessed_at, `${policy.family} preserves LRU popularity`);
+      assert.notEqual(current.tuple_id, prior.tuple_id);
+    } else {
+      assert.deepEqual(current, prior, `${policy.family} lookup must not write a new heap tuple`);
+    }
+    for (const key of ['written_at', 'expires_at', 'raw_sha256', 'gzip_sha256', 'payload_gzip']) assert.deepEqual(current[key], prior[key]);
+    await get(db, policy.family, ['ready']);
+    assert.deepEqual((await records()).find(row => row.family === policy.family && row.cache_id === 'ready'), current, 'repeated reads do not touch within the hour');
+    assert.deepEqual((await records()).find(row => row.family === policy.family && row.cache_id === 'expired'),
+      before.find(row => row.family === policy.family && row.cache_id === 'expired'), 'expired rows are neither returned nor touched');
+  }
+  // Policy changes, not a hard-coded family list, decide whether reads touch.
+  await db.exec("update edgar_private.cache_families set evict_live=true where family='checkpoint'");
+  await get(db, 'checkpoint', ['ready']);
+  assert.ok((await records()).find(row => row.family === 'checkpoint' && row.cache_id === 'ready').accessed_at
+    > before.find(row => row.family === 'checkpoint' && row.cache_id === 'ready').accessed_at);
+  for (const role of ['anon', 'authenticated']) await assert.rejects(asRole(db, role,
+    () => db.query("select public.edgar_cache_get('production','research','company',array['ready'])")), { code: '42501' });
+  await assert.rejects(get(db, 'unknown', ['ready']), /invalid_cache_get/);
+  await assertAccounting(db);
+});
 
 test('Market capacity migration widens only bounded cache budgets and preserves records and access controls', async t => {
   const db = await database();
