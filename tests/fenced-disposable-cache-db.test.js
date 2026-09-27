@@ -64,7 +64,7 @@ async function database() {
       begin insert into cron.job(jobname,schedule,command) values(job_name,job_schedule,job_command)
       on conflict(jobname) do update set schedule=excluded.schedule,command=excluded.command;return 1;end $$;`);
     const directory = new URL('../supabase/migrations/', import.meta.url); const files = await readdir(directory);
-    for (const suffix of ['20260913031639_edgar_staged_data_store.sql', '_edgar_disposable_cache.sql', '_edgar_fenced_disposable_cache.sql']) {
+    for (const suffix of ['20260913031639_edgar_staged_data_store.sql', '_edgar_disposable_cache.sql', '_edgar_fenced_disposable_cache.sql', '_edgar_cache_lru_read_touches.sql']) {
       const matches = files.filter(name => name.endsWith(suffix)); assert.equal(matches.length, 1);
       await db.exec(await readFile(new URL(matches[0], directory), 'utf8'));
     }
