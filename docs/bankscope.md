@@ -34,6 +34,8 @@ One database lease serializes workers. FFIEC requests are paced at least five se
 
 Directory publication uses 500-bank transactions to stay below the database's existing eight-second statement timeout. A quarter is marked fresh only after the last batch commits. Interrupted batches are safe to replay. Worker leases, retries, cooldowns and quotas are persisted. Review-required filings withhold unvalidated figures.
 
+Directory landing, recovery API and sitemap reads share a five-minute Next.js cache of validated public directory metadata. Failed refreshes retain the last successful snapshot for at most six hours, with saved-time labeling after ten minutes. Search requests also use a bounded per-instance cache, shared in-flight reads and a short failure cooldown to avoid exhausting database connections during traffic bursts. No financial statements, credentials or preparation mutations enter this directory cache. A failed initial render performs one delayed client recovery and then offers a manual retry; unavailable coverage counts remain unknown rather than becoming zero. This addresses the September 27 database pool/statement timeout incident without increasing pool size, statement timeout, or paid infrastructure.
+
 Bank tables are private, RLS enabled, and inaccessible to anon/authenticated roles. A narrow Supabase function validates signed Vercel OIDC tokens pinned to this project/team and forwards allowlisted operations to one service-only RPC. The old pilot write RPC is retired. `/bank-pilot` contains operations controls only on the protected feature preview and returns 404 in production.
 
 ## Verification fixtures

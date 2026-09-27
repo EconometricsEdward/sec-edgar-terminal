@@ -256,3 +256,5 @@
 
 .marketContext { display:flex; flex-wrap:wrap; gap:8px 22px; margin:25px 0; padding-top:20px; border-top:1px solid var(--border,#334155); font-size:12px; }
 .marketContext span { color:var(--text-secondary); }
+.directoryRecovery{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:16px 0;padding:12px 0;border-top:1px solid #58482f;border-bottom:1px solid #58482f;color:#d9c49d}.directoryRecovery p{margin:0;font-size:13px;line-height:1.6}.page .directoryRecovery button{flex:none;padding:8px 12px;font-size:12px;background:transparent;border-color:#887148;color:#edcf96}@media(max-width:550px){.directoryRecovery{align-items:flex-start;flex-direction:column;gap:10px}}
+.directoryStale{margin:8px 0 0;color:#b5a88d;font-size:12px;line-height:1.7}
