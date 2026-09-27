@@ -29,10 +29,15 @@ const RETENTION = 8 * 86400;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24);
 export const membershipId = membership => hash(membership.rows.map(r => [r.cik, r.ticker, r.sector, r.fund]));
 
-export async function readQuantMembership() {
-  const [current, preservedLegacy] = await Promise.all([warmGet(QUANT_COVERAGE_CACHE, 'membership'), isProductionDeployment() ? warmGet(LEGACY_MEMBERSHIP_CACHE, 'membership') : null]);
-  const cached = [current, preservedLegacy].find(isQuantMembership);
-  return cached || seed;
+export async function readQuantMembership({ read = warmGet, production = isProductionDeployment() } = {}) {
+  const current = await read(QUANT_COVERAGE_CACHE, 'membership');
+  if (isQuantMembership(current)) return current;
+  // The legacy namespace is a production fallback, not a second routine read.
+  if (production) {
+    const legacy = await read(LEGACY_MEMBERSHIP_CACHE, 'membership');
+    if (isQuantMembership(legacy)) return legacy;
+  }
+  return seed;
 }
 
 /** Weekly membership discovery runs only in scheduled or bounded deployment work. */

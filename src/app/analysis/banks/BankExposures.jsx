@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CREDIT_SEGMENTS, finite, exposureChange, exposureRatio, priorExposurePeriod } from '../../../utils/bank/exposureDefinitions.js';
 import { quarterLabel } from '../../../utils/bank/viewModel.js';
+import { loadBankView } from '../../../utils/bank/viewRequests.js';
 import styles from './exposures.module.css';
 
 const colors = { credit: '#ac9bff', funding: '#71d8b3', securities: '#f5bc68' };
@@ -27,8 +28,8 @@ export default function BankExposures({ rssd, bankName, period, options, href, o
   useEffect(() => {
     const controller = new AbortController();
     setError('');
-    fetch(`/api/banks/exposures?${new URLSearchParams({rssd:String(rssd),period})}`,{signal:controller.signal,cache:'no-store'})
-      .then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error); if (!controller.signal.aborted) setResult({identity,data:body}); })
+    loadBankView({kind:'exposures',rssd,period,sourceHash,signal:controller.signal,refresh:retry>0})
+      .then(body => { if (!controller.signal.aborted) setResult({identity,data:body}); })
       .catch(e => { if (e.name !== 'AbortError' && !controller.signal.aborted) setError(e.message || 'Exposure details could not be loaded.'); });
     return () => controller.abort();
   },[rssd,period,sourceHash,retry,identity]);

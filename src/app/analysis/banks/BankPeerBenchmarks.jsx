@@ -3,6 +3,8 @@ import { useEffect,useRef,useState } from 'react';
 import Link from 'next/link';
 import { bankHref,quarterLabel } from '../../../utils/bank/viewModel.js';
 import { PEER_BENCHMARKS,formatPeerPercent as pct } from '../../../utils/bank/peerMetrics.js';
+import { loadBankView,peerPreparationPending } from '../../../utils/bank/viewRequests.js';
+import { watchPeerPreparation } from '../../../utils/bank/peerRefresh.js';
 import BankCamelsReview from './BankCamelsReview';
 import BankPeerHistory from './BankPeerHistory';
 import BankPeerExplorer from './BankPeerExplorer';
@@ -11,8 +13,10 @@ const assets=n=>n==null?'Unavailable':new Intl.NumberFormat('en-US',{style:'curr
 export default function BankPeerBenchmarks({rssd,period,onCompare,lens='peers',category='core',onViewChange}){
   const [data,setData]=useState(null),[error,setError]=useState(''),[reload,setReload]=useState(0),[requesting,setRequesting]=useState(false);
   const [historyData,setHistoryData]=useState(null),[historyError,setHistoryError]=useState(''),[historyReload,setHistoryReload]=useState(0),[historyMetric,setHistoryMetric]=useState(()=>PEER_BENCHMARKS.find(m=>m.category===category)?.key||'roa'),[historyOpen,setHistoryOpen]=useState(false);
-  const historyRef=useRef(null),historyDetailsRef=useRef(null),cohortRef=useRef(null),contextRef=useRef(null),wrapperRef=useRef(null),snapshotId=data?.snapshot?.id;
+  const [ubprOpen,setUbprOpen]=useState(false),[ubprNotice,setUbprNotice]=useState('');
+  const historyRef=useRef(null),historyDetailsRef=useRef(null),cohortRef=useRef(null),contextRef=useRef(null),wrapperRef=useRef(null),snapshotId=data?.snapshot?.id,matchedRssd=data?.bank?.rssd;
   const history=historyData?.snapshotId===snapshotId?historyData:null;
+  const pending=peerPreparationPending(data);
   useEffect(()=>{
     const context=contextRef.current,wrapper=wrapperRef.current;
     if(!context||!wrapper)return;
@@ -23,31 +27,35 @@ export default function BankPeerBenchmarks({rssd,period,onCompare,lens='peers',c
     return()=>observer?.disconnect();
   },[data?.bank?.rssd]);
   useEffect(()=>{
-    const controller=new AbortController();let timer,stopped=false,attempts=0;
-    async function load(){
-      try{
-        const response=await fetch(`/api/banks/peers?${new URLSearchParams({rssd:String(rssd),period})}`,{signal:controller.signal});
-        if(!response.ok)throw Error('Peer benchmarks could not be loaded. Please try again.');
-        const next=await response.json();if(stopped)return;setData(next);setError('');
-        if(['queued','running','retry'].includes(next.ubpr?.status)&&++attempts<60)timer=setTimeout(load,15000);
-      }catch(e){if(e.name!=='AbortError'&&!stopped)setError(e.message);}
-    }
-    load();return()=>{stopped=true;controller.abort();clearTimeout(timer);};
-  },[rssd,period,reload]);
-  useEffect(()=>{
-    if(!snapshotId)return;
+    if(!period)return;
     const controller=new AbortController();
     async function load(){
       try{
-        const response=await fetch(`/api/banks/peers?${new URLSearchParams({rssd:String(rssd),period,history:'1'})}`,{signal:controller.signal});
-        if(!response.ok)throw Error('Historical metrics could not be loaded. Current-quarter benchmarks are available above.');
-        const next=await response.json();
-        if(next.snapshotId!==snapshotId)throw Error('The source data refreshed. Retry to align the history with the latest benchmarks.');
+        const next=await loadBankView({kind:'peers',rssd,period,signal:controller.signal,refresh:reload>0});
+        if(!controller.signal.aborted){setData(next);setError('');}
+      }catch(e){if(e.name!=='AbortError'&&!controller.signal.aborted)setError(e.message);}
+    }
+    load();return()=>controller.abort();
+  },[rssd,period,reload]);
+  useEffect(()=>{
+    if(!period||!pending||!ubprOpen)return;
+    setUbprNotice('');
+    return watchPeerPreparation({
+      load:signal=>loadBankView({kind:'peers',rssd,period,signal,refresh:true}),
+      onData:next=>{setData(next);setError('');},onPause:setUbprNotice,
+    });
+  },[rssd,period,pending,ubprOpen,reload]);
+  useEffect(()=>{
+    if(!snapshotId||!matchedRssd)return;
+    const controller=new AbortController();
+    async function load(){
+      try{
+        const next=await loadBankView({kind:'history',rssd,period,snapshotId,signal:controller.signal,refresh:historyReload>0});
         if(!controller.signal.aborted){setHistoryData(next);setHistoryError('');}
       }catch(e){if(e.name!=='AbortError'&&!controller.signal.aborted)setHistoryError(e.message);}
     }
     load();return()=>controller.abort();
-  },[rssd,period,snapshotId,historyReload]);
+  },[rssd,period,snapshotId,matchedRssd,historyReload]);
   function retryHistory(){setHistoryError('');setHistoryReload(n=>n+1);setReload(n=>n+1);}
   function focusSection(element){element?.focus({preventScroll:true});element?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});}
   function exploreHistory(key){setHistoryMetric(key);setHistoryOpen(true);focusSection(historyDetailsRef.current);}
@@ -79,13 +87,13 @@ export default function BankPeerBenchmarks({rssd,period,onCompare,lens='peers',c
       <p className={styles.basis}>{bank.name}: {pct(bank.loanShare==null?null:bank.loanShare*100)} loans / assets · {pct(bank.funding?.[0]==null?null:bank.funding[0]*100)} deposits / assets · {pct(bank.funding?.[1]==null?null:bank.funding[1]*100)} noninterest / domestic deposits.</p>
       <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Matched bank peer group"><table className={styles.comparison}><caption>{quarterLabel(period)} · Individual-bank values · Source amounts in USD thousands; ratios in percent</caption><thead><tr><th>Bank / role</th><th>Assets ($000)</th>{visibleMetrics.map(m=><th key={m.key}>{m.label}</th>)}<th>Compare</th></tr></thead><tbody>{[bank,...peers].map((p,i)=><tr key={p.rssd} className={i===0?styles.selectedCohortRow:undefined}><th scope="row"><Link href={bankHref(p.rssd,{view:'compare',period,panel:'benchmarks',category})}>{p.name}</Link><small>{i===0?'Selected bank · Excluded from median':'Peer '+i+' · Included when reported'}<br/>RSSD {p.rssd} · {p.cblr===true?'CBLR':p.cblr===false?'Risk-based':'Framework unverified'}</small></th><td>{p.assets==null?'Unavailable':p.assets.toLocaleString('en-US')}</td>{visibleMetrics.map(m=><td key={m.key}>{p.cblr===true&&m.riskBased?'N/A · CBLR':pct(p.metrics[m.key])}</td>)}<td>{i>0?<button aria-label={'Compare with '+p.name} onClick={()=>onCompare([String(p.rssd)])}>Compare →</button>:'Reference'}</td></tr>)}</tbody></table></div>
     </details>}
-    <details className={styles.audit}><summary>Official FFIEC / UBPR reference</summary><UbprReference bankName={bank?.name||"Bank RSSD "+rssd} ubpr={data.ubpr} rssd={rssd} period={period} prepare={prepare} requesting={requesting}/></details>
+    <details className={styles.audit} onToggle={e=>setUbprOpen(e.currentTarget.open)}><summary>Official FFIEC / UBPR reference</summary><UbprReference bankName={bank?.name||"Bank RSSD "+rssd} ubpr={data.ubpr} rssd={rssd} period={period} prepare={prepare} requesting={requesting} notice={ubprNotice} onRefresh={()=>setReload(n=>n+1)}/></details>
     <details className={styles.audit}><summary>How peers are matched · sources and coverage</summary><p>Universe: {data.universeCount.toLocaleString('en-US')} FDIC quarterly records joined to the FFIEC panel by RSSD and FDIC certificate, with {data.eligibleCount.toLocaleString('en-US')} complete matching profiles. The subject bank is excluded from its peer group. No performance outcomes influence matching.</p><p>We rank up to 30 banks within ¼–4× asset size, expanding to ⅛–8× if fewer than 10 qualify. Distance weights: 40% logarithmic asset size, 35% lending and 25% funding. Lending combines real estate, commercial &amp; industrial, consumer and other loan shares (75%) with loans / assets (25%). Funding averages the differences in deposits / assets, noninterest / domestic deposits and brokered / domestic deposits.</p><p>The charts use unweighted peer medians and linearly interpolated quartiles, with no outlier trimming. Percentiles count peers below the bank plus half of ties, divided by valid peer count. Missing values are omitted per metric. These are BankScope calculations, distinct from FFIEC’s official peer groups, trimmed averages and ranks.</p><p>Matching uses broad categories. Specialty lenders, foreign offices, tax status, acquisitions and reporting amendments can still affect comparability. FDIC and UBPR calculations, source dates and precision can differ.</p>{data.snapshot&&<><p>FDIC source version: {data.snapshot.source_index} · Retrieved {new Date(data.snapshot.created_at).toLocaleDateString('en-US',{timeZone:'UTC'})} (UTC). Model {data.snapshot.model_version}.</p><p><a href={data.snapshot.source_url} target="_blank" rel="noreferrer">Open quarterly FDIC source data ↗</a> · <a href="https://api.fdic.gov/banks/docs/" target="_blank" rel="noreferrer">FDIC field definitions ↗</a></p></>}</details>
   </div>;
 }
-function UbprReference({ubpr,rssd,period,prepare,requesting,bankName}){
+function UbprReference({ubpr,rssd,period,prepare,requesting,bankName,notice,onRefresh}){
   const report=ubpr?.report?.data?.stage==='validated'?ubpr.report:null,pending=['queued','running','retry'].includes(ubpr?.status);
   return <section className={styles.ubprReference}><div className={styles.sectionHeading}><div><span className={styles.chartEyebrow}>OFFICIAL FFIEC · INDIVIDUAL BANK</span><h3>The bank’s published UBPR ratios</h3></div><a href="https://cdr.ffiec.gov/public/" target="_blank" rel="noreferrer">Open FFIEC reports ↗</a></div><p className={styles.capitalBankName}>{bankName}</p><p className={styles.basis}>FFIEC’s published bank ratios for {quarterLabel(period)}. UBPR can use different adjustments and precision from FDIC. Official FFIEC peer averages and percentile ranks are available in the full UBPR; they are not supplied by the bank XBRL feed used here.</p>
-    {report?<><div className={styles.ubprMetrics}>{report.data.metrics.map(m=><div key={m.key} title={m.basis}><span>{m.label}</span><strong>{pct(m.value)}</strong><small>{m.code}</small></div>)}</div><details className={styles.metricDefinition}><summary>UBPR source record</summary><p>RSSD {rssd} · Period {period} · Retrieved {report.retrieved_at}</p><p className={styles.hash}>SHA-256 {report.source_sha256}</p><a href={`/api/banks/source?${new URLSearchParams({rssd:String(rssd),period,hash:report.source_sha256,series:'ubpr'})}`} download>Download original UBPR XBRL</a><p>Ratios are displayed as published percentages. They are not inserted into the FDIC peer distributions.</p></details></>:<div className={styles.ubprPending}><p role="status">{pending?'Preparing official FFIEC reports… This view updates automatically.':ubpr?.status==='unavailable'?'FFIEC has no UBPR document available for this bank and date.':ubpr?.status==='review'?'The UBPR source needs review before its ratios can be displayed.':'Prepare the bank’s official FFIEC reports to add its UBPR reference ratios.'}</p>{!pending&&!['unavailable','review'].includes(ubpr?.status)&&<button disabled={requesting} onClick={prepare}>{requesting?'Requesting…':'Prepare FFIEC reports'}</button>}</div>}
+    {report?<><div className={styles.ubprMetrics}>{report.data.metrics.map(m=><div key={m.key} title={m.basis}><span>{m.label}</span><strong>{pct(m.value)}</strong><small>{m.code}</small></div>)}</div><details className={styles.metricDefinition}><summary>UBPR source record</summary><p>RSSD {rssd} · Period {period} · Retrieved {report.retrieved_at}</p><p className={styles.hash}>SHA-256 {report.source_sha256}</p><a href={`/api/banks/source?${new URLSearchParams({rssd:String(rssd),period,hash:report.source_sha256,series:'ubpr'})}`} download>Download original UBPR XBRL</a><p>Ratios are displayed as published percentages. They are not inserted into the FDIC peer distributions.</p></details></>:<div className={styles.ubprPending}><p role="status">{pending?notice||'Preparing official FFIEC reports… Updates run while this reference is open and the page is visible.':ubpr?.status==='unavailable'?'FFIEC has no UBPR document available for this bank and date.':ubpr?.status==='review'?'The UBPR source needs review before its ratios can be displayed.':'Prepare the bank’s official FFIEC reports to add its UBPR reference ratios.'}</p>{pending&&notice&&<button onClick={onRefresh}>Check preparation</button>}{!pending&&!['unavailable','review'].includes(ubpr?.status)&&<button disabled={requesting} onClick={prepare}>{requesting?'Requesting…':'Prepare FFIEC reports'}</button>}</div>}
   </section>;
 }

@@ -1,9 +1,10 @@
 'use client';
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import BankSearch from './BankSearch';
+import { startBankPreparationPolling } from './preparationPolling.js';
 import { BANK_COLORS } from '../../../utils/bank/visuals.js';
 import { BANK_METRICS } from '../../../utils/bank/definitions.js';
 import { GROUPS, PENDING, bankHref, bankMetric, bankPageOptions, bankReport, formatBankMetric, metricChange, quarterLabel, unavailableReason } from '../../../utils/bank/viewModel.js';
@@ -23,26 +24,18 @@ export default function BankWorkspace({ initialState, rssd, options: initialOpti
   const viewIdentity = `${rssd}?${searchParams.toString()}`;
   const [navigating, startNavigation] = useTransition();
   const [state, setState] = useState(initialState), [requesting, setRequesting] = useState(''), [notice, setNotice] = useState(''), [copied, setCopied] = useState('');
+  const [pollingAttempt, setPollingAttempt] = useState(0), [pollingPause, setPollingPause] = useState(null);
+  const jobsRef = useRef(initialState.jobs);
+  useEffect(() => { jobsRef.current = state.jobs; }, [state.jobs]);
   useEffect(() => { setState(initialState); }, [initialState]);
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(''), 3000); return () => clearTimeout(timer); }, [copied]);
   const selection = [rssd, ...options.peers].join(',');
   const pending = state.jobs?.some(j => PENDING.has(j.status));
   useEffect(() => {
-    if (!pending) return;
-    const controller = new AbortController(); let timer, stopped = false, attempts = 0;
-    const poll = async () => {
-      try {
-        if (document.visibilityState !== 'hidden') {
-          const response = await fetch(`/api/banks?rssds=${selection}`, { signal: controller.signal });
-          const body = await response.json();
-          if (response.ok) { setState(body); if (!body.jobs?.some(j => PENDING.has(j.status))) return; }
-        }
-      } catch (e) { if (e.name === 'AbortError') return; }
-      if (!stopped && ++attempts < 90) timer = setTimeout(poll, Math.min(30000, 5000 + attempts * 2000));
-    };
-    timer = setTimeout(poll, 4000);
-    return () => { stopped = true; clearTimeout(timer); controller.abort(); };
-  }, [pending, selection]);
+    if (!pending || !selectionReady) return;
+    return startBankPreparationPolling({ selection, initialJobs: jobsRef.current, onData: setState,
+      onPause: reason => setPollingPause({ selection, reason, attempt: pollingAttempt }) });
+  }, [pending, selection, selectionReady, pollingAttempt]);
   const bank = state.banks?.find(b => sameBank(b.id_rssd, rssd));
   const banks = [rssd, ...options.peers].map(id => state.banks?.find(b => sameBank(b.id_rssd, id))).filter(Boolean);
   const periods = state.periods || [];
@@ -78,6 +71,7 @@ export default function BankWorkspace({ initialState, rssd, options: initialOpti
     <header className={styles.header}><div><h1 className={styles.bankTitle}>{bank?.legal_name || `RSSD ${rssd}`}</h1><p>{[bank?.city, bank?.state].filter(Boolean).join(', ')}{bank?.city || bank?.state ? ' · ' : ''}RSSD {rssd}{bank?.fdic_certificate ? ` · FDIC ${bank.fdic_certificate}` : ''}{bank?.form_type ? ` · FFIEC ${bank.form_type}` : ''}</p><p>Legal bank entity · Figures may differ from its holding company.</p></div><button type="button" onClick={share} aria-live="polite">{copied === viewIdentity ? 'Link copied' : 'Copy view link'}</button></header>
     <details className={styles.switchBank}><summary>Find another bank</summary><BankSearch compact /></details>
     {(error || notice) && <p className={styles.notice} role="status">{error ? 'Bank research is temporarily unavailable. Please reload to try again.' : notice}</p>}
+    {pending && pollingPause?.selection === selection && pollingPause.attempt === pollingAttempt && <p className={styles.notice} role="status">{pollingPause.reason === 'unavailable' ? 'Automatic status checks are paused while bank research reconnects.' : 'Preparation is taking longer than usual. Automatic status checks are paused.'} Your displayed figures are preserved. <button type="button" onClick={() => setPollingAttempt(attempt => attempt + 1)}>Resume status checks</button></p>}
     <nav className={styles.tabs} aria-label="Bank research views">{[['overview', 'Overview'], ['organization', 'Bank & Parent'], ['exposures', 'Exposures'], ['compare', 'Compare'], ['trends', 'Trends']].map(([view, label]) => <ViewLink key={view} href={href({ view, ...(view === 'trends' && options.view !== 'trends' ? { basis: 'quarterly' } : {}) })} onSelect={() => navigate({ view, ...(view === 'trends' && options.view !== 'trends' ? { basis: 'quarterly' } : {}) })} aria-current={options.view === view ? 'page' : undefined}>{label}</ViewLink>)}</nav>
     {(navigating || !selectionReady) && <p className={styles.basis} role="status">Loading selected banks…</p>}
     <div className={styles.toolbar}><div><h2>{options.view === 'organization' ? 'Bank & Parent' : options.view === 'exposures' ? 'Inside the balance sheet' : options.view === 'compare' ? 'Compare FFIEC banks' : options.view === 'trends' ? 'The financial trajectory' : 'The bank at a glance'}</h2>{!['compare','exposures','organization'].includes(options.view)&&<p>{options.view === 'trends' ? 'See balances, earnings and capital evolve over time.' : 'Capital, credit quality, funding and earnings.'}</p>}</div>{!['trends', 'organization'].includes(options.view) && <label>Report date<select value={period} onChange={e => navigate({ period: e.target.value })} disabled={!periods.length}>{period && !periods.includes(period) && <option value={period}>{quarterLabel(period)} · Outside available history</option>}{periods.map(p => <option key={p} value={p}>{quarterLabel(p)} · {p}</option>)}</select></label>}</div>

@@ -55,6 +55,15 @@ async function boundedBytes(response, limit, signal) {
 
 /** Dependency injection is fixture-only. Production uses the fixed OIDC gateway. */
 export function createDisposableCache({ env = process.env, fetchImpl = (...args) => fetch(...args), identityTokenImpl = getDataStoreIdentityToken, now = Date.now } = {}) {
+  const pendingReads = new Map();
+  let readEpoch = 0;
+  function invalidatePendingReads() { readEpoch++; pendingReads.clear(); }
+  async function mutate(operation) {
+    // Readers started during or after a write must not join an older read.
+    invalidatePendingReads();
+    try { return await operation(); }
+    finally { invalidatePendingReads(); }
+  }
   function enabled() { return disposableCacheEnabled(env); }
   async function request(operation, params, { signal, deadline = Infinity, timeoutMs = 10000 } = {}) {
     if (!enabled()) throw new DisposableCacheError('disabled');
@@ -115,7 +124,7 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
     return Object.freeze({ payload, rawSha256: row.rawSha256, gzipSha256: row.gzipSha256, rawBytes: row.rawBytes,
       storedBytes: row.storedBytes, writtenAt: row.writtenAt, expiresAt: row.expiresAt });
   }
-  async function getBatch(selected, options) {
+  async function readBatch(selected, options) {
     try {
       const rows = await request('edgar_cache_get', { p_family: selected[0].family, p_type: selected[0].type, p_ids: selected.map(p => p.id) }, options);
       if (!Array.isArray(rows) || rows.length !== selected.length) throw new DisposableCacheError('incomplete_batch', 502);
@@ -127,6 +136,20 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
       const middle = Math.floor(selected.length / 2);
       return [...await getBatch(selected.slice(0, middle), options), ...await getBatch(selected.slice(middle), options)];
     }
+  }
+  function getBatch(selected, options) {
+    // Caller-specific cancellation and deadlines retain independent requests.
+    // Only unfinished default-option reads are shared; values are never retained.
+    const defaults = options === undefined || options !== null && Object.getPrototypeOf(options) === Object.prototype && Reflect.ownKeys(options).length === 0;
+    if (!defaults) return readBatch(selected, options);
+    const key = JSON.stringify([readEpoch, selected[0].family, selected[0].type, selected.map(p => p.id)]);
+    if (pendingReads.has(key)) return pendingReads.get(key);
+    if (pendingReads.size >= 64) return readBatch(selected, options);
+    const pending = readBatch(selected, options).finally(() => {
+      if (pendingReads.get(key) === pending) pendingReads.delete(key);
+    });
+    pendingReads.set(key, pending);
+    return pending;
   }
   async function cacheGetMany(type, ids, options = {}) {
     if (!Array.isArray(ids) || ids.length > 2000) throw new DisposableCacheError('invalid_batch', 422);
@@ -189,18 +212,24 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
       || BigInt(generation) > 9223372036854775807n) throw new DisposableCacheError('invalid_generation_claim', 422);
     return { p_dataset: binding.dataset, p_key: binding.key, p_claim: { generation: String(generation), owner: claim.owner.toLowerCase() } };
   }
-  async function cachePut(type, id, payload, ttlSeconds, options = {}) { return put(type, id, payload, ttlSeconds, options); }
+  async function cachePut(type, id, payload, ttlSeconds, options = {}) {
+    return mutate(() => put(type, id, payload, ttlSeconds, options));
+  }
   async function cacheReserveGeneration(type, fenceId, claim, options = {}) {
     if (!enabled()) return false;
-    const parameters = fenceArguments(type, fenceId, claim);
-    const result = await request('edgar_reserve_cache_generation', parameters, options);
-    if (typeof result !== 'boolean') throw new DisposableCacheError('invalid_acknowledgement', 502);
-    return result;
+    return mutate(async () => {
+      const parameters = fenceArguments(type, fenceId, claim);
+      const result = await request('edgar_reserve_cache_generation', parameters, options);
+      if (typeof result !== 'boolean') throw new DisposableCacheError('invalid_acknowledgement', 502);
+      return result;
+    });
   }
   async function cachePutFenced(type, id, payload, ttlSeconds, claim, options = {}) {
     if (!enabled()) return { stored: false, reason: 'disabled' };
-    const parameters = fenceArguments(type, claim?.fenceId || claim?.key, claim, id);
-    return put(type, id, payload, ttlSeconds, options, parameters);
+    return mutate(() => {
+      const parameters = fenceArguments(type, claim?.fenceId || claim?.key, claim, id);
+      return put(type, id, payload, ttlSeconds, options, parameters);
+    });
   }
   async function cacheStatus(options = {}) { return request('edgar_cache_status', {}, options); }
   async function readCacheMaintenanceState(options = {}) { return request('edgar_cache_maintenance', { p_action: 'read' }, options); }
