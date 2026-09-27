@@ -1,13 +1,12 @@
 import { SITE_URL } from '../../../../utils/siteMetadata';
-import { bankScopeStore } from '../../../../utils/bank/scopeStore.js';
+import { getBankDirectory } from '../../../../utils/bank/directoryStore.js';
 import { bankSitemapXml } from '../../../../utils/bank/seo.js';
 
-export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    const directory = await bankScopeStore('search', { query: '' });
+    const directory = await getBankDirectory();
     return new Response(bankSitemapXml(directory, SITE_URL), { headers: {
       'Content-Type': 'application/xml; charset=utf-8',
       'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400',
