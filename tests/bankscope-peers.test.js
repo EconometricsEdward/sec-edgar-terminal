@@ -118,9 +118,13 @@ test('peer SQL fences ingestion, publishes only complete identity-joined snapsho
     const prior='2026-03-31',priorId=randomUUID(),revisedId=randomUUID(),stagingId=randomUUID(),legacyId=randomUUID();
     await db.query("update edgar_private.bank_pilot_control set catalog=jsonb_set(catalog,'{periods}',$1::jsonb)",[JSON.stringify(['2026-09-30',period,prior,'2025-12-31','2025-09-30'])]);
     for(const [id,date,completed,version] of [[priorId,prior,true,'bankscope-peers-2'],[revisedId,period,true,'bankscope-peers-2'],[stagingId,prior,false,'bankscope-peers-2'],[legacyId,'2025-12-31',true,'bankscope-peers-1']]){
+      await db.query(`insert into edgar_private.bank_panel_entries
+        select id_rssd,$1::date,form_type,has_filed,submission_date_raw,identity_source
+        from edgar_private.bank_panel_entries where report_date=$2::date on conflict do nothing`,[date,period]);
       await db.query(`insert into edgar_private.bank_peer_snapshots(id,report_date,owner,expected_count,received_count,matched_count,source_url,source_sha256,source_index,model_version,completed_at)
-        select $1,$2::date,owner,expected_count,received_count,matched_count,source_url,source_sha256,source_index,$3,case when $4 then clock_timestamp() else null end from edgar_private.bank_peer_snapshots where id=$5`,[id,date,version,completed,snapshotId]);
+        select $1,$2::date,owner,expected_count,received_count,matched_count,source_url,source_sha256,source_index,$3,null from edgar_private.bank_peer_snapshots where id=$4`,[id,date,version,snapshotId]);
       await db.query("insert into edgar_private.bank_peer_profiles select $1,id_rssd,jsonb_set(profile,'{metrics,roa}',$2::jsonb),raw_source from edgar_private.bank_peer_profiles where snapshot_id=$3",[id,id===priorId?'1.1':'99',snapshotId]);
+      if(completed)await db.query('update edgar_private.bank_peer_snapshots set completed_at=clock_timestamp() where id=$1',[id]);
     }
     const payload={rssd:101,period,snapshotId,peers:[2,3,4,5,6,7]},history=await op('peer_history',payload);
     assert.deepEqual(history.periods,['2025-09-30','2025-12-31',prior,period]);

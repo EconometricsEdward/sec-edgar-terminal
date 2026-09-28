@@ -14,7 +14,7 @@ export function createExposureApi({ analyze = getExposures, rateLimit = checkRat
       const limit = await rateLimit({ key: `rl:bankscope:exposures:${getClientIp(request)}`, windowMs: 60000, max: 60 });
       if (!limit.allowed) return rateLimitedResponse(limit);
       const data = await analyze(rssd, period);
-      return Response.json(data, { headers: { 'Cache-Control': data.unavailable || data.missing?.length ? 'private, no-store' : 'public, max-age=0, s-maxage=30, stale-while-revalidate=60', 'X-Content-Type-Options': 'nosniff' } });
+      return Response.json(data, { headers: { 'Cache-Control': data.unavailable || data.missing?.length || data.publicReadCache?.stale ? 'private, no-store' : 'public, max-age=0, s-maxage=30, stale-while-revalidate=60', 'X-Content-Type-Options': 'nosniff' } });
     } catch { return Response.json({ error: 'Exposure details are temporarily unavailable. Please try again.' }, { status: 503, headers: { 'Cache-Control': 'private, no-store' } }); }
   };
 }

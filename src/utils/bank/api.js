@@ -26,7 +26,7 @@ export function createBankApi({store=bankScopeStore,rateLimit=checkRateLimit,sch
       const selected=parseBankRead(request),blocked=await gate(request);if(blocked)return blocked;
       const data=await store(selected.operation,selected.payload);
       const pending=data?.jobs?.some(j=>['queued','running','retry'].includes(j.status));
-      return Response.json(data,{headers:pending?{...PUBLIC,'Cache-Control':'public, max-age=0, s-maxage=3'}:PUBLIC});
+      return Response.json(data,{headers:data?.publicReadCache?.stale?PRIVATE:pending?{...PUBLIC,'Cache-Control':'public, max-age=0, s-maxage=3'}:PUBLIC});
     }catch(error){return fail(error);}},
     async POST(request){try{
       const origin=request.headers.get('origin');

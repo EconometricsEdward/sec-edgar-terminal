@@ -90,6 +90,7 @@ export default function BankPeerBenchmarks({rssd,period,onCompare,lens='peers',c
   const historyPanel=<BankPeerHistory history={history} error={historyError} onRetry={retryHistory} metricKey={historyMetric} onMetricChange={setHistoryMetric} period={period} sectionRef={historyRef} bankName={bank?.name||`Bank RSSD ${rssd}`}/>;
   return <div className={styles.benchmarks} ref={wrapperRef}>
     {error&&<p className={styles.notice} role="status">{error} <button onClick={()=>setReload(n=>n+1)}>Try again</button></p>}
+    {data.publicPeerCache?.stale&&<p className={styles.basis} role="status">Showing the saved peer publication. Last checked <time dateTime={data.publicPeerCache.checkedAt}>{data.publicPeerCache.checkedAt.replace('T',' ').replace(/\.\d{3}Z$/,' UTC')}</time>. Reporting periods and source dates remain identified below.</p>}
     {bank&&<section className={styles.peerContext} ref={contextRef} aria-label="Selected bank and peer group">
       <div className={styles.contextBank}><span className={styles.contextScope}><i className={styles.bankDot}/>Selected bank · individual values</span><strong>{bank.name}</strong><small>RSSD {bank.rssd} · {assets(bank.assets)} assets · {quarterLabel(period)}</small></div>
       <span className={styles.contextVersus} aria-hidden="true">vs</span>

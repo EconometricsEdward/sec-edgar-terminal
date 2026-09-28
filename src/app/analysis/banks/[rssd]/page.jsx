@@ -1,16 +1,15 @@
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { buildPageMetadata, SITE_URL } from '../../../../utils/siteMetadata';
-import { bankScopeStore } from '../../../../utils/bank/scopeStore.js';
+import { getBankPublicRead } from '../../../../utils/bank/publicReadStore.js';
 import { bankPageOptions } from '../../../../utils/bank/viewModel.js';
 import { bankPageSeo } from '../../../../utils/bank/seo.js';
 import BankWorkspace from '../BankWorkspace';
-export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 // Metadata and the page share one read per request, including selected peers.
-// The store additionally provides bounded, short-lived public read reuse.
+// Awaiting searchParams keeps this dynamic while allowing explicit Data Cache reuse.
 const readPage = cache(async (selection) => {
-  try { return { state: await bankScopeStore('read', { rssds: selection.split(',') }), error: false }; }
+  try { return { state: await getBankPublicRead({ rssds: selection.split(',') }), error: false }; }
   catch { return { state: { banks: [], reports: [], jobs: [], periods: [] }, error: true }; }
 });
 export async function generateMetadata({ params, searchParams }) {
