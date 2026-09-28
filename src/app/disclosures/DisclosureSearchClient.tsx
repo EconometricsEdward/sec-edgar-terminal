@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { mapDisclosureWork, mergeDisclosureSearchFilings } from "../../utils/disclosureSearchFlow.js";
+import { createDisclosurePageSettings, readDisclosurePageSettings } from "../../utils/disclosurePageState.js";
 import {
   FileSearch,
   Link as LinkIcon,
@@ -9,15 +10,14 @@ import {
   AlertCircle,
   ArrowUpRight,
 } from "lucide-react";
-import {
-  legacyDisclosureQuery,
-  parseDisclosureQuery,
-} from "../../utils/disclosureQuery.js";
+import { parseDisclosureQuery } from "../../utils/disclosureQuery.js";
 import { filingEvidenceId } from "../../utils/disclosureNotebook.js";
 import DisclosureQueryBar from "./DisclosureQueryBar";
 const DisclosureReader = dynamic(() => import("./DisclosureReader"));
-import DisclosureResults from "./DisclosureResults";
-import DisclosureCoverageDesk from "./DisclosureCoverageDesk";
+const DisclosureResults = dynamic(() => import("./DisclosureResults"), {
+  loading: () => <p role="status">Preparing search results…</p>,
+});
+const DisclosureCoverageDesk = dynamic(() => import("./DisclosureCoverageDesk"));
 import { parseDisclosureReaderState } from "../../utils/disclosureReaderState.js";
 import {
   DISCLOSURE_SESSION_KEY,
@@ -108,24 +108,16 @@ async function verifyFiling(
 
 export default function DisclosureSearchClient({
   initial = {},
+  initialToday = new Date().toISOString().slice(0, 10),
 }: {
   initial?: Partial<SearchSettings>;
+  initialToday?: string;
 }) {
-  const [settings, setSettings] = useState<SearchSettings>(() => ({
-    tickers: "",
-    mode: "index",
-    searchStyle: "smart",
-    start: `${new Date().getUTCFullYear() - 1}-01-01`,
-    end: new Date().toISOString().slice(0, 10),
-    forms: "10-K,10-Q,8-K",
-    section: "all",
-    scope: "paragraph",
-    depth: 4,
-    amendments: false,
-    comparison: "none",
-    ...initial,
-    query: initial.searchStyle === "exact" ? legacyDisclosureQuery(initial.query || "") : initial.query || "",
-  }));
+  const [today, setToday] = useState(initialToday);
+  const [settings, setSettings] = useState<SearchSettings>(() =>
+    createDisclosurePageSettings(initial, initialToday) as SearchSettings,
+  );
+  const initialQueryRef = useRef(initial.query || "");
   const [active, setActive] = useState<SearchSettings | null>(null);
   const [companies, setCompanies] = useState<CompanyScan[]>([]);
   const [index, setIndex] = useState<any>(null);
@@ -214,13 +206,23 @@ export default function DisclosureSearchClient({
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
+      // Resolve link filters before restoring a tab session or starting research.
+      // No URL-dependent server render or extra research request is necessary.
+      const browserToday = new Date().toISOString().slice(0, 10);
+      const hydratedSettings = createDisclosurePageSettings({
+        ...readDisclosurePageSettings(params),
+        ...initial,
+      }, browserToday) as SearchSettings;
+      initialQueryRef.current = hydratedSettings.query;
+      setToday(browserToday);
+      setSettings(hydratedSettings);
       const pointer = parseDisclosureReaderState(params);
       if (pointer) {
         setReader({
           filing: pointer.filing,
           settings: {
-            ...settings,
-            tickers: settings.tickers || pointer.filing.ticker,
+            ...hydratedSettings,
+            tickers: hydratedSettings.tickers || pointer.filing.ticker,
           },
           initialState: pointer,
         });
@@ -253,7 +255,7 @@ export default function DisclosureSearchClient({
           snapshot &&
           (!explicit ||
             disclosureSearchIdentity(snapshot.settings) ===
-              disclosureSearchIdentity(settings))
+              disclosureSearchIdentity(hydratedSettings))
         ) {
           setSettings(snapshot.settings);
           setActive(snapshot.settings);
@@ -301,7 +303,7 @@ export default function DisclosureSearchClient({
     setInterpretation(null);
   };
   useEffect(() => () => { abortRef.current?.abort(); }, []);
-  const enrichCandidates = async (candidates: Filing[], next: SearchSettings, signal: AbortSignal, startedAt?: number) => {
+  const enrichCandidates = useCallback(async (candidates: Filing[], next: SearchSettings, signal: AbortSignal, startedAt?: number) => {
     let completed = 0;
     await mapDisclosureWork(candidates, async (filing: Filing) => {
       try {
@@ -318,11 +320,14 @@ export default function DisclosureSearchClient({
         if (!signal.aborted) setProgress(`Checking source passages · ${completed} of ${candidates.length} documents. Results are ready to read.`);
       }
     }, { concurrency: 2, signal });
-  };
+  }, []);
   const run = async (
     requestedSettings: SearchSettings,
     options: { resume?: boolean; targets?: string[]; after?: string; view?: string } = {},
   ) => {
+    // Fetch only UI code while discovery runs; never prefetch SEC research on
+    // page load or hover. This avoids a result-component waterfall on arrival.
+    void import("./DisclosureResults").catch(() => {});
     if (running.current) abortRef.current?.abort();
     running.current = true;
     const controller = new AbortController();
@@ -512,9 +517,9 @@ export default function DisclosureSearchClient({
   useEffect(() => {
     if (!sessionReady || initialSearchStarted.current) return;
     initialSearchStarted.current = true;
-    if (initial.query && !activeRef.current && !parseDisclosureReaderState(new URLSearchParams(window.location.search)))
+    if (initialQueryRef.current && !activeRef.current && !parseDisclosureReaderState(new URLSearchParams(window.location.search)))
       void runRef.current(settings);
-  }, [sessionReady, initial.query, settings]);
+  }, [sessionReady, settings]);
   const requested = useMemo(() => {
     return active
       ? [...new Set(companyInputs(active.tickers).map((t) => aliases[t] || t))]
@@ -524,19 +529,19 @@ export default function DisclosureSearchClient({
   const allResults: Filing[] = useMemo(() => active?.mode === "index"
     ? mergeDisclosureSearchFilings((index?.results || []).map(indexFiling), prepared, verified)
     : filings, [active?.mode, index, prepared, verified, filings]);
-  const open = (
+  const open = useCallback((
     filing: Filing,
     next: SearchSettings,
     pointer?: { index: number; side: "current" | "prior" },
   ) => {
     evidenceTrigger.current = document.activeElement as HTMLElement;
     setReader({ filing, settings: next, initialState: pointer });
-  };
+  }, []);
   const closeReader = () => {
     setReader(null);
     evidenceTrigger.current?.focus({ preventScroll: true });
   };
-  const verifyCandidates = async () => {
+  const verifyCandidates = useCallback(async () => {
     if (!active || running.current) return;
     running.current = true;
     setBusy(true);
@@ -550,7 +555,7 @@ export default function DisclosureSearchClient({
       running.current = false;
       setProgress(controller.signal.aborted ? "Verification stopped; completed passages retained." : "Source checks finished. Open any result to read the full passage.");
     }
-  };
+  }, [active, allResults, enrichCandidates]);
   const loadMoreIndex = async () => {
     if (!active || running.current || index?.nextFrom == null) return;
     running.current = true;
@@ -625,7 +630,7 @@ export default function DisclosureSearchClient({
       </div>
       <span className={s.sourceBadge}><span /> Original SEC filings</span>
     </header>
-    <DisclosureQueryBar settings={settings} setSettings={updateDraft}
+    <DisclosureQueryBar settings={settings} setSettings={updateDraft} today={today}
       onSearch={run} busy={busy} interpreting={interpreting} interpretation={interpretation}
       onApplySuggestion={(query) => updateDraft({ ...settings, query })}
       stop={() => abortRef.current?.abort()} />
