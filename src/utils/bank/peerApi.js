@@ -15,7 +15,7 @@ export function createPeerApi({analyze=getPeerAnalysis,history=getPeerAnalysis.h
       const data=await (withReference?reference:withHistory?history:analyze)(rssd,period);
       if(withReference&&!isBankReferenceResult(data,rssd,period))throw Error();
       const referenceReady=withReference&&data.ubpr.status==='ready'&&data.ubpr.report?.data?.stage==='validated';
-      return Response.json(data,{headers:withReference&&!referenceReady?{...headers,'Cache-Control':'private, no-store'}:headers});
+      return Response.json(data,{headers:withReference&&!referenceReady||data.publicPeerCache?.stale?{...headers,'Cache-Control':'private, no-store'}:headers});
     }catch{return Response.json({error:withReference?'Official FFIEC references are temporarily unavailable. Peer benchmarks remain available.':'Peer benchmarks are temporarily unavailable. Try again shortly.'},{status:503,headers:{'Cache-Control':'private, no-store'}});}
   };
 }

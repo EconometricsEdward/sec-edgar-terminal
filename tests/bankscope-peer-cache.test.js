@@ -91,7 +91,7 @@ test('concurrent quarters share one manifest, separate their data and isolate ca
   assert.equal(results[0].snapshot.report_date, earlier);
 });
 
-test('manifest age caps process reuse and source failures do not extend freshness or retry twice', async () => {
+test('manifest outage reuses published data with a bounded thirty-second recovery check', async () => {
   let clock = 0, fail = false, small = 0, heavy = 0; const shared = sharedCache();
   const options = { env, cache: shared.cache, now: () => clock, store: async op => {
     if (op === 'peer_status') { small++; if (fail) throw Error('offline'); return manifest(fixture()); }
@@ -102,10 +102,10 @@ test('manifest age caps process reuse and source failures do not extend freshnes
   const second = createPeerService({ now: () => clock, loadUniverse: createBankPeerUniverse(options) });
   await second(1, period); assert.equal(small, 1); assert.equal(heavy, 1);
   clock = 300001; fail = true;
-  await assert.rejects(second(1, period), { code: 'database_failure' });
+  assert.equal((await second(1, period)).bank.rssd, 1);
   assert.equal(small, 2); assert.equal(heavy, 1);
-  await assert.rejects(second(1, period)); assert.equal(small, 2);
-  clock += 5001; fail = false;
+  assert.equal((await second(1, period)).bank.rssd, 1); assert.equal(small, 2);
+  clock += 30001; fail = false;
   assert.equal((await second(1, period)).bank.rssd, 1);
   assert.equal(small, 3); assert.equal(heavy, 1);
 });
@@ -133,8 +133,84 @@ test('background manifest revalidation and hard-expiry repair share one small re
   const refreshed = await get(period);
   assert.equal(refreshed.cacheExpiresAt, 600001); assert.equal(small, 2); assert.equal(heavy, 1);
   clock = 600002; fail = true;
-  await assert.rejects(get(period)); await assert.rejects(get(period));
+  const stale = await get(period);
+  assert.equal(stale.publicPeerCache.stale, true);
+  assert.equal(stale.publicPeerCache.checkedAt, new Date(300001).toISOString());
+  assert.equal(stale.cacheExpiresAt, 630002);
+  assert.equal((await get(period)).snapshot.id, stale.snapshot.id);
   assert.equal(small, 3); assert.equal(heavy, 1);
+});
+
+test('stale fallback preserves publication identity across instances, expires and recovers to a new publication', async () => {
+  let clock = 0, unavailable = false, data = fixture(), small = 0, heavy = 0;
+  const shared = sharedCache();
+  const options = { env, cache: shared.cache, now: () => clock, store: async op => {
+    if (op === 'peer_status') { small++; if (unavailable) throw Error('offline'); return manifest(data); }
+    heavy++; return data;
+  } };
+  const original = await createBankPeerUniverse(options)(period);
+  clock = 300001; unavailable = true;
+  const second = createBankPeerUniverse(options);
+  const stale = await second(period);
+  assert.deepEqual(stale.snapshot, original.snapshot);
+  assert.deepEqual(stale.profiles, original.profiles);
+  assert.equal(stale.publicPeerCache.stale, true);
+  assert.equal(stale.publicPeerCache.checkedAt, new Date(0).toISOString());
+  assert.equal(stale.cacheExpiresAt, 330001);
+  clock = 320001;
+  assert.equal((await second(period)).cacheExpiresAt, 330001);
+  assert.equal(small, 2); assert.equal(heavy, 1);
+  clock = 330002; unavailable = false; data = fixture(period, 40, '2026-09-28T00:10:00Z');
+  data.snapshot.id = 'abcd1234-1234-1234-1234-abcdef123457';
+  const recovered = await second(period);
+  assert.equal(recovered.publicPeerCache.stale, false);
+  assert.equal(recovered.snapshot.id, data.snapshot.id);
+  assert.equal(small, 3); assert.equal(heavy, 2);
+  clock = 86390000; unavailable = true;
+  // A new process has only the original shared manifest, whose outage allowance
+  // cannot be extended by successive fallback reads or the later L1 refresh.
+  const finalInstance = createBankPeerUniverse(options);
+  assert.equal((await finalInstance(period)).cacheExpiresAt, 86400000);
+  clock = 86400000;
+  await assert.rejects(finalInstance(period), { code: 'database_failure' });
+  assert.equal(small, 4); assert.equal(heavy, 2);
+});
+
+test('stale metadata never starts a cold universe read or repairs a corrupted payload', async () => {
+  for (const corrupt of [false, true]) {
+    let clock = 0, unavailable = false, small = 0, heavy = 0;
+    const shared = sharedCache();
+    const options = { env, cache: shared.cache, now: () => clock, store: async op => {
+      if (op === 'peer_status') { small++; if (unavailable) throw Error('offline'); return manifest(fixture()); }
+      heavy++; return fixture();
+    } };
+    await createBankPeerUniverse(options)(period);
+    const [key, text] = universeEntries(shared)[0];
+    if (corrupt) { const value = JSON.parse(text); value.sha256 = 'b'.repeat(64); shared.entries.set(key, JSON.stringify(value)); }
+    else shared.entries.delete(key);
+    clock = 300001; unavailable = true;
+    await assert.rejects(createBankPeerUniverse(options)(period), { code: 'database_failure' });
+    assert.equal(small, 2); assert.equal(heavy, 1);
+  }
+});
+
+test('malformed current metadata and unknown stale publications cannot be hidden by fallback', async () => {
+  for (const invalid of [{ snapshots: 'invalid' }, { snapshots: [{ ...manifest(fixture()).snapshots[0], matched_count: -1 }] }]) {
+    let clock = 0, data = manifest(fixture()); const shared = sharedCache();
+    const get = createBankPeerUniverse({ env, cache: shared.cache, now: () => clock,
+      store: async op => op === 'peer_status' ? data : fixture() });
+    await get(period);
+    clock = 300001; data = invalid;
+    await assert.rejects(get(period), { code: 'database_failure' });
+  }
+  let clock = 0, unavailable = false, heavy = 0; const shared = sharedCache();
+  const get = createBankPeerUniverse({ env, cache: shared.cache, now: () => clock, store: async op => {
+    if (op === 'peer_status') { if (unavailable) throw Error('offline'); return manifest(fixture()); }
+    heavy++; return fixture();
+  } });
+  await get(period); clock = 300001; unavailable = true;
+  await assert.rejects(get('2026-03-31'), { code: 'database_failure' });
+  assert.equal(heavy, 1);
 });
 
 test('malformed manifests never persist or trigger a full universe read', async () => {
@@ -197,7 +273,7 @@ test('missing publications skip full reads and retry metadata after thirty secon
   assert.equal(small, 2); assert.equal(heavy, 1);
   const isolated = sharedCache(), source = backend();
   const oversized = createBankPeerUniverse({ env, cache: isolated.cache, now: () => 0, maxSharedBytes: 1, store: source.store });
-  assert.deepEqual(await oversized(period), { ...fixture(), cacheExpiresAt: 30000 });
+  assert.deepEqual(await oversized(period), { ...fixture(), cacheExpiresAt: 30000, publicPeerCache: { checkedAt: new Date(0).toISOString(), stale: false } });
   assert.deepEqual(source.counts, { peer_status: 1, peer_universe: 1 });
   assert.equal(universeEntries(isolated).length, 0);
 });

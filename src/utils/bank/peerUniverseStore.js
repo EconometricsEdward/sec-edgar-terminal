@@ -11,6 +11,7 @@ const VERSION = 'bankscope-peer-universe-v2';
 const MODEL = PEER_MODEL_VERSION;
 const MAX_AGE = 300000;
 const UNIVERSE_MAX_AGE = 86400000;
+const MANIFEST_RETRY_AGE = 30000;
 const MANIFEST_VERSION = `${VERSION}-manifest`;
 const MAX_MANIFEST_BYTES = 128 * 1024;
 const MAX_RAW_BYTES = 12 * 1024 * 1024;
@@ -70,11 +71,14 @@ class UnsharedUniverse extends Error {
 
 /** Refresh the small publication manifest every five minutes. Reuse compressed
  * quarterly data by publication for a day; unchanged publications do not repeat
- * the expensive SQL aggregate. Caller freshness is always bounded by the manifest.
+ * the expensive SQL aggregate. During source outages, an existing validated
+ * publication remains usable for at most a day, with thirty-second recovery
+ * checks and explicit stale metadata. Cold misses still require a healthy source.
  */
 export function createBankPeerUniverse({ store = bankScopeStore, cache = unstable_cache, env = process.env,
   now = Date.now, maxSharedBytes = MAX_SHARED_BYTES } = {}) {
   const producing = new Map(), reading = new Map(), manifestReading = new Map(), recent = new Map(), failures = new Map();
+  const previousManifests = new Map(), manifestSourceFailures = new Map(), sourceAllowedUntil = new Map();
   const scope = () => JSON.stringify([env.VERCEL_ENV, env.VERCEL_GIT_COMMIT_REF || '']);
   const manifestKey = deployment => `manifest:${deployment}`;
   const universeKey = (deployment, period, publication) => JSON.stringify(['universe', deployment, period, publication]);
@@ -105,8 +109,22 @@ export function createBankPeerUniverse({ store = bankScopeStore, cache = unstabl
   }
   function produceManifest(deployment) {
     guard(deployment);
+    const key = manifestKey(deployment);
+    if (manifestSourceFailures.get(key) > now()) throw new BankDataError('database_failure');
     return produceOnce(manifestKey(deployment), async () => {
-      const snapshots = manifestSnapshots(await store('peer_status'));
+      let data;
+      try { data = await store('peer_status'); }
+      catch (error) {
+        // Only an unavailable source permits reuse. A returned malformed
+        // manifest must fail validation rather than hide behind an old entry.
+        if (!(error instanceof BankDataError) || error.code === 'database_failure') {
+          if (manifestSourceFailures.size >= 4 && !manifestSourceFailures.has(key)) manifestSourceFailures.delete(manifestSourceFailures.keys().next().value);
+          manifestSourceFailures.set(key, now() + MANIFEST_RETRY_AGE);
+        }
+        throw error;
+      }
+      manifestSourceFailures.delete(key);
+      const snapshots = manifestSnapshots(data);
       if (!snapshots) throw new BankDataError('database_failure');
       const value = { version: MANIFEST_VERSION, deployment, checkedAt: now(), snapshots };
       if (Buffer.byteLength(JSON.stringify(value)) > MAX_MANIFEST_BYTES) throw new BankDataError('response_too_large');
@@ -115,7 +133,11 @@ export function createBankPeerUniverse({ store = bankScopeStore, cache = unstabl
   }
   function produceUniverse(deployment, period, publication) {
     guard(deployment);
-    return produceOnce(universeKey(deployment, period, publication), async () => {
+    const key = universeKey(deployment, period, publication);
+    // During a metadata outage, use only an already cached, validated snapshot.
+    // Do not turn a stale manifest into a fresh expensive database read.
+    if (!(sourceAllowedUntil.get(key) > now())) throw new BankDataError('database_failure');
+    return produceOnce(key, async () => {
       const data = await store('peer_universe', { period });
       if (!validPeerUniverse(data, period)) throw new BankDataError('database_failure');
       if (!data.snapshot) throw new UnsharedUniverse(data);
@@ -140,20 +162,40 @@ export function createBankPeerUniverse({ store = bankScopeStore, cache = unstabl
       return produce(...args);
     }
   }
-  function validManifest(entry, deployment) {
+  function validManifest(entry, deployment, maxAge = MAX_AGE) {
     return object(entry) && entry.version === MANIFEST_VERSION && entry.deployment === deployment
-      && Number.isFinite(entry.checkedAt) && now() - entry.checkedAt >= 0 && now() - entry.checkedAt < MAX_AGE
+      && Number.isFinite(entry.checkedAt) && now() - entry.checkedAt >= 0 && now() - entry.checkedAt < maxAge
       && Buffer.byteLength(JSON.stringify(entry)) <= MAX_MANIFEST_BYTES && manifestSnapshots(entry) !== null;
+  }
+  function retainManifest(key, entry) {
+    if (previousManifests.size >= 4 && !previousManifests.has(key)) previousManifests.delete(previousManifests.keys().next().value);
+    previousManifests.set(key, entry);
+    return entry;
+  }
+  function staleManifest(key, entry, deployment) {
+    const retryAt = manifestSourceFailures.get(key);
+    return retryAt > now() && validManifest(entry, deployment, UNIVERSE_MAX_AGE)
+      ? { ...entry, stale: true, retryAt: Math.min(retryAt, entry.checkedAt + UNIVERSE_MAX_AGE) } : null;
   }
   async function readManifest(deployment) {
     const key = manifestKey(deployment);
     if (manifestReading.has(key)) return manifestReading.get(key);
+    const fallback = staleManifest(key, previousManifests.get(key), deployment);
+    if (fallback) return fallback;
     if (failures.get(key) > now() || manifestReading.size >= 8) throw new BankDataError('database_failure');
     const task = (async () => {
-      let value = await cachedOrProduce(sharedManifest, produceManifest, key, [deployment]);
-      if (!validManifest(value, deployment)) value = await produceManifest(deployment);
-      if (!validManifest(value, deployment)) throw new BankDataError('database_failure');
-      return value;
+      let candidate = previousManifests.get(key);
+      try {
+        let value = await cachedOrProduce(sharedManifest, produceManifest, key, [deployment]);
+        candidate = validManifest(value, deployment, UNIVERSE_MAX_AGE) ? retainManifest(key, value) : null;
+        if (!validManifest(value, deployment)) value = await produceManifest(deployment);
+        if (!validManifest(value, deployment)) throw new BankDataError('database_failure');
+        return retainManifest(key, value);
+      } catch (error) {
+        const stale = staleManifest(key, candidate, deployment);
+        if (stale) return stale;
+        throw error;
+      }
     })().finally(() => manifestReading.delete(key));
     manifestReading.set(key, task);
     return task;
@@ -181,21 +223,27 @@ export function createBankPeerUniverse({ store = bankScopeStore, cache = unstabl
       let manifest = await readManifest(deployment);
       let publication = manifest.snapshots.find(s => s.report_date === period && s.model_version === MODEL);
       // Preserve the existing short retry window for a not-yet-published period.
-      if (!publication && now() - manifest.checkedAt >= 30000) {
+      if (!publication && !manifest.stale && now() - manifest.checkedAt >= 30000) {
         manifest = await produceManifest(deployment);
         publication = manifest.snapshots.find(s => s.report_date === period && s.model_version === MODEL);
       }
-      const cacheExpiresAt = manifest.checkedAt + MAX_AGE;
+      const cacheExpiresAt = manifest.stale ? manifest.retryAt : manifest.checkedAt + MAX_AGE;
+      const publicPeerCache = { checkedAt: new Date(manifest.checkedAt).toISOString(), stale: manifest.stale === true };
+      if (manifest.stale && !publication) throw new BankDataError('database_failure');
       if (!publication) return { profiles: [], cacheExpiresAt: Math.min(cacheExpiresAt, now() + 30000) };
       const publishedAt = Date.parse(publication.completed_at), sourceKey = universeKey(deployment, period, publishedAt);
+      if (!manifest.stale) {
+        if (sourceAllowedUntil.size >= 8 && !sourceAllowedUntil.has(sourceKey)) sourceAllowedUntil.delete(sourceAllowedUntil.keys().next().value);
+        sourceAllowedUntil.set(sourceKey, cacheExpiresAt);
+      }
       try {
         const entry = await cachedOrProduce(sharedUniverse, produceUniverse, sourceKey, [deployment, period, publishedAt]);
         let data;
         try { data = await decode(entry, deployment, period, publishedAt); }
         catch { data = await decode(await produceUniverse(deployment, period, publishedAt), deployment, period, publishedAt); }
-        return { ...data, cacheExpiresAt };
+        return { ...data, cacheExpiresAt, publicPeerCache };
       } catch (error) {
-        if (error instanceof UnsharedUniverse) return { ...error.data, cacheExpiresAt: Math.min(cacheExpiresAt, now() + 30000) };
+        if (error instanceof UnsharedUniverse) return { ...error.data, cacheExpiresAt: Math.min(cacheExpiresAt, now() + 30000), publicPeerCache };
         throw error;
       }
     })().catch(() => { throw failed(key); }).finally(() => reading.delete(key));

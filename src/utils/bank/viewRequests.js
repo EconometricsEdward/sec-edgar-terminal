@@ -13,6 +13,7 @@ function valid(body, {kind,rssd,period,snapshotId,sourceHash}) {
   return identity(body.rssd,rssd) && Array.isArray(body.periods) && body.periods.length <= 4 && body.periods.every(p=>quarter(p) && p <= period) && Array.isArray(body.missing) && Array.isArray(body.reports) && body.reports.length <= 4 && body.reports.every(r=>identity(r.rssd,rssd) && body.periods.includes(r.period) && /^[a-f0-9]{64}$/.test(r.hash) && r.values && r.facts && (r.period !== period || !sourceHash || r.hash === sourceHash));
 }
 function reusable(kind, body) {
+  if (body.publicPeerCache?.stale || body.publicReadCache?.stale) return false;
   if (kind === 'peers') return !!body.snapshot?.id && body.status !== 'preparing';
   if (kind === 'reference') return body.ubpr.status === 'ready' && body.ubpr.report?.data?.stage === 'validated';
   if (kind === 'history') return body.metrics.some(m=>m.points.some(p=>p.sourceAvailable));

@@ -126,8 +126,8 @@ test('worker reprocesses retained sources and does not call FFIEC for an idle qu
 
 test('worker reprocesses cached official XBRL without contacting FFIEC and preserves its source version',async()=>{
   const xml=await readFile(new URL('./fixtures/bank-852218-2026-06-30.xml',import.meta.url),'utf8');
-  const operations=[];let claimed=false;const published=[];
-  const result=await runBankWorker({peers:false,clientFactory:()=>{throw Error('cached work must not create an upstream client');},store:async(op,p)=>{
+  const operations=[];let claimed=false;const published=[],invalidated=[];
+  const result=await runBankWorker({peers:false,invalidateRead:async rssd=>{invalidated.push(rssd);throw Error('cache temporarily unavailable');},clientFactory:()=>{throw Error('cached work must not create an upstream client');},store:async(op,p)=>{
     operations.push(op);
     if(op==='begin')return {allowed:true};
     if(op==='status')return {periods:[date]};
@@ -136,6 +136,7 @@ test('worker reprocesses cached official XBRL without contacting FFIEC and prese
     if(op==='publish')published.push(p);
   }});
   assert.equal(result.stored,1);assert.equal(result.reused,1);assert.equal(published.length,1);
+  assert.deepEqual(invalidated,[852218]);assert.equal(operations.includes('job_error'),false,'cache invalidation cannot undo a committed report');
   assert.equal(published[0].validation.passed,true);assert.equal(published[0].metrics.length,35);
   assert.equal(published[0].retrievedAt,'2026-09-25T01:00:00.000Z');
   assert.equal(published[0].submissionDate,'source-date');assert.equal(operations.includes('reserve'),false);

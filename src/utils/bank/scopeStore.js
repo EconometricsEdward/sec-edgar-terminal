@@ -76,7 +76,7 @@ export function createBankScopeStore({ env = process.env, fetchImpl = fetch,
     }
   }
 
-  return async (operation, payload = {}) => {
+  const store = async (operation, payload = {}) => {
     // Check before cache lookup, so switching environment cannot expose a production result.
     if (typeof window !== 'undefined' || !isBankScopeEnvironment(env)) throw new BankDataError('bank_service_unavailable');
     if (INVALIDATES_READS.has(operation)) {
@@ -121,6 +121,15 @@ export function createBankScopeStore({ env = process.env, fetchImpl = fetch,
     pending.set(key, task);
     return structuredClone(await task);
   };
+  // Shared-cache refreshes must observe the database directly. An instance's
+  // short local cache may predate a publication invalidated on another server.
+  store.readFresh = async payload => {
+    if (typeof window !== 'undefined' || !isBankScopeEnvironment(env)) throw new BankDataError('bank_service_unavailable');
+    const ids = bankReadSelection(payload);
+    if (!ids) throw new BankDataError('invalid_selection', { status: 400 });
+    return request('read', { rssds: ids }, data => isBankReadResult(data, ids));
+  };
+  return store;
 }
 
 export const bankScopeStore = createBankScopeStore();

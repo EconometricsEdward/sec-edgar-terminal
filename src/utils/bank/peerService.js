@@ -21,7 +21,8 @@ export function createPeerService({store=bankScopeStore,now=Date.now,loadUnivers
     cache.set(period,entry);return entry.promise;
   }
   const analyze=async(rssd,period)=>{
-    return {...buildPeerAnalysis(await universe(period),rssd),period};
+    const data=await universe(period);
+    return {...buildPeerAnalysis(data,rssd),period,...(data.publicPeerCache?{publicPeerCache:data.publicPeerCache}:{})};
   };
   // Optional official-reference reads cannot delay or break peer matching.
   analyze.reference=async(rssd,period)=>{
@@ -32,10 +33,11 @@ export function createPeerService({store=bankScopeStore,now=Date.now,loadUnivers
   // History shares the coalesced universe but reads only this bank and its <=30 peers.
   // Separate requests let the current-quarter view remain usable if history fails.
   analyze.history=async(rssd,period)=>{
-    const analysis=buildPeerAnalysis(await universe(period),rssd);
-    if(!analysis.bank||!analysis.snapshot?.id)return buildPeerHistory({},analysis,period);
+    const data=await universe(period),analysis=buildPeerAnalysis(data,rssd);
+    const freshness=data.publicPeerCache?{publicPeerCache:data.publicPeerCache}:{};
+    if(!analysis.bank||!analysis.snapshot?.id)return {...buildPeerHistory({},analysis,period),...freshness};
     const source=await store('peer_history',{rssd,period,snapshotId:analysis.snapshot.id,peers:analysis.peers.map(p=>p.rssd)});
-    return buildPeerHistory(source,analysis,period);
+    return {...buildPeerHistory(source,analysis,period),...freshness};
   };
   return analyze;
 }

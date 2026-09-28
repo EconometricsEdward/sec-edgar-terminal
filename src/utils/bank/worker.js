@@ -6,13 +6,21 @@ import { decodeFacsimile,parseCallXbrl } from './parser.js';
 import { normalizeBankReport } from './normalization.js';
 import { safeBankError } from './errors.js';
 import { bankScopeStore } from './scopeStore.js';
+import { invalidateBankPublicRead } from './publicReadStore.js';
 import { refreshPeerUniverse,prepareUbpr } from './peerWorker.js';
 
 /** One durable, fenced worker. Reader GET routes never import or invoke this. */
-export async function runBankWorker({store=bankScopeStore,env=process.env,maintain=false,maxFilings=4,now=Date.now,clientFactory=createFfiecClient,peers=true}={}) {
+export async function runBankWorker({store=bankScopeStore,env=process.env,maintain=false,maxFilings=4,now=Date.now,clientFactory=createFfiecClient,peers=true,
+  invalidateRead=store===bankScopeStore?invalidateBankPublicRead:async()=>{}}={}) {
   const owner=randomUUID(),begin=await store('begin',{owner});
   if(!begin.allowed)return {status:begin.code,retryAt:begin.retryAt};
-  const owned=(op,payload={})=>store(op,{...payload,owner}),result={status:'ready',stored:0,reused:0,directory:0};
+  const owned=async(op,payload={})=>{
+    const value=await store(op,{...payload,owner});
+    // A committed source/report must expire only this bank's shared reads.
+    // Cache infrastructure cannot turn a successful publication into a failed job.
+    if(op==='publish')await Promise.resolve().then(()=>invalidateRead(payload.rssd)).catch(()=>{});
+    return value;
+  },result={status:'ready',stored:0,reused:0,directory:0};
   const deadline=now()+180000;
   let client;
   const request=(method,params)=>{

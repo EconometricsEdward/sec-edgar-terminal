@@ -35,6 +35,37 @@ test('twenty concurrent profile reads plus repeated warm reads make one backend 
   assert.equal(state.calls, 2, 'a ready report is refreshed at thirty seconds');
 });
 
+test('shared-cache refresh can bypass a warm local read after an amendment', async () => {
+  const { state, read, store } = fixture();
+  await read();
+  state.respond = async payload => {
+    const data = result(payload.rssds);
+    data.reports[0].source_sha256 = 'b'.repeat(64);
+    data.reports[0].metrics[0].value = 2000000;
+    return data;
+  };
+  assert.equal((await read()).reports[0].source_sha256, 'a'.repeat(64));
+  assert.equal(state.calls, 1, 'ordinary reads retain their local optimization');
+  const amended = await store.readFresh({ rssds: ['451965'] });
+  assert.equal(amended.reports[0].source_sha256, 'b'.repeat(64));
+  assert.equal(amended.reports[0].metrics[0].value, 2000000);
+  assert.equal(state.calls, 2);
+});
+
+test('fresh reads enforce environment, selection and source validation before reuse', async () => {
+  const { state, store } = fixture();
+  await assert.rejects(store.readFresh({ rssds: [451965], extra: true }), { code: 'invalid_selection' });
+  assert.equal(state.calls, 0);
+  state.env.VERCEL_ENV = 'preview';
+  await assert.rejects(store.readFresh({ rssds: [451965] }), { code: 'bank_service_unavailable' });
+  assert.equal(state.calls, 0);
+  state.env.VERCEL_ENV = 'production';
+  state.respond = async () => result([123]);
+  await assert.rejects(store.readFresh({ rssds: [451965] }), { code: 'database_failure' });
+  state.respond = async payload => { const data = result(payload.rssds); data.reports[0].source_sha256 = 'bad'; return data; };
+  await assert.rejects(store.readFresh({ rssds: [451965] }), { code: 'database_failure' });
+});
+
 test('pending, missing and unprepared banks refresh after three seconds', async () => {
   for (const response of [result([451965], 'queued'), { ...result(), banks: [], reports: [], jobs: [] }, { ...result(), reports: [], jobs: [] }]) {
     const { state, read } = fixture();
