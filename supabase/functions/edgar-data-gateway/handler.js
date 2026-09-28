@@ -3,6 +3,7 @@ import { FUND_REVIEW_LIMITS, FUND_REVIEW_RPC_PARAMETERS, validFundReviewRpc } fr
 import { APPROVED_SEC_CIKS, SUPPORTING_SOURCE_CIKS } from './coverage.js';
 import { DISPOSABLE_CACHE_LIMITS as CACHE_LIMITS, disposableCachePolicy, disposableCacheFencePolicy, disposableCacheFenceResource } from './cachePolicy.js';
 import { DISCLOSURE_INDEX_LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument, validDisclosureIndexSearch } from './disclosurePolicy.js';
+import { isApplicationConflict } from './conflictPolicy.js';
 export const TRUST = Object.freeze({
   issuer: 'https://oidc.vercel.com/econometricsedwards-projects',
   audience: 'https://vercel.com/econometricsedwards-projects',
@@ -572,16 +573,20 @@ export function createGateway({ verifyToken, fetchImpl = fetch, env = defaultEnv
       if (!upstream.ok) {
         // Preserve the SQL fencing marker used by the adapter; all other
         // upstream messages are discarded so credentials cannot reach callers.
-        let code, cacheOverflow = false, reviewCapacity = false, reviewRevisionChanged = false;
+        let code, cacheOverflow = false, reviewCapacity = false, reviewRevisionChanged = false, applicationConflict = false;
         try {
           const error = JSON.parse(decoder.decode(await boundedBytes(upstream, RPC_BYTES, controller.signal)));
           code = error.code;
+          applicationConflict = isApplicationConflict(rpcMatch?.[1], error);
           reviewCapacity = fundReviewOperation && error.code === '54000' && error.message === 'fund_review_capacity';
           reviewRevisionChanged = fundReviewOperation && error.code === 'PT409' && error.message === 'stale_fund_review_report';
           cacheOverflow = rpcMatch?.[1] === 'edgar_cache_get' && error.code === '22023' && error.message === 'cache_response_too_large';
         } catch { /* sanitized below */ }
         const status = integer(upstream.status, 400, 599) ? upstream.status : 502;
-        return json({ code: reviewRevisionChanged ? 'review_revision_changed' : reviewCapacity ? 'fund_review_capacity' : cacheOverflow ? 'cache_response_too_large' : code === '40001' ? '40001' : 'upstream_failure' }, reviewRevisionChanged ? 409 : status);
+        // "40001" here is only the legacy JSON contract understood by draining
+        // callers. The actual database SQLSTATE is PT409: PostgREST has already
+        // rejected it once, so this response cannot trigger database retries.
+        return json({ code: reviewRevisionChanged ? 'review_revision_changed' : applicationConflict ? '40001' : reviewCapacity ? 'fund_review_capacity' : cacheOverflow ? 'cache_response_too_large' : code === '40001' ? '40001' : 'upstream_failure' }, reviewRevisionChanged || applicationConflict ? 409 : status);
       }
       const bytes = await boundedBytes(upstream, raw ? OBJECT_BYTES : fundReviewOperation ? FUND_REVIEW_LIMITS.rpcBytes : cacheDataOperation ? CACHE_LIMITS.rpcBytes : RPC_BYTES, controller.signal);
       return result(bytes, upstream.status, raw ? 'application/gzip' : 'application/json');

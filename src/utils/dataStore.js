@@ -5,6 +5,7 @@ import { Readable } from 'node:stream';
 import { getDataStoreIdentityToken } from './dataStoreIdentity.js';
 import { promisify } from 'node:util';
 import { DISCLOSURE_INDEX_LIMITS, disclosureIndexIdentity, validDisclosureIndexDocument, validDisclosureIndexSearch } from '../../supabase/functions/edgar-data-gateway/disclosurePolicy.js';
+import { isApplicationConflictResponse } from '../../supabase/functions/edgar-data-gateway/conflictPolicy.js';
 import { DATA_STORE_LIMITS as LIMITS, DATA_STORE_REGISTRY, getDataStoreMode, validateDataStoreSource } from './dataStoreRegistry.js';
 export { DATA_STORE_LIMITS, DATA_STORE_REGISTRY, getDataStoreMode } from './dataStoreRegistry.js';
 
@@ -147,8 +148,10 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
         signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal, cache: 'no-store', redirect: 'error' });
       const bytes = await boundedBytes(response, method === 'GET' && raw ? LIMITS.objectBytes : LIMITS.rpcBytes);
       if (!response.ok && !(allowDuplicate && [400, 409].includes(response.status))) {
-        let code; try { code = JSON.parse(bytes.toString()).code; } catch { /* omit untrusted API error text */ }
-        throw new DataStoreError(code === '40001' ? 'stale_generation' : `http_${response.status}`, response.status);
+        let error; try { error = JSON.parse(bytes.toString()); } catch { /* omit untrusted API error text */ }
+        const operation = /^\/rest\/v1\/rpc\/(edgar_[a-z_]+)$/.exec(path)?.[1];
+        const conflict = isApplicationConflictResponse(operation, error);
+        throw new DataStoreError(conflict ? 'stale_generation' : `http_${response.status}`, conflict ? 409 : response.status);
       }
       if (raw && method === 'GET') return bytes;
       if (!bytes.length) return null;

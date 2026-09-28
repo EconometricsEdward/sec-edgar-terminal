@@ -4,6 +4,7 @@ import { gzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
 import { getDataStoreIdentityToken } from './dataStoreIdentity.js';
 import { DISPOSABLE_CACHE_LIMITS as LIMITS, disposableCachePolicy, disposableCacheFencePolicy } from '../../supabase/functions/edgar-data-gateway/cachePolicy.js';
+import { isApplicationConflictResponse } from '../../supabase/functions/edgar-data-gateway/conflictPolicy.js';
 export { disposableCachePolicy, disposableCacheFencePolicy } from '../../supabase/functions/edgar-data-gateway/cachePolicy.js';
 
 const BASE = 'https://vvkihuduqqnxqahhbphs.supabase.co/functions/v1/edgar-data-gateway/rest/v1/rpc/';
@@ -93,9 +94,9 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
       const bytes = await boundedBytes(response, limit, requestSignal);
       let value; try { value = JSON.parse(bytes.toString('utf8')); } catch { throw new DisposableCacheError('invalid_response', 502); }
       if (!response.ok) {
-        const code = value?.code === '40001' ? 'stale_generation'
+        const code = isApplicationConflictResponse(operation, value) ? 'stale_generation'
           : ['cache_response_too_large', 'body_too_large'].includes(value?.code) ? 'response_too_large' : `http_${response.status}`;
-        throw new DisposableCacheError(code, response.status);
+        throw new DisposableCacheError(code, code === 'stale_generation' ? 409 : response.status);
       }
       return value;
     } catch (error) {

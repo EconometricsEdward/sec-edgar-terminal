@@ -69,9 +69,12 @@ test('adapter sends only canonical binding plus owner/generation and preserves p
 });
 
 test('fenced adapter preserves stale-generation rejection without any unfenced retry', async () => {
-  const { cache, calls } = adapter(() => Response.json({ code: '40001' }, { status: 409 }));
-  await assert.rejects(cache.cachePutFenced(cftc, 'markets:tff:latest', {}, 3600, claim('cftc', 'markets:tff:latest')), error => error.code === 'stale_generation');
-  assert.equal(calls.length, 1); assert.ok(calls[0].url.endsWith('edgar_cache_put_fenced'));
+  for (const [error, expected] of [[{ code: '40001' }, 'stale_generation'], [{ code: 'stale_generation' }, 'stale_generation'],
+    [{ code: 'PT409', message: 'stale_generation' }, 'stale_generation'], [{ code: 'PT409', message: 'other conflict' }, 'http_409']]) {
+    const { cache, calls } = adapter(() => Response.json(error, { status: 409 }));
+    await assert.rejects(cache.cachePutFenced(cftc, 'markets:tff:latest', {}, 3600, claim('cftc', 'markets:tff:latest')), { code: expected, status: 409 });
+    assert.equal(calls.length, 1); assert.ok(calls[0].url.endsWith('edgar_cache_put_fenced'));
+  }
 });
 
 function gateway(response = () => Response.json(true)) {
@@ -89,6 +92,14 @@ function fencedBody(type, key, id, dataset, payload = {}) {
     p_family: disposableCachePolicy(type, id)?.family, p_type: type, p_id: id.toUpperCase(), p_gzip_base64: compressed.toString('base64'),
     p_raw_sha256: hash(bytes), p_gzip_sha256: hash(compressed), p_raw_bytes: bytes.length, p_ttl_seconds: 3600 };
 }
+test('fenced cache gateway translates only its expected PT409 rejection without an unfenced fallback', async () => {
+  for (const [message, expected] of [['stale_generation', '40001'], ['other conflict', 'upstream_failure']]) {
+    const { handler, calls } = gateway(() => Response.json({ code: 'PT409', message, details: 'private context' }, { status: 409 }));
+    const response = await handler(rpc('edgar_cache_put_fenced', fencedBody(cftc, 'markets:tff:latest', 'markets-last-good:tff:latest', 'cftc')));
+    assert.equal(response.status, 409); assert.deepEqual(await response.json(), { code: expected });
+    assert.equal(calls.length, 1); assert.ok(calls[0].url.endsWith('edgar_cache_put_fenced'));
+  }
+});
 test('gateway reserves only reviewed canonical claims and rejects lease overrides or non-pilot cache reservations', async () => {
   const { handler, calls } = gateway();
   for (const [, key, , dataset] of bindings) {
