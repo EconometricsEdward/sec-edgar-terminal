@@ -341,6 +341,29 @@ test('upstream fencing marker survives without leaking messages or response head
   assert.equal(response.headers.get('set-cookie'), null);
 });
 
+test('audited publication and membership PT409 conflicts return one sanitized rejection without retrying', async () => {
+  for (const [makeRequest, message] of [[() => publish(record()), 'stale_generation'],
+    [() => rpc('edgar_activate_membership', { p_claim: { owner: UUID, generation: '1' }, p_id: SEC_COVERAGE_MEMBERSHIP_ID }), 'membership_claim_lost']]) {
+    let calls = 0;
+    const { handler } = setup({ fetchImpl: async () => { calls++; return Response.json({ code: 'PT409', message, details: 'private SQL context' }, { status: 409, headers: { 'set-cookie': 'secret' } }); } });
+    const response = await handler(makeRequest());
+    assert.equal(response.status, 409); assert.deepEqual(await response.json(), { code: '40001' });
+    assert.equal(response.headers.get('set-cookie'), null); assert.equal(calls, 1);
+  }
+});
+
+test('unrecognized PT409 messages or operation bindings remain generic conflicts', async () => {
+  for (const [makeRequest, message] of [[() => publish(record()), 'other conflict'],
+    [() => rpc('edgar_get_version', { p_dataset: 'sec', p_key: key }), 'stale_generation'],
+    [() => publish(record()), 'membership_claim_lost']]) {
+    let calls = 0;
+    const { handler } = setup({ fetchImpl: async () => { calls++; return Response.json({ code: 'PT409', message, details: 'private' }, { status: 409 }); } });
+    const response = await handler(makeRequest());
+    assert.equal(response.status, 409); assert.deepEqual(await response.json(), { code: 'upstream_failure' });
+    assert.equal(calls, 1);
+  }
+});
+
 test('legacy service keys stay internal and wrong project configuration fails closed', async () => {
   const legacy = 'legacy.header.signature_long_enough';
   const { handler, calls } = setup({ env: name => ({ SUPABASE_URL: URL, SUPABASE_SERVICE_ROLE_KEY: legacy })[name] });

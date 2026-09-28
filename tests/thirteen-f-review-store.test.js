@@ -52,11 +52,26 @@ test('review operations have isolated transport bounds; generic RPC bounds stay 
 test('gateway sanitizes upstream diagnostics while exposing only fixed capacity and fencing codes',async()=>{
   for(const [error,code,status=400] of [[{code:'54000',message:'fund_review_capacity'},'fund_review_capacity'],
     [{code:'PT409',message:'stale_fund_review_report'},'review_revision_changed',409],
+    [{code:'PT409',message:'fund_review_lease_expired'},'40001',409],
     [{code:'PT409',message:'private diagnostic'},'upstream_failure'],
     [{code:'40001',message:'private diagnostic'},'40001'],[{code:'54000',message:'private secret'},'upstream_failure']]) {
     const {handle}=gateway({response:()=>Response.json(error,{status:400})});
     const response=await handle(request('edgar_fund_review_save',params));
     assert.equal(response.status,status);assert.deepEqual(await response.json(),{code});
+  }
+});
+test('review lease conflicts are rejected once by both save routes and retain unknown conflict semantics',async()=>{
+  for(const [name,body] of [['save',params],['save_batch',{p_claim:claim,p_results:[{ordinal:1,result,summary,retrySeconds:0}]}]]){
+    const {handle,calls}=gateway({response:()=>Response.json({code:'PT409',message:'fund_review_lease_expired',details:'private context'},{status:409})});
+    const response=await handle(request(`edgar_fund_review_${name}`,body));
+    assert.equal(response.status,409);assert.deepEqual(await response.json(),{code:'40001'});assert.equal(calls.length,1);
+  }
+  for(const [error,expected] of [[{code:'stale_generation'},'stale_generation'],
+    [{code:'PT409',message:'fund_review_lease_expired'},'stale_generation'],[{code:'PT409',message:'other conflict'},'http_409']]){
+    let calls=0;
+    const store=createThirteenFReviewStore({env:{VERCEL_ENV:'production'},now:()=>now,identityTokenImpl:async()=>'fixture.identity.token',
+      fetchImpl:async()=>{calls++;return Response.json(error,{status:409});}});
+    await assert.rejects(store.save(claim,{ordinal:1,result,summary}),{code:expected,status:409});assert.equal(calls,1);
   }
 });
 test('all permanent report revision conflicts return HTTP409 after one upstream call',async()=>{

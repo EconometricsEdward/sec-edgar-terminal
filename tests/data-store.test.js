@@ -187,6 +187,24 @@ test('revalidation rejects expired ownership and longer Retry-After is not short
   assert.equal(body.p_delay_seconds, 172800); assert.equal(body.p_status, 'retry');
 });
 
+test('publication adapter maps only audited PT409 conflicts and never retries a rejected claim', async () => {
+  for (const [error, expected] of [[{ code: '40001' }, 'stale_generation'],
+    [{ code: 'stale_generation' }, 'stale_generation'], [{ code: 'PT409', message: 'stale_generation' }, 'stale_generation'],
+    [{ code: 'PT409', message: 'other conflict' }, 'http_409'], [{ code: 'PT409' }, 'http_409']]) {
+    const calls = [];
+    const store = createDataStore({ env: baseEnv, fetchImpl: async url => {
+      calls.push(url.split('/').at(-1));
+      return url.endsWith('/edgar_publish') ? json({ ...error, details: 'private diagnostic' }, 409) : json(null);
+    } });
+    const claim = { dataset: 'financial', key: 'one', owner: '00000000-0000-4000-8000-000000000001', generation: 1 };
+    await assert.rejects(store.publishDataset({ dataset: 'financial', key: 'one', claim, payload: { value: 1 }, metadata: metadata() }),
+      error => error.code === expected && error.status === 409 && !error.message.includes('private'));
+    assert.deepEqual(calls, ['edgar_get_version', 'edgar_publish']);
+  }
+  const store = createDataStore({ env: baseEnv, fetchImpl: async () => json({ code: 'PT409', message: 'stale_generation' }, 409) });
+  await assert.rejects(store.readDataset('financial', 'one'), { code: 'http_409' });
+});
+
 test('immutable object reuse coalesces downloads while every read observes head expiry and revisions', async () => {
   const values = [{ rows: [{ value: 1 }], padding: 'x'.repeat(70000) }, { rows: [{ value: 2 }], padding: 'x'.repeat(70000) }];
   const bytes = values.map(value => Buffer.from(stableDataStoreJson(value)));

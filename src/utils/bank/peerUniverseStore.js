@@ -7,9 +7,12 @@ import { BankDataError } from './errors.js';
 import { PEER_MODEL_VERSION } from './peerSource.js';
 
 const zip = promisify(gzip), unzip = promisify(gunzip);
-const VERSION = 'bankscope-peer-universe-v1';
+const VERSION = 'bankscope-peer-universe-v2';
 const MODEL = PEER_MODEL_VERSION;
 const MAX_AGE = 300000;
+const UNIVERSE_MAX_AGE = 86400000;
+const MANIFEST_VERSION = `${VERSION}-manifest`;
+const MAX_MANIFEST_BYTES = 128 * 1024;
 const MAX_RAW_BYTES = 12 * 1024 * 1024;
 const MAX_SHARED_BYTES = 1536 * 1024;
 const quarter = value => typeof value === 'string' && /^\d{4}-(03-31|06-30|09-30|12-31)$/.test(value);
@@ -38,6 +41,26 @@ export function validPeerUniverse(data, period) {
   });
 }
 
+/** The lightweight SQL status operation returns publication metadata plus queue
+ * counts. Retain only bounded snapshot metadata, never mutable queue details. */
+function manifestSnapshots(data) {
+  if (!object(data) || data.error || data.code || !Array.isArray(data.snapshots) || data.snapshots.length > 128) return null;
+  const dates = new Set(), snapshots = [];
+  for (const s of data.snapshots) {
+    if (!object(s) || !quarter(s.report_date) || dates.has(s.report_date)
+      || !Number.isFinite(Date.parse(s.completed_at))
+      || !Number.isSafeInteger(s.matched_count) || s.matched_count < 1 || s.matched_count > 15000
+      || typeof s.model_version !== 'string' || !s.model_version.length || s.model_version.length > 100
+      || typeof s.source_index !== 'string' || !s.source_index.length || s.source_index.length > 512
+      || s.source_updated_at !== null && !Number.isFinite(Date.parse(s.source_updated_at))) return null;
+    dates.add(s.report_date);
+    snapshots.push({ report_date: s.report_date, completed_at: new Date(Date.parse(s.completed_at)).toISOString(),
+      matched_count: s.matched_count, model_version: s.model_version, source_index: s.source_index,
+      source_updated_at: s.source_updated_at === null ? null : new Date(Date.parse(s.source_updated_at)).toISOString() });
+  }
+  return snapshots;
+}
+
 class UnsharedUniverse extends Error {
   constructor(data) {
     super('Public peer snapshot is not reusable in the shared cache.');
@@ -45,14 +68,16 @@ class UnsharedUniverse extends Error {
   }
 }
 
-/** Four quarterly public datasets, compressed below Next's 2 MiB entry limit.
- * No credentials, source XML, mutation results, or per-user state are retained.
- * Cache expiry is an absolute bound, including when revalidation fails.
+/** Refresh the small publication manifest every five minutes. Reuse compressed
+ * quarterly data by publication for a day; unchanged publications do not repeat
+ * the expensive SQL aggregate. Caller freshness is always bounded by the manifest.
  */
 export function createBankPeerUniverse({ store = bankScopeStore, cache = unstable_cache, env = process.env,
   now = Date.now, maxSharedBytes = MAX_SHARED_BYTES } = {}) {
-  const producing = new Map(), reading = new Map(), recent = new Map(), failures = new Map();
+  const producing = new Map(), reading = new Map(), manifestReading = new Map(), recent = new Map(), failures = new Map();
   const scope = () => JSON.stringify([env.VERCEL_ENV, env.VERCEL_GIT_COMMIT_REF || '']);
+  const manifestKey = deployment => `manifest:${deployment}`;
+  const universeKey = (deployment, period, publication) => JSON.stringify(['universe', deployment, period, publication]);
   function failed(key) {
     if (failures.size >= 8) failures.delete(failures.keys().next().value);
     const retryAt = now() + 5000; failures.set(key, retryAt);
@@ -61,26 +86,16 @@ export function createBankPeerUniverse({ store = bankScopeStore, cache = unstabl
   function guard(expectedScope) {
     if (typeof window !== 'undefined' || !isBankScopeEnvironment(env) || expectedScope !== scope()) throw new BankDataError('bank_service_unavailable');
   }
-  async function produce(deployment, period) {
-    guard(deployment);
-    const key = `${deployment}:${period}`, hit = recent.get(key);
-    if (hit?.until > now()) return hit.value;
+  function produceOnce(key, load) {
+    const hit = recent.get(key);
+    if (hit?.until > now()) return Promise.resolve(hit.value);
     if (producing.has(key)) return producing.get(key);
-    if (failures.get(key) > now()) throw new BankDataError('database_failure');
-    if (producing.size >= 8) throw new BankDataError('database_failure');
+    if (failures.get(key) > now() || producing.size >= 8) return Promise.reject(new BankDataError('database_failure'));
     const task = (async () => {
-      const data = await store('peer_universe', { period });
-      if (!validPeerUniverse(data, period)) throw new BankDataError('database_failure');
-      if (!data.snapshot) throw new UnsharedUniverse(data);
-      const raw = Buffer.from(JSON.stringify({ snapshot: data.snapshot, profiles: data.profiles }));
-      if (raw.length > MAX_RAW_BYTES) throw new BankDataError('response_too_large');
-      const packed = await zip(raw);
-      const value = { version: VERSION, deployment, period, checkedAt: now(), rawBytes: raw.length,
-        sha256: hash(raw), gzipBase64: packed.toString('base64') };
-      // Exception carries the already-fetched public data to this caller only;
-      // missing/oversized snapshots never become persistent cache entries.
-      if (Buffer.byteLength(JSON.stringify(value)) > maxSharedBytes) throw new UnsharedUniverse(data);
-      if (recent.size >= 4) recent.delete(recent.keys().next().value);
+      const value = await load();
+      // Coalesce a cache's background refresh and the foreground hard-expiry
+      // repair, including the case where writing a freshly produced entry fails.
+      if (recent.size >= 8) recent.delete(recent.keys().next().value);
       recent.set(key, { value, until: now() + 2000 });
       return value;
     })().catch(error => { if (error instanceof UnsharedUniverse) throw error; throw failed(key); })
@@ -88,18 +103,73 @@ export function createBankPeerUniverse({ store = bankScopeStore, cache = unstabl
     producing.set(key, task);
     return task;
   }
-  const shared = cache(produce, [VERSION, MODEL], { revalidate: 300 });
-  async function decode(entry, deployment, period) {
+  function produceManifest(deployment) {
+    guard(deployment);
+    return produceOnce(manifestKey(deployment), async () => {
+      const snapshots = manifestSnapshots(await store('peer_status'));
+      if (!snapshots) throw new BankDataError('database_failure');
+      const value = { version: MANIFEST_VERSION, deployment, checkedAt: now(), snapshots };
+      if (Buffer.byteLength(JSON.stringify(value)) > MAX_MANIFEST_BYTES) throw new BankDataError('response_too_large');
+      return value;
+    });
+  }
+  function produceUniverse(deployment, period, publication) {
+    guard(deployment);
+    return produceOnce(universeKey(deployment, period, publication), async () => {
+      const data = await store('peer_universe', { period });
+      if (!validPeerUniverse(data, period)) throw new BankDataError('database_failure');
+      if (!data.snapshot) throw new UnsharedUniverse(data);
+      // A publication can advance between manifest and data reads. A newer
+      // complete snapshot is safe; an older one must not masquerade as current.
+      if (Date.parse(data.snapshot.completed_at) < publication) throw new BankDataError('database_failure');
+      const raw = Buffer.from(JSON.stringify({ snapshot: data.snapshot, profiles: data.profiles }));
+      if (raw.length > MAX_RAW_BYTES) throw new BankDataError('response_too_large');
+      const packed = await zip(raw);
+      const value = { version: VERSION, deployment, period, publication, checkedAt: now(), rawBytes: raw.length,
+        sha256: hash(raw), gzipBase64: packed.toString('base64') };
+      if (Buffer.byteLength(JSON.stringify(value)) > maxSharedBytes) throw new UnsharedUniverse(data);
+      return value;
+    });
+  }
+  const sharedManifest = cache(produceManifest, [MANIFEST_VERSION, MODEL], { revalidate: 300 });
+  const sharedUniverse = cache(produceUniverse, [VERSION, MODEL], { revalidate: 86400 });
+  async function cachedOrProduce(shared, produce, key, args) {
+    try { return env.VERCEL_ENV === 'production' ? await shared(...args) : await produce(...args); }
+    catch (error) {
+      if (error instanceof UnsharedUniverse || failures.get(key) > now()) throw error;
+      return produce(...args);
+    }
+  }
+  function validManifest(entry, deployment) {
+    return object(entry) && entry.version === MANIFEST_VERSION && entry.deployment === deployment
+      && Number.isFinite(entry.checkedAt) && now() - entry.checkedAt >= 0 && now() - entry.checkedAt < MAX_AGE
+      && Buffer.byteLength(JSON.stringify(entry)) <= MAX_MANIFEST_BYTES && manifestSnapshots(entry) !== null;
+  }
+  async function readManifest(deployment) {
+    const key = manifestKey(deployment);
+    if (manifestReading.has(key)) return manifestReading.get(key);
+    if (failures.get(key) > now() || manifestReading.size >= 8) throw new BankDataError('database_failure');
+    const task = (async () => {
+      let value = await cachedOrProduce(sharedManifest, produceManifest, key, [deployment]);
+      if (!validManifest(value, deployment)) value = await produceManifest(deployment);
+      if (!validManifest(value, deployment)) throw new BankDataError('database_failure');
+      return value;
+    })().finally(() => manifestReading.delete(key));
+    manifestReading.set(key, task);
+    return task;
+  }
+  async function decode(entry, deployment, period, publication) {
     if (!object(entry) || entry.version !== VERSION || entry.deployment !== deployment || entry.period !== period
-      || !Number.isFinite(entry.checkedAt) || now() - entry.checkedAt < 0 || now() - entry.checkedAt >= MAX_AGE
+      || entry.publication !== publication || !Number.isFinite(entry.checkedAt)
+      || now() - entry.checkedAt < 0 || now() - entry.checkedAt >= UNIVERSE_MAX_AGE
       || !Number.isSafeInteger(entry.rawBytes) || entry.rawBytes < 1 || entry.rawBytes > MAX_RAW_BYTES
       || !/^[a-f0-9]{64}$/.test(entry.sha256 || '') || typeof entry.gzipBase64 !== 'string'
       || entry.gzipBase64.length > maxSharedBytes || !/^[A-Za-z0-9+/]*={0,2}$/.test(entry.gzipBase64)) throw new BankDataError('database_failure');
     const raw = await unzip(Buffer.from(entry.gzipBase64, 'base64'), { maxOutputLength: MAX_RAW_BYTES });
     if (raw.length !== entry.rawBytes || hash(raw) !== entry.sha256) throw new BankDataError('database_failure');
     const data = JSON.parse(raw.toString('utf8'));
-    if (!validPeerUniverse(data, period)) throw new BankDataError('database_failure');
-    return { ...data, cacheExpiresAt: entry.checkedAt + MAX_AGE };
+    if (!data.snapshot || !validPeerUniverse(data, period) || Date.parse(data.snapshot.completed_at) < publication) throw new BankDataError('database_failure');
+    return data;
   }
   return async period => {
     const deployment = scope(); guard(deployment);
@@ -108,24 +178,27 @@ export function createBankPeerUniverse({ store = bankScopeStore, cache = unstabl
     if (reading.has(key)) return structuredClone(await reading.get(key));
     if (failures.get(key) > now() || reading.size >= 8) throw new BankDataError('database_failure', { retryAt: new Date(now() + 5000).toISOString() });
     const task = (async () => {
-      let entry;
-      try { entry = env.VERCEL_ENV === 'production' ? await shared(deployment, period) : await produce(deployment, period); }
-      catch (error) {
-        if (error instanceof UnsharedUniverse || failures.get(key) > now()) throw error;
-        // A shared-cache outage may fall back once. A failed source read is
-        // already on cooldown; a successful read is reused after write failure.
-        entry = await produce(deployment, period);
+      let manifest = await readManifest(deployment);
+      let publication = manifest.snapshots.find(s => s.report_date === period && s.model_version === MODEL);
+      // Preserve the existing short retry window for a not-yet-published period.
+      if (!publication && now() - manifest.checkedAt >= 30000) {
+        manifest = await produceManifest(deployment);
+        publication = manifest.snapshots.find(s => s.report_date === period && s.model_version === MODEL);
       }
-      try { return await decode(entry, deployment, period); }
-      catch {
-        // Repair an expired or malformed shared entry with one coalesced fresh
-        // read. Never return an indefinitely stale snapshot during an outage.
-        return decode(await produce(deployment, period), deployment, period);
+      const cacheExpiresAt = manifest.checkedAt + MAX_AGE;
+      if (!publication) return { profiles: [], cacheExpiresAt: Math.min(cacheExpiresAt, now() + 30000) };
+      const publishedAt = Date.parse(publication.completed_at), sourceKey = universeKey(deployment, period, publishedAt);
+      try {
+        const entry = await cachedOrProduce(sharedUniverse, produceUniverse, sourceKey, [deployment, period, publishedAt]);
+        let data;
+        try { data = await decode(entry, deployment, period, publishedAt); }
+        catch { data = await decode(await produceUniverse(deployment, period, publishedAt), deployment, period, publishedAt); }
+        return { ...data, cacheExpiresAt };
+      } catch (error) {
+        if (error instanceof UnsharedUniverse) return { ...error.data, cacheExpiresAt: Math.min(cacheExpiresAt, now() + 30000) };
+        throw error;
       }
-    })().catch(error => {
-      if (error instanceof UnsharedUniverse) return { ...error.data, cacheExpiresAt: now() + 30000 };
-      throw failed(key);
-    }).finally(() => reading.delete(key));
+    })().catch(() => { throw failed(key); }).finally(() => reading.delete(key));
     reading.set(key, task);
     return structuredClone(await task);
   };

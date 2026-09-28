@@ -1,6 +1,7 @@
 /** Server-only durable shared 13F review storage through production Vercel OIDC. */
 import { getDataStoreIdentityToken } from './dataStoreIdentity.js';
 import { FUND_REVIEW_LIMITS, validFundReviewRpc } from '../../supabase/functions/edgar-data-gateway/fundReviewPolicy.js';
+import { isApplicationConflictResponse } from '../../supabase/functions/edgar-data-gateway/conflictPolicy.js';
 const BASE = 'https://vvkihuduqqnxqahhbphs.supabase.co/functions/v1/edgar-data-gateway/rest/v1/rpc/';
 export class ThirteenFReviewStoreError extends Error {
   constructor(code, status = 503) { super(`Shared fund review: ${code}`); this.name = 'ThirteenFReviewStoreError'; this.code = code; this.status = status; }
@@ -64,7 +65,7 @@ export function createThirteenFReviewStore({ env = process.env, fetchImpl = (...
         'Content-Type': 'application/json', 'x-region': 'us-east-1' }, body, signal: requestSignal, redirect: 'error', cache: 'no-store' });
       const value = await boundedJson(response, requestSignal);
       if (!response.ok) {
-        const code = ['40001', 'review_revision_changed'].includes(value?.code) ? 'stale_generation' : value?.code === 'fund_review_capacity' ? 'fund_review_capacity' : `http_${response.status}`;
+        const code = isApplicationConflictResponse(name, value) || value?.code === 'review_revision_changed' ? 'stale_generation' : value?.code === 'fund_review_capacity' ? 'fund_review_capacity' : `http_${response.status}`;
         throw new ThirteenFReviewStoreError(code, code === 'fund_review_capacity' ? 429 : code === 'stale_generation' ? 409 : response.status);
       }
       return value;
