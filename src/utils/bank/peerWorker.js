@@ -2,16 +2,28 @@ import { randomUUID,createHash } from 'node:crypto';
 import { fetchPeerUniverse,PEER_MODEL_VERSION } from './peerSource.js';
 import { decodeFacsimile } from './parser.js';
 import { apiDate } from './identity.js';
-import { safeBankError } from './errors.js';
+import { BankDataError,safeBankError } from './errors.js';
 import { parseUbprXbrl } from './ubpr.js';
 
-export async function refreshPeerUniverse({store,owned,periods,now=Date.now,fetchUniverse=fetchPeerUniverse}) {
+export async function refreshPeerUniverse({store,owned,periods,now=Date.now,deadline=now()+180000,fetchUniverse=fetchPeerUniverse}) {
+  // Leave one gateway timeout for the worker's finally/finish operation in
+  // addition to the next operation's budget. Partial snapshots stay unpublished.
+  const requireTime=(operationMs=25000)=>{
+    if(now()+operationMs+25000>deadline)throw new BankDataError('worker_deadline');
+  };
+  requireTime();
   const state=await store('peer_status');
   const period=periods.find(p=>!state.snapshots?.some(s=>s.report_date===p&&s.model_version===PEER_MODEL_VERSION&&now()-Date.parse(s.completed_at)<86400000));
   if(!period)return 0;
+  requireTime(35000);
   const data=await fetchUniverse(period),snapshotId=randomUUID();
+  requireTime();
   await owned('peer_start',{...data,rows:undefined,snapshotId,count:data.rows.length});
-  for(let i=0;i<data.rows.length;i+=500)await owned('peer_batch',{snapshotId,rows:data.rows.slice(i,i+500)});
+  for(let i=0;i<data.rows.length;i+=500){
+    requireTime();
+    await owned('peer_batch',{snapshotId,rows:data.rows.slice(i,i+500)});
+  }
+  requireTime();
   await owned('peer_complete',{snapshotId});
   return data.rows.length;
 }

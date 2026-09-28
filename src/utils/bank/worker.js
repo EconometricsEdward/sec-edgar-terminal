@@ -20,7 +20,9 @@ export async function runBankWorker({store=bankScopeStore,env=process.env,mainta
     return client.request(method,params);
   };
   try {
-    let state=await store('status');
+    // User-requested preparation only needs the fenced queue; maintenance state
+    // is unused unless this is the scheduled directory/peer refresh.
+    let state=maintain?await store('status'):null;
     if(maintain) {
       if(!state.catalog?.checkedAt || now()-Date.parse(state.catalog.checkedAt)>86400000) {
         const periods=latestPeriods(await request('RetrieveReportingPeriods'),new Date(now()));
@@ -69,8 +71,12 @@ export async function runBankWorker({store=bankScopeStore,env=process.env,mainta
       }
     }
     if(peers&&maintain&&now()<deadline-70000){
-      try{result.peerProfiles=await refreshPeerUniverse({store,owned,periods:state.periods||[],now});}
-      catch(error){result.peerError=safeBankError(error).code;}
+      try{result.peerProfiles=await refreshPeerUniverse({store,owned,periods:state.periods||[],deadline,now});}
+      catch(error){
+        const code=safeBankError(error).code;
+        if(code==='worker_deadline'){result.status='more_available';return result;}
+        result.peerError=code;
+      }
     }
     if(peers&&now()<deadline-35000)result.ubpr=await prepareUbpr({store,owned,request,deadline,now});
     return result;

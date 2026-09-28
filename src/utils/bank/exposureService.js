@@ -1,27 +1,10 @@
 import { bankScopeStore } from './scopeStore.js';
-import { parseCallXbrl } from './parser.js';
-import { buildExposureReport } from './exposureModel.js';
 import { EXPOSURE_VERSION } from './exposureDefinitions.js';
+import { createCachedExposureReport } from './exposureReportStore.js';
 
 /** Hash-pinned, read-only enrichment of retained Call Reports; never contacts FFIEC. */
-export function createExposureService({ store = bankScopeStore, now = Date.now } = {}) {
-  const cache = new Map();
-  async function report(r) {
-    const key = `${EXPOSURE_VERSION}:${r.id_rssd}:${r.report_date}:${r.form_type}:${r.source_sha256}`;
-    const hit = cache.get(key);
-    if (hit && hit.until > now()) return hit.promise;
-    if (cache.size >= 48) cache.delete(cache.keys().next().value);
-    const entry = { until: now() + 300000, promise: null };
-    entry.promise = (async () => {
-      const source = await store('source', { rssd: r.id_rssd, period: r.report_date, hash: r.source_sha256 });
-      if (!source?.validation?.passed || Number(source.rssd) !== Number(r.id_rssd) || source.reportDate !== r.report_date || source.sha256 !== r.source_sha256) throw new Error('Source unavailable');
-      const parsed = parseCallXbrl(source.rawXbrl, { rssd: Number(r.id_rssd), reportDate: r.report_date });
-      if (parsed.sha256 !== r.source_sha256) throw new Error('Source hash mismatch');
-      return buildExposureReport(parsed, { form: r.form_type, retrievedAt: source.retrievedAt, submission: source.submission });
-    })().catch(e => { if (cache.get(key) === entry) cache.delete(key); throw e; });
-    cache.set(key, entry);
-    return entry.promise;
-  }
+export function createExposureService({ store = bankScopeStore, now = Date.now, cache, env = process.env } = {}) {
+  const report = createCachedExposureReport({ store, now, cache, env });
   return async (rssd, period) => {
     const state = await store('read', { rssds: [rssd] });
     const periods = [...new Set(state.periods || [])].filter(p => p <= period).sort().slice(-4);

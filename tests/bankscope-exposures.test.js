@@ -9,6 +9,7 @@ import { createExposureApi } from '../src/utils/bank/exposureApi.js';
 import { bankHref, bankPageOptions } from '../src/utils/bank/viewModel.js';
 
 const date = '2026-06-30';
+const preview = { VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'feat/ffiec-bank-pilot' };
 const fixture = rssd => readFileSync(new URL(`./fixtures/exposures-${rssd}-${date}.xml`, import.meta.url), 'utf8');
 const parsed = (rssd=451965) => parseCallXbrl(fixture(rssd), {rssd,reportDate:date});
 const model = (rssd,form) => buildExposureReport(parsed(rssd),{form});
@@ -120,7 +121,7 @@ function serviceFixture(){
 }
 test('read-only enrichment pins hashes, coalesces sources, refreshes metadata and retries expired entries',async()=>{
   const {metadata,source}=serviceFixture();let time=0,reads=0,sources=0;
-  const service=createExposureService({now:()=>time,store:async(op,p)=>{
+  const service=createExposureService({env:preview,now:()=>time,store:async(op,p)=>{
     if(op==='read'){reads++;assert.deepEqual(p,{rssds:[451965]});return{periods:[date],reports:[metadata]};}
     assert.equal(op,'source');assert.equal(p.hash,metadata.source_sha256);sources++;return source;
   }});
@@ -131,13 +132,13 @@ test('read-only enrichment pins hashes, coalesces sources, refreshes metadata an
 test('source identity, validation and byte hash failures fail current reports and are never cached',async()=>{
   for(const patch of [{rssd:493741},{reportDate:'2026-03-31'},{validation:{passed:false}},{sha256:'f'.repeat(64)},{rawXbrl:fixture(451965)+'\n'}]){
     const {metadata,source}=serviceFixture();let sources=0;
-    const service=createExposureService({store:async op=>op==='read'?{periods:[date],reports:[metadata]}:(sources++,{...source,...patch})});
+    const service=createExposureService({env:preview,store:async op=>op==='read'?{periods:[date],reports:[metadata]}:(sources++,{...source,...patch})});
     await assert.rejects(service(451965,date));await assert.rejects(service(451965,date));assert.equal(sources,2);
   }
 });
 test('unsupported or unvalidated selected periods never fall back; partial history remains a gap',async()=>{
   const {metadata,source}=serviceFixture();let sourceReads=0;
-  const service=createExposureService({store:async op=>op==='read'?{periods:[date,'2026-03-31'],reports:[metadata]}:(sourceReads++,source)});
+  const service=createExposureService({env:preview,store:async op=>op==='read'?{periods:[date,'2026-03-31'],reports:[metadata]}:(sourceReads++,source)});
   assert.equal((await service(451965,'2026-09-30')).unavailable,'period_outside_available_history');
   assert.equal((await service(451965,'2026-03-31')).unavailable,'validated_report_unavailable');
   assert.equal(sourceReads,0);

@@ -195,7 +195,9 @@ test('expired candidate is held and can be replaced without deleting its archive
  const db=await database();t.after(()=>db.close());const claim=await begin(db);
  // Simulate a snapshot admitted weeks earlier. Only fixture setup runs as owner;
  // production service_role has no UPDATE/DELETE grant on immutable snapshots.
- const archived=candidate();const oldDay=new Date(Date.now()-20*86400000).toISOString().slice(0,10);
+ // Stay expired and strictly older than the seeded snapshot, including the day
+ // when "20 days ago" would otherwise produce the seed's immutable identity.
+ const archived=candidate();const oldDay=new Date(Math.min(Date.now()-20*86400000,Date.parse(seed.reference.asOf)-86400000)).toISOString().slice(0,10);
  archived.snapshot.reference.asOf=oldDay;archived.snapshot.reference.checkedAt=`${oldDay}T12:00:00.000Z`;
  archived.snapshot.id=`sec-coverage-v1:ivv:${oldDay}:${archived.snapshot.membershipFingerprint.slice(0,16)}`;
  await db.query(`insert into edgar_private.membership_snapshots(namespace,id,source_as_of,fingerprint,snapshot,evidence_kind,raw_sha256,raw_bytes,gzip_sha256,gzip_bytes)
