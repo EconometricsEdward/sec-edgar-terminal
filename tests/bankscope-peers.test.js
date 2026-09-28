@@ -75,10 +75,10 @@ test('UBPR worker reprocesses retained documents without another FFIEC download'
     owned:async(op,p)=>{if(op==='ubpr_claim'){if(claimed)return null;claimed=true;return {id_rssd:451965,report_date:period};}if(op==='ubpr_save')stored=p;}});
   assert.equal(count,1);assert.equal(stored.data.stage,'validated');assert.equal(stored.complete,true);
 });
-test('peer reader coalesces the quarterly universe and does not cache one bank’s official data for another',async()=>{
-  const calls=[];const service=createPeerService({store:async(op,p)=>{calls.push([op,p]);return op==='peer_universe'?{snapshot:{},profiles:[]}:{status:String(p.rssd)};}});
+test('peer reader coalesces the quarterly universe without optional official-reference calls',async()=>{
+  const calls=[];const service=createPeerService({store:async(op,p)=>{calls.push([op,p]);return {snapshot:{},profiles:[]};}});
   const [a,b]=await Promise.all([service(101,period),service(102,period)]);
-  assert.equal(calls.filter(c=>c[0]==='peer_universe').length,1);assert.equal(a.ubpr.status,'101');assert.equal(b.ubpr.status,'102');
+  assert.equal(calls.length,1);assert.equal(calls[0][0],'peer_universe');assert.equal(a.ubpr,undefined);assert.equal(b.ubpr,undefined);
 });
 test('peer API validates parameters and throttles before analysis without exposing upstream errors',async()=>{
   let calls=0;const GET=createPeerApi({rateLimit:async()=>({allowed:true}),analyze:async()=>{calls++;throw Error('upstream secret');}});

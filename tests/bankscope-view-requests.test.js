@@ -56,9 +56,9 @@ test('bank, date, source hash and peer snapshot remain separate and unverifiable
 });
 
 test('pending preparation, missing exposure history and failed requests never become reusable results',async()=>{
-  let calls=0,body={...peers(),ubpr:{status:'retry'}};
+  let calls=0,body={rssd:451965,period,ubpr:{report:null,status:'retry'}};
   const load=createBankViewRequests({fetchImpl:async()=>{calls++;return body===null?Response.json({error:'unavailable'},{status:503}):Response.json(body);}});
-  await load(request);await load(request);assert.equal(calls,2);
+  await load({...request,kind:'reference'});await load({...request,kind:'reference'});assert.equal(calls,2);
   body={...exposure(),missing:['2026-03-31']};const exposureRequest={...request,kind:'exposures',sourceHash:hash};
   await load(exposureRequest);await load(exposureRequest);assert.equal(calls,4);
   body=null;await assert.rejects(load(request));await assert.rejects(load(request));assert.equal(calls,6);

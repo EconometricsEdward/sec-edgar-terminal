@@ -66,7 +66,7 @@ test('history shares the universe read, retrieves at most 31 fixed identities, a
     return {};
   }});
   const [current,h]=await Promise.all([service(1,period),service.history(1,period)]);
-  assert.equal(calls.filter(c=>c[0]==='peer_universe').length,1);assert.equal(calls.filter(c=>c[0]==='ubpr_read').length,1);
+  assert.equal(calls.filter(c=>c[0]==='peer_universe').length,1);assert.equal(calls.filter(c=>c[0]==='ubpr_read').length,0);
   const payload=calls.find(c=>c[0]==='peer_history')[1];
   assert.equal(payload.snapshotId,'pinned');assert.equal(payload.peers.length,30);
   assert.deepEqual(payload.peers,current.peers.map(p=>p.rssd));assert.equal(h.cohort.length,30);

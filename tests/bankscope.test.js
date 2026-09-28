@@ -121,7 +121,7 @@ test('worker reprocesses retained sources and does not call FFIEC for an idle qu
   const result=await runBankWorker({peers:false,clientFactory:()=>{upstream++;throw Error('not needed');},store:async(op)=>{
     operations.push(op);if(op==='begin')return {allowed:true};if(op==='status')return {periods:[date]};if(op==='claim')return null;
   }});
-  assert.equal(result.status,'ready');assert.equal(upstream,0);assert.deepEqual(operations,['begin','status','claim','finish']);
+  assert.equal(result.status,'ready');assert.equal(upstream,0);assert.deepEqual(operations,['begin','claim','finish']);
 });
 
 test('worker reprocesses cached official XBRL without contacting FFIEC and preserves its source version',async()=>{
