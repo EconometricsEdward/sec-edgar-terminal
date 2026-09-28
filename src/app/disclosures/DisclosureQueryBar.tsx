@@ -29,6 +29,7 @@ type Props = {
   interpretation?: Interpretation | null;
   interpreting?: boolean;
   onApplySuggestion?: (query: string) => void;
+  today?: string;
 };
 
 const DEFAULT_FORMS = "10-K,10-Q,8-K";
@@ -44,7 +45,7 @@ const FORM_OPTIONS = [
   [BROAD_FORMS, "All supported filing forms"],
 ];
 
-export default function DisclosureQueryBar({ settings, setSettings, onSearch, busy, stop, interpretation, interpreting = false, onApplySuggestion }: Props) {
+export default function DisclosureQueryBar({ settings, setSettings, onSearch, busy, stop, interpretation, interpreting = false, onApplySuggestion, today = new Date().toISOString().slice(0, 10) }: Props) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [builder, setBuilder] = useState({ any: "", required: "", exclude: "" });
   const [builderError, setBuilderError] = useState("");
@@ -64,7 +65,6 @@ export default function DisclosureQueryBar({ settings, setSettings, onSearch, bu
   const queryInspection = useMemo(() => inspectDisclosureQuery(expression), [expression]);
   const builderQuery = useMemo(() => buildAdvancedQuery(builder), [builder]);
   const displayedSettings = currentInterpretation ? { ...settings, ...currentInterpretation.settings, mode: settings.mode } : settings;
-  const today = new Date().toISOString().slice(0, 10);
   const defaultStart = `${Number(today.slice(0, 4)) - 1}-01-01`;
   const canSearch = Boolean(settings.query.trim()) && (smart || queryInspection.valid);
   const suggestions = useMemo(() => smart ? [
