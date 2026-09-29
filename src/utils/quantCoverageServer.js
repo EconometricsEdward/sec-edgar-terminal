@@ -7,7 +7,7 @@ import { MARKET_VERSION } from './marketResearch.js';
 import { buildMarketCompany, marketAcceptanceTimes, marketCompanySummary, MARKET_REVENUE_VERSION, MARKET_RISK_VERSION } from './marketResearchData.js';
 import { isMarketAtlas } from './marketResearchValidation.js';
 import { secFetch } from './secClient.js';
-import { readPreparedSecDocument, refreshSecDocument, secDocumentIdentity } from './secDocumentStore.js';
+import { readPreparedSecDocument, refreshSecDocument, secDocumentIdentity, PreparedSecUnavailableError } from './secDocumentStore.js';
 import { getOperatingDirectorySnapshot } from './tickerMap.js';
 import { warmGet, warmSet, warmGetMany, warmCacheEnabled, warmAcquireLease, warmReleaseLease } from './warmCache.js';
 import { readSnapshot, writeSnapshot } from './snapshotCache.js';
@@ -17,7 +17,7 @@ import { revenueCorrectionPriority, recalculatePreparedMarketRevenue, withholdUn
 import { hasInvalidMarketPeriods } from './marketPeriodIntegrity.js';
 import { REFINANCING_VERSION, extractRefinancingProfile } from './refinancing/maturities.js';
 import { isRefinancingProfile, compactRefinancingProfile, packRefinancingProfile } from './refinancing/projection.js';
-import { publishRefinancingWall } from './refinancing/server.js';
+import { publishRefinancingWall, advanceRefinancingWall } from './refinancing/server.js';
 
 const scope = cacheDeploymentScope();
 export const QUANT_COVERAGE_CACHE = `${QUANT_COVERAGE_VERSION}:${scope}`;
@@ -130,16 +130,29 @@ export function quantCandidateEligibility(entry, submissions, facts = null) {
   if (facts && !facts.facts?.['us-gaap']) return 'SEC financial taxonomy is not supported by this comparison model.';
   return null;
 }
-async function secDocument(path, signal) {
-  const prepared = await readPreparedSecDocument(path, { allowStale: false });
-  if (prepared) return prepared;
-  const response = await secFetch(`https://data.sec.gov${path}`, { headers: { Accept: 'application/json' }, signal, timeoutMs: 15000, retries: 1, cache: 'no-store' });
+/** Scheduled ingestion may repair confirmed absent/expired archives through
+ * their existing fenced refresh. A database outage is never a SEC fallback. */
+export async function loadScheduledQuantDocument(path, signal, {
+  prepared = readPreparedSecDocument, refresh = refreshSecDocument, fetchSec = secFetch,
+} = {}) {
+  try {
+    const cached = await prepared(path, { allowStale: false, requireRegistry: true });
+    if (cached) return cached;
+  } catch (error) {
+    if (!(error instanceof PreparedSecUnavailableError) || !['missing', 'expired'].includes(error.sourceState)) throw error;
+    // The source lease is acquired before any network request. A concurrent
+    // worker may already have repaired the archive, so recheck under that lease.
+    const result = await refresh(path, { signal, minRecheckAgeMs: 20 * 3600000 });
+    if (result?.envelope?.payload) return result.envelope;
+    throw new PreparedSecUnavailableError('Scheduled SEC source refresh is busy. Retry on the next scheduled pass.', { sourceState: 'busy' });
+  }
+  const response = await fetchSec(`https://data.sec.gov${path}`, { headers: { Accept: 'application/json' }, signal, timeoutMs: 15000, retries: 1, cache: 'no-store' });
   if (!response.ok) throw new Error(`SEC returned HTTP ${response.status}.`);
   const payload = await response.json(), fetchedAt = new Date().toISOString();
   return { payload, metadata: { fetchedAt, revalidatedAt: fetchedAt } };
 }
 async function secJson(path, signal) {
-  return (await secDocument(path, signal)).payload;
+  return (await loadScheduledQuantDocument(path, signal)).payload;
 }
 async function refreshCompany(entry, cached, signal) {
   const now = Date.now();
@@ -155,7 +168,7 @@ async function refreshCompany(entry, cached, signal) {
   const fingerprint = filingFingerprint(submissions);
   let company = cached?.company, factsRetrievedAt = cached?.factsRetrievedAt, factsValidatedAt = cached?.factsValidatedAt;
   if (needsFactsRefresh(cached, fingerprint, now) || needsRefinancingMapping(cached)) {
-    const factsEnvelope = await secDocument(`/api/xbrl/companyfacts/CIK${entry.cik}.json`, signal), facts = factsEnvelope.payload;
+    const factsEnvelope = await loadScheduledQuantDocument(`/api/xbrl/companyfacts/CIK${entry.cik}.json`, signal), facts = factsEnvelope.payload;
     if (!facts.facts || !submissions.sic || Number(facts.cik) !== Number(entry.cik)) throw new Error('SEC facts or industry identity are unavailable.');
     const taxonomy = quantCandidateEligibility(entry, submissions, facts);
     if (taxonomy) return unsupported(taxonomy);
@@ -177,44 +190,69 @@ async function refreshCompany(entry, cached, signal) {
 }
 
 /** Each daily shard is small and resumable; successful issuers never lose their checkpoint. */
-export async function refreshQuantBatch(batch, { signal, deadline = Date.now() + 270000, tickers = null } = {}) {
+export async function refreshQuantBatch(batch, { signal, deadline = Date.now() + 270000, tickers = null } = {}, {
+  enabled = warmCacheEnabled, acquire = warmAcquireLease, release = warmReleaseLease,
+  membershipRead = readQuantMembership, checkpoints = readQuantCheckpoints,
+  readMany = warmGetMany, refresh = refreshCompany, write = warmSet,
+  publishUpdates = publishQuantRefinancingUpdates, now = Date.now,
+} = {}) {
   if (!Number.isSafeInteger(batch) || batch < 0 || batch >= QUANT_BATCHES) throw Object.assign(new Error('Invalid coverage batch.'), { status: 400 });
   if (tickers !== null && (!Array.isArray(tickers) || tickers.length < 1 || tickers.length > 160
     || tickers.some(ticker => !/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(ticker)))) throw new Error('Choose at most 160 valid correction tickers.');
-  if (!warmCacheEnabled()) throw new Error('Shared coverage storage is unavailable.');
-  const lease = await warmAcquireLease(QUANT_COVERAGE_CACHE, `batch-${batch}`, 295000);
+  if (!enabled()) throw new Error('Shared coverage storage is unavailable.');
+  const lease = await acquire(QUANT_COVERAGE_CACHE, `batch-${batch}`, 295000);
   if (!lease) return { skipped: 'Batch coordination is unavailable or another refresh is running.', batch };
   try {
     const selected = tickers ? new Set(tickers) : null;
-    const membership = await readQuantMembership(), entries = membership.rows.filter(r => quantBatch(r.cik) === batch && (!selected || selected.has(r.ticker)));
+    const membership = await membershipRead(), entries = membership.rows.filter(r => quantBatch(r.cik) === batch && (!selected || selected.has(r.ticker)));
     const ids = entries.map(r => r.cik);
-    const cached = await readQuantCheckpoints(ids, { signal, deadline });
+    const cached = await checkpoints(ids, { signal, deadline });
     const pending = entries.map((entry, index) => ({ entry, cached: cached[index] }))
       .filter(item => !quantCheckpointFresh(item.cached) || needsRefinancingMapping(item.cached));
-    const attempts = await warmGetMany(`${QUANT_COMPANY_CACHE}:attempts`, pending.map(item => item.entry.cik), {signal,deadline});
+    const attempts = await readMany(`${QUANT_COMPANY_CACHE}:attempts`, pending.map(item => item.entry.cik), {signal,deadline});
     const due = pending.map((item, index) => ({ ...item, attemptedAt: new Date(Math.max(Date.parse(attempts[index]?.at)||0,Date.parse(item.cached?.attemptedAt)||0)).toISOString() }))
       // Maintain already-published baseline coverage while first-time issuers
       // warm gradually; a cold expansion cannot starve the existing service.
       .sort((a, b) => Number(a.entry.fund === 'SEC') - Number(b.entry.fund === 'SEC')
         || (Date.parse(a.attemptedAt) || 0) - (Date.parse(b.attemptedAt) || 0));
     const queue = due.slice(0, QUANT_MAX_CHECKS_PER_BATCH);
+    const refinancingUpdates = [];
     const result = { batch, membership_id: membershipId(membership), requested: entries.length, checked: 0, unsupported: 0, reused: entries.length - due.length,
       failed: 0, skipped: 0, errors: [] };
     await Promise.all(Array.from({ length: 2 }, async () => {
-      while (queue.length && Date.now() < deadline - 22000 && !signal?.aborted) {
+      // Reserve time for one prepared projection merge and the final shard
+      // checkpoint instead of letting source work consume publication budget.
+      while (queue.length && now() < deadline - 45000 && !signal?.aborted) {
         const { entry, cached: prior } = queue.shift();
-        try { const refreshed = await refreshCompany(entry, prior, signal); if (refreshed.eligibility === 'unsupported') result.unsupported++; else result.checked++; }
+        try {
+          const refreshed = await refresh(entry, prior, signal);
+          if (refreshed.eligibility === 'unsupported') result.unsupported++;
+          else {
+            result.checked++;
+            const sector = entry.fund === 'SEC' ? quantSectorForSic(refreshed.company.sic) : entry.sector;
+            refinancingUpdates.push({ ...refreshed.company, researchGroup: QUANT_GROUPS.find(group => group.label === sector),
+              checkedAt: refreshed.checkedAt, factsRetrievedAt: refreshed.factsRetrievedAt });
+          }
+        }
         catch (error) {
           result.failed++;
           if (result.errors.length < 8) result.errors.push({ ticker: entry.ticker, source: 'SEC', reason: error.message });
-          await warmSet(`${QUANT_COMPANY_CACHE}:attempts`, entry.cik, { at: new Date().toISOString(), lastError: error.message }, 7 * 86400);
+          await write(`${QUANT_COMPANY_CACHE}:attempts`, entry.cik, { at: new Date(now()).toISOString(), lastError: error.message }, 7 * 86400);
         }
       }
     }));
     result.skipped = queue.length + due.length - Math.min(due.length, QUANT_MAX_CHECKS_PER_BATCH);
-    await warmSet(QUANT_COVERAGE_CACHE, `batch-${batch}`, { ...result, completed_at: new Date().toISOString() }, RETENTION);
+    result.refinancing = await publishUpdates(refinancingUpdates, { signal, deadline });
+    await write(QUANT_COVERAGE_CACHE, `batch-${batch}`, { ...result, completed_at: new Date(now()).toISOString() }, RETENTION);
     return result;
-  } finally { await warmReleaseLease(QUANT_COVERAGE_CACHE, `batch-${batch}`, lease); }
+  } finally { await release(QUANT_COVERAGE_CACHE, `batch-${batch}`, lease); }
+}
+
+/** Optional projection work never converts successful issuer checkpoints into
+ * a failed coverage job or schedules another source fetch. */
+export async function publishQuantRefinancingUpdates(companies, { publish = advanceRefinancingWall, ...options } = {}) {
+  try { return await publish(companies, options); }
+  catch (error) { return { status: 'deferred', reason: error.message }; }
 }
 
 export async function readQuantAtlas() {

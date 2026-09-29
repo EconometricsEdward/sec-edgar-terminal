@@ -107,24 +107,22 @@ export function isRefinancingProfile(profile, cik) {
     && (complete ? typeof profile.totalScheduled === 'number' && sameAmount(profile.totalScheduled, total) : profile.totalScheduled === null);
 }
 
-/** Only scheduled publication scans the prepared company universe. */
-export function buildRefinancingWall(atlas) {
-  const companies = (atlas?.companies || []).map(company => {
-    const sector = company.researchGroup?.label || company.sector || quantSectorForSic(company.sic);
-    const sectorId = QUANT_GROUPS.find(group => group.label === sector)?.id || 'sector-unclassified';
-    const cik = String(company.cik).padStart(10, '0');
-    const candidate = compactRefinancingProfile(company.refinancing);
-    return { cik, ticker: company.ticker, name: company.name, sic: String(company.sic), sector, sectorId,
-      checkedAt: company.refinancingSource?.revalidatedAt || company.checkedAt || company.observedAt,
-      factsRetrievedAt: company.refinancingSource?.fetchedAt || company.factsRetrievedAt || company.observedAt,
-      profile: isRefinancingProfile(candidate, cik) ? candidate : null };
-  }).sort((a, b) => a.ticker.localeCompare(b.ticker));
+export function buildRefinancingCompany(company) {
+  const sector = company.researchGroup?.label || company.sector || quantSectorForSic(company.sic);
+  const sectorId = QUANT_GROUPS.find(group => group.label === sector)?.id || 'sector-unclassified';
+  const cik = String(company.cik).padStart(10, '0');
+  const candidate = compactRefinancingProfile(company.refinancing);
+  return { cik, ticker: company.ticker, name: company.name, sic: String(company.sic), sector, sectorId,
+    checkedAt: company.refinancingSource?.revalidatedAt || company.checkedAt || company.observedAt,
+    factsRetrievedAt: company.refinancingSource?.fetchedAt || company.factsRetrievedAt || company.observedAt,
+    profile: isRefinancingProfile(candidate, cik) ? candidate : null };
+}
+
+function withCoverage(value, companies) {
   const checkedCompanies = companies.filter(company => company.profile).length;
   const coveredCompanies = companies.filter(company => company.profile?.status === 'ready').length;
-  return { version: REFINANCING_WALL_VERSION, extractionVersion: REFINANCING_VERSION,
-    generatedAt: atlas.generatedAt, sourceSnapshotAt: atlas.generatedAt,
-    membershipId: atlas.coverage?.membership_id || null,
-    coverage: { totalCandidates: atlas.requested, loadedCompanies: companies.length, checkedCompanies, coveredCompanies,
+  return { ...value,
+    coverage: { totalCandidates: value.coverage.totalCandidates, loadedCompanies: companies.length, checkedCompanies, coveredCompanies,
       completeCompanies: companies.filter(company => company.profile?.coverage.complete).length,
       missingScheduleCompanies: checkedCompanies - coveredCompanies, pendingCompanies: companies.length - checkedCompanies },
     companies,
@@ -132,6 +130,49 @@ export function buildRefinancingWall(atlas) {
       coveredCompanies: companies.filter(company => company.sectorId === group.id && company.profile?.status === 'ready').length }))
       .filter(group => group.companies),
   };
+}
+
+/** Only scheduled publication scans the prepared company universe. */
+export function buildRefinancingWall(atlas) {
+  const companies = (atlas?.companies || []).map(buildRefinancingCompany).sort((a, b) => a.ticker.localeCompare(b.ticker));
+  return withCoverage({ version: REFINANCING_WALL_VERSION, extractionVersion: REFINANCING_VERSION,
+    generatedAt: atlas.generatedAt, sourceSnapshotAt: atlas.generatedAt, membershipId: atlas.coverage?.membership_id || null,
+    coverage: { totalCandidates: atlas.requested } }, companies);
+}
+
+/** Merge only matching identities already present in this membership snapshot.
+ * A partial shard never refreshes untouched source dates or the snapshot's
+ * retention clock. Full publishers use this too before replacing a projection. */
+export function mergeRefinancingWall(previous, updates, generatedAt = previous.generatedAt) {
+  if (!isRefinancingWall(previous) || !Array.isArray(updates) || updates.length > 5000
+    || !timestamp(generatedAt) || Date.parse(generatedAt) < Date.parse(previous.generatedAt)) return previous;
+  const incoming = new Map(updates.map(company => [company?.cik, company]));
+  let changed = false;
+  const companies = previous.companies.map(company => {
+    const next = incoming.get(company.cik);
+    if (!next || !timestamp(next.checkedAt) || !timestamp(next.factsRetrievedAt)
+      || !isRefinancingProfile(next.profile, company.cik)
+      || Date.parse(next.checkedAt) > Date.parse(generatedAt) + 60000
+      || Date.parse(next.factsRetrievedAt) > Date.parse(next.checkedAt)
+      || Date.parse(next.checkedAt) < Date.parse(company.checkedAt)
+      || Date.parse(next.factsRetrievedAt) < Date.parse(company.factsRetrievedAt)) return company;
+    if (company.profile) {
+      // Equal source clocks are idempotent. Newer annual evidence may still
+      // replace an old filing discovered in the same immutable source version.
+      const newerSource = Date.parse(next.checkedAt) > Date.parse(company.checkedAt)
+        || Date.parse(next.factsRetrievedAt) > Date.parse(company.factsRetrievedAt);
+      const newerFiling = next.profile.asOf && (!company.profile.asOf || next.profile.asOf > company.profile.asOf
+        || next.profile.asOf === company.profile.asOf && next.profile.filedAt > company.profile.filedAt);
+      if (!newerSource && !newerFiling) return company;
+      if (next.profile.asOf && company.profile.asOf && (next.profile.asOf < company.profile.asOf
+        || next.profile.asOf === company.profile.asOf && next.profile.filedAt < company.profile.filedAt)) return company;
+    }
+    changed = true;
+    return { ...company, checkedAt: next.checkedAt, factsRetrievedAt: next.factsRetrievedAt, profile: next.profile };
+  });
+  if (!changed) return previous;
+  const { cache: _cache, ...base } = previous;
+  return withCoverage({ ...base, generatedAt }, companies);
 }
 
 export function isRefinancingWall(value) {

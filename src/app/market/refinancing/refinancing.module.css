@@ -47,6 +47,7 @@
 .sectorSelect select { background:transparent; }
 .download { display:flex; gap:6px; align-items:center; justify-content:center; padding:10px 0 10px 12px; font-size:11px!important; color:var(--r-muted); }
 .download:hover { color:var(--r-text); }
+.exportStatus { color:var(--r-muted); font-size:10px; padding:0 0 16px; }
 .wall { padding:22px 0 20px; border-top:1px solid var(--r-line); }
 .sectionHeader { display:flex; justify-content:space-between; gap:20px; align-items:flex-end; margin-bottom:22px; }
 .sectionHeader .eyebrow { margin-bottom:7px; }

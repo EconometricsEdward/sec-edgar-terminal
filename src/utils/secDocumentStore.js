@@ -59,11 +59,12 @@ export function secDocumentIdentity(path) {
 }
 
 export class PreparedSecUnavailableError extends Error {
-  constructor(message = 'Prepared SEC data is not ready. Retry after the scheduled refresh.') {
+  constructor(message = 'Prepared SEC data is not ready. Retry after the scheduled refresh.', { sourceState = 'unavailable' } = {}) {
     super(message);
     this.name = 'PreparedSecUnavailableError';
     this.status = 503;
     this.code = 'SEC_PREPARED_UNAVAILABLE';
+    this.sourceState = ['missing', 'expired', 'storage', 'invalid', 'busy'].includes(sourceState) ? sourceState : 'unavailable';
   }
 }
 
@@ -111,18 +112,28 @@ export function preparedCacheControl(envelope, { maxAge = 60, sharedMaxAge = 300
 /** A cohort miss/outage never calls SEC from an ordinary prepared-data read. */
 export async function readPreparedSecDocument(path, {
   mode = getDataStoreMode('sec'), read = readDataset, now = Date.now(), allowStale = true,
-  readEnabled = isSecPreparedReadEnabled, loadRegistry = loadSecCoverageRegistry,
+  readEnabled = isSecPreparedReadEnabled, loadRegistry = loadSecCoverageRegistry, requireRegistry = false,
 } = {}) {
   if (mode !== 'supabase') return null;
-  await loadRegistry();
+  if (requireRegistry) await loadRegistry({ required: true });
+  else await loadRegistry();
   const identity = secDocumentIdentity(path);
   if (!identity?.covered || !readEnabled(identity.cik)) return null;
   let envelope;
   try { envelope = await read('sec', identity.key, { allowStale: true }); }
-  catch { throw new PreparedSecUnavailableError('Prepared SEC storage is temporarily unavailable.'); }
-  if (!preparedEnvelopeUsable(envelope, now)) throw new PreparedSecUnavailableError();
-  if (!allowStale && Date.parse(envelope.metadata.expiresAt) <= now) throw new PreparedSecUnavailableError('Prepared SEC research input requires revalidation.');
-  try { validateDocument(envelope.payload, identity); } catch { throw new PreparedSecUnavailableError('Prepared SEC data failed identity validation.'); }
+  catch { throw new PreparedSecUnavailableError('Prepared SEC storage is temporarily unavailable.', { sourceState: 'storage' }); }
+  if (!envelope) throw new PreparedSecUnavailableError(undefined, { sourceState: 'missing' });
+  try { validateDocument(envelope.payload, identity); }
+  catch { throw new PreparedSecUnavailableError('Prepared SEC data failed identity validation.', { sourceState: 'invalid' }); }
+  if (!preparedEnvelopeUsable(envelope, now)) {
+    const { fetchedAt, revalidatedAt = fetchedAt, expiresAt } = envelope.metadata || {};
+    const [fetched, revalidated, expires] = [fetchedAt, revalidatedAt, expiresAt].map(Date.parse);
+    const expired = [fetched, revalidated, expires].every(Number.isFinite)
+      && fetched <= revalidated && revalidated <= now + 60000 && expires >= revalidated && expires < now;
+    throw new PreparedSecUnavailableError(undefined, { sourceState: expired ? 'expired' : 'invalid' });
+  }
+  if (!allowStale && Date.parse(envelope.metadata.expiresAt) <= now)
+    throw new PreparedSecUnavailableError('Prepared SEC research input requires revalidation.', { sourceState: 'expired' });
   return envelope;
 }
 
