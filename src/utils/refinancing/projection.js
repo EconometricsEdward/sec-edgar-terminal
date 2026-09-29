@@ -153,10 +153,10 @@ export function mergeRefinancingWall(previous, updates, generatedAt = previous.g
     if (!next || !timestamp(next.checkedAt) || !timestamp(next.factsRetrievedAt)
       || !isRefinancingProfile(next.profile, company.cik)
       || Date.parse(next.checkedAt) > Date.parse(generatedAt) + 60000
-      || Date.parse(next.factsRetrievedAt) > Date.parse(next.checkedAt)
-      || Date.parse(next.checkedAt) < Date.parse(company.checkedAt)
-      || Date.parse(next.factsRetrievedAt) < Date.parse(company.factsRetrievedAt)) return company;
+      || Date.parse(next.factsRetrievedAt) > Date.parse(next.checkedAt)) return company;
     if (company.profile) {
+      if (Date.parse(next.checkedAt) < Date.parse(company.checkedAt)
+        || Date.parse(next.factsRetrievedAt) < Date.parse(company.factsRetrievedAt)) return company;
       // Equal source clocks are idempotent. Newer annual evidence may still
       // replace an old filing discovered in the same immutable source version.
       const newerSource = Date.parse(next.checkedAt) > Date.parse(company.checkedAt)
@@ -167,6 +167,8 @@ export function mergeRefinancingWall(previous, updates, generatedAt = previous.g
       if (next.profile.asOf && company.profile.asOf && (next.profile.asOf < company.profile.asOf
         || next.profile.asOf === company.profile.asOf && next.profile.filedAt < company.profile.filedAt)) return company;
     }
+    // Pending rows inherit Market's observation clock, not a maturity-source
+    // clock. Initial archived evidence keeps its own true dates even when older.
     changed = true;
     return { ...company, checkedAt: next.checkedAt, factsRetrievedAt: next.factsRetrievedAt, profile: next.profile };
   });
