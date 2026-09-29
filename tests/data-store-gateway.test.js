@@ -159,12 +159,15 @@ test('gateway permits only approved dataset/resource/cohort formats', async () =
     ['financial', 'research-market-directory-v1:latest'],
     ['financial', 'research-market-industries-v1:latest'],
     ['financial', 'research-market-sector-companies-v1:latest'],
+    ['financial', 'research-market-refinancing-v1:latest'],
     ['financial', 'research-company-v1:CIK0000320193'],
     ['cftc', 'markets:disaggregated:latest'], ['cftc', 'markets:tff:2026-09-08'],
     ['cftc', 'history:tff:098662:asset-manager:2026-09-08:5y'],
   ];
   for (const [dataset, resource] of valid) assert.equal((await handler(rpc('edgar_get_version', { p_dataset: dataset, p_key: resource }))).status, 200, resource);
-  const invalid = [ ['other', key], ['sec', 'sec-documents-v1:CIK0000000000:companyfacts'], ['sec', 'financial-cohort-v1'], ['cftc', 'markets:legacy:latest'], ['cftc', 'markets:tff:2026-02-31'], ['cftc', 'history:tff:098662:managed-money:2026-09-08:5y'], ['cftc', 'history:tff:098662:asset-manager:2026-09-08:all'] ];
+  const invalid = [ ['other', key], ['sec', 'sec-documents-v1:CIK0000000000:companyfacts'], ['sec', 'financial-cohort-v1'],
+    ['financial', 'research-market-refinancing-v1:arbitrary'], ['financial', 'research-market-refinancing-v2:latest'],
+    ['cftc', 'markets:legacy:latest'], ['cftc', 'markets:tff:2026-02-31'], ['cftc', 'history:tff:098662:managed-money:2026-09-08:5y'], ['cftc', 'history:tff:098662:asset-manager:2026-09-08:all'] ];
   for (const [dataset, resource] of invalid) assert.equal((await handler(rpc('edgar_get_version', { p_dataset: dataset, p_key: resource }))).status, 403, resource);
   assert.equal(calls.length, valid.length);
 });

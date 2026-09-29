@@ -71,7 +71,7 @@ export const SITE_TOOLS = Object.freeze([
 ]);
 
 const TICKER = /^[A-Z0-9][A-Z0-9.-]{0,14}$/;
-const LANDINGS = new Set([...SITE_TOOLS.map((tool) => tool.href), "/about", "/analysis/scenarios", "/analysis/banks"]);
+const LANDINGS = new Set([...SITE_TOOLS.map((tool) => tool.href), "/about", "/analysis/scenarios", "/analysis/banks", "/market/refinancing", "/market/funding", "/market/derivatives"]);
 
 /** A CIK identifies an SEC filer; it must never become a stock ticker. */
 export function normalizeCikIdentifier(value) {
