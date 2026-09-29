@@ -18,6 +18,7 @@ const MAIN_PAGES: Array<
   ["/market", "weekly", 0.8],
   ["/market/funding", "daily", 0.8],
   ["/market/derivatives", "weekly", 0.8],
+  ["/market/refinancing", "daily", 0.8],
   ["/filings", "weekly", 0.8],
   ["/analysis", "weekly", 0.8],
   ["/analysis/banks", "weekly", 0.8],

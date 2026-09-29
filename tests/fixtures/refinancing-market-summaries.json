@@ -1,0 +1,1363 @@
+{
+  "note": "Size-regression fixtures derived from SEC companyfacts retrieved 2026-09-29; public source accession evidence remains within each company.",
+  "companies": [
+    {
+      "version": "market-research-v3",
+      "revenueVersion": "market-revenue-v2",
+      "riskVersion": "market-risk-v1",
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "name": "Apple Inc.",
+      "sic": "3571",
+      "cohorts": [],
+      "observedAt": "2026-09-29T02:00:00.000Z",
+      "metrics": {
+        "annual": {
+          "revenueGrowth": 6.425511782832749,
+          "netMargin": 26.91506412181824,
+          "operatingMargin": 31.970799762591884,
+          "cashFlowMargin": 26.788190147563085,
+          "freeCashFlowMargin": 23.732882225869314,
+          "capexIntensity": 3.0553079216937675,
+          "equityToAssets": 20.524661717342955,
+          "liabilitiesToAssets": 79.47533828265705,
+          "cashToAssets": 10.002755810166434,
+          "revenue": 416161000000,
+          "totalAssets": 359241000000,
+          "netIncome": 112010000000,
+          "debtToAssets": 27.46262258483859,
+          "currentRatio": 0.8932929222186667,
+          "interestCoverage": null
+        },
+        "ttm": {
+          "revenueGrowth": 14.242398286937895,
+          "netMargin": 27.618604910212223,
+          "operatingMargin": 33.17295848747812,
+          "cashFlowMargin": 31.430327982982842,
+          "freeCashFlowMargin": 29.279405684809873,
+          "capexIntensity": 2.1509222981729694,
+          "equityToAssets": 28.053623332098333,
+          "liabilitiesToAssets": 71.94637666790167,
+          "cashToAssets": 10.317638402571582,
+          "revenue": 466823000000,
+          "totalAssets": 383266000000,
+          "netIncome": 128930000000,
+          "debtToAssets": 22.00664812427922,
+          "currentRatio": 1.0032948046555858,
+          "interestCoverage": null
+        }
+      },
+      "reports": {
+        "annual": {
+          "fy": 2025,
+          "fp": "FY",
+          "end": "2025-09-27",
+          "filed": "2025-10-31",
+          "form": "10-K",
+          "accession": "0000320193-25-000079",
+          "kind": "annual",
+          "fiscalStart": "2024-09-29",
+          "start": "2024-09-29",
+          "ttmStart": null
+        },
+        "ttm": {
+          "fy": 2026,
+          "fp": "Q3",
+          "end": "2026-06-27",
+          "filed": "2026-07-31",
+          "form": "10-Q",
+          "accession": "0000320193-26-000020",
+          "kind": "ttm",
+          "fiscalStart": "2025-09-28",
+          "start": "2025-06-29",
+          "ttmStart": "2025-06-29"
+        }
+      },
+      "filingComparisons": {
+        "annual": {
+          "pointInTime": true,
+          "cutoff": {
+            "filed": "2025-10-31",
+            "acceptedAt": null,
+            "accession": "0000320193-25-000079"
+          },
+          "current": {
+            "end": "2025-09-27",
+            "filed": "2025-10-31",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0000320193-25-000079",
+            "metrics": {
+              "revenueGrowth": 6.425511782832749,
+              "netMargin": 26.91506412181824,
+              "operatingMargin": 31.970799762591884,
+              "freeCashFlowMargin": 23.732882225869314,
+              "equityToAssets": 20.524661717342955,
+              "cashToAssets": 10.002755810166434
+            },
+            "factorSourceAccessions": [
+              "0000320193-25-000079"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "prior": {
+            "end": "2024-09-28",
+            "filed": "2024-11-01",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0000320193-24-000123",
+            "metrics": {
+              "revenueGrowth": 2.021994077514111,
+              "netMargin": 23.971255769943866,
+              "operatingMargin": 31.510222870075566,
+              "freeCashFlowMargin": 27.825386474356517,
+              "equityToAssets": 15.603594717518767,
+              "cashToAssets": 8.204011178694723
+            },
+            "factorSourceAccessions": [
+              "0000320193-25-000079"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "gapDays": 364,
+          "changes": {
+            "revenueGrowth": 4.403517705318638,
+            "netMargin": 2.943808351874374,
+            "operatingMargin": 0.4605768925163183,
+            "freeCashFlowMargin": -4.092504248487202,
+            "equityToAssets": 4.921066999824188,
+            "cashToAssets": 1.7987446314717115
+          }
+        },
+        "ttm": {
+          "pointInTime": true,
+          "cutoff": {
+            "filed": "2026-07-31",
+            "acceptedAt": null,
+            "accession": "0000320193-26-000020"
+          },
+          "current": {
+            "end": "2026-06-27",
+            "filed": "2026-07-31",
+            "acceptedAt": null,
+            "form": "10-Q",
+            "accession": "0000320193-26-000020",
+            "metrics": {
+              "revenueGrowth": 14.242398286937895,
+              "netMargin": 27.618604910212223,
+              "operatingMargin": 33.17295848747812,
+              "freeCashFlowMargin": 29.279405684809873,
+              "equityToAssets": 28.053623332098333,
+              "cashToAssets": 10.317638402571582
+            },
+            "factorSourceAccessions": [
+              "0000320193-26-000020",
+              "0000320193-26-000013",
+              "0000320193-26-000006",
+              "0000320193-25-000079",
+              "0000320193-25-000073"
+            ],
+            "factorSourceMasks": [
+              "1f",
+              "1f",
+              "1f",
+              "1f",
+              "1",
+              "1"
+            ]
+          },
+          "prior": {
+            "end": "2025-06-28",
+            "filed": "2025-08-01",
+            "acceptedAt": null,
+            "form": "10-Q",
+            "accession": "0000320193-25-000073",
+            "metrics": {
+              "revenueGrowth": 5.970389234523599,
+              "netMargin": 24.296115019883757,
+              "operatingMargin": 31.866381156316915,
+              "freeCashFlowMargin": 23.538452126032425,
+              "equityToAssets": 19.858519736345947,
+              "cashToAssets": 10.941039834688306
+            },
+            "factorSourceAccessions": [
+              "0000320193-26-000020",
+              "0000320193-26-000013",
+              "0000320193-26-000006",
+              "0000320193-25-000079",
+              "0000320193-25-000073",
+              "0000320193-25-000057",
+              "0000320193-25-000008",
+              "0000320193-24-000081"
+            ],
+            "factorSourceMasks": [
+              "ff",
+              "1f",
+              "1f",
+              "1f",
+              "11",
+              "10"
+            ]
+          },
+          "gapDays": 364,
+          "changes": {
+            "revenueGrowth": 8.272009052414298,
+            "netMargin": 3.322489890328466,
+            "operatingMargin": 1.3065773311612041,
+            "freeCashFlowMargin": 5.7409535587774485,
+            "equityToAssets": 8.195103595752386,
+            "cashToAssets": -0.623401432116724
+          }
+        }
+      },
+      "refinancing": {
+        "schemaVersion": "refinancing-v1",
+        "packed": true,
+        "cik": "0000320193",
+        "context": [
+          "ready",
+          "2025-09-27",
+          "2025-10-31",
+          "0000320193-25-000079",
+          "10-K",
+          "fiscal"
+        ],
+        "reason": null,
+        "buckets": [
+          [
+            12393000000,
+            "2025-09-28",
+            "2026-09-27",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            10078000000,
+            "2026-09-28",
+            "2027-09-27",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            9300000000,
+            "2027-09-28",
+            "2028-09-27",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            5235000000,
+            "2028-09-28",
+            "2029-09-27",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            4972000000,
+            "2029-09-28",
+            "2030-09-27",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            49303000000,
+            "2030-09-28",
+            null,
+            null,
+            "anniversary-estimate",
+            null
+          ]
+        ],
+        "metrics": [
+          [
+            35934000000,
+            "CashAndCashEquivalentsAtCarryingValue",
+            null,
+            "2025-09-27",
+            null,
+            null
+          ],
+          [
+            111482000000,
+            "NetCashProvidedByUsedInOperatingActivities",
+            "2024-09-29",
+            "2025-09-27",
+            null,
+            null
+          ],
+          [
+            133050000000,
+            "OperatingIncomeLoss",
+            "2024-09-29",
+            "2025-09-27",
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            "not_reported_in_schedule_filing",
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            "compatible_annual_operating_income_and_interest_required",
+            null
+          ],
+          [
+            2.8995400629387555,
+            null,
+            null,
+            "2025-09-27",
+            null,
+            "Cash and cash equivalents / reported next-year principal maturities"
+          ]
+        ],
+        "warnings": [
+          "Fiscal-year periods do not align with calendar years. Anniversary dates are indicative; 52/53-week calendars and fiscal-year changes can shift year ends.",
+          "Maturities describe principal scheduled at the filing date, not a forecast of refinancing needs. Cash and cash flow have other uses; short-term borrowings and leases are outside this schedule."
+        ]
+      },
+      "revenueBasis": "Reported total revenue"
+    },
+    {
+      "version": "market-research-v3",
+      "revenueVersion": "market-revenue-v2",
+      "riskVersion": "market-risk-v1",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "name": "MICROSOFT CORPORATION",
+      "sic": "7372",
+      "cohorts": [],
+      "observedAt": "2026-09-29T02:00:00.000Z",
+      "metrics": {
+        "annual": {
+          "revenueGrowth": 17.788686799846666,
+          "netMargin": 40.30538905915218,
+          "operatingMargin": 46.780818408927225,
+          "cashFlowMargin": 55.127637197556645,
+          "freeCashFlowMargin": 20.18659651216403,
+          "capexIntensity": 34.941040685392615,
+          "equityToAssets": 58.33346519404623,
+          "liabilitiesToAssets": 41.66653480595377,
+          "cashToAssets": 2.7605040243889576,
+          "revenue": 331839000000,
+          "totalAssets": 758376000000,
+          "netIncome": 133749000000,
+          "debtToAssets": null,
+          "currentRatio": 1.2303272619576484,
+          "interestCoverage": 50.880694854146185
+        },
+        "ttm": {
+          "revenueGrowth": 17.788686799846666,
+          "netMargin": 40.30538905915218,
+          "operatingMargin": 46.780818408927225,
+          "cashFlowMargin": 55.127637197556645,
+          "freeCashFlowMargin": 20.18659651216403,
+          "capexIntensity": 34.941040685392615,
+          "equityToAssets": 58.33346519404623,
+          "liabilitiesToAssets": 41.66653480595377,
+          "cashToAssets": 2.7605040243889576,
+          "revenue": 331839000000,
+          "totalAssets": 758376000000,
+          "netIncome": 133749000000,
+          "debtToAssets": null,
+          "currentRatio": 1.2303272619576484,
+          "interestCoverage": 50.880694854146185
+        }
+      },
+      "reports": {
+        "annual": {
+          "fy": 2026,
+          "fp": "FY",
+          "end": "2026-06-30",
+          "filed": "2026-07-29",
+          "form": "10-K",
+          "accession": "0001193125-26-323660",
+          "kind": "annual",
+          "fiscalStart": "2025-07-01",
+          "start": "2025-07-01",
+          "ttmStart": null
+        },
+        "ttm": {
+          "fy": 2026,
+          "fp": "Q4",
+          "end": "2026-06-30",
+          "filed": "2026-07-29",
+          "form": "10-K",
+          "accession": "0001193125-26-323660",
+          "kind": "ttm",
+          "fiscalStart": "2025-07-01",
+          "start": "2025-07-01",
+          "ttmStart": "2025-07-01"
+        }
+      },
+      "filingComparisons": {
+        "annual": {
+          "pointInTime": true,
+          "cutoff": {
+            "filed": "2026-07-29",
+            "acceptedAt": null,
+            "accession": "0001193125-26-323660"
+          },
+          "current": {
+            "end": "2026-06-30",
+            "filed": "2026-07-29",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0001193125-26-323660",
+            "metrics": {
+              "revenueGrowth": 17.788686799846666,
+              "netMargin": 40.30538905915218,
+              "operatingMargin": 46.780818408927225,
+              "freeCashFlowMargin": 20.18659651216403,
+              "equityToAssets": 58.33346519404623,
+              "cashToAssets": 2.7605040243889576
+            },
+            "factorSourceAccessions": [
+              "0001193125-26-323660"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "prior": {
+            "end": "2025-06-30",
+            "filed": "2025-07-30",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0000950170-25-100235",
+            "metrics": {
+              "revenueGrowth": 14.932156232406712,
+              "netMargin": 36.146015248967075,
+              "operatingMargin": 45.62195624085985,
+              "freeCashFlowMargin": 25.418849654271558,
+              "equityToAssets": 55.4890687121064,
+              "cashToAssets": 4.885598292738484
+            },
+            "factorSourceAccessions": [
+              "0001193125-26-323660"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "gapDays": 365,
+          "changes": {
+            "revenueGrowth": 2.856530567439954,
+            "netMargin": 4.159373810185109,
+            "operatingMargin": 1.1588621680673725,
+            "freeCashFlowMargin": -5.232253142107528,
+            "equityToAssets": 2.8443964819398246,
+            "cashToAssets": -2.1250942683495264
+          }
+        },
+        "ttm": {
+          "pointInTime": true,
+          "cutoff": {
+            "filed": "2026-07-29",
+            "acceptedAt": null,
+            "accession": "0001193125-26-323660"
+          },
+          "current": {
+            "end": "2026-06-30",
+            "filed": "2026-07-29",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0001193125-26-323660",
+            "metrics": {
+              "revenueGrowth": 17.788686799846666,
+              "netMargin": 40.30538905915218,
+              "operatingMargin": 46.780818408927225,
+              "freeCashFlowMargin": 20.18659651216403,
+              "equityToAssets": 58.33346519404623,
+              "cashToAssets": 2.7605040243889576
+            },
+            "factorSourceAccessions": [
+              "0001193125-26-323660"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "prior": {
+            "end": "2025-06-30",
+            "filed": "2025-07-30",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0000950170-25-100235",
+            "metrics": {
+              "revenueGrowth": 14.932156232406712,
+              "netMargin": 36.146015248967075,
+              "operatingMargin": 45.62195624085985,
+              "freeCashFlowMargin": 25.418849654271558,
+              "equityToAssets": 55.4890687121064,
+              "cashToAssets": 4.885598292738484
+            },
+            "factorSourceAccessions": [
+              "0001193125-26-323660"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "gapDays": 365,
+          "changes": {
+            "revenueGrowth": 2.856530567439954,
+            "netMargin": 4.159373810185109,
+            "operatingMargin": 1.1588621680673725,
+            "freeCashFlowMargin": -5.232253142107528,
+            "equityToAssets": 2.8443964819398246,
+            "cashToAssets": -2.1250942683495264
+          }
+        }
+      },
+      "refinancing": {
+        "schemaVersion": "refinancing-v1",
+        "packed": true,
+        "cik": "0000789019",
+        "context": [
+          "ready",
+          "2026-06-30",
+          "2026-07-29",
+          "0001193125-26-323660",
+          "10-K",
+          "fiscal"
+        ],
+        "reason": null,
+        "buckets": [
+          [
+            9250000000,
+            "2026-07-01",
+            "2027-06-30",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            0,
+            "2027-07-01",
+            "2028-06-30",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            2001000000,
+            "2028-07-01",
+            "2029-06-30",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            0,
+            "2029-07-01",
+            "2030-06-30",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            500000000,
+            "2030-07-01",
+            "2031-06-30",
+            null,
+            "anniversary-estimate",
+            null
+          ],
+          [
+            34385000000,
+            "2031-07-01",
+            null,
+            null,
+            "anniversary-estimate",
+            null
+          ]
+        ],
+        "metrics": [
+          [
+            20935000000,
+            "CashAndCashEquivalentsAtCarryingValue",
+            null,
+            "2026-06-30",
+            null,
+            null
+          ],
+          [
+            182935000000,
+            "NetCashProvidedByUsedInOperatingActivities",
+            "2025-07-01",
+            "2026-06-30",
+            null,
+            null
+          ],
+          [
+            155237000000,
+            "OperatingIncomeLoss",
+            "2025-07-01",
+            "2026-06-30",
+            null,
+            null
+          ],
+          [
+            3051000000,
+            "InterestExpenseNonoperating",
+            "2025-07-01",
+            "2026-06-30",
+            null,
+            null
+          ],
+          [
+            50.880694854146185,
+            null,
+            "2025-07-01",
+            "2026-06-30",
+            null,
+            "Reported operating income / positive reported interest expense"
+          ],
+          [
+            2.2632432432432434,
+            null,
+            null,
+            "2026-06-30",
+            null,
+            "Cash and cash equivalents / reported next-year principal maturities"
+          ]
+        ],
+        "warnings": [
+          "Fiscal-year periods do not align with calendar years. Anniversary dates are indicative; 52/53-week calendars and fiscal-year changes can shift year ends.",
+          "Maturities describe principal scheduled at the filing date, not a forecast of refinancing needs. Cash and cash flow have other uses; short-term borrowings and leases are outside this schedule."
+        ]
+      },
+      "revenueBasis": "Reported total revenue"
+    },
+    {
+      "version": "market-research-v3",
+      "revenueVersion": "market-revenue-v2",
+      "riskVersion": "market-risk-v1",
+      "ticker": "T",
+      "cik": "0000732717",
+      "name": "AT&T INC.",
+      "sic": "4813",
+      "cohorts": [],
+      "observedAt": "2026-09-29T02:00:00.000Z",
+      "metrics": {
+        "annual": {
+          "revenueGrowth": 2.707297933560038,
+          "netMargin": 17.471826053737423,
+          "operatingMargin": 19.22991213548962,
+          "cashFlowMargin": 32.06099579778429,
+          "freeCashFlowMargin": null,
+          "capexIntensity": null,
+          "equityToAssets": 30.102713482691495,
+          "liabilitiesToAssets": null,
+          "cashToAssets": 4.339382862364885,
+          "revenue": 125648000000,
+          "totalAssets": 420198000000,
+          "netIncome": 21953000000,
+          "debtToAssets": 32.38949257254913,
+          "currentRatio": 0.9061361100780959,
+          "interestCoverage": 3.551146384479718
+        },
+        "ttm": {
+          "revenueGrowth": 2.6253387533875294,
+          "netMargin": 16.94291844481645,
+          "operatingMargin": 20.121975180565705,
+          "cashFlowMargin": null,
+          "freeCashFlowMargin": null,
+          "capexIntensity": null,
+          "equityToAssets": 29.51589671280398,
+          "liabilitiesToAssets": null,
+          "cashToAssets": 4.101699742505701,
+          "revenue": 127239000000,
+          "totalAssets": 428359000000,
+          "netIncome": 21558000000,
+          "debtToAssets": 33.60592400299748,
+          "currentRatio": 0.9710014611666854,
+          "interestCoverage": 3.56240434117156
+        }
+      },
+      "reports": {
+        "annual": {
+          "fy": 2025,
+          "fp": "FY",
+          "end": "2025-12-31",
+          "filed": "2026-02-09",
+          "form": "10-K",
+          "accession": "0000732717-26-000120",
+          "kind": "annual",
+          "fiscalStart": "2025-01-01",
+          "start": "2025-01-01",
+          "ttmStart": null
+        },
+        "ttm": {
+          "fy": 2026,
+          "fp": "Q2",
+          "end": "2026-06-30",
+          "filed": "2026-07-22",
+          "form": "10-Q",
+          "accession": "0000732717-26-000297",
+          "kind": "ttm",
+          "fiscalStart": "2026-01-01",
+          "start": "2025-07-01",
+          "ttmStart": "2025-07-01"
+        }
+      },
+      "filingComparisons": {
+        "annual": {
+          "pointInTime": true,
+          "cutoff": {
+            "filed": "2026-02-09",
+            "acceptedAt": null,
+            "accession": "0000732717-26-000120"
+          },
+          "current": {
+            "end": "2025-12-31",
+            "filed": "2026-02-09",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0000732717-26-000120",
+            "metrics": {
+              "revenueGrowth": 2.707297933560038,
+              "netMargin": 17.471826053737423,
+              "operatingMargin": 19.22991213548962,
+              "freeCashFlowMargin": null,
+              "equityToAssets": 30.102713482691495,
+              "cashToAssets": 4.339382862364885
+            },
+            "factorSourceAccessions": [
+              "0000732717-26-000120"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "prior": {
+            "end": "2024-12-31",
+            "filed": "2025-02-12",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0000732717-25-000013",
+            "metrics": {
+              "revenueGrowth": -0.0751462083837029,
+              "netMargin": 8.949123724823437,
+              "operatingMargin": 15.571050222338478,
+              "freeCashFlowMargin": null,
+              "equityToAssets": 29.950987221216074,
+              "cashToAssets": 0.8353702554490305
+            },
+            "factorSourceAccessions": [
+              "0000732717-26-000120"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "gapDays": 365,
+          "changes": {
+            "revenueGrowth": 2.7824441419437407,
+            "netMargin": 8.522702328913986,
+            "operatingMargin": 3.658861913151142,
+            "freeCashFlowMargin": null,
+            "equityToAssets": 0.1517262614754209,
+            "cashToAssets": 3.5040126069158544
+          }
+        },
+        "ttm": {
+          "pointInTime": true,
+          "cutoff": {
+            "filed": "2026-07-22",
+            "acceptedAt": null,
+            "accession": "0000732717-26-000297"
+          },
+          "current": {
+            "end": "2026-06-30",
+            "filed": "2026-07-22",
+            "acceptedAt": null,
+            "form": "10-Q",
+            "accession": "0000732717-26-000297",
+            "metrics": {
+              "revenueGrowth": 2.6253387533875294,
+              "netMargin": 16.94291844481645,
+              "operatingMargin": 20.121975180565705,
+              "freeCashFlowMargin": null,
+              "equityToAssets": 29.51589671280398,
+              "cashToAssets": 4.101699742505701
+            },
+            "factorSourceAccessions": [
+              "0000732717-26-000297",
+              "0000732717-26-000206",
+              "0000732717-26-000120",
+              "0000732717-25-000171"
+            ],
+            "factorSourceMasks": [
+              "f",
+              "f",
+              "f",
+              "f",
+              "1",
+              "1"
+            ]
+          },
+          "prior": {
+            "end": "2025-06-30",
+            "filed": "2025-07-24",
+            "acceptedAt": null,
+            "form": "10-Q",
+            "accession": "0000732717-25-000080",
+            "metrics": {
+              "revenueGrowth": 1.46239269376498,
+              "netMargin": 10.28923086849916,
+              "operatingMargin": 15.886727319654149,
+              "freeCashFlowMargin": null,
+              "equityToAssets": 29.937532522300124,
+              "cashToAssets": 2.5892066654993573
+            },
+            "factorSourceAccessions": [
+              "0000732717-26-000297",
+              "0000732717-26-000206",
+              "0000732717-26-000120",
+              "0000732717-25-000171",
+              "0000732717-25-000080",
+              "0000732717-25-000023",
+              "0000732717-24-000009",
+              "0000732717-24-000059"
+            ],
+            "factorSourceMasks": [
+              "ff",
+              "f",
+              "f",
+              "3f",
+              "11",
+              "11"
+            ]
+          },
+          "gapDays": 365,
+          "changes": {
+            "revenueGrowth": 1.1629460596225494,
+            "netMargin": 6.653687576317289,
+            "operatingMargin": 4.2352478609115565,
+            "freeCashFlowMargin": null,
+            "equityToAssets": -0.421635809496145,
+            "cashToAssets": 1.512493077006344
+          }
+        }
+      },
+      "refinancing": {
+        "schemaVersion": "refinancing-v1",
+        "packed": true,
+        "cik": "0000732717",
+        "context": [
+          "ready",
+          "2025-12-31",
+          "2026-02-09",
+          "0000732717-26-000120",
+          "10-K",
+          "fiscal"
+        ],
+        "reason": null,
+        "buckets": [
+          [
+            8652000000,
+            "2026-01-01",
+            "2026-12-31",
+            2026,
+            "calendar-year",
+            null
+          ],
+          [
+            8953000000,
+            "2027-01-01",
+            "2027-12-31",
+            2027,
+            "calendar-year",
+            null
+          ],
+          [
+            6905000000,
+            "2028-01-01",
+            "2028-12-31",
+            2028,
+            "calendar-year",
+            null
+          ],
+          [
+            6918000000,
+            "2029-01-01",
+            "2029-12-31",
+            2029,
+            "calendar-year",
+            null
+          ],
+          [
+            7020000000,
+            "2030-01-01",
+            "2030-12-31",
+            2030,
+            "calendar-year",
+            null
+          ],
+          [
+            106216000000,
+            "2031-01-01",
+            null,
+            null,
+            "calendar-year",
+            null
+          ]
+        ],
+        "metrics": [
+          [
+            18234000000,
+            "CashAndCashEquivalentsAtCarryingValue",
+            null,
+            "2025-12-31",
+            null,
+            null
+          ],
+          [
+            40284000000,
+            "NetCashProvidedByUsedInOperatingActivities",
+            "2025-01-01",
+            "2025-12-31",
+            null,
+            null
+          ],
+          [
+            24162000000,
+            "OperatingIncomeLoss",
+            "2025-01-01",
+            "2025-12-31",
+            null,
+            null
+          ],
+          [
+            6804000000,
+            "InterestExpenseNonoperating",
+            "2025-01-01",
+            "2025-12-31",
+            null,
+            null
+          ],
+          [
+            3.551146384479718,
+            null,
+            "2025-01-01",
+            "2025-12-31",
+            null,
+            "Reported operating income / positive reported interest expense"
+          ],
+          [
+            2.10748959778086,
+            null,
+            null,
+            "2025-12-31",
+            null,
+            "Cash and cash equivalents / reported next-year principal maturities"
+          ]
+        ],
+        "warnings": [
+          "Maturities describe principal scheduled at the filing date, not a forecast of refinancing needs. Cash and cash flow have other uses; short-term borrowings and leases are outside this schedule."
+        ]
+      },
+      "revenueBasis": "Reported total revenue"
+    },
+    {
+      "version": "market-research-v3",
+      "revenueVersion": "market-revenue-v2",
+      "riskVersion": "market-risk-v1",
+      "ticker": "XOM",
+      "cik": "0000034088",
+      "name": "Exxon Mobil Corporation",
+      "sic": "2911",
+      "cohorts": [],
+      "observedAt": "2026-09-29T02:00:00.000Z",
+      "metrics": {
+        "annual": {
+          "revenueGrowth": -4.962169429466368,
+          "netMargin": 8.681728158729586,
+          "operatingMargin": null,
+          "cashFlowMargin": 15.642400929454187,
+          "freeCashFlowMargin": 7.106953449033525,
+          "capexIntensity": 8.535447480420661,
+          "equityToAssets": 57.772283843378325,
+          "liabilitiesToAssets": 40.6151721680253,
+          "cashToAssets": 2.378947837320148,
+          "revenue": 332238000000,
+          "totalAssets": 448980000000,
+          "netIncome": 28844000000,
+          "debtToAssets": 9.696868457392311,
+          "currentRatio": 1.1527996681874741,
+          "interestCoverage": null
+        },
+        "ttm": {
+          "revenueGrowth": -4.400626944902064,
+          "netMargin": 7.573463855962376,
+          "operatingMargin": null,
+          "cashFlowMargin": 14.277508182596051,
+          "freeCashFlowMargin": 5.622206398879867,
+          "capexIntensity": 8.655301783716185,
+          "equityToAssets": 54.77509097564652,
+          "liabilitiesToAssets": 43.800521091277105,
+          "cashToAssets": 1.8162830257746387,
+          "revenue": 334246000000,
+          "totalAssets": 464410000000,
+          "netIncome": 25314000000,
+          "debtToAssets": 10.262698908292242,
+          "currentRatio": 1.0361207060967599,
+          "interestCoverage": null
+        }
+      },
+      "reports": {
+        "annual": {
+          "fy": 2025,
+          "fp": "FY",
+          "end": "2025-12-31",
+          "filed": "2026-02-18",
+          "form": "10-K",
+          "accession": "0000034088-26-000045",
+          "kind": "annual",
+          "fiscalStart": "2025-01-01",
+          "start": "2025-01-01",
+          "ttmStart": null
+        },
+        "ttm": {
+          "fy": 2026,
+          "fp": "Q1",
+          "end": "2026-03-31",
+          "filed": "2026-05-04",
+          "form": "10-Q",
+          "accession": "0000034088-26-000067",
+          "kind": "ttm",
+          "fiscalStart": "2026-01-01",
+          "start": "2025-04-01",
+          "ttmStart": "2025-04-01"
+        }
+      },
+      "filingComparisons": {
+        "annual": {
+          "pointInTime": true,
+          "cutoff": {
+            "filed": "2026-02-18",
+            "acceptedAt": null,
+            "accession": "0000034088-26-000045"
+          },
+          "current": {
+            "end": "2025-12-31",
+            "filed": "2026-02-18",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0000034088-26-000045",
+            "metrics": {
+              "revenueGrowth": -4.962169429466368,
+              "netMargin": 8.681728158729586,
+              "operatingMargin": null,
+              "freeCashFlowMargin": 7.106953449033525,
+              "equityToAssets": 57.772283843378325,
+              "cashToAssets": 2.378947837320148
+            },
+            "factorSourceAccessions": [
+              "0000034088-26-000045"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "prior": {
+            "end": "2024-12-31",
+            "filed": "2025-02-19",
+            "acceptedAt": null,
+            "form": "10-K",
+            "accession": "0000034088-25-000010",
+            "metrics": {
+              "revenueGrowth": 1.451904046061614,
+              "netMargin": 9.634280647052934,
+              "operatingMargin": null,
+              "freeCashFlowMargin": 8.786418181558133,
+              "equityToAssets": 58.15204807321241,
+              "cashToAssets": 5.078339489497767
+            },
+            "factorSourceAccessions": [
+              "0000034088-26-000045"
+            ],
+            "factorSourceMasks": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ]
+          },
+          "gapDays": 365,
+          "changes": {
+            "revenueGrowth": -6.414073475527982,
+            "netMargin": -0.9525524883233487,
+            "operatingMargin": null,
+            "freeCashFlowMargin": -1.6794647325246084,
+            "equityToAssets": -0.37976422983408753,
+            "cashToAssets": -2.6993916521776193
+          }
+        },
+        "ttm": {
+          "pointInTime": true,
+          "cutoff": {
+            "filed": "2026-05-04",
+            "acceptedAt": null,
+            "accession": "0000034088-26-000067"
+          },
+          "current": {
+            "end": "2026-03-31",
+            "filed": "2026-05-04",
+            "acceptedAt": null,
+            "form": "10-Q",
+            "accession": "0000034088-26-000067",
+            "metrics": {
+              "revenueGrowth": -4.400626944902064,
+              "netMargin": 7.573463855962376,
+              "operatingMargin": null,
+              "freeCashFlowMargin": 5.622206398879867,
+              "equityToAssets": 54.77509097564652,
+              "cashToAssets": 1.8162830257746387
+            },
+            "factorSourceAccessions": [
+              "0000034088-26-000067",
+              "0000034088-26-000045",
+              "0000034088-25-000061",
+              "0000034088-25-000042",
+              "0000034088-25-000024"
+            ],
+            "factorSourceMasks": [
+              "f",
+              "f",
+              "f",
+              "1f",
+              "1",
+              "1"
+            ]
+          },
+          "prior": {
+            "end": "2025-03-31",
+            "filed": "2025-05-05",
+            "acceptedAt": null,
+            "form": "10-Q",
+            "accession": "0000034088-25-000024",
+            "metrics": {
+              "revenueGrowth": 2.5010187598394573,
+              "netMargin": 9.487975928976752,
+              "operatingMargin": null,
+              "freeCashFlowMargin": 8.060188998718653,
+              "equityToAssets": 58.13572674084105,
+              "cashToAssets": 3.769793851845951
+            },
+            "factorSourceAccessions": [
+              "0000034088-26-000067",
+              "0000034088-26-000045",
+              "0000034088-25-000061",
+              "0000034088-25-000042",
+              "0000034088-25-000024",
+              "0000034088-24-000068",
+              "0000034088-24-000050"
+            ],
+            "factorSourceMasks": [
+              "7f",
+              "f",
+              "f",
+              "1f",
+              "10",
+              "10"
+            ]
+          },
+          "gapDays": 365,
+          "changes": {
+            "revenueGrowth": -6.901645704741521,
+            "netMargin": -1.914512073014376,
+            "operatingMargin": null,
+            "freeCashFlowMargin": -2.4379825998387856,
+            "equityToAssets": -3.3606357651945302,
+            "cashToAssets": -1.9535108260713123
+          }
+        }
+      },
+      "refinancing": {
+        "schemaVersion": "refinancing-v1",
+        "packed": true,
+        "cik": "0000034088",
+        "context": [
+          "ready",
+          "2025-12-31",
+          "2026-02-18",
+          "0000034088-26-000045",
+          "10-K",
+          "fiscal"
+        ],
+        "reason": "partial_schedule",
+        "buckets": [
+          [
+            null,
+            "2026-01-01",
+            "2026-12-31",
+            2026,
+            "calendar-year",
+            "not_reported"
+          ],
+          [
+            2500000000,
+            "2027-01-01",
+            "2027-12-31",
+            2027,
+            "calendar-year",
+            null
+          ],
+          [
+            1700000000,
+            "2028-01-01",
+            "2028-12-31",
+            2028,
+            "calendar-year",
+            null
+          ],
+          [
+            1700000000,
+            "2029-01-01",
+            "2029-12-31",
+            2029,
+            "calendar-year",
+            null
+          ],
+          [
+            5300000000,
+            "2030-01-01",
+            "2030-12-31",
+            2030,
+            "calendar-year",
+            null
+          ],
+          [
+            null,
+            "2031-01-01",
+            null,
+            null,
+            "calendar-year",
+            "not_reported"
+          ]
+        ],
+        "metrics": [
+          [
+            10681000000,
+            "CashAndCashEquivalentsAtCarryingValue",
+            null,
+            "2025-12-31",
+            null,
+            null
+          ],
+          [
+            51970000000,
+            "NetCashProvidedByUsedInOperatingActivities",
+            "2025-01-01",
+            "2025-12-31",
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            "not_reported_in_schedule_filing",
+            null
+          ],
+          [
+            603000000,
+            "InterestExpense",
+            "2025-01-01",
+            "2025-12-31",
+            null,
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            "compatible_annual_operating_income_and_interest_required",
+            null
+          ],
+          [
+            null,
+            null,
+            null,
+            null,
+            "positive_next_year_maturities_and_cash_required",
+            null
+          ]
+        ],
+        "warnings": [
+          "Only reported maturity buckets are shown. Missing amounts are unknown, not zero.",
+          "Maturities describe principal scheduled at the filing date, not a forecast of refinancing needs. Cash and cash flow have other uses; short-term borrowings and leases are outside this schedule."
+        ]
+      },
+      "revenueBasis": "Reported total revenue"
+    }
+  ]
+}

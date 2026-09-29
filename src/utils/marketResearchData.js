@@ -4,6 +4,9 @@ import { classifyIndustry, INDUSTRY_GROUPS } from './industry.js';
 import { evidenceSources, evidenceCalculations } from './researchEvidence.js';
 import { MARKET_METRICS, MARKET_VERSION, isNumber } from './marketResearch.js';
 import { createAnalysisFinancialMapper } from './analysisFinancialMappings.js';
+import { extractRefinancingProfile } from './refinancing/maturities.js';
+import { quantSectorForSic } from './quantGroups.js';
+import { packRefinancingProfile } from './refinancing/projection.js';
 
 const INPUTS = [...new Set(MARKET_METRICS.flatMap((m) => m.inputs))];
 const percent = (a, b) => isNumber(a) && isNumber(b) && b > 0 ? a / b * 100 : null;
@@ -272,6 +275,8 @@ export function buildMarketCompany({ ticker, cik, name, sic, facts, acceptanceTi
       : revenueTags.includes('RevenuesNetOfInterestExpense') || revenuePoints.some(point => point.formula === 'Net interest income + noninterest income')
         ? 'Financial net revenue after interest expense' : 'Reported total revenue';
   return { version: MARKET_VERSION, revenueVersion: MARKET_REVENUE_VERSION, riskVersion: MARKET_RISK_VERSION, ticker, cik, name, sic, cohorts, observedAt, metrics, reports, filingComparisons,
+    refinancing: extractRefinancingProfile({ cik, entityName: name, facts }, { ticker, name, cik, sic,
+      sector: quantSectorForSic(sic), asOf: observedAt.slice(0, 10) }),
     revenueBasis, evidence: { annual, ttm } };
 }
 
@@ -307,6 +312,7 @@ export function marketCompanySummary(company) {
   const { evidence: _evidence, ...summary } = company;
   return {
     ...summary,
+    ...(company.refinancing ? { refinancing: packRefinancingProfile(company.refinancing) } : {}),
     filingComparisons: {
       annual: summaryComparison(company.filingComparisons?.annual),
       ttm: summaryComparison(company.filingComparisons?.ttm),

@@ -123,7 +123,7 @@ function validKey(dataset, key, job = false) {
   if (dataset === 'financial') {
     if (['research-market-overview-v1:latest', 'research-market-briefing-v1:latest',
       'research-market-directory-v1:latest', 'research-market-industries-v1:latest',
-      'research-market-sector-companies-v1:latest'].includes(key)) return true;
+      'research-market-sector-companies-v1:latest', 'research-market-refinancing-v1:latest'].includes(key)) return true;
     const match = FINANCIAL_KEY.exec(key) || COMPARE_KEY.exec(key) || PORTFOLIO_KEY.exec(key) || COMPANY_KEY.exec(key);
     return !!match && !SOURCE_ONLY.has(match[1]);
   }

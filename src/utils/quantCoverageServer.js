@@ -15,6 +15,9 @@ import { publishMarketOverview } from './marketOverviewServer.js';
 import { cacheDeploymentScope, isProductionDeployment } from './cacheScope.js';
 import { revenueCorrectionPriority, recalculatePreparedMarketRevenue, withholdUncorrectedRevenue } from './marketRevenueCorrections.js';
 import { hasInvalidMarketPeriods } from './marketPeriodIntegrity.js';
+import { REFINANCING_VERSION, extractRefinancingProfile } from './refinancing/maturities.js';
+import { isRefinancingProfile, compactRefinancingProfile, packRefinancingProfile } from './refinancing/projection.js';
+import { publishRefinancingWall } from './refinancing/server.js';
 
 const scope = cacheDeploymentScope();
 export const QUANT_COVERAGE_CACHE = `${QUANT_COVERAGE_VERSION}:${scope}`;
@@ -100,6 +103,12 @@ export function quantCheckpointFresh(record, now = Date.now()) {
     && record.company.riskVersion === MARKET_RISK_VERSION && !hasInvalidMarketPeriods(record.company) && age < 20 * 3600000);
 }
 
+/** Maturity upgrades use the existing shard budget; a checked missing schedule
+ * is a completed result, not an excuse to keep retrying that issuer. */
+export function needsRefinancingMapping(record) {
+  return Boolean(record?.company && record.company.refinancing?.schemaVersion !== REFINANCING_VERSION);
+}
+
 /** Retired Redis checkpoints only existed for the original baseline universe. */
 export async function readQuantCheckpoints(ids, options = {}, { readMany = warmGetMany, production = isProductionDeployment() } = {}) {
   const current = await readMany(QUANT_COMPANY_CACHE, ids, options);
@@ -134,7 +143,7 @@ async function secJson(path, signal) {
 }
 async function refreshCompany(entry, cached, signal) {
   const now = Date.now();
-  if (quantCheckpointFresh(cached, now)) return { ...cached, reused: true };
+  if (quantCheckpointFresh(cached, now) && !needsRefinancingMapping(cached)) return { ...cached, reused: true };
   const submissions = await secJson(`/submissions/CIK${entry.cik}.json`, signal);
   const unsupported = async reason => {
     const record = { eligibility: 'unsupported', checkedAt: new Date().toISOString(), reason };
@@ -145,7 +154,7 @@ async function refreshCompany(entry, cached, signal) {
   if (eligibility) return unsupported(eligibility);
   const fingerprint = filingFingerprint(submissions);
   let company = cached?.company, factsRetrievedAt = cached?.factsRetrievedAt, factsValidatedAt = cached?.factsValidatedAt;
-  if (needsFactsRefresh(cached, fingerprint, now)) {
+  if (needsFactsRefresh(cached, fingerprint, now) || needsRefinancingMapping(cached)) {
     const factsEnvelope = await secDocument(`/api/xbrl/companyfacts/CIK${entry.cik}.json`, signal), facts = factsEnvelope.payload;
     if (!facts.facts || !submissions.sic || Number(facts.cik) !== Number(entry.cik)) throw new Error('SEC facts or industry identity are unavailable.');
     const taxonomy = quantCandidateEligibility(entry, submissions, facts);
@@ -180,7 +189,8 @@ export async function refreshQuantBatch(batch, { signal, deadline = Date.now() +
     const membership = await readQuantMembership(), entries = membership.rows.filter(r => quantBatch(r.cik) === batch && (!selected || selected.has(r.ticker)));
     const ids = entries.map(r => r.cik);
     const cached = await readQuantCheckpoints(ids, { signal, deadline });
-    const pending = entries.map((entry, index) => ({ entry, cached: cached[index] })).filter(item => !quantCheckpointFresh(item.cached));
+    const pending = entries.map((entry, index) => ({ entry, cached: cached[index] }))
+      .filter(item => !quantCheckpointFresh(item.cached) || needsRefinancingMapping(item.cached));
     const attempts = await warmGetMany(`${QUANT_COMPANY_CACHE}:attempts`, pending.map(item => item.entry.cik), {signal,deadline});
     const due = pending.map((item, index) => ({ ...item, attemptedAt: new Date(Math.max(Date.parse(attempts[index]?.at)||0,Date.parse(item.cached?.attemptedAt)||0)).toISOString() }))
       // Maintain already-published baseline coverage while first-time issuers
@@ -262,6 +272,10 @@ export async function publishQuantAtlas(atlas, options={}) {
   if (!await writeSnapshot(QUANT_ATLAS_CACHE, 'atlas', publication, 7*86400, options)) throw new Error('Expanded SEC snapshot could not be published.');
   const membership = await readQuantMembership();
   await publishMarketOverview(publication, membershipId(membership) === publication.coverage.membership_id ? membership : null, options);
+  // This separate compact view does not inflate the ordinary Market payload.
+  // A new projection outage must not roll back successful established views.
+  try { await publishRefinancingWall(publication, options.durable || {}); }
+  catch (error) { console.warn('[Market] Refinancing publication deferred:', error.message); }
 }
 
 /** Deployment-only, bounded correction; source revalidation is explicitly opted in by the build. */
@@ -417,13 +431,79 @@ export async function refreshQuantRiskMappings({ signal, deadline = Date.now() +
   return result;
 }
 
+/** Bounded deployment seed, using already archived SEC facts only. Extraction
+ * changes no existing financial metric, filing fingerprint or source clock. */
+export async function refreshQuantRefinancingMappings({ signal, deadline = Date.now() + 40000, limit = 80,
+  readAtlas = readQuantAtlas, readMany = warmGetMany, write = warmSet, prepared = readPreparedSecDocument,
+  acquire = warmAcquireLease, release = warmReleaseLease, now = Date.now,
+} = {}) {
+  const atlas = await readAtlas();
+  const candidates = (atlas?.companies || []).filter(company => needsRefinancingMapping({ company }));
+  const result = { candidates: candidates.length, checked: 0, covered: 0, reused: 0, unavailable: 0, skipped: 0, errors: [] };
+  if (!candidates.length || signal?.aborted || now() >= deadline) return result;
+  const sectors = new Map();
+  for (const company of candidates) {
+    const key = company.researchGroup?.id || quantSectorForSic(company.sic);
+    if (!sectors.has(key)) sectors.set(key, []);
+    sectors.get(key).push(company);
+  }
+  const selected = [], max = Math.min(120, Math.max(1, Math.floor(limit)));
+  while (selected.length < max && [...sectors.values()].some(rows => rows.length)) {
+    for (const rows of sectors.values()) if (rows.length && selected.length < max) selected.push(rows.shift());
+  }
+  const groups = [...new Set(selected.map(company => quantBatch(company.cik)))];
+  await Promise.all(Array.from({ length: 2 }, async () => {
+    while (groups.length && now() < deadline - 12000 && !signal?.aborted) {
+      const batch = groups.shift(), members = selected.filter(company => quantBatch(company.cik) === batch);
+      const key = `batch-${batch}`, lease = await acquire(QUANT_COVERAGE_CACHE, key, 55000);
+      if (!lease) { result.skipped += members.length; continue; }
+      try {
+        const records = await readMany(QUANT_COMPANY_CACHE, members.map(company => company.cik), { signal, deadline });
+        for (let index = 0; index < members.length; index++) {
+          if (now() >= deadline - 12000 || signal?.aborted) { result.skipped += members.length - index; break; }
+          const original = members[index], record = records[index];
+          // Do not resurrect a later unsupported decision or an expired row.
+          if (!record?.company || record.eligibility === 'unsupported') { result.skipped++; continue; }
+          if (!needsRefinancingMapping(record)) { result.reused++; continue; }
+          const company = record.company;
+          try {
+            if (Number(company.cik) !== Number(original.cik)) throw new Error('Checkpoint issuer identity changed.');
+            const facts = await prepared(`/api/xbrl/companyfacts/CIK${company.cik}.json`, { allowStale: true });
+            const sourceChecked = Date.parse(facts?.metadata?.revalidatedAt || facts?.metadata?.fetchedAt);
+            const priorChecked = Date.parse(record.factsValidatedAt || record.factsRetrievedAt || original.factsValidatedAt || original.factsRetrievedAt);
+            if (!facts?.payload?.facts || Number(facts.payload.cik) !== Number(company.cik)
+              || !Number.isFinite(sourceChecked) || !Number.isFinite(priorChecked) || sourceChecked < priorChecked
+              || sourceChecked > now() + 60000) throw new Error('A compatible prepared SEC source is unavailable.');
+            if (signal?.aborted || now() >= deadline - 6000) { result.skipped++; break; }
+            const profile = extractRefinancingProfile(facts.payload, { ticker: company.ticker, name: company.name,
+              cik: company.cik, sic: company.sic, sector: quantSectorForSic(company.sic), asOf: new Date(now()).toISOString().slice(0, 10) });
+            if (!isRefinancingProfile(profile, String(company.cik).padStart(10, '0'))) throw new Error('Prepared maturity extraction failed validation.');
+            const updated = { ...company, refinancing: packRefinancingProfile(profile),
+              refinancingSource: { fetchedAt: facts.metadata.fetchedAt,
+                revalidatedAt: facts.metadata.revalidatedAt || facts.metadata.fetchedAt } };
+            if (!await write(QUANT_COMPANY_CACHE, company.cik, { ...record, company: updated }, 14 * 86400))
+              throw new Error('Prepared maturity checkpoint could not be persisted.');
+            result.checked++;
+            if (profile.status === 'ready') result.covered++;
+          } catch (error) {
+            result.unavailable++;
+            if (result.errors.length < 5) result.errors.push({ ticker: company.ticker, reason: error.message });
+          }
+        }
+      } finally { await release(QUANT_COVERAGE_CACHE, key, lease); }
+    }
+  }));
+  result.remaining = candidates.length - result.checked - result.reused;
+  return result;
+}
+
 /** Called under the universe publisher lease, including its retained-atlas
  * path. Apply completed revenue and risk mapping upgrades without rebuilding
  * the public company universe or renewing underlying SEC observation clocks. */
 export async function applyPreparedRevenueCorrections(atlas, { signal, deadline, readMany = warmGetMany } = {}) {
   const candidates = atlas.companies.filter(company => revenueCorrectionPriority(company) !== null
     || company.revenueVersion === MARKET_REVENUE_VERSION && company.revenueQuality === 'awaiting-compatible-source'
-    || company.riskVersion !== MARKET_RISK_VERSION);
+    || company.riskVersion !== MARKET_RISK_VERSION || needsRefinancingMapping({ company }));
   if (!candidates.length) return atlas;
   const records = await readMany(QUANT_COMPANY_CACHE, candidates.map(company => company.cik), { signal, deadline });
   const changes = new Map();
@@ -431,7 +511,9 @@ export async function applyPreparedRevenueCorrections(atlas, { signal, deadline,
     const record = records[index], corrected = record?.company;
     if (!corrected || corrected.revenueVersion !== MARKET_REVENUE_VERSION && corrected.revenueQuality !== 'awaiting-compatible-source') return;
     const needsRevenue = revenueCorrectionPriority(company) !== null || company.revenueQuality === 'awaiting-compatible-source';
-    if (!needsRevenue && (company.riskVersion === MARKET_RISK_VERSION || corrected.riskVersion !== MARKET_RISK_VERSION)) return;
+    const maturityUpgrade = needsRefinancingMapping({ company })
+      && isRefinancingProfile(compactRefinancingProfile(corrected.refinancing), String(company.cik).padStart(10, '0'));
+    if (!needsRevenue && (company.riskVersion === MARKET_RISK_VERSION || corrected.riskVersion !== MARKET_RISK_VERSION) && !maturityUpgrade) return;
     // A checkpoint can be older than an independently published snapshot.
     // Never move source knowledge or a reported fiscal period backwards.
     if (Number(company.cik) !== Number(corrected.cik)
