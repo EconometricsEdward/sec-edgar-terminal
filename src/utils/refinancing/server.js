@@ -3,7 +3,7 @@ import { preparedEnvelopeUsable } from '../secDocumentStore.js';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { REFINANCING_VERSION } from './maturities.js';
-import { buildRefinancingWall, isRefinancingWall, REFINANCING_WALL_VERSION,
+import { buildRefinancingWall, buildRefinancingCompany, mergeRefinancingWall, isRefinancingWall, REFINANCING_WALL_VERSION,
   REFINANCING_RETENTION_MS, REFINANCING_FRESH_MS, REFINANCING_MAX_BYTES } from './projection.js';
 
 export const REFINANCING_WALL_KEY = 'research-market-refinancing-v1:latest';
@@ -43,12 +43,33 @@ export function retainedRefinancingWall(value, now = Date.now()) {
     checkedAt: value.sourceSnapshotAt } };
 }
 
+const publicationHash = value => digest(Buffer.from(JSON.stringify({
+  membershipId: value.membershipId, sourceSnapshotAt: value.sourceSnapshotAt,
+  companies: value.companies, coverage: value.coverage, sectors: value.sectors,
+})));
+
+async function publishValue(value, claim, publish) {
+  const fetchedAt = value.companies.map(company => company.factsRetrievedAt).sort()[0] || value.sourceSnapshotAt;
+  await publish({ dataset: 'financial', key: REFINANCING_WALL_KEY, claim, payload: value,
+    metadata: { sourceId: 'sec-edgar', sourceUrl: 'https://data.sec.gov/submissions/', fetchedAt,
+      // Publication time describes this projection. Individual company clocks
+      // and sourceSnapshotAt remain unchanged by a partial update.
+      revalidatedAt: value.generatedAt,
+      expiresAt: new Date(Math.min(Date.parse(value.generatedAt) + REFINANCING_FRESH_MS,
+        Date.parse(value.sourceSnapshotAt) + REFINANCING_RETENTION_MS)).toISOString(),
+      parserVersion: REFINANCING_VERSION, calculationVersion: REFINANCING_WALL_VERSION,
+      view: REFINANCING_WALL_VERSION, coverage: value.coverage.coveredCompanies },
+    identityInputs: { version: value.version, extractionVersion: REFINANCING_VERSION,
+      generatedAt: value.generatedAt, membership: value.membershipId,
+      contentHash: publicationHash(value) } });
+}
+
 /** One bounded immutable public projection; called only by the Quant publisher. */
 export async function publishRefinancingWall(atlas, {
   mode = getDataStoreMode('financial'), read = readDataset, begin = beginDatasetWrite,
   publish = publishDataset, release = releaseDatasetWrite, now = Date.now,
 } = {}) {
-  const value = buildRefinancingWall(atlas);
+  let value = buildRefinancingWall(atlas);
   if (!isRefinancingWall(value) || Buffer.byteLength(JSON.stringify(value)) > REFINANCING_MAX_BYTES)
     throw new Error('Refinancing snapshot failed validation or exceeded its size bound.');
   if (mode === 'off') return value;
@@ -57,23 +78,56 @@ export async function publishRefinancingWall(atlas, {
   try {
     const previous = await read('financial', REFINANCING_WALL_KEY, { allowStale: true });
     const retained = retainedRefinancingWall(previous?.payload, now());
-    // Equal-time publication may carry newly seeded maturity checks. Do not
-    // overwrite a newer source snapshot or regress checked coverage.
-    if (retained && (retained.sourceSnapshotAt > value.sourceSnapshotAt
-      || retained.sourceSnapshotAt === value.sourceSnapshotAt && retained.coverage.checkedCompanies >= value.coverage.checkedCompanies)) {
+    if (retained && retained.sourceSnapshotAt > value.sourceSnapshotAt) {
       await release('financial', REFINANCING_WALL_KEY, claim);
       return retained;
     }
-    const fetchedAt = value.companies.map(company => company.factsRetrievedAt).sort()[0] || value.sourceSnapshotAt;
-    await publish({ dataset: 'financial', key: REFINANCING_WALL_KEY, claim, payload: value,
-      metadata: { sourceId: 'sec-edgar', sourceUrl: 'https://data.sec.gov/submissions/', fetchedAt,
-        revalidatedAt: value.sourceSnapshotAt, expiresAt: new Date(Date.parse(value.sourceSnapshotAt) + REFINANCING_FRESH_MS).toISOString(),
-        parserVersion: REFINANCING_VERSION, calculationVersion: REFINANCING_WALL_VERSION,
-        view: REFINANCING_WALL_VERSION, coverage: value.coverage.coveredCompanies },
-      identityInputs: { version: value.version, extractionVersion: REFINANCING_VERSION,
-        generatedAt: value.generatedAt, membership: value.membershipId,
-        checkedCompanies: value.coverage.checkedCompanies } });
+    // The full atlas may have been captured before a shard published newer
+    // issuer evidence. Merge it under the same lease instead of rolling back.
+    if (retained) value = mergeRefinancingWall(value, retained.companies,
+      value.generatedAt > retained.generatedAt ? value.generatedAt : retained.generatedAt);
+    if (retained && publicationHash(retained) === publicationHash(value)) {
+      await release('financial', REFINANCING_WALL_KEY, claim);
+      return retained;
+    }
+    if (!isRefinancingWall(value) || Buffer.byteLength(JSON.stringify(value)) > REFINANCING_MAX_BYTES)
+      throw new Error('Merged refinancing snapshot failed validation.');
+    await publishValue(value, claim, publish);
     return value;
+  } catch (error) { await release('financial', REFINANCING_WALL_KEY, claim); throw error; }
+}
+
+/** At most one small batch of already computed issuer results per cron run.
+ * Read/merge/publish share the dataset lease with the full atlas publisher. */
+export async function advanceRefinancingWall(companies, {
+  mode = getDataStoreMode('financial'), read = readDataset, begin = beginDatasetWrite,
+  publish = publishDataset, release = releaseDatasetWrite, now = Date.now,
+  signal, deadline = Infinity,
+} = {}) {
+  if (!Array.isArray(companies) || companies.length > 256) throw new Error('Unbounded refinancing publication batch.');
+  if (!companies.length || mode === 'off') return { status: 'skipped', reason: 'no-updates' };
+  if (signal?.aborted || now() >= deadline - 20000) return { status: 'skipped', reason: 'deadline' };
+  const updates = companies.map(buildRefinancingCompany);
+  const claim = await begin('financial', REFINANCING_WALL_KEY, { leaseSeconds: 120 });
+  if (!claim) return { status: 'skipped', reason: 'busy' };
+  try {
+    // Reading after acquisition prevents a late shard from discarding another
+    // shard's just-published changes. No atlas/checkpoint/SEC reads occur here.
+    const previous = await read('financial', REFINANCING_WALL_KEY, { allowStale: true });
+    const retained = retainedRefinancingWall(previous?.payload, now());
+    if (!retained || signal?.aborted || now() >= deadline - 10000) {
+      await release('financial', REFINANCING_WALL_KEY, claim);
+      return { status: 'skipped', reason: retained ? 'deadline' : 'snapshot-unavailable' };
+    }
+    const value = mergeRefinancingWall(retained, updates, new Date(now()).toISOString());
+    if (value === retained) {
+      await release('financial', REFINANCING_WALL_KEY, claim);
+      return { status: 'unchanged', checkedCompanies: retained.coverage.checkedCompanies, coveredCompanies: retained.coverage.coveredCompanies };
+    }
+    if (!isRefinancingWall(value) || Buffer.byteLength(JSON.stringify(value)) > REFINANCING_MAX_BYTES)
+      throw new Error('Incremental refinancing snapshot failed validation.');
+    await publishValue(value, claim, publish);
+    return { status: 'published', checkedCompanies: value.coverage.checkedCompanies, coveredCompanies: value.coverage.coveredCompanies };
   } catch (error) { await release('financial', REFINANCING_WALL_KEY, claim); throw error; }
 }
 

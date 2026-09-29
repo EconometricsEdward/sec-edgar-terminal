@@ -31,11 +31,25 @@ company SEC debt is not combined with a legal bank's Call Report balance sheet.
 - `buildMarketCompany` extracts while the scheduled worker already has SEC facts.
 - Versioned packed profiles remain in the existing Quant checkpoints and atlas.
   Existing 16 bounded shards complete and refresh coverage; there is no new cron.
+- A scheduled shard repairs a confirmed missing or expired archive through the
+  existing per-document fenced refresh and SEC dispatch controls. Registry,
+  database, identity, and corrupt-source failures never fall through to SEC;
+  a busy refresh waits for the next scheduled pass rather than retrying.
 - A deployment can seed at most 80 issuers in 40 seconds using archived sources,
   two workers, and existing shard leases. It does not advance source clocks.
 - The publisher writes `financial/research-market-refinancing-v1:latest` as a
   separate validated projection. Failure preserves the prior snapshot and does
   not fail established Market publication.
+- Each successful Quant shard can also merge its already computed issuer results
+  into that projection, rather than waiting for the twice-daily full publisher.
+  The source loop reserves 45 seconds; at most 256 in-memory results are considered.
+  One existing projection is read after obtaining its dataset lease, then merged
+  and published under that same lease. This adds no SEC or checkpoint-universe
+  reads. Publication failure leaves successful issuer checkpoints intact.
+- Partial publication preserves membership, untouched company dates, and the
+  original whole-snapshot retention clock. Future or regressing source/filing
+  dates are rejected. Full publication also retains newer issuer evidence from
+  earlier partial publications; content hashes distinguish actual data changes.
 - Public reads never ingest, parse SEC documents, scan the universe, or enqueue
   work. One shared Next cache key is reused for 15 minutes. A validated process
   fallback also lasts 15 minutes; concurrent cold reads share work and failures

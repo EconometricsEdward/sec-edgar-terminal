@@ -57,8 +57,17 @@ function exportCsv(companies: SupportedCompany[]) {
   const blob = new Blob(['\uFEFF' + rows.map(row => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = url; link.download = 'sec-edgar-refinancing-wall.csv'; link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  link.href = url;
+  link.download = 'sec-edgar-refinancing-wall.csv';
+  link.hidden = true;
+  // Keep the link connected and its blob alive while the browser hands the file
+  // to its download manager. An early revocation can race that handoff.
+  try {
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 60000);
+  }
 }
 
 export default function RefinancingWall({ data, cftcEnabled = true }: Props) {
@@ -72,6 +81,7 @@ export default function RefinancingWall({ data, cftcEnabled = true }: Props) {
   const [selectedCik, setSelectedCik] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
   const companies = useMemo(() => (data.companies || []).filter((c): c is SupportedCompany => Boolean(c.profile?.status === 'ready' && c.profile.currency === 'USD' && c.profile.buckets?.length && c.profile.buckets.every(m => m.value == null || isAmount(m.value) && m.value >= 0) && safeSource(c.profile.sourceUrl))), [data.companies]);
   const sectors = useMemo(() => [...new Set(companies.map(c => c.sector))].sort(), [companies]);
   const colors = useMemo(() => new Map(sectors.map((name, i) => [name, PALETTE[i % PALETTE.length]])), [sectors]);
@@ -114,6 +124,15 @@ export default function RefinancingWall({ data, cftcEnabled = true }: Props) {
     try { await navigator.clipboard.writeText(url.href); setCopyFailed(false); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { setCopyFailed(true); }
   }
 
+  function downloadData() {
+    try {
+      exportCsv(matching);
+      setExportMessage(`CSV download requested for ${matching.length.toLocaleString()} ${matching.length === 1 ? 'issuer' : 'issuers'}. Check your browser’s downloads.`);
+    } catch {
+      setExportMessage('The CSV could not be prepared. Please try again.');
+    }
+  }
+
   return <div className={s.page}>
     <nav className={s.breadcrumb} aria-label="Breadcrumb"><Link href="/market">Market</Link><ChevronRight size={13} /><span>Refinancing wall</span></nav>
     <header className={s.hero}>
@@ -127,8 +146,9 @@ export default function RefinancingWall({ data, cftcEnabled = true }: Props) {
       <section className={s.filters} aria-label="Refinancing wall filters">
         <label className={s.search}><Search size={17} /><span className={s.srOnly}>Search company, ticker, or CIK</span><input type="search" placeholder="Find a company or ticker" value={query} onChange={e => { setQuery(e.target.value); setPage(0); setSelectedYear(null); }} /></label>
         <label className={s.sectorSelect}><SlidersHorizontal size={14} /><span className={s.srOnly}>Sector</span><select value={sector} onChange={e => updateSector(e.target.value)}><option value="all">All sectors</option>{sectors.map(name => <option key={name} value={name}>{name}</option>)}</select></label>
-        <button className={s.download} disabled={!matching.length} onClick={() => exportCsv(matching)}><Download size={14} /><span>Export data</span></button>
+        <button className={s.download} disabled={!matching.length} onClick={downloadData}><Download size={14} /><span>Export data</span></button>
       </section>
+      {exportMessage && <p className={s.exportStatus} role="status">{exportMessage}</p>}
       {hasFiscal && hasRolling && <div className={s.basisToggle} role="group" aria-label="Schedule basis"><button aria-pressed={activeBasis === 'fiscal'} onClick={() => { setBasis('fiscal'); setSelectedYear(null); setPage(0); }}>Fiscal schedules</button><button aria-pressed={activeBasis === 'rolling'} onClick={() => { setBasis('rolling'); setSelectedYear(null); setPage(0); }}>Rolling schedules</button></div>}
       <section className={s.wall} aria-labelledby="wall-title">
         <div className={s.sectionHeader}><div><span className={s.eyebrow}>{sector === 'all' ? 'COVERED ISSUERS · ALL SECTORS' : sector.toUpperCase()}</span><h2 id="wall-title">The refinancing horizon</h2></div><span className={s.unitLabel}>USD · {activeBasis === 'rolling' ? 'rolling' : 'fiscal'} years<br />Relative to each report date</span></div>
