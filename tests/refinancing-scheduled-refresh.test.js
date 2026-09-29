@@ -121,7 +121,7 @@ test('optional publication failure does not fail successful checkpoints or creat
   const skipped = await advanceRefinancingWall([updated(0)], { mode: 'supabase', now: () => clock,
     deadline: clock + 10000, begin: async () => { reads++; } });
   assert.equal(skipped.reason, 'deadline'); assert.equal(reads, 0);
-  await assert.rejects(advanceRefinancingWall(Array(257).fill(updated(0))), /Unbounded/);
+  await assert.rejects(advanceRefinancingWall(Array(501).fill(updated(0))), /Unbounded/);
 });
 
 test('a saturated Quant shard reserves time for its single prepared publication and checkpoints successful work', async () => {

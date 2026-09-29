@@ -1,8 +1,8 @@
 // Production build hook: publish only SEC-derived Market/Fundamental snapshots.
 import { warmCacheEnabled } from '../src/utils/warmCache.js';
 import { refreshUniverseSnapshot } from '../src/utils/marketUniverseServer.js';
-import { refreshQuantMembership, refreshQuantBatch, refreshQuantRevenueCorrections, refreshQuantRiskMappings,
-  refreshQuantRefinancingMappings } from '../src/utils/quantCoverageServer.js';
+import { refreshQuantMembership, refreshQuantBatch, refreshQuantRevenueCorrections, refreshQuantRiskMappings } from '../src/utils/quantCoverageServer.js';
+import { runRefinancingBackfill } from '../src/utils/refinancing/backfill.js';
 
 if (process.env.VERCEL_ENV === 'production' && warmCacheEnabled()) {
   // Recompute only the affected mappings; conditionally revalidate their two
@@ -15,14 +15,6 @@ if (process.env.VERCEL_ENV === 'production' && warmCacheEnabled()) {
   try { console.log('[Market] Prepared sector risk mappings:', JSON.stringify(await refreshQuantRiskMappings({ signal: riskController.signal, deadline: Date.now() + 30000 }))); }
   catch (error) { console.warn('[Market] Risk mappings retained for scheduled completion:', error.message); }
   finally { clearTimeout(riskTimer); }
-  // One small stored-source seed. Existing scheduled shards complete coverage;
-  // no source download or whole-universe crawl is added to the deployment.
-  const maturityController = new AbortController(), maturityTimer = setTimeout(() => maturityController.abort(), 40000);
-  try { console.log('[Market] Prepared refinancing mappings:', JSON.stringify(await refreshQuantRefinancingMappings({
-    signal: maturityController.signal, deadline: Date.now() + 40000, limit: 80,
-  }))); }
-  catch (error) { console.warn('[Market] Refinancing mappings deferred to scheduled coverage:', error.message); }
-  finally { clearTimeout(maturityTimer); }
   // Activate the reviewed candidate directory, but never crawl thousands of
   // companies in a deployment. Resumable scheduled shards own SEC ingestion.
   let activatedMembership = false;
@@ -48,4 +40,13 @@ if (process.env.VERCEL_ENV === 'production' && warmCacheEnabled()) {
   try { console.log('[Fundamental Lab] SEC-only v2 publication:', JSON.stringify(await refreshUniverseSnapshot({signal:controller.signal,deadline:Date.now()+285000}))); }
   catch (error) { console.warn('[Fundamental Lab] Publication retained for scheduled completion:', error.message); }
   finally { clearTimeout(timer); }
+  // One resumable launch batch after the Market membership projection exists.
+  // Archives are preferred; only known pending issuers can use companyfacts-only
+  // SEC requests. The private cursor/backoff is shared with the bounded cron.
+  const maturityController = new AbortController(), maturityTimer = setTimeout(() => maturityController.abort(), 240000);
+  try { console.log('[Market] Refinancing coverage backfill:', JSON.stringify(await runRefinancingBackfill({
+    signal: maturityController.signal, deadline: Date.now() + 240000, limit: 500,
+  }))); }
+  catch (error) { console.warn('[Market] Refinancing backfill retained for scheduled completion:', error.message); }
+  finally { clearTimeout(maturityTimer); }
 }

@@ -104,7 +104,7 @@ export async function advanceRefinancingWall(companies, {
   publish = publishDataset, release = releaseDatasetWrite, now = Date.now,
   signal, deadline = Infinity,
 } = {}) {
-  if (!Array.isArray(companies) || companies.length > 256) throw new Error('Unbounded refinancing publication batch.');
+  if (!Array.isArray(companies) || companies.length > 500) throw new Error('Unbounded refinancing publication batch.');
   if (!companies.length || mode === 'off') return { status: 'skipped', reason: 'no-updates' };
   if (signal?.aborted || now() >= deadline - 20000) return { status: 'skipped', reason: 'deadline' };
   const updates = companies.map(buildRefinancingCompany);
@@ -120,14 +120,18 @@ export async function advanceRefinancingWall(companies, {
       return { status: 'skipped', reason: retained ? 'deadline' : 'snapshot-unavailable' };
     }
     const value = mergeRefinancingWall(retained, updates, new Date(now()).toISOString());
+    const ids = new Set(updates.map(company => company.cik));
+    const summary = { checkedCompanies: value.coverage.checkedCompanies, coveredCompanies: value.coverage.coveredCompanies,
+      pendingCompanies: value.coverage.pendingCompanies,
+      completedCiks: value.companies.filter(company => ids.has(company.cik) && company.profile).map(company => company.cik) };
     if (value === retained) {
       await release('financial', REFINANCING_WALL_KEY, claim);
-      return { status: 'unchanged', checkedCompanies: retained.coverage.checkedCompanies, coveredCompanies: retained.coverage.coveredCompanies };
+      return { status: 'unchanged', ...summary };
     }
     if (!isRefinancingWall(value) || Buffer.byteLength(JSON.stringify(value)) > REFINANCING_MAX_BYTES)
       throw new Error('Incremental refinancing snapshot failed validation.');
     await publishValue(value, claim, publish);
-    return { status: 'published', checkedCompanies: value.coverage.checkedCompanies, coveredCompanies: value.coverage.coveredCompanies };
+    return { status: 'published', ...summary };
   } catch (error) { await release('financial', REFINANCING_WALL_KEY, claim); throw error; }
 }
 
