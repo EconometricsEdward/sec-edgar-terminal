@@ -487,7 +487,7 @@ function Workspace(props: any) {
     <div id="analysis-workspace" ref={root} className={styles.page}>
       <header className={styles.companyHeader}>
         <div>
-          <Link href="/analysis" className={styles.eyebrow}>
+          <Link prefetch={false} href="/analysis" className={styles.eyebrow}>
             Analysis / Company workspace
           </Link>
           <h1>
@@ -503,10 +503,10 @@ function Workspace(props: any) {
                 CIK {data.cik} · SIC {data.sic}
               </span>
             )}
-            <Link href={`/compare/${ticker}`} className={styles.textLink}>
+            <Link prefetch={false} href={`/compare/${ticker}`} className={styles.textLink}>
               Compare peers <ArrowUpRight size={14} />
             </Link>
-            <Link href={`/risk?ticker=${ticker}`} className={styles.textLink}>
+            <Link prefetch={false} href={`/risk?ticker=${ticker}`} className={styles.textLink}>
               Risk profile <ArrowUpRight size={14} />
             </Link>
           </div>
@@ -795,7 +795,7 @@ function Workspace(props: any) {
           >
             Retry {ticker}
           </button>
-          <Link href={`/fund/${ticker}`} className={styles.textLink}>
+          <Link prefetch={false} href={`/fund/${ticker}`} className={styles.textLink}>
             Looking for a fund or ETF?
           </Link>
         </section>

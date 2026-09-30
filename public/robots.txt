@@ -1,5 +1,8 @@
 # EDGAR Terminal robots.txt
-# This is a public tool; allow all crawlers to index everything.
+# Public research pages are crawlable. Page-level robots metadata controls
+# indexability for private, unsupported and filtered research selections.
+# Keep preparation and interactive API traffic out of crawler discovery; the
+# exceptions below expose intentionally public, source-linked JSON research.
 
 User-agent: *
 Allow: /

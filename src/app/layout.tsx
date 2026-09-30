@@ -142,7 +142,7 @@ export default function RootLayout({
             <header className={styles.header} data-site-header>
               <div className={styles.headerInner}>
                 <div className={styles.headerTop}>
-                  <Link
+                  <Link prefetch={false}
                     href="/"
                     className={styles.brand}
                     aria-label="EDGAR Terminal home"

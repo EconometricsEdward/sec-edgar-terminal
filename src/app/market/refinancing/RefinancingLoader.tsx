@@ -30,12 +30,12 @@ export default function RefinancingLoader({ cftcEnabled = true }: { cftcEnabled?
 
   return <div className={s.page}>
     <nav className={s.nav} aria-label="Market sections">
-      <Link href="/market">Market Briefing</Link>
-      {cftcEnabled && <Link href="/market?tab=positioning">CFTC Positioning</Link>}
-      <Link href="/market?tab=sectors">Sector Performance</Link>
-      <Link href="/market/funding">Funding &amp; Clearing</Link>
-      <Link href="/market/derivatives">Derivatives</Link>
-      <Link href="/market/refinancing" aria-current="page">Refinancing Wall</Link>
+      <Link prefetch={false} href="/market">Market Briefing</Link>
+      {cftcEnabled && <Link prefetch={false} href="/market?tab=positioning">CFTC Positioning</Link>}
+      <Link prefetch={false} href="/market?tab=sectors">Sector Performance</Link>
+      <Link prefetch={false} href="/market/funding">Funding &amp; Clearing</Link>
+      <Link prefetch={false} href="/market/derivatives">Derivatives</Link>
+      <Link prefetch={false} href="/market/refinancing" aria-current="page">Refinancing Wall</Link>
     </nav>
     <header className={s.header} style={{ marginTop: 38 }}><div>
       <h1>Refinancing Wall</h1>
@@ -46,7 +46,7 @@ export default function RefinancingLoader({ cftcEnabled = true }: { cftcEnabled?
       <span>{error ? 'The prepared maturity snapshot is temporarily unavailable. Please try again shortly.' : 'Loading the latest prepared maturity schedules…'}</span>
       {error && <button type="button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Try again</button>}
     </div>
-    <p>Looking at banks? <Link href="/analysis/banks">Explore BankScope funding and borrowing disclosures</Link>.</p>
+    <p>Looking at banks? <Link prefetch={false} href="/analysis/banks">Explore BankScope funding and borrowing disclosures</Link>.</p>
     <noscript>This interactive chart requires JavaScript. Each maturity schedule comes from a company’s annual SEC filing; reporting periods differ by issuer.</noscript>
   </div>;
 }

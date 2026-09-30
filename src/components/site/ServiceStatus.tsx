@@ -209,7 +209,7 @@ export default function ServiceStatus() {
               <RefreshCw size={14} aria-hidden="true" />
               Check again
             </button>
-            <Link href="/about#sources" onClick={() => setExpanded(false)}>
+            <Link prefetch={false} href="/about#sources" onClick={() => setExpanded(false)}>
               Data sources & coverage
             </Link>
           </div>

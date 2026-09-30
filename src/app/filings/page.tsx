@@ -51,12 +51,12 @@ export default async function FilingsIndexPage({
               <>
                 Public X-17A-5 filings selected. Search the broker-dealer’s
                 legal filer name or CIK; its parent company may file separately.{" "}
-                <Link href="/filings">Browse all forms</Link>
+                <Link prefetch={false} href="/filings">Browse all forms</Link>
               </>
             ) : (
               <>
                 Reviewing a broker-dealer?{" "}
-                <Link href="/filings?form=X-17A-5">
+                <Link prefetch={false} href="/filings?form=X-17A-5">
                   Find public X-17A-5 filings
                 </Link>{" "}
                 using its legal filer name or CIK.
@@ -117,7 +117,7 @@ export default async function FilingsIndexPage({
             ["NVDA", "NVIDIA", "Growth, governance, and insider filings"],
             ["XOM", "Exxon Mobil", "Energy, investment, and material events"],
           ].map(([symbol, name, description]) => (
-            <Link key={symbol} href={`/filings/${symbol}`}>
+            <Link prefetch={false} key={symbol} href={`/filings/${symbol}`}>
               <ArrowUpRight size={20} />
               <strong>{symbol}</strong>
               <span>{name}</span>

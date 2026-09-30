@@ -36,7 +36,6 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
   const inputRef = useRef(null);
   const containerRef = useRef(null);
   const suppressFocus = useRef(false);
-  const prefetched = useRef(new Set());
   const id = useId();
   const listId = `${id}-results`;
   const hintId = `${id}-hint`;
@@ -168,10 +167,8 @@ export default function GlobalSearchBar({ cftcEnabled = true }) {
   const select = item => {
     setPendingQuery(null);
     setHighlightId(item.id);
-    // Warm only a destination the user selects, never every search result.
-    if (!item.input && item.path && safeInternalPath(item.path) && !prefetched.current.has(item.path) && prefetched.current.size < 30) {
-      prefetched.current.add(item.path); router.prefetch(item.path);
-    }
+    // Highlighting is not navigation: keep arrow-key and pointer exploration
+    // from rendering research routes and reading their backing stores.
   };
   const handleKey = event => {
     if (event.nativeEvent?.isComposing || event.keyCode === 229) return;

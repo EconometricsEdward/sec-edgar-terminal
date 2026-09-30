@@ -58,7 +58,9 @@ async function boundedBytes(response, limit, signal) {
 export function createDisposableCache({ env = process.env, fetchImpl = (...args) => fetch(...args), identityTokenImpl = getDataStoreIdentityToken, now = Date.now } = {}) {
   const pendingReads = new Map();
   let readEpoch = 0;
-  function invalidatePendingReads() { readEpoch++; pendingReads.clear(); }
+  // Keep older generations counted until they settle so writes cannot grow
+  // the sharing registry beyond its bound. They can no longer be joined.
+  function invalidatePendingReads() { readEpoch++; }
   async function mutate(operation) {
     // Readers started during or after a write must not join an older read.
     invalidatePendingReads();
@@ -138,19 +140,59 @@ export function createDisposableCache({ env = process.env, fetchImpl = (...args)
       return [...await getBatch(selected.slice(0, middle), options), ...await getBatch(selected.slice(middle), options)];
     }
   }
-  function getBatch(selected, options) {
-    // Caller-specific cancellation and deadlines retain independent requests.
-    // Only unfinished default-option reads are shared; values are never retained.
-    const defaults = options === undefined || options !== null && Object.getPrototypeOf(options) === Object.prototype && Reflect.ownKeys(options).length === 0;
-    if (!defaults) return readBatch(selected, options);
-    const key = JSON.stringify([readEpoch, selected[0].family, selected[0].type, selected.map(p => p.id)]);
-    if (pendingReads.has(key)) return pendingReads.get(key);
-    if (pendingReads.size >= 64) return readBatch(selected, options);
-    const pending = readBatch(selected, options).finally(() => {
-      if (pendingReads.get(key) === pending) pendingReads.delete(key);
+  function shareableOptions(options) {
+    return options === undefined || options !== null && Object.getPrototypeOf(options) === Object.prototype
+      && Reflect.ownKeys(options).every(key => ['signal', 'deadline', 'timeoutMs'].includes(key))
+      && (options.signal == null || options.signal instanceof AbortSignal)
+      && (options.deadline === undefined || options.deadline === Infinity || Number.isFinite(options.deadline))
+      && (options.timeoutMs === undefined || Number.isFinite(options.timeoutMs) && options.timeoutMs > 0);
+  }
+  function subscribeRead(key, entry, { signal, deadline = Infinity } = {}) {
+    entry.subscribers++;
+    return new Promise((resolve, reject) => {
+      let settled = false, timer;
+      const finish = (complete, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', aborted);
+        entry.subscribers--;
+        // A caller leaving must not cancel another caller's read. Stop the
+        // transport only when nobody is waiting; a later caller starts afresh.
+        if (!entry.settled && entry.subscribers === 0) {
+          if (pendingReads.get(key) === entry) pendingReads.delete(key);
+          entry.controller.abort();
+        }
+        complete(value);
+      };
+      const aborted = () => finish(reject, signal.reason);
+      signal?.addEventListener('abort', aborted, { once: true });
+      // Node clamps overflowing timers to 1 ms. Far-future deadlines need no
+      // extra timer because every individual transport already has its bound.
+      const remaining = deadline - now();
+      if (Number.isFinite(deadline) && remaining <= 2147483647) timer = setTimeout(() => finish(reject, new DisposableCacheError('timeout')), Math.max(1, remaining));
+      entry.promise.then(value => finish(resolve, value), error => finish(reject, error));
     });
-    pendingReads.set(key, pending);
-    return pending;
+  }
+  async function getBatch(selected, options) {
+    // Warm readers and the CFTC fallback always supply a deadline. Share their
+    // work too, while every subscriber retains its own cancellation/deadline.
+    // Completed values, misses and errors are never retained: later reads must
+    // still observe publications and invalidations from other server instances.
+    if (!shareableOptions(options)) return readBatch(selected, options);
+    const { signal, deadline = Infinity, timeoutMs = 10000 } = options || {};
+    signal?.throwIfAborted();
+    if (!(deadline > now())) throw new DisposableCacheError('deadline');
+    const key = JSON.stringify([readEpoch, selected[0].family, selected[0].type, selected.map(p => p.id), timeoutMs]);
+    if (pendingReads.has(key)) return subscribeRead(key, pendingReads.get(key), options);
+    if (pendingReads.size >= 64) return readBatch(selected, options);
+    const entry = { controller: new AbortController(), subscribers: 0, settled: false, promise: null };
+    entry.promise = readBatch(selected, { signal: entry.controller.signal, timeoutMs }).finally(() => {
+      entry.settled = true;
+      if (pendingReads.get(key) === entry) pendingReads.delete(key);
+    });
+    pendingReads.set(key, entry);
+    return subscribeRead(key, entry, options);
   }
   async function cacheGetMany(type, ids, options = {}) {
     if (!Array.isArray(ids) || ids.length > 2000) throw new DisposableCacheError('invalid_batch', 422);

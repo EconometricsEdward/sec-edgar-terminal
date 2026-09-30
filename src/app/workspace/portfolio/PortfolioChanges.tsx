@@ -271,7 +271,7 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
                   </div>
                   <div className={styles.linkRow}>
                     {event.cftcSource && <a href={event.cftcSource} target="_blank" rel="noreferrer">Official CFTC data <ExternalLink size={14} aria-hidden="true" /></a>}
-                    <Link href={event.marketPath}>Open this report in positioning <ExternalLink size={14} aria-hidden="true" /></Link>
+                    <Link prefetch={false} href={event.marketPath}>Open this report in positioning <ExternalLink size={14} aria-hidden="true" /></Link>
                   </div>
                   <p className={styles.disclaimer}>These are aggregate futures positions, not the companies’ trades, hedge amounts, or a price forecast. Observation dates are not publication dates: COT is usually released Friday for Tuesday positions.</p>
                 </> : <>
@@ -303,7 +303,7 @@ export default function PortfolioChanges({ baseline, allocation, snapshot, rows,
         <p>CFTC shows one event per market, trader category and report, with related companies grouped together. A weekly move qualifies when net positioning as a share of open interest changes by at least 1 percentage point, or total open interest changes by at least 5%. These are display thresholds, not statistical significance or measured company impact. Net equals longs minus shorts; each date uses its own open-interest denominator.</p>
         <p>Connections come from candidate SEC annual-filing passages and need review. Prepared demo results are shared across visitors and updated in the background. Other companies are checked in successive batches of up to 24, with unfinished checks reported above. Weekly comparisons require observations exactly one week apart. Company and window filters use the loaded results without another market-data request.</p>
         {coverage && <p>{coverage.noLink || 0} issuers had no supported market connection; {coverage.noFiling || 0} had no eligible annual filing; {coverage.noComparison || 0} observations lacked a comparable prior week; {coverage.identityMismatch || 0} identity mismatches were excluded.</p>}
-        <p><Link href="/workspace/demo/changes" className={styles.textButton}>Read the public 100-company changes summary</Link> for dated findings, coverage, and source links.</p>
+        <p><Link prefetch={false} href="/workspace/demo/changes" className={styles.textButton}>Read the public 100-company changes summary</Link> for dated findings, coverage, and source links.</p>
       </details>
     </section>
   );

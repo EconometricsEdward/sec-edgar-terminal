@@ -13,7 +13,7 @@ export default async function BankOperations(){
   if(!isBankPreview())notFound();
   let state,peers,error;try{state=await bankScopeStore('status');peers=await bankScopeStore('peer_status');}catch{error='BankScope storage is unavailable.';}
   return <div className={styles.page}><h1>BankScope preparation</h1><p>Protected preview controls</p>
-    <p><Link href="/analysis/banks">Open BankScope</Link></p>{error?<p role="alert">{error}</p>:<>
+    <p><Link prefetch={false} href="/analysis/banks">Open BankScope</Link></p>{error?<p role="alert">{error}</p>:<>
       <p>{state.bankCount} banks · {state.reportCount} filings · {state.requestCount} FFIEC requests</p>
       <p>{state.queued} queued filings · {state.running?'Worker active':'Worker idle'}</p>
       <p>Periods: {state.periods.join(', ')}</p><pre>{JSON.stringify({directory:state.directoryPeriods,peers,result:state.lastRunResult,error:state.lastError,cooldown:state.cooldownUntil},null,2)}</pre>

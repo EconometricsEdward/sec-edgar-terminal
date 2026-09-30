@@ -10,5 +10,5 @@ export const metadata = buildPageMetadata({
   path: '/market/derivatives',
 });
 export default async function DerivativesPage() {
-  return <MarketResearch kind="derivatives" initialData={await getMarketResearch('derivatives')} cftcEnabled={isCftcEnabled()} />;
+  return <MarketResearch kind="derivatives" initialData={await getMarketResearch('derivatives')} initialCheckedAt={new Date().toISOString()} cftcEnabled={isCftcEnabled()} />;
 }

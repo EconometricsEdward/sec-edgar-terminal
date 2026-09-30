@@ -310,25 +310,25 @@ export default function CompanyFocus({
 
         <div className={s.actions}>
           {fund ? (
-            <Link href={fundHref}>
+            <Link prefetch={false} href={fundHref}>
               Open fund holdings <ArrowUpRight size={15} />
             </Link>
           ) : (
             <>
               {ticker && (
-                <Link href={`/analysis/${encodeURIComponent(ticker)}`}>
+                <Link prefetch={false} href={`/analysis/${encodeURIComponent(ticker)}`}>
                   Financial analysis <ArrowUpRight size={15} />
                 </Link>
               )}
               {ticker && (
-                <Link href={`/risk?ticker=${encodeURIComponent(ticker)}`}>
+                <Link prefetch={false} href={`/risk?ticker=${encodeURIComponent(ticker)}`}>
                   Risk research <ArrowUpRight size={15} />
                 </Link>
               )}
             </>
           )}
           {(ticker || cik) && (
-            <Link
+            <Link prefetch={false}
               href={`/disclosures?tickers=${encodeURIComponent(ticker || cik)}&mode=companies`}
             >
               Search disclosures <ArrowUpRight size={15} />

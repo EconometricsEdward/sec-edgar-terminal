@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cache } from "react";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import FilingsClient from "./FilingsClient";
 import { buildPageMetadata, SITE_URL } from "../../../utils/siteMetadata";
 import { getOperatingTicker } from "../../../utils/tickerMap.js";
@@ -19,7 +20,9 @@ const readFilerMetadata = cache(async (cik: string) => {
   try { return await loadBrokerDealerResearch(cik, { metadataOnly: true }); }
   catch {
     try { return { status: "unavailable", company: await loadFilingsCompany(cik), filings: [], coverage: null }; }
-    catch { return null; }
+    catch (error: any) {
+      return { status: "unavailable", company: null, missing: error?.status === 404 };
+    }
   }
 });
 
@@ -27,27 +30,36 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const raw = (await params).ticker.trim().toUpperCase();
   const cik = normalizeCikIdentifier(raw);
   const ticker = cik || raw;
+  if (!cik && (!validTicker(ticker) || /^\d+$/.test(ticker))) {
+    return {
+      ...buildPageMetadata({ title: "Filing selection unavailable", description: "Search SEC filings by a valid company ticker or SEC CIK.", path: "/filings" }),
+      robots: { index: false, follow: true },
+    };
+  }
   let name = ticker;
+  let known: boolean | null = null;
   let brokerDealer = false;
   if (cik) {
     const discovery = await readFilerMetadata(cik);
     name = discovery?.company?.name || ticker;
+    known = discovery?.company ? true : (discovery && "missing" in discovery && discovery.missing ? false : null);
     brokerDealer = discovery?.status === "available";
   } else if (validTicker(ticker)) {
     try {
       const entry = await getOperatingTicker(ticker);
       name = entry?.name || ticker;
+      known = Boolean(entry);
     } catch {
-      /* The explorer reports retriable SEC lookup failures. */
+      /* A temporary lookup failure is not proof that the company is absent. */
     }
   }
-  return buildPageMetadata({
+  return { ...buildPageMetadata({
     title: brokerDealer ? `${name} — X-17A-5 Broker-Dealer Filings` : `${name} (${cik ? "CIK " : ""}${ticker}) — SEC Filings`,
     description: brokerDealer
       ? `Find ${name} public broker-dealer filings by SEC CIK ${cik}. Open X-17A-5 financial-statement PDFs, inspect available figures and follow original SEC sources.`
       : `Search ${name} SEC filings, inspect archive coverage, compare reports, and collect source-linked evidence in your filing review workspace.`,
     path: `/filings/${encodeURIComponent(ticker)}`,
-  });
+  }), ...(known === false ? { robots: { index: false, follow: true } } : {}) };
 }
 
 function brokerReportPath(cik: string, filing: any) {
@@ -61,6 +73,7 @@ export default async function FilingsTickerPage({ params }: PageProps) {
   const raw = (await params).ticker.trim().toUpperCase();
   const cik = normalizeCikIdentifier(raw);
   const ticker = cik || raw;
+  if (!cik && (!validTicker(ticker) || /^\d+$/.test(ticker))) notFound();
   const discovery: any = cik ? await readFilerMetadata(cik) : null;
   const reports: any[] = discovery?.status === "available" ? discovery.filings.slice(0, 8) : [];
   const canonical = `${SITE_URL}/filings/${ticker}`;
