@@ -35,6 +35,7 @@ import { sourceDocumentUrl, selectFinancialFact } from './xbrlPeriods.js';
 import { evidenceSources, evidenceCalculations } from './researchEvidence.js';
 import { marketRevenuePoint } from './marketResearchData.js';
 import { riskDebtBalances, riskMarketableSecurities, riskLiabilitiesBalance } from './riskFinancialMappings.js';
+import { RISK_CAPITAL_PURCHASE_TAGS, RISK_CAPITAL_PURCHASE_NOTE, riskCashPoint, riskComparisonIssue } from './riskFinancialScope.js';
 
 const MAX_YEARS = 6;
 
@@ -322,7 +323,9 @@ const BANDS = {
 
 function makeMetric({ id, label, pillar, format, row, periods, cik, bands, why, note = null, invertDeltaGood = false, extraSources = [] }) {
   const latest = latestPoint(row);
-  const prior = consecutivePeriods(periods[1], periods[0], periods[0]?.kind) ? pointAt(row, 1) : null;
+  const candidate = consecutivePeriods(periods[1], periods[0], periods[0]?.kind) ? pointAt(row, 1) : null;
+  const comparisonIssue = latest && candidate ? riskComparisonIssue(latest, candidate) : null;
+  const prior = comparisonIssue ? null : candidate;
   const value = latest ? latest.value : null;
   const priorValue = prior ? prior.value : null;
   const z = bands ? bandZone(value, bands) : zone(value == null ? 'na' : 'info');
@@ -351,7 +354,8 @@ function makeMetric({ id, label, pillar, format, row, periods, cik, bands, why, 
     calculations: latest ? evidenceCalculations(latest) : [],
     end: periods[0]?.end || null,
     classification: value == null ? 'unavailable' : latest?.classification || 'calculated',
-    note: [note, staleness].filter(Boolean).join(' ') || null,
+    note: [note, staleness, comparisonIssue].filter(Boolean).join(' ') || null,
+    comparisonIssue,
     series: seriesOldestFirst, // oldest → newest for trend bars
     trajectory: bands ? classifyTrajectory(seriesOldestFirst, invertDeltaGood) : null,
     sources: combinedSources.filter((s) => {
@@ -450,12 +454,17 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     sga: R('sga', 'SG&A expense'),
     goodwill: R('goodwill', 'Goodwill'),
     intangibles: R('intangibles', 'Intangibles'),
-    capitalExpenditure: fundingFlow(['PaymentsToAcquirePropertyPlantAndEquipment'], 'Cash capital expenditure', true),
+    capitalExpenditure: fundingFlow(RISK_CAPITAL_PURCHASE_TAGS, 'Cash capital purchases', true),
     // Total cash dividends only. Common-stock-only dividends can omit a
     // preferred distribution and must not silently stand for the total.
     dividendsPaid: fundingFlow(['PaymentsOfDividends'], 'Cash dividends paid', true),
     cashInterestPaid: fundingFlow(['InterestPaidNet', 'InterestPaid'], 'Cash interest paid', true),
   };
+  rows.capitalExpenditure.values = rows.capitalExpenditure.values.map(point => ({ ...point,
+    sources: evidenceSources(point).map(source => ({ ...source,
+      label: source.tag === 'PaymentsToAcquireProductiveAssets' ? 'Cash productive-asset purchases' : 'Cash PP&E purchases',
+      scopeNote: RISK_CAPITAL_PURCHASE_NOTE })),
+  }));
   // Share the total-revenue and annual-context safeguards used by Market. Fee
   // revenue alone is not a bank/broker's net revenue, and a rental REIT's ASC
   // 606 revenue can omit virtually all rent. Keep any narrower basis explicit.
@@ -537,6 +546,11 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     }
     rows.consolidatedEquity = taggedRow(['StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest', 'StockholdersEquity'], 'Book equity including noncontrolling interests when reported');
   }
+  rows.cash.values = rows.cash.values.map(riskCashPoint);
+  // A standard OperatingIncomeLoss tag can describe adjusted insurance
+  // earnings (for example MetLife), not comparable GAAP operating profit.
+  if (isInsurer) rows.operatingIncome.values = rows.operatingIncome.values.map(point => ({ ...point,
+    value: null, classification: 'unavailable', note: 'Generic insurer operating-income tags may represent adjusted earnings; use the reported income and insurance notes.' }));
   const stressKeys = ['totalAssets', 'equity', 'cash', 'operatingIncome', 'interestExpense'];
   const stressInputs = Object.fromEntries(stressKeys.map((key) => [key, { value: latestPoint(rows[key])?.value ?? null, formula: latestPoint(rows[key])?.formula || latestPoint(rows[key])?.label || 'Unavailable', sources: sourcesOf(cik, latestPoint(rows[key])) }]));
 
@@ -828,7 +842,7 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
         id: 'ocf_to_debt', label: 'Operating cash flow / total debt', pillar: 'credit', format: 'pct',
         row: ocfToDebt, periods, cik, bands: BANDS.ocfToDebt,
         why: 'The repayment test: what share of total debt one year of operating cash flow could retire. Rating agencies lean on this family of ratios. Total debt here sums the tagged short- and long-term debt components.',
-        note: debtLatest ? 'Reported current and noncurrent borrowing balances are included. Lease liabilities and obligations outside these debt tags require separate review.' : 'A complete compatible set of current and noncurrent borrowing balances is unavailable. Missing components are not zero and do not establish that the company is debt-free.',
+        note: debtLatest ? 'The denominator uses selected reported borrowing balances, including an explicitly tagged long-term total when its current/noncurrent split is unavailable. Separately reported subordinated debt, leases and other obligations require review.' : 'A complete compatible set of current and noncurrent borrowing balances is unavailable. Missing components are not zero and do not establish that the company is debt-free.',
         extraSources: sourcesOf(cik, latestPoint(rows.ocf), debtLatest),
       }),
       makeMetric({
@@ -909,7 +923,7 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
     const grow = (row, i) => {
       const a = row.values[i];
       const b = row.values[i + (basis === 'ttm' ? 4 : 1)];
-      if (!a || !b || !consecutivePeriods(b.period, a.period, 'annual')) return null;
+      if (!a || !b || !consecutivePeriods(b.period, a.period, 'annual') || riskComparisonIssue(a, b)) return null;
       return a?.value != null && b?.value != null && b.value > 0 ? a.value / b.value - 1 : null;
     };
     const recGapRow = {
@@ -1016,6 +1030,7 @@ export function assessRisk(facts, sicCode, cik, { basis = 'annual' } = {}) {
   lossMetric.value = reportedYears ? lossYears : null;
   lossMetric.prior = null;
   lossMetric.delta = null;
+  lossMetric.comparisonIssue = null;
   lossMetric.zone = !reportedYears ? zone('na') : lossYears === 0 ? zone('low') : lossYears === 1 ? zone('moderate') : lossYears === 2 ? zone('elevated') : zone('high');
   lossMetric.series = lossMetric.series.map((p) => ({ ...p, value: p.value == null ? null : Number(p.value < 0) }));
   lossMetric.formula = 'Count of reported net-income observations below zero';
@@ -1416,7 +1431,8 @@ export function classifyTrajectory(seriesOldestFirst, goodWhenDown = false) {
   let steps = 0;
   for (let i = vals.length - 1; i > 0; i--) {
     const a = vals[i - 1], b = vals[i];
-    if (!Number.isFinite(a) || !Number.isFinite(b) || !consecutivePeriods(series[i - 1], series[i], series[i].kind)) break;
+    if (!Number.isFinite(a) || !Number.isFinite(b) || !consecutivePeriods(series[i - 1], series[i], series[i].kind)
+      || riskComparisonIssue(series[i], series[i - 1])) break;
     const same = type === 'deteriorating' ? harmful(a, b) : beneficial(a, b);
     if (!same) break;
     steps += 1;

@@ -38,6 +38,18 @@ test('verified inline source fills missing latest period with exact provenance',
   assert.equal(sourceDocumentUrl('0000000001', source), `${filing.url}#assets`);
 });
 
+test('non-breaking presentation spaces in original filing dates retain exact identity validation', async () => {
+  for (const rendered of ['July&#160;3, 2026', 'July\u00a03, 2026', 'July\u202f3, 2026']) {
+    const html = doc(balance()).replace(`>${filing.reportDate}</ix:nonNumeric>`, `>${rendered}</ix:nonNumeric>`);
+    assert.equal(extractInlineFilingIdentity(html, { cik, filing })?.documentPeriodEndDate, filing.reportDate);
+    const result = await prepareRiskProfileSources({ cik, company: company(), submissions: manifest(), now }, fallback(html));
+    assert.equal(result.sourceCoverage.filingFallback.status, 'applied');
+    assert.equal(reportingPeriods(result.facts, 'quarter')[0].end, filing.reportDate);
+    assert.equal(extractInlineFilingIdentity(html, { cik, filing: { ...filing, reportDate: '2026-07-04' } }), null);
+    assert.equal(extractInlineFilingIdentity(html, { cik: '0000000001', filing }), null);
+  }
+});
+
 test('generic securities and debt get classification only from a bounded primary balance section', () => {
   const result = supplementRiskProfileFacts(company().facts, doc(balance()), { cik, filing });
   const securities = result.facts['us-gaap'].MarketableSecurities.units.USD[0];

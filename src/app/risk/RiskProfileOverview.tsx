@@ -82,7 +82,7 @@ export default function RiskProfileOverview({ data, profile, onInspect, onExposu
   const view = buildRiskProfilePresentation(profile, data);
   const { balance } = view;
   const bank = view.lens.id === 'bank';
-  const comparisons = bank ? [{ label:'Net loans', item:balance.loans }, { label:'Deposits', item:balance.deposits }] : view.lens.id === 'corporate' ? [{ label:'Cash & equivalents', item:balance.cash }, { label:'Current investments', item:balance.currentSecurities }, { label:'Noncurrent investments', item:balance.noncurrentSecurities }, { label:'Total debt', item:balance.debt }] : [{ label:'Cash', item:balance.cash }, { label:'Total liabilities', item:balance.liabilities }];
+  const comparisons = bank ? [{ label:'Net loans', item:balance.loans }, { label:'Deposits', item:balance.deposits }] : view.lens.id === 'corporate' ? [{ label:balance.cash.label, item:balance.cash }, { label:'Current investments', item:balance.currentSecurities }, { label:'Noncurrent investments', item:balance.noncurrentSecurities }, { label:balance.debt.label, item:balance.debt }] : [{ label:balance.cash.label, item:balance.cash }, { label:'Total liabilities', item:balance.liabilities }];
   const comparisonTitle = bank ? 'Net loans and deposits' : view.lens.id === 'corporate' ? 'Liquidity and borrowing' : 'Cash and total liabilities';
   const maxBalance = Math.max(...comparisons.map(row => isNumber(row.item.value) ? Math.max(0,row.item.value) : 0), 1);
   return <div className={s.profile}>

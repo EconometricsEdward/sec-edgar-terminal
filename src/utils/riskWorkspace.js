@@ -1,5 +1,5 @@
 // Risk-page presentation and deterministic, before-tax sensitivity calculations.
-export const RISK_VERSION = 'risk-workspace-v10';
+export const RISK_VERSION = 'risk-workspace-v11';
 // Keep one approved disposable slot per ticker; calculation upgrades replace it.
 export const RISK_CACHE_VERSION = 'risk-workspace-v9';
 export const canReuseRiskWorkspace = (data, includeMaturities = false) => Boolean(data && data.version === RISK_VERSION && (!includeMaturities || Object.hasOwn(data, 'refinancing')));
@@ -8,7 +8,7 @@ export const PILLAR_LABELS = { credit: 'Credit', capital: 'Capital', liquidity: 
 
 // These are explicit product screening thresholds, not sector-calibrated ratings.
 const definitions = {
-  reserve_coverage: ['Reserve coverage', 'Allowance / (net loans + allowance). Reserve levels depend on portfolio mix and expected losses; a larger allowance can reflect either coverage or deterioration.', 'Read the allowance and charge-off tables together. Does the reserve reflect a change in portfolio quality?', '≥1.5% / ≥1.0% / ≥0.5% / <0.5%'],
+  reserve_coverage: ['Reserve coverage', 'Allowance / (net loans + allowance). Reserve levels depend on portfolio mix and expected losses; a larger allowance can reflect either coverage or deterioration. Net loans plus the allowance may include held-for-sale or fair-value loans, while a separately disclosed retained-loan portfolio has a different scope.', 'Read the allowance and charge-off tables together. Does the reserve reflect a change in portfolio quality?', '≥1.5% / ≥1.0% / ≥0.5% / <0.5%'],
   provision_rate: ['Provision rate', 'Annual or trailing-twelve-month credit-loss provision divided by ending gross loans. Some provision tags include non-loan exposures; check the numerator’s scope.', 'Are provisions rising because of loan growth, portfolio mix, or higher expected losses?', '≤0.25% / ≤0.60% / ≤1.20% / >1.20%'],
   npl_ratio: ['Nonaccrual loans / gross loans', 'Consolidated nonaccrual loans divided by net loans plus allowance. Missing dimensional disclosures cannot be inferred from company facts.', 'Review the credit-quality note for nonaccruals, delinquencies, and charge-offs.', '≤0.5% / ≤1% / ≤2% / >2%'],
   bank_equity_assets: ['Equity / assets', 'Book equity divided by total assets. This is an accounting leverage screen; it does not measure CET1, risk-weighted capital, or regulatory compliance.', 'Check CET1, risk-weighted assets, and capital distributions in the capital note.', '≥11% / ≥8% / ≥5% / <5%'],
@@ -24,13 +24,13 @@ const definitions = {
   interest_coverage: ['Interest coverage', 'Operating income / interest expense, using an annual or trailing-twelve-month flow for both inputs. Operating income is an EBIT proxy.', 'Check cash interest, maturities, covenants, and the sustainability of operating profit.', '≥8× / ≥3× / ≥1.5× / <1.5×'],
   ocf_to_debt: ['Operating cash flow / debt', 'Annual or trailing-twelve-month operating cash flow / (current debt + noncurrent debt). Current debt uses its reported total or current long-term-debt maturities plus reported short-term borrowings; commercial paper is a short-term-borrowing fallback. Missing components are never zero.', 'Check cash conversion, debt definitions, maturities, and committed facilities.', '≥40% / ≥20% / ≥10% / <10%'],
   net_debt: ['Net debt, cash only', 'Current debt + noncurrent debt − cash and cash equivalents. Marketable securities are not deducted from this cash-only measure. All balances must be available at the same date.', 'Review marketable securities, cash restrictions, leases, and obligations outside these debt tags.', null],
-  accruals_ratio: ['Accruals / assets', '(Net income − operating cash flow) / ending assets. Working-capital timing and industry structure can affect this accounting screen.', 'Which accruals explain the gap between income and cash flow?', '≤0% / <5% / <10% / ≥10%'],
+  accruals_ratio: ['Accruals / assets', '(Net income − operating cash flow) / ending assets. Net income may be attributable to the parent while operating cash flow is consolidated. This mixed-scope residual is not a causal reconciliation of noncash adjustments; working-capital timing and industry structure also affect it.', 'Which accruals explain the gap between income and cash flow?', '≤0% / <5% / <10% / ≥10%'],
   receivables_gap: ['Receivables growth − sales growth', 'Year-over-year receivables growth minus year-over-year revenue growth. Revenue is annual or TTM, matching the selected basis.', 'Check collection timing, acquisitions, and revenue recognition in the notes.', '≤3 pp / ≤8 pp / ≤15 pp / >15 pp'],
   debt_to_equity: ['Liabilities / equity', 'Total liabilities / book equity. Negative equity makes the ratio hard to interpret. Financial-company leverage is shown without industrial thresholds.', 'Read the liability mix and the reasons for any equity deficit.', '<0.5× / <1.5× / <3× / ≥3× or negative'],
   liab_to_assets: ['Liabilities / assets', 'Total liabilities / total assets. An accounting capital-structure measure; financial-company leverage has no industrial threshold here.', 'Review the maturity, seniority, and nature of the obligations.', '<50% / <70% / <85% / ≥85%'],
   current_ratio: ['Current ratio', 'Current assets / current liabilities. Business models differ in their working-capital requirements.', 'Review the timing and quality of near-term assets and obligations.', '≥2× / ≥1.2× / ≥1× / <1×'],
   quick_ratio: ['Current ratio, ex inventory', '(Current assets − inventory) / current liabilities. This includes other current assets, which may contain prepayments or intangible assets, and any vendor receivables within current assets. It is not a conventional cash-plus-liquid-receivables quick ratio.', 'Check receivable collectability and the composition of other current assets.', null],
-  cash_to_assets: ['Cash / assets', 'Cash and cash equivalents / total assets. Restricted cash and other funding sources require separate review.', 'Read cash restrictions and committed funding facilities.', '≥15% / ≥7% / ≥3% / <3%'],
+  cash_to_assets: ['Reported cash / assets', 'Selected reported cash balance / total assets. The cited concept may represent cash only rather than cash and equivalents. Restricted cash and other funding sources require separate review.', 'Read cash restrictions and committed funding facilities.', '≥15% / ≥7% / ≥3% / <3%'],
   net_margin: ['Net margin', 'Annual or trailing-twelve-month net income / revenue. One-off items and differing revenue definitions affect comparability.', 'Check recurring earnings, one-time items, and cash conversion.', '≥10% / ≥3% / ≥0% / <0%'],
   loss_years: [null, 'Counts negative net-income observations in the displayed history. Missing periods are excluded and TTM windows overlap.', 'Check the cause and persistence of reported losses.', '0 / 1 / 2 / ≥3 loss observations'],
 };
@@ -50,7 +50,7 @@ export function decorateRiskProfile(profile) {
       trajectory: contextOnly.has(metric.id) ? null : metric.trajectory,
       classification: metric.id === 'htm_adj_equity' && metric.value != null ? 'illustrative' : metric.classification,
       // Do not retain legacy prose that implied untagged inputs were zero.
-      note: ['loss_years', 'quick_ratio', 'interest_coverage', 'ocf_to_debt'].includes(metric.id) ? metric.note : null,
+      note: ['loss_years', 'quick_ratio', 'interest_coverage', 'ocf_to_debt'].includes(metric.id) ? metric.note : metric.comparisonIssue || null,
     };
   });
   const watchItems = metrics.filter((m) => m.value != null && (['high', 'elevated'].includes(m.zone.level) || m.trajectory?.direction === 'deteriorating' && m.trajectory.steps >= 3))

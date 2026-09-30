@@ -245,7 +245,10 @@ export function extractInlineFilingIdentity(html, { cik, filing }) {
     const context = contexts.get(node.attrs.contextref);
     if (!context || context.dimensions.length || context.periodType !== 'duration' || context.end !== filing.reportDate
       || node.attrs._invalid || node.attrs.continuedat || node.attrs['xsi:nil'] || descendants(node, 'exclude').length) continue;
-    const key = local(node.attrs.name), value = identityText(node).trim();
+    // Inline dates commonly contain non-breaking spaces (for example Ford's
+    // “June 30, 2026”). Normalize presentation whitespace before checking the
+    // exact issuer, form and reporting date; do not relax identity matching.
+    const key = local(node.attrs.name), value = identityText(node).replace(/\s+/g, ' ').trim();
     if (!values.has(key)) values.set(key, value);
     else if (values.get(key) !== value) values.set(key, null);
   }

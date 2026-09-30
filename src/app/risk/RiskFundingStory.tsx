@@ -37,6 +37,7 @@ function Sources({ sources }: { sources: RiskSource[] }) {
   return <>{sources.map((source, index) => <p key={`${source.tag}:${source.end}:${index}`} className={s.source}>
     <strong>{source.label || source.tag}: {exact(source.value)} {source.unit}</strong>
     <span>{source.start ? `${source.start} → ` : ''}{source.end}{source.filed ? ` · Filed ${source.filed}` : ''}</span>
+    {source.scopeNote && <span>{source.scopeNote}</span>}
     {(source.documentUrl || source.url) && <a href={source.documentUrl || source.url} target="_blank" rel="noreferrer">{source.tag}<ArrowUpRight size={11}/></a>}
   </p>)}</>;
 }
@@ -149,7 +150,7 @@ const fundingSeries: PlotSeries[] = [
   { key: 'cash', label: 'Cash & equivalents', color: 'teal' },
   { key: 'currentMarketableSecurities', label: 'Current investments', color: 'blue' },
   { key: 'noncurrentMarketableSecurities', label: 'Noncurrent investments', color: 'muted', dashed: true },
-  { key: 'totalDebt', label: 'Total debt', color: 'gold' },
+  { key: 'totalDebt', label: 'Reported debt', color: 'gold' },
 ];
 const maturitySeries: PlotSeries[] = [
   { key: 'cash', label: 'Cash & equivalents', color: 'teal' },
@@ -168,11 +169,11 @@ const earningsSeries: PlotSeries[] = [
 const debtCapacitySeries: PlotSeries[] = [
   { key: 'operatingCashFlow', label: 'Operating cash flow', color: 'teal' },
   { key: 'freeCashFlow', label: 'OCF − capital expenditure', color: 'blue' },
-  { key: 'totalDebt', label: 'Ending total debt', color: 'gold', dashed: true },
+  { key: 'totalDebt', label: 'Ending reported debt', color: 'gold', dashed: true },
 ];
 const bankEarningsSeries: PlotSeries[] = [{ key: 'netIncome', label: 'Net income', color: 'teal' }, { key: 'provision', label: 'Credit-loss provision', color: 'gold' }];
 const allFundingColumns: PlotSeries[] = [...fundingSeries, ...maturitySeries.filter(column => column.key !== 'cash'), ...workingCapitalSeries];
-const allEarningsColumns: PlotSeries[] = [...earningsSeries, { key: 'capitalExpenditure', label: 'Capital expenditure', color: 'muted' }, { key: 'dividendsPaid', label: 'Cash dividends', color: 'muted' }, { key: 'cashAfterDividends', label: 'OCF − capex − dividends', color: 'blue' }, { key: 'totalDebt', label: 'Ending total debt', color: 'gold' }];
+const allEarningsColumns: PlotSeries[] = [...earningsSeries, { key: 'capitalExpenditure', label: 'Capital expenditure', color: 'muted' }, { key: 'dividendsPaid', label: 'Cash dividends', color: 'muted' }, { key: 'cashAfterDividends', label: 'OCF − capex − dividends', color: 'blue' }, { key: 'totalDebt', label: 'Ending reported debt', color: 'gold' }];
 
 function BrokerBalances({ view, end, profile, onPreview }: { view: FundingView; end: string; profile: RiskProfile; onPreview: (end: string | null) => void }) {
   const [selectedGroup, setSelectedGroup] = useState('assets');
@@ -239,7 +240,7 @@ function FundingStoryContent({ profile, company, onInspect }: StoryProps) {
   };
   const headlines = view.lens === 'bank' ? [headlineRatio('bank_equity_assets', 'Book equity / assets'), headlineRatio('npl_ratio', 'Nonaccrual / loans'), headlineRatio('loans_deposits', 'Loans / deposits')]
     : view.lens === 'broker' ? [headlineRatio('broker_cash_liabilities', 'Firm cash / liabilities'), headlineRatio('broker_equity_assets', 'Book equity / assets'), { label: 'Repo funding', value: numberAt(latest, 'repos'), format: 'usd' }]
-      : view.lens === 'corporate' ? [{ label: 'Operating cash', value: numberAt(latest, 'operatingCashFlow'), format: 'usd' }, { label: 'Cash after capex', value: numberAt(latest, 'freeCashFlow'), format: 'usd' }, { label: 'Total debt', value: numberAt(latest, 'totalDebt'), format: 'usd' }]
+      : view.lens === 'corporate' ? [{ label: 'Operating cash', value: numberAt(latest, 'operatingCashFlow'), format: 'usd' }, { label: 'Cash after capex', value: numberAt(latest, 'freeCashFlow'), format: 'usd' }, { label: 'Reported debt', value: numberAt(latest, 'totalDebt'), format: 'usd' }]
         : [{ label: 'Cash', value: numberAt(latest, 'cash'), format: 'usd' }, { label: 'Net income', value: numberAt(latest, 'netIncome'), format: 'usd' }, { label: 'Book equity', value: numberAt(latest, 'equity'), format: 'usd' }];
   return <details className={s.story} onToggle={event => setExpanded(event.currentTarget.open)}>
     <summary className={s.storySummary}><div className={s.summaryTitle}><ChartNoAxesCombined size={19}/><span><strong>Financial history</strong><small>SEC · {latest?.end || 'Date unavailable'}</small></span></div><dl className={s.summaryMeasures}>{headlines.map(item => <div key={item.label}><dt>{item.label}</dt><dd>{isNumber(item.value) ? formatRiskValue(item.value, item.format) : 'Unavailable'}</dd></div>)}</dl><ChevronDown size={19} className={s.expandIcon}/></summary>
