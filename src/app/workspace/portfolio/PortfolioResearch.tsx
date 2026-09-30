@@ -1029,7 +1029,7 @@ export default function PortfolioResearch({
               alone are enough.
             </p>
           </div>
-          <Link className={s.secondary} href="/workspace/portfolio-guide">
+          <Link prefetch={false} className={s.secondary} href="/workspace/portfolio-guide">
             Templates & AI / API guide <ArrowUpRight size={16} />
           </Link>
         </header>
@@ -2150,7 +2150,7 @@ export default function PortfolioResearch({
                     />
                   </label>
                 )}
-                <Link href="/workspace/portfolio-guide">
+                <Link prefetch={false} href="/workspace/portfolio-guide">
                   Read the versioned input format and batch API documentation ↗
                 </Link>
               </section>

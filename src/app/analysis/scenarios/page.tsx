@@ -43,7 +43,7 @@ export default function ScenarioMethodologyPage() {
   return <article className={styles.page}>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(article).replace(/</g, "\\u003c") }} />
     <header className={styles.hero}>
-      <Link className={styles.back} href="/analysis">← Company analysis</Link>
+      <Link prefetch={false} className={styles.back} href="/analysis">← Company analysis</Link>
       <p className={styles.eyebrow}>Scenarios / Methodology</p>
       <h1>Change the assumption.<br /><span>Trace the financial effect.</span></h1>
       <p className={styles.intro}>Start with a reported SEC period. Explore how explicit assumptions change earnings, cash and financing needs, with the evidence behind every baseline.</p>
@@ -116,7 +116,7 @@ export default function ScenarioMethodologyPage() {
       <h2 id="evidence-heading">Keep facts, assumptions and market context distinct</h2>
       <p>Reported inputs link to their SEC source filings. Missing or incompatible inputs withhold dependent results. Supported results remain available when an unrelated input is missing; an unavailable debt balance, for example, need not suppress cash when no repayment is assumed.</p>
       <p>CFTC Commitments of Traders observations describe aggregate futures positioning for their own report dates. They may inform a research question, but do not measure an issuer’s exposure, establish a commodity-price shock or automatically change an earnings assumption.</p>
-      <p>The public <Link href="/analysis">company analysis pages</Link> provide dated, server-rendered SEC highlights. The <a href={`${SITE_URL}/api/v1/analysis/AAPL`}>prepared Analysis JSON endpoint</a> returns reported and calculated financial evidence, not a user’s hypothetical scenario. Company scenario URLs are interactive selections; cite the methodology and original filings separately from user assumptions.</p>
+      <p>The public <Link prefetch={false} href="/analysis">company analysis pages</Link> provide dated, server-rendered SEC highlights. The <a href={`${SITE_URL}/api/v1/analysis/AAPL`}>prepared Analysis JSON endpoint</a> returns reported and calculated financial evidence, not a user’s hypothetical scenario. Company scenario URLs are interactive selections; cite the methodology and original filings separately from user assumptions.</p>
     </section>
 
     <footer className={styles.examples}>

@@ -14,22 +14,22 @@ export default function NotFound() {
           filings.
         </p>
         <div className={styles.recoveryActions}>
-          <Link href="/filings">
+          <Link prefetch={false} href="/filings">
             <Search size={17} aria-hidden="true" />
             Find a company
           </Link>
-          <Link href="/workspace">
+          <Link prefetch={false} href="/workspace">
             <FolderOpen size={17} aria-hidden="true" />
             Open workspace
           </Link>
-          <Link href="/">
+          <Link prefetch={false} href="/">
             <Home size={17} aria-hidden="true" />
             Research home
           </Link>
         </div>
         <p>
           Learn about the tools and public data on{" "}
-          <Link href="/about" style={{ textDecoration: "underline" }}>
+          <Link prefetch={false} href="/about" style={{ textDecoration: "underline" }}>
             About EDGAR Terminal
           </Link>
           .

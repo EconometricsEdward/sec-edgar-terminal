@@ -170,7 +170,7 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
   };
   return (
     <div className={s.page}>
-      <Link className={s.backLink} href="/fund">
+      <Link prefetch={false} className={s.backLink} href="/fund">
         <ArrowLeft size={15} /> All funds
       </Link>
       <header className={s.profileHeader}>
@@ -189,7 +189,7 @@ export default function FundClient({ urlTicker, selectedAccession = "", prepared
           >
             <Share2 size={15} /> Share view
           </button>
-          <Link
+          <Link prefetch={false}
             className={s.secondary}
             href={`/fund?view=compare&tickers=${urlTicker}`}
           >

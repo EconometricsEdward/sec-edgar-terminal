@@ -681,7 +681,7 @@ export default function DemoResults({
                 Allocations are illustrative, not actual holdings or investment
                 recommendations. Company reporting periods differ.
               </small>
-              <Link href="/workspace/portfolio-guide">
+              <Link prefetch={false} href="/workspace/portfolio-guide">
                 Import & format guide ↗
               </Link>
             </WorkspaceMenu>

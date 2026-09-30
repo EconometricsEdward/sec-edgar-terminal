@@ -25,11 +25,11 @@ export default function ErrorPage({
             <RotateCcw size={17} aria-hidden="true" />
             Retry this view
           </button>
-          <Link href="/workspace">
+          <Link prefetch={false} href="/workspace">
             <FolderOpen size={17} aria-hidden="true" />
             Open workspace
           </Link>
-          <Link href="/about#recovery">
+          <Link prefetch={false} href="/about#recovery">
             <CircleHelp size={17} aria-hidden="true" />
             Get help
           </Link>

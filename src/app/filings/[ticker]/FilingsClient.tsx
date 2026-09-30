@@ -656,7 +656,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
       <section className={styles.companyHeader}>
         <div>
           <p className={styles.eyebrow}>
-            <Link href="/filings">EDGAR / Filings</Link>
+            <Link prefetch={false} href="/filings">EDGAR / Filings</Link>
           </p>
           <h1>
             <span>{isFiler ? `CIK ${ticker}` : ticker}</span> {data?.name || "Filing research workspace"}
@@ -1452,7 +1452,7 @@ export default function FilingsClient({ ticker }: { ticker: string }) {
             <FileText size={14} />
             Primary documents are read as extracted text. Use each filing’s SEC
             index for exhibits and the original presentation.{" "}
-            <Link href={`/disclosures?tickers=${ticker}`}>
+            <Link prefetch={false} href={`/disclosures?tickers=${ticker}`}>
               Search disclosure topics <ArrowUpRight size={12} />
             </Link>
           </p>

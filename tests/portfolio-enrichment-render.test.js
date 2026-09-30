@@ -273,7 +273,10 @@ test("briefing renders all sector links and dated classification coverage", () =
   );
   assert.match(html, /100 of 100 companies covered/);
   assert.match(html, /Fund-reported sectors/);
-  assert.match(html, /2026-09-08/);
+  assert.match(html, /Sector classification source: iShares holdings dated 2026-09-08/);
+  assert.match(html, /SEC financial evidence<small>Captured Sep 14, 2026/);
+  assert.equal(demo.universe.source.asOf, "2026-09-11",
+    "company selection keeps its own source date, separate from classification and evidence capture");
   assert.match(html, /aria-label="Explore Information Technology"/);
   assert.match(html, /aria-label="Explore Real Estate"/);
   assert.equal((html.match(/aria-label="Explore /g) || []).length, 11);

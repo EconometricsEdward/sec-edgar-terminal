@@ -10,5 +10,5 @@ export const metadata = buildPageMetadata({
   path: '/market/funding',
 });
 export default async function FundingPage() {
-  return <MarketResearch kind="funding" initialData={await getMarketResearch('funding')} cftcEnabled={isCftcEnabled()} />;
+  return <MarketResearch kind="funding" initialData={await getMarketResearch('funding')} initialCheckedAt={new Date().toISOString()} cftcEnabled={isCftcEnabled()} />;
 }

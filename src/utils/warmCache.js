@@ -29,6 +29,7 @@
 import { disposableCacheEnabled, disposableCachePolicy, disposableCacheFencePolicy, cacheGet, cacheGetMany, cachePut,
   cacheReserveGeneration, cachePutFenced } from './disposableCache.js';
 import { getDataStoreMode } from './dataStoreRegistry.js';
+import { shouldRetryWarmCacheMiss } from './warmCacheRetryPolicy.js';
 
 const REST_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const REST_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -193,6 +194,7 @@ export function createWarmDataCache({
   enabled = disposableCacheEnabled, policy = disposableCachePolicy,
   read = cacheGet, readMany = cacheGetMany, put = cachePut,
   legacyRead = warmLegacyGet, legacyReadMany = legacyGetMany, legacyWrite = legacySet,
+  retryMiss = shouldRetryWarmCacheMiss,
 } = {}) {
   const selected = (type, id) => enabled() && Boolean(policy(type, id));
   return Object.freeze({
@@ -201,8 +203,10 @@ export function createWarmDataCache({
       // One deadline covers both Supabase reads. Migration can copy and delete
       // Redis after the first miss but before the legacy read finishes.
       const deadline = Date.now() + 12000;
+      let checked = false;
       try {
         const envelope = await read(type, id, { deadline });
+        checked = true;
         if (envelope) return envelope.payload;
       } catch { /* A disposable cache outage can still use an existing legacy value. */ }
       try {
@@ -210,7 +214,12 @@ export function createWarmDataCache({
         if (previous != null) return previous;
       } catch { /* The final cache read can recover a concurrently migrated value. */ }
       if (Date.now() < deadline) {
-        try { return (await read(type, id, { deadline }))?.payload ?? null; }
+        try {
+          // Once migration is safely steady, a second miss read only repeats
+          // database work. Keep the legacy fallback above for preserved keys.
+          if (checked && await retryMiss({ deadline }) === false) return null;
+          return (await read(type, id, { deadline }))?.payload ?? null;
+        }
         catch { /* A genuine miss/outage retains the existing upstream fallback. */ }
       }
       return null;
@@ -238,8 +247,9 @@ export function createWarmDataCache({
           if (selectedRows.length) {
             try { envelopes = await readMany(type, selectedRows.map(row => row.id), { signal: requestSignal, deadline }); }
             catch { assertLive(); }
-            if (!Array.isArray(envelopes) || envelopes.length !== selectedRows.length) envelopes = [];
           }
+          const checked = Array.isArray(envelopes) && envelopes.length === selectedRows.length;
+          if (!checked) envelopes = [];
           assertLive();
           const hits = new Map(selectedRows.flatMap((row, index) => envelopes[index] ? [[row.index, envelopes[index].payload]] : []));
           const missing = batch.ids.flatMap((id, index) => hits.has(index) ? [] : [{ id, index }]);
@@ -253,7 +263,7 @@ export function createWarmDataCache({
           assertLive();
           missing.forEach((row, index) => { if (fallback[index] != null) hits.set(row.index, fallback[index]); });
           const retry = missing.filter(row => !hits.has(row.index) && policy(type, row.id));
-          if (retry.length) {
+          if (retry.length && (!checked || await retryMiss({ signal: requestSignal, deadline }) !== false)) {
             try {
               const recovered = await readMany(type, retry.map(row => row.id), { signal: requestSignal, deadline });
               if (Array.isArray(recovered) && recovered.length === retry.length)

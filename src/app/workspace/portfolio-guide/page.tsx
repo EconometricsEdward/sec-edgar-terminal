@@ -73,7 +73,7 @@ export default function PortfolioGuidePage() {
   return (
     <article className={styles.page}>
       <header>
-        <Link href="/workspace">← Portfolio</Link>
+        <Link prefetch={false} href="/workspace">← Portfolio</Link>
         <p className={styles.eyebrow}>Portfolio Research · Format version 1</p>
         <h1>A company list, ready for research.</h1>
         <p>
@@ -313,7 +313,7 @@ export default function PortfolioGuidePage() {
           Portfolio Research has five views: Summary, Holdings, Financials,
           Concentration &amp; Exposure, and What Changed. Open your saved
           portfolio or explore the{" "}
-          <Link href="/workspace/demo">100-company example</Link>. Financial
+          <Link prefetch={false} href="/workspace/demo">100-company example</Link>. Financial
           charts use your included rows and captured SEC evidence. Company links
           open financial measures, reporting periods and source filings; connected
           markets provide separately sourced CFTC positioning context.
@@ -553,7 +553,7 @@ export default function PortfolioGuidePage() {
           check&quot; only when a previous check exists. Checks run on request,
           with no unattended emails or notifications.
         </p>
-        <Link href="/workspace">Open Portfolio Research →</Link>
+        <Link prefetch={false} href="/workspace">Open Portfolio Research →</Link>
       </section>
     </article>
   );

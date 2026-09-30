@@ -225,7 +225,7 @@ export default function PortfolioBriefing({
               </p>
               {overview.sectorSources.length > 0 && (
                 <p>
-                  iShares holdings as of{" "}
+                  Sector classification source: iShares holdings dated{" "}
                   {[
                     ...new Set(
                       overview.sectorSources.map((source: any) => source.asOf),

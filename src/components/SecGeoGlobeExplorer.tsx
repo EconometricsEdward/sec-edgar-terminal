@@ -1185,7 +1185,7 @@ export default function SecGeoGlobeExplorer({
                         <div className="mt-3 flex flex-wrap gap-2">
                           {companies.length > 0 ? (
                             companies.map((ticker) => (
-                              <Link
+                              <Link prefetch={false}
                                 key={ticker}
                                 href={analysisHref(ticker)}
                                 className="rounded-full border border-white/10 bg-slate-950/50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-300 transition hover:border-cyan-300 hover:text-cyan-200"

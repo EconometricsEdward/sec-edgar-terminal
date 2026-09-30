@@ -1,6 +1,7 @@
 import funding from '../../data/market-research/funding.json' with { type: 'json' };
 import derivatives from '../../data/market-research/derivatives.json' with { type: 'json' };
 import { marketResearchStore } from './store.js';
+import { readPublicMarketResearch } from './publicRead.js';
 import { validSnapshot } from './normalize.js';
 import { fundingNotice } from './catalog.js';
 const BOOTSTRAP = { funding, derivatives };
@@ -13,7 +14,7 @@ export async function getMarketResearch(kind, { store = marketResearchStore, use
   const work = (async () => {
     let data;
     try {
-      const result = await store('read', { kind });
+      const result = await (store === marketResearchStore ? readPublicMarketResearch(kind) : store('read', { kind }));
       if (!validSnapshot(result?.snapshot, kind)) throw new Error('No published snapshot');
       data = { ...result.snapshot, availability: result.refresh?.[kind] === 'retained' ? 'retained' : 'ready' };
     } catch { data = { ...(cached?.data || BOOTSTRAP[kind]), availability: 'retained' }; }

@@ -34,25 +34,6 @@ const MAIN_PAGES: Array<
   ["/workspace/portfolio-guide", "monthly", 0.7],
 ];
 
-const FEATURED_ANALYSIS_TICKERS = [
-  "AAPL",
-  "MSFT",
-  "GOOGL",
-  "AMZN",
-  "META",
-  "NVDA",
-  "TSLA",
-  "JPM",
-  "BAC",
-  "C",
-  "WFC",
-  "GS",
-  "XOM",
-  "CVX",
-  "WMT",
-  "TGT",
-];
-
 const FEATURED_FILING_TICKERS = ["AAPL", "JPM", "NVDA", "XOM"];
 
 const FEATURED_COMPARISONS = [
@@ -75,7 +56,9 @@ function sitemapEntry(
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   await loadSecCoverageRegistry();
-  const analysisTickers = [...new Set([...FEATURED_ANALYSIS_TICKERS, ...getActiveSecCoverageCompanies().map(company => company.ticker)])];
+  // Use the same active registry that controls analysis-page indexability.
+  // Retired or removed issuers must not linger here through a featured list.
+  const analysisTickers = [...new Set(getActiveSecCoverageCompanies().map(company => company.ticker))];
   return [
     ...MAIN_PAGES.map(([path, changeFrequency, priority]) =>
       sitemapEntry(path, changeFrequency, priority),

@@ -34,7 +34,7 @@ export default function GeographicEvidencePanel({ regions, aggregate }: { region
       <GlobeBoundary><Globe regions={scenarioRegions} aggregate={aggregate} /></GlobeBoundary>
     </div>}
     <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b border-white/10 text-slate-400"><th className="p-3">Research theme</th><th className="p-3">Research focus</th><th className="p-3">Companies</th></tr></thead><tbody>
-      {regions.map((r) => <tr key={r.id} className="border-b border-white/5"><th scope="row" className="p-3 font-semibold text-slate-100">{r.shortName || r.name}<span className="mt-1 block text-xs font-normal text-slate-500">Illustrative geographic grouping</span></th><td className="max-w-lg p-3 text-slate-400">{r.description}</td><td className="p-3"><div className="flex min-w-40 flex-wrap gap-2">{(r.tickers || []).slice(0, 8).map((ticker) => <Link key={ticker} className="text-amber-300 underline underline-offset-4" href={`/analysis/${ticker}`}>{ticker}</Link>)}</div></td></tr>)}
+      {regions.map((r) => <tr key={r.id} className="border-b border-white/5"><th scope="row" className="p-3 font-semibold text-slate-100">{r.shortName || r.name}<span className="mt-1 block text-xs font-normal text-slate-500">Illustrative geographic grouping</span></th><td className="max-w-lg p-3 text-slate-400">{r.description}</td><td className="p-3"><div className="flex min-w-40 flex-wrap gap-2">{(r.tickers || []).slice(0, 8).map((ticker) => <Link prefetch={false} key={ticker} className="text-amber-300 underline underline-offset-4" href={`/analysis/${ticker}`}>{ticker}</Link>)}</div></td></tr>)}
     </tbody></table></div>
   </section>;
 }

@@ -1,5 +1,6 @@
 import { Activity, ArrowDown, FileCheck2, GitCompareArrows, Layers3 } from "lucide-react";
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
 import { buildPageMetadata } from "../../utils/siteMetadata";
 import CompanySearch from "./CompanySearch";
 import AnalysisDirectory from "./AnalysisDirectory";
@@ -8,6 +9,13 @@ import base from "./analysis.module.css";
 import styles from "./AnalysisLanding.module.css";
 import { getActiveSecCoverageCompanies, loadSecCoverageRegistry } from "../../utils/secCoverageRegistry.js";
 import { buildAnalysisDirectory } from "../../utils/analysisDirectory.js";
+
+// Cache public directory rows outside the authenticated no-store transport so
+// the landing page's intended one-hour ISR is not silently made dynamic.
+const readDirectory = unstable_cache(async () => {
+  await loadSecCoverageRegistry();
+  return buildAnalysisDirectory(getActiveSecCoverageCompanies());
+}, ["analysis-directory-v1", process.env.VERCEL_ENV || "local"], { revalidate: 3600 });
 
 export const revalidate = 3600;
 export const metadata = buildPageMetadata({
@@ -18,8 +26,7 @@ export const metadata = buildPageMetadata({
 
 export default async function AnalysisIndexPage() {
   const cftcEnabled = isCftcEnabled();
-  await loadSecCoverageRegistry();
-  const sectors = buildAnalysisDirectory(getActiveSecCoverageCompanies());
+  const sectors = await readDirectory();
   return (
     <div className={`${base.page} ${styles.page}`}>
       <section className={styles.hero} aria-labelledby="analysis-title">
@@ -39,7 +46,7 @@ export default async function AnalysisIndexPage() {
         </div>
       </section>
       <div className={styles.capabilities} aria-label="Available company analysis tools">
-        <Link href="/analysis/banks"><Layers3 size={18} aria-hidden="true" /> BankScope · FFIEC <span aria-hidden="true">↗</span></Link>
+        <Link prefetch={false} href="/analysis/banks"><Layers3 size={18} aria-hidden="true" /> BankScope · FFIEC <span aria-hidden="true">↗</span></Link>
         <span><Layers3 size={18} aria-hidden="true" /> Financial statements</span>
         <span><Activity size={18} aria-hidden="true" /> Growth &amp; cash flow</span>
         <Link href="/analysis/scenarios" prefetch={false}><GitCompareArrows size={18} aria-hidden="true" /> Scenario methodology <span aria-hidden="true">↗</span></Link>
