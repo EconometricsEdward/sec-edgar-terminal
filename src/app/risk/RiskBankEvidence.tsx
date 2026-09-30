@@ -79,7 +79,7 @@ export default function RiskBankEvidence({ companyName, ticker, companyPeriod }:
     {error && <p className={s.state} role="alert">{error} <button className={s.button} onClick={() => setRetry(n => n + 1)}>Retry bank reports</button></p>}
     {data && !bank && <p className={s.state}>This institution has no prepared bank profile. Open BankScope to review its coverage.</p>}
     {data && bank && <>
-      <div className={s.bankIdentity}><div><h4>{bank.name}</h4><p>RSSD {rssd} · FFIEC {bank.form}</p></div><label>Quarter<select value={period} onChange={event => setPeriod(event.target.value)}>{dates.map((date: string) => <option key={date}>{date}</option>)}</select></label></div>
+      <div className={s.bankIdentity}><div><h4>{bank.name}</h4><p>RSSD {rssd} · FFIEC {bank.form}</p></div><label>Quarter<select aria-label="Bank reporting quarter" value={period} onChange={event => setPeriod(event.target.value)}>{dates.map((date: string) => <option key={date}>{date}</option>)}</select></label></div>
       {data.stale && <p className={s.notice}>Retained bank data. Confirm the latest prepared quarter in BankScope.</p>}
       {period !== companyPeriod && <p className={s.notice}>Different dates · Bank {period || 'unavailable'} · SEC {companyPeriod || 'unavailable'}</p>}
       {view.valid ? <>
