@@ -22,6 +22,8 @@ export function comparableRiskChanges(profile) {
   const gap = (Date.parse(current.end) - Date.parse(previous.end)) / 86400000;
   if (profile.basis === 'annual' ? gap < 300 || gap > 400 : gap < 60 || gap > 120) return [];
   return (profile.metrics || []).flatMap(metric => {
+    // This summary counts loss windows; its series contains individual 0/1 flags.
+    if (metric.id === 'loss_years') return [];
     const latest = metric.series?.find(p => p.end === current.end);
     const prior = metric.series?.find(p => p.end === previous.end);
     if (!finite(latest?.value) || !finite(prior?.value) || !finite(metric.value) || metric.value !== latest.value) return [];

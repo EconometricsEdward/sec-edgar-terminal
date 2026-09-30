@@ -85,6 +85,7 @@ test('change table compares adjacent dated evidence and never treats a missing p
   const profile = { basis: 'ttm', periods: [{ end: '2026-06-30' }, { end: '2026-03-31' }], metrics: [
     { id: 'margin', value: .15, format: 'pct', series: [{ end: '2026-03-31', value: .1 }, { end: '2026-06-30', value: .15 }] },
     { id: 'missing', value: 10, series: [{ end: '2026-03-31', value: null }, { end: '2026-06-30', value: 10 }] },
+    { id: 'loss_years', value: 1, format: 'count', series: [{ end: '2026-03-31', value: 0 }, { end: '2026-06-30', value: 1 }] },
   ] };
   const changes = comparableRiskChanges(profile);
   assert.equal(changes.length, 1); assert.equal(changes[0].deltaFormat, 'pp');
