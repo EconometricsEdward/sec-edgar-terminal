@@ -14,7 +14,7 @@ export const RISK_TIMELINE_TOPICS = Object.freeze([
 // disclosure change. Other numbers and every negation remain significant.
 export function comparableTimelineText(text, reportDate) {
   return String(text || '').normalize('NFKC').toLowerCase()
-    .replace(/\b(as of|at|for (?:the )?(?:year|quarter|period|three months|six months|nine months) ended)\s+((?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:,)?\s+20\d{2}|20\d{2}-\d{2}-\d{2})\b/g, (whole, lead, date) => {
+    .replace(/\b(as of(?: both)?|at|for (?:the )?(?:year|quarter|period|three months|six months|nine months) ended)\s+((?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:,)?\s+20\d{2}|20\d{2}-\d{2}-\d{2})\b/g, (whole, lead, date) => {
       const time = Date.parse(/^20\d{2}-/.test(date) ? `${date}T00:00:00Z` : `${date} UTC`);
       return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === reportDate ? `${lead} reportingdate` : whole;
     })
@@ -25,6 +25,14 @@ export function comparableTimelineText(text, reportDate) {
     .replace(/[^\p{L}\p{N}\p{Sc}%+<>=≥≤.()\-]+/gu, ' ')
     .replace(/(?<!\d)\.|\.(?!\d)/g, ' ').replace(/\s+/g, ' ').trim();
 }
+
+const sentenceSegmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
+function topicSentences(text, topic) {
+  return [...sentenceSegmenter.segment(text)].map(part => part.segment.trim()).filter(sentence =>
+    topic.id === 'customer-concentration' ? isCustomerConcentrationDisclosure(sentence) : matchesQuery(sentence, topic.parsed));
+}
+const topicSignature = (passage, topic, reportDate) => `${passage.sectionId}:${[...new Set(topicSentences(passage.text, topic)
+  .map(sentence => comparableTimelineText(sentence, reportDate)))].sort().join('\n')}`;
 
 export function isTimelineNarrative(text) {
   const words = text.match(/\p{L}+/gu) || [];
@@ -145,12 +153,17 @@ export function compareTimelineDisclosures(current, prior, currentFiling, priorF
       if (p.change !== 'revised' || !p.priorText || p.sectionId === 'other'
         || comparableTimelineText(p.text, currentFiling.reportDate) === comparableTimelineText(p.priorText, priorFiling.reportDate)) return [];
       const old = before.paragraphs.find(candidate => candidate.text === p.priorText && candidate.sectionId === p.sectionId);
-      return old ? [{ after: p, before: old, relevance: p.relevance }] : [];
+      // A paragraph can discuss several risks. A revised customer percentage
+      // must not produce a collateral marker when its collateral sentence is
+      // unchanged. Compare complete relevant sentences, retain original full
+      // paragraphs for the source excerpts and their opening qualifications.
+      return old && topicSignature(p, topic, currentFiling.reportDate) !== topicSignature(old, topic, priorFiling.reportDate)
+        ? [{ after: p, before: old, relevance: p.relevance }] : [];
     }).sort((a, b) => b.relevance - a.relevance || a.after.index - b.after.index);
-    const exactBefore = new Set(before.matches.map(p => comparableTimelineText(p.text, priorFiling.reportDate)));
-    const exactAfter = new Set(after.matches.map(p => comparableTimelineText(p.text, currentFiling.reportDate)));
-    const same = after.matches.every(p => exactBefore.has(comparableTimelineText(p.text, currentFiling.reportDate)))
-      && before.matches.every(p => exactAfter.has(comparableTimelineText(p.text, priorFiling.reportDate)));
+    const exactBefore = new Set(before.matches.map(p => topicSignature(p, topic, priorFiling.reportDate)));
+    const exactAfter = new Set(after.matches.map(p => topicSignature(p, topic, currentFiling.reportDate)));
+    const same = after.matches.every(p => exactBefore.has(topicSignature(p, topic, currentFiling.reportDate)))
+      && before.matches.every(p => exactAfter.has(topicSignature(p, topic, priorFiling.reportDate)));
     coverage[topic.id] = { ...base, status: revisions.length ? 'differed' : same ? 'unchanged' : 'uncompared',
       unpairedMatches: diff.matches.filter(p => !['unchanged', 'revised'].includes(p.change)).length };
     if (!revisions.length) continue;
@@ -159,7 +172,7 @@ export function compareTimelineDisclosures(current, prior, currentFiling, priorF
       date: currentFiling.reportDate, dateBasis: 'period-end', category: topic.id, categoryLabel: topic.label,
       title: `${topic.label} language changed`, direction: 'review',
       scope: `${currentFiling.form} primary reports · ${priorFiling.reportDate} → ${currentFiling.reportDate} · ${gapDays}-day reporting gap`,
-      criterion: 'Similar passages in the same identified section have different full text. Wording changes require source review; they do not establish a change in risk.',
+      criterion: 'Topic-relevant sentences changed within similar full passages in the same identified section. Wording changes require source review; they do not establish a change in risk.',
       before: side(priorFiling, retained.map(p => p.before)), after: side(currentFiling, retained.map(p => p.after)) });
   }
   return { events, coverage };

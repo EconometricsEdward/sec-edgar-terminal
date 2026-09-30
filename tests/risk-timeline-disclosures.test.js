@@ -89,6 +89,52 @@ test('reported amounts, percentages, signs, decimals and currency remain signifi
   assert.equal(comparableTimelineText('$1,000'), comparableTimelineText('$1000'));
 });
 
+const appleReceivables = (date, customerShare, carrierShare, referenceDate = 'September 27, 2025') => `As of both ${date} and ${referenceDate}, the Company had one customer that represented 10% or more of total trade receivables, which accounted for ${customerShare} % and 12 %, respectively. The Company’s third-party cellular network carriers accounted for ${carrierShare} % and 34 % of total trade receivables as of ${date} and ${referenceDate}, respectively. The Company requires third-party credit support or collateral from certain customers to limit credit risk.`;
+const appleQuarter = (end, filed) => ({ ...filing(2026, '10-Q'), reportDate: end, filed });
+
+test('actual-shaped customer percentage changes do not become unchanged collateral sentence events', () => {
+  const beforeText = appleReceivables('March 28, 2026', 17, 30);
+  const afterText = appleReceivables('June 27, 2026', 18, 27);
+  const result = compareTimelineDisclosures(analysis(afterText), analysis(beforeText),
+    appleQuarter('2026-06-27', '2026-07-31'), appleQuarter('2026-03-28', '2026-05-01'));
+  assert.deepEqual(result.events.map(event => event.category), ['customer-concentration']);
+  assert.equal(result.coverage.collateral.status, 'unchanged');
+  assert.equal(result.events[0].before.evidence[0].text, beforeText);
+  assert.equal(result.events[0].after.evidence[0].text, afterText);
+});
+
+test('as-of-both date roll-forward is suppressed while its comparative reference date stays significant', () => {
+  const before = analysis(appleReceivables('March 28, 2026', 17, 30));
+  const current = appleQuarter('2026-06-27', '2026-07-31'), prior = appleQuarter('2026-03-28', '2026-05-01');
+  const unchanged = compareTimelineDisclosures(analysis(appleReceivables('June 27, 2026', 17, 30)), before, current, prior);
+  assert.equal(unchanged.events.length, 0);
+  assert.equal(unchanged.coverage['customer-concentration'].status, 'unchanged');
+  assert.equal(unchanged.coverage.collateral.status, 'unchanged');
+  const referenceChanged = compareTimelineDisclosures(analysis(appleReceivables('June 27, 2026', 17, 30, 'September 28, 2024')), before, current, prior);
+  assert.deepEqual(referenceChanged.events.map(event => event.category), ['customer-concentration']);
+});
+
+test('changes in distributor wording do not create a marker for an unchanged collateral sentence', () => {
+  const before = 'The Company distributes its products through third-party cellular network carriers, wholesalers, retailers and resellers. A substantial majority of the Company’s outstanding trade receivables are not covered by collateral, third-party bank support or financing arrangements, or credit insurance. These arrangements are reviewed periodically under the consolidated credit policy.';
+  const after = before.replace('carriers, wholesalers, retailers and resellers', 'carriers and other resellers');
+  const result = compareTimelineDisclosures(analysis(after), analysis(before), filing(2025), filing(2024));
+  assert.equal(result.events.length, 0);
+  assert.equal(result.coverage.collateral.status, 'unchanged');
+});
+
+test('changed pledged capacity and an additional collateral requirement each produce collateral evidence', () => {
+  const capacity = amount => `The Company has pledged collateral under its revolving credit agreement. The pledged borrowing capacity is $${amount} million subject to the stated restrictions and counterparty review. Management reviews the agreement each reporting period and cannot assume that the pledged capacity is available without satisfying its conditions.`;
+  const changed = compareTimelineDisclosures(analysis(capacity(8)), analysis(capacity(5)), filing(2025), filing(2024));
+  assert.deepEqual(changed.events.map(event => event.category), ['collateral']);
+  const beforeText = appleReceivables('March 28, 2026', 17, 30);
+  const afterText = `${appleReceivables('June 27, 2026', 17, 30)} The Company must now post additional cash collateral before drawing under the secured credit agreement.`;
+  const newRequirement = compareTimelineDisclosures(analysis(afterText), analysis(beforeText),
+    appleQuarter('2026-06-27', '2026-07-31'), appleQuarter('2026-03-28', '2026-05-01'));
+  assert.deepEqual(newRequirement.events.map(event => event.category), ['collateral']);
+  assert.equal(newRequirement.events[0].before.evidence[0].text, beforeText);
+  assert.equal(newRequirement.events[0].after.evidence[0].text, afterText);
+});
+
 test('changed full text generates paired source evidence with exact periods and no inferred metric', () => {
   const result = compareTimelineDisclosures(analysis(narrative(7)), analysis(narrative(5)), filing(2025), filing(2024));
   assert.equal(result.events.length, 1);

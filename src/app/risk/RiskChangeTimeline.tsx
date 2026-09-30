@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { Activity, ArrowDownRight, ArrowUpRight, BookOpen, CalendarDays, FileSearch, FileText, Landmark, ListChecks, Loader2, LockKeyhole, Shield, Users, Wallet } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { formatRiskValue } from '../../utils/riskWorkspace.js';
+import { disclosureWordDiff } from '../../utils/disclosureResearch.js';
 import type { RiskSource } from './riskTypes';
 import s from './RiskChangeTimeline.module.css';
 
@@ -41,12 +42,14 @@ function urlsFor(side: TimelineSide) {
 }
 
 function FilingLinks({ side }: { side: TimelineSide }) {
-  const urls = urlsFor(side);
+  const allUrls = urlsFor(side);
+  const filings = allUrls.filter(url => /\/Archives\/edgar\/data\//.test(url));
+  const urls = filings.length ? filings : allUrls;
   if (!urls.length) return <span className={s.sourceUnavailable}>Source link unavailable</span>;
   return <div className={s.filingLinks}>{urls.map((url, index) => {
     const source = side.sources?.find(item => item.documentUrl === url || item.url === url);
     const filed = source?.filed || side.filed;
-    return <a key={url} href={url} target="_blank" rel="noreferrer"><FileText size={14} aria-hidden="true" /><span>{side.form || 'SEC'}{urls.length > 1 ? ` source ${index + 1}` : ' source'}{filed && <small>Filed {dateLabel(filed)}</small>}</span><ArrowUpRight size={14} aria-hidden="true" /></a>;
+    return <a key={url} href={url} target="_blank" rel="noreferrer"><FileText size={14} aria-hidden="true" /><span>{filings.length ? `${side.form || 'SEC'} original${urls.length > 1 ? ` ${index + 1}` : ''}` : 'SEC fact API'}{filed && <small>Filed {dateLabel(filed)}</small>}</span><ArrowUpRight size={14} aria-hidden="true" /></a>;
   })}</div>;
 }
 
@@ -55,11 +58,17 @@ function EvidenceSide({ side, event, label }: { side: TimelineSide; event: RiskT
   return <article className={s.side} data-side={label.toLowerCase()}>
     <header><span>{label}</span><time dateTime={side.end || side.date}>{dateLabel(side.end || side.date)}</time></header>
     {event.kind === 'metric' ? <><strong className={s.sideValue}>{numberLabel(side.value, event.format)}</strong>{side.start && <p className={s.interval}>{side.windowEnd ? 'Forward window' : 'Flow interval'}: {dateLabel(side.start)} – {dateLabel(side.windowEnd || side.end || side.date)}</p>}{side.formula && <p className={s.formula}>{side.formula}</p>}</>
-      : passages.length ? <div className={s.passages}>{passages.map((passage, index) => <div key={passage.url + ':' + index}>{passage.section && <span className={s.section}>{passage.section}</span>}<blockquote>{passage.text}{passage.truncated && !/…$|\.{3}$/.test(passage.text) && '…'}</blockquote>{passage.truncated && <span className={s.excerptNote}>Excerpt · full passage in source</span>}</div>)}</div>
+      : passages.length ? <div className={s.passages}>{passages.map((passage, index) => <PassageEvidence key={passage.url + ':' + index} passage={passage} before={event.before.evidence?.[index]?.text} after={event.after.evidence?.[index]?.text} isBefore={label === 'Before'}/>)}</div>
         : <p className={s.noPassage}>Comparable passage unavailable</p>}
     <FilingLinks side={side}/>
     {sources.length > 0 && <details className={s.inputs}><summary>Reported inputs · {sources.length}</summary><div className={s.tableScroll}><table><thead><tr><th scope="col">Reported fact</th><th scope="col">Value</th></tr></thead><tbody>{sources.map((source, index) => <tr key={[source.tag, source.accession, source.start, source.end, index].join(':')}><th scope="row">{source.label || source.tag}<small>{source.start ? `${source.start} → ` : ''}{source.end}{source.filed ? ` · filed ${source.filed}` : ''}</small><code>{source.tag}</code></th><td>{finite(source.value) ? `${source.value.toLocaleString('en-US', { maximumFractionDigits: 8 })}${source.unit ? ` ${source.unit}` : ''}` : 'Unavailable'}</td></tr>)}</tbody></table></div></details>}
   </article>;
+}
+
+function PassageEvidence({ passage, before, after, isBefore }: { passage: Passage; before?: string; after?: string; isBefore: boolean }) {
+  const parts = useMemo(() => before && after ? disclosureWordDiff(before, after).filter(part => isBefore ? part.kind !== 'added' : part.kind !== 'removed') : null, [before, after, isBefore]);
+  const beyondPreview = before === after && passage.truncated;
+  return <div>{passage.section && <span className={s.section}>{passage.section}</span>}<blockquote>{parts ? parts.map((part, index) => part.kind === 'same' ? <span key={index}>{part.text}</span> : <mark key={index}>{part.text}</mark>) : passage.text}{passage.truncated && !/…$|\.{3}$/.test(passage.text) && '…'}</blockquote>{passage.truncated && <span className={s.excerptNote}>{beyondPreview ? 'Change beyond preview · open original' : 'Excerpt · full passage in source'}</span>}</div>;
 }
 
 function ComparisonBars({ event }: { event: RiskTimelineEvent }) {

@@ -73,6 +73,8 @@
 .passages { display:grid; gap:13px; margin-top:12px; }
 .section { display:block; color:var(--r-muted); font-size:11px; margin-bottom:5px; }
 .passages blockquote { border-left:2px solid var(--r-line); padding-left:12px; margin:0; color:var(--r-text); font-size:14px; line-height:1.75; overflow-wrap:anywhere; }
+.passages mark { color:var(--r-text); background:var(--r-tint); border-bottom:1px solid var(--r-muted); }
+.side[data-side="current"] .passages mark { color:var(--r-accent); border-color:var(--r-accent); }
 .excerptNote { display:block; color:var(--r-muted); font-size:11px; margin-top:5px; }
 .noPassage { color:var(--r-muted); font-size:14px; margin-top:14px; }
 .detailFoot { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; border-top:1px solid var(--r-line); padding:12px 18px; }
