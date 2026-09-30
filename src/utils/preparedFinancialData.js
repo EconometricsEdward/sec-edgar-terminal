@@ -3,6 +3,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { getDataStoreMode, readDataset, readDatasetManifests, beginDatasetWrite, publishDataset, revalidateDataset, releaseDatasetWrite, stableDataStoreJson } from './dataStore.js';
 import { buildAnalysisCompany, packAnalysisCompany, ANALYSIS_VERSION } from './analysisResearch.js';
 import { ANALYSIS_MAPPING_VERSION } from './analysisVersion.js';
+import { adaptPreparedAnalysisEnvelope } from './analysisMappingCompatibility.js';
 import { buildFilingUrl } from './filingTextParser.js';
 import { RESEARCH_FORMS } from './researchWorkspace.js';
 import { warmGet, warmReserveGeneration, warmSetGeneration } from './warmCache.js';
@@ -124,10 +125,12 @@ export async function readPreparedAnalysis({ ticker, basis = 'annual', asOf = ''
     if (cached?.gzip) cached = { metadata: structuredClone(cached.metadata), stale: cached.stale,
       ...payloadCache.decode(cached.gzip) };
   } catch { cached = null; /* Durable read is bounded and contains no provider fetch. */ }
+  cached = adaptPreparedAnalysisEnvelope(cached);
   if (validatePrepared(cached, company.cik, basis)) return forSecurity({ ...cached, cacheSource: 'warm-prepared' });
   let envelope;
   try { envelope = await read('financial', key, { allowStale: true }); }
   catch { throw new PreparedSecUnavailableError('Prepared financial storage is temporarily unavailable.'); }
+  envelope = adaptPreparedAnalysisEnvelope(envelope);
   if (!validatePrepared(envelope, company.cik, basis)) throw new PreparedSecUnavailableError('Prepared financial data is not ready for this reporting basis.');
   return forSecurity({ ...envelope, serializedPayload: envelope.serializedPayload || JSON.stringify(envelope.payload), cacheSource: 'supabase-prepared' });
 }

@@ -156,6 +156,12 @@ export function createPublicAnalysisReader({ read = readPreparedAnalysis, now = 
         calculatedAt: timestamp(data.observedAt), freshUntil: timestamp(metadata.expiresAt),
         stale: Boolean(envelope.stale || Date.parse(metadata.expiresAt) <= at),
         metrics, sourceCatalog: sources,
+        ...(data.mappingCompatibility?.adapter === 'analysis-v2-presentation-v1'
+          && data.mappingCompatibility.fromMappingVersion === 'analysis-mappings-v2'
+          && data.mappingCompatibility.toMappingVersion === ANALYSIS_MAPPING_VERSION
+          && data.mappingCompatibility.financialValuesRecomputed === false
+          ? { mappingCompatibility: { adapter: 'analysis-v2-presentation-v1', fromMappingVersion: 'analysis-mappings-v2',
+            toMappingVersion: ANALYSIS_MAPPING_VERSION, financialValuesRecomputed: false } } : {}),
         coverage: { displayedMetrics: metrics.length, availableMetrics: metrics.filter(value => value.value !== null).length,
           reportedMetrics: metrics.filter(value => value.classification === 'reported').length,
           calculatedMetrics: metrics.filter(value => value.classification === 'calculated').length,

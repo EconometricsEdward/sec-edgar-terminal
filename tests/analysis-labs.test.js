@@ -338,3 +338,51 @@ test("Lab calculations reject arbitrary old balance dates", () => {
     /opening date/,
   );
 });
+
+test("Calculated lab flows must establish the selected duration, not merely carry a formula", () => {
+  const company = data();
+  company.periods[0] = { ...period, kind: "quarter", start: "2025-10-01" };
+  for (const points of Object.values(company.metrics)) {
+    points[0].period = company.periods[0];
+    if (points[0].sources[0].start) points[0].sources[0].start = "2025-10-01";
+  }
+  for (const key of ["operatingCashFlow", "operatingIncome"]) {
+    const point = company.metrics[key][0];
+    point.classification = "calculated";
+    point.formula = "Cumulative amount mislabeled as a standalone quarter";
+    point.sources[0].start = "2025-01-01";
+  }
+  const formula = buildFormulaPoint(company, FORMULA_DEFAULTS, 0);
+  assert.equal(formula.point.value, null);
+  assert.match(formula.point.reason, /flow durations|source duration/);
+  assert.equal(buildAnalysisScenario(company, {}, 0).operating.rows.length, 0);
+
+  // Two mismatched cumulative starts cannot establish a standalone quarter.
+  const income = company.metrics.operatingIncome[0];
+  income.sources.push({ ...income.sources[0], start: "2025-04-01", end: "2025-09-30" });
+  assert.equal(buildAnalysisScenario(company, {}, 0).operating.rows.length, 0);
+
+  // Same-concept cumulative subtraction retains a verifiable Q4 boundary.
+  income.sources[1].start = "2025-01-01";
+  assert.equal(buildAnalysisScenario(company, {}, 0).operating.reason, null);
+});
+
+test("Average-balance lab inputs require compatible opening and ending evidence", () => {
+  const company = data();
+  company.definitions.push({ key: "averageAssets", label: "Average assets", format: "currency" });
+  const assets = company.metrics.totalAssets[0];
+  company.metrics.averageAssets = [{ ...assets, classification: "calculated", formula: "(Opening assets + ending assets) / 2", sources: [...assets.sources] }];
+  const average = company.metrics.averageAssets[0];
+  const settings = { formulaA: "netIncome", formulaB: "averageAssets", formulaOp: "ratio" };
+  assert.equal(buildFormulaPoint(company, settings, 0).point.value, null);
+  average.sources.push({ ...assets.sources[0], end: "2024-12-31" });
+  assert.equal(buildFormulaPoint(company, settings, 0).point.value, 2.5);
+  average.sources[1].end = "2024-09-30";
+  assert.equal(buildFormulaPoint(company, settings, 0).point.value, null);
+  average.sources[1].end = "2024-12-31";
+  average.sources[1].tag = "DifferentAssetScope";
+  assert.equal(buildFormulaPoint(company, settings, 0).point.value, null);
+  average.sources[1].tag = assets.sources[0].tag;
+  average.sources[1].start = "2024-01-01";
+  assert.equal(buildFormulaPoint(company, settings, 0).point.value, null);
+});

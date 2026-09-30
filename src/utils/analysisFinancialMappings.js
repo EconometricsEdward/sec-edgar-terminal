@@ -1,6 +1,7 @@
 import { buildMetricRow } from "./xbrlParser.js";
 import { selectFinancialFact, sumCompatibleFinancialFacts } from "./xbrlPeriods.js";
 import { comparePointQuality } from "./compareQuality.js";
+import { ANALYSIS_DEBT_LABEL, analysisCashScopeNote, analysisCashLabel, analysisDebtScopeNote } from "./analysisMappingPresentation.js";
 import {
   riskDebtBalances,
   riskLiabilitiesBalance,
@@ -40,7 +41,10 @@ export function createAnalysisFinancialMapper(company) {
 
   function point(key, period, fallback) {
     let selected;
-    if (key === "revenue") selected = netRevenue(period) || fallback;
+    if (key === "cash") {
+      const tag = fallback?.sources?.[0]?.tag || fallback?.source?.tag;
+      selected = scoped(fallback, analysisCashScopeNote(tag));
+    } else if (key === "revenue") selected = netRevenue(period) || fallback;
     else if (key === "bankRevenue") {
       selected = netRevenue(period) || sumCompatibleFinancialFacts([
         buildMetricRow(facts, "netInterestIncome", "Net interest income", [period], "currency", "banking").values[0],
@@ -66,6 +70,8 @@ export function createAnalysisFinancialMapper(company) {
         && !aggregate.source?.start && aggregate.source?.end === period.end
         ? scoped(aggregate, "Reported combined short-term and long-term debt. No current/noncurrent allocation is inferred; lease and other obligation scope follows the cited concept.")
         : debt(period).total;
+      if (Number.isFinite(selected?.value)) selected = scoped(selected,
+        analysisDebtScopeNote(selected.note || ""));
     } else if (key === "shortTermInvestments") selected = riskMarketableSecurities(facts, period, "current");
     else if (key === "longTermInvestments") selected = riskMarketableSecurities(facts, period, "noncurrent");
     else if (key === "totalLiabilities") selected = riskLiabilitiesBalance(facts, period);
@@ -79,10 +85,15 @@ export function createAnalysisFinancialMapper(company) {
       const values = periods.map((period, index) => point(row.key, period, row.values?.[index]));
       let label = ({ shortTermDebt: "Current debt", longTermDebt: "Noncurrent debt",
         shortTermInvestments: "Current investments", longTermInvestments: "Noncurrent investments",
-        totalDebt: "Total reported debt" })[row.key] || row.label;
+        totalDebt: ANALYSIS_DEBT_LABEL })[row.key] || row.label;
       if (["revenue", "bankRevenue"].includes(row.key)
         && values.some((value) => value.sources?.some((source) => source.tag === "RevenuesNetOfInterestExpense")))
         label = "Revenue, net of interest expense";
+      if (row.key === "cash") {
+        const tags = new Set(values.filter((value) => Number.isFinite(value.value))
+          .flatMap((value) => value.sources?.map((source) => source.tag) || []));
+        label = analysisCashLabel(tags);
+      }
       return { ...row, label, values };
     },
   };

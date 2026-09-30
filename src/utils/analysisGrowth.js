@@ -4,6 +4,10 @@ import {
   calculateAnalysisPoint,
 } from "./analysisResearch.js";
 import { daysBetween } from "./xbrlPeriods.js";
+import { evidenceSources } from "./researchEvidence.js";
+import { comparePointQuality } from "./compareQuality.js";
+import { labInput } from "./analysisFormula.js";
+import { financialSourceScopeIssue } from "./financialComparisonScope.js";
 
 const finite = (point) => Number.isFinite(point?.value);
 const unavailable = (period, reason) => ({
@@ -21,12 +25,47 @@ export function growthCompatibility(current, before, format = "currency") {
   return analysisChange(current, before, format);
 }
 
+function metricGrowthCompatibility(data, key, index, beforeIndex) {
+  const current = pointAt(data, key, index);
+  const before = pointAt(data, key, beforeIndex);
+  const format = definition(data, key)?.format || "currency";
+  const change = growthCompatibility(current, before, format);
+  const fail = (reason) => ({ delta: null, percent: null, reason });
+  if (change.delta == null) return change;
+  const sourceSets = [current, before].map(evidenceSources);
+  const expectedUnit = { currency: "USD", eps: "USD/shares", shares: "shares" }[format];
+  if (sourceSets.some((sources) => !sources.length || sources.some((source) =>
+    !Number.isFinite(source.value) || !source.unit || (expectedUnit && source.unit !== expectedUnit),
+  ))) return fail("Growth requires finite reported inputs in the same expected unit; currencies and share units are not substituted.");
+  if (format === "currency") {
+    for (const i of [index, beforeIndex]) {
+      const point = pointAt(data, key, i);
+      const specialBalance = key.startsWith("opening") || ["averageAssets", "averageEquity"].includes(key);
+      const reason = specialBalance ? labInput(data, key, i).reason
+        : comparePointQuality(point, key, data.periods[i]).reason;
+      if (reason) return fail(reason);
+    }
+  } else if (["eps", "shares"].includes(format)) {
+    for (const point of [current, before]) {
+      if (evidenceSources(point).some((source) =>
+        source.end !== point.period.end ||
+        (format === "eps" && !source.start) ||
+        (source.start && (!point.period.start ||
+          !Number.isFinite(daysBetween(point.period.start, source.start)) ||
+          Math.abs(daysBetween(point.period.start, source.start)) > 3)),
+      )) return fail("Per-share and share-count growth requires reported observations for the selected duration or balance date; nonadditive inputs are not accumulated.");
+    }
+  }
+  const scopeIssue = financialSourceScopeIssue(current, before);
+  if (scopeIssue) return fail(scopeIssue);
+  return change;
+}
+
 export function growthPair(data, key, index) {
   const current = pointAt(data, key, index);
   const beforeIndex = analysisBaseline(data.periods, index, "year");
   const before = beforeIndex >= 0 ? pointAt(data, key, beforeIndex) : null;
-  const format = definition(data, key)?.format || "currency";
-  const change = growthCompatibility(current, before, format);
+  const change = metricGrowthCompatibility(data, key, index, beforeIndex);
   let point = unavailable(
     current?.period,
     change.reason || "A positive comparable prior-year value is required.",
@@ -79,7 +118,7 @@ export function endpointCagr(data, key, index, years = 3) {
       { count, indices },
     );
   for (let i = 0; i < points.length - 1; i += 1) {
-    const pair = growthCompatibility(points[i], points[i + 1]);
+    const pair = metricGrowthCompatibility(data, key, indices[i], indices[i + 1]);
     if (pair.delta == null) return result(pair.reason, { count, indices });
   }
   const before = points.at(-1);
@@ -202,9 +241,11 @@ export function profitChangeBridge(
     return fail(
       "Both periods require reported profit and the matching revenue definition. Missing inputs are not estimated.",
     );
+  for (const key of [profitKey, revenueKey]) {
+    const check = metricGrowthCompatibility(data, key, index, beforeIndex);
+    if (check.delta == null) return fail(check.reason);
+  }
   for (const pair of [
-    [currentProfit, previousProfit],
-    [currentRevenue, previousRevenue],
     [currentProfit, currentRevenue],
     [previousProfit, previousRevenue],
   ]) {

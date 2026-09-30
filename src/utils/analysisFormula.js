@@ -1,4 +1,5 @@
 import { evidenceSources, evidenceCalculations } from "./researchEvidence.js";
+import { comparePointQuality } from "./compareQuality.js";
 
 export const FORMULA_DEFAULTS = {
   formulaA: "operatingCashFlow",
@@ -110,6 +111,26 @@ export function labInput(data, key, index) {
   if (!reason && ["prior balance", "mixed-date balance"].includes(basis))
     reason =
       "A balance must use the selected ending date or its opening date. Unspecified prior or mixed dates cannot be combined.";
+  if (!reason && basis === "average balance") {
+    const endpoints = new Set(sources.map((source) => source.end));
+    const concepts = new Set(sources.map((source) =>
+      [source.taxonomy, source.tag, source.unit].join(":"),
+    ));
+    if (
+      !instants || !opening || endpoints.size !== 2 ||
+      !endpoints.has(opening) || !endpoints.has(period.end) ||
+      concepts.size !== 1
+    )
+      reason =
+        "An average balance requires the same reported concept at exactly the selected opening and ending dates; arbitrary dates and accounting scopes cannot be averaged.";
+  }
+  // A formula label is not proof that cumulative inputs describe this output
+  // quarter or trailing year. Verify every concept's source intervals, while
+  // retaining legitimate cumulative subtractions and sums of four quarters.
+  if (!reason && basis === "period flow" && point.classification === "calculated") {
+    const quality = comparePointQuality(point, key, period);
+    if (!quality.valid) reason = quality.reason;
+  }
   return { key, definition, point, basis, reason };
 }
 

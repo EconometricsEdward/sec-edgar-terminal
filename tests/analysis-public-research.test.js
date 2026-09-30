@@ -187,3 +187,17 @@ test('source limits refuse a summary rather than silently dropping calculation i
   assert.equal(result.status, 'not-prepared'); assert.equal(result.sourceCatalog.length, 0);
   assert.match(result.reason, /represented completely/);
 });
+
+test('public summaries disclose bounded presentation compatibility without changing calculation clocks', async () => {
+  const payload = model();
+  payload.mappingCompatibility = { adapter: 'analysis-v2-presentation-v1', fromMappingVersion: 'analysis-mappings-v2',
+    toMappingVersion: payload.mappingVersion, financialValuesRecomputed: false, untrustedExtra: 'omitted' };
+  const result = await reader(payload)({ ticker: 'AAPL' });
+  assert.equal(result.status, 'ready');
+  assert.deepEqual(result.mappingCompatibility, { adapter: 'analysis-v2-presentation-v1', fromMappingVersion: 'analysis-mappings-v2',
+    toMappingVersion: payload.mappingVersion, financialValuesRecomputed: false });
+  assert.equal(result.calculatedAt, new Date(payload.observedAt).toISOString());
+  assert.equal(result.retrievedAt, new Date(metadata.fetchedAt).toISOString());
+  payload.mappingCompatibility.financialValuesRecomputed = true;
+  assert.equal((await reader(payload)({ ticker: 'AAPL' })).mappingCompatibility, undefined);
+});

@@ -9,7 +9,7 @@ Compare has three entry points: Peer Explorer, CAMELS, and Selected banks. Peer 
 - FFIEC `RetrieveUBPRXBRLFacsimile` uses the existing server credentials, signed Vercel/Supabase gateway, worker lease and shared five-second/600-hourly/2400-daily request gate. Preparing a bank queues its available recent UBPR quarters. Active banks refresh weekly; work remains inside the four-quarter window. Original XBRL, retrieval date and SHA-256 are retained; the source endpoint requires the exact version hash.
 - The bank XBRL feed contains **bank ratios**, not official peer averages or percentile ranks. These reference ratios are displayed separately, with a link to the full FFIEC reports. Do not label BankScope cohort statistics as official UBPR statistics or inject UBPR values into the FDIC distributions.
 
-## Model `bankscope-peers-2`
+## Model `bankscope-peers-3`
 
 Require complete lending and funding inputs; exclude the subject. Rank at most 30 candidates in an asset band of ¼–4×, widening to ⅛–8× when fewer than ten qualify. Always disclose the wider band and retain the actual cohort count.
 
@@ -18,6 +18,8 @@ Distance = 40% size + 35% lending + 25% funding:
 - Size = `min(1, abs(log2(peer assets / subject assets)) / 3)`.
 - Lending = 75% total-variation distance across real estate, C&I, consumer and other loans, plus 25% absolute loans/assets difference.
 - Funding = mean absolute difference across deposits/assets, noninterest/domestic deposits and brokered/domestic deposits.
+
+Version 3 corrects the noninterest-deposit numerator to FDIC `DEPNIDOM`, for both peer matching and the domestic deposit-share metric. `DEPNI` includes foreign offices and must not be divided by domestic-only `DEPDOM`. The manifest withholds older-model payloads until replacement snapshots publish; history never mixes normalization versions. See the [30 September source audit](bankscope-accuracy-audit-2026-09-30.md) for exact before/after values and rollout verification.
 
 Performance outcomes do not influence matching. Raw source values, broad categories and strict identity joins are intentional; specialty models, tax treatment and foreign-office activity still require analyst judgment.
 
@@ -41,7 +43,7 @@ Capital context separates general U.S. bank minimums, minimum plus the 2.5 perce
 
 CBLR election comes only from the quarter-specific FDIC `CBLRIND`: 1 elected, 0 not elected, otherwise unknown. For electors or unknown frameworks, risk-based capital values are null even if FDIC publishes a zero placeholder. Such peers are excluded per metric, not from the business-model cohort. References use >9% through June 2026 and >8% from July 1, 2026, with the corresponding two/four-quarter grace context. Eligibility, grace use and actual PCA status are never inferred from a single ratio. References are withheld before 2022; rules were reviewed September 25, 2026. Primary links are maintained in `regulatoryContext.js`.
 
-The latest completed snapshot's `model_version` is exposed by `peer_status`. Workers refresh an older normalization version even within the usual daily refresh window. All four retained quarters must reach version 2 before release. Existing readers remain compatible with the expanded JSON, and failed refreshes preserve the previous complete universe.
+The latest completed snapshot's `model_version` is exposed by `peer_status`. Workers refresh an older normalization version even within the usual daily refresh window. All four retained quarters must reach version 3 before the corrected views are fully available. Existing readers remain compatible with the expanded JSON, and failed refreshes preserve the previous complete universe.
 
 `bankscope-camels.test.js` covers real FDIC bank/CBLR fixtures, ratio denominators, true zero and negative data, CBLR placeholders, valid peer counts, date transitions, strict thresholds, distinct buffer/PCA references, versioned refresh atomicity and share links. The FDIC fixture contains three public bank records for June 2026 retrieved September 25, 2026. Estimated uninsured deposits are deliberately omitted: a source zero can mean the smaller bank was not required to report it.
 
@@ -52,7 +54,7 @@ Both views include quarterly paths alongside current-quarter distributions. CAME
 
 History uses the same selected-quarter cohort, followed backward by RSSD. It never rematches historical peers or substitutes predecessor banks. The universe promise is shared with the current-quarter service. The separate `history=1` request to `/api/banks/peers` keeps history failures independent of current benchmarks and UBPR preparation. Only server-selected peer IDs reach the gateway: at most 30 peers plus the subject, over four retained dates at or before the selected date. No history request downloads new FDIC/FFIEC sources.
 
-`peer_history` reads completed `bankscope-peers-2` snapshots through existing private tables and grants. The selected quarter is pinned to the snapshot used for matching. Historical quarters use their latest completed versions. The response excludes raw sources and owner identities, and the client rejects a selected-quarter snapshot mismatch. Each source version remains inspectable in the history details.
+`peer_history` reads completed `bankscope-peers-3` snapshots through existing private tables and grants. The selected quarter is pinned to the snapshot used for matching. Historical quarters use their latest completed versions. The response excludes raw sources and owner identities, and the client rejects a selected-quarter snapshot mismatch. Each source version remains inspectable in the history details.
 
 Ratios retain their published percentage units and reporting basis. Changes are `(current ratio − prior ratio) × 100` basis points, not percentage growth. Annualized YTD ratios are not de-accumulated or relabeled as single-quarter results. Adjacent-quarter changes require both endpoints for that exact pair; first-period changes retain the stated baseline even if it is missing. Missing values remain gaps and are never bridged in charts. Every date independently excludes CBLR/unknown-framework risk-based capital values. Historical peer medians require five valid peers, disclose changing coverage, and never include the subject.
 

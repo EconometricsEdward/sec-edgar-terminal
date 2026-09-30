@@ -305,3 +305,77 @@ test("YTD comparison never substitutes a shorter sequential period", () => {
     /compatible comparison/,
   );
 });
+
+test("Growth and CAGR reject mismatched monetary and per-share source units", () => {
+  const monetary = fixture();
+  monetary.metrics.revenue[1].sources[0].unit = "EUR";
+  assert.equal(growthPair(monetary, "revenue", 0).point.value, null);
+  assert.match(endpointCagr(monetary, "revenue", 0, 3).point.reason, /unit/);
+  const perShare = fixture();
+  perShare.definitions[0].format = "eps";
+  for (const point of perShare.metrics.revenue) point.sources[0].unit = "USD/shares";
+  assert.ok(Number.isFinite(growthPair(perShare, "revenue", 0).point.value));
+  perShare.metrics.revenue[1].sources[0].unit = "shares";
+  assert.equal(growthPair(perShare, "revenue", 0).point.value, null);
+});
+
+test("Growth verifies both actual flow windows instead of accepting equally mislabeled durations", () => {
+  const data = fixture();
+  for (const point of data.metrics.revenue) point.sources[0].start = `${point.period.fy}-07-01`;
+  assert.equal(growthPair(data, "revenue", 0).point.value, null);
+  assert.match(endpointCagr(data, "revenue", 0, 3).point.reason, /flow durations/);
+  for (const point of data.metrics.revenue) {
+    point.classification = "calculated";
+    point.formula = "Mislabeled cumulative amount";
+  }
+  assert.equal(growthPair(data, "revenue", 0).point.value, null);
+});
+
+test("Per-share growth never adds or compares the wrong source durations", () => {
+  const data = fixture();
+  data.definitions[0].format = "eps";
+  for (const point of data.metrics.revenue) {
+    point.sources[0].unit = "USD/shares";
+    point.sources[0].start = `${point.period.fy}-07-01`;
+  }
+  assert.equal(growthPair(data, "revenue", 0).point.value, null);
+  assert.match(growthPair(data, "revenue", 0).point.reason, /nonadditive/);
+});
+
+test("Income growth and profit bridges cannot cross parent and consolidated attribution", () => {
+  const data = fixture();
+  data.metrics.netIncome[1].sources[0].tag = "ProfitLoss";
+  assert.equal(growthPair(data, "netIncome", 0).point.value, null);
+  assert.match(endpointCagr(data, "netIncome", 0, 3).point.reason, /income attribution scopes differ/);
+  assert.match(profitChangeBridge(data, 0).reason, /income attribution scopes differ/);
+});
+
+test("Cash, equity, debt and restricted-cash scope changes are not presented as like-for-like growth", () => {
+  for (const [current, prior, instant] of [
+    ["Cash", "CashAndCashEquivalentsAtCarryingValue", true],
+    ["CashAndDueFromBanks", "CashAndCashEquivalentsAtCarryingValue", true],
+    ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", true],
+    ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", true],
+    ["EffectOfExchangeRateOnCashAndCashEquivalents", "EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", false],
+  ]) {
+    const data = fixture();
+    data.definitions[0].key = "scopeMetric";
+    data.metrics.scopeMetric = data.metrics.revenue;
+    data.metrics.scopeMetric[0].sources[0].tag = current;
+    data.metrics.scopeMetric[1].sources[0].tag = prior;
+    if (instant) for (const point of data.metrics.scopeMetric) point.sources[0].start = null;
+    assert.equal(growthPair(data, "scopeMetric", 0).point.value, null);
+    assert.match(growthPair(data, "scopeMetric", 0).point.reason, /scopes differ/);
+  }
+});
+
+test("Standard revenue tag migrations remain comparable while net-of-interest revenue does not cross gross scope", () => {
+  const data = fixture();
+  data.metrics.revenue[0].sources[0].tag = "RevenueFromContractWithCustomerExcludingAssessedTax";
+  data.metrics.revenue[2].sources[0].tag = "SalesRevenueNet";
+  assert.ok(Number.isFinite(growthPair(data, "revenue", 0).point.value));
+  assert.ok(Number.isFinite(endpointCagr(data, "revenue", 0, 3).point.value));
+  data.metrics.revenue[1].sources[0].tag = "RevenuesNetOfInterestExpense";
+  assert.equal(growthPair(data, "revenue", 0).point.value, null);
+  assert.match(growthPair(data, "revenue", 0).point.reason, /revenue interest scopes differ/);
+});

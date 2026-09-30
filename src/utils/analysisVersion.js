@@ -3,4 +3,4 @@ import { FINANCIAL_DATA_VERSION } from "./xbrlPeriods.js";
 // Mapping revisions invalidate calculation payloads without changing that
 // reviewed storage-key contract or its access controls.
 export const ANALYSIS_VERSION = `analysis-v1.4:${FINANCIAL_DATA_VERSION}`;
-export const ANALYSIS_MAPPING_VERSION = "analysis-mappings-v2";
+export const ANALYSIS_MAPPING_VERSION = "analysis-mappings-v3";
