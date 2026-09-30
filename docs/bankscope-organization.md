@@ -77,3 +77,18 @@ Release checks: Wells Fargo (multiple related banks), First Internet (small
 footprint/listed parent), Alliance (no exact ticker candidate), a bank without a
 reported top holder, related-bank navigation, disclosure controls, SEC links,
 source links, reload/Back/Forward and the existing bank financial views.
+
+Complete organization views also use the shared browser-session request helper:
+identical loads and return navigation reuse a result for 30 seconds, with the
+existing 16-entry/2 MiB session bound and isolated subscriber cancellation. Parts
+and RSSDs remain separate; no selected financial quarter enters an organization
+request. Missing, partial, stale, malformed and failed results are not reused.
+Retry explicitly bypasses completed browser and process-level response caches.
+The underlying one-hour FDIC source policy and provider cooldown are unchanged.
+
+The public organization API coalesces identical in-flight reads and retains
+complete responses for at most 30 seconds per process, bounded by 64 entries,
+4 MiB total, 512 KiB per entry and 16 active reads. Rate limiting runs before
+both cache hits and joined reads. Cached response age is subtracted from the
+existing browser/CDN lifetime; source timestamps are unchanged. This process
+cache is separate from the existing CDN and does not share across isolates.

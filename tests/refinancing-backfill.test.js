@@ -24,7 +24,7 @@ function harness(count = 5, overrides = {}) {
     begin: async (_dataset, key, options) => { assert.equal(key, REFINANCING_BACKFILL_KEY); assert.equal(options.leaseSeconds, 300);
       if (store.owned) return null; store.owned = true; store.events.push('claim'); return { owner: 'worker' }; },
     release: async () => { store.owned = false; },
-    write: async value => { assert.equal(store.owned, true); assert.equal(validRefinancingBackfillState(value.payload), true);
+    write: async value => { assert.equal(value.returnEnvelope, false); assert.equal(store.owned, true); assert.equal(validRefinancingBackfillState(value.payload), true);
       store.state = structuredClone(value.payload); store.owned = false; store.events.push('state-write'); },
     wallRead: async () => { store.events.push('wall-read'); return store.wall; },
     loadRegistry: async options => { assert.equal(options.required, true); store.events.push('registry'); },

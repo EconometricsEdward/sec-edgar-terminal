@@ -259,3 +259,23 @@ test('old Compare mapping payloads are rejected even if the storage schema versi
     hotRead: async () => null, read: async () => ({ payload, metadata }),
   }), /validation|refresh/);
 });
+
+
+test('pilot views preserve persisted mirror metadata while broad views request only publication receipts', async () => {
+  for (const [ticker, cik, pilot] of [['AAPL', '0000320193', true], ['NVDA', '0001045810', false]]) {
+    const { company, sources } = fixture(ticker, cik), state = storage(sources);
+    let publications = 0, mirrors = 0;
+    await prepareResearchViews(company, sources, { ...state.dependencies,
+      publish: async value => {
+        publications++; assert.equal(value.returnEnvelope, pilot);
+        return pilot ? { payload: value.payload, metadata: { ...value.metadata, versionId: 'persisted-version', contentHash: 'persisted-hash' } }
+          : { versionId: 'persisted-version', identityHash: 'receipt-identity' };
+      },
+      hotWrite: async (_namespace, _key, value) => {
+        mirrors++; assert.equal(pilot, true); assert.equal(value.metadata.versionId, 'persisted-version');
+        assert.equal(value.metadata.contentHash, 'persisted-hash'); return true;
+      },
+    });
+    assert.equal(publications, 7); assert.equal(mirrors, pilot ? 7 : 0);
+  }
+});

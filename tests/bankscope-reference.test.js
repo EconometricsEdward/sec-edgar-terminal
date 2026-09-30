@@ -49,7 +49,8 @@ test('reference endpoint excludes mixed modes, validates source identity and nev
   assert.equal(response.status,200);assert.match(response.headers.get('Cache-Control'),/public/);
   assert.deepEqual(await response.json(),body);
   body={rssd,period,ubpr:{status:'running',report:null}};
-  response=await GET(new Request(url+'&reference=1'));
+  // An explicit refresh rechecks a changed source instead of the short ready-result cache.
+  response=await GET(new Request(url+'&reference=1',{cache:'no-cache'}));
   assert.equal(response.status,200);assert.match(response.headers.get('Cache-Control'),/no-store/);
   body=reference();body.ubpr.report.id_rssd=2;
   response=await GET(new Request(url+'&reference=1'));

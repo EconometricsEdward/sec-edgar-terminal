@@ -199,7 +199,7 @@ export async function runRefinancingBackfill({ signal, deadline = Date.now() + 2
       if (state) {
         state.updatedAt = new Date(now()).toISOString();
         if (!validRefinancingBackfillState(state)) throw new Error('Refinancing backfill state exceeded validation bounds.');
-        await write({ dataset: 'financial', key: REFINANCING_BACKFILL_KEY, claim, payload: state,
+        await write({ dataset: 'financial', key: REFINANCING_BACKFILL_KEY, claim, payload: state, returnEnvelope: false,
           metadata: { sourceId: 'sec-edgar', fetchedAt: state.updatedAt, revalidatedAt: state.updatedAt,
             expiresAt: new Date(now() + 30 * 86400000).toISOString(), parserVersion: REFINANCING_VERSION,
             calculationVersion: VERSION }, identityInputs: state });

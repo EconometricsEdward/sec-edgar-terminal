@@ -104,6 +104,7 @@ test('publication uses an existing fenced dataset key and preserves newer comple
   assert.equal(result.coverage.coveredCompanies, 4);
   const written = calls.find(call => call[0] === 'publish')[1];
   assert.equal(written.key, REFINANCING_WALL_KEY);
+  assert.equal(written.returnEnvelope, false);
   assert.equal(written.metadata.parserVersion, REFINANCING_VERSION);
   assert.equal(written.metadata.revalidatedAt, checkedAt);
   calls.length = 0;

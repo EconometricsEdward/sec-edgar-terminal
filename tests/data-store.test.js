@@ -34,7 +34,7 @@ function fixture({ failUpload = false, corruptObject = false, afterPublish } = {
       const head = heads.get(key);
       if (!head || head.generation !== p.p_claim.generation || head.owner !== p.p_claim.owner) return json({ code: '40001' }, 409);
       const rec = p.p_record, versionKey = `${key}:${rec.identityHash}`;
-      if (!versions.has(versionKey)) versions.set(versionKey, { ...rec, id: `version-${versions.size + 1}`, generation: head.generation });
+      if (!versions.has(versionKey)) versions.set(versionKey, { ...rec, id: `00000000-0000-4000-8000-${String(versions.size + 1).padStart(12, '0')}`, generation: head.generation });
       head.current = rec.identityHash; if (p.p_promote_good) head.lastGood = rec.identityHash;
       head.revalidation = { revalidatedAt: rec.metadata.revalidatedAt || rec.metadata.fetchedAt, expiresAt: rec.metadata.expiresAt };
       head.owner = null; await afterPublish?.({ versions, head, key });
@@ -80,7 +80,7 @@ test('compact round trip is deterministic and missing is distinct from dependenc
   const claim = await f.store.beginDatasetWrite('financial', 'a');
   const result = await f.store.publishDataset({ dataset: 'financial', key: 'a', claim, payload: { z: null, a: 10.25 }, metadata: metadata() });
   assert.deepEqual(result.payload, { a: 10.25, z: null });
-  assert.equal(result.metadata.versionId, 'version-1'); assert.equal(result.metadata.generation, 1);
+  assert.equal(result.metadata.versionId, '00000000-0000-4000-8000-000000000001'); assert.equal(result.metadata.generation, 1);
   assert.equal(f.objects.size, 0);
   assert.ok(f.calls.every(call => call.headers.apikey === 'sb_secret_fixture' && !call.headers.Authorization));
   const failing = createDataStore({ env: baseEnv, fetchImpl: async () => { throw new Error('credential must never echo'); } });
@@ -205,7 +205,7 @@ test('publication adapter maps only audited PT409 conflicts and never retries a 
   await assert.rejects(store.readDataset('financial', 'one'), { code: 'http_409' });
 });
 
-test('immutable object reuse coalesces downloads while every read observes head expiry and revisions', async () => {
+test('overlapping reads coalesce version RPCs and objects while later reads observe head expiry and revisions', async () => {
   const values = [{ rows: [{ value: 1 }], padding: 'x'.repeat(70000) }, { rows: [{ value: 2 }], padding: 'x'.repeat(70000) }];
   const bytes = values.map(value => Buffer.from(stableDataStoreJson(value)));
   const hashes = bytes.map(dataStoreContentHash), zipped = bytes.map(value => gzipSync(value));
@@ -222,7 +222,7 @@ test('immutable object reuse coalesces downloads while every read observes head 
     return new Response(zipped[hashes.findIndex(hash => url.includes(hash))]);
   } });
   const results = await Promise.all(Array.from({ length: 12 }, () => store.readDataset('financial', 'one')));
-  assert.equal(reads, 12); assert.equal(downloads, 1);
+  assert.equal(reads, 1); assert.equal(downloads, 1);
   assert.equal(results[0].serializedPayload, bytes[0].toString());
   assert.throws(() => { results[0].payload.rows[0].value = 99; }, TypeError);
   results[0].metadata.fetchedAt = 'mutated caller metadata';
@@ -234,7 +234,7 @@ test('immutable object reuse coalesces downloads while every read observes head 
   current = 1; expiresAt = '2099-01-01T00:00:00Z';
   const revised = await store.readDataset('financial', 'one');
   assert.equal(revised.payload.rows[0].value, 2); assert.equal(revised.metadata.generation, 2);
-  assert.equal(downloads, 2); assert.equal(reads, 15);
+  assert.equal(downloads, 2); assert.equal(reads, 4);
 });
 
 test('failed object reads are retried and exact source export bypasses cached parsed payload', async () => {
@@ -301,4 +301,53 @@ test('immutable content cache evicts by decoded input budget and absolute age', 
   now += 1001;
   const reread = await store.readDataset('financial', '0');
   assert.equal(downloads, 7); assert.equal(reread.metadata.fetchedAt, timestamp);
+});
+
+test('receipt-only publication saves exactly one version RPC without skipping object verification', async () => {
+  for (const large of [false, true]) {
+    const payload = { value: 1, text: 'x'.repeat(large ? 70000 : 10) };
+    for (const returnEnvelope of [true, false]) {
+      const f = fixture(), claim = await f.store.beginDatasetWrite('financial', 'one');
+      const result = await f.store.publishDataset({ dataset: 'financial', key: 'one', claim, payload,
+        metadata: metadata(), returnEnvelope });
+      const version = [...f.versions.values()][0];
+      assert.equal(f.calls.filter(call => call.path.endsWith('/edgar_get_version')).length, returnEnvelope ? 2 : 1);
+      assert.equal(f.calls.filter(call => call.path.endsWith('/edgar_publish')).length, 1);
+      assert.equal(f.calls.filter(call => call.path.startsWith('/storage/') && call.method === 'GET').length,
+        large ? returnEnvelope ? 2 : 1 : 0, 'an object upload always receives its independent integrity read-back');
+      if (returnEnvelope) assert.deepEqual(result.payload, payload);
+      else assert.deepEqual(result, { versionId: version.id, identityHash: version.identityHash });
+      assert.equal((await f.store.readDataset('financial', 'one')).metadata.versionId, version.id);
+    }
+  }
+});
+
+test('receipt-only publication preserves upload verification and fenced commit failures', async () => {
+  for (const option of [{ failUpload: true }, { corruptObject: true }]) {
+    const f = fixture(option), claim = await f.store.beginDatasetWrite('sec', 'one');
+    await assert.rejects(f.store.publishDataset({ dataset: 'sec', key: 'one', claim, payload: { cik: 1 },
+      metadata: metadata(), source: { bytes: '{"cik":1}', url: metadata().sourceUrl },
+      kind: 'source-document', returnEnvelope: false }));
+    assert.equal(f.versions.size, 0);
+    assert.ok(!f.calls.some(call => call.path.endsWith('/edgar_publish')));
+  }
+  const f = fixture(), claim = await f.store.beginDatasetWrite('financial', 'one');
+  await assert.rejects(f.store.publishDataset({ dataset: 'financial', key: 'one', claim: { ...claim, generation: 999 },
+    payload: { value: 1 }, metadata: metadata(), returnEnvelope: false }), { code: 'stale_generation' });
+  assert.equal(f.versions.size, 0);
+  assert.equal(f.calls.filter(call => call.path.endsWith('/edgar_get_version')).length, 1);
+});
+
+
+test('receipt-only publication accepts only the acknowledged SQL UUID result', async () => {
+  const claim = { dataset: 'financial', key: 'one', owner: '00000000-0000-4000-8000-000000000001', generation: 1 };
+  for (const receipt of [null, false, {}, [], { error: 'unexpected' }, 123, 'not-a-version-id']) {
+    const calls = [];
+    const store = createDataStore({ env: baseEnv, fetchImpl: async url => {
+      calls.push(url.split('/').at(-1)); return json(url.endsWith('/edgar_publish') ? receipt : null);
+    } });
+    await assert.rejects(store.publishDataset({ dataset: 'financial', key: 'one', claim, payload: { value: 1 },
+      metadata: metadata(), returnEnvelope: false }), { code: 'invalid_publication_receipt', status: 502 });
+    assert.deepEqual(calls, ['edgar_get_version', 'edgar_publish']);
+  }
 });

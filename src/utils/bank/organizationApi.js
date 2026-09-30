@@ -1,8 +1,11 @@
 import { bankRssd } from './catalog.js';
 import { getBankOrganization } from './organizationService.js';
+import { createBankApiReadCache, bankApiRefresh } from './apiReadCache.js';
+import { reusableOrganizationResult } from './organizationResult.js';
 import { checkRateLimit, getClientIp, rateLimitedResponse } from '../rateLimit.js';
 
-export function createOrganizationApi({ read = getBankOrganization, rateLimit = checkRateLimit } = {}) {
+export function createOrganizationApi({ read = getBankOrganization, rateLimit = checkRateLimit, now = Date.now,
+  readCache = createBankApiReadCache({ now }) } = {}) {
   return async function GET(request) {
     const params = new URL(request.url).searchParams;
     let rssd, part;
@@ -15,8 +18,12 @@ export function createOrganizationApi({ read = getBankOrganization, rateLimit = 
     try {
       const limit = await rateLimit({ key: `rl:bankscope:organization:${getClientIp(request)}`, windowMs: 60000, max: 40 });
       if (!limit.allowed) return rateLimitedResponse(limit);
-      const data = await read(rssd, part);
-      return Response.json(data, { headers: { ...privateHeaders, 'Cache-Control': data.unavailable || data.missing?.length || ['unavailable','stale'].includes(data.sec?.status) ? 'private, no-store' : 'public, max-age=60, s-maxage=900' } });
+      const { data, ageMs } = await readCache(JSON.stringify([rssd, part]), () => read(rssd, part), {
+        refresh: bankApiRefresh(request), reusable: data => reusableOrganizationResult(data, rssd, part),
+      });
+      const age = Math.ceil(ageMs / 1000);
+      return Response.json(data, { headers: { ...privateHeaders, 'Cache-Control': reusableOrganizationResult(data, rssd, part)
+        ? `public, max-age=${Math.max(0, 60 - age)}, s-maxage=${Math.max(0, 900 - age)}` : 'private, no-store' } });
     } catch { return Response.json({ error: 'Organization data is temporarily unavailable. Please try again.' }, { status: 503, headers: { ...privateHeaders, 'Retry-After': '60' } }); }
   };
 }

@@ -44,7 +44,7 @@ export async function publishMarketServingViews(overview, {
           await release('financial', definition.key, claim);
         } else {
           const fetchedAt = overview.companies.map(company => company.factsRetrievedAt || company.observedAt).filter(Boolean).sort()[0] || overview.generatedAt;
-          await publish({ dataset: 'financial', key: definition.key, claim, payload: value,
+          await publish({ dataset: 'financial', key: definition.key, claim, payload: value, returnEnvelope: false,
             metadata: { sourceId: 'sec-edgar', sourceUrl: 'https://data.sec.gov/submissions/',
               fetchedAt, revalidatedAt: overview.generatedAt,
               expiresAt: new Date(Date.parse(overview.generatedAt) + 25 * 3600000).toISOString(),

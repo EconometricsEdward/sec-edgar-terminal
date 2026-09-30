@@ -335,7 +335,8 @@ export async function prepareFinancialCompany(ticker, {
       financialInputHash, financialCompanyHash, metricProjectionVersion: 'latest-all-v1',
       financialBaseInputHash, sourceEnrichmentVersion: SOURCE_ENRICHMENT_VERSION,
       sourceCoverage: enrichedCompany.sourceCoverage, supplementalDocuments, inputDocuments, basis };
-    const published = await publish({ dataset: 'financial', key, claim, payload, metadata,
+    // Only the legacy pilot mirror consumes the returned provenance envelope.
+    const published = await publish({ dataset: 'financial', key, claim, payload, metadata, returnEnvelope: mirrorLegacy,
       identityInputs: { financialInputHash, inputDocuments: sourceIdentity, calculationVersion: ANALYSIS_VERSION,
         mappingVersion: ANALYSIS_MAPPING_VERSION,
         supplementalDocuments, sourceEnrichmentVersion: SOURCE_ENRICHMENT_VERSION,

@@ -132,10 +132,12 @@ test('all financial output claims precede source capture and rollback writes car
       if (dataset !== 'sec') return null;
       assert.equal(claims, 4); assert.equal(reserved, 4); sourceReads++; return docs(key);
     },
-    publish: async (value) => ({ payload: value.payload, metadata: value.metadata }),
+    publish: async (value) => { assert.equal(value.returnEnvelope, true);
+      return { payload: value.payload, metadata: { ...value.metadata, versionId: 'persisted-version', contentHash: 'persisted-hash' } }; },
     legacyWrite: async (_namespace, _id, value, _ttl, claim) => {
       assert.ok(claim.fenceId.startsWith('financial-analysis-v1:'));
-      assert.ok(claim.generation > 0); assert.equal(value.metadata.fetchedAt, metadata.fetchedAt); return true;
+      assert.ok(claim.generation > 0); assert.equal(value.metadata.fetchedAt, metadata.fetchedAt);
+      assert.equal(value.metadata.versionId, 'persisted-version'); assert.equal(value.metadata.contentHash, 'persisted-hash'); return true;
     },
   });
   assert.equal(sourceReads, 2);
@@ -236,4 +238,21 @@ test('corrupt warm gzip still falls back to bounded durable prepared data', asyn
   assert.equal(reads, 1);
   assert.equal(result.cacheSource, 'supabase-prepared');
   assert.equal(result.serializedPayload, JSON.stringify(payload));
+});
+
+
+test('broad financial publication skips unused envelopes and never fabricates pilot mirror metadata', async () => {
+  let publications = 0;
+  const result = await prepareFinancialCompany('NVDA', { mode: 'shadow',
+    begin: async () => ({ generation: 1 }), loadRegistry: async () => {},
+    read: async (dataset, key) => dataset === 'sec'
+      ? { ...docs(key), payload: { ...docs(key).payload, cik: 1045810 } } : null,
+    publish: async value => {
+      publications++; assert.equal(value.returnEnvelope, false);
+      return { versionId: 'persisted-version', identityHash: 'receipt-identity' };
+    },
+    legacyWrite: async () => { throw new Error('A nonpilot publication must not mirror metadata.'); },
+  });
+  assert.equal(publications, 4); assert.equal(result.status, 'prepared');
+  assert.ok(result.bases.every(value => value.status === 'updated' && value.rollbackStored === false));
 });

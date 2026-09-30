@@ -14,9 +14,11 @@ const BUCKET = 'edgar-durable-private';
 const TRANSIENT_IDENTITY_FIELDS = new Set(['fetchedAt', 'retrievedAt', 'revalidatedAt', 'generatedAt', 'expiresAt']);
 const unzip = promisify(gunzip);
 // Only immutable, hash-verified JSON content is cached. Dataset heads, source
-// age, revalidation and expiry are read from Postgres on every request. The byte
+// age, revalidation and expiry are read from Postgres for every non-overlapping
+// read; concurrent identical version reads share only their in-flight RPC. The byte
 // budget measures decoded JSON input; parsed JavaScript objects use extra heap.
 const OBJECT_CACHE = Object.freeze({ entries: 32, inputBytes: 32 * 1024 * 1024, entryBytes: 8 * 1024 * 1024, ttlMs: 60000, pending: 32 });
+const VERSION_READ_PENDING_LIMIT = 64;
 const SEC_DISPATCH_OPERATIONS = new Set(['edgar_acquire_sec_dispatch', 'edgar_release_sec_dispatch', 'edgar_publish_sec_cooldown']);
 const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -121,7 +123,7 @@ function validCoverageCycle(cycle, shards) {
 
 /** Injection is for local fixture/rehearsal tests; production uses the exports below. */
 export function createDataStore({ env = process.env, fetchImpl = (...args) => fetch(...args), identityTokenImpl = getDataStoreIdentityToken } = {}) {
-  const decodedObjects = new Map(), pendingObjects = new Map();
+  const decodedObjects = new Map(), pendingObjects = new Map(), pendingVersions = new Map();
   let decodedInputBytes = 0;
   function enabled(dataset) { checkDataset(dataset); return getDataStoreMode(dataset, env) !== 'off'; }
   async function request(path, { method = 'POST', body, raw = false, allowDuplicate = false, timeoutMs = LIMITS.requestTimeoutMs, signal } = {}) {
@@ -176,6 +178,43 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     const config = getConfiguration(env);
     return request(`/rest/v1/rpc/${name}`, { body: { p_namespace: config.namespace, ...params }, signal,
       ...(name === 'edgar_stage_membership' ? { timeoutMs: 20000 } : SEC_DISPATCH_OPERATIONS.has(name) ? { timeoutMs: 2000 } : {}) });
+  }
+  async function readVersion(params) {
+    const config = getConfiguration(env);
+    const key = stableDataStoreJson([config.url, config.namespace, config.cacheScope, params]);
+    let entry = pendingVersions.get(key);
+    if (!entry) {
+      entry = { dataset: params.p_dataset, resource: params.p_key, promise: rpc('edgar_get_version', params) };
+      // This is a bounded in-flight registry, not a head/metadata cache. A later
+      // read must observe publication, revalidation, expiry, and missing rows.
+      if (pendingVersions.size < VERSION_READ_PENDING_LIMIT) pendingVersions.set(key, entry);
+    }
+    try {
+      // Callers used to receive independently parsed rows. Preserve that for
+      // compact payloads and nested provenance rather than sharing mutable JSON.
+      return structuredClone(await entry.promise);
+    } finally {
+      if (pendingVersions.get(key) === entry) pendingVersions.delete(key);
+    }
+  }
+  function forgetPendingVersions(dataset, key) {
+    for (const [cacheKey, entry] of pendingVersions) {
+      if (entry.dataset === dataset && entry.resource === key) pendingVersions.delete(cacheKey);
+    }
+  }
+  async function versionWrite(name, params) {
+    // A read after acquiring a writer lease must not join one started before
+    // acquisition (another process may just have published). Also fence reads
+    // started during a write, including failures whose commit is uncertain.
+    const invalidate = () => {
+      // Output writers can capture inputs from other keys/datasets after their
+      // lease. None of those reads may join a request from before acquisition.
+      if (name === 'edgar_begin_write') pendingVersions.clear();
+      else forgetPendingVersions(params.p_dataset, params.p_key);
+    };
+    invalidate();
+    try { return await rpc(name, params); }
+    finally { invalidate(); }
   }
   function pathFor(dataset, type, hash) {
     const { namespace } = getConfiguration(env);
@@ -258,14 +297,14 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
   async function readDataset(dataset, key, { allowStale = true, pointer = 'current' } = {}) {
     checkDataset(dataset, key); if (!enabled(dataset)) return null;
     if (!['current', 'last-good', 'rollback'].includes(pointer)) throw new DataStoreError('invalid_pointer', 422);
-    const row = await rpc('edgar_get_version', { p_dataset: dataset, p_key: key, p_pointer: pointer });
+    const row = await readVersion({ p_dataset: dataset, p_key: key, p_pointer: pointer });
     if (!row) return null;
     if (!allowStale && row.expiresAt && Date.parse(row.expiresAt) <= Date.now()) return null;
     return envelope(row);
   }
   async function beginDatasetWrite(dataset, key, { leaseSeconds = 120 } = {}) {
     checkDataset(dataset, key); if (!enabled(dataset)) return null;
-    return rpc('edgar_begin_write', { p_dataset: dataset, p_key: key, p_owner: randomUUID(), p_lease_seconds: Math.max(10, Math.min(900, Math.floor(leaseSeconds))) });
+    return versionWrite('edgar_begin_write', { p_dataset: dataset, p_key: key, p_owner: randomUUID(), p_lease_seconds: Math.max(10, Math.min(900, Math.floor(leaseSeconds))) });
   }
   function batchKeys(dataset, keys) {
     checkDataset(dataset);
@@ -310,8 +349,9 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     if (failure) throw failure.reason;
     return output;
   }
-  async function publishDataset({ dataset, key, claim, payload, metadata = {}, source, kind = 'snapshot', promoteLastGood = true, observations = [], identityInputs }) {
+  async function publishDataset({ dataset, key, claim, payload, metadata = {}, source, kind = 'snapshot', promoteLastGood = true, observations = [], identityInputs, returnEnvelope = true }) {
     checkDataset(dataset, key); if (!enabled(dataset)) return null;
+    if (typeof returnEnvelope !== 'boolean') throw new DataStoreError('invalid_publication_result', 422);
     const token = claimArguments(claim);
     if (claim.dataset !== dataset || claim.key !== key) throw new DataStoreError('claim_resource_mismatch', 409);
     if (!['snapshot', 'source-document'].includes(kind)) throw new DataStoreError('invalid_asset_kind', 422);
@@ -355,13 +395,20 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
       else stored = { ...await putVerifiedObject(dataset, 'snapshot', payloadBytes), payload: null };
       record = { ...stored, identityHash, schemaVersion: DATA_STORE_REGISTRY[dataset].schemaVersion, metadata: cleanMetadata, source: sourceAsset || null, observations };
     }
-    await rpc('edgar_publish', { p_dataset: dataset, p_key: key, p_claim: token, p_record: record, p_promote_good: !!promoteLastGood });
+    const versionId = await versionWrite('edgar_publish', { p_dataset: dataset, p_key: key, p_claim: token, p_record: record, p_promote_good: !!promoteLastGood });
+    // Scheduled publishers that discard the envelope need only the committed
+    // SQL receipt. Upload/read-back integrity verification above is unchanged.
+    // Never synthesize source metadata from the submitted payload/clock.
+    if (!returnEnvelope) {
+      if (typeof versionId !== 'string' || !UUID_PATTERN.test(versionId)) throw new DataStoreError('invalid_publication_receipt', 502);
+      return { versionId, identityHash };
+    }
     return envelope(await rpc('edgar_get_version', { p_dataset: dataset, p_key: key, p_identity: identityHash }));
   }
   async function revalidateDataset(dataset, key, { claim, revalidatedAt, expiresAt, etag, lastModified }) {
     checkDataset(dataset, key); if (!enabled(dataset)) return null;
     if (claim.dataset !== dataset || claim.key !== key) throw new DataStoreError('claim_resource_mismatch', 409);
-    const ok = await rpc('edgar_revalidate', { p_dataset: dataset, p_key: key, p_claim: claimArguments(claim), p_metadata: { revalidatedAt: validTimestamp(revalidatedAt, true), expiresAt: validTimestamp(expiresAt), ...(etag ? { etag } : {}), ...(lastModified ? { lastModified } : {}) } });
+    const ok = await versionWrite('edgar_revalidate', { p_dataset: dataset, p_key: key, p_claim: claimArguments(claim), p_metadata: { revalidatedAt: validTimestamp(revalidatedAt, true), expiresAt: validTimestamp(expiresAt), ...(etag ? { etag } : {}), ...(lastModified ? { lastModified } : {}) } });
     if (!ok) throw new DataStoreError('stale_generation', 409);
     return true;
   }
@@ -488,7 +535,7 @@ export function createDataStore({ env = process.env, fetchImpl = (...args) => fe
     readDatasetVersion: async (dataset, key, identityHash) => {
       checkDataset(dataset, key); if (!enabled(dataset)) return null;
       if (!/^[a-f0-9]{64}$/.test(identityHash || '')) throw new DataStoreError('invalid_version_identity', 422);
-      return envelope(await rpc('edgar_get_version', { p_dataset: dataset, p_key: key, p_identity: identityHash }));
+      return envelope(await readVersion({ p_dataset: dataset, p_key: key, p_identity: identityHash }));
     },
     readDatasetSource: (record) => record?._source ? readObject(record._source) : Promise.resolve(null),
     enqueueDataStoreJob, enqueueCoverageJobs, enqueueCurrentCoverageJobs,
