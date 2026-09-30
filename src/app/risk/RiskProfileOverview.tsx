@@ -90,7 +90,7 @@ export default function RiskProfileOverview({ data, profile, onInspect, onExposu
   const maxBalance = Math.max(...comparisons.map(row => isNumber(row.item.value) ? Math.max(0,row.item.value) : 0), 1);
   return <div className={s.profile}>
     <RiskIntelligence key={`intelligence:${data.ticker}:${profile.basis}`} data={data} profile={profile} onInspect={onInspect} cftcEnabled={cftcEnabled}/>
-    <section className={s.overview} aria-labelledby="risk-profile-title">
+    <section id="risk-financial-position" className={s.overview} aria-labelledby="risk-profile-title">
       <div className={s.dimensions}>
         <div className={s.sectionTop}><span className={s.kicker}>01 / {view.lens.label}</span><span>Company history, in view</span></div>
         <h2 id="risk-profile-title">The financial shape of {data.ticker}.</h2><p className={s.description}>{view.lens.description}</p>

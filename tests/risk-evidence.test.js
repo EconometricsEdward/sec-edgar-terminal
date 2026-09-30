@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { maturityView, comparableRiskChanges, regulatoryBankView } from '../src/app/risk/riskEvidenceModel.js';
+import { maturityView, comparableRiskChanges } from '../src/app/risk/riskEvidenceModel.js';
 import { projectRiskMarketContext, createRiskContextRead } from '../src/utils/riskMarketContext.js';
 import { extractRefinancingProfile } from '../src/utils/refinancing/maturities.js';
 import { compactRefinancingProfile } from '../src/utils/refinancing/projection.js';
@@ -79,18 +79,6 @@ test('maturity concentrations need complete schedules; elapsed buckets and there
   schedule.buckets[0].value = null; schedule.coverage.complete = false;
   assert.equal(maturityView(schedule, '2026-09-30').nearShare, null);
   assert.equal(maturityView(null, '2026-09-30').peak, null);
-});
-
-test('bank metrics keep percent units and proper denominators, reject other entities and review reports', () => {
-  const values = { cet1_ratio: 15, leverage_ratio: 7, nonaccrual: 10, loans: 1000, loans_hfi: 800,
-    allowance: 16, brokered_deposits: 50, domestic_deposits: 500, deposits: 900, fhlb_advances: 0 };
-  const state = { reports: [{ id_rssd: 123, report_date: '2026-06-30', validation: { passed: true }, source_sha256: 'a'.repeat(64),
-    metrics: Object.entries(values).map(([key, value]) => ({ key, value, rssd: 123, reportDate: '2026-06-30' })) }] };
-  const cards = regulatoryBankView(state, '123', '2026-06-30').cards;
-  assert.deepEqual(cards.map(c => c.value), [15, 7, 1, 10, 2, 0]);
-  assert.ok(regulatoryBankView(state, '999', '2026-06-30').cards.every(c => c.value === null));
-  state.reports[0].validation.passed = false;
-  assert.ok(regulatoryBankView(state, '123', '2026-06-30').cards.every(c => c.value === null));
 });
 
 test('change table compares adjacent dated evidence and never treats a missing prior as zero', () => {

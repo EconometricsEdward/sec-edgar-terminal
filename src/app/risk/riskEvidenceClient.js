@@ -3,7 +3,7 @@
 const cache = new Map(), pending = new Map();
 const MAX_ENTRIES = 12;
 export async function readRiskEvidence(url) {
-  if (!/^\/api\/(?:risk\/context$|banks\?(?:q=|rssds=))/.test(url)) throw new Error('Unsupported risk evidence request.');
+  if (!/^\/api\/(?:risk\/market-context$|risk\/context\?source=bank&rssd=[1-9]\d{0,9}$|banks\?q=)/.test(url)) throw new Error('Unsupported risk evidence request.');
   const cached = cache.get(url);
   if (cached && cached.until > Date.now()) return cached.data;
   if (pending.has(url)) return pending.get(url);
@@ -12,8 +12,8 @@ export async function readRiskEvidence(url) {
     const data = await response.json();
     if (!response.ok || data.error) throw new Error(data.error || 'This source could not be loaded.');
     const incomplete = data.jobs?.some(job => ['queued', 'running', 'retry'].includes(job.status))
-      || url.includes('rssds=') && (!data.reports?.length || data.reports.some(report => !report.validation?.passed))
-      || url === '/api/risk/context' && (!data.funding || !data.derivatives);
+      || data.source === 'bank' && (data.status !== 'ready' || data.stale)
+      || url === '/api/risk/market-context' && (!data.funding || !data.derivatives);
     cache.delete(url);
     cache.set(url, { data, until: Date.now() + (incomplete ? 3000 : 60000) });
     while (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value);

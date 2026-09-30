@@ -1,6 +1,6 @@
 # Risk evidence expansion
 
-The Risk Profile keeps the existing SEC financial, funding, filing-note and CFTC positioning analysis. It adds a concise supported briefing, an adjacent-period change table, and three evidence lenses: debt maturities, FFIEC bank regulatory reports (for banks), and funding/derivatives market context. Business Exposures remains the second main tab.
+The Risk Profile keeps the existing SEC financial, funding, filing-note and CFTC positioning analysis. It adds the existing concise evidence briefing, an adjacent-period change table, and three evidence lenses: debt maturities, FFIEC bank regulatory reports (for banks), and funding/derivatives market context. Business Exposures remains the second main tab.
 
 ## Source and calculation boundaries
 
@@ -17,13 +17,15 @@ The Risk Profile keeps the existing SEC financial, funding, filing-note and CFTC
 No new database tables, migrations, buckets, scheduled jobs, raw-source archives, or issuer-market snapshots.
 
 - `/api/risk?...&evidence=1` adds a compact maturity projection to the existing approved `risk-workspace-v9` disposable entry. Old entries upgrade in place; unchanged financial calculations retain the same version. The evidence query makes the new response distinct at the CDN. Normal/partial retention remains 900/60 seconds.
-- `/api/risk/context` accepts no query parameters. All tickers share one compact projection of the existing Market datasets. It retains at most 67 daily funding rows, 14 weekly fail rows and 16 observations for each of three swaps classes. A production sample was 12,671 bytes before compression.
+- `/api/risk/market-context` accepts no query parameters. The existing `/api/risk/context?source=...` contracts remain available for older clients. All tickers share one compact projection of the existing Market datasets. It retains at most 67 daily funding rows, 14 weekly fail rows and 16 observations for each of three swaps classes. A production sample was 12,671 bytes before compression.
 - The projection has one in-memory cache entry, 60-second reuse, single-flight, and a 10-second partial/failure cooldown. The HTTP response reuses the CDN for 15 minutes; partial responses have a 30-second cache. It performs no upstream ingestion and no additional durable write.
-- Bank and market code load only when the corresponding lens is opened. Bank data use existing prepared reads, with no automatic preparation requests. Client reuse is in memory, limited to 12 entries with a 60-second maximum; pending bank/partial reads get 3 seconds. There is no polling, focus refresh, permanent browser history, or automatic retry loop.
+- Bank and market code load only when the corresponding lens is opened. Bank data use the existing compact prepared context API, with four-quarter source metadata added, with no automatic preparation requests. Client reuse is in memory, limited to 12 entries with a 60-second maximum; pending bank/partial reads get 3 seconds. There is no polling, focus refresh, permanent browser history, or automatic retry loop.
 - Risk never downloads the full multi-company Refinancing Wall to inspect one issuer. Charts use SVG and the existing keyboard/touch period inspector; no new chart dependencies.
 
 ## Verification
 
-`tests/risk-evidence.test.js` covers source units, missing observations, schedule completeness/elapsed dates, bank identity/validation and denominator scope, dated financial changes, original-registrant extraction, payload size and concurrent/failing shared reads. Existing reconciliation, cache, section-identity, lint, typecheck, SQL rehearsal and production build gates also apply.
+`tests/risk-evidence.test.js` and `tests/risk-context.test.js` cover source units, missing observations, schedule completeness/elapsed dates, bank identity/validation and denominator scope, quarter-specific source provenance, dated financial changes, original-registrant extraction, payload size and concurrent/failing shared reads. Existing reconciliation, cache, section-identity, lint, typecheck, SQL rehearsal and production build gates also apply.
 
 Browser review should cover a corporate issuer, a bank and a broker; annual/TTM switching; evidence tabs and keyboard charts; bank search/selection/quarter changes; exports; mobile layout; and unavailable source states. Production checks should confirm the new API returns compact dated data and the evidence response contains the maturity projection.
+
+The integration preserves the concurrently published RiskSignalDesk and source context APIs, while consolidating supplemental evidence into one selected lens. The old standalone panels remain compatible for already-open clients. Bank quarter selection uses the compact server-validated history instead of transferring full Call Reports.

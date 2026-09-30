@@ -286,3 +286,17 @@
 .page[data-exposures] .pageHeader h1 { font-size:clamp(30px,3vw,40px); margin:9px 0; }
 .page[data-exposures] .pageHeader p { font-size:15px; }
 .page[data-exposures] .workflowBar { margin-bottom:20px; }
+
+/* Readable navigation and source metadata across the expanded risk workspace. */
+.page .pageHeader p { font-size:16px; }
+.workflowBar .tabs button { font-size:14px; }
+.workflowBar > .textButton { font-size:13px!important; }
+.toolLabel,.page .freshness { font-size:12px; }
+.page .companyIdentity p,.search label,.segmented button { font-size:14px; }
+.researchSteps span { font-size:12px; }
+.researchSteps p { font-size:14px; }
+.researchSteps a { display:inline-block; font-size:14px; margin-top:8px; }
+.exampleCompanies span { font-size:13px; }
+.riskLanding { gap:60px; padding-top:28px; }
+:global(#risk-financial-position) { scroll-margin-top:150px; }
+@media(max-width:640px) { .riskLanding { gap:32px; } .workflowBar { flex-wrap:wrap; gap:8px; padding-bottom:10px; } .workflowBar .tabs { gap:20px; } }

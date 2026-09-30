@@ -31,27 +31,3 @@ export function comparableRiskChanges(profile) {
       end: current.end, priorEnd: previous.end }];
   });
 }
-
-/** Read only validated report metrics for the selected RSSD/date. Percent
- * observations are percentages already, not decimal fractions. */
-export function regulatoryBankView(state, rssd, period) {
-  const report = state?.reports?.find(r => String(r.id_rssd) === String(rssd) && r.report_date === period);
-  const sourceUrl = report && /^[a-f0-9]{64}$/.test(report.source_sha256 || '')
-    ? `/api/banks/source?rssd=${rssd}&period=${period}&hash=${report.source_sha256}` : null;
-  const get = key => {
-    const row = report?.validation?.passed ? report.metrics?.find(m => m.key === key && String(m.rssd) === String(rssd) && m.reportDate === period) : null;
-    return row && finite(row.value) ? row.value : null;
-  };
-  const ratio = (n, d) => finite(n) && finite(d) && d > 0 ? n / d * 100 : null;
-  const cards = [
-    { key: 'cet1_ratio', label: 'CET1 ratio', value: get('cet1_ratio'), unit: 'percent', formula: 'Reported CET1 capital / risk-weighted assets' },
-    { key: 'leverage_ratio', label: 'Tier 1 leverage', value: get('leverage_ratio'), unit: 'percent', formula: 'Reported Tier 1 capital / adjusted average assets' },
-    { key: 'nonaccrual', label: 'Nonaccrual / loans', value: ratio(get('nonaccrual'), get('loans')), unit: 'percent', formula: 'Nonaccrual loans / total loans before allowance' },
-    { key: 'brokered_deposits', label: 'Brokered / domestic deposits', value: ratio(get('brokered_deposits'), get('domestic_deposits')), unit: 'percent', formula: 'Domestic brokered deposits / domestic deposits' },
-    { key: 'allowance', label: 'Allowance / HFI loans', value: ratio(get('allowance'), get('loans_hfi')), unit: 'percent', formula: 'Loan allowance / loans held for investment before allowance' },
-    { key: 'fhlb_advances', label: 'FHLB advances', value: get('fhlb_advances'), unit: 'USD', formula: 'Reported FHLB advance maturity / repricing buckets; no overlapping subtotals' },
-  ];
-  return { report, sourceUrl, cards,
-    funding: ['domestic_deposits', 'foreign_deposits', 'fhlb_advances'].map(key => ({ key, value: get(key) })),
-    valid: report?.validation?.passed === true };
-}

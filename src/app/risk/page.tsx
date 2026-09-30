@@ -5,10 +5,10 @@ import { buildPageMetadata, SITE_URL } from '../../utils/siteMetadata';
 import { isCftcEnabled } from '../../utils/cftcFeature.js';
 import { parseRiskLocation, riskViewPath } from './riskNavigation.js';
 
-const TITLE = 'Company Risk Research — Financial Strength, Debt Maturities & Bank Reports';
+const TITLE = 'Company Risk — Financial Resilience, Debt Maturities & Bank Risk';
 const DESCRIPTION = isCftcEnabled()
-  ? 'Explore SEC financial strength and debt maturities, FFIEC bank capital and credit quality, New York Fed funding conditions, and CFTC derivatives and futures positioning. Free, source-linked risk research.'
-  : 'Explore company financial strength, SEC debt maturities, FFIEC bank reports and New York Fed funding conditions with dated source evidence.';
+  ? 'Research company financial resilience, SEC debt maturities, FFIEC bank capital and credit quality, CFTC positioning and swaps, and New York Fed funding conditions. Free, source-linked evidence with clear reporting dates.'
+  : 'Research company financial resilience, SEC debt maturities, FFIEC bank capital and credit quality, and New York Fed funding conditions with source-linked evidence and reporting dates.';
 
 export const metadata: Metadata = buildPageMetadata({
   title: TITLE,
@@ -42,7 +42,7 @@ export default async function RiskPage({ searchParams }: { searchParams: SearchP
     isPartOf: { '@id': `${SITE_URL}/#website` },
     inLanguage: 'en-US',
     isAccessibleForFree: true,
-    about: ['Company liquidity', 'Debt maturities', 'Bank regulatory capital', 'Credit quality', 'Funding conditions', 'Business exposures'].map(name => ({ '@type': 'Thing', name })),
+    about: ['Company liquidity', 'Debt maturities', 'Bank Call Reports', 'Capital adequacy', 'Earnings resilience', 'Repo funding conditions'].map(name => ({ '@type': 'Thing', name })),
   };
 
   return <>

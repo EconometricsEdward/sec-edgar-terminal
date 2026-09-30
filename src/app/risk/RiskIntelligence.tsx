@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Activity, Building2, CalendarRange, CircleHelp, FileText, ShieldCheck } from 'lucide-react';
+import { Activity, Building2, CalendarRange, CircleHelp, FileText } from 'lucide-react';
 import { buildRiskProfilePresentation } from './riskProfilePresentation.js';
 import { comparableRiskChanges, maturityView } from './riskEvidenceModel.js';
 import { formatRiskValue } from '../../utils/riskWorkspace.js';
@@ -16,29 +16,37 @@ export default function RiskIntelligence({ data, profile, onInspect, cftcEnabled
   const view = useMemo(() => buildRiskProfilePresentation(profile, data), [data, profile]);
   const [lens, setLens] = useState('maturities');
   const [group, setGroup] = useState('all');
+  const anchors: Record<string, string> = { maturities: 'risk-maturities', bank: 'risk-bank', markets: 'risk-markets' };
+  useEffect(() => {
+    const restore = () => {
+      const hash = window.location.hash;
+      setLens(hash === '#risk-markets' ? 'markets' : hash === '#risk-bank' && profile.industry.isBank ? 'bank' : 'maturities');
+    };
+    restore(); window.addEventListener('hashchange', restore);
+    return () => window.removeEventListener('hashchange', restore);
+  }, [profile.industry.isBank]);
+  function chooseLens(id: string) {
+    setLens(id);
+    window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}#${anchors[id]}`);
+  }
   const changes = useMemo(() => comparableRiskChanges(profile), [profile]);
   const visible = changes.filter(row => group === 'all' || row.pillar === group);
   const bank = view.lens.id === 'bank';
   const tabs = [{ id: 'maturities', label: 'Debt maturities', Icon: CalendarRange }, ...(bank ? [{ id: 'bank', label: 'Bank regulatory reports', Icon: Building2 }] : []), { id: 'markets', label: cftcEnabled ? 'Funding & derivatives' : 'Funding conditions', Icon: Activity }];
   return <section className={s.intelligence} aria-label="Risk research briefing">
-    <div className={s.briefHeading}><div><span className={s.kicker}>THE RISK BRIEFING</span><h2>Capacity, obligations, and the market around them.</h2></div><span className={s.period}><ShieldCheck size={15}/>{profile.periods[0]?.end || 'Period unavailable'}</span></div>
-    <div className={s.briefGrid}>
-      <div className={s.observations}><h3>What the financials support</h3>{view.strengths.length ? view.strengths.slice(0, 2).map(item => <button key={item.id} onClick={() => onInspect(item.metricId)}><span className={s.observationLine}/><span>{item.text}<small>Inspect {item.label.toLowerCase()}</small></span></button>) : <p>Read the reported measures below. The available inputs do not support a concise positive conclusion for this reporting basis.</p>}</div>
-      <div className={s.researchFocus}><h3>Where to go next</h3><p>{bank ? 'Compare the consolidated company with the relevant bank’s capital, loan quality and funding. Each legal entity keeps its own reporting scope.' : view.lens.id === 'broker' ? 'Connect firm liquidity and secured funding to repo conditions. Keep client assets, collateral and regulatory capital separate.' : view.lens.id === 'insurance' ? 'Compare consolidated capital and claims experience with funding conditions. Statutory insurance capital requires separate disclosures.' : 'Place the debt schedule beside cash and earnings, then examine the funding and hedging markets that may affect future financing.'}</p><div className={s.sourcePills}><span>SEC</span>{bank && <span>FFIEC</span>}<span>New York Fed</span>{cftcEnabled && <span>CFTC</span>}<span>DTCC references</span></div></div>
-    </div>
     <details className={s.changes}>
       <summary><Activity size={16}/><strong>What changed in the financials?</strong><span>{changes.length} comparable measures</span></summary>
       <div className={s.changeTools}><p>{profile.basis === 'ttm' ? 'Quarter-end comparison; TTM earnings windows overlap.' : 'Comparison with the prior fiscal year.'} Changes describe direction, not a credit rating.</p><label>Focus<select value={group} onChange={e => setGroup(e.target.value)}><option value="all">All measures</option><option value="credit">Credit</option><option value="capital">Capital</option><option value="liquidity">Liquidity</option><option value="profitability">Earnings</option><option value="quality">Earnings quality</option></select></label></div>
       {visible.length ? <div className={s.tableScroll}><table><thead><tr><th>Measure</th><th>{visible[0].priorEnd}</th><th>{visible[0].end}</th><th>Change</th></tr></thead><tbody>{visible.map(row => <tr key={row.id}><th scope="row"><button onClick={() => onInspect(row.id)}>{row.label}</button></th><td>{formatRiskValue(row.prior, row.format)}</td><td>{formatRiskValue(row.value, row.format)}</td><td>{formatRiskValue(row.delta, row.deltaFormat, true)}</td></tr>)}</tbody></table></div> : <p className={s.state}>No compatible adjacent observations for this selection. Missing or nonconsecutive periods are excluded.</p>}
     </details>
     <div className={s.evidenceHeading}><div><span className={s.kicker}>CONNECT THE EVIDENCE</span><h2>A wider view of financial risk.</h2></div><p>Company disclosures and market reports retain their own dates and scope.</p></div>
-    <div className={s.lensTabs} role="tablist" aria-label="Risk evidence lenses">{tabs.map(({ id, label, Icon }) => <button key={id} type="button" role="tab" id={`risk-lens-${id}`} aria-selected={lens === id} aria-controls="risk-evidence-panel" tabIndex={lens === id ? 0 : -1} onClick={() => setLens(id)} onKeyDown={e => {
+    <div className={s.lensTabs} role="tablist" aria-label="Risk evidence lenses">{tabs.map(({ id, label, Icon }) => <button key={id} type="button" role="tab" id={anchors[id]} aria-selected={lens === id} aria-controls="risk-evidence-panel" tabIndex={lens === id ? 0 : -1} onClick={() => chooseLens(id)} onKeyDown={e => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
       e.preventDefault(); const index = tabs.findIndex(tab => tab.id === lens);
       const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-      setLens(tabs[next].id); document.getElementById(`risk-lens-${tabs[next].id}`)?.focus();
+      chooseLens(tabs[next].id); document.getElementById(anchors[tabs[next].id])?.focus();
     }}><Icon size={17}/>{label}</button>)}</div>
-    <div id="risk-evidence-panel" role="tabpanel" aria-labelledby={`risk-lens-${lens}`} className={s.evidencePanel}>
+    <div id="risk-evidence-panel" role="tabpanel" aria-labelledby={anchors[lens]} className={s.evidencePanel}>
       {lens === 'maturities' && <MaturityEvidence key={data.ticker} data={data} financial={view.lens.id !== 'corporate'} />}
       {lens === 'bank' && <BankEvidence companyName={data.companyName} ticker={data.ticker} companyPeriod={profile.periods[0]?.end || ''} />}
       {lens === 'markets' && <MarketEvidence ticker={data.ticker} companyType={view.lens.id} cftcEnabled={cftcEnabled} />}

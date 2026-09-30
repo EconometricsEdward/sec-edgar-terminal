@@ -40,7 +40,7 @@ export default function RiskMarketEvidence({ ticker, companyType, cftcEnabled }:
   const [fundingMeasure, setFundingMeasure] = useState('sofr'), [asset, setAsset] = useState('rates');
   useEffect(() => {
     let active = true; setError('');
-    readRiskEvidence('/api/risk/context').then(result => {
+    readRiskEvidence('/api/risk/market-context').then(result => {
       if (result.version !== 'risk-market-context-v1') throw new Error('The market context version could not be verified.');
       if (active) setData(result);
     }).catch(cause => { if (active) setError(cause.message); });
