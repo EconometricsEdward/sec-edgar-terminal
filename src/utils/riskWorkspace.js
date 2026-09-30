@@ -1,8 +1,15 @@
 // Risk-page presentation and deterministic, before-tax sensitivity calculations.
-export const RISK_VERSION = 'risk-workspace-v11';
+export const RISK_VERSION = 'risk-workspace-v12';
 // Keep one approved disposable slot per ticker; calculation upgrades replace it.
 export const RISK_CACHE_VERSION = 'risk-workspace-v9';
-export const canReuseRiskWorkspace = (data, includeMaturities = false) => Boolean(data && data.version === RISK_VERSION && (!includeMaturities || Object.hasOwn(data, 'refinancing')));
+const compatiblePresentation = data => data?.version === 'risk-workspace-v11'
+  && ['annual', 'current'].every(key => Array.isArray(data[key]?.metrics) && Array.isArray(data[key]?.periods)
+    && data[key].metrics.every(metric => typeof metric?.id === 'string' && typeof metric.zone?.level === 'string'
+      && (metric.value == null || Number.isFinite(metric.value)) && Array.isArray(metric.series)
+      && metric.series.every(point => point && (point.value == null || Number.isFinite(point.value)))));
+export const canReuseRiskWorkspace = (data, includeMaturities = false) => Boolean(data
+  && (data.version === RISK_VERSION || compatiblePresentation(data))
+  && (!includeMaturities || Object.hasOwn(data, 'refinancing')));
 export const SCREEN_LABELS = { low: 'Within screen', moderate: 'Monitor', elevated: 'Review', high: 'Priority review', info: 'Context', na: 'Unavailable' };
 export const PILLAR_LABELS = { credit: 'Credit', capital: 'Capital', liquidity: 'Liquidity', profitability: 'Earnings', quality: 'Earnings quality' };
 
@@ -39,7 +46,12 @@ export function decorateRiskProfile(profile) {
   const contextOnly = new Set(['reserve_coverage', 'htm_adj_equity', 'quick_ratio', 'loss_ratio']);
   const metrics = profile.metrics.map((metric) => {
     const [label, why, question, thresholds] = definitions[metric.id] || [null, metric.why, 'Review the source filing.', null];
-    const level = contextOnly.has(metric.id) && metric.value != null ? 'info' : metric.zone.level;
+    // Zero observed losses cannot pass a screen when part of the history,
+    // including the latest TTM window, is unavailable. Keep the honest count
+    // and existing missing-observation note; known losses retain their flags.
+    const incompleteZeroLosses = metric.id === 'loss_years' && metric.value === 0
+      && metric.series.some(point => point.value == null);
+    const level = (contextOnly.has(metric.id) || incompleteZeroLosses) && metric.value != null ? 'info' : metric.zone.level;
     const contextual = level === 'info';
     const revenueLabel = metric.revenueBasis === 'lease' ? 'Net income / reported lease revenue' : metric.revenueBasis === 'net-of-interest' ? 'Net income / net revenue' : null;
     const revenueWhy = metric.revenueBasis === 'lease' ? 'Annual or trailing-twelve-month net income / reported lease revenue. This narrower denominator excludes non-lease income; compare with the full income statement.'
@@ -137,5 +149,12 @@ export function riskHistoryCsv(data, profile, metric) {
 
 // Keep the annual fields used by already-open, pre-workspace clients.
 export function riskResponseForVersion(data, version) {
-  return version ? data : { ...data, ...data.annual, filingScan: null };
+  // This v11→v12 upgrade is presentation-only. It reuses the existing cache
+  // slot and preserves every reported/calculated number, source and clock.
+  // Unsupported old contracts still rebuild through the normal request path.
+  const current = compatiblePresentation(data) ? { ...data, version: RISK_VERSION,
+    annual: decorateRiskProfile(data.annual), current: decorateRiskProfile(data.current),
+    presentationCompatibility: { fromVersion: 'risk-workspace-v11', adjustment: 'incomplete-zero-loss-history-context' },
+  } : data;
+  return version ? current : { ...current, ...current.annual, filingScan: null };
 }
