@@ -70,13 +70,13 @@ function DebtSnapshot({ data, onOpen }: { data: RiskData; onOpen: () => void }) 
     {reported ? <><strong className={s.debtTotal}>{value(profile?.coverage.complete ? profile.totalScheduled : profile?.reportedSubtotal, 'usd')}</strong><span className={s.caption}>{profile?.coverage.complete ? 'Scheduled total' : 'Reported subtotal'} · {profile?.asOf}</span>
       <svg viewBox="0 0 380 185" role="img" aria-label={'Debt maturity schedule reported as of ' + profile?.asOf} className={s.debtChart}>
         <line x1="12" x2="368" y1="140" y2="140" className={s.guide}/>
-        {view.buckets.map((bucket, i) => { const x = 14 + i * 61, height = finite(bucket.value) ? Math.max(0, bucket.value) / view.max * 104 : 0; return <g key={bucket.key}>
+        {view.buckets.map((bucket, i) => { const label = bucket.calendarYear || bucket.key === 'after5' ? bucket.shortLabel : 'FY +' + (i + 1); const x = 14 + i * 61, height = finite(bucket.value) ? Math.max(0, bucket.value) / view.max * 104 : 0; return <g key={bucket.key}>
           {finite(bucket.value) ? <rect x={x} y={140 - height} width="40" height={height} rx="3" className={bucket.elapsed ? s.elapsedBar : s.debtBar}><title>{bucket.shortLabel + ': ' + value(bucket.value, 'usd') + (bucket.elapsed ? ' · elapsed bucket' : '')}</title></rect> : <text x={x + 20} y="124" textAnchor="middle">—</text>}
           <text x={x + 20} y={finite(bucket.value) ? 132 - height : 104} textAnchor="middle">{finite(bucket.value) ? value(bucket.value, 'usd') : 'N/A'}</text>
-          <text x={x + 20} y="159" textAnchor="middle">{bucket.shortLabel}</text>
+          <text x={x + 20} y="159" textAnchor="middle">{label}</text>
         </g>; })}
       </svg>
-      <div className={s.debtCaption}><span>{profile?.coverage.reportedBuckets}/{profile?.coverage.totalBuckets} buckets</span><span>{view.hasElapsed ? 'Muted = elapsed' : 'SEC annual schedule'}</span></div>
+      <div className={s.debtCaption}><span>{profile?.coverage.reportedBuckets}/{profile?.coverage.totalBuckets} buckets</span>{view.buckets.slice(0, 5).some(bucket => !bucket.calendarYear) && <span>FY offsets from filing</span>}<span>{view.hasElapsed ? 'Muted = elapsed' : 'SEC annual schedule'}</span></div>
     </> : <div className={s.debtMissing}><Database size={32}/><strong>Schedule unavailable</strong><span>Compatible SEC maturity tags missing</span></div>}
     <button className={s.debtLink} onClick={onOpen}>Debt evidence <ArrowUpRight size={14}/></button>
   </aside>;
