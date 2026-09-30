@@ -112,9 +112,9 @@ export default function RiskProfileOverview({ data, profile, onInspect, onExposu
     <MaturityEvidence key={`maturities:${data.cik}`} cik={data.cik} ticker={data.ticker} profileDate={profile.periods[0]?.end} financial={profile.industry.isFinancial}/>
     {bank && <BankEvidence key={`bank:${data.cik}`} companyName={data.companyName}/>}
     <RiskFundingStory key={`funding:${data.ticker}:${profile.basis}`} profile={profile} company={{ sic: data.sic, ticker: data.ticker }} onInspect={onInspect} />
+    <MarketEvidence cftcEnabled={cftcEnabled}/>
     <RiskNoteEvidence key={`notes:${data.ticker}:${profile.basis}`} ticker={data.ticker} basis={profile.basis} />
     {cftcEnabled && <RiskProfileMarketContext key={`market:${data.ticker}:${profile.basis}:${asOf}`} ticker={data.ticker} companyName={data.companyName} basis={profile.basis === 'annual' ? 'annual' : 'ttm'} asOf={asOf} companyType={view.lens.id} />}
-    <MarketEvidence cftcEnabled={cftcEnabled}/>
     {onExposures && <button className={s.moreExposures} onClick={onExposures}>Open the full business exposure map <ArrowUpRight size={15}/></button>}
     <div className={s.coverage}><CircleHelp size={17}/><div><button onClick={() => onInspect(profile.coverage.missing[0] || '', profile.coverage.missing.length > 0)}>{profile.coverage.available} of {profile.coverage.total} available metrics · {profile.coverage.missing.length} data gaps<ArrowUpRight size={13}/></button>{view.limitations.map(note => <p key={note}>{note}</p>)}</div></div>
   </div>;
